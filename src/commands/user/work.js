@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 WORK_TIMER_SECONDS = 300
-workCount = 620;
+workCount = 747;
 
 async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;

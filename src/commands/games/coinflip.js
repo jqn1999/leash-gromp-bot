@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-let heads = 944;
-let tails = 949;
+let heads = 1001;
+let tails = 1025;
 module.exports = {
     name: "coinflip",
     description: "Flips a coin. User gains or loses their bet",
