@@ -1,0 +1,7 @@
+node src/index.js
+
+nodemon
+
+how to kill node from cmd
+ps aux | grep node
+killall node
