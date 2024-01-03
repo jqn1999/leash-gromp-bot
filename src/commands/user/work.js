@@ -1,8 +1,8 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
+PERCENT_OF_TOTAL = .002
 WORK_TIMER_SECONDS = 300
-workCount = 747;
 
 async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;
@@ -66,7 +66,7 @@ module.exports = {
         let allUsers = await dynamoHandler.getUsers();
         const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
         const total = serverTotal(sortedUsers);
-        const workGainAmount = Math.floor(total * .002);
+        const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL);
 
         const userId = interaction.user.id;
         const username = interaction.user.username;
@@ -84,25 +84,25 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you worked recently and must wait ${timeUntilWorkAvailableInSeconds} more seconds before working again!`);
             return;
         };
-
+        let work = await dynamoHandler.getWorkStats();
         let multiplier = getRandomFromInterval(.8, 1.2);
         const rarity = Math.random();
         let potatoesGained;
         if (rarity < .01) {
             potatoesGained = await handleGoldenPotato(userDetails, workGainAmount, multiplier);
             console.log(`Super rarity found! ${userDisplayName}, rarity: ${rarity}`)
-            interaction.editReply(`${workCount} Worked | ${userDisplayName} you discovered and sold a golden potato! You gain ${potatoesGained} potatoes for your amazing discovery!`);
+            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you discovered and sold a golden potato! You gain ${potatoesGained} potatoes for your amazing discovery!`);
         } else if (rarity < .02) {
             potatoesGained = await handleLargePotato(userDetails, workGainAmount, multiplier);
             console.log(`Medium rarity found! ${userDisplayName} rarity: ${rarity}`)
-            interaction.editReply(`${workCount} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
+            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
         } else {
             potatoesGained = await handleRegularWork(userDetails, workGainAmount, multiplier);
-            // console.log(`Regular work found! ${userDisplayName} rarity: ${rarity}`)
-            interaction.editReply(`${workCount} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);
+            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);
         }
-        workCount += 1
         await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.addWorkCount(work.workCount);
+        await dynamoHandler.addWorkTotalPayout(work.totalPayout, potatoesGained);
         return;
     }
 }

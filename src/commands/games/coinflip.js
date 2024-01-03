@@ -1,7 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-let heads = 1001;
-let tails = 1025;
 module.exports = {
     name: "coinflip",
     description: "Flips a coin. User gains or loses their bet",
@@ -77,20 +75,25 @@ module.exports = {
 
         let result = Math.random() >= 0.5 ? 'heads' : 'tails';
 
+        let coinflip = await dynamoHandler.getCoinflipStats()
         if (result == "heads") {
-            heads += 1;
+            await dynamoHandler.addCoinflipHeads(coinflip.heads)
+            coinflip.heads += 1
         } else {
-            tails += 1;
+            await dynamoHandler.addCoinflipTails(coinflip.tails)
+            coinflip.tails += 1
         }
         if (result == sideSelected) {
             userPotatoes += bet
             userTotalEarnings += bet
+            await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, bet)
         } else {
             userPotatoes -= bet
             userTotalLosses -= bet
+            await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
         }
 
         await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
-        interaction.editReply(`${heads}H : ${tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+        interaction.editReply(`${coinflip.heads}H : ${coinflip.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
     }
 }

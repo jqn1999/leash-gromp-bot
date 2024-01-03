@@ -27,10 +27,8 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
         }
 
         let userId = user.userId;
-        let userPotatoes = user.potatoes;
-        let userTotalEarnings = user.totalEarnings;
-        let userTotalLosses = user.totalLosses -= userBet.bet;
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses)
+        let userTotalLosses = user.totalLosses - userBet.bet;
+        await dynamoHandler.updateUserLosses(userId, userTotalLosses)
         console.log(`handleBetConclusionLoser: ${user.username} bet and lost ${userBet.bet} potatoes.`)
     })
 }

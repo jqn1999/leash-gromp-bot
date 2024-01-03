@@ -1,6 +1,12 @@
 const AWS = require('aws-sdk');
 const config = require('../config.js');
 
+const statTrackingIds = {
+    COINFLIP: "coinflip",
+    WORK: "work",
+    BET: "bet",
+}
+
 // User Handling
 const findUser = async function (userId, username) {
     AWS.config.update(config.aws_remote_config);
@@ -126,6 +132,32 @@ const updateUserWorkTimer = async function (userId) {
         UpdateExpression: "set workTimer = :workTimer",
         ExpressionAttributeValues: {
             ":workTimer": Date.now(),
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserPotatoes: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserLosses = async function (userId, totalLosses) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set totalLosses = :totalLosses",
+        ExpressionAttributeValues: {
+            ":totalLosses": totalLosses
         },
         ReturnValues: "ALL_NEW",
     };
@@ -361,6 +393,205 @@ const lockCurrentBet = async function (betId) {
     return response;
 }
 
+// Stats
+const getCoinflipStats = async function () {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        KeyConditionExpression: 'trackingId = :trackingId',
+        ExpressionAttributeValues: { ':trackingId': statTrackingIds.COINFLIP }
+    };
+
+    const response = docClient.query(params).promise()
+        .then(async function (data) {
+            coinflip = data.Items[0]
+            return coinflip;
+        })
+        .catch(function (err) {
+            console.debug(`getCoinflipStats error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
+const addCoinflipHeads = async function (headsCount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.COINFLIP,
+        },
+        UpdateExpression: "set heads = :heads",
+        ExpressionAttributeValues: {
+            ":heads": headsCount+1
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addCoinflipHeads: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addCoinflipHeads error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const addCoinflipTails = async function (tailsCount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.COINFLIP,
+        },
+        UpdateExpression: "set tails = :tails",
+        ExpressionAttributeValues: {
+            ":tails": tailsCount+1
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addCoinflipTails: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addCoinflipTails error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const addCoinflipTotalPayout = async function (totalPayout, bet) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.COINFLIP,
+        },
+        UpdateExpression: "set totalPayout = :totalPayout",
+        ExpressionAttributeValues: {
+            ":totalPayout": totalPayout+bet
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addCoinflipHeads: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addCoinflipHeads error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const addCoinflipTotalReceived = async function (totalReceived, bet) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.COINFLIP,
+        },
+        UpdateExpression: "set totalReceived = :totalReceived",
+        ExpressionAttributeValues: {
+            ":totalReceived": totalReceived-bet
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addCoinflipHeads: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addCoinflipHeads error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const getWorkStats = async function () {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        KeyConditionExpression: 'trackingId = :trackingId',
+        ExpressionAttributeValues: { ':trackingId': statTrackingIds.WORK }
+    };
+
+    const response = docClient.query(params).promise()
+        .then(async function (data) {
+            work = data.Items[0]
+            return work;
+        })
+        .catch(function (err) {
+            console.debug(`getWorkStats error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
+const addWorkCount = async function (workCount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.WORK,
+        },
+        UpdateExpression: "set workCount = :workCount",
+        ExpressionAttributeValues: {
+            ":workCount": workCount+1
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addWorkCount: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addWorkCount error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const addWorkTotalPayout = async function (totalPayout, amount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_stats_table_name,
+        Key: {
+            trackingId: statTrackingIds.WORK,
+        },
+        UpdateExpression: "set totalPayout = :totalPayout",
+        ExpressionAttributeValues: {
+            ":totalPayout": totalPayout+amount
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addWorkTotalPayout: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addWorkTotalPayout error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 // Misc
 const addNewUserAttribute = async function () {
     AWS.config.update(config.aws_remote_config);
@@ -400,6 +631,7 @@ module.exports = {
     getUsers,
     addPotatoesAllUsers,
     updateUserWorkTimer,
+    updateUserLosses,
 
     addBirthday,
     getAllBirthdays,
@@ -410,6 +642,15 @@ module.exports = {
     addUserToBet,
     endCurrentBet,
     lockCurrentBet,
+
+    getCoinflipStats,
+    addCoinflipHeads,
+    addCoinflipTails,
+    addCoinflipTotalPayout,
+    addCoinflipTotalReceived,
+    getWorkStats,
+    addWorkCount,
+    addWorkTotalPayout,
 
     addNewUserAttribute,
 }
