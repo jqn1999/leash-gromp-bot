@@ -26,17 +26,15 @@ async function createLeaderboardEmbed(sortedUsers, total, userIndex) {
                 inline: false,
             };
             userList.push(user);
-        } else if (index == userIndex) {
-            const targetUser = {
-                name: `${index+1}) ${element.username}`,
-                value: `${element.potatoes} potatoes (${(element.potatoes / total * 100).toFixed(2)}%)`,
-                inline: false,
-            };
-            userList.push(targetUser);
+        } else {
             break;
         }
-        continue;
     }
+    userList.push({
+        name: `${userIndex+1}) ${sortedUsers[userIndex].username}`,
+        value: `${sortedUsers[userIndex].potatoes} potatoes (${(sortedUsers[userIndex].potatoes / total * 100).toFixed(2)}%)`,
+        inline: false,
+    });
 
     const embed = new EmbedBuilder()
         .setTitle(`Server Leaderboard (${total} potatoes)`)
