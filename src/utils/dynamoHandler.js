@@ -45,7 +45,11 @@ const addUser = async function (userId, username) {
         username: username,
         potatoes: 5000,
         totalEarnings: 0,
-        totalLosses: 0
+        totalLosses: 0,
+        workTimer: 0,
+        bankLevel: 1,
+        passiveIncomeLevel: 1,
+        workLevel: 1,
     };
     var params = {
         TableName: config.aws_table_name,
@@ -658,9 +662,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set workTimer = :workTimer",
+            UpdateExpression: "set passiveIncomeLevel = :passiveIncomeLevel",
             ExpressionAttributeValues: {
-                ":workTimer": 0,
+                ":passiveIncomeLevel": 1,
             },
             ReturnValues: "ALL_NEW",
         };

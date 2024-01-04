@@ -92,7 +92,7 @@ module.exports = {
             userPotatoes -= bet
             userTotalLosses -= bet
             await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
-            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalLosses);
+            await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
         }
 
         interaction.editReply(`${coinflip.heads}H : ${coinflip.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
