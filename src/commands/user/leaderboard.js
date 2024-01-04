@@ -26,9 +26,16 @@ async function createLeaderboardEmbed(sortedUsers, total, userIndex) {
                 inline: false,
             };
             userList.push(user);
-        } else {
+        } else if (index == userIndex) {
+            const targetUser = {
+                name: `${index+1}) ${element.username}`,
+                value: `${element.potatoes} potatoes (${(element.potatoes / total * 100).toFixed(2)}%)`,
+                inline: false,
+            };
+            userList.push(targetUser);
             break;
         }
+        continue;
     }
 
     const embed = new EmbedBuilder()
