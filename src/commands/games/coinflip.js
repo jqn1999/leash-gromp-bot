@@ -84,9 +84,10 @@ module.exports = {
             coinflip.tails += 1
         }
         if (result == sideSelected) {
-            userPotatoes += bet
-            userTotalEarnings += bet
-            await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, bet)
+            const roundedBet = Math.floor(bet*.95)
+            userPotatoes += roundedBet
+            userTotalEarnings += roundedBet
+            await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, roundedBet)
             await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
         } else {
             userPotatoes -= bet

@@ -16,7 +16,7 @@ function findUserIndex(allUsers, userId) {
 
 async function createLeaderboardEmbed(sortedUsers, total, userIndex) {
     const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-    const workAverage  = Math.floor(total * .002);
+    const workAverage  = MAX_WORK_GAIN < Math.floor(total * PERCENT_OF_TOTAL) ? MAX_WORK_GAIN : Math.floor(total * PERCENT_OF_TOTAL);
     let userList = []
     for (const [index, element] of sortedUsers.entries()) {
         if (index < 5) {

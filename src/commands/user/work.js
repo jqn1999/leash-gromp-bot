@@ -3,6 +3,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 PERCENT_OF_TOTAL = .002
 WORK_TIMER_SECONDS = 300
+MAX_WORK_GAIN = 5000
 
 async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;
@@ -52,7 +53,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const total = await dynamoHandler.getServerTotal();
-        const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL);
+        const workGainAmount = MAX_WORK_GAIN < Math.floor(total * PERCENT_OF_TOTAL) ? MAX_WORK_GAIN : Math.floor(total * PERCENT_OF_TOTAL);
 
         const userId = interaction.user.id;
         const username = interaction.user.username;
