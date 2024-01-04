@@ -7,8 +7,8 @@ module.exports =  (client) => {
     try {
         // return;
         const localCommands = getLocalCommands();
-        // const allGuilds = client.guilds.cache.map(guild => guild.id);
-        const allGuilds = [testServer];
+        const allGuilds = client.guilds.cache.map(guild => guild.id);
+        // const allGuilds = [testServer];
         allGuilds.forEach(async function (guild) {
             const applicationCommands = await getApplicationCommands(
                 client,

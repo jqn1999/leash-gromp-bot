@@ -1,25 +1,24 @@
 const { ApplicationCommandOptionType, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const dynamoHandler = require("../../utils/dynamoHandler");
 
-async function handleBetConclusion(winningList, winningSideTotal, losingList, losingSideTotal) {
-    await winningList.forEach(async userBet => {
+async function handleBetConclusion(winningList, winningSideTotal, losingList, losingSideTotal, betBaseAmount) {
+    await Promise.all(winningList.map(async userBet => {
         const user = await dynamoHandler.findUser(userBet.userId, "");
         if (!user) {
             interaction.editReply('User was missing for some reason');
             return;
         }
         const originalPotatoes = user.potatoes
-
-        let userSplit = userBet.bet + Math.floor(userBet.bet/winningSideTotal*losingSideTotal);
+        
+        let userSplit = userBet.bet + Math.floor(userBet.bet/(winningSideTotal - betBaseAmount)*losingSideTotal);
         let userId = user.userId;
-        let newUserPotatoes = user.potatoes += userSplit;
-        let userTotalEarnings = user.totalEarnings += userSplit;
-        let userTotalLosses = user.totalLosses;
-        await dynamoHandler.updateUserPotatoes(userId, newUserPotatoes, userTotalEarnings, userTotalLosses)
-        console.log(`handleBetConclusionWinner: ${user.username} bet ${userBet.bet} potatoes and won ${userSplit - userBet.bet} potatoes.`
+        let newUserPotatoes = user.potatoes + userSplit;
+        let userTotalEarnings = user.totalEarnings + userSplit;
+        await dynamoHandler.updateUserPotatoesAndEarnings(userId, newUserPotatoes, userTotalEarnings)
+        console.log(`handleBetConclusionWinner: ${user.username} bet ${userBet.bet} potatoes and won ${userSplit - userBet.bet} potatoes. `
                     + `They went from ${originalPotatoes} potatoes to ${newUserPotatoes} potatoes.`)
-    });
-    await losingList.forEach(async userBet => {
+    }));
+    await Promise.all(losingList.map(async userBet => {
         const user = await dynamoHandler.findUser(userBet.userId, "");
         if (!user) {
             interaction.editReply('User was missing for some reason');
@@ -30,7 +29,7 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
         let userTotalLosses = user.totalLosses - userBet.bet;
         await dynamoHandler.updateUserLosses(userId, userTotalLosses)
         console.log(`handleBetConclusionLoser: ${user.username} bet and lost ${userBet.bet} potatoes.`)
-    })
+    }));
 }
 
 async function createBetEmbed(betDetails, winningOption) {
@@ -102,14 +101,15 @@ module.exports = {
         const optionOneVoters = mostRecentBet.optionOneVoters;
         const optionTwoTotal = mostRecentBet.optionTwoTotal;
         const optionTwoVoters = mostRecentBet.optionTwoVoters;
+        const betBaseAmount = mostRecentBet.baseAmount;
 
         let winningOption;
         if (winner == 1) {
             winningOption = mostRecentBet.optionOne;
-            await handleBetConclusion(optionOneVoters, optionOneTotal, optionTwoVoters, optionTwoTotal);
+            await handleBetConclusion(optionOneVoters, optionOneTotal, optionTwoVoters, optionTwoTotal, betBaseAmount);
         } else {
             winningOption = mostRecentBet.optionTwo;
-            await handleBetConclusion(optionTwoVoters, optionTwoTotal, optionOneVoters, optionOneTotal);
+            await handleBetConclusion(optionTwoVoters, optionTwoTotal, optionOneVoters, optionOneTotal, betBaseAmount);
         }
         await dynamoHandler.endCurrentBet(mostRecentBet.betId, winningOption);
         const embed = await createBetEmbed(mostRecentBet, winningOption);

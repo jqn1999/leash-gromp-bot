@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
-async function createBetEmbed(betDetails) {
+async function createBetEmbed(betDetails, interaction) {
     let odds, ratio;
     if (betDetails.optionOneTotal > betDetails.optionTwoTotal) {
         odds = (betDetails.optionOneTotal / betDetails.optionTwoTotal).toFixed(2);
@@ -15,7 +15,7 @@ async function createBetEmbed(betDetails) {
         betDetails.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
     }
 
-    let largestVoterOptionOne = {userId: "", bet: 0};
+    let largestVoterOptionOne = {userId: "", bet: 0, displayName: ""};
     let optionOneSplit;
     betDetails.optionOneVoters.forEach(voter => {
         if (voter.bet > largestVoterOptionOne.bet) {
@@ -23,9 +23,16 @@ async function createBetEmbed(betDetails) {
             largestVoterOptionOne.bet = voter.bet;
         }
     })
-    optionOneSplit = (largestVoterOptionOne.bet / betDetails.optionOneTotal).toFixed(2);
+    const targetUserOne = await interaction.guild.members.fetch(largestVoterOptionOne.userId);
+    if (!targetUserOne) {
+        await interaction.editReply("That user doesn't exist in this server.");
+        return;
+    }
+    largestVoterOptionOne.displayName = targetUserOne.user.displayName
+    optionOneSplit = largestVoterOptionOne.bet / (betDetails.optionOneTotal - betDetails.baseAmount);
+    optionOnePercentage = (optionOneSplit*100).toFixed(2)
 
-    let largestVoterOptionTwo = {userId: "", bet: 0};
+    let largestVoterOptionTwo = {userId: "", bet: 0, displayName: ""};
     let optionTwoSplit;
     betDetails.optionTwoVoters.forEach(voter => {
         if (voter.bet > largestVoterOptionTwo.bet) {
@@ -33,7 +40,14 @@ async function createBetEmbed(betDetails) {
             largestVoterOptionTwo.bet = voter.bet;
         }
     })
-    optionTwoSplit = (largestVoterOptionTwo.bet / betDetails.optionTwoTotal).toFixed(2);
+    const targetUserTwo = await interaction.guild.members.fetch(largestVoterOptionTwo.userId);
+    if (!targetUserTwo) {
+        await interaction.editReply("That user doesn't exist in this server.");
+        return;
+    }
+    largestVoterOptionTwo.displayName = targetUserTwo.user.displayName
+    optionTwoSplit = largestVoterOptionTwo.bet / (betDetails.optionTwoTotal - betDetails.baseAmount);
+    optionTwoPercentage = (optionTwoSplit*100).toFixed(2)
 
 
     const embed = new EmbedBuilder()
@@ -55,14 +69,19 @@ async function createBetEmbed(betDetails) {
                 inline: true,
             },
             {
-                name: `${betDetails.optionOne} Largest Bet`,
-                value: `${largestVoterOptionOne.bet} wins ${Math.floor(optionOneSplit*betDetails.optionTwoTotal)} potatoes (${optionOneSplit*100}%)`,
+                name: `${betDetails.optionOne} Largest Bet: ${largestVoterOptionOne.bet}`,
+                value: `${largestVoterOptionOne.displayName} wins ${Math.floor(optionOneSplit*betDetails.optionTwoTotal)} potatoes (${optionOnePercentage}%)`,
                 inline: false,
             },
             {
-                name: `${betDetails.optionTwo} Largest Bet`,
-                value: `${largestVoterOptionTwo.bet} wins ${Math.floor(optionTwoSplit*betDetails.optionOneTotal)} potatoes (${optionTwoSplit*100}%)`,
+                name: `${betDetails.optionTwo} Largest Bet: ${largestVoterOptionTwo.bet}`,
+                value: `${largestVoterOptionTwo.displayName} wins ${Math.floor(optionTwoSplit*betDetails.optionOneTotal)} potatoes (${optionTwoPercentage}%)`,
                 inline: true,
+            },
+            {
+                name: `Base Bet Amount (per side):`,
+                value: `${betDetails.baseAmount} potatoes)`,
+                inline: false,
             },
         );
     return embed;
@@ -80,7 +99,7 @@ module.exports = {
             interaction.editReply(`There is no currently active bet.`);
             return;
         }
-        const embed = await createBetEmbed(mostRecentBet);
+        const embed = await createBetEmbed(mostRecentBet, interaction);
         interaction.editReply({ embeds: [embed] });
     }
 }

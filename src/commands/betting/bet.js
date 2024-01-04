@@ -59,9 +59,6 @@ module.exports = {
         }
         
         let userPotatoes = userDetails.potatoes;
-        let userTotalEarnings = userDetails.totalEarnings;
-        let userTotalLosses = userDetails.totalLosses;
-
         if (bet.toLowerCase() == 'all') {
             bet = userPotatoes;
         } else{
@@ -85,7 +82,7 @@ module.exports = {
         }
 
         userPotatoes -= bet;
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
+        await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.addUserToBet(mostRecentBet.betId, userId, bet, optionSelected);
 
         interaction.editReply(`${userDisplayName} you have bet ${bet} potatoes for option ${optionSelected}!`)

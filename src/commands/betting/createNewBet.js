@@ -1,6 +1,11 @@
 const { ApplicationCommandOptionType, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
+const PERCENT_OF_SERVER_TOTAL_TO_BASE = .05
+async function calculateBetBaseAmount(serverTotal) {
+    return Math.round(serverTotal * PERCENT_OF_SERVER_TOTAL_TO_BASE / 10000) * 10000;
+}
+
 module.exports = {
     name: "create-new-bet",
     description: "Creates a new bet if there is no active bet",
@@ -49,9 +54,10 @@ module.exports = {
             })
             return;
         }
-
+        const total = await dynamoHandler.getServerTotal();
+        const baseAmount = calculateBetBaseAmount(total);
         const nextBetId = mostRecentBet ? mostRecentBet.betId + 1 : 1;
-        await dynamoHandler.addBet(nextBetId, optionOne, optionTwo, description, thumbnailUrl);
+        await dynamoHandler.addBet(nextBetId, optionOne, optionTwo, description, thumbnailUrl, baseAmount);
         interaction.editReply(`New bet has been added for ${optionOne} vs ${optionTwo}`)
     }
 }

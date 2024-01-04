@@ -1,14 +1,6 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
-function serverTotal(allUsers) {
-    let total = 0;
-    allUsers.forEach(user => {
-        total += user.potatoes;
-    })
-    return total
-}
-
 function findUserIndex(allUsers, userId) {
     let index = 0;
     let foundFlag = false;
@@ -76,9 +68,8 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        let allUsers = await dynamoHandler.getUsers();
-        const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
-        const total = serverTotal(sortedUsers);
+        const sortedUsers = await dynamoHandler.getSortedUsers();
+        const total = await dynamoHandler.getServerTotal();
         const userIndex = findUserIndex(sortedUsers, interaction.user.id);
 
         const embed = await createLeaderboardEmbed(sortedUsers, total, userIndex);

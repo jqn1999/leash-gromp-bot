@@ -8,12 +8,11 @@ async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;
     let userPotatoes = userDetails.potatoes;
     let userTotalEarnings = userDetails.totalEarnings;
-    let userTotalLosses = userDetails.totalLosses;
 
     const potatoesGained = Math.floor(workGainAmount*multiplier*100);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
+    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     return potatoesGained;
 }
 
@@ -21,12 +20,11 @@ async function handleLargePotato(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;
     let userPotatoes = userDetails.potatoes;
     let userTotalEarnings = userDetails.totalEarnings;
-    let userTotalLosses = userDetails.totalLosses;
 
     const potatoesGained = Math.floor(workGainAmount*multiplier*50);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
+    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     return potatoesGained;
 }
 
@@ -34,25 +32,15 @@ async function handleRegularWork(userDetails, workGainAmount, multiplier) {
     const userId = userDetails.userId;
     let userPotatoes = userDetails.potatoes;
     let userTotalEarnings = userDetails.totalEarnings;
-    let userTotalLosses = userDetails.totalLosses;
-
     const potatoesGained = Math.floor(workGainAmount*multiplier);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
+    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     return potatoesGained;
 }
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
-}
-
-function serverTotal(allUsers) {
-    let total = 0;
-    allUsers.forEach(user => {
-        total += user.potatoes;
-    })
-    return total
 }
 
 module.exports = {
@@ -63,9 +51,7 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        let allUsers = await dynamoHandler.getUsers();
-        const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
-        const total = serverTotal(sortedUsers);
+        const total = await dynamoHandler.getServerTotal();
         const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL);
 
         const userId = interaction.user.id;

@@ -61,7 +61,7 @@ const addUser = async function (userId, username) {
         });
 }
 
-const updateUserPotatoes = async function (userId, potatoes, totalEarnings, totalLosses) {
+const updateUserPotatoes = async function (userId, potatoes) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -70,11 +70,9 @@ const updateUserPotatoes = async function (userId, potatoes, totalEarnings, tota
         Key: {
             userId: userId,
         },
-        UpdateExpression: "set potatoes = :potatoes, totalEarnings = :totalEarnings, totalLosses = :totalLosses",
+        UpdateExpression: "set potatoes = :potatoes",
         ExpressionAttributeValues: {
             ":potatoes": potatoes,
-            ":totalEarnings": totalEarnings,
-            ":totalLosses": totalLosses
         },
         ReturnValues: "ALL_NEW",
     };
@@ -85,6 +83,60 @@ const updateUserPotatoes = async function (userId, potatoes, totalEarnings, tota
         })
         .catch(function (err) {
             console.debug(`updateUserPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserPotatoesAndEarnings = async function (userId, potatoes, totalEarnings) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set potatoes = :potatoes, totalEarnings = :totalEarnings",
+        ExpressionAttributeValues: {
+            ":potatoes": potatoes,
+            ":totalEarnings": totalEarnings
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserPotatoesAndEarnings: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserPotatoesAndEarnings error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserPotatoesAndLosses = async function (userId, potatoes, totalLosses) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set potatoes = :potatoes, totalLosses = :totalLosses",
+        ExpressionAttributeValues: {
+            ":potatoes": potatoes,
+            ":totalLosses": totalLosses
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserPotatoesAndLosses: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserPotatoesAndLosses error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -216,7 +268,7 @@ const getAllBirthdays = async function () {
 }
 
 // Betting handling
-const addBet = async function (betId, optionOne, optionTwo, description, thumbnailUrl) {
+const addBet = async function (betId, optionOne, optionTwo, description, thumbnailUrl, baseAmount) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -232,7 +284,8 @@ const addBet = async function (betId, optionOne, optionTwo, description, thumbna
         optionTwo: optionTwo,
         optionTwoVoters: [],
         optionTwoTotal: 0,
-        winningOption: ""
+        winningOption: "",
+        baseAmount: baseAmount
     };
 
     var params = {
@@ -624,10 +677,28 @@ const addNewUserAttribute = async function () {
     // return response;
 }
 
+const getServerTotal = async function () {
+    let total = 0;
+    let allUsers = await getUsers();
+    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
+    allUsers.forEach(user => {
+        total += user.potatoes;
+    })
+    return total
+}
+
+const getSortedUsers = async function () {
+    let allUsers = await getUsers();
+    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
+    return sortedUsers
+}
+
 module.exports = {
     addUser,
     findUser,
     updateUserPotatoes,
+    updateUserPotatoesAndEarnings,
+    updateUserPotatoesAndLosses,
     getUsers,
     addPotatoesAllUsers,
     updateUserWorkTimer,
@@ -653,4 +724,6 @@ module.exports = {
     addWorkTotalPayout,
 
     addNewUserAttribute,
+    getServerTotal,
+    getSortedUsers,
 }

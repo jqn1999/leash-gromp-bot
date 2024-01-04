@@ -87,13 +87,14 @@ module.exports = {
             userPotatoes += bet
             userTotalEarnings += bet
             await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, bet)
+            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
         } else {
             userPotatoes -= bet
             userTotalLosses -= bet
             await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
+            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalLosses);
         }
 
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
         interaction.editReply(`${coinflip.heads}H : ${coinflip.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
     }
 }
