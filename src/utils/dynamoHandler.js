@@ -47,9 +47,9 @@ const addUser = async function (userId, username) {
         totalEarnings: 0,
         totalLosses: 0,
         workTimer: 0,
-        bankLevel: 1,
-        passiveIncomeLevel: 1,
-        workLevel: 1,
+        bankCapacity: 50000,
+        workMultiplierAmount: 1,
+        passiveAmount: 5000
     };
     var params = {
         TableName: config.aws_table_name,
@@ -168,10 +168,21 @@ const addPotatoesAllUsers = async function (passiveGain) {
     const allUsers = await getUsers();
     await allUsers.forEach(async user => {
         let userId = user.userId;
-        let userPotatoes = user.potatoes += passiveGain;
-        let userTotalEarnings = user.totalEarnings;
-        let userTotalLosses = user.totalLosses;
-        await updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
+        let userPotatoes = user.potatoes + passiveGain;
+        let userTotalEarnings = user.totalEarnings + passiveGain;
+        await updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+    });
+    return;
+}
+
+const passivePotatoHandler = async function () {
+    const allUsers = await getUsers();
+    await allUsers.forEach(async user => {
+        const passiveGain = Math.floor(user.passiveAmount/288);
+        let userId = user.userId;
+        let userPotatoes = user.potatoes + passiveGain;
+        let userTotalEarnings = user.totalEarnings + passiveGain;
+        await updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     });
     return;
 }
@@ -688,9 +699,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set passiveIncomeLevel = :passiveIncomeLevel",
+            UpdateExpression: "set passiveAmount = :passiveAmount",
             ExpressionAttributeValues: {
-                ":passiveIncomeLevel": 1,
+                ":passiveAmount": 5000,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -731,6 +742,7 @@ module.exports = {
     updateUserPotatoesAndLosses,
     getUsers,
     addPotatoesAllUsers,
+    passivePotatoHandler,
     updateUserWorkTimer,
     updateUserWorkTimerAdditionalTime,
     updateUserLosses,
