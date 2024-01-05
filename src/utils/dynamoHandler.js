@@ -202,6 +202,32 @@ const updateUserWorkTimer = async function (userId) {
     return response;
 }
 
+const updateUserWorkTimerAdditionalTime = async function (userId, extraMilliseconds) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set workTimer = :workTimer",
+        ExpressionAttributeValues: {
+            ":workTimer": Date.now()+extraMilliseconds,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserWorkTimerAdditionalTime: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserWorkTimerAdditionalTime error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 const updateUserLosses = async function (userId, totalLosses) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -706,6 +732,7 @@ module.exports = {
     getUsers,
     addPotatoesAllUsers,
     updateUserWorkTimer,
+    updateUserWorkTimerAdditionalTime,
     updateUserLosses,
 
     addBirthday,

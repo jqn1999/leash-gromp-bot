@@ -13,7 +13,7 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
         let userSplit = userBet.bet + Math.floor(userBet.bet/(winningSideTotal - betBaseAmount)*losingSideTotal);
         let userId = user.userId;
         let newUserPotatoes = user.potatoes + userSplit;
-        let userTotalEarnings = user.totalEarnings + userSplit;
+        let userTotalEarnings = user.totalEarnings + Math.floor(userBet.bet/(winningSideTotal - betBaseAmount)*losingSideTotal);
         await dynamoHandler.updateUserPotatoesAndEarnings(userId, newUserPotatoes, userTotalEarnings)
         console.log(`handleBetConclusionWinner: ${user.username} bet ${userBet.bet} potatoes and won ${userSplit - userBet.bet} potatoes. `
                     + `They went from ${originalPotatoes} potatoes to ${newUserPotatoes} potatoes.`)

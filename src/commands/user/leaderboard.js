@@ -1,6 +1,8 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
+MAX_WORK_GAIN = 5000
+
 function findUserIndex(allUsers, userId) {
     let index = 0;
     let foundFlag = false;

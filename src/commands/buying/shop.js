@@ -1,6 +1,83 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-// import {workShop, workItems, passiveIncomeShop, passiveIncomeItems} from "../../constants/shops"
+
+const workShop = {
+    title: "Work Shop Tools",
+    description: "This is where you buy tools and gear to improve work yield"
+}
+
+const workItems = [
+    {
+        name: `Barely Adequate Gear (50k)`,
+        description: `Grants additional 20% to base work amount`,
+    },
+    {
+        name: `Legendary Enchanted Trimmed Set of Something (1MM)`,
+        description: `Grants additional 5000% to base work amount`,
+    }
+]
+
+const passiveIncomeShop = {
+    title: "Passive Income Shop Workers",
+    description: "This is where you buy workers to improve passive yield"
+}
+
+const passiveIncomeItems = [
+    {
+        name: `Barely Adequate Bot (50k)`,
+        description: `Grants additional 10k per day`,
+    },
+    {
+        name: `Legendary Fkin Turbo OP Bot of Potato Spawning (1MM)`,
+        description: `Grants additional 500k potatoes per day`,
+    }
+]
+
+// leach-gromp-bot-shops
+const shops = [
+    {
+        shopId: "work-shop",
+        shopTitle: "potato",
+        shopDescription: "potato",
+        shopItems: [
+            {
+                itemName: "itemName",
+                itemDescription: "itemDescription",
+                itemCost: 0,
+                type: "workMultiplierAmount",
+                amount: 1.2
+            },
+            {
+                itemName: "itemName",
+                itemDescription: "itemDescription",
+                itemCost: 0,
+                type: "workMultiplierAmount",
+                amount: 1.2
+            },
+            {
+                itemName: "itemName",
+                itemDescription: "itemDescription",
+                itemCost: 0,
+                type: "workMultiplierAmount",
+                amount: 1.2
+            }
+        ]
+    },
+    {
+        shopId: "passive-income-shop",
+        shopTitle: "potato",
+        shopDescription: "potato",
+        shopItems: [
+            {
+                itemName: "itemName",
+                itemDescription: "itemDescription",
+                itemCost: 0,
+                type: "passiveAmount",
+                amount: 10000
+            }
+        ]
+    }
+]
 
 async function createShopEmbed(shopDetails, shopItems) {
     const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
