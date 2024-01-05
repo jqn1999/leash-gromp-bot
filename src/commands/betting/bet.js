@@ -40,7 +40,7 @@ module.exports = {
 
         const mostRecentBet = await dynamoHandler.getMostRecentBet();
         if (mostRecentBet.isActive == false) { 
-            interaction.reply(`There is no currently active bet.`);
+            interaction.editReply(`There is no currently active bet.`);
             return;
         }
 
