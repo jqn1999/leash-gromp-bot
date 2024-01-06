@@ -7,7 +7,7 @@ async function createShopEmbed(shopDetails) {
     let shopList = []
     for (const [index, element] of shopItems.entries()) {
         const item = {
-            name: `${index+1}) ${element.name}`,
+            name: `${element.id}) ${element.name} (${element.amount})`,
             value: `${element.description}\nId: ${element.id} | Cost: ${element.cost}`,
             inline: false,
         };
