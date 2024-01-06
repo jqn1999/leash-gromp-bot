@@ -27,6 +27,16 @@ async function createUserEmbed(userId, currentName, userAvatarHash, userDetails)
                 name: "Total Losses:",
                 value: `${userDetails.totalLosses} potatoes`,
                 inline: false,
+            },
+            {
+                name: "Current Work Multiplier:",
+                value: `${userDetails.workMultiplierAmount}`,
+                inline: false,
+            },
+            {
+                name: "Current Passive Income:",
+                value: `${userDetails.passiveAmount} potatoes per day`,
+                inline: false,
             }
         );
     return embed;

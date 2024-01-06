@@ -60,7 +60,7 @@ module.exports = async (client) => {
 
     // Manages the passive potato gain of the server per 5 minutes
     setInterval(async () => {
-        await dynamoHandler.passivePotatoHandler();
+        await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
     // Checks birthday list and updates name or sends message as necessary

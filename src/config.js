@@ -4,6 +4,7 @@ module.exports = {
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',
+    aws_shop_table_name: 'leash-gromp-bot-shop',
     aws_local_config: {
       //Provide details for local configuration
     },

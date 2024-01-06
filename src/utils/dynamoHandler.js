@@ -43,13 +43,13 @@ const addUser = async function (userId, username) {
     const Item = {
         userId: userId,
         username: username,
-        potatoes: 5000,
+        potatoes: 0,
         totalEarnings: 0,
         totalLosses: 0,
         workTimer: 0,
         bankCapacity: 50000,
         workMultiplierAmount: 1,
-        passiveAmount: 5000
+        passiveAmount: 0
     };
     var params = {
         TableName: config.aws_table_name,
@@ -175,10 +175,10 @@ const addPotatoesAllUsers = async function (passiveGain) {
     return;
 }
 
-const passivePotatoHandler = async function () {
+const passivePotatoHandler = async function (timesInADay) {
     const allUsers = await getUsers();
     await allUsers.forEach(async user => {
-        const passiveGain = Math.floor(user.passiveAmount/288);
+        const passiveGain = Math.round(user.passiveAmount/timesInADay);
         let userId = user.userId;
         let userPotatoes = user.potatoes + passiveGain;
         let userTotalEarnings = user.totalEarnings + passiveGain;
@@ -686,6 +686,80 @@ const addWorkTotalPayout = async function (totalPayout, amount) {
     return response;
 }
 
+// Shops
+const getShop = async function (shopId) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_shop_table_name,
+        KeyConditionExpression: 'shopId = :shopId',
+        ExpressionAttributeValues: { ':shopId': shopId }
+    };
+
+    const response = docClient.query(params).promise()
+        .then(async function (data) {
+            shop = data.Items[0]
+            return shop;
+        })
+        .catch(function (err) {
+            console.debug(`getShop error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
+const updateUserWorkMultiplier = async function (userId, newWorkMultiplierAmount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set workMultiplierAmount = :workMultiplierAmount",
+        ExpressionAttributeValues: {
+            ":workMultiplierAmount": newWorkMultiplierAmount,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserWorkMultiplier: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserWorkMultiplier error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserPassiveIncome = async function (userId, newPassiveIncome) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set passiveAmount = :passiveAmount",
+        ExpressionAttributeValues: {
+            ":passiveAmount": newPassiveIncome,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserPassiveIncome: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserPassiveIncome error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 // Misc
 const addNewUserAttribute = async function () {
     AWS.config.update(config.aws_remote_config);
@@ -765,6 +839,10 @@ module.exports = {
     getWorkStats,
     addWorkCount,
     addWorkTotalPayout,
+
+    getShop,
+    updateUserWorkMultiplier,
+    updateUserPassiveIncome,
 
     addNewUserAttribute,
     getServerTotal,
