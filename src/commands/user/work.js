@@ -3,10 +3,10 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 PERCENT_OF_TOTAL = .002
 WORK_TIMER_SECONDS = 300
-MAX_BASE_WORK_GAIN = 5000 // 1000
-MAX_LARGE_POTATO = 100000 // 10000
-MAX_POISON_POTATO = 50000 // 5000
-MAX_GOLDEN_POTATO = 5000000 // 500000
+MAX_BASE_WORK_GAIN = 1000 // 1000
+MAX_LARGE_POTATO = 10000 // 10000
+MAX_POISON_POTATO = 5000 // 5000
+MAX_GOLDEN_POTATO = 500000 // 500000
 POISON_POTATO_TIMER_INCREASE_MS = 3300000
 
 function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
@@ -84,7 +84,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const total = await dynamoHandler.getServerTotal();
-        const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL)
+        const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL) < MAX_BASE_WORK_GAIN ? MAX_BASE_WORK_GAIN : Math.floor(total * PERCENT_OF_TOTAL);
 
         const userId = interaction.user.id;
         const username = interaction.user.username;
