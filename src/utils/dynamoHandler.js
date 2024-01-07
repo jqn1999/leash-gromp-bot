@@ -47,7 +47,9 @@ const addUser = async function (userId, username) {
         totalEarnings: 0,
         totalLosses: 0,
         workTimer: 0,
-        bankCapacity: 50000,
+        robTimer: 0,
+        bankStored: 0,
+        bankCapacity: 0,
         workMultiplierAmount: 1,
         passiveAmount: 0
     };
@@ -235,6 +237,32 @@ const updateUserWorkTimerAdditionalTime = async function (userId, extraMilliseco
         })
         .catch(function (err) {
             console.debug(`updateUserWorkTimerAdditionalTime error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserRobTimer = async function (userId, extraMilliseconds) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set robTimer = :robTimer",
+        ExpressionAttributeValues: {
+            ":robTimer": Date.now()+extraMilliseconds,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserRobTimer: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserRobTimer error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -760,6 +788,60 @@ const updateUserPassiveIncome = async function (userId, newPassiveIncome) {
     return response;
 }
 
+const updateUserBankCapacity = async function (userId, newBankCapacity) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set bankCapacity = :bankCapacity",
+        ExpressionAttributeValues: {
+            ":bankCapacity": newBankCapacity,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserBankCapacity: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserBankCapacity error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+// Banking
+const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, newBankStored) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set potatoes = :potatoes, bankStored = :bankStored",
+        ExpressionAttributeValues: {
+            ":potatoes": newPotatoes,
+            ":bankStored": newBankStored
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserAndBankStoredPotatoes: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserAndBankStoredPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 // Misc
 const addNewUserAttribute = async function () {
     AWS.config.update(config.aws_remote_config);
@@ -773,9 +855,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set passiveAmount = :passiveAmount",
+            UpdateExpression: "set bankStored = :bankStored",
             ExpressionAttributeValues: {
-                ":passiveAmount": 5000,
+                ":bankStored": 0,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -820,6 +902,7 @@ module.exports = {
     updateUserWorkTimer,
     updateUserWorkTimerAdditionalTime,
     updateUserLosses,
+    updateUserRobTimer,
 
     addBirthday,
     getAllBirthdays,
@@ -843,6 +926,9 @@ module.exports = {
     getShop,
     updateUserWorkMultiplier,
     updateUserPassiveIncome,
+    updateUserBankCapacity,
+
+    updateUserAndBankStoredPotatoes,
 
     addNewUserAttribute,
     getServerTotal,

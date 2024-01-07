@@ -49,6 +49,10 @@ module.exports = {
                 {
                     name: 'passive-income-shop',
                     value: 'passive-income-shop'
+                },
+                {
+                    name: 'bank-shop',
+                    value: 'bank-shop'
                 }
             ]
         },
@@ -95,6 +99,7 @@ module.exports = {
         let userPotatoes = userDetails.potatoes;
         let userWorkMultiplier = userDetails.workMultiplierAmount;
         let userPassiveIncome = userDetails.passiveAmount;
+        let userBankCapacity = userDetails.bankCapacity;
 
         let chosenItem, userHasEnough, validTier;
         switch (shopSelect) {
@@ -102,7 +107,6 @@ module.exports = {
                 const workShop = await dynamoHandler.getShop('workShop');
                 chosenItem = getItemFromShop(workShop, itemIdSelected);
                 
-                // Do logic for determining if they are buying weaker version
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
                 validTier = validTierPurchase(userWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
@@ -116,13 +120,25 @@ module.exports = {
                 const passiveIncomeShop = await dynamoHandler.getShop('passiveIncomeShop');
                 chosenItem = getItemFromShop(passiveIncomeShop, itemIdSelected);
                 
-                // Do logic for determining if they are buying weaker version
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userPassiveIncome, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
                     await dynamoHandler.updateUserPassiveIncome(userId, chosenItem.amount);
+                    interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                }
+                break;
+            case 'bank-shop':
+                const bankShop = await dynamoHandler.getShop('bankShop');
+                chosenItem = getItemFromShop(bankShop, itemIdSelected);
+                
+                userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
+                validTier = validTierPurchase(userBankCapacity, chosenItem.amount, interaction, userDisplayName);
+                if (userHasEnough && validTier) {
+                    userPotatoes -= chosenItem.cost;
+                    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+                    await dynamoHandler.updateUserBankCapacity(userId, chosenItem.amount);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;

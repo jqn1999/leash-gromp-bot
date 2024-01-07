@@ -44,6 +44,10 @@ module.exports = {
                 {
                     name: 'passive-income-shop',
                     value: 'passive-income-shop'
+                },
+                {
+                    name: 'bank-shop',
+                    value: 'bank-shop'
                 }
             ]
         }
@@ -61,6 +65,10 @@ module.exports = {
             case 'passive-income-shop':
                 const passiveIncomeShop = await dynamoHandler.getShop('passiveIncomeShop');
                 embed = await createShopEmbed(passiveIncomeShop);
+                break;
+            case 'bank-shop':
+                const bankShop = await dynamoHandler.getShop('bankShop');
+                embed = await createShopEmbed(bankShop);
                 break;
         }
         interaction.editReply({ embeds: [embed] });

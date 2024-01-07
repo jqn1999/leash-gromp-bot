@@ -1,10 +1,10 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "give",
-    description: "Allows member to give their potatoes to another member",
-    devOnly: false,
+    name: "admin-give",
+    description: "Allows admins to give potatoes to members",
+    devOnly: true,
     // testOnly: false,
     deleted: false,
     options: [
@@ -21,38 +21,21 @@ module.exports = {
             type: ApplicationCommandOptionType.String,
         }
     ],
+    permissionsRequired: [PermissionFlagsBits.Administrator],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
         const userDisplayName = interaction.user.displayName;
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
-            return;
-        };
-        let userPotatoes = userDetails.potatoes;
 
         let amount = interaction.options.get('amount')?.value;
-        if (amount.toLowerCase() == 'all') {
-            amount = userPotatoes;
-        } else{
-            amount = Math.floor(Number(amount));
-            if (isNaN(amount)) {
-                interaction.editReply(`${userDisplayName}, something went wrong with your amount to give. Try again!`);
-                return;
-            }
+        amount = Math.floor(Number(amount));
+        if (isNaN(amount)) {
+            interaction.editReply(`${userDisplayName}, something went wrong with your amount to give. Try again!`);
+            return;
         }
 
         const isAmountGreaterThanZero = amount >= 1 ? true : false;
         if (!isAmountGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes} potatoes left.`);
-            return;
-        }
-
-        const isAmountLessThanOrEqualUserAmount = amount <= userPotatoes ? true : false;
-        if (!isAmountLessThanOrEqualUserAmount) {
-            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to give ${amount} potatoes! You have ${userPotatoes} potatoes left.`);
             return;
         }
 
@@ -75,11 +58,9 @@ module.exports = {
         };
         let targetUserPotatoes = targetUserDetails.potatoes;
 
-        userPotatoes -= amount;
         targetUserPotatoes += amount;
 
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
-        interaction.editReply(`${userDisplayName}, you give ${amount} potatoes to ${targetUserDisplayName}. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes`);
+        interaction.editReply(`${userDisplayName}, you spawn and give ${amount} potatoes to ${targetUserDisplayName}. They now have ${targetUserPotatoes} potatoes`);
     }
 }

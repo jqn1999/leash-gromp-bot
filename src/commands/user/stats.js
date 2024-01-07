@@ -2,40 +2,24 @@ const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 async function createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
-    const potatoes = userDetails.potatoes;
     const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
     const embed = new EmbedBuilder()
         .setTitle(`${currentName}`)
-        .setDescription("This is your profile where\nyou can view your potatoes")
+        .setDescription("This is your stats profile where\nyou can view your total gains and losses")
         .setColor("Random")
         .setThumbnail(avatarUrl)
         .setFooter({text: "Made by Beggar"})
         .setTimestamp(Date.now())
         .addFields(
             {
-                name: "Current Potatoes:",
-                value: `${potatoes} potatoes`,
+                name: "Total Earnings:",
+                value: `${userDetails.totalEarnings} potatoes`,
                 inline: false,
             },
             {
-                name: "Banked Potatoes:",
-                value: `${userDetails.bankStored} potatoes`,
-                inline: false,
-            },
-            {
-                name: "Current Work Multiplier:",
-                value: `${userDetails.workMultiplierAmount}`,
-                inline: false,
-            },
-            {
-                name: "Current Passive Income:",
-                value: `${userDetails.passiveAmount} potatoes per day`,
-                inline: false,
-            },
-            {
-                name: "Current Bank Capacity:",
-                value: `${userDetails.bankCapacity} potatoes`,
+                name: "Total Losses:",
+                value: `${userDetails.totalLosses} potatoes`,
                 inline: false,
             }
         );
@@ -47,14 +31,14 @@ function getUserAvatar(userId, avatarHash) {
 }
 
 module.exports = {
-    name: "profile",
-    description: "Returns an embed of your profile",
+    name: "user-stats",
+    description: "Returns stats of a user",
     // devOnly: false,
     // testOnly: false,
     options: [
         {
             name: 'target-user',
-            description: 'The user to get profile of',
+            description: 'The user to get stats of',
             required: false,
             type: ApplicationCommandOptionType.Mentionable,
         },

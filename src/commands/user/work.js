@@ -5,6 +5,7 @@ PERCENT_OF_TOTAL = .002
 WORK_TIMER_SECONDS = 300
 MAX_BASE_WORK_GAIN = 5000 // 1000
 MAX_LARGE_POTATO = 100000 // 10000
+MAX_POISON_POTATO = 50000 // 5000
 MAX_GOLDEN_POTATO = 5000000 // 500000
 POISON_POTATO_TIMER_INCREASE_MS = 3300000
 
@@ -20,7 +21,7 @@ async function handlePoisonPotato(userDetails, workGainAmount, multiplier) {
     let userTotalLosses = userDetails.totalLosses;
     let userMultiplier = userDetails.workMultiplierAmount;
 
-    const potatoesLost = calculateGainAmount(workGainAmount*10, MAX_LARGE_POTATO, multiplier, userMultiplier);
+    const potatoesLost = calculateGainAmount(workGainAmount*5, MAX_POISON_POTATO, multiplier, userMultiplier);
     userPotatoes -= potatoesLost
     userTotalLosses -= potatoesLost
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);

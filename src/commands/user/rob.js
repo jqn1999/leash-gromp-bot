@@ -1,16 +1,44 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
+WORK_TIMER_INCREASE_MS = 6900000
+ROB_TIMER_SECONDS = 3600
+
+function getRandomFromInterval(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function calculateFailedRobPenalty(userPotatoes) {
+    return Math.floor(userPotatoes * getRandomFromInterval(.25, .50))
+}
+
+function calculateRobAmount(targetUserPotatoes){
+    return Math.floor(targetUserPotatoes * getRandomFromInterval(.25, .50))
+}
+
+function calculateRobChance(userPotatoes, targetUserPotatoes) {
+    const total = userPotatoes + targetUserPotatoes;
+    const robChance = .05 + (.2 - (userPotatoes/total*.2))
+    return robChance
+}
+
+function determineRobOutcome(robChance){
+    if (Math.random() < robChance) {
+        return true
+    }
+    return false
+}
+
 module.exports = {
     name: "rob",
     description: "Allows member to rob their potatoes",
-    devOnly: true,
+    devOnly: false,
     // testOnly: false,
     deleted: false,
     options: [
         {
             name: 'recipient',
-            description: 'Person you give your potatoes to',
+            description: 'Person you want to commit a crime against',
             required: true,
             type: ApplicationCommandOptionType.Mentionable,
         }
@@ -28,6 +56,14 @@ module.exports = {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userTotalLosses = userDetails.totalLosses;
+
+        const timeSinceLastRobbedInSeconds = Math.floor((Date.now() - userDetails.robTimer)/1000);
+        const timeUntilRobAvailableInSeconds = ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
+
+        if (timeSinceLastRobbedInSeconds < ROB_TIMER_SECONDS){
+            interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${timeUntilRobAvailableInSeconds} more seconds before robbing again!`);
+            return;
+        };
 
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;
@@ -47,14 +83,27 @@ module.exports = {
             return;
         };
         let targetUserPotatoes = targetUserDetails.potatoes;
-        let targetUserTotalEarnings = targetUserDetails.totalEarnings;
         let targetUserTotalLosses = targetUserDetails.totalLosses;
-        const robAmount = targetUserPotatoes
-        userPotatoes += robAmount;
-        targetUserPotatoes -= robAmount;
 
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes, userTotalEarnings, userTotalLosses);
-        await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes, targetUserTotalEarnings, targetUserTotalLosses);
-        interaction.editReply(`${userDisplayName}, you rob ${robAmount} potatoes from ${targetUserDisplayName}. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes`);
+        const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+        const userSuccessfulRob = determineRobOutcome(robChance);
+        if (userSuccessfulRob) {
+            const robAmount = calculateRobAmount(targetUserPotatoes);
+            userPotatoes += robAmount;
+            userTotalEarnings += robAmount;
+            targetUserPotatoes -= robAmount;
+            targetUserTotalLosses -= robAmount;
+            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+            await dynamoHandler.updateUserPotatoesAndLosses(targetUserId, targetUserPotatoes, targetUserTotalLosses);
+            interaction.editReply(`${userDisplayName}, you rob ${robAmount} potatoes from ${targetUserDisplayName}. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+        } else {
+            const fineAmount = calculateFailedRobPenalty(userPotatoes);
+            userPotatoes -= fineAmount;
+            userTotalEarnings -= fineAmount;
+            await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
+            await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, WORK_TIMER_INCREASE_MS);
+            interaction.editReply(`${userDisplayName}, you failed to rob potatoes from ${targetUserDisplayName}. You lose ${fineAmount} potatoes and now have ${userPotatoes} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+        }
+        await dynamoHandler.updateUserRobTimer(userId, ROB_TIMER_SECONDS);
     }
 }
