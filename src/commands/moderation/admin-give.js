@@ -33,12 +33,6 @@ module.exports = {
             return;
         }
 
-        const isAmountGreaterThanZero = amount >= 1 ? true : false;
-        if (!isAmountGreaterThanZero) {
-            interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes} potatoes left.`);
-            return;
-        }
-
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;
         if (targetUserId) {
