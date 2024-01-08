@@ -99,7 +99,7 @@ module.exports = {
         } else {
             const fineAmount = calculateFailedRobPenalty(userPotatoes);
             userPotatoes -= fineAmount;
-            userTotalEarnings -= fineAmount;
+            userTotalLosses -= fineAmount;
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
             await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, WORK_TIMER_INCREASE_MS);
             interaction.editReply(`${userDisplayName}, you failed to rob potatoes from ${targetUserDisplayName}. You lose ${fineAmount} potatoes and now have ${userPotatoes} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
