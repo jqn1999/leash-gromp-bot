@@ -9,6 +9,10 @@ const client = new Client({
         IntentsBitField.Flags.GuildMessages,
         IntentsBitField.Flags.MessageContent,
     ],
+    allowedMentions: {
+        parse: ['users'],
+        repliedUser: false
+    }
 });
 
 eventHandler(client);

@@ -18,10 +18,11 @@ async function createLeaderboardEmbed(sortedUsers, total, userIndex) {
     const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
     let userList = []
     for (const [index, element] of sortedUsers.entries()) {
+        let currentUserTotalPotatoes = element.potatoes + element.bankStored;
         if (index < 5) {
             const user = {
                 name: `${index+1}) ${element.username}`,
-                value: `${element.potatoes} potatoes (${(element.potatoes / total * 100).toFixed(2)}%)`,
+                value: `${element.potatoes} potatoes (${currentUserTotalPotatoes} potatoes total) (${(currentUserTotalPotatoes / total * 100).toFixed(2)}%)`,
                 inline: false,
             };
             userList.push(user);
@@ -29,9 +30,10 @@ async function createLeaderboardEmbed(sortedUsers, total, userIndex) {
             break;
         }
     }
+    let userTotalPotatoes = sortedUsers[userIndex].potatoes + sortedUsers[userIndex].bankStored;
     userList.push({
         name: `${userIndex+1}) ${sortedUsers[userIndex].username}`,
-        value: `${sortedUsers[userIndex].potatoes} potatoes (${(sortedUsers[userIndex].potatoes / total * 100).toFixed(2)}%)`,
+        value: `${sortedUsers[userIndex].potatoes} potatoes (${userTotalPotatoes} potatoes total) (${(userTotalPotatoes / total * 100).toFixed(2)}%)`,
         inline: false,
     });
 

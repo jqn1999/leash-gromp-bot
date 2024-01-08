@@ -877,16 +877,16 @@ const addNewUserAttribute = async function () {
 const getServerTotal = async function () {
     let total = 0;
     let allUsers = await getUsers();
-    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
     allUsers.forEach(user => {
         total += user.potatoes;
+        total += user.bankStored;
     })
     return total
 }
 
 const getSortedUsers = async function () {
     let allUsers = await getUsers();
-    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes) - parseFloat(a.potatoes));
+    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes+b.bankStored) - parseFloat(a.potatoes+a.bankStored));
     return sortedUsers
 }
 
