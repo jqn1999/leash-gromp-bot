@@ -87,6 +87,8 @@ module.exports = {
             const roundedBet = Math.round(bet*.95)
             userPotatoes += roundedBet
             userTotalEarnings += roundedBet
+            adminUserShare = bet - roundedBet;
+            await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
             await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, roundedBet)
             await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
         } else {

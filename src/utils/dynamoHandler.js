@@ -93,6 +93,34 @@ const updateUserPotatoes = async function (userId, potatoes) {
     return response;
 }
 
+const addAdminUserBankedPotatoes = async function (potatoes) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const adminUser = await findUser('103243257240121344', "beggar")
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: "103243257240121344",
+        },
+        UpdateExpression: "set bankStored = :bankStored",
+        ExpressionAttributeValues: {
+            ":bankStored": adminUser.bankStored + potatoes,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addAdminUserBankedPotatoes: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addAdminUserBankedPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 const updateUserPotatoesAndEarnings = async function (userId, potatoes, totalEarnings) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -349,10 +377,10 @@ const addBet = async function (betId, optionOne, optionTwo, description, thumbna
         isActive: true,
         optionOne: optionOne,
         optionOneVoters: [],
-        optionOneTotal: 0,
+        optionOneTotal: baseAmount,
         optionTwo: optionTwo,
         optionTwoVoters: [],
-        optionTwoTotal: 0,
+        optionTwoTotal: baseAmount,
         winningOption: "",
         baseAmount: baseAmount
     };
@@ -933,4 +961,5 @@ module.exports = {
     addNewUserAttribute,
     getServerTotal,
     getSortedUsers,
+    addAdminUserBankedPotatoes,
 }
