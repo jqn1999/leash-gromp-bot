@@ -12,8 +12,8 @@ POISON_POTATO_TIMER_INCREASE_MS = 3300000
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
-    adminUserShare = Math.floor(gainAmount/.95*.05);
-    await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
+    // adminUserShare = Math.floor(gainAmount/.95*.05);
+    // await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
     return gainAmount
 }
 
