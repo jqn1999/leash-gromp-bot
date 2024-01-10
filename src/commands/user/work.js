@@ -9,9 +9,11 @@ MAX_POISON_POTATO = 5000 // 5000
 MAX_GOLDEN_POTATO = 500000 // 500000
 POISON_POTATO_TIMER_INCREASE_MS = 3300000
 
-function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
+async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
-    gainAmount = Math.floor(gainAmount*multiplier*userMultiplier);
+    gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
+    adminUserShare = Math.floor(gainAmount/.95*.05);
+    await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
     return gainAmount
 }
 
@@ -24,6 +26,7 @@ async function handlePoisonPotato(userDetails, workGainAmount, multiplier) {
     const potatoesLost = calculateGainAmount(workGainAmount*5, MAX_POISON_POTATO, multiplier, userMultiplier);
     userPotatoes -= potatoesLost
     userTotalLosses -= potatoesLost
+    
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
     await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, POISON_POTATO_TIMER_INCREASE_MS);
     return potatoesLost;
