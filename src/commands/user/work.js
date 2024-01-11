@@ -12,8 +12,8 @@ POISON_POTATO_TIMER_INCREASE_MS = 3300000
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
-    // adminUserShare = Math.floor(gainAmount/.95*.05);
-    // await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
+    adminUserShare = Math.floor(gainAmount/.95*.05);
+    await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
     return gainAmount
 }
 
@@ -23,7 +23,7 @@ async function handlePoisonPotato(userDetails, workGainAmount, multiplier) {
     let userTotalLosses = userDetails.totalLosses;
     let userMultiplier = userDetails.workMultiplierAmount;
 
-    const potatoesLost = calculateGainAmount(workGainAmount*5, MAX_POISON_POTATO, multiplier, userMultiplier);
+    const potatoesLost = await calculateGainAmount(workGainAmount*5, MAX_POISON_POTATO, multiplier, userMultiplier);
     userPotatoes -= potatoesLost
     userTotalLosses -= potatoesLost
     
@@ -38,7 +38,7 @@ async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
     let userTotalEarnings = userDetails.totalEarnings;
     let userMultiplier = userDetails.workMultiplierAmount;
 
-    const potatoesGained = calculateGainAmount(workGainAmount*100, MAX_GOLDEN_POTATO, multiplier, userMultiplier);
+    const potatoesGained = await calculateGainAmount(workGainAmount*100, MAX_GOLDEN_POTATO, multiplier, userMultiplier);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
@@ -52,7 +52,7 @@ async function handleLargePotato(userDetails, workGainAmount, multiplier) {
     let userTotalEarnings = userDetails.totalEarnings;
     let userMultiplier = userDetails.workMultiplierAmount;
 
-    const potatoesGained = calculateGainAmount(workGainAmount*10, MAX_LARGE_POTATO, multiplier, userMultiplier);
+    const potatoesGained = await calculateGainAmount(workGainAmount*10, MAX_LARGE_POTATO, multiplier, userMultiplier);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
@@ -66,7 +66,7 @@ async function handleRegularWork(userDetails, workGainAmount, multiplier) {
     let userTotalEarnings = userDetails.totalEarnings;
     let userMultiplier = userDetails.workMultiplierAmount;
 
-    const potatoesGained = calculateGainAmount(workGainAmount, MAX_BASE_WORK_GAIN, multiplier, userMultiplier);
+    const potatoesGained = await calculateGainAmount(workGainAmount, MAX_BASE_WORK_GAIN, multiplier, userMultiplier);
     userPotatoes += potatoesGained
     userTotalEarnings += potatoesGained
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
