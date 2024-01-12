@@ -107,7 +107,7 @@ module.exports = {
             const fineAmount = calculateFailedRobPenalty(userTotalWealth);
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
-            adminUserShare = fineAmount;
+            adminUserShare = fineAmount*.10;
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
             await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, WORK_TIMER_INCREASE_MS);
