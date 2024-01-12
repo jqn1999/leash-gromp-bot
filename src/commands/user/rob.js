@@ -8,8 +8,11 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-function calculateFailedRobPenalty(userPotatoes) {
-    return Math.floor(userPotatoes * getRandomFromInterval(.25, .50))
+function calculateFailedRobPenalty(userTotalWealth) {
+    if (userTotalWealth < 0) {
+        return 5000;
+    }
+    return Math.floor(userTotalWealth * getRandomFromInterval(.25, .50))
 }
 
 function calculateRobAmount(targetUserPotatoes) {
@@ -87,8 +90,8 @@ module.exports = {
         let targetUserBankedPotatoes = targetUserDetails.bankStored;
         let targetUserTotalLosses = targetUserDetails.totalLosses;
 
-        // const userTotalWealth = userPotatoes + userBankedPotatoes;
-        // const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
+        const userTotalWealth = userPotatoes + userBankedPotatoes;
+        const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
         const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
         const userSuccessfulRob = determineRobOutcome(robChance);
         if (userSuccessfulRob) {
@@ -101,7 +104,7 @@ module.exports = {
             await dynamoHandler.updateUserPotatoesAndLosses(targetUserId, targetUserPotatoes, targetUserTotalLosses);
             interaction.editReply(`${userDisplayName}, you rob ${robAmount} potatoes from <@${targetUserId}>. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
         } else {
-            const fineAmount = calculateFailedRobPenalty(userPotatoes);
+            const fineAmount = calculateFailedRobPenalty(userTotalWealth);
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
             adminUserShare = fineAmount;

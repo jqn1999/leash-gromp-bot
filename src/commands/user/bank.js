@@ -11,7 +11,7 @@ function calculateTax(amount){
 module.exports = {
     name: "bank",
     description: "Allows a member to deposit or withdraw potatoes to/from their bank",
-    devOnly: true,
+    devOnly: false,
     // testOnly: false,
     deleted: false,
     options: [

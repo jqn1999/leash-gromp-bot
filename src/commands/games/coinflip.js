@@ -94,7 +94,7 @@ module.exports = {
         } else {
             userPotatoes -= bet
             userTotalLosses -= bet
-            adminUserShare = bet;
+            adminUserShare = Math.round(bet*.10);
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
