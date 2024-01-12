@@ -4,41 +4,47 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 async function createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
     const potatoes = userDetails.potatoes;
     const avatarUrl = getUserAvatar(userId, userAvatarHash);
+    let title = `${currentName}`;
+    if (userDetails.guildId != 0) {
+        const guild = await dynamoHandler.findGuild(userDetails.guildId);
+        title += ` (${guild.name})`
+    }
+
+    let fields = [];
+    fields.push({
+        name: "Current Potatoes:",
+        value: `${potatoes} potatoes`,
+        inline: false,
+    });
+    fields.push({
+        name: "Banked Potatoes:",
+        value: `${userDetails.bankStored} potatoes`,
+        inline: false,
+    });
+    fields.push({
+        name: "Current Work Multiplier:",
+        value: `${userDetails.workMultiplierAmount}`,
+        inline: false,
+    });
+    fields.push({
+        name: "Current Passive Income:",
+        value: `${userDetails.passiveAmount} potatoes per day`,
+        inline: false,
+    });
+    fields.push({
+        name: "Current Bank Capacity:",
+        value: `${userDetails.bankCapacity} potatoes`,
+        inline: false,
+    });
 
     const embed = new EmbedBuilder()
-        .setTitle(`${currentName}`)
+        .setTitle(title)
         .setDescription("This is your profile where\nyou can view your potatoes")
         .setColor("Random")
         .setThumbnail(avatarUrl)
         .setFooter({text: "Made by Beggar"})
         .setTimestamp(Date.now())
-        .addFields(
-            {
-                name: "Current Potatoes:",
-                value: `${potatoes} potatoes`,
-                inline: false,
-            },
-            {
-                name: "Banked Potatoes:",
-                value: `${userDetails.bankStored} potatoes`,
-                inline: false,
-            },
-            {
-                name: "Current Work Multiplier:",
-                value: `${userDetails.workMultiplierAmount}`,
-                inline: false,
-            },
-            {
-                name: "Current Passive Income:",
-                value: `${userDetails.passiveAmount} potatoes per day`,
-                inline: false,
-            },
-            {
-                name: "Current Bank Capacity:",
-                value: `${userDetails.bankCapacity} potatoes`,
-                inline: false,
-            }
-        );
+        .setFields(fields);
     return embed;
 }
 

@@ -93,62 +93,6 @@ const updateUserPotatoes = async function (userId, potatoes) {
     return response;
 }
 
-const addAdminUserPotatoes = async function (potatoes) {
-    AWS.config.update(config.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
-
-    const params = {
-        TableName: config.aws_table_name,
-        Key: {
-            userId: "1187560268172116029",
-        },
-        UpdateExpression: "set potatoes = :potatoes",
-        ExpressionAttributeValues: {
-            ":potatoes": adminUser.potatoes + potatoes,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`addAdminUserPotatoes: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`addAdminUserPotatoes error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-const addAdminUserBankedPotatoes = async function (potatoes) {
-    AWS.config.update(config.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
-
-    const params = {
-        TableName: config.aws_table_name,
-        Key: {
-            userId: "1187560268172116029",
-        },
-        UpdateExpression: "set bankStored = :bankStored",
-        ExpressionAttributeValues: {
-            ":bankStored": adminUser.bankStored + potatoes,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`addAdminUserBankedPotatoes: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`addAdminUserBankedPotatoes error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
 const updateUserPotatoesAndEarnings = async function (userId, potatoes, totalEarnings) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -345,6 +289,32 @@ const updateUserLosses = async function (userId, totalLosses) {
         })
         .catch(function (err) {
             console.debug(`updateUserPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateUserGuildId = async function (userId, guildId) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set guildId = :guildId",
+        ExpressionAttributeValues: {
+            ":guildId": guildId
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserGuildId: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserGuildId error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -870,6 +840,32 @@ const updateUserBankCapacity = async function (userId, newBankCapacity) {
     return response;
 }
 
+const updateGuildBankCapacity = async function (guildId, newBankCapacity) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set bankCapacity = :bankCapacity",
+        ExpressionAttributeValues: {
+            ":bankCapacity": newBankCapacity,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildBankCapacity: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildBankCapacity error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 // Banking
 const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, newBankStored) {
     AWS.config.update(config.aws_remote_config);
@@ -898,6 +894,197 @@ const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, new
     return response;
 }
 
+// Guilds
+const getGuilds = async function () {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name
+    };
+    let guildList;
+    const response = await docClient.scan(params).promise()
+        .then(async function (data) {
+            // console.log(`getGuilds: ${JSON.stringify(data)}`);
+            guildList = data.Items;
+        })
+        .catch(function (err) {
+            console.log(`getGuilds error: ${JSON.stringify(err)}`);
+        });
+    return guildList
+}
+
+const findGuild = async function (guildId) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        KeyConditionExpression: 'guildId = :guildId',
+        // FilterExpression: 'userId = :userId',
+        ExpressionAttributeValues: { ':guildId': guildId }
+    };
+
+    const response = docClient.query(params).promise()
+        .then(async function (data) {
+            guild = data.Items[0]
+            // console.debug(`findGuild found guild: ${JSON.stringify(user)}`)
+            return guild;
+        })
+        .catch(function (err) {
+            console.debug(`findGuild error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
+const createGuild = async function (guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const Item = {
+        guildId: guildId,
+        name: guildName,
+        memberCap: 5,
+        leader: {
+            id: guildLeaderId,
+            username: guildLeaderUsername
+        },
+        memberList: [
+            {
+                id: guildLeaderId,
+                username: guildLeaderUsername,
+                role: 'Leader'
+            }
+        ],
+        bankCapacity: 1000000,
+        bankStored: 0,
+        level: 1,
+        raidCount: 0,
+        totalEarnings: 0,
+        thumbnailUrl: guildThumbnailUrl,
+        activeRaid: false,
+        raidTimer: 0
+    };
+    console.log(Item)
+
+    var params = {
+        TableName: config.aws_guilds_table_name,
+        Item: Item
+    };
+
+    return docClient.put(params).promise()
+        .then(async function (response) {
+            console.log(`createGuild ${JSON.stringify(Item)} to the table`);
+        })
+        .catch(function (err) {
+            console.log(`createGuild error: ${JSON.stringify(err)}`);
+        });
+}
+
+const updateGuildMemberList = async function (guildId, newGuildMemberList) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set memberList = :memberList",
+        ExpressionAttributeValues: {
+            ":memberList": newGuildMemberList,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildMemberList: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildMemberList error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildBankStored = async function (guildId, newBankStored) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set bankStored = :bankStored",
+        ExpressionAttributeValues: {
+            ":bankStored": newBankStored,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildBankStored: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildBankStored error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildRaidCount = async function (guildId, newRaidCount) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set raidCount = :raidCount",
+        ExpressionAttributeValues: {
+            ":raidCount": newRaidCount,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildRaidCount: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildRaidCount error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildtotalEarnings = async function (guildId, newTotalEarnings) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set totalEarnings = :totalEarnings",
+        ExpressionAttributeValues: {
+            ":totalEarnings": newTotalEarnings,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildRaidCount: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildRaidCount error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 // Misc
 const addNewUserAttribute = async function () {
     AWS.config.update(config.aws_remote_config);
@@ -911,9 +1098,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set bankStored = :bankStored",
+            UpdateExpression: "set guildId = :guildId",
             ExpressionAttributeValues: {
-                ":bankStored": 0,
+                ":guildId": 0,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -946,6 +1133,74 @@ const getSortedUsers = async function () {
     return sortedUsers
 }
 
+const getSortedGuildsByLevel = async function () {
+    let allGuilds = await getGuilds();
+    const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.level) - parseFloat(a.level));
+    return sortedUsers
+}
+
+const getSortedGuildsById = async function () {
+    let allGuilds = await getGuilds();
+    const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.guildId) - parseFloat(a.guildId));
+    return sortedUsers
+}
+
+const addAdminUserPotatoes = async function (potatoes) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: "1187560268172116029",
+        },
+        UpdateExpression: "set potatoes = :potatoes",
+        ExpressionAttributeValues: {
+            ":potatoes": adminUser.potatoes + potatoes,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addAdminUserPotatoes: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addAdminUserPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const addAdminUserBankedPotatoes = async function (potatoes) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: "1187560268172116029",
+        },
+        UpdateExpression: "set bankStored = :bankStored",
+        ExpressionAttributeValues: {
+            ":bankStored": adminUser.bankStored + potatoes,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`addAdminUserBankedPotatoes: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`addAdminUserBankedPotatoes error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 module.exports = {
     addUser,
     findUser,
@@ -958,6 +1213,7 @@ module.exports = {
     updateUserWorkTimer,
     updateUserWorkTimerAdditionalTime,
     updateUserLosses,
+    updateUserGuildId,
     updateUserRobTimer,
 
     addBirthday,
@@ -986,9 +1242,14 @@ module.exports = {
 
     updateUserAndBankStoredPotatoes,
 
+    findGuild,
+    createGuild,
+
     addNewUserAttribute,
     getServerTotal,
     getSortedUsers,
+    getSortedGuildsByLevel,
+    getSortedGuildsById,
     addAdminUserPotatoes,
     addAdminUserBankedPotatoes,
 }

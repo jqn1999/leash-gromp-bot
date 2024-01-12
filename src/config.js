@@ -5,6 +5,7 @@ module.exports = {
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',
     aws_shop_table_name: 'leash-gromp-bot-shop',
+    aws_guilds_table_name: 'leash-gromp-bot-guilds',
     aws_local_config: {
       //Provide details for local configuration
     },

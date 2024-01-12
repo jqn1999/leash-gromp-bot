@@ -45,6 +45,9 @@ let statuses = [
     },
     {
         name: "Paying off Moonwave's exorbitant fees for coaching"
+    },
+    {
+        name: "Cultivating new ways of playing with potatoes"
     }
 ];
 
@@ -56,7 +59,7 @@ module.exports = async (client) => {
     //     let random = Math.floor(Math.random() * statuses.length);
     //     client.user.setActivity(statuses[random]);
     // }, 30000);
-    client.user.setActivity(statuses[0]);
+    client.user.setActivity(statuses[2]);
 
     // Manages the passive potato gain of the server per 5 minutes
     setInterval(async () => {
