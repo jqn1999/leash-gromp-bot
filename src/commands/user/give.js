@@ -16,7 +16,7 @@ module.exports = {
         },
         {
             name: 'amount',
-            description: 'Amount of potatoes you give',
+            description: 'Amount of potatoes: all | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
         }
@@ -80,6 +80,6 @@ module.exports = {
 
         await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
-        interaction.editReply(`${userDisplayName}, you give ${amount} potatoes to ${targetUserDisplayName}. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes`);
+        interaction.editReply(`${userDisplayName}, you give ${amount} potatoes to <@${targetUserId}>. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes`);
     }
 }

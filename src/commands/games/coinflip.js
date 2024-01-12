@@ -8,7 +8,7 @@ module.exports = {
     options: [
         {
             name: 'bet-amount',
-            description: 'Amount to bet',
+            description: 'Amount of potatoes: all | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
         },
@@ -88,12 +88,14 @@ module.exports = {
             userPotatoes += roundedBet
             userTotalEarnings += roundedBet
             adminUserShare = bet - roundedBet;
-            await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
+            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, roundedBet)
             await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
         } else {
             userPotatoes -= bet
             userTotalLosses -= bet
+            adminUserShare = bet;
+            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
         }

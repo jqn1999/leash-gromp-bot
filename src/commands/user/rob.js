@@ -12,7 +12,7 @@ function calculateFailedRobPenalty(userPotatoes) {
     return Math.floor(userPotatoes * getRandomFromInterval(.25, .50))
 }
 
-function calculateRobAmount(targetUserPotatoes){
+function calculateRobAmount(targetUserPotatoes) {
     return Math.floor(targetUserPotatoes * getRandomFromInterval(.25, .50))
 }
 
@@ -22,7 +22,7 @@ function calculateRobChance(userPotatoes, targetUserPotatoes) {
     return robChance
 }
 
-function determineRobOutcome(robChance){
+function determineRobOutcome(robChance) {
     if (Math.random() < robChance) {
         return true
     }
@@ -54,6 +54,7 @@ module.exports = {
             return;
         };
         let userPotatoes = userDetails.potatoes;
+        let userBankedPotatoes = userDetails.bankStored;
         let userTotalEarnings = userDetails.totalEarnings;
         let userTotalLosses = userDetails.totalLosses;
 
@@ -83,8 +84,11 @@ module.exports = {
             return;
         };
         let targetUserPotatoes = targetUserDetails.potatoes;
+        let targetUserBankedPotatoes = targetUserDetails.bankStored;
         let targetUserTotalLosses = targetUserDetails.totalLosses;
 
+        // const userTotalWealth = userPotatoes + userBankedPotatoes;
+        // const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
         const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
         const userSuccessfulRob = determineRobOutcome(robChance);
         if (userSuccessfulRob) {
@@ -100,8 +104,8 @@ module.exports = {
             const fineAmount = calculateFailedRobPenalty(userPotatoes);
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
-            adminUserShare =  fineAmount;
-            await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
+            adminUserShare = fineAmount;
+            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
             await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, WORK_TIMER_INCREASE_MS);
             interaction.editReply(`${userDisplayName}, you failed to rob potatoes from <@${targetUserId}>. You lose ${fineAmount} potatoes and now have ${userPotatoes} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);

@@ -13,7 +13,7 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
     adminUserShare = Math.floor(gainAmount/.95*.05);
-    await dynamoHandler.addAdminUserBankedPotatoes(adminUserShare);
+    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
     return gainAmount
 }
 

@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType, EmbedBuilder, PermissionFlagsBits } = requ
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 const PERCENT_OF_SERVER_TOTAL_TO_BASE = .05
-async function calculateBetBaseAmount(serverTotal) {
+function calculateBetBaseAmount(serverTotal) {
     return Math.round(serverTotal * PERCENT_OF_SERVER_TOTAL_TO_BASE / 10000) * 10000;
 }
 
