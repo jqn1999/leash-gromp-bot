@@ -51,7 +51,8 @@ const addUser = async function (userId, username) {
         bankStored: 0,
         bankCapacity: 0,
         workMultiplierAmount: 1,
-        passiveAmount: 0
+        passiveAmount: 0,
+        guildId: 0
     };
     var params = {
         TableName: config.aws_table_name,
