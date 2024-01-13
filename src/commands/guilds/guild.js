@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 async function createBetEmbed(betDetails, interaction) {

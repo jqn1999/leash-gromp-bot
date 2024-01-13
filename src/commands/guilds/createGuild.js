@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { ApplicationCommandOptionType, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 GUILD_COST = 1000000

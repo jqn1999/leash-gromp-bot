@@ -1,29 +1,6 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-async function createShopEmbed(shopDetails) {
-    const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-    const shopItems = shopDetails.items;
-    let shopList = []
-    for (const [index, element] of shopItems.entries()) {
-        const item = {
-            name: `${element.id}) ${element.name} (${element.amount})`,
-            value: `${element.description}\nId: ${element.id} | Cost: ${element.cost}`,
-            inline: false,
-        };
-        shopList.push(item);
-    }
-
-    const embed = new EmbedBuilder()
-        .setTitle(`${shopDetails.title}`)
-        .setDescription(`${shopDetails.description}`)
-        .setColor("Random")
-        .setThumbnail(avatarUrl)
-        .setFooter({text: "Made by Beggar"})
-        .setTimestamp(Date.now())
-        .setFields(shopList)
-    return embed;
-}
+const { createShopEmbed } = require("../../utils/embedFactory");
 
 module.exports = {
     name: "shop",

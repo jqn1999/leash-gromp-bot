@@ -1,62 +1,10 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-async function createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
-    const potatoes = userDetails.potatoes;
-    const avatarUrl = getUserAvatar(userId, userAvatarHash);
-    let title = `${currentName}`;
-    if (userDetails.guildId != 0) {
-        const guild = await dynamoHandler.findGuild(userDetails.guildId);
-        title += ` (${guild.name})`
-    }
-
-    let fields = [];
-    fields.push({
-        name: "Current Potatoes:",
-        value: `${potatoes} potatoes`,
-        inline: false,
-    });
-    fields.push({
-        name: "Banked Potatoes:",
-        value: `${userDetails.bankStored} potatoes`,
-        inline: false,
-    });
-    fields.push({
-        name: "Current Work Multiplier:",
-        value: `${userDetails.workMultiplierAmount}`,
-        inline: false,
-    });
-    fields.push({
-        name: "Current Passive Income:",
-        value: `${userDetails.passiveAmount} potatoes per day`,
-        inline: false,
-    });
-    fields.push({
-        name: "Current Bank Capacity:",
-        value: `${userDetails.bankCapacity} potatoes`,
-        inline: false,
-    });
-
-    const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription("This is your profile where\nyou can view your potatoes")
-        .setColor("Random")
-        .setThumbnail(avatarUrl)
-        .setFooter({text: "Made by Beggar"})
-        .setTimestamp(Date.now())
-        .setFields(fields);
-    return embed;
-}
-
-function getUserAvatar(userId, avatarHash) {
-    return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png`;
-}
+const { createUserEmbed } = require("../../utils/embedFactory");
 
 module.exports = {
     name: "profile",
     description: "Returns an embed of your profile",
-    // devOnly: false,
-    // testOnly: false,
     options: [
         {
             name: 'target-user',

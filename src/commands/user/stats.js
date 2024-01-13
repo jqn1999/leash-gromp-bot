@@ -1,34 +1,6 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-async function createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
-    const avatarUrl = getUserAvatar(userId, userAvatarHash);
-
-    const embed = new EmbedBuilder()
-        .setTitle(`${currentName}`)
-        .setDescription("This is your stats profile where\nyou can view your total gains and losses")
-        .setColor("Random")
-        .setThumbnail(avatarUrl)
-        .setFooter({text: "Made by Beggar"})
-        .setTimestamp(Date.now())
-        .addFields(
-            {
-                name: "Total Earnings:",
-                value: `${userDetails.totalEarnings} potatoes`,
-                inline: false,
-            },
-            {
-                name: "Total Losses:",
-                value: `${userDetails.totalLosses} potatoes`,
-                inline: false,
-            }
-        );
-    return embed;
-}
-
-function getUserAvatar(userId, avatarHash) {
-    return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png`;
-}
+const { createUserStatsEmbed } = require("../../utils/embedFactory");
 
 module.exports = {
     name: "user-stats",
@@ -72,7 +44,7 @@ module.exports = {
             return;
         };
 
-        const embed = await createUserEmbed(
+        const embed = await createUserStatsEmbed(
             userId,
             userDisplayName,
             userAvatar,
