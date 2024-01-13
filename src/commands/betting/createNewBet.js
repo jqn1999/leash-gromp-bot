@@ -1,9 +1,9 @@
 const { ApplicationCommandOptionType, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { Bet } = require("../../utils/constants");
 
-const PERCENT_OF_SERVER_TOTAL_TO_BASE = .05
 function calculateBetBaseAmount(serverTotal) {
-    return Math.round(serverTotal * PERCENT_OF_SERVER_TOTAL_TO_BASE / 10000) * 10000;
+    return Math.round(serverTotal * Bet.PERCENT_OF_SERVER_TOTAL_TO_BASE / 10000) * 10000;
 }
 
 module.exports = {

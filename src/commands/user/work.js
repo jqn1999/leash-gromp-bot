@@ -1,78 +1,8 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-PERCENT_OF_TOTAL = .002
-WORK_TIMER_SECONDS = 300
-MAX_BASE_WORK_GAIN = 1000 // 1000
-MAX_LARGE_POTATO = 10000 // 10000
-MAX_POISON_POTATO = 5000 // 5000
-MAX_GOLDEN_POTATO = 500000 // 500000
-POISON_POTATO_TIMER_INCREASE_MS = 3300000
-
-async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
-    let gainAmount = maxGain < currentGain ? maxGain : currentGain;
-    gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
-    adminUserShare = Math.floor(gainAmount/.95*.05);
-    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-    return gainAmount
-}
-
-async function handlePoisonPotato(userDetails, workGainAmount, multiplier) {
-    const userId = userDetails.userId;
-    let userPotatoes = userDetails.potatoes;
-    let userTotalLosses = userDetails.totalLosses;
-    let userMultiplier = userDetails.workMultiplierAmount;
-
-    const potatoesLost = await calculateGainAmount(workGainAmount*5, MAX_POISON_POTATO, multiplier, userMultiplier);
-    userPotatoes -= potatoesLost
-    userTotalLosses -= potatoesLost
-    
-    await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-    await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, POISON_POTATO_TIMER_INCREASE_MS);
-    return potatoesLost;
-}
-
-async function handleGoldenPotato(userDetails, workGainAmount, multiplier) {
-    const userId = userDetails.userId;
-    let userPotatoes = userDetails.potatoes;
-    let userTotalEarnings = userDetails.totalEarnings;
-    let userMultiplier = userDetails.workMultiplierAmount;
-
-    const potatoesGained = await calculateGainAmount(workGainAmount*100, MAX_GOLDEN_POTATO, multiplier, userMultiplier);
-    userPotatoes += potatoesGained
-    userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    await dynamoHandler.updateUserWorkTimer(userId);
-    return potatoesGained;
-}
-
-async function handleLargePotato(userDetails, workGainAmount, multiplier) {
-    const userId = userDetails.userId;
-    let userPotatoes = userDetails.potatoes;
-    let userTotalEarnings = userDetails.totalEarnings;
-    let userMultiplier = userDetails.workMultiplierAmount;
-
-    const potatoesGained = await calculateGainAmount(workGainAmount*10, MAX_LARGE_POTATO, multiplier, userMultiplier);
-    userPotatoes += potatoesGained
-    userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    await dynamoHandler.updateUserWorkTimer(userId);
-    return potatoesGained;
-}
-
-async function handleRegularWork(userDetails, workGainAmount, multiplier) {
-    const userId = userDetails.userId;
-    let userPotatoes = userDetails.potatoes;
-    let userTotalEarnings = userDetails.totalEarnings;
-    let userMultiplier = userDetails.workMultiplierAmount;
-
-    const potatoesGained = await calculateGainAmount(workGainAmount, MAX_BASE_WORK_GAIN, multiplier, userMultiplier);
-    userPotatoes += potatoesGained
-    userTotalEarnings += potatoesGained
-    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    await dynamoHandler.updateUserWorkTimer(userId);
-    return potatoesGained;
-}
+const { Work } = require("../../utils/constants");
+const { WorkFactory } = require("../../utils/workFactory");
+const workFactory = new WorkFactory();
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
@@ -87,7 +17,8 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const total = await dynamoHandler.getServerTotal();
-        const workGainAmount = Math.floor(total * PERCENT_OF_TOTAL) < MAX_BASE_WORK_GAIN ? MAX_BASE_WORK_GAIN : Math.floor(total * PERCENT_OF_TOTAL);
+        const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL)
+        const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
 
         const userId = interaction.user.id;
         const username = interaction.user.username;
@@ -99,9 +30,9 @@ module.exports = {
             return;
         }
         const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer)/1000);
-        const timeUntilWorkAvailableInSeconds = WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
+        const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
-        if (timeSinceLastWorkedInSeconds < WORK_TIMER_SECONDS){
+        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS){
             interaction.editReply(`${userDisplayName}, you worked recently and must wait ${timeUntilWorkAvailableInSeconds} more seconds before working again!`);
             return;
         };
@@ -110,19 +41,19 @@ module.exports = {
         const rarity = Math.random();
         let potatoesGained;
         if (rarity < .001) {
-            potatoesGained = await handleGoldenPotato(userDetails, workGainAmount, multiplier);
+            potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
             console.log(`Golden potato rarity found! ${userDisplayName}, rarity: ${rarity}`)
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you discovered and sold a golden potato! You gain ${potatoesGained} potatoes for your amazing discovery!`);
         } else if (rarity < .01) {
-            potatoesGained = await handlePoisonPotato(userDetails, workGainAmount, multiplier);
+            potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
             console.log(`Poison potato rarity found! ${userDisplayName} rarity: ${rarity}`)
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} OH NO! While wandering around, you encounter a poisonous potato and you get dealthly ill. You lose ${potatoesGained} potatoes to pay for medicine and have to take a longer break from working!`);
-        } else if (rarity < .05) {
-            potatoesGained = await handleLargePotato(userDetails, workGainAmount, multiplier);
+        } else if (rarity < .06) {
+            potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
             console.log(`Large potato rarity found! ${userDisplayName} rarity: ${rarity}`)
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
         } else {
-            potatoesGained = await handleRegularWork(userDetails, workGainAmount, multiplier);
+            potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier);
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);
         }
         await dynamoHandler.addWorkCount(work.workCount);

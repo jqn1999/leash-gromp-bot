@@ -1,0 +1,31 @@
+const Work = {
+    PERCENT_OF_TOTAL: .002,
+    WORK_TIMER_SECONDS: 300,
+    MAX_BASE_WORK_GAIN: 1000,
+    MAX_LARGE_POTATO: 10000,
+    MAX_POISON_POTATO: 5000,
+    MAX_GOLDEN_POTATO: 500000,
+    POISON_POTATO_TIMER_INCREASE_MS: 3300000
+}
+
+const Bet = {
+    PERCENT_OF_SERVER_TOTAL_TO_BASE: .05
+}
+
+const Bank = {
+    TAX_BASE: 1000,
+    TAX_PERCENT: .05
+}
+
+const Rob = {
+    WORK_TIMER_INCREASE_MS: 6900000,
+    ROB_TIMER_SECONDS: 3600,
+    BASE_ROB_PENALTY: 5000
+}
+
+module.exports = {
+    Work,
+    Bet,
+    Bank,
+    Rob
+}

@@ -1,8 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-WORK_TIMER_INCREASE_MS = 6900000
-ROB_TIMER_SECONDS = 3600
+const { Rob } = require("../../utils/constants");
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
@@ -10,7 +8,7 @@ function getRandomFromInterval(min, max) {
 
 function calculateFailedRobPenalty(userTotalWealth) {
     if (userTotalWealth < 0) {
-        return 5000;
+        return Rob.BASE_ROB_PENALTY;
     }
     return Math.floor(userTotalWealth * getRandomFromInterval(.25, .50))
 }
@@ -62,9 +60,9 @@ module.exports = {
         let userTotalLosses = userDetails.totalLosses;
 
         const timeSinceLastRobbedInSeconds = Math.floor((Date.now() - userDetails.robTimer)/1000);
-        const timeUntilRobAvailableInSeconds = ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
+        const timeUntilRobAvailableInSeconds = Rob.ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
 
-        if (timeSinceLastRobbedInSeconds < ROB_TIMER_SECONDS){
+        if (timeSinceLastRobbedInSeconds < Rob.ROB_TIMER_SECONDS){
             interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${timeUntilRobAvailableInSeconds} more seconds before robbing again!`);
             return;
         };
@@ -110,9 +108,9 @@ module.exports = {
             adminUserShare = Math.floor(fineAmount*.10);
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-            await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, WORK_TIMER_INCREASE_MS);
+            await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Rob.WORK_TIMER_INCREASE_MS);
             interaction.editReply(`${userDisplayName}, you failed to rob potatoes from <@${targetUserId}>. You lose ${fineAmount} potatoes and now have ${userPotatoes} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
         }
-        await dynamoHandler.updateUserRobTimer(userId, ROB_TIMER_SECONDS);
+        await dynamoHandler.updateUserRobTimer(userId, Rob.ROB_TIMER_SECONDS);
     }
 }

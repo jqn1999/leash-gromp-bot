@@ -1,11 +1,9 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-
-TAX_BASE = 1000;
-TAX_PERCENT = .05
+const { Bank } = require("../../utils/constants");
 
 function calculateTax(amount){
-    return TAX_BASE + Math.floor(amount*TAX_PERCENT)
+    return Bank.TAX_BASE + Math.floor(amount*Bank.TAX_PERCENT)
 }
 
 module.exports = {
@@ -65,11 +63,11 @@ module.exports = {
         if (action == 'deposit') {
             if (netAmount.toLowerCase() == 'all') {
                 totalAmount = userPotatoes;
-                if (totalAmount <= TAX_BASE) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${TAX_BASE} potatoes! You have ${userPotatoes} potatoes left.`);
+                if (totalAmount <= Bank.TAX_BASE) {
+                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.TAX_BASE} potatoes! You have ${userPotatoes} potatoes left.`);
                     return;
                 }
-                netAmount = Math.round((totalAmount - TAX_BASE)/(1+TAX_PERCENT));
+                netAmount = Math.round((totalAmount - Bank.TAX_BASE)/(1+Bank.TAX_PERCENT));
                 if (netAmount >= remainingBankSpace) {
                     netAmount = remainingBankSpace;
                     totalAmount = netAmount + calculateTax(netAmount);
