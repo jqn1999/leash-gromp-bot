@@ -3,6 +3,16 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 GUILD_COST = 1000000
 
+async function handleGuildCreation(userId, username, userPotatoes, guildName, thumbnailUrl) {
+    const mostRecentGuild = await dynamoHandler.getSortedGuildsById();
+    const nextGuildId = mostRecentGuild.length > 0 ? mostRecentGuild[0].guildId + 1 : 1;
+
+    userPotatoes -= GUILD_COST;
+    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+    await dynamoHandler.createGuild(nextGuildId, guildName, userId, username, thumbnailUrl);
+    await dynamoHandler.updateUserGuildId(userId, nextGuildId)
+}
+
 module.exports = {
     name: "create-new-guild",
     description: "Creates a new guild for 1MM potatoes",
@@ -28,7 +38,6 @@ module.exports = {
         const guildName = interaction.options.get('guild-name').value;
         let thumbnailUrl = interaction.options.get('thumbnail-url')?.value;
         if (!thumbnailUrl) thumbnailUrl = "";
-
         const userId = interaction.user.id;
         const username = interaction.user.username;
         const userDisplayName = interaction.user.displayName;
@@ -38,7 +47,6 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
-
         let userPotatoes = userDetails.potatoes;
         const userGuildId = userDetails.guildId;
 
@@ -52,13 +60,7 @@ module.exports = {
             return;
         }
 
-        const mostRecentGuild = await dynamoHandler.getSortedGuildsById();
-        const nextGuildId = mostRecentGuild.length > 0 ? mostRecentGuild[0].guildId + 1 : 1;
-
-        userPotatoes -= GUILD_COST;
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
-        await dynamoHandler.createGuild(nextGuildId, guildName, userId, username, thumbnailUrl);
-        await dynamoHandler.updateUserGuildId(userId, nextGuildId)
+        await handleGuildCreation(userId, username, userPotatoes, guildName, thumbnailUrl);
         interaction.editReply(`New guild '${guildName}' has been created!`)
     }
 }

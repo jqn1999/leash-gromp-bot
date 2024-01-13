@@ -72,7 +72,7 @@ module.exports = {
         if (!targetUserDetails) {
             interaction.editReply(`${targetUserDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
-        };
+        }
         let targetUserPotatoes = targetUserDetails.potatoes;
 
         userPotatoes -= amount;

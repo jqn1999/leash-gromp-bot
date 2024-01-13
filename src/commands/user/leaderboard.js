@@ -19,8 +19,6 @@ function findUserIndex(allUsers, userId) {
 module.exports = {
     name: "leaderboard",
     description: "Displays the wealth of the top 5 members",
-    // devOnly: false,
-    // testOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
