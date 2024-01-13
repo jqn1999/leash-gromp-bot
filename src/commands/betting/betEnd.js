@@ -1,5 +1,7 @@
 const { ApplicationCommandOptionType, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 async function handleBetConclusion(winningList, winningSideTotal, losingList, losingSideTotal, betBaseAmount) {
     await Promise.all(winningList.map(async userBet => {
@@ -30,33 +32,6 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
         await dynamoHandler.updateUserLosses(userId, userTotalLosses)
         console.log(`handleBetConclusionLoser: ${user.username} bet and lost ${userBet.bet} potatoes.`)
     }));
-}
-
-async function createBetEmbed(betDetails, winningOption) {
-    if (!betDetails.thumbnailUrl) {
-        betDetails.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-    }
-
-    const embed = new EmbedBuilder()
-        .setTitle(`${winningOption} has won the bet!`)
-        .setDescription(`Potatoes have been distributed!\nBelow are the final bet amounts and their respective totals: `)
-        .setColor("Random")
-        .setThumbnail(betDetails.thumbnailUrl)
-        .setFooter({text: "Made by Beggar"})
-        .setTimestamp(Date.now())
-        .addFields(
-            {
-                name: `1: ${betDetails.optionOne}`,
-                value: `${betDetails.optionOneTotal} potatoes`,
-                inline: true,
-            },
-            {
-                name: `2: ${betDetails.optionTwo}`,
-                value: `${betDetails.optionTwoTotal} potatoes`,
-                inline: true,
-            }
-        );
-    return embed;
 }
 
 module.exports = {
@@ -112,7 +87,7 @@ module.exports = {
             await handleBetConclusion(optionTwoVoters, optionTwoTotal, optionOneVoters, optionOneTotal, betBaseAmount);
         }
         await dynamoHandler.endCurrentBet(mostRecentBet.betId, winningOption);
-        const embed = await createBetEmbed(mostRecentBet, winningOption);
+        const embed = embedFactory.createBetEndEmbed(mostRecentBet, winningOption);
         interaction.editReply({ embeds: [embed] });
     }
 }

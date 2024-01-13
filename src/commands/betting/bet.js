@@ -4,7 +4,6 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 module.exports = {
     name: "bet",
     description: "Bets an amount on a given option.",
-    // testOnly: false,
     options: [
         {
             name: 'bet-amount',

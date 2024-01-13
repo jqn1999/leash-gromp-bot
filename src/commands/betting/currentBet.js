@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { createBetEmbed } = require("../../utils/embedFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "current-bet",
@@ -14,7 +15,7 @@ module.exports = {
             interaction.editReply(`There is no currently active bet.`);
             return;
         }
-        const embed = await createBetEmbed(mostRecentBet, interaction);
+        const embed = await embedFactory.createBetEmbed(mostRecentBet, interaction);
         interaction.editReply({ embeds: [embed] });
     }
 }

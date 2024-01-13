@@ -1,5 +1,27 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
+
+async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
+    const roundedBet = Math.round(bet*.95)
+    userPotatoes += roundedBet
+    userTotalEarnings += roundedBet
+    adminUserShare = bet - roundedBet;
+    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, roundedBet)
+    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+}
+
+async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
+    userPotatoes -= bet
+    userTotalLosses -= bet
+    adminUserShare = Math.round(bet*.10);
+    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+    await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet)
+    await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
+    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+}
+
 module.exports = {
     name: "coinflip",
     description: "Flips a coin. User gains or loses their bet",
@@ -75,31 +97,19 @@ module.exports = {
 
         let result = Math.random() >= 0.5 ? 'heads' : 'tails';
 
-        let coinflip = await dynamoHandler.getCoinflipStats()
+        let coinflipStats = await dynamoHandler.getCoinflipStats()
         if (result == "heads") {
-            await dynamoHandler.addCoinflipHeads(coinflip.heads)
-            coinflip.heads += 1
+            await dynamoHandler.addCoinflipHeads(coinflipStats.heads)
+            coinflipStats.heads += 1
         } else {
-            await dynamoHandler.addCoinflipTails(coinflip.tails)
-            coinflip.tails += 1
-        }
-        if (result == sideSelected) {
-            const roundedBet = Math.round(bet*.95)
-            userPotatoes += roundedBet
-            userTotalEarnings += roundedBet
-            adminUserShare = bet - roundedBet;
-            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-            await dynamoHandler.addCoinflipTotalPayout(coinflip.totalPayout, roundedBet)
-            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-        } else {
-            userPotatoes -= bet
-            userTotalLosses -= bet
-            adminUserShare = Math.round(bet*.10);
-            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-            await dynamoHandler.addCoinflipTotalReceived(coinflip.totalReceived, bet)
-            await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
+            await dynamoHandler.addCoinflipTails(coinflipStats.tails)
+            coinflipStats.tails += 1
         }
 
-        interaction.editReply(`${coinflip.heads}H : ${coinflip.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+        if (result == sideSelected) {
+            await handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction);
+        } else {
+            await handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction);
+        }
     }
 }

@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { createUserStatsEmbed } = require("../../utils/embedFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "user-stats",
@@ -44,7 +45,7 @@ module.exports = {
             return;
         };
 
-        const embed = await createUserStatsEmbed(
+        const embed = embedFactory.createUserStatsEmbed(
             userId,
             userDisplayName,
             userAvatar,

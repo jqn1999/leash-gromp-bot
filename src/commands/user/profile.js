@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { createUserEmbed } = require("../../utils/embedFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "profile",
@@ -42,7 +43,7 @@ module.exports = {
             return;
         };
 
-        const embed = await createUserEmbed(
+        const embed = await embedFactory.createUserEmbed(
             userId,
             userDisplayName,
             userAvatar,

@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { createLeaderboardEmbed } = require("../../utils/embedFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 function findUserIndex(allUsers, userId) {
     let index = 0;
@@ -27,7 +28,7 @@ module.exports = {
         const total = await dynamoHandler.getServerTotal();
         const userIndex = findUserIndex(sortedUsers, interaction.user.id);
 
-        const embed = await createLeaderboardEmbed(sortedUsers, total, userIndex);
+        const embed = embedFactory.createLeaderboardEmbed(sortedUsers, total, userIndex);
         interaction.editReply({ embeds: [embed] });
     }
 }
