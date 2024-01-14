@@ -52,6 +52,10 @@ module.exports = {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
             console.log(`Large potato rarity found! ${userDisplayName} rarity: ${rarity}`)
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
+        } else if (rarity < .08) {
+            potatoesGained = await workFactory.handleSweetPotato(userDetails);
+            console.log(`Sweet potato rarity found! ${userDisplayName} rarity: ${rarity}`)
+            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you meet a lovely sweet potato and it convinces you to spare it's life in exchange for buffing one of your stats. Check your profile!`);
         } else {
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier);
             interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);

@@ -2,6 +2,32 @@ const dynamoHandler = require("../utils/dynamoHandler");
 const { Work } = require("../utils/constants")
 
 class WorkFactory {
+    async handleSweetPotato(userDetails) {
+        const userId = userDetails.userId;
+        let userMultiplier = userDetails.workMultiplierAmount;
+        let userPassiveAmount = userDetails.passiveAmount;
+        let userBankCapacity = userDetails.bankCapacity;
+
+        let random = Math.floor(Math.random() * sweetPotatoRewards.length);
+        const reward = sweetPotatoRewards[random];
+        switch (reward.type) {
+            case "workMultiplierAmount":
+                userMultiplier += reward.amount;
+                await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
+                break;
+            case "passiveAmount":
+                userPassiveAmount += reward.amount;
+                await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
+                break;
+            case "bankCapacity":
+                userBankCapacity += reward.amount;
+                await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
+                break;
+        }
+        await dynamoHandler.updateUserWorkTimer(userId);
+        return 0;
+    }
+
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
@@ -59,6 +85,21 @@ class WorkFactory {
         return potatoesGained;
     }
 }
+
+const sweetPotatoRewards = [
+    {
+        type: "workMultiplierAmount",
+        amount: 0.2
+    },
+    {
+        type: "passiveAmount",
+        amount: 10000
+    },
+    {
+        type: "bankCapacity",
+        amount: 50000
+    }
+]
 
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;

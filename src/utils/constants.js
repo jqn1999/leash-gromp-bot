@@ -9,7 +9,7 @@ const Work = {
 }
 
 const Bet = {
-    PERCENT_OF_SERVER_TOTAL_TO_BASE: .05
+    PERCENT_OF_SERVER_TOTAL_TO_BASE: .025
 }
 
 const Bank = {
