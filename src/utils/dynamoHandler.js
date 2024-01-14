@@ -424,7 +424,7 @@ const getAllBets = async function () {
     return betList
 }
 
-const addUserToBet = async function (betId, userId, bet, choice) {
+const addUserToBet = async function (betId, userId, userDisplayName, bet, choice) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -442,7 +442,8 @@ const addUserToBet = async function (betId, userId, bet, choice) {
         if (foundFlag == false) {
             mostRecentBet.optionOneVoters.push({
                 userId: userId,
-                bet: bet
+                bet: bet,
+                userDisplayName: userDisplayName
             });
         }
         newList = mostRecentBet.optionOneVoters;
@@ -459,7 +460,8 @@ const addUserToBet = async function (betId, userId, bet, choice) {
         if (foundFlag == false) {
             mostRecentBet.optionTwoVoters.push({
                 userId: userId,
-                bet: bet
+                bet: bet,
+                userDisplayName: userDisplayName
             });
         }
         newList = mostRecentBet.optionTwoVoters;
@@ -915,7 +917,7 @@ const getGuilds = async function () {
     return guildList
 }
 
-const findGuild = async function (guildId) {
+const findGuildById = async function (guildId) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -938,13 +940,36 @@ const findGuild = async function (guildId) {
     return response
 }
 
+const findGuildByName = async function (guildName) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        // KeyConditionExpression: 'guildName = :guildName',
+        FilterExpression: 'guildName = :guildName',
+        ExpressionAttributeValues: { ':guildName': guildName }
+    };
+
+    const response = docClient.scan(params).promise()
+        .then(async function (data) {
+            guild = data.Items[0]
+            // console.debug(`findGuildByName found guild: ${JSON.stringify(user)}`)
+            return guild;
+        })
+        .catch(function (err) {
+            console.debug(`findGuildByName error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
 const createGuild = async function (guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const Item = {
         guildId: guildId,
-        name: guildName,
+        guildName: guildName,
         memberCap: 5,
         leader: {
             id: guildLeaderId,
@@ -1243,7 +1268,8 @@ module.exports = {
 
     updateUserAndBankStoredPotatoes,
 
-    findGuild,
+    findGuildById,
+    findGuildByName,
     createGuild,
 
     addNewUserAttribute,

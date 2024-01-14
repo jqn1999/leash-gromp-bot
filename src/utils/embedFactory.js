@@ -7,8 +7,8 @@ class EmbedFactory {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
         let title = `${currentName}`;
         if (userDetails.guildId != 0) {
-            const guild = await dynamoHandler.findGuild(userDetails.guildId);
-            title += ` (${guild.name})`
+            const guild = await dynamoHandler.findGuildById(userDetails.guildId);
+            title += ` (${guild.guildName})`
         }
     
         let fields = [];
@@ -160,11 +160,12 @@ class EmbedFactory {
     
         if (betDetails.optionOneTotal != betDetails.baseAmount) {
             let largestVoterOptionOne = {userId: "", bet: 0, displayName: ""};
-            let optionOneSplit;
+            let optionOneSplit, optionOnePercentage;
             betDetails.optionOneVoters.forEach(voter => {
                 if (voter.bet > largestVoterOptionOne.bet) {
                     largestVoterOptionOne.userId = voter.userId;
                     largestVoterOptionOne.bet = voter.bet;
+                    largestVoterOptionOne.displayName = voter.userDisplayName;
                 }
             })
             const targetUserOne = await interaction.guild.members.fetch(largestVoterOptionOne.userId);
@@ -172,31 +173,26 @@ class EmbedFactory {
                 await interaction.editReply("That user doesn't exist in this server.");
                 return;
             }
-            largestVoterOptionOne.displayName = targetUserOne.user.displayName
+            largestVoterOptionOne.displayName = targetUserOne.user.displayName;
             optionOneSplit = largestVoterOptionOne.bet / (betDetails.optionOneTotal - betDetails.baseAmount);
-            optionOnePercentage = (optionOneSplit*100).toFixed(2)
+            optionOnePercentage = (optionOneSplit*100).toFixed(2);
             fields.push({
                 name: `${betDetails.optionOne} Largest Bet: ${largestVoterOptionOne.bet}`,
                 value: `${largestVoterOptionOne.displayName} wins ${Math.floor(optionOneSplit*betDetails.optionTwoTotal)} potatoes (${optionOnePercentage}%)`,
                 inline: false,
             })
         }
-    
+
         if (betDetails.optionTwoTotal != betDetails.baseAmount) {
             let largestVoterOptionTwo = {userId: "", bet: 0, displayName: ""};
-            let optionTwoSplit;
+            let optionTwoSplit, optionTwoPercentage;
             betDetails.optionTwoVoters.forEach(voter => {
                 if (voter.bet > largestVoterOptionTwo.bet) {
                     largestVoterOptionTwo.userId = voter.userId;
                     largestVoterOptionTwo.bet = voter.bet;
+                    largestVoterOptionTwo.displayName = voter.userDisplayName;
                 }
             })
-            const targetUserTwo = await interaction.guild.members.fetch(largestVoterOptionTwo.userId);
-            if (!targetUserTwo) {
-                await interaction.editReply("That user doesn't exist in this server.");
-                return;
-            }
-            largestVoterOptionTwo.displayName = targetUserTwo.user.displayName
             optionTwoSplit = largestVoterOptionTwo.bet / (betDetails.optionTwoTotal - betDetails.baseAmount);
             optionTwoPercentage = (optionTwoSplit*100).toFixed(2)
             fields.push({
@@ -246,6 +242,65 @@ class EmbedFactory {
                     inline: true,
                 }
             );
+        return embed;
+    }
+
+    createGuildEmbed(guild) {
+        let fields = [];
+    
+        if (!guild.thumbnailUrl) {
+            guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        }
+    
+        fields.push({
+            name: `Leader:`,
+            value: `${guild.leader.username}`,
+            inline: true
+        })
+        fields.push({
+            name: `Members:`,
+            value: `${guild.memberList.length}`,
+            inline: true
+        })
+        fields.push({
+            name: `Guild Level:`,
+            value: `${guild.level}`,
+            inline: true
+        })
+        fields.push({
+            name: `Bank Stored:`,
+            value: `${guild.bankStored}`,
+            inline: true
+        })
+        fields.push({
+            name: `Bank Capacity:`,
+            value: `${guild.bankCapacity}`,
+            inline: true
+        })
+        fields.push({
+            name: `Raid Count:`,
+            value: `${guild.raidCount}`,
+            inline: true
+        })
+        fields.push({
+            name: `Active Raid:`,
+            value: `${guild.activeRaid}`,
+            inline: true
+        })
+        fields.push({
+            name: `Total Earnings:`,
+            value: `${guild.totalEarnings}`,
+            inline: true
+        })
+    
+        const embed = new EmbedBuilder()
+            .setTitle(`${guild.guildName}`)
+            .setDescription(`Below is guild information for guild '${guild.guildName}'`)
+            .setColor("Random")
+            .setThumbnail(guild.thumbnailUrl)
+            .setFooter({text: "Made by Beggar"})
+            .setTimestamp(Date.now())
+            .setFields(fields);
         return embed;
     }
 }
