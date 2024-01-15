@@ -12,21 +12,50 @@ function findUserIndex(allUsers, userId) {
         } else if (foundFlag == false) {
             index += 1
         }
-    }) 
+    })
     return index
 }
 
 module.exports = {
     name: "leaderboard",
-    description: "Displays the wealth of the top 5 members",
+    description: "Displays the leaderboard for your given choice",
     deleted: false,
+    options: [
+        {
+            name: 'leaderboard-option',
+            description: 'Which leaderboard to display',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+            choices: [
+                {
+                    name: 'user-leaderboard',
+                    value: 'user-leaderboard'
+                },
+                {
+                    name: 'guild-leaderboard',
+                    value: 'guild-leaderboard'
+                }
+            ]
+        }
+    ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const sortedUsers = await dynamoHandler.getSortedUsers();
-        const total = await dynamoHandler.getServerTotal();
-        const userIndex = findUserIndex(sortedUsers, interaction.user.id);
+        let embed;
+        const leaderboardChoice = interaction.options.get('leaderboard-option')?.value;
 
-        const embed = embedFactory.createLeaderboardEmbed(sortedUsers, total, userIndex);
-        interaction.editReply({ embeds: [embed] });
+        switch (leaderboardChoice) {
+            case 'user-leaderboard':
+                const sortedUsers = await dynamoHandler.getSortedUsers();
+                const total = await dynamoHandler.getServerTotal();
+                const userIndex = findUserIndex(sortedUsers, interaction.user.id);
+                embed = embedFactory.createUserLeaderboardEmbed(sortedUsers, total, userIndex);
+                interaction.editReply({ embeds: [embed] });
+                break;
+            case 'guild-leaderboard':
+                const sortedGuildList = await dynamoHandler.getSortedGuildsById();
+                embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList);
+                interaction.editReply({ embeds: [embed] });
+                break;
+        }
     }
 }

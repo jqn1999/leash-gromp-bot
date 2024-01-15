@@ -10,7 +10,7 @@ class EmbedFactory {
             const guild = await dynamoHandler.findGuildById(userDetails.guildId);
             title += ` (${guild.guildName})`
         }
-    
+
         let fields = [];
         fields.push({
             name: "Current Potatoes:",
@@ -37,13 +37,13 @@ class EmbedFactory {
             value: `${userDetails.bankCapacity} potatoes`,
             inline: false,
         });
-    
+
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setDescription("This is your profile where\nyou can view your potatoes")
             .setColor("Random")
             .setThumbnail(avatarUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields);
         return embed;
@@ -51,13 +51,13 @@ class EmbedFactory {
 
     createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
             .setColor("Random")
             .setThumbnail(avatarUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .addFields(
                 {
@@ -73,15 +73,15 @@ class EmbedFactory {
             );
         return embed;
     }
-    
-    createLeaderboardEmbed(sortedUsers, total, userIndex) {
+
+    createUserLeaderboardEmbed(sortedUsers, total, userIndex) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         let userList = []
         for (const [index, element] of sortedUsers.entries()) {
             let currentUserTotalPotatoes = element.potatoes + element.bankStored;
             if (index < 5) {
                 const user = {
-                    name: `${index+1}) ${element.username}`,
+                    name: `${index + 1}) ${element.username}`,
                     value: `${element.potatoes} potatoes (${currentUserTotalPotatoes} potatoes total) (${(currentUserTotalPotatoes / total * 100).toFixed(2)}%)`,
                     inline: false,
                 };
@@ -92,22 +92,49 @@ class EmbedFactory {
         }
         let userTotalPotatoes = sortedUsers[userIndex].potatoes + sortedUsers[userIndex].bankStored;
         userList.push({
-            name: `${userIndex+1}) ${sortedUsers[userIndex].username}`,
+            name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
             value: `${sortedUsers[userIndex].potatoes} potatoes (${userTotalPotatoes} potatoes total) (${(userTotalPotatoes / total * 100).toFixed(2)}%)`,
             inline: false,
         });
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`Server Leaderboard (${total} potatoes)`)
             .setDescription(`This is where the top 5 members' wealth are displayed... your rank is at the bottom.`)
             .setColor("Random")
             .setThumbnail(avatarUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(userList)
         return embed;
     }
-    
+
+    createGuildLeaderboardEmbed(sortedGuilds) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        let guildList = []
+        for (const [index, element] of sortedGuilds.entries()) {
+            if (index < 5) {
+                const guild = {
+                    name: `${index + 1}) ${element.guildName} (Level: ${element.level}, Members: ${element.memberList.length})`,
+                    value: `Leader: ${element.leader.username}, Raid Count: ${element.raidCount}`,
+                    inline: false,
+                };
+                guildList.push(guild);
+            } else {
+                break;
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Guild Leaderboard (${sortedGuilds.length} Guilds)`)
+            .setDescription(`This is where the top 5 guilds are displayed`)
+            .setColor("Random")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(guildList)
+        return embed;
+    }
+
     createShopEmbed(shopDetails) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         const shopItems = shopDetails.items;
@@ -120,18 +147,18 @@ class EmbedFactory {
             };
             shopList.push(item);
         }
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`${shopDetails.title}`)
             .setDescription(`${shopDetails.description}`)
             .setColor("Random")
             .setThumbnail(avatarUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(shopList)
         return embed;
     }
-    
+
     async createBetEmbed(betDetails, interaction) {
         let odds, ratio;
         let fields = [];
@@ -142,11 +169,11 @@ class EmbedFactory {
             odds = (betDetails.optionTwoTotal / betDetails.optionOneTotal).toFixed(2);
             ratio = `1.00 : ${odds}`
         }
-    
+
         if (!betDetails.thumbnailUrl) {
             betDetails.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
-    
+
         fields.push({
             name: `1) ${betDetails.optionOne}`,
             value: `${betDetails.optionOneTotal} potatoes`,
@@ -157,9 +184,9 @@ class EmbedFactory {
             value: `${betDetails.optionTwoTotal} potatoes`,
             inline: true,
         })
-    
+
         if (betDetails.optionOneTotal != betDetails.baseAmount) {
-            let largestVoterOptionOne = {userId: "", bet: 0, displayName: ""};
+            let largestVoterOptionOne = { userId: "", bet: 0, displayName: "" };
             let optionOneSplit, optionOnePercentage;
             betDetails.optionOneVoters.forEach(voter => {
                 if (voter.bet > largestVoterOptionOne.bet) {
@@ -175,16 +202,16 @@ class EmbedFactory {
             }
             largestVoterOptionOne.displayName = targetUserOne.user.displayName;
             optionOneSplit = largestVoterOptionOne.bet / (betDetails.optionOneTotal - betDetails.baseAmount);
-            optionOnePercentage = (optionOneSplit*100).toFixed(2);
+            optionOnePercentage = (optionOneSplit * 100).toFixed(2);
             fields.push({
                 name: `${betDetails.optionOne} Largest Bet: ${largestVoterOptionOne.bet}`,
-                value: `${largestVoterOptionOne.displayName} wins ${Math.floor(optionOneSplit*betDetails.optionTwoTotal)} potatoes (${optionOnePercentage}%)`,
+                value: `${largestVoterOptionOne.displayName} wins ${Math.floor(optionOneSplit * betDetails.optionTwoTotal)} potatoes (${optionOnePercentage}%)`,
                 inline: false,
             })
         }
 
         if (betDetails.optionTwoTotal != betDetails.baseAmount) {
-            let largestVoterOptionTwo = {userId: "", bet: 0, displayName: ""};
+            let largestVoterOptionTwo = { userId: "", bet: 0, displayName: "" };
             let optionTwoSplit, optionTwoPercentage;
             betDetails.optionTwoVoters.forEach(voter => {
                 if (voter.bet > largestVoterOptionTwo.bet) {
@@ -194,10 +221,10 @@ class EmbedFactory {
                 }
             })
             optionTwoSplit = largestVoterOptionTwo.bet / (betDetails.optionTwoTotal - betDetails.baseAmount);
-            optionTwoPercentage = (optionTwoSplit*100).toFixed(2)
+            optionTwoPercentage = (optionTwoSplit * 100).toFixed(2)
             fields.push({
                 name: `${betDetails.optionTwo} Largest Bet: ${largestVoterOptionTwo.bet}`,
-                value: `${largestVoterOptionTwo.displayName} wins ${Math.floor(optionTwoSplit*betDetails.optionOneTotal)} potatoes (${optionTwoPercentage}%)`,
+                value: `${largestVoterOptionTwo.displayName} wins ${Math.floor(optionTwoSplit * betDetails.optionOneTotal)} potatoes (${optionTwoPercentage}%)`,
                 inline: false,
             })
         }
@@ -206,13 +233,13 @@ class EmbedFactory {
             value: `${betDetails.baseAmount} potatoes)`,
             inline: false,
         })
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`(1) ${betDetails.optionOne} vs (2) ${betDetails.optionTwo} (${ratio})`)
             .setDescription(`${betDetails.description}\nBelow are the current bets and their respective totals: `)
             .setColor("Random")
             .setThumbnail(betDetails.thumbnailUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields);
         return embed;
@@ -222,13 +249,13 @@ class EmbedFactory {
         if (!betDetails.thumbnailUrl) {
             betDetails.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`${winningOption} has won the bet!`)
             .setDescription(`Potatoes have been distributed!\nBelow are the final bet amounts and their respective totals: `)
             .setColor("Random")
             .setThumbnail(betDetails.thumbnailUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .addFields(
                 {
@@ -247,11 +274,11 @@ class EmbedFactory {
 
     createGuildEmbed(guild) {
         let fields = [];
-    
+
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
-    
+
         fields.push({
             name: `Leader:`,
             value: `${guild.leader.username}`,
@@ -292,13 +319,13 @@ class EmbedFactory {
             value: `${guild.totalEarnings}`,
             inline: true
         })
-    
+
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
             .setDescription(`Below is guild information for guild '${guild.guildName}'`)
             .setColor("Random")
             .setThumbnail(guild.thumbnailUrl)
-            .setFooter({text: "Made by Beggar"})
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields);
         return embed;
