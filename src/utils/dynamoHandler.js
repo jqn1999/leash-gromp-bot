@@ -1299,6 +1299,7 @@ module.exports = {
     findGuildByName,
     createGuild,
     updateGuildInviteList,
+    updateGuildMemberList,
 
     addNewUserAttribute,
     getServerTotal,
