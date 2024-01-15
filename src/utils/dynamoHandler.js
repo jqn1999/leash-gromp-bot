@@ -989,7 +989,8 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         totalEarnings: 0,
         thumbnailUrl: guildThumbnailUrl,
         activeRaid: false,
-        raidTimer: 0
+        raidTimer: 0,
+        inviteList: []
     };
     console.log(Item)
 
@@ -1005,6 +1006,32 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         .catch(function (err) {
             console.log(`createGuild error: ${JSON.stringify(err)}`);
         });
+}
+
+const updateGuildInviteList = async function (guildId, newGuildInviteList) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set inviteList = :inviteList",
+        ExpressionAttributeValues: {
+            ":inviteList": newGuildInviteList,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildInviteList: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildInviteList error: ${JSON.stringify(err)}`)
+        });
+    return response;
 }
 
 const updateGuildMemberList = async function (guildId, newGuildMemberList) {
@@ -1271,6 +1298,7 @@ module.exports = {
     findGuildById,
     findGuildByName,
     createGuild,
+    updateGuildInviteList,
 
     addNewUserAttribute,
     getServerTotal,
