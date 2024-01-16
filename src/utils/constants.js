@@ -38,6 +38,36 @@ const regularWorkMobs = [
         name: "Blasphemous Bitter Melon",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196815721909452810/image.png?ex=65b9007f&is=65a68b7f&hm=8ace537de38b4a6878160e82a71467a8d18a7007f7fd4543f9d1579595175d16&",
         description: `You have worked and encountered a wanted criminal, the Bitter Melon! After a short battle you defeat them and are rewarded potatoes for keeping the kingdom safe!`
+    },
+    {
+        name: "Egregious Eggplant",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196832421270798549/image.png?ex=65b9100d&is=65a69b0d&hm=4002206f8b697b426c2bfb31b894bb8ee6f14526ed78b0d7b014b44b4355543f&",
+        description: `You have worked and run into the notorious Egregious Eggplant! You defeat the malevolent vegetable before it can continue its reign of terror and earn a fair share of potatoes!`
+    },
+    {
+        name: "Sinister Strawberry",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196837035235881020/image.png?ex=65b91459&is=65a69f59&hm=dd107d74060982694b4d7a9be2509717a8680caa3c8a515263fa938cadb7d7b8&",
+        description: `You have worked and ran into the Sinister Strawberry! After a fierce battle, you defeat the Sinister Strawberry and earn a plentiful reward of potatoes!`
+    },
+    {
+        name: "Raging Radish",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838130590961754/image.png?ex=65b9155e&is=65a6a05e&hm=29e67c5a4e3405bc36783b1688334a1bad8ac906fd755afe3487bdf339b9f5a1&",
+        description: `You have worked and run into a Raging Radish! You defeat the fiery root vegetable, proving your mettle, and earn a hearty bag of potatoes!`
+    },
+    {
+        name: "Treacherous Tomato",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838369779527701/image.png?ex=65b91597&is=65a6a097&hm=1413759e4e446646cda9a44b21fe1df99247975454ab787c496f4cf3aff19a48&",
+        description: `You have worked and encounter the Treacherous Tomato! After a hard-fought struggle against the cunning and deceitful fruit, you emerge victorious and earn a generous amount of potatoes!`
+    },
+    {
+        name: "Menacing Mango",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838574188924928/image.png?ex=65b915c8&is=65a6a0c8&hm=8488d83d107d86c56839abbb5ae0656103f26e036e6b923016baaa19b635ddfe&",
+        description: `You have worked and stumbled into a Menacing Mango! You fight bravely against this malevolent fruit and after a fierce struggle you slay it and earn a bountiful harvest of potatoes!`
+    },
+    {
+        name: "Cowardly Cantaloupe",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196839012434980864/image.png?ex=65b91630&is=65a6a130&hm=e9f83f932c02e936de5ac6772659fe570d8f1140f3e6289a162360b9816f4475&",
+        description: `You have worked and stumbled into a Cowardly Cantaloupe! It tries to roll away and escape but you catch up, break it apart with no remorse, and earn a bountiful harvest of potatoes!`
     }
 ]
 

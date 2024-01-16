@@ -947,8 +947,8 @@ const findGuildByName = async function (guildName) {
     const params = {
         TableName: config.aws_guilds_table_name,
         // KeyConditionExpression: 'guildName = :guildName',
-        FilterExpression: 'guildName = :guildName',
-        ExpressionAttributeValues: { ':guildName': guildName }
+        FilterExpression: 'guildNameLowercase = :guildNameLowercase',
+        ExpressionAttributeValues: { ':guildNameLowercase': guildName.toLowerCase() }
     };
 
     const response = docClient.scan(params).promise()
@@ -970,6 +970,7 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
     const Item = {
         guildId: guildId,
         guildName: guildName,
+        guildNameLowercase: guildName.toLowerCase(),
         memberCap: 5,
         leader: {
             id: guildLeaderId,
