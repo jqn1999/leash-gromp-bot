@@ -1,7 +1,5 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { EmbedFactory } = require("../../utils/embedFactory");
-const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "join",
@@ -18,13 +16,12 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        let guild;
         const userId = interaction.user.id;
         const username = interaction.user.username;
         const userDisplayName = interaction.user.displayName;
         let guildName = interaction.options.get('guild-name')?.value;
 
-        guild = await dynamoHandler.findGuildByName(guildName);
+        let guild = await dynamoHandler.findGuildByName(guildName);
         if (!guild) {
             interaction.editReply(`${userDisplayName} there was an error looking for the guild you're trying to join. Try again!`);
             return;
@@ -32,6 +29,11 @@ module.exports = {
         const guildId = guild.guildId;
         let inviteList = guild.inviteList;
         let memberList = guild.memberList;
+
+        if (memberList.length >= guild.memberCap) {
+            interaction.editReply(`${userDisplayName} this guild is already at their member limit, ask them to upgrade their member cap or kick a member out!`);
+            return;
+        }
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {

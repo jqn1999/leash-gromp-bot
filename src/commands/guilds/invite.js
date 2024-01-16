@@ -1,12 +1,10 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { EmbedFactory } = require("../../utils/embedFactory");
-const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "invite",
     description: "Adds a user to the guild's invitation list",
-    devOnly: true,
+    devOnly: false,
     options: [
         {
             name: 'invitee',

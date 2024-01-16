@@ -16,7 +16,7 @@ async function handleGuildCreation(userId, username, userPotatoes, guildName, th
 module.exports = {
     name: "create-new-guild",
     description: "Creates a new guild for 1MM potatoes",
-    devOnly: true,
+    devOnly: false,
     // testOnly: false,
     options: [
         {

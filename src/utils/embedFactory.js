@@ -24,7 +24,7 @@ class EmbedFactory {
         });
         fields.push({
             name: "Current Work Multiplier:",
-            value: `${userDetails.workMultiplierAmount}`,
+            value: `${(userDetails.workMultiplierAmount).toFixed(2)}`,
             inline: false,
         });
         fields.push({
