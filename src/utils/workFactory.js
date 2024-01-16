@@ -7,21 +7,28 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
+        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
 
         let random = Math.floor(Math.random() * sweetPotatoRewards.length);
         const reward = sweetPotatoRewards[random];
         switch (reward.type) {
             case "workMultiplierAmount":
+                sweetPotatoBuffs.workMultiplierAmount += reward.amount;
                 userMultiplier += reward.amount;
                 await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
+                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
             case "passiveAmount":
+                sweetPotatoBuffs.passiveAmount += reward.amount;
                 userPassiveAmount += reward.amount;
                 await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
+                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
             case "bankCapacity":
+                sweetPotatoBuffs.bankCapacity += reward.amount;
                 userBankCapacity += reward.amount;
                 await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
+                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
         }
         await dynamoHandler.updateUserWorkTimer(userId);

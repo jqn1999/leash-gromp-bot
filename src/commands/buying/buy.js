@@ -97,9 +97,9 @@ module.exports = {
         }
         
         let userPotatoes = userDetails.potatoes;
-        let userWorkMultiplier = userDetails.workMultiplierAmount;
-        let userPassiveIncome = userDetails.passiveAmount;
-        let userBankCapacity = userDetails.bankCapacity;
+        let userWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
+        let userPassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
+        let userBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
 
         let chosenItem, userHasEnough, validTier;
         switch (shopSelect) {
@@ -111,8 +111,9 @@ module.exports = {
                 validTier = validTierPurchase(userWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
+                    const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
                     await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
-                    await dynamoHandler.updateUserWorkMultiplier(userId, chosenItem.amount)
+                    await dynamoHandler.updateUserWorkMultiplier(userId, newMultiplier)
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
@@ -124,8 +125,9 @@ module.exports = {
                 validTier = validTierPurchase(userPassiveIncome, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
+                    const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
                     await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
-                    await dynamoHandler.updateUserPassiveIncome(userId, chosenItem.amount);
+                    await dynamoHandler.updateUserPassiveIncome(userId, newPassive);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
@@ -137,8 +139,9 @@ module.exports = {
                 validTier = validTierPurchase(userBankCapacity, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
+                    const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;
                     await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
-                    await dynamoHandler.updateUserBankCapacity(userId, chosenItem.amount);
+                    await dynamoHandler.updateUserBankCapacity(userId, newBankCapacity);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;

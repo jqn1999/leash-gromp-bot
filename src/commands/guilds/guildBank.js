@@ -91,7 +91,7 @@ module.exports = {
                 netAmount = Math.floor(Number(netAmount));
                 totalAmount = netAmount + calculateTax(netAmount);
                 if (netAmount > remainingBankSpace) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough bank space to deposit ${netAmount}. You have ${remainingBankSpace} remaining.`);
+                    interaction.editReply(`${userDisplayName}, you do not have enough guild bank space to deposit ${netAmount}. You have ${remainingBankSpace} remaining.`);
                     return;
                 }
                 if (isNaN(netAmount)) {
@@ -117,15 +117,15 @@ module.exports = {
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount} potatoes to your bank. You now have ${userPotatoes} potatoes and ${guildBankStored} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you deposit ${netAmount} potatoes to your guild bank. You now have ${userPotatoes} potatoes and ${guildBankStored} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (member.role != "Leader") {
-                interaction.editReply(`${userDisplayName} you cannot withdraw potatoes unless you are the leader of the guild!`);
+                interaction.editReply(`${userDisplayName} you cannot withdraw potatoes from the guild bank unless you are the leader of the guild!`);
                 return;
             }
 
             if (guildBankStored == 0) {
-                interaction.editReply(`${userDisplayName}, you do not have any potatoes to withdraw.`);
+                interaction.editReply(`${userDisplayName}, you do not have any potatoes to withdraw from the guild bank.`);
                 return;
             } else if (netAmount.toLowerCase() == 'all') {
                 netAmount = guildBankStored;
@@ -143,13 +143,13 @@ module.exports = {
 
             const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
             if (!isAmountGreaterThanZero) {
-                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts! You have ${guildBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts from the guild bank! You have ${guildBankStored} potatoes stored.`);
                 return;
             }
 
             const isAmountLessThanOrEqualBankStoredAmount = netAmount <= guildBankStored ? true : false;
             if (!isAmountLessThanOrEqualBankStoredAmount) {
-                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount} potatoes! You have ${guildBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount} potatoes from the guild bank! You have ${guildBankStored} potatoes stored.`);
                 return;
             }
             userPotatoes += netAmount;

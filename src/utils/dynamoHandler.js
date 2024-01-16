@@ -765,6 +765,32 @@ const getShop = async function (shopId) {
     return response
 }
 
+const updateUserSweetPotatoBuffs = async function (userId, newSweetPotatoBuffs) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set sweetPotatoBuffs = :sweetPotatoBuffs",
+        ExpressionAttributeValues: {
+            ":sweetPotatoBuffs": newSweetPotatoBuffs,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserSweetPotatoBuffs: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserSweetPotatoBuffs error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 const updateUserWorkMultiplier = async function (userId, newWorkMultiplierAmount) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -1145,6 +1171,11 @@ const addNewUserAttribute = async function () {
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     let userList = await getUsers();
+    const newObject = {
+        workMultiplierAmount: 0,
+        passiveAmount: 0,
+        bankCapacity: 0
+    };
 
     userList.forEach(async user => {
         const params = {
@@ -1152,9 +1183,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set guildId = :guildId",
+            UpdateExpression: "set sweetPotatoBuffs = :sweetPotatoBuffs",
             ExpressionAttributeValues: {
-                ":guildId": 0,
+                ":sweetPotatoBuffs": newObject,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -1290,6 +1321,7 @@ module.exports = {
     addWorkTotalPayout,
 
     getShop,
+    updateUserSweetPotatoBuffs,
     updateUserWorkMultiplier,
     updateUserPassiveIncome,
     updateUserBankCapacity,
