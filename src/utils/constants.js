@@ -27,12 +27,17 @@ const regularWorkMobs = [
     {
         name: "Broccoli",
         thumbnailUrl: "https://banner2.cleanpng.com/20231112/oze/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg",
-        description: `You have worked and slain some dangerous vegetables. You gain some potatoes for your efforts!`
+        description: `You have worked and slain a rather cute vegetable vegetable... you still gain some potatoes, but people look at you a bit differently now.`
     },
     {
         name: "Evil Carrot",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196674754199949312/image.png?ex=65b87d36&is=65a60836&hm=3d3c266d540733a97911817a7fd46ee349d5987fb08b54d829edd98b509e1711&",
-        description: `You have worked and slain some dangerous vegetables. You gain some potatoes for your efforts!`
+        description: `You have worked and slain a dangerous vegetable. You gain some potatoes for your efforts!`
+    },
+    {
+        name: "Blasphemous Bitter Melon",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196815721909452810/image.png?ex=65b9007f&is=65a68b7f&hm=8ace537de38b4a6878160e82a71467a8d18a7007f7fd4543f9d1579595175d16&",
+        description: `You have worked and encountered a wanted criminal, the Bitter Melon! After a short battle you defeat them and are rewarded potatoes for keeping the kingdom safe!`
     }
 ]
 
