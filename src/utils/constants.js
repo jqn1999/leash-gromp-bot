@@ -27,7 +27,7 @@ const regularWorkMobs = [
     {
         name: "Broccoli",
         thumbnailUrl: "https://banner2.cleanpng.com/20231112/oze/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg",
-        description: `You have worked and slain a rather cute vegetable vegetable... you still gain some potatoes, but people look at you a bit differently now.`
+        description: `You have worked and slain a rather cute vegetable... you still gain some potatoes, but people look at you a bit differently now.`
     },
     {
         name: "Evil Carrot",
