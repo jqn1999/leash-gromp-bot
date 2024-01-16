@@ -339,8 +339,9 @@ class EmbedFactory {
             value: `${newWorkCount}`,
             inline: true,
         })
+        const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
         fields.push({
-            name: `Potatoes Gained/Lost:`,
+            name: `Potatoes ${gainOrLoss}:`,
             value: `${potatoesGained} potatoes`,
             inline: true,
         })

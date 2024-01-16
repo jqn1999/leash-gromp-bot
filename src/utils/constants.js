@@ -67,7 +67,7 @@ const regularWorkMobs = [
     {
         name: "Cowardly Cantaloupe",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196839012434980864/image.png?ex=65b91630&is=65a6a130&hm=e9f83f932c02e936de5ac6772659fe570d8f1140f3e6289a162360b9816f4475&",
-        description: `You have worked and stumbled into a Cowardly Cantaloupe! It tries to roll away and escape but you catch up, break it apart with no remorse, and earn a bountiful harvest of potatoes!`
+        description: `You have worked and stumbled into a Cowardly Cantaloupe! It tries to roll away and escape! However you catch up, break it apart with no remorse, and earn a small share of potatoes!`
     }
 ]
 

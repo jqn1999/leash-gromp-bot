@@ -34,9 +34,10 @@ class WorkFactory {
         let userTotalLosses = userDetails.totalLosses;
         let userMultiplier = userDetails.workMultiplierAmount;
     
-        const potatoesLost = await calculateGainAmount(workGainAmount*5, Work.MAX_POISON_POTATO, multiplier, userMultiplier);
-        userPotatoes -= potatoesLost
-        userTotalLosses -= potatoesLost
+        let potatoesLost = await calculateGainAmount(workGainAmount*5, Work.MAX_POISON_POTATO, multiplier, userMultiplier);
+        potatoesLost *= -1
+        userPotatoes += potatoesLost
+        userTotalLosses += potatoesLost
         
         await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
         await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Work.POISON_POTATO_TIMER_INCREASE_MS);

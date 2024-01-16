@@ -16,7 +16,6 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        let guild;
         const userId = interaction.user.id;
         const username = interaction.user.username;
         const userDisplayName = interaction.user.displayName;
@@ -34,7 +33,7 @@ module.exports = {
             return;
         }
 
-        guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
         if (!guild) {
             interaction.editReply(`${userDisplayName} there was an error looking for your guild information. Try again!`);
             return;
