@@ -1,8 +1,16 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work } = require("../../utils/constants");
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato } = require("../../utils/constants");
 const { WorkFactory } = require("../../utils/workFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
+
+function chooseMobFromList(mobList) {
+    let random = Math.floor(Math.random() * mobList.length);
+    const reward = mobList[random];
+    return reward
+}
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
@@ -37,28 +45,40 @@ module.exports = {
             return;
         };
         let work = await dynamoHandler.getWorkStats();
+        const newWorkCount = work.workCount+1;
         let multiplier = getRandomFromInterval(.8, 1.2);
         const rarity = Math.random();
         let potatoesGained;
         if (rarity < .001) {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
             console.log(`Golden potato rarity found! ${userDisplayName}, rarity: ${rarity}`)
-            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you discovered and sold a golden potato! You gain ${potatoesGained} potatoes for your amazing discovery!`);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato);
+            interaction.editReply({ embeds: [embed] });
+            // interaction.editReply(`${newWorkCount} Worked | ${userDisplayName} you discovered and sold a golden potato! You gain ${potatoesGained} potatoes for your amazing discovery!`);
         } else if (rarity < .01) {
             potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
             console.log(`Poison potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} OH NO! While wandering around, you encounter a poisonous potato and you get dealthly ill. You lose ${potatoesGained} potatoes to pay for medicine and have to take a longer break from working!`);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
+            interaction.editReply({ embeds: [embed] });
+            // interaction.editReply(`${newWorkCount} Worked | ${userDisplayName} OH NO! While wandering around, you encounter a poisonous potato and you get dealthly ill. You lose ${potatoesGained} potatoes to pay for medicine and have to take a longer break from working!`);
         } else if (rarity < .06) {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
             console.log(`Large potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
+            interaction.editReply({ embeds: [embed] });
+            // interaction.editReply(`${newWorkCount} Worked | ${userDisplayName} you come across a rather large potato and slay it. You gain ${potatoesGained} potatoes for your bravery!`);
         } else if (rarity < .08) {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);
             console.log(`Sweet potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you meet a lovely sweet potato and it convinces you to spare it's life in exchange for buffing one of your stats. Check your profile!`);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato);
+            interaction.editReply({ embeds: [embed] });
+            // interaction.editReply(`${newWorkCount} Worked | ${userDisplayName} you meet a lovely sweet potato and it convinces you to spare it's life in exchange for buffing one of your stats. Check your profile!`);
         } else {
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier);
-            interaction.editReply(`${work.workCount+1} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);
+            const regularMob = chooseMobFromList(regularWorkMobs);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob);
+            interaction.editReply({ embeds: [embed] });
+            // interaction.editReply(`${newWorkCount} Worked | ${userDisplayName} you have worked and slain some dangerous vegetables. You gain ${potatoesGained} potatoes for your efforts!`);
         }
         await dynamoHandler.addWorkCount(work.workCount);
         await dynamoHandler.addWorkTotalPayout(work.totalPayout, potatoesGained);

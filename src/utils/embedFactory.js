@@ -330,6 +330,31 @@ class EmbedFactory {
             .setFields(fields);
         return embed;
     }
+
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob) {
+        let fields = [];
+
+        fields.push({
+            name: `Work Count:`,
+            value: `${newWorkCount}`,
+            inline: true,
+        })
+        fields.push({
+            name: `Potatoes Gained/Lost:`,
+            value: `${potatoesGained} potatoes`,
+            inline: true,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} encountered a ${mob.name}!`)
+            .setDescription(`${mob.description}`)
+            .setColor("Random")
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
 }
 
 function getUserAvatar(userId, avatarHash) {
