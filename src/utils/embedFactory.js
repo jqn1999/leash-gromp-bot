@@ -286,7 +286,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Members:`,
-            value: `${guild.memberList.length}`,
+            value: `${guild.memberList.length}/${guild.memberCap}`,
             inline: true
         })
         fields.push({
@@ -305,6 +305,11 @@ class EmbedFactory {
             inline: true
         })
         fields.push({
+            name: `Total Earnings:`,
+            value: `${guild.totalEarnings}`,
+            inline: true
+        })
+        fields.push({
             name: `Raid Count:`,
             value: `${guild.raidCount}`,
             inline: true
@@ -312,11 +317,6 @@ class EmbedFactory {
         fields.push({
             name: `Active Raid:`,
             value: `${guild.activeRaid}`,
-            inline: true
-        })
-        fields.push({
-            name: `Total Earnings:`,
-            value: `${guild.totalEarnings}`,
             inline: true
         })
 

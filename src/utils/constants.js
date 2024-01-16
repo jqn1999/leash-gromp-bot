@@ -14,7 +14,9 @@ const Bet = {
 
 const Bank = {
     TAX_BASE: 1000,
-    TAX_PERCENT: .05
+    TAX_PERCENT: .05,
+    GUILD_TAX_BASE: 5000,
+    GUILD_TAX_PERCENT: .05
 }
 
 const Rob = {

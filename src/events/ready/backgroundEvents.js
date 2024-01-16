@@ -82,7 +82,7 @@ module.exports = async (client) => {
                 if (currentDateFormatted == nextBirthdayPerson.birthday && (now.getHours() == 0 || now.getHours() == 12)) {
                     const roleId = '1188530438805930105'; // TODO change in future to actual bday role <@&${roleId}> 
                     channel.setName(`happy bday ${nextBirthdayPerson.username}`);
-                    channel.send(`🎂 It is ${nextBirthdayPerson.username}\'s birthday! 🥳 Congrats on surviving another year! 🎉`);
+                    channel.send(`🎂 It is <@${nextBirthdayPerson.userId}>\'s birthday! 🥳 Congrats on surviving another year and everyone wish ${nextBirthdayPerson.username} a happy birthday! 🎉`);
                 } else if (currentDateFormatted != nextBirthdayPerson.birthday && !jsonChannel.name.includes(nextBirthdayPerson.birthday)) {
                     channel.setName(`next bday ${nextBirthdayPerson.birthday}`);
                 }
