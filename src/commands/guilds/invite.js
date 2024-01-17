@@ -41,6 +41,7 @@ module.exports = {
         const guildId = guild.guildId;
         let inviteList = guild.inviteList;
 
+        // TODO: UPDATE TO USE FIND
         const doesUserHaveInvitationRights = guild.leader.id == userId;
         if (!doesUserHaveInvitationRights) {
             interaction.editReply(`${userDisplayName} you do not have valid permission to issue invites to your guild, '${guild.guildName}'.`);

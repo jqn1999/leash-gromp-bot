@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato } = require("../../utils/constants");
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -59,10 +59,19 @@ module.exports = {
             console.log(`Poison potato rarity found! ${userDisplayName} rarity: ${rarity}`)
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
             interaction.editReply({ embeds: [embed] });
-        } else if (rarity < .06) {
+        } else if (rarity < .04) {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
             console.log(`Large potato rarity found! ${userDisplayName} rarity: ${rarity}`)
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
+            interaction.editReply({ embeds: [embed] });
+        } else if (rarity < .06) {
+            if (Math.random() < .2) {
+                potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
+            } else {
+                potatoesGained = 0;
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
+            }
             interaction.editReply({ embeds: [embed] });
         } else if (rarity < .08) {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);

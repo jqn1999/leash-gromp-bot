@@ -26,6 +26,7 @@ module.exports = {
         const guildId = guild.guildId;
         let memberList = guild.memberList;
 
+        // TODO: change to use find
         if (guild.leader.id == userId) {
             interaction.editReply(`${userDisplayName} you are the guild leader! Pass leadership to another member before leaving.`);
             return;

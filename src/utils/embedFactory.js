@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
+const { GuildRoles } = require("../utils/constants")
 const dynamoHandler = require("../utils/dynamoHandler");
 
 class EmbedFactory {
@@ -331,6 +332,47 @@ class EmbedFactory {
         return embed;
     }
 
+    createGuildMemberListEmbed(guild) {
+        let userList = [];
+        if (!guild.thumbnailUrl) {
+            guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        }
+
+        let memberList = guild.memberList;
+        const member = memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER);
+        if (!member) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving the guild leader of your guild. Let an admin know!`);
+            return;
+        }
+        userList.push({
+            name: `${member.role}`,
+            value: `${member.username}`,
+            inline: false,
+        })
+        const newMemberList = memberList.filter((currentMember) => currentMember.role != GuildRoles.LEADER)
+
+        let stringListOfMembers = ``;
+        for (const [index, element] of newMemberList.entries()) {
+            stringListOfMembers += `${element.username}\n`
+        }
+        const listOfMembers = {
+            name: `${GuildRoles.MEMBER}`,
+            value: `${stringListOfMembers}`,
+            inline: false,
+        };
+        userList.push(listOfMembers);
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guild.guildName}`)
+            .setDescription(`Below is the list of members for guild '${guild.guildName}'`)
+            .setColor("Random")
+            .setThumbnail(guild.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(userList);
+        return embed;
+    }
+
     createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob) {
         let fields = [];
 
@@ -347,7 +389,7 @@ class EmbedFactory {
         })
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} encountered a ${mob.name}!`)
+            .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
             .setDescription(`${mob.description}`)
             .setColor("Random")
             .setThumbnail(mob.thumbnailUrl)

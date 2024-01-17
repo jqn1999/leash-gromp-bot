@@ -2,6 +2,35 @@ const dynamoHandler = require("../utils/dynamoHandler");
 const { Work } = require("../utils/constants")
 
 class WorkFactory {
+    async handleMetalPotato(userDetails, workGainAmount, multiplier) {
+        const userId = userDetails.userId;
+        let userPotatoes = userDetails.potatoes;
+        let userTotalEarnings = userDetails.totalEarnings;
+        let userMultiplier = userDetails.workMultiplierAmount;
+        let userPassiveAmount = userDetails.passiveAmount;
+        let userBankCapacity = userDetails.bankCapacity;
+
+        const potatoesGained = await calculateGainAmount(workGainAmount*10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier);
+        userPotatoes += potatoesGained
+        userTotalEarnings += potatoesGained
+        await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+
+        userMultiplier += metalPotatoRewards.workMultiplierReward;
+        userPassiveAmount += metalPotatoRewards.passiveReward;
+        userBankCapacity += metalPotatoRewards.bankCapacityReward;
+        await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
+        await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
+        await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
+
+        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+        sweetPotatoBuffs.workMultiplierAmount += metalPotatoRewards.workMultiplierReward;
+        sweetPotatoBuffs.passiveAmount += metalPotatoRewards.passiveReward;
+        sweetPotatoBuffs.bankCapacity += metalPotatoRewards.bankCapacityReward;
+        await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
+        await dynamoHandler.updateUserWorkTimer(userId);
+        return potatoesGained;
+    }
+
     async handleSweetPotato(userDetails) {
         const userId = userDetails.userId;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -92,6 +121,12 @@ class WorkFactory {
         await dynamoHandler.updateUserWorkTimer(userId);
         return potatoesGained;
     }
+}
+
+const metalPotatoRewards = {
+    workMultiplierReward: 0.4,
+    passiveReward: 20000,
+    bankCapacityReward: 100000
 }
 
 const sweetPotatoRewards = [

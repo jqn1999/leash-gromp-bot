@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { GuildRoles } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
@@ -60,7 +61,7 @@ module.exports = {
 
         memberList.push({
             id: userId,
-            role: "Member",
+            role: GuildRoles.MEMBER,
             username: username
         })
         await dynamoHandler.updateGuildMemberList(guildId, memberList);

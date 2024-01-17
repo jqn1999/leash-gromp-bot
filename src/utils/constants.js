@@ -25,6 +25,11 @@ const Rob = {
     BASE_ROB_PENALTY: 5000
 }
 
+const GuildRoles = {
+    LEADER: "Leader",
+    MEMBER: "Member"
+}
+
 const regularWorkMobs = [
     {
         name: "Baby Broccoli",
@@ -32,7 +37,7 @@ const regularWorkMobs = [
         description: `You have worked and slain a rather cute vegetable... you still gain some potatoes, but people look at you a bit differently now.`
     },
     {
-        name: "Evil Carrot",
+        name: "Cruel Carrot",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196674754199949312/image.png?ex=65b87d36&is=65a60836&hm=3d3c266d540733a97911817a7fd46ee349d5987fb08b54d829edd98b509e1711&",
         description: `You have worked and slain a dangerous vegetable. You gain some potatoes for your efforts!`
     },
@@ -97,14 +102,29 @@ const goldenPotato = {
     description: `You discovered and sold a Golden Potato! You gain LOTS of potatoes for your amazing discovery!`
 }
 
+const metalPotatoSuccess = {
+    name: "Metal Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
+    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious.`
+}
+
+const metalPotatoFailure = {
+    name: "Metal Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
+    description: `You have a rare chance encounter with a Metal Potato! After battle against this tuber forged in the fires of an enchanted forge, you are bested and it escapes away from you, leaving you beat down and weary. Better luck next time.`
+}
+
 module.exports = {
     Work,
     Bet,
     Bank,
     Rob,
+    GuildRoles,
     regularWorkMobs,
     largePotato,
     sweetPotato,
     poisonPotato,
-    goldenPotato
+    goldenPotato,
+    metalPotatoSuccess,
+    metalPotatoFailure
 }
