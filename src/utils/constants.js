@@ -105,13 +105,15 @@ const goldenPotato = {
 const metalPotatoSuccess = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`
+    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`,
+    credit: `Inspired by Rednaxeia`
 }
 
 const metalPotatoFailure = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You have a rare chance encounter with a Metal Potato! After battle against this tuber forged in the fires of an enchanted forge, you are bested and it escapes away from you, leaving you beat down and weary. Better luck next time.`
+    description: `You have a rare chance encounter with a Metal Potato! With exceptional speed and defence, nearly all of your attacks seem futile against it. It hops on away from you, leaving you winded, confused, and most of all excited for the chance to find another one in the future. Better luck next time.`,
+    credit: `Inspired by Rednaxeia`
 }
 
 module.exports = {

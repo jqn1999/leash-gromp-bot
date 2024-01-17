@@ -374,7 +374,7 @@ class EmbedFactory {
     }
 
     createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob) {
-        let fields = [];
+        let fields = [], footerText = "Made by Beggar";
 
         fields.push({
             name: `Work Count:`,
@@ -388,12 +388,16 @@ class EmbedFactory {
             inline: true,
         })
 
+        if (mob.credit) {
+            text = mob.credit;
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
             .setDescription(`${mob.description}`)
             .setColor("Random")
             .setThumbnail(mob.thumbnailUrl)
-            .setFooter({ text: "Made by Beggar" })
+            .setFooter({ text: footerText })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;

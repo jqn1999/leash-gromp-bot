@@ -1017,7 +1017,8 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         thumbnailUrl: guildThumbnailUrl,
         activeRaid: false,
         raidTimer: 0,
-        inviteList: []
+        inviteList: [],
+        raidList: []
     };
     console.log(Item)
 
@@ -1113,10 +1114,11 @@ const updateGuildBankStored = async function (guildId, newBankStored) {
     return response;
 }
 
-const updateGuildRaidCount = async function (guildId, newRaidCount) {
+const updateGuildRaidCount = async function (guildId) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
+    const guild = await findGuildById(guildId);
     const params = {
         TableName: config.aws_guilds_table_name,
         Key: {
@@ -1124,7 +1126,7 @@ const updateGuildRaidCount = async function (guildId, newRaidCount) {
         },
         UpdateExpression: "set raidCount = :raidCount",
         ExpressionAttributeValues: {
-            ":raidCount": newRaidCount,
+            ":raidCount": guild.raidCount+1,
         },
         ReturnValues: "ALL_NEW",
     };
@@ -1139,7 +1141,7 @@ const updateGuildRaidCount = async function (guildId, newRaidCount) {
     return response;
 }
 
-const updateGuildtotalEarnings = async function (guildId, newTotalEarnings) {
+const updateGuildTotalEarnings = async function (guildId, newTotalEarnings) {
     AWS.config.update(config.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
