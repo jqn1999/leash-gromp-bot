@@ -10,7 +10,7 @@ class WorkFactory {
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
 
-        const potatoesGained = await calculateGainAmount(workGainAmount*10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount*20, Work.MAX_METAL_POTATO, multiplier, userMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
