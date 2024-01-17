@@ -51,7 +51,8 @@ const regularWorkMobs = [
     {
         name: "Egregious Eggplant",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196832421270798549/image.png?ex=65b9100d&is=65a69b0d&hm=4002206f8b697b426c2bfb31b894bb8ee6f14526ed78b0d7b014b44b4355543f&",
-        description: `You have worked and run into the notorious Egregious Eggplant! You defeat the malevolent vegetable before it can continue its reign of terror and earn a fair share of potatoes!`
+        description: `You have worked and run into the notorious Egregious Eggplant! You defeat the malevolent vegetable before it can continue its reign of terror and earn a fair share of potatoes!`,
+        credit: `Inspired by Sinfonia`
     },
     {
         name: "Sinister Strawberry",
@@ -109,7 +110,7 @@ const goldenPotato = {
 const metalPotatoSuccess = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`,
+    description: `You had a rare chance encounter with a Metal Potato! Even when your attacks land on this elusive tater, they do very little damage. Your frustration mounts, as you know that this exceptional potato could escape at any moment! After an arduous battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`,
     credit: `Inspired by Rednaxeia`
 }
 
