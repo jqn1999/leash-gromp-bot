@@ -389,7 +389,7 @@ class EmbedFactory {
         })
 
         if (mob.credit) {
-            text = mob.credit;
+            footerText = mob.credit;
         }
 
         const embed = new EmbedBuilder()
