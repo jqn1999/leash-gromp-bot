@@ -16,6 +16,71 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
+const workScenarios = [
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato);
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: .001
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: .01
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: .05
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            const metalPotatoRoll = Math.random();
+            let potatoesGained;
+            if (metalPotatoRoll < .1) {
+                potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
+            } else {
+                potatoesGained = 0;
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
+            }
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: .06
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            potatoesGained = await workFactory.handleSweetPotato(userDetails);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato);
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: .08
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier);
+            const regularMob = chooseMobFromList(regularWorkMobs);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob);
+            interaction.editReply({ embeds: [embed] });
+            return potatoesGained;
+        },
+        chance: 1
+    }
+]
+
 module.exports = {
     name: "work",
     description: "Allows member to work and gain potatoes",
@@ -44,46 +109,19 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you worked recently and must wait ${timeUntilWorkAvailableInSeconds} more seconds before working again!`);
             return;
         };
-        let work = await dynamoHandler.getWorkStats();
+        const work = await dynamoHandler.getWorkStats();
         const newWorkCount = work.workCount+1;
-        let multiplier = getRandomFromInterval(.8, 1.2);
-        const rarity = Math.random();
+        const workScenarioRoll = Math.random();
         let potatoesGained;
-        if (rarity < .001) {
-            potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
-            console.log(`Golden potato rarity found! ${userDisplayName}, rarity: ${rarity}`)
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato);
-            interaction.editReply({ embeds: [embed] });
-        } else if (rarity < .01) {
-            potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
-            console.log(`Poison potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
-            interaction.editReply({ embeds: [embed] });
-        } else if (rarity < .04) {
-            potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier);
-            console.log(`Large potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
-            interaction.editReply({ embeds: [embed] });
-        } else if (rarity < .06) {
-            if (Math.random() < .2) {
-                potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
-            } else {
-                potatoesGained = 0;
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
+        let multiplier = getRandomFromInterval(.8, 1.2);
+
+        for (const scenario of workScenarios) {
+            if (workScenarioRoll < scenario.chance) {
+                potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction);
+                break;
             }
-            interaction.editReply({ embeds: [embed] });
-        } else if (rarity < .08) {
-            potatoesGained = await workFactory.handleSweetPotato(userDetails);
-            console.log(`Sweet potato rarity found! ${userDisplayName} rarity: ${rarity}`)
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato);
-            interaction.editReply({ embeds: [embed] });
-        } else {
-            potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier);
-            const regularMob = chooseMobFromList(regularWorkMobs);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob);
-            interaction.editReply({ embeds: [embed] });
         }
+
         await dynamoHandler.addWorkCount(work.workCount);
         await dynamoHandler.addWorkTotalPayout(work.totalPayout, potatoesGained);
         return;

@@ -124,9 +124,9 @@ class WorkFactory {
 }
 
 const metalPotatoRewards = {
-    workMultiplierReward: 0.4,
-    passiveReward: 20000,
-    bankCapacityReward: 100000
+    workMultiplierReward: 0.6,
+    passiveReward: 40000,
+    bankCapacityReward: 200000
 }
 
 const sweetPotatoRewards = [
