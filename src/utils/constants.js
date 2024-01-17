@@ -105,7 +105,7 @@ const goldenPotato = {
 const metalPotatoSuccess = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious.`
+    description: `You had a rare chance encounter with a Metal Potato! Against this extraordinary tuber your attacks do very little damage. After a long battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`
 }
 
 const metalPotatoFailure = {
