@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType, PermissionFlagsBits } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 GUILD_COST = 1000000
@@ -32,7 +32,6 @@ module.exports = {
         }
     ],
     deleted: false,
-    permissionsRequired: [PermissionFlagsBits.Administrator],
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const guildName = interaction.options.get('guild-name').value;

@@ -183,11 +183,38 @@ const passivePotatoHandler = async function (timesInADay) {
     await allUsers.forEach(async user => {
         const passiveGain = Math.round(user.passiveAmount/timesInADay);
         let userId = user.userId;
-        let userPotatoes = user.potatoes + passiveGain;
+        let userBankStored = user.bankStored + passiveGain;
         let userTotalEarnings = user.totalEarnings + passiveGain;
-        await updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+        await updateBankStoredPotatoesAndTotalEarnings(userId, userBankStored, userTotalEarnings);
     });
     return;
+}
+
+const updateBankStoredPotatoesAndTotalEarnings = async function (userId, newBankStored, newTotalEarnings) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set bankStored = :bankStored, totalEarnings = :totalEarnings",
+        ExpressionAttributeValues: {
+            ":bankStored": newBankStored,
+            ":totalEarnings": newTotalEarnings
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateBankStoredPotatoesAndTotalEarnings: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateBankStoredPotatoesAndTotalEarnings error: ${JSON.stringify(err)}`)
+        });
+    return response;
 }
 
 const updateUserWorkTimer = async function (userId) {

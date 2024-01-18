@@ -122,7 +122,7 @@ module.exports = {
         const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
         if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS){
-            interaction.editReply(`${userDisplayName}, you worked recently and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
+            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
             return;
         };
         const work = await dynamoHandler.getWorkStats();
