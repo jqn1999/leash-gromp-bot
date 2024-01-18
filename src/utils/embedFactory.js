@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles } = require("../utils/constants")
+const { GuildRoles, sweetPotato } = require("../utils/constants")
 const dynamoHandler = require("../utils/dynamoHandler");
 
 class EmbedFactory {
@@ -392,9 +392,24 @@ class EmbedFactory {
             footerText = mob.credit;
         }
 
+        let sweetPotatoReward = '';
+        if (mob.name == sweetPotato.name) {
+            switch (potatoesGained) {
+                case 0:
+                    sweetPotatoReward = ' (Work Multiplier)';
+                    break;
+                case 1:
+                    sweetPotatoReward = ' (Passive Amount)';
+                    break;
+                case 2:
+                    sweetPotatoReward = ' (Bank Capacity)';
+                    break;
+            }
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
-            .setDescription(`${mob.description}`)
+            .setDescription(`${mob.description}${sweetPotatoReward}`)
             .setColor("Random")
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
