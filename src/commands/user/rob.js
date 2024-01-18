@@ -30,6 +30,21 @@ function determineRobOutcome(robChance) {
     return false
 }
 
+function convertSecondstoMinutes(seconds) {
+    let timeText = '';
+    let hours = ~~(seconds / 3600);
+    if (hours > 0) {
+        timeText += `${hours}h `
+    }
+    let minutes = ~~((seconds%3600) / 60);
+    if (minutes > 0) {
+        timeText += `${minutes}m `
+    }
+    let extraSeconds = seconds % 60;
+    timeText += `${extraSeconds}s`
+    return timeText;
+}
+
 module.exports = {
     name: "rob",
     description: "Allows member to rob their potatoes",
@@ -63,7 +78,7 @@ module.exports = {
         const timeUntilRobAvailableInSeconds = Rob.ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
 
         if (timeSinceLastRobbedInSeconds < Rob.ROB_TIMER_SECONDS){
-            interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${timeUntilRobAvailableInSeconds} more seconds before robbing again!`);
+            interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${convertSecondstoMinutes(timeUntilRobAvailableInSeconds)} before robbing again!`);
             return;
         };
 

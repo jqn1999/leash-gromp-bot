@@ -16,6 +16,21 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
+function convertSecondstoMinutes(seconds) {
+    let timeText = '';
+    let hours = ~~(seconds / 3600);
+    if (hours > 0) {
+        timeText += `${hours}h `
+    }
+    let minutes = ~~((seconds%3600) / 60);
+    if (minutes > 0) {
+        timeText += `${minutes}m `
+    }
+    let extraSeconds = seconds % 60;
+    timeText += `${extraSeconds}s`
+    return timeText;
+}
+
 const workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -52,6 +67,7 @@ const workScenarios = [
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
             } else {
+                await dynamoHandler.updateUserWorkTimer(userId);
                 potatoesGained = 0;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }
@@ -106,7 +122,7 @@ module.exports = {
         const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
         if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS){
-            interaction.editReply(`${userDisplayName}, you worked recently and must wait ${timeUntilWorkAvailableInSeconds} more seconds before working again!`);
+            interaction.editReply(`${userDisplayName}, you worked recently and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
             return;
         };
         const work = await dynamoHandler.getWorkStats();
@@ -121,7 +137,6 @@ module.exports = {
                 break;
             }
         }
-
         await dynamoHandler.addWorkCount(work.workCount);
         await dynamoHandler.addWorkTotalPayout(work.totalPayout, potatoesGained);
         return;
