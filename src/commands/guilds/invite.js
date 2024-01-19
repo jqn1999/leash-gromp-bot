@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { GuildRoles } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
@@ -39,14 +40,21 @@ module.exports = {
             return;
         }
         const guildId = guild.guildId;
+        const memberList = guild.memberList;
         let inviteList = guild.inviteList;
 
-        // TODO: UPDATE TO USE FIND
-        const doesUserHaveInvitationRights = guild.leader.id == userId;
+        const member = memberList.find((currentMember) => currentMember.id == userId)
+        if (!member) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+            return;
+        }
+
+        const doesUserHaveInvitationRights = member.role == GuildRoles.LEADER;
         if (!doesUserHaveInvitationRights) {
             interaction.editReply(`${userDisplayName} you do not have valid permission to issue invites to your guild, '${guild.guildName}'.`);
             return;
         }
+
         if (inviteList.includes(targetUser)) {
             interaction.editReply(`${userDisplayName} the user <@${targetUser}> has already been invited to your guild.`);
             return;

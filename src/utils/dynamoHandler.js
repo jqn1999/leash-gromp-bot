@@ -1025,10 +1025,6 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         guildName: guildName,
         guildNameLowercase: guildName.toLowerCase(),
         memberCap: 5,
-        leader: {
-            id: guildLeaderId,
-            username: guildLeaderUsername
-        },
         memberList: [
             {
                 id: guildLeaderId,
@@ -1137,6 +1133,59 @@ const updateGuildBankStored = async function (guildId, newBankStored) {
         })
         .catch(function (err) {
             console.debug(`updateGuildBankStored error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildRaidList = async function (guildId, newRaidList) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set raidList = :raidList",
+        ExpressionAttributeValues: {
+            ":raidList": newRaidList,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildRaidList: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildRaidList error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildActiveRaidStatus = async function (guildId, activeRaid) {
+    AWS.config.update(config.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const guild = await findGuildById(guildId);
+    const params = {
+        TableName: config.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set activeRaid = :activeRaid",
+        ExpressionAttributeValues: {
+            ":activeRaid": activeRaid,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildActiveRaidStatus: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildActiveRaidStatus error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -1255,7 +1304,7 @@ const getSortedGuildsByLevel = async function () {
 
 const getSortedGuildsById = async function () {
     let allGuilds = await getGuilds();
-    const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.guildId) - parseFloat(a.guildId));
+    const sortedUsers = allGuilds.sort((a, b) => parseFloat(a.guildId) - parseFloat(b.guildId));
     return sortedUsers
 }
 
@@ -1363,6 +1412,8 @@ module.exports = {
     updateGuildInviteList,
     updateGuildMemberList,
     updateGuildBankStored,
+    updateGuildRaidList,
+    updateGuildActiveRaidStatus,
 
     addNewUserAttribute,
     getServerTotal,

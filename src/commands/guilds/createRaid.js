@@ -2,8 +2,8 @@ const { GuildRoles } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "leave",
-    description: "Leave a guild",
+    name: "create-raid",
+    description: "Creates a raid and allows members to join the raid",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -26,6 +26,8 @@ module.exports = {
         let guild = await dynamoHandler.findGuildById(userDetails.guildId);
         const guildId = guild.guildId;
         let memberList = guild.memberList;
+        let raidList = guild.raidList;
+        let activeRaid = guild.activeRaid;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {
@@ -33,15 +35,19 @@ module.exports = {
             return;
         }
 
-        if (member.role == GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you are the guild leader! Pass leadership to another member before leaving.`);
+        if (activeRaid) {
+            interaction.editReply(`${userDisplayName} there is already an active raid! Start that raid before creating a new one!`);
             return;
         }
 
-        let newMemberList = memberList.filter((user) => user.id != userId)
+        if (member.role != GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} you must be the guild leader to create a raid!`);
+            return;
+        }
 
-        await dynamoHandler.updateGuildMemberList(guildId, newMemberList);
-        await dynamoHandler.updateUserGuildId(userId, 0)
-        interaction.editReply(`${userDisplayName} you have left the guild, '${guild.guildName}'!`);
+        await dynamoHandler.updateGuildActiveRaidStatus(guildId, true)
+        raidList.push(member);
+        await dynamoHandler.updateGuildRaidList(guildId, raidList);
+        interaction.editReply(`${userDisplayName} has created a new raid for the guild, '${guild.guildName}'!`);
     }
 }

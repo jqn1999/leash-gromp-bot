@@ -44,7 +44,7 @@ module.exports = {
             return;
         }
         
-        const embed = embedFactory.createGuildMemberListEmbed(guild);
+        const embed = embedFactory.createGuildMemberListEmbed(guild, interaction);
         interaction.editReply({ embeds: [embed] });
     }
 }

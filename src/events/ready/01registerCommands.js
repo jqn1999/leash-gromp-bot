@@ -5,7 +5,6 @@ const getLocalCommands = require('../../utils/getLocalCommands');
 
 module.exports =  (client) => {
     try {
-        // return;
         const localCommands = getLocalCommands();
         const allGuilds = client.guilds.cache.map(guild => guild.id);
         // const allGuilds = [testServer];
@@ -24,7 +23,7 @@ module.exports =  (client) => {
                 if (existingCommand) {
                     if (localCommand.deleted) {
                         await applicationCommands.delete(existingCommand.id);
-                        console.log(`🗑 Deleted command "${name}".`);
+                        console.log(`Deleted command "${name}".`);
                         continue;
                     }
 
@@ -34,12 +33,12 @@ module.exports =  (client) => {
                             options,
                         });
 
-                        console.log(`🔁 Edited command "${name}".`);
+                        console.log(`Edited command "${name}".`);
                     }
                 } else {
                     if (localCommand.deleted) {
                         console.log(
-                            `⏩ Skipping registering command "${name}" as it's set to delete.`
+                            `Skipping registering command "${name}" as it's set to delete.`
                         );
                         continue;
                     }
@@ -50,7 +49,7 @@ module.exports =  (client) => {
                         options,
                     });
 
-                    console.log(`👍 Registered command "${name}."`);
+                    console.log(`Registered command "${name}."`);
                 }
             }
         });

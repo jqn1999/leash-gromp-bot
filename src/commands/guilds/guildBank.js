@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bank } = require("../../utils/constants");
+const { Bank, GuildRoles } = require("../../utils/constants");
 
 function calculateTax(amount){
     return Bank.GUILD_TAX_BASE + Math.floor(amount*Bank.GUILD_TAX_PERCENT)
@@ -119,7 +119,7 @@ module.exports = {
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount} potatoes to your guild bank. You now have ${userPotatoes} potatoes and ${guildBankStored} potatoes stored.`);
         } else if (action == 'withdraw') {
-            if (member.role != "Leader") {
+            if (member.role != GuildRoles.LEADER) {
                 interaction.editReply(`${userDisplayName} you cannot withdraw potatoes from the guild bank unless you are the leader of the guild!`);
                 return;
             }

@@ -83,7 +83,7 @@ class EmbedFactory {
             if (index < 5) {
                 const user = {
                     name: `${index + 1}) ${element.username}`,
-                    value: `${element.potatoes} potatoes (${currentUserTotalPotatoes} potatoes total) (${(currentUserTotalPotatoes / total * 100).toFixed(2)}%)`,
+                    value: `${element.potatoes.toLocaleString()} potatoes (${currentUserTotalPotatoes.toLocaleString()} potatoes total) (${(currentUserTotalPotatoes / total * 100).toFixed(2)}%)`,
                     inline: false,
                 };
                 userList.push(user);
@@ -94,12 +94,12 @@ class EmbedFactory {
         let userTotalPotatoes = sortedUsers[userIndex].potatoes + sortedUsers[userIndex].bankStored;
         userList.push({
             name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
-            value: `${sortedUsers[userIndex].potatoes} potatoes (${userTotalPotatoes} potatoes total) (${(userTotalPotatoes / total * 100).toFixed(2)}%)`,
+            value: `${sortedUsers[userIndex].potatoes.toLocaleString()} potatoes (${userTotalPotatoes.toLocaleString()} potatoes total) (${(userTotalPotatoes / total * 100).toFixed(2)}%)`,
             inline: false,
         });
 
         const embed = new EmbedBuilder()
-            .setTitle(`Server Leaderboard (${total} potatoes)`)
+            .setTitle(`Server Leaderboard (${total.toLocaleString()} potatoes)`)
             .setDescription(`This is where the top 5 members' wealth are displayed... your rank is at the bottom.`)
             .setColor("Random")
             .setThumbnail(avatarUrl)
@@ -109,14 +109,21 @@ class EmbedFactory {
         return embed;
     }
 
-    createGuildLeaderboardEmbed(sortedGuilds) {
+    createGuildLeaderboardEmbed(sortedGuilds, interaction) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         let guildList = []
+
         for (const [index, element] of sortedGuilds.entries()) {
+            const leader = element.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
+            if (!leader) {
+                interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+                return;
+            }
+
             if (index < 5) {
                 const guild = {
                     name: `${index + 1}) ${element.guildName} (Level: ${element.level}, Members: ${element.memberList.length})`,
-                    value: `Leader: ${element.leader.username}, Raid Count: ${element.raidCount}`,
+                    value: `Leader: ${leader.username}, Raid Count: ${element.raidCount}`,
                     inline: false,
                 };
                 guildList.push(guild);
@@ -280,9 +287,15 @@ class EmbedFactory {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
 
+        const leader = guild.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
+        if (!leader) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+            return;
+        }
+
         fields.push({
             name: `Leader:`,
-            value: `${guild.leader.username}`,
+            value: `${leader.username}`,
             inline: true
         })
         fields.push({
@@ -332,7 +345,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createGuildMemberListEmbed(guild) {
+    createGuildMemberListEmbed(guild, interaction) {
         let userList = [];
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';

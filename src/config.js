@@ -1,3 +1,4 @@
+require("dotenv").config();
 
 module.exports = {
     aws_table_name: 'leash-gromp-bot',
@@ -10,9 +11,9 @@ module.exports = {
       //Provide details for local configuration
     },
     aws_remote_config: {
-        accessKeyId: 'AKIA3XDJ2QHPJBYQJVOO',
-        secretAccessKey: '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',
-        region: 'us-east-2',
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        region: process.env.AWS_REGION,
     },
     testServer: "168379467931058176",
     clientId: "1187560268172116029",

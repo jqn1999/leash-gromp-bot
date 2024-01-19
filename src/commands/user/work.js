@@ -61,6 +61,7 @@ const workScenarios = [
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            const userId = userDetails.userId;
             const metalPotatoRoll = Math.random();
             let potatoesGained;
             if (metalPotatoRoll < .1) {

@@ -53,7 +53,7 @@ module.exports = {
                 break;
             case 'guild-leaderboard':
                 const sortedGuildList = await dynamoHandler.getSortedGuildsById();
-                embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList);
+                embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList, interaction);
                 interaction.editReply({ embeds: [embed] });
                 break;
         }
