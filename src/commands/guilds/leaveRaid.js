@@ -1,8 +1,8 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "join-raid",
-    description: "Join a raid (must have an active raid)",
+    name: "leave-raid",
+    description: "Leave a raid (must be in the active raid)",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -19,7 +19,7 @@ module.exports = {
 
         const userGuildId = userDetails.guildId;
         if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to join the raid of!`);
+            interaction.editReply(`${userDisplayName} you have no guild to leave the raid of!`);
             return;
         }
 
@@ -29,27 +29,22 @@ module.exports = {
             return;
         }
         const guildId = guild.guildId;
-        let memberList = guild.memberList;
         let raidList = guild.raidList;
         let activeRaid = guild.activeRaid;
 
         if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to join!`);
+            interaction.editReply(`${userDisplayName} there is no active raid to leave!`);
             return;
         }
 
-        const member = memberList.find((currentMember) => currentMember.id == userId)
+        const member = raidList.find((currentMember) => currentMember.id == userId)
         if (!member) {
-            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+            interaction.editReply(`${userDisplayName} you were not in the raid list.`);
             return;
         }
-
-        if (raidList.filter(currentMember => currentMember.id == userId).length > 0) {
-            interaction.editReply(`${userDisplayName} you have already joined this raid. Check the current raid status using /current-raid!`);
-            return;
-        }
-        raidList.push(member);
-        await dynamoHandler.updateGuildRaidList(guildId, raidList);
-        interaction.editReply(`${userDisplayName} you have joined the raid for the guild, '${guild.guildName}'!`);
+        
+        let newRaidList = raidList.filter((user) => user.id != userId)
+        await dynamoHandler.updateGuildRaidList(guildId, newRaidList);
+        interaction.editReply(`${userDisplayName} you have left the raid for the guild, '${guild.guildName}'!`);
     }
 }
