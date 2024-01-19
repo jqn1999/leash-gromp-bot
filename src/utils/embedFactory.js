@@ -134,7 +134,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`Guild Leaderboard (${sortedGuilds.length} Guilds)`)
-            .setDescription(`This is where the top 5 guilds are displayed`)
+            .setDescription(`This is where all guilds are displayed, ordered by level and then by members.`)
             .setColor("Random")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -363,17 +363,18 @@ class EmbedFactory {
             inline: false,
         })
         const newMemberList = memberList.filter((currentMember) => currentMember.role != GuildRoles.LEADER)
-
-        let stringListOfMembers = ``;
-        for (const [index, element] of newMemberList.entries()) {
-            stringListOfMembers += `${element.username}\n`
+        if (newMemberList.length > 0) {
+            let stringListOfMembers = ``;
+            for (const [index, element] of newMemberList.entries()) {
+                stringListOfMembers += `${element.username}\n`
+            }
+            const listOfMembers = {
+                name: `${GuildRoles.MEMBER}`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            userList.push(listOfMembers);
         }
-        const listOfMembers = {
-            name: `${GuildRoles.MEMBER}`,
-            value: `${stringListOfMembers}`,
-            inline: false,
-        };
-        userList.push(listOfMembers);
 
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
@@ -399,6 +400,65 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(raidList);
+        return embed;
+    }
+
+    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance, raidResultDescription) {
+        let fields = [], footerText = "Made by Beggar";
+
+        fields.push({
+            name: `Result:`,
+            value: `${raidResultDescription}`,
+            inline: true,
+        })
+
+        fields.push({
+            name: `Success Chance:`,
+            value: `${(successChance*100).toFixed(2)}% chance`,
+            inline: true,
+        })
+
+        const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
+        fields.push({
+            name: `Total Potatoes ${gainOrLoss}:`,
+            value: `${totalRaidReward} potatoes`,
+            inline: false,
+        })
+        fields.push({
+            name: `Split Potatoes ${gainOrLoss}:`,
+            value: `${splitRaidReward} potatoes`,
+            inline: true,
+        })
+
+        let stringListOfMembers = ``;
+        for (const [index, element] of raidList.entries()) {
+            stringListOfMembers += `${element.username}\n`
+        }
+        const listOfMembers = {
+            name: `Members In Raid:`,
+            value: `${stringListOfMembers}`,
+            inline: false,
+        };
+        fields.push(listOfMembers);
+
+        fields.push({
+            name: `Raid Count:`,
+            value: `${raidCount+1}`,
+            inline: true,
+        })
+
+        if (mob.credit) {
+            footerText = mob.credit;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`'${guildName}' encountered ${mob.name}!`)
+            .setDescription(`${mob.description}`)
+            .setColor("Random")
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
         return embed;
     }
 

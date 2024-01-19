@@ -1190,7 +1190,7 @@ const updateGuildActiveRaidStatus = async function (guildId, activeRaid) {
     return response;
 }
 
-const updateGuildRaidCount = async function (guildId) {
+const updateGuildRaidCountAndTimer = async function (guildId) {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -1200,19 +1200,20 @@ const updateGuildRaidCount = async function (guildId) {
         Key: {
             guildId: guildId,
         },
-        UpdateExpression: "set raidCount = :raidCount",
+        UpdateExpression: "set raidCount = :raidCount, raidTimer = :raidTimer",
         ExpressionAttributeValues: {
             ":raidCount": guild.raidCount+1,
+            ":raidTimer": Date.now(),
         },
         ReturnValues: "ALL_NEW",
     };
 
     const response = await docClient.update(params).promise()
         .then(async function (data) {
-            // console.debug(`updateGuildRaidCount: ${JSON.stringify(data)}`)
+            // console.debug(`updateGuildRaidCountAndTimer: ${JSON.stringify(data)}`)
         })
         .catch(function (err) {
-            console.debug(`updateGuildRaidCount error: ${JSON.stringify(err)}`)
+            console.debug(`updateGuildRaidCountAndTimer error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -1421,6 +1422,8 @@ module.exports = {
     updateGuildBankStored,
     updateGuildRaidList,
     updateGuildActiveRaidStatus,
+    updateGuildRaidCountAndTimer,
+    updateGuildTotalEarnings,
 
     addNewUserAttribute,
     getServerTotal,

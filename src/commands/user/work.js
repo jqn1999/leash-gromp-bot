@@ -1,4 +1,3 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
 const { WorkFactory } = require("../../utils/workFactory");
