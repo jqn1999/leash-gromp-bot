@@ -1,4 +1,4 @@
-const { testServer } = require('../../config');
+const { awsConfigurations } = require("../../utils/constants");
 const areCommandsDifferent = require('../../utils/areCommandsDifferent');
 const getApplicationCommands = require('../../utils/getApplicationCommands');
 const getLocalCommands = require('../../utils/getLocalCommands');
@@ -7,7 +7,7 @@ module.exports =  (client) => {
     try {
         const localCommands = getLocalCommands();
         const allGuilds = client.guilds.cache.map(guild => guild.id);
-        // const allGuilds = [testServer];
+        // const allGuilds = [awsConfigurations.testServer];
         allGuilds.forEach(async function (guild) {
             const applicationCommands = await getApplicationCommands(
                 client,

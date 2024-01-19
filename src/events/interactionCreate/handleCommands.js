@@ -1,4 +1,4 @@
-const { devs, testServer } = require('../../config');
+const { awsConfigurations } = require("../../utils/constants");
 const getLocalCommands = require('../../utils/getLocalCommands');
 
 module.exports = async (client, interaction) => {
@@ -13,7 +13,7 @@ module.exports = async (client, interaction) => {
         if (!commandObject) return;
 
         if (commandObject.devOnly) {
-            if (!devs.includes(interaction.member.id)) {
+            if (!awsConfigurations.devs.includes(interaction.member.id)) {
                 interaction.reply(
                     {
                         content: 'Only developers are allowed to run this command',
@@ -36,7 +36,7 @@ module.exports = async (client, interaction) => {
 
         if (commandObject.permissionsRequired?.length) {
             for (const permission of commandObject.permissionsRequired) {
-                if (!interaction.member.permissions.has(permission) && !devs.includes(interaction.member.id)) {
+                if (!interaction.member.permissions.has(permission) && !awsConfigurations.devs.includes(interaction.member.id)) {
                     interaction.reply({
                         content: 'Not enough permissions.',
                         ephemeral: true,
