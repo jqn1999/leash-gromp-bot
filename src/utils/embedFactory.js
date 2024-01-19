@@ -352,14 +352,14 @@ class EmbedFactory {
         }
 
         let memberList = guild.memberList;
-        const member = memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER);
-        if (!member) {
+        const leader = memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER);
+        if (!leader) {
             interaction.editReply(`${userDisplayName} there was an error retrieving the guild leader of your guild. Let an admin know!`);
             return;
         }
         userList.push({
-            name: `${member.role}`,
-            value: `${member.username}`,
+            name: `${leader.role}`,
+            value: `${leader.username}`,
             inline: false,
         })
         const newMemberList = memberList.filter((currentMember) => currentMember.role != GuildRoles.LEADER)
@@ -383,6 +383,22 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(userList);
+        return embed;
+    }
+
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier) {
+        if (!guild.thumbnailUrl) {
+            guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
+            .setDescription(`Below is the list of the current raid members for '${guild.guildName}'`)
+            .setColor("Random")
+            .setThumbnail(guild.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(raidList);
         return embed;
     }
 

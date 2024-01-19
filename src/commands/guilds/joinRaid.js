@@ -1,9 +1,8 @@
-const { GuildRoles } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "create-raid",
-    description: "Creates a raid and allows members to join the raid",
+    name: "join-raid",
+    description: "Join a raid (must have an active raid)",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -20,7 +19,7 @@ module.exports = {
 
         const userGuildId = userDetails.guildId;
         if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to create a raid for!`);
+            interaction.editReply(`${userDisplayName} you have no guild to join the raid of!`);
             return;
         }
 
@@ -34,8 +33,8 @@ module.exports = {
         let raidList = guild.raidList;
         let activeRaid = guild.activeRaid;
 
-        if (activeRaid) {
-            interaction.editReply(`${userDisplayName} there is already an active raid! Start that raid before creating a new one!`);
+        if (!activeRaid) {
+            interaction.editReply(`${userDisplayName} there is no active raid to join!`);
             return;
         }
 
@@ -45,13 +44,12 @@ module.exports = {
             return;
         }
 
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you must be the guild leader to create a raid!`);
+        if (raidList.filter(currentMember => currentMember.id == userId).length > 0) {
+            interaction.editReply(`${userDisplayName} you have already joined this raid. Check the current raid status using /current-raid!`);
             return;
         }
         raidList.push(member);
-        await dynamoHandler.updateGuildActiveRaidStatus(guildId, true)
         await dynamoHandler.updateGuildRaidList(guildId, raidList);
-        interaction.editReply(`${userDisplayName} has created a new raid for the guild, '${guild.guildName}'!`);
+        interaction.editReply(`${userDisplayName} you have joined the active raid for the guild, '${guild.guildName}'!`);
     }
 }

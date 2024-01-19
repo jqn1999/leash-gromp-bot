@@ -1043,7 +1043,6 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         inviteList: [],
         raidList: []
     };
-    console.log(Item)
 
     var params = {
         TableName: config.aws_guilds_table_name,

@@ -3,7 +3,7 @@ const { GuildRoles } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "join",
+    name: "join-guild",
     description: "Join a guild (must already have a pending invitation)",
     devOnly: false,
     options: [
