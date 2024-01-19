@@ -28,8 +28,9 @@ BOT_TOKEN = <BOT_TOKEN>
 ```
 **Note:** The given keys will be to a **Non-Prod** bot connecting to a **Non-Prod** environment of **AWS DynamoDB** to allow for development without impacting any users. The **Prod** keys for the actual Leash Gromp bot are only kept in the EC2 instance that runs the live bot 24/7.
 
-### Finally, Join The Discord Server Or Channel The Testing Discord Bot Is At:
-In order to avoid bot commands being intercepted by each other, developers may want to [create their own personal Discord bots](https://discordjs.guide/preparations/setting-up-a-bot-application.html#creating-your-bot) and provide their particular token in the `.env` file mentioned in the previous section.
+### Finally, Get Invitations to Jira, Github, and Discord:
+- Ask for an invite to the Jira project and [Github project](https://github.com/jqn1999/leash-gromp-bot)
+- In order to avoid bot commands being intercepted by each other, developers may want to [create their own personal Discord bots](https://discordjs.guide/preparations/setting-up-a-bot-application.html#creating-your-bot) and provide their particular token in the `.env` file mentioned in the previous section.
 
 ## How To Run Locally
 - In order to run the project locally all you need to do is run `node src/index.js` at the root of the project

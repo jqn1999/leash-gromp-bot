@@ -28,10 +28,37 @@ const Rob = {
     BASE_ROB_PENALTY: 5000
 }
 
+const Raid = {
+    MAXIMUM_RAID_SUCCESS_RATE: .9,
+    RAID_TIMER_SECONDS: 3600,
+    REGULAR_RAID_REWARD: 200000,
+    REGULAR_RAID_PENALTY: -100000,
+    REGULAR_RAID_DIFFICULTY: 20,
+}
+
 const GuildRoles = {
     LEADER: "Leader",
     MEMBER: "Member"
 }
+
+const regularRaidMobs = [
+    {
+        name: "Celerity, the Swift Stalk",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198039459271282819/image.png?ex=65bd7431&is=65aaff31&hm=53491255e3e9ae4d0802b84df5a17a3256d28bee34b9ee70f6dea221d4021805&",
+        description: `Deep within the verdant forests of the Potato Realm, adventurers encounter Celerity, the Swift Stalk, a celery stick infused with the essence of unparalleled speed. In this high-paced raid, players must navigate through a maze of rapidly growing vines and swiftly dodging the Stalk's lightning-fast attacks, testing their agility and coordination to claim victory over this fleet-footed foe.`,
+        successDescription: 'With synchronized precision, the brave warriors strategically severs Celerity\'s roots, halting its lightning-speed assaults and claiming triumph over the Swift Stalk.',
+        failureDescription: 'Overwhelmed by the relentless barrage of swift strikes, the adventurers succumb to Celerity\'s lightning-fast onslaught, leaving the forest engulfed in the echoes of their unsuccessful struggle.',
+        credit: 'Inspired by Moonwave'
+    },
+    {
+        name: "Baron Durianwrath, the Aromatic Abomination",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198039614112399542/image.png?ex=65bd7456&is=65aaff56&hm=4a1bca2d540e14b0c2258bcb6a4b5ca6ddb9289d8221bc4fb5294df98e62247e&",
+        description: `In the dimly lit caverns of Potato Kingdom, brave spud adventurers face the daunting challenge of Baron Durianwrath, a colossal durian infused with the essence of foul-smelling durians. As the air becomes thick with the pungent aroma, players must navigate the stench-filled battleground, dodging explosive durian attacks and combating the Baron's formidable durian minions to emerge victorious in this aromatic raid.`,
+        successDescription: 'The courageous group of hunters withstand the overwhelming stench, strategically targeting and neutralizing Baron Durianwrath\'s minions before delivering the final blow, purging the Potato Kingdom of the Aromatic Abomination... for now.',
+        failureDescription: 'Succumbing to the noxious fumes and explosive durian attacks, the brave adventurers fall one by one, overwhelmed by the potent combination of odor and destructive force unleashed by Baron Durianwrath and his minions.',
+        credit: 'Inspired by Moonwave'
+    }
+]
 
 const regularWorkMobs = [
     {
@@ -93,7 +120,7 @@ const largePotato = {
 const sweetPotato = {
     name: "Sweet Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196681406164770836/image.png?ex=65b88368&is=65a60e68&hm=0eac1e59888d567736222ece1106e06474cb9b8ac3a6b349aa7ce567033c83ac&",
-    description: `You meet a lovely sweet potato and it convinces you to spare it's life in exchange for buffing one of your stats. Check your profile!`
+    description: `You meet a lovely sweet potato and it convinces you to spare its life in exchange for buffing one of your stats. Check your profile!`
 }
 
 const poisonPotato = {
@@ -150,6 +177,8 @@ module.exports = {
     Bank,
     Rob,
     GuildRoles,
+    Raid,
+    regularRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
