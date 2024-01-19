@@ -1296,15 +1296,22 @@ const getSortedUsers = async function () {
     return sortedUsers
 }
 
-const getSortedGuildsByLevel = async function () {
+const getSortedGuildsByLevelAndMembers = async function () {
     let allGuilds = await getGuilds();
-    const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.level) - parseFloat(a.level));
-    return sortedUsers
+    const sortedGuilds = allGuilds.sort((a, b) => {
+        // First, compare by level
+        const levelComparison = parseFloat(b.level) - parseFloat(a.level);
+        
+        // If levels are the same, compare by memberCount
+        return levelComparison != 0 ? levelComparison : b.memberList.length - a.memberList.length;
+    });
+
+    return sortedGuilds;
 }
 
 const getSortedGuildsById = async function () {
     let allGuilds = await getGuilds();
-    const sortedUsers = allGuilds.sort((a, b) => parseFloat(a.guildId) - parseFloat(b.guildId));
+    const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.guildId) - parseFloat(a.guildId));
     return sortedUsers
 }
 
@@ -1418,7 +1425,7 @@ module.exports = {
     addNewUserAttribute,
     getServerTotal,
     getSortedUsers,
-    getSortedGuildsByLevel,
+    getSortedGuildsByLevelAndMembers,
     getSortedGuildsById,
     addAdminUserPotatoes,
     addAdminUserBankedPotatoes,

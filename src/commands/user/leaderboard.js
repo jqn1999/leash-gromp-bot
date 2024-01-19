@@ -52,7 +52,7 @@ module.exports = {
                 interaction.editReply({ embeds: [embed] });
                 break;
             case 'guild-leaderboard':
-                const sortedGuildList = await dynamoHandler.getSortedGuildsById();
+                const sortedGuildList = await dynamoHandler.getSortedGuildsByLevelAndMembers();
                 embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList, interaction);
                 interaction.editReply({ embeds: [embed] });
                 break;
