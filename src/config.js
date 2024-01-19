@@ -1,5 +1,3 @@
-require("dotenv").config();
-
 module.exports = {
     aws_table_name: 'leash-gromp-bot',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',

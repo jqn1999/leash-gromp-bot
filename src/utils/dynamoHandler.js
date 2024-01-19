@@ -1,5 +1,6 @@
+const { awsConfigurations } = require("../utils/constants.js");
 const AWS = require('aws-sdk');
-const config = require('../config.js');
+// const config = require('../config.js');
 
 const statTrackingIds = {
     COINFLIP: "coinflip",
@@ -9,11 +10,11 @@ const statTrackingIds = {
 
 // User Handling
 const findUser = async function (userId, username) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         KeyConditionExpression: 'userId = :userId',
         // FilterExpression: 'userId = :userId',
         ExpressionAttributeValues: { ':userId': userId }
@@ -37,7 +38,7 @@ const findUser = async function (userId, username) {
 }
 
 const addUser = async function (userId, username) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const Item = {
@@ -55,7 +56,7 @@ const addUser = async function (userId, username) {
         guildId: 0
     };
     var params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Item: Item
     };
 
@@ -69,11 +70,11 @@ const addUser = async function (userId, username) {
 }
 
 const updateUserPotatoes = async function (userId, potatoes) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -95,11 +96,11 @@ const updateUserPotatoes = async function (userId, potatoes) {
 }
 
 const updateUserPotatoesAndEarnings = async function (userId, potatoes, totalEarnings) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -122,11 +123,11 @@ const updateUserPotatoesAndEarnings = async function (userId, potatoes, totalEar
 }
 
 const updateUserPotatoesAndLosses = async function (userId, potatoes, totalLosses) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -149,11 +150,11 @@ const updateUserPotatoesAndLosses = async function (userId, potatoes, totalLosse
 }
 
 const getUsers = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name
+        TableName: awsConfigurations.aws_table_name
     };
     let userList;
     const response = await docClient.scan(params).promise()
@@ -191,11 +192,11 @@ const passivePotatoHandler = async function (timesInADay) {
 }
 
 const updateBankStoredPotatoesAndTotalEarnings = async function (userId, newBankStored, newTotalEarnings) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -218,11 +219,11 @@ const updateBankStoredPotatoesAndTotalEarnings = async function (userId, newBank
 }
 
 const updateUserWorkTimer = async function (userId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -244,11 +245,11 @@ const updateUserWorkTimer = async function (userId) {
 }
 
 const updateUserWorkTimerAdditionalTime = async function (userId, extraMilliseconds) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -270,11 +271,11 @@ const updateUserWorkTimerAdditionalTime = async function (userId, extraMilliseco
 }
 
 const updateUserRobTimer = async function (userId, extraMilliseconds) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -296,11 +297,11 @@ const updateUserRobTimer = async function (userId, extraMilliseconds) {
 }
 
 const updateUserLosses = async function (userId, totalLosses) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -322,11 +323,11 @@ const updateUserLosses = async function (userId, totalLosses) {
 }
 
 const updateUserGuildId = async function (userId, guildId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -349,7 +350,7 @@ const updateUserGuildId = async function (userId, guildId) {
 
 // Birthday Handling
 const addBirthday = async function (userId, username, birthday) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const Item = {
@@ -358,7 +359,7 @@ const addBirthday = async function (userId, username, birthday) {
         birthday: birthday
     };
     var params = {
-        TableName: config.aws_birthday_table_name,
+        TableName: awsConfigurations.aws_birthday_table_name,
         Item: Item
     };
 
@@ -372,11 +373,11 @@ const addBirthday = async function (userId, username, birthday) {
 }
 
 const getAllBirthdays = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_birthday_table_name
+        TableName: awsConfigurations.aws_birthday_table_name
     };
     let birthdayList;
     const response = await docClient.scan(params).promise()
@@ -392,7 +393,7 @@ const getAllBirthdays = async function () {
 
 // Betting handling
 const addBet = async function (betId, optionOne, optionTwo, description, thumbnailUrl, baseAmount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const Item = {
@@ -412,7 +413,7 @@ const addBet = async function (betId, optionOne, optionTwo, description, thumbna
     };
 
     var params = {
-        TableName: config.aws_betting_table_name,
+        TableName: awsConfigurations.aws_betting_table_name,
         Item: Item
     };
 
@@ -433,11 +434,11 @@ const getMostRecentBet = async function () {
 }
 
 const getAllBets = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_betting_table_name
+        TableName: awsConfigurations.aws_betting_table_name
     };
     let betList;
     const response = await docClient.scan(params).promise()
@@ -452,7 +453,7 @@ const getAllBets = async function () {
 }
 
 const addUserToBet = async function (betId, userId, userDisplayName, bet, choice) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const mostRecentBet = await getMostRecentBet();
@@ -496,7 +497,7 @@ const addUserToBet = async function (betId, userId, userDisplayName, bet, choice
         optionName = 'optionTwo'
     };
     const params = {
-        TableName: config.aws_betting_table_name,
+        TableName: awsConfigurations.aws_betting_table_name,
         Key: {
             betId: betId,
         },
@@ -519,11 +520,11 @@ const addUserToBet = async function (betId, userId, userDisplayName, bet, choice
 }
 
 const endCurrentBet = async function (betId, winningOption) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_betting_table_name,
+        TableName: awsConfigurations.aws_betting_table_name,
         Key: {
             betId: betId,
         },
@@ -546,11 +547,11 @@ const endCurrentBet = async function (betId, winningOption) {
 }
 
 const lockCurrentBet = async function (betId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_betting_table_name,
+        TableName: awsConfigurations.aws_betting_table_name,
         Key: {
             betId: betId,
         },
@@ -573,11 +574,11 @@ const lockCurrentBet = async function (betId) {
 
 // Stats
 const getCoinflipStats = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         KeyConditionExpression: 'trackingId = :trackingId',
         ExpressionAttributeValues: { ':trackingId': statTrackingIds.COINFLIP }
     };
@@ -594,11 +595,11 @@ const getCoinflipStats = async function () {
 }
 
 const addCoinflipHeads = async function (headsCount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.COINFLIP,
         },
@@ -620,11 +621,11 @@ const addCoinflipHeads = async function (headsCount) {
 }
 
 const addCoinflipTails = async function (tailsCount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.COINFLIP,
         },
@@ -646,11 +647,11 @@ const addCoinflipTails = async function (tailsCount) {
 }
 
 const addCoinflipTotalPayout = async function (totalPayout, bet) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.COINFLIP,
         },
@@ -672,11 +673,11 @@ const addCoinflipTotalPayout = async function (totalPayout, bet) {
 }
 
 const addCoinflipTotalReceived = async function (totalReceived, bet) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.COINFLIP,
         },
@@ -698,11 +699,11 @@ const addCoinflipTotalReceived = async function (totalReceived, bet) {
 }
 
 const getWorkStats = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         KeyConditionExpression: 'trackingId = :trackingId',
         ExpressionAttributeValues: { ':trackingId': statTrackingIds.WORK }
     };
@@ -719,11 +720,11 @@ const getWorkStats = async function () {
 }
 
 const addWorkCount = async function (workCount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.WORK,
         },
@@ -745,11 +746,11 @@ const addWorkCount = async function (workCount) {
 }
 
 const addWorkTotalPayout = async function (totalPayout, amount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_stats_table_name,
+        TableName: awsConfigurations.aws_stats_table_name,
         Key: {
             trackingId: statTrackingIds.WORK,
         },
@@ -772,11 +773,11 @@ const addWorkTotalPayout = async function (totalPayout, amount) {
 
 // Shops
 const getShop = async function (shopId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_shop_table_name,
+        TableName: awsConfigurations.aws_shop_table_name,
         KeyConditionExpression: 'shopId = :shopId',
         ExpressionAttributeValues: { ':shopId': shopId }
     };
@@ -793,11 +794,11 @@ const getShop = async function (shopId) {
 }
 
 const updateUserSweetPotatoBuffs = async function (userId, newSweetPotatoBuffs) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -819,11 +820,11 @@ const updateUserSweetPotatoBuffs = async function (userId, newSweetPotatoBuffs) 
 }
 
 const updateUserWorkMultiplier = async function (userId, newWorkMultiplierAmount) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -845,11 +846,11 @@ const updateUserWorkMultiplier = async function (userId, newWorkMultiplierAmount
 }
 
 const updateUserPassiveIncome = async function (userId, newPassiveIncome) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -871,11 +872,11 @@ const updateUserPassiveIncome = async function (userId, newPassiveIncome) {
 }
 
 const updateUserBankCapacity = async function (userId, newBankCapacity) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -897,11 +898,11 @@ const updateUserBankCapacity = async function (userId, newBankCapacity) {
 }
 
 const updateGuildBankCapacity = async function (guildId, newBankCapacity) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -924,11 +925,11 @@ const updateGuildBankCapacity = async function (guildId, newBankCapacity) {
 
 // Banking
 const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, newBankStored) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
@@ -952,11 +953,11 @@ const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, new
 
 // Guilds
 const getGuilds = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name
+        TableName: awsConfigurations.aws_guilds_table_name
     };
     let guildList;
     const response = await docClient.scan(params).promise()
@@ -971,11 +972,11 @@ const getGuilds = async function () {
 }
 
 const findGuildById = async function (guildId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         KeyConditionExpression: 'guildId = :guildId',
         // FilterExpression: 'userId = :userId',
         ExpressionAttributeValues: { ':guildId': guildId }
@@ -994,11 +995,11 @@ const findGuildById = async function (guildId) {
 }
 
 const findGuildByName = async function (guildName) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         // KeyConditionExpression: 'guildName = :guildName',
         FilterExpression: 'guildNameLowercase = :guildNameLowercase',
         ExpressionAttributeValues: { ':guildNameLowercase': guildName.toLowerCase() }
@@ -1017,7 +1018,7 @@ const findGuildByName = async function (guildName) {
 }
 
 const createGuild = async function (guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const Item = {
@@ -1045,7 +1046,7 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
     };
 
     var params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Item: Item
     };
 
@@ -1059,11 +1060,11 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
 }
 
 const updateGuildInviteList = async function (guildId, newGuildInviteList) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1085,11 +1086,11 @@ const updateGuildInviteList = async function (guildId, newGuildInviteList) {
 }
 
 const updateGuildMemberList = async function (guildId, newGuildMemberList) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1111,11 +1112,11 @@ const updateGuildMemberList = async function (guildId, newGuildMemberList) {
 }
 
 const updateGuildBankStored = async function (guildId, newBankStored) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1137,11 +1138,11 @@ const updateGuildBankStored = async function (guildId, newBankStored) {
 }
 
 const updateGuildRaidList = async function (guildId, newRaidList) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1163,12 +1164,12 @@ const updateGuildRaidList = async function (guildId, newRaidList) {
 }
 
 const updateGuildActiveRaidStatus = async function (guildId, activeRaid) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const guild = await findGuildById(guildId);
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1190,12 +1191,12 @@ const updateGuildActiveRaidStatus = async function (guildId, activeRaid) {
 }
 
 const updateGuildRaidCount = async function (guildId) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const guild = await findGuildById(guildId);
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1217,11 +1218,11 @@ const updateGuildRaidCount = async function (guildId) {
 }
 
 const updateGuildTotalEarnings = async function (guildId, newTotalEarnings) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const params = {
-        TableName: config.aws_guilds_table_name,
+        TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
@@ -1244,7 +1245,7 @@ const updateGuildTotalEarnings = async function (guildId, newTotalEarnings) {
 
 // Misc
 const addNewUserAttribute = async function () {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     let userList = await getUsers();
@@ -1256,7 +1257,7 @@ const addNewUserAttribute = async function () {
 
     userList.forEach(async user => {
         const params = {
-            TableName: config.aws_table_name,
+            TableName: awsConfigurations.aws_table_name,
             Key: {
                 userId: user.userId,
             },
@@ -1308,13 +1309,13 @@ const getSortedGuildsById = async function () {
 }
 
 const addAdminUserPotatoes = async function (potatoes) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const adminUser = await findUser('1187560268172116029', "Leash Gromp")
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: "1187560268172116029",
         },
@@ -1336,13 +1337,13 @@ const addAdminUserPotatoes = async function (potatoes) {
 }
 
 const addAdminUserBankedPotatoes = async function (potatoes) {
-    AWS.config.update(config.aws_remote_config);
+    AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     const adminUser = await findUser('1187560268172116029', "Leash Gromp")
 
     const params = {
-        TableName: config.aws_table_name,
+        TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: "1187560268172116029",
         },
