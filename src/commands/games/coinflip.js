@@ -2,12 +2,9 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
-    const roundedBet = Math.round(bet*.95)
-    userPotatoes += roundedBet
-    userTotalEarnings += roundedBet
-    adminUserShare = bet - roundedBet;
-    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, roundedBet)
+    userPotatoes += bet
+    userTotalEarnings += bet
+    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, rewardAfterTaxes)
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
 }
@@ -15,8 +12,6 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
 async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
     userPotatoes -= bet
     userTotalLosses -= bet
-    adminUserShare = Math.round(bet*.10);
-    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
     await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet)
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
     interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
