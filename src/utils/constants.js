@@ -34,6 +34,9 @@ const Raid = {
     REGULAR_RAID_REWARD: 100000,
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
+    MEDIUM_RAID_REWARD: 500000,
+    MEDIUM_RAID_PENALTY: -200000,
+    MEDIUM_RAID_DIFFICULTY: 75,
 }
 
 const GuildRoles = {
@@ -56,6 +59,17 @@ const regularRaidMobs = [
         description: `In the dimly lit caverns of Potato Kingdom, brave spud adventurers face the daunting challenge of Baron Durianwrath, a colossal durian infused with the essence of foul-smelling durians. As the air becomes thick with the pungent aroma, players must navigate the stench-filled battleground, dodging explosive durian attacks and combating the Baron's formidable durian minions to emerge victorious in this aromatic raid.`,
         successDescription: 'The courageous group of hunters withstand the overwhelming stench, strategically targeting and neutralizing Baron Durianwrath\'s minions before delivering the final blow, purging the Potato Kingdom of the Aromatic Abomination... for now.',
         failureDescription: 'Succumbing to the noxious fumes and explosive durian attacks, the brave adventurers fall one by one, overwhelmed by the potent combination of odor and destructive force unleashed by Baron Durianwrath and his minions.',
+        credit: 'Inspired by Moonwave'
+    }
+]
+
+const mediumRaidMobs = [
+    {
+        name: "Basilbane, the Herbaceous Harbinger",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
+        successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
+        failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
         credit: 'Inspired by Moonwave'
     }
 ]
@@ -179,6 +193,7 @@ module.exports = {
     GuildRoles,
     Raid,
     regularRaidMobs,
+    mediumRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,

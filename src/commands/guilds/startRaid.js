@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles, Raid, regularRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs } = require("../../utils/constants")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -48,16 +48,38 @@ const raidScenarios = [
         action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
+            const successChance = determinRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY);
+            const successfulRaid = determineRaidResult(successChance);
+            if (successfulRaid) {
+                totalRaidReward = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = mediumRaidMob.successDescription;
+            } else {
+                totalRaidReward = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = mediumRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mediumRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidReward;
+        },
+        chance: .1
+    },
+    {
+        action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
+            let splitRaidReward, totalRaidReward, raidResultDescription;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs);
             const successChance = determinRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY);
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.successDescription;
             } else {
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, regularRaidMob, successChance, raidResultDescription);
