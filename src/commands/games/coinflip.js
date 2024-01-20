@@ -4,7 +4,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
     userPotatoes += bet
     userTotalEarnings += bet
-    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, rewardAfterTaxes)
+    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet)
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
     interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
 }
