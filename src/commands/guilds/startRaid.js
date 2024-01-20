@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs } = require("../../utils/constants")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -44,6 +44,28 @@ function determineRaidResult(successChance) {
 }
 
 const raidScenarios = [
+    {
+        action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
+            let splitRaidReward, totalRaidReward, raidResultDescription;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const hardRaidMob = chooseMobFromList(hardRaidMobs);
+            const successChance = determinRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY);
+            const successfulRaid = determineRaidResult(successChance);
+            if (successfulRaid) {
+                totalRaidReward = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = hardRaidMob.successDescription;
+            } else {
+                totalRaidReward = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = hardRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, hardRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidReward;
+        },
+        chance: .02
+    },
     {
         action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;

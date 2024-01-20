@@ -36,7 +36,10 @@ const Raid = {
     REGULAR_RAID_DIFFICULTY: 25,
     MEDIUM_RAID_REWARD: 500000,
     MEDIUM_RAID_PENALTY: -200000,
-    MEDIUM_RAID_DIFFICULTY: 75,
+    MEDIUM_RAID_DIFFICULTY: 50,
+    HARD_RAID_REWARD: 5000000,
+    HARD_RAID_PENALTY: -500000,
+    HARD_RAID_DIFFICULTY: 150,
 }
 
 const GuildRoles = {
@@ -70,6 +73,17 @@ const mediumRaidMobs = [
         description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
         successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
         failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
+        credit: 'Inspired by Moonwave'
+    }
+]
+
+const hardRaidMobs = [
+    {
+        name: "Netherfig, the Abyssal Figwraith",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
+        successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
+        failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
         credit: 'Inspired by Moonwave'
     }
 ]
@@ -194,6 +208,7 @@ module.exports = {
     Raid,
     regularRaidMobs,
     mediumRaidMobs,
+    hardRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
