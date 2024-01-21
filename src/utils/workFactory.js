@@ -10,7 +10,7 @@ class WorkFactory {
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
         let rawPassiveRewardAmount, actualPassiveRewardAmount;
-        // let rawBankRewardAmount, actualBankRewardAmount;
+        let rawBankRewardAmount, actualBankRewardAmount;
 
         const potatoesGained = await calculateGainAmount(workGainAmount*20, Work.MAX_METAL_POTATO, multiplier, userMultiplier);
         userPotatoes += potatoesGained
@@ -18,14 +18,14 @@ class WorkFactory {
         await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
 
         rawPassiveRewardAmount = userPassiveAmount * metalPotatoRewards.passiveReward;
-        actualPassiveRewardAmount = calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount);
+        actualPassiveRewardAmount = calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount, metalPotatoRewards.maxPassiveGain);
 
-        // rawBankRewardAmount = userBankCapacity * metalPotatoRewards.bankCapacityReward;
-        // actualBankRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawBankRewardAmount);
+        rawBankRewardAmount = userBankCapacity * metalPotatoRewards.bankCapacityReward;
+        actualBankRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawBankRewardAmount, metalPotatoRewards.maxBankCapacityGain);
 
         userMultiplier += metalPotatoRewards.workMultiplierReward;
         userPassiveAmount += actualPassiveRewardAmount;
-        userBankCapacity += metalPotatoRewards.bankCapacityReward;
+        userBankCapacity += actualBankRewardAmount;
         await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
         await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
         await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
@@ -33,7 +33,7 @@ class WorkFactory {
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
         sweetPotatoBuffs.workMultiplierAmount += metalPotatoRewards.workMultiplierReward;
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
-        sweetPotatoBuffs.bankCapacity += metalPotatoRewards.bankCapacityReward;
+        sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
         await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
         await dynamoHandler.updateUserWorkTimer(userId);
         return potatoesGained;
@@ -58,17 +58,17 @@ class WorkFactory {
                 break;
             case "passiveAmount":
                 rawRewardAmount = userPassiveAmount * reward.amount;
-                actualRewardAmount = calculatePassiveAmount(userPassiveAmount, rawRewardAmount);
+                actualRewardAmount = calculatePassiveAmount(userPassiveAmount, rawRewardAmount, reward.maxGainSweetPotato);
                 sweetPotatoBuffs.passiveAmount += actualRewardAmount;
                 userPassiveAmount += actualRewardAmount;
                 await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
                 await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
             case "bankCapacity":
-                // rawRewardAmount = userBankCapacity * reward.amount;
-                // actualRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawRewardAmount);
-                sweetPotatoBuffs.bankCapacity += reward.amount;
-                userBankCapacity += reward.amount;
+                rawRewardAmount = userBankCapacity * reward.amount;
+                actualRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawRewardAmount, reward.maxGainSweetPotato);
+                sweetPotatoBuffs.bankCapacity += actualRewardAmount;
+                userBankCapacity += actualRewardAmount;
                 await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
                 await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
@@ -136,21 +136,22 @@ class WorkFactory {
     }
 }
 
-function calculatePassiveAmount(previousPassiveAmount, newPassiveAmountRaw) {
+function calculatePassiveAmount(previousPassiveAmount, newPassiveAmountRaw, maxGain) {
     let newAmount = Math.round(newPassiveAmountRaw / 10000) * 10000;
     const isIncreaseGreaterThanMin = newAmount - previousPassiveAmount > 10000 ? true : false;
     if (isIncreaseGreaterThanMin) {
-        return (newAmount - previousPassiveAmount);
+        const increase = (newAmount - previousPassiveAmount) > maxGain ? maxGain : (newAmount - previousPassiveAmount)
+        return increase;
     }
     return 10000;
-    
 }
 
-function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw) {
+function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw, maxGain) {
     let newCapacity = Math.round(newBankCapacityRaw / 50000) * 50000;
     const isIncreaseGreaterThanMin = newCapacity - previousBankCapacity > 50000 ? true : false;
     if (isIncreaseGreaterThanMin) {
-        return (newCapacity - previousBankCapacity);
+        const increase = (newCapacity - previousBankCapacity) > maxGain ? maxGain : (newCapacity - previousBankCapacity)
+        return increase;
     }
     return 50000;
 }
@@ -158,7 +159,9 @@ function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw) {
 const metalPotatoRewards = {
     workMultiplierReward: 0.6,
     passiveReward: 1.5,
-    bankCapacityReward: 500000
+    bankCapacityReward: 1.5,
+    maxPassiveGain: 500000, // reached at 1MM
+    maxBankCapacityGain: 5000000 // reached at 10MM
 }
 
 const sweetPotatoRewards = [
@@ -168,11 +171,13 @@ const sweetPotatoRewards = [
     },
     {
         type: "passiveAmount",
-        amount: 1.15
+        amount: 1.15,
+        maxGainSweetPotato: 100000, // reached at 750k
     },
     {
         type: "bankCapacity",
-        amount: 50000
+        amount: 1.15,
+        maxGainSweetPotato: 1000000, // reached at 6.65MM
     }
 ]
 
