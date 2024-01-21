@@ -1,24 +1,10 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs } = require("../../utils/constants")
+const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
-
-function convertSecondstoMinutes(seconds) {
-    let timeText = '';
-    let hours = ~~(seconds / 3600);
-    if (hours > 0) {
-        timeText += `${hours}h `
-    }
-    let minutes = ~~((seconds % 3600) / 60);
-    if (minutes > 0) {
-        timeText += `${minutes}m `
-    }
-    let extraSeconds = seconds % 60;
-    timeText += `${extraSeconds}s`
-    return timeText;
-}
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
@@ -119,9 +105,7 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {

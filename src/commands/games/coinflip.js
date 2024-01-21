@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
@@ -50,9 +51,7 @@ module.exports = {
         await interaction.deferReply();
         let bet = interaction.options.get('bet-amount')?.value;
         let sideSelected = interaction.options.get('side-select')?.value;
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {

@@ -1,4 +1,6 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { shops } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 function doesUserHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, interaction, userDisplayName) {
@@ -94,9 +96,7 @@ module.exports = {
         await interaction.deferReply();
         let shopSelect = interaction.options.get('shop-select')?.value;
         let itemIdSelected = interaction.options.get('item-id')?.value;
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -112,7 +112,7 @@ module.exports = {
         let chosenItem, userHasEnough, validTier;
         switch (shopSelect) {
             case 'work-shop':
-                const workShop = await dynamoHandler.getShop('workShop');
+                const workShop = shops.find((currentShop) => currentShop.shopId == 'workShop');
                 chosenItem = getItemFromShop(workShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
@@ -126,7 +126,7 @@ module.exports = {
                 }
                 break;
             case 'passive-income-shop':
-                const passiveIncomeShop = await dynamoHandler.getShop('passiveIncomeShop');
+                const passiveIncomeShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
                 chosenItem = getItemFromShop(passiveIncomeShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
@@ -140,7 +140,7 @@ module.exports = {
                 }
                 break;
             case 'bank-shop':
-                const bankShop = await dynamoHandler.getShop('bankShop');
+                const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
                 chosenItem = getItemFromShop(bankShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);

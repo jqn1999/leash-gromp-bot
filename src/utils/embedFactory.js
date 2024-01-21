@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato } = require("../utils/constants")
+const { GuildRoles, sweetPotato, Raid } = require("../utils/constants")
+const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
 class EmbedFactory {
@@ -387,13 +388,20 @@ class EmbedFactory {
         return embed;
     }
 
-    async createRaidMemberListEmbed(guild, raidList, totalMultiplier) {
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds) {
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
 
+        let raidTime = '';
+        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+            raidTime = convertSecondstoMinutes(timeUntilRaidAvailableInSeconds);
+        } else {
+            raidTime = 'Ready'
+        }
+
         const embed = new EmbedBuilder()
-            .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
+            .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)\nRaid Timer: ${raidTime}`)
             .setDescription(`Below is the list of the current raid members for '${guild.guildName}'`)
             .setColor("Random")
             .setThumbnail(guild.thumbnailUrl)

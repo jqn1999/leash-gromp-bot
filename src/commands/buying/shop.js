@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
-const dynamoHandler = require("../../utils/dynamoHandler");
+const { shops } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -36,15 +36,15 @@ module.exports = {
         let embed;
         switch (shopSelect) {
             case 'work-shop':
-                const workShop = await dynamoHandler.getShop('workShop');
+                const workShop = shops.find((currentShop) => currentShop.shopId == 'workShop');
                 embed = embedFactory.createShopEmbed(workShop);
                 break;
             case 'passive-income-shop':
-                const passiveIncomeShop = await dynamoHandler.getShop('passiveIncomeShop');
+                const passiveIncomeShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
                 embed = embedFactory.createShopEmbed(passiveIncomeShop);
                 break;
             case 'bank-shop':
-                const bankShop = await dynamoHandler.getShop('bankShop');
+                const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
                 embed = embedFactory.createShopEmbed(bankShop);
                 break;
         }

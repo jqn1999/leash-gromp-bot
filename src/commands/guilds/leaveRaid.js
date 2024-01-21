@@ -1,3 +1,4 @@
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
@@ -7,9 +8,7 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {

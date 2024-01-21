@@ -1,4 +1,5 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -33,10 +34,8 @@ module.exports = {
             userAvatar = targetUser.user.avatar;
             username = targetUser.user.username;
         } else {
-            userId = interaction.user.id;
-            userDisplayName = interaction.user.displayName;
+            [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
             userAvatar = interaction.user.avatar;
-            username = interaction.user.username;
         }
 
         const userDetails = await dynamoHandler.findUser(userId, username);

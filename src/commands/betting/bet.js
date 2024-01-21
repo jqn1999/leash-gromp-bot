@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
@@ -33,9 +34,7 @@ module.exports = {
         await interaction.deferReply();
         let bet = interaction.options.get('bet-amount')?.value;
         let optionSelected = interaction.options.get('option')?.value;
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const mostRecentBet = await dynamoHandler.getMostRecentBet();
         if (mostRecentBet.isActive == false) { 

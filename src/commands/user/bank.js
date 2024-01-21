@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank } = require("../../utils/constants");
 
@@ -39,9 +40,8 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const action = interaction.options.get('action')?.value;
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
