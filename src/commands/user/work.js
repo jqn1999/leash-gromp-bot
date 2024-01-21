@@ -1,5 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
+const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -13,21 +14,6 @@ function chooseMobFromList(mobList) {
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
-}
-
-function convertSecondstoMinutes(seconds) {
-    let timeText = '';
-    let hours = ~~(seconds / 3600);
-    if (hours > 0) {
-        timeText += `${hours}h `
-    }
-    let minutes = ~~((seconds%3600) / 60);
-    if (minutes > 0) {
-        timeText += `${minutes}m `
-    }
-    let extraSeconds = seconds % 60;
-    timeText += `${extraSeconds}s`
-    return timeText;
 }
 
 const workScenarios = [
@@ -109,9 +95,7 @@ module.exports = {
         const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL)
         const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
 
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {

@@ -1,4 +1,6 @@
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { Raid } = require("../../utils/constants")
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -9,9 +11,7 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -38,6 +38,9 @@ module.exports = {
             return;
         }
 
+        const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
+        const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
+
         let totalMultiplier = 0;
         let raidList = [];
         for (const [index, element] of memberList.entries()) {
@@ -56,7 +59,7 @@ module.exports = {
             totalMultiplier += userDetails.workMultiplierAmount;
         }
 
-        embed = await embedFactory.createRaidMemberListEmbed(guild, raidList, totalMultiplier);
+        embed = await embedFactory.createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds);
         interaction.editReply({ embeds: [embed] });
     }
 }

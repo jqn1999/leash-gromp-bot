@@ -178,6 +178,174 @@ const metalPotatoFailure = {
     credit: `Inspired by Rednaxeia`
 }
 
+const shops = [
+    {
+        shopId: "workShop",
+        description: "This is where you buy tools and gear to improve work yield",
+        items: [
+            {
+                amount: 1.5,
+                cost: 50000,
+                description: "A basic set of gear for beginners that makes hunting a bit easier",
+                id: 1,
+                name: "Spud Seeker Set",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 3,
+                cost: 200000,
+                description: "An intermediate set of gear for those pursuing a career in potato hunting",
+                id: 2,
+                name: "Potato Pursuer Kit",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 5,
+                cost: 1000000,
+                description: "An advanced set of gear for a trained professional",
+                id: 3,
+                name: "Starch Stalker Ensemble",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 10,
+                cost: 5000000,
+                description: "An elite set of gear for those that seek the thrill of special grade potatoes",
+                id: 4,
+                name: "Supreme Spud Slayer Gear",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 15,
+                cost: 20000000,
+                description: "This arsenal provides hunters with tools to crush and capture legendary potatoes, enhancing their rewards when facing more powerful and elusive spuds",
+                id: 5,
+                name: "Legendary Spud Seeker's Arsenal",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 20,
+                cost: 50000000,
+                description: "Wielding cosmic forces, this gear allows players to obliterate entire fields of potatoes and face the most extreme potato challenges in their quest",
+                id: 6,
+                name: "Apocalyptic Tuber Annihilator Gear",
+                type: "workMultiplierAmount"
+            }
+        ],
+        title: "Work Tools Shop (multiplier for work)"
+    },
+    {
+        shopId: "passiveIncomeShop",
+        description: "This is where you buy workers to improve passive yield",
+        items: [
+            {
+                amount: 50000,
+                cost: 50000,
+                description: "An apprentice that helps gather some additional potatoes each day",
+                id: 1,
+                name: "Seedling Sprout Apprentice",
+                type: "passiveAmount"
+            },
+            {
+                amount: 100000,
+                cost: 200000,
+                description: "A small crew of workers that cultivate and harvest even more potatoes each day",
+                id: 2,
+                name: "Harvest Helpers Crew",
+                type: "passiveAmount"
+            },
+            {
+                amount: 180000,
+                cost: 1000000,
+                description: "A skilled squad of musicians that happen to love growing potatoes using their songs",
+                id: 3,
+                name: "Spud Symphony Squad",
+                type: "passiveAmount"
+            },
+            {
+                amount: 350000,
+                cost: 5000000,
+                description: "A large squad of trained professionals in the art of potato cultivation",
+                id: 4,
+                name: "Spud Team Six",
+                type: "passiveAmount"
+            },
+            {
+                amount: 500000,
+                cost: 20000000,
+                description: "Armed with cutting-edge techniques and sustainable practices, this skilled team maximizes potato yields through eco-friendly methods, ensuring a lush harvest every day",
+                id: 5,
+                name: "Verdant Vanguard Growers",
+                type: "passiveAmount"
+            },
+            {
+                amount: 750000,
+                cost: 50000000,
+                description: "This top-tier group of agricultural virtuosos seamlessly integrates various cultivation methods, creating a harmonious environment for potato growth",
+                id: 6,
+                name: "Harvest Harmony Elite",
+                type: "passiveAmount"
+            }
+        ],
+        title: "Passive Income Workers Shop (amount per day)"
+    },
+    {
+        shopId: "bankShop",
+        description: "This is where you upgrade your bank to protect your potatoes from would-be robbers",
+        items: [
+            {
+                amount: 150000,
+                cost: 50000,
+                description: "A basic pouch to hold some wealth and keep it safe",
+                id: 1,
+                name: "Spud Saver's Starter Pouch",
+                type: "bankCapacity"
+            },
+            {
+                amount: 800000,
+                cost: 200000,
+                description: "A rather secure holding for the more advanced potato collector",
+                id: 2,
+                name: "Savvy Spud Saver Bank",
+                type: "bankCapacity"
+            },
+            {
+                amount: 4000000,
+                cost: 1000000,
+                description: "A large hidden holding of potatoes hidden somewhere in a forest",
+                id: 3,
+                name: "Spud Hoarder Hideaway",
+                type: "bankCapacity"
+            },
+            {
+                amount: 15000000,
+                cost: 5000000,
+                description: "An underground vault specifically made to guard mountains of potatoes",
+                id: 4,
+                name: "Supreme Spud Vault",
+                type: "bankCapacity"
+            },
+            {
+                amount: 30000000,
+                cost: 20000000,
+                description: "A colossal storage facility designed for those who dream big in the world of potato farming",
+                id: 5,
+                name: "Prodigious Potato Reserve",
+                type: "bankCapacity"
+            },
+            {
+                amount: 50000000,
+                cost: 50000000,
+                description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
+                id: 6,
+                name: "Royal Russet Reserve",
+                type: "bankCapacity"
+            }
+        ],
+        title: "Potato Storage Shop (increase bank capacity)"
+    }
+]
+
 const awsConfigurations = {
     aws_table_name: 'leash-gromp-bot',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
@@ -186,7 +354,7 @@ const awsConfigurations = {
     aws_shop_table_name: 'leash-gromp-bot-shop',
     aws_guilds_table_name: 'leash-gromp-bot-guilds',
     aws_local_config: {
-      //Provide details for local configuration
+        //Provide details for local configuration
     },
     aws_remote_config: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -199,6 +367,7 @@ const awsConfigurations = {
 }
 
 module.exports = {
+    shops,
     awsConfigurations,
     Work,
     Bet,

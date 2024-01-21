@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 
@@ -30,21 +31,6 @@ function determineRobOutcome(robChance) {
     return false
 }
 
-function convertSecondstoMinutes(seconds) {
-    let timeText = '';
-    let hours = ~~(seconds / 3600);
-    if (hours > 0) {
-        timeText += `${hours}h `
-    }
-    let minutes = ~~((seconds%3600) / 60);
-    if (minutes > 0) {
-        timeText += `${minutes}m `
-    }
-    let extraSeconds = seconds % 60;
-    timeText += `${extraSeconds}s`
-    return timeText;
-}
-
 module.exports = {
     name: "rob",
     description: "Allows member to rob their potatoes",
@@ -61,9 +47,8 @@ module.exports = {
     ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);

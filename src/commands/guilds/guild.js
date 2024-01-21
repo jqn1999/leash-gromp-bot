@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -18,9 +19,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         let guild;
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         let guildName = interaction.options.get('guild-name')?.value;
         if (!guildName) {
             const userDetails = await dynamoHandler.findUser(userId, username);

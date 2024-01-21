@@ -53,7 +53,12 @@ const addUser = async function (userId, username) {
         bankCapacity: 0,
         workMultiplierAmount: 1,
         passiveAmount: 0,
-        guildId: 0
+        guildId: 0,
+        sweetPotatoBuffs: {
+            workMultiplierAmount: 0,
+            passiveAmount: 0,
+            bankCapacity: 0
+        }
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -772,26 +777,6 @@ const addWorkTotalPayout = async function (totalPayout, amount) {
 }
 
 // Shops
-const getShop = async function (shopId) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_shop_table_name,
-        KeyConditionExpression: 'shopId = :shopId',
-        ExpressionAttributeValues: { ':shopId': shopId }
-    };
-
-    const response = docClient.query(params).promise()
-        .then(async function (data) {
-            shop = data.Items[0]
-            return shop;
-        })
-        .catch(function (err) {
-            console.debug(`getShop error: ${JSON.stringify(err)}`)
-        });
-    return response
-}
 
 const updateUserSweetPotatoBuffs = async function (userId, newSweetPotatoBuffs) {
     AWS.config.update(awsConfigurations.aws_remote_config);
@@ -1406,7 +1391,6 @@ module.exports = {
     addWorkCount,
     addWorkTotalPayout,
 
-    getShop,
     updateUserSweetPotatoBuffs,
     updateUserWorkMultiplier,
     updateUserPassiveIncome,

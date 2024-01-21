@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 GUILD_COST = 1000000
@@ -37,9 +38,7 @@ module.exports = {
         const guildName = interaction.options.get('guild-name').value;
         let thumbnailUrl = interaction.options.get('thumbnail-url')?.value;
         if (!thumbnailUrl) thumbnailUrl = "";
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const userDisplayName = interaction.user.displayName;
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
