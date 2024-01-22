@@ -61,6 +61,8 @@ async function getSortedBirthdays() {
     return newArr;
 }
 
+const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
+
 module.exports = {
     convertSecondstoMinutes,
     getUserInteractionDetails,
