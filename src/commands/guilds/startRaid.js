@@ -50,7 +50,7 @@ const raidScenarios = [
             interaction.editReply({ embeds: [embed] });
             return totalRaidReward;
         },
-        chance: .02
+        chance: .05
     },
     {
         action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
@@ -72,7 +72,7 @@ const raidScenarios = [
             interaction.editReply({ embeds: [embed] });
             return totalRaidReward;
         },
-        chance: .1
+        chance: .3
     },
     {
         action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
