@@ -294,7 +294,7 @@ const shops = [
         description: "This is where you upgrade your bank to protect your potatoes from would-be robbers",
         items: [
             {
-                amount: 150000,
+                amount: 100000,
                 cost: 50000,
                 description: "A basic pouch to hold some wealth and keep it safe",
                 id: 1,
@@ -302,7 +302,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 800000,
+                amount: 500000,
                 cost: 200000,
                 description: "A rather secure holding for the more advanced potato collector",
                 id: 2,
@@ -310,7 +310,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 4000000,
+                amount: 2500000,
                 cost: 1000000,
                 description: "A large hidden holding of potatoes hidden somewhere in a forest",
                 id: 3,
@@ -318,7 +318,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 15000000,
+                amount: 10000000,
                 cost: 5000000,
                 description: "An underground vault specifically made to guard mountains of potatoes",
                 id: 4,
@@ -326,7 +326,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 30000000,
+                amount: 25000000,
                 cost: 20000000,
                 description: "A colossal storage facility designed for those who dream big in the world of potato farming",
                 id: 5,
