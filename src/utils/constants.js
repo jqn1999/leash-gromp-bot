@@ -35,10 +35,10 @@ const Raid = {
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
     MEDIUM_RAID_REWARD: 500000,
-    MEDIUM_RAID_PENALTY: -200000,
-    MEDIUM_RAID_DIFFICULTY: 50,
+    MEDIUM_RAID_PENALTY: -400000,
+    MEDIUM_RAID_DIFFICULTY: 60,
     HARD_RAID_REWARD: 5000000,
-    HARD_RAID_PENALTY: -500000,
+    HARD_RAID_PENALTY: -1000000,
     HARD_RAID_DIFFICULTY: 150,
 }
 
@@ -85,6 +85,14 @@ const hardRaidMobs = [
         successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
         failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
         credit: 'Inspired by Moonwave'
+    },
+    {
+        name: "Behemoth Broccoli, the Green Guardian",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198836128179032125/SPOILER_image.png?ex=65c05a26&is=65ade526&hm=ae08d9219546b86ef8a79e0de03c87ba36245c0cfdb302999da13bd05dbd3305&",
+        description: `Behemoth Broccoli, the Green Guardian, looms over the Potato Kingdom as an immense, sentient broccoli with towering florets and a formidable, leafy armor. Its presence exudes an aura of plant-based might, defending the vegetable realm with unwavering determination.`,
+        successDescription: 'Through strategic teamwork and perseverance, the spud heroes dismantle Behemoth Broccoli\'s leafy defenses, exposing its vulnerable core and bringing an end to its reign as the Green Guardian, restoring harmony to the Potato Kingdom.',
+        failureDescription: 'Overpowered by the broccoli behemoth\'s resilient defenses and potent vegetable magic, the potato adventurers succumb to the Green Guardian\'s formidable might, leaving the Potato Kingdom under the eternal watch of Behemoth Broccoli.',
+        credit: 'Inspired by Zoodbarg'
     }
 ]
 

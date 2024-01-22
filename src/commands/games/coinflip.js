@@ -7,7 +7,7 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
     userTotalEarnings += bet
     await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet)
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    interaction.editReply(`${coinflipStats.heads.toLocaleString()}H : ${coinflipStats.tails.toLocaleString()}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
+    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
 }
 
 async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
@@ -15,7 +15,7 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinf
     userTotalLosses -= bet
     await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet)
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-    interaction.editReply(`${coinflipStats.heads.toLocaleString()}H : ${coinflipStats.tails.toLocaleString()}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
+    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
 }
 
 module.exports = {
