@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles, Raid, regularRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
