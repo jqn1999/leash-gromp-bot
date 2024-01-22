@@ -7,7 +7,7 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
     userTotalEarnings += bet
     await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet)
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+    interaction.editReply(`${coinflipStats.heads.toLocaleString()}H : ${coinflipStats.tails.toLocaleString()}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
 }
 
 async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
@@ -15,7 +15,7 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinf
     userTotalLosses -= bet
     await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet)
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes} potatoes.`);
+    interaction.editReply(`${coinflipStats.heads.toLocaleString()}H : ${coinflipStats.tails.toLocaleString()}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
 }
 
 module.exports = {
@@ -75,13 +75,13 @@ module.exports = {
 
         const isBetGreaterThanZero = bet >= 1 ? true : false;
         if (!isBetGreaterThanZero) {
-            interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
         const isBetLessThanOrEqualUserAmount = bet <= userPotatoes ? true : false;
         if (!isBetLessThanOrEqualUserAmount) {
-            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet} potatoes! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 

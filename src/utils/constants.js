@@ -50,7 +50,7 @@ const GuildRoles = {
 const regularRaidMobs = [
     {
         name: "Celerity, the Swift Stalk",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198039459271282819/image.png?ex=65bd7431&is=65aaff31&hm=53491255e3e9ae4d0802b84df5a17a3256d28bee34b9ee70f6dea221d4021805&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `Deep within the verdant forests of the Potato Realm, adventurers encounter Celerity, the Swift Stalk, a celery stick infused with the essence of unparalleled speed. In this high-paced raid, players must navigate through a maze of rapidly growing vines and swiftly dodging the Stalk's lightning-fast attacks, testing their agility and coordination to claim victory over this fleet-footed foe.`,
         successDescription: 'With synchronized precision, the brave warriors strategically severs Celerity\'s roots, halting its lightning-speed assaults and claiming triumph over the Swift Stalk.',
         failureDescription: 'Overwhelmed by the relentless barrage of swift strikes, the adventurers succumb to Celerity\'s lightning-fast onslaught, leaving the forest engulfed in the echoes of their unsuccessful struggle.',

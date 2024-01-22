@@ -79,7 +79,7 @@ module.exports = {
             if (netAmount.toLowerCase() == 'all') {
                 totalAmount = userPotatoes;
                 if (totalAmount <= Bank.GUILD_TAX_BASE) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.GUILD_TAX_BASE} potatoes! You have ${userPotatoes} potatoes left.`);
+                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.GUILD_TAX_BASE.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                     return;
                 }
                 netAmount = Math.round((totalAmount - Bank.GUILD_TAX_BASE)/(1+Bank.GUILD_TAX_PERCENT));
@@ -91,7 +91,7 @@ module.exports = {
                 netAmount = Math.floor(Number(netAmount));
                 totalAmount = netAmount + calculateTax(netAmount);
                 if (netAmount > remainingBankSpace) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough guild bank space to deposit ${netAmount}. You have ${remainingBankSpace} remaining.`);
+                    interaction.editReply(`${userDisplayName}, you do not have enough guild bank space to deposit ${netAmount.toLocaleString()}. You have ${remainingBankSpace.toLocaleString()} remaining.`);
                     return;
                 }
                 if (isNaN(netAmount)) {
@@ -102,13 +102,13 @@ module.exports = {
 
             const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
             if (!isAmountGreaterThanZero) {
-                interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes} potatoes left.`);
+                interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
 
             const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes ? true : false;
             if (!isAmountLessThanOrEqualUserAmount) {
-                interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount} potatoes! Total amount required is ${totalAmount} potatoes. You have ${userPotatoes} potatoes left.`);
+                interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount.toLocaleString()} potatoes! Total amount required is ${totalAmount.toLocaleString()} potatoes. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
             userPotatoes -= totalAmount;
@@ -117,7 +117,7 @@ module.exports = {
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount} potatoes to your guild bank. You now have ${userPotatoes} potatoes and ${guildBankStored} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (member.role != GuildRoles.LEADER) {
                 interaction.editReply(`${userDisplayName} you cannot withdraw potatoes from the guild bank unless you are the leader of the guild!`);
@@ -132,7 +132,7 @@ module.exports = {
             } else {
                 netAmount = Math.floor(Number(netAmount));
                 if (netAmount > guildBankStored) {
-                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount} potatoes to withdraw. You have ${guildBankStored} potatoes stored. Withdraw 'all' or give a valid amount.`);
+                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount.toLocaleString()} potatoes to withdraw. You have ${guildBankStored.toLocaleString()} potatoes stored. Withdraw 'all' or give a valid amount.`);
                     return;
                 }
                 if (isNaN(netAmount)) {
@@ -143,20 +143,20 @@ module.exports = {
 
             const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
             if (!isAmountGreaterThanZero) {
-                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts from the guild bank! You have ${guildBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts from the guild bank! You have ${guildBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
 
             const isAmountLessThanOrEqualBankStoredAmount = netAmount <= guildBankStored ? true : false;
             if (!isAmountLessThanOrEqualBankStoredAmount) {
-                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount} potatoes from the guild bank! You have ${guildBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount.toLocaleString()} potatoes from the guild bank! You have ${guildBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
             userPotatoes += netAmount;
             guildBankStored -= netAmount;
             await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
-            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount} potatoes from your guild bank. You now have ${userPotatoes} potatoes and ${guildBankStored} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         }
     }
 }

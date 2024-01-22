@@ -100,7 +100,7 @@ module.exports = {
             targetUserTotalLosses -= robAmount;
             await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
             await dynamoHandler.updateUserPotatoesAndLosses(targetUserId, targetUserPotatoes, targetUserTotalLosses);
-            interaction.editReply(`${userDisplayName}, you rob ${robAmount} potatoes from <@${targetUserId}>. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+            interaction.editReply(`${userDisplayName}, you rob ${robAmount.toLocaleString()} potatoes from <@${targetUserId}>. You now have ${userPotatoes.toLocaleString()} potatoes and they have ${targetUserPotatoes.toLocaleString()} potatoes. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
         } else {
             const fineAmount = calculateFailedRobPenalty(userTotalWealth);
             userPotatoes -= fineAmount;
@@ -109,7 +109,7 @@ module.exports = {
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
             await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Rob.WORK_TIMER_INCREASE_MS);
-            interaction.editReply(`${userDisplayName}, you failed to rob potatoes from <@${targetUserId}>. You lose ${fineAmount} potatoes and now have ${userPotatoes} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+            interaction.editReply(`${userDisplayName}, you failed to rob potatoes from <@${targetUserId}>. You lose ${fineAmount.toLocaleString()} potatoes and now have ${userPotatoes.toLocaleString()} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
         }
         await dynamoHandler.updateUserRobTimer(userId, Rob.ROB_TIMER_SECONDS);
     }

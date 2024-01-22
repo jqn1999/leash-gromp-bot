@@ -16,12 +16,12 @@ class EmbedFactory {
         let fields = [];
         fields.push({
             name: "Current Potatoes:",
-            value: `${potatoes} potatoes`,
+            value: `${potatoes.toLocaleString()} potatoes`,
             inline: false,
         });
         fields.push({
             name: "Banked Potatoes:",
-            value: `${userDetails.bankStored} potatoes`,
+            value: `${userDetails.bankStored.toLocaleString()} potatoes`,
             inline: false,
         });
         fields.push({
@@ -31,12 +31,12 @@ class EmbedFactory {
         });
         fields.push({
             name: "Current Passive Income:",
-            value: `${userDetails.passiveAmount} potatoes per day`,
+            value: `${userDetails.passiveAmount.toLocaleString()} potatoes per day`,
             inline: false,
         });
         fields.push({
             name: "Current Bank Capacity:",
-            value: `${userDetails.bankCapacity} potatoes`,
+            value: `${userDetails.bankCapacity.toLocaleString()} potatoes`,
             inline: false,
         });
 
@@ -64,12 +64,12 @@ class EmbedFactory {
             .addFields(
                 {
                     name: "Total Earnings:",
-                    value: `${userDetails.totalEarnings} potatoes`,
+                    value: `${userDetails.totalEarnings.toLocaleString()} potatoes`,
                     inline: false,
                 },
                 {
                     name: "Total Losses:",
-                    value: `${userDetails.totalLosses} potatoes`,
+                    value: `${userDetails.totalLosses.toLocaleString()} potatoes`,
                     inline: false,
                 }
             );
@@ -124,7 +124,7 @@ class EmbedFactory {
             if (index < 5) {
                 const guild = {
                     name: `${index + 1}) ${element.guildName} (Level: ${element.level}, Members: ${element.memberList.length})`,
-                    value: `Leader: ${leader.username}, Raid Count: ${element.raidCount}`,
+                    value: `Leader: ${leader.username}, Raid Count: ${element.raidCount.toLocaleString()}`,
                     inline: false,
                 };
                 guildList.push(guild);
@@ -150,8 +150,8 @@ class EmbedFactory {
         let shopList = []
         for (const [index, element] of shopItems.entries()) {
             const item = {
-                name: `${element.id}) ${element.name} (${element.amount})`,
-                value: `${element.description}\nId: ${element.id} | Cost: ${element.cost}`,
+                name: `${element.id}) ${element.name} (${element.amount.toLocaleString()})`,
+                value: `${element.description}\nId: ${element.id} | Cost: ${element.cost.toLocaleString()}`,
                 inline: false,
             };
             shopList.push(item);
@@ -269,12 +269,12 @@ class EmbedFactory {
             .addFields(
                 {
                     name: `1: ${betDetails.optionOne}`,
-                    value: `${betDetails.optionOneTotal} potatoes`,
+                    value: `${betDetails.optionOneTotal.toLocaleString()} potatoes`,
                     inline: true,
                 },
                 {
                     name: `2: ${betDetails.optionTwo}`,
-                    value: `${betDetails.optionTwoTotal} potatoes`,
+                    value: `${betDetails.optionTwoTotal.toLocaleString()} potatoes`,
                     inline: true,
                 }
             );
@@ -311,22 +311,22 @@ class EmbedFactory {
         })
         fields.push({
             name: `Bank Stored:`,
-            value: `${guild.bankStored}`,
+            value: `${guild.bankStored.toLocaleString()}`,
             inline: true
         })
         fields.push({
             name: `Bank Capacity:`,
-            value: `${guild.bankCapacity}`,
+            value: `${guild.bankCapacity.toLocaleString()}`,
             inline: true
         })
         fields.push({
             name: `Total Earnings:`,
-            value: `${guild.totalEarnings}`,
+            value: `${guild.totalEarnings.toLocaleString()}`,
             inline: true
         })
         fields.push({
             name: `Raid Count:`,
-            value: `${guild.raidCount}`,
+            value: `${guild.raidCount.toLocaleString()}`,
             inline: true
         })
         fields.push({
@@ -429,12 +429,12 @@ class EmbedFactory {
         const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
         fields.push({
             name: `Total Potatoes ${gainOrLoss}:`,
-            value: `${totalRaidReward} potatoes`,
+            value: `${totalRaidReward.toLocaleString()} potatoes`,
             inline: false,
         })
         fields.push({
             name: `Split Potatoes ${gainOrLoss}:`,
-            value: `${splitRaidReward} potatoes`,
+            value: `${splitRaidReward.toLocaleString()} potatoes`,
             inline: true,
         })
 
@@ -451,7 +451,7 @@ class EmbedFactory {
 
         fields.push({
             name: `Raid Count:`,
-            value: `${raidCount+1}`,
+            value: `${(raidCount+1).toLocaleString()}`,
             inline: true,
         })
 
@@ -475,13 +475,13 @@ class EmbedFactory {
 
         fields.push({
             name: `Work Count:`,
-            value: `${newWorkCount}`,
+            value: `${newWorkCount.toLocaleString()}`,
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
         fields.push({
             name: `Potatoes ${gainOrLoss}:`,
-            value: `${potatoesGained} potatoes`,
+            value: `${potatoesGained.toLocaleString()} potatoes`,
             inline: true,
         })
 
@@ -512,6 +512,33 @@ class EmbedFactory {
             .setFooter({ text: footerText })
             .setTimestamp(Date.now())
             .setFields(fields)
+        return embed;
+    }
+
+    createBirthdayEmbed(sortedBirthdays) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        let userList = []
+        for (const [index, element] of sortedBirthdays.entries()) {
+            if (index < 5) {
+                const user = {
+                    name: `${index + 1}) ${element.birthday}`,
+                    value: `${element.username}`,
+                    inline: false,
+                };
+                userList.push(user);
+            } else {
+                break;
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Birthday List`)
+            .setDescription(`This is the next 5 birthdays for the server`)
+            .setColor("Random")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(userList)
         return embed;
     }
 }

@@ -46,13 +46,13 @@ module.exports = {
 
         const isAmountGreaterThanZero = amount >= 1 ? true : false;
         if (!isAmountGreaterThanZero) {
-            interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
         const isAmountLessThanOrEqualUserAmount = amount <= userPotatoes ? true : false;
         if (!isAmountLessThanOrEqualUserAmount) {
-            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to give ${amount} potatoes! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to give ${amount.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
@@ -80,6 +80,6 @@ module.exports = {
 
         await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
-        interaction.editReply(`${userDisplayName}, you give ${amount} potatoes to <@${targetUserId}>. You now have ${userPotatoes} potatoes and they have ${targetUserPotatoes} potatoes`);
+        interaction.editReply(`${userDisplayName}, you give ${amount.toLocaleString()} potatoes to <@${targetUserId}>. You now have ${userPotatoes.toLocaleString()} potatoes and they have ${targetUserPotatoes.toLocaleString()} potatoes`);
     }
 }

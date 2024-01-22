@@ -69,13 +69,13 @@ module.exports = {
 
         const isBetGreaterThanZero = bet >= 1 ? true : false;
         if (!isBetGreaterThanZero) {
-            interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
         const isBetLessThanOrEqualUserAmount = bet <= userPotatoes ? true : false;
         if (!isBetLessThanOrEqualUserAmount) {
-            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet} potatoes! You have ${userPotatoes} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
@@ -83,6 +83,6 @@ module.exports = {
         await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.addUserToBet(mostRecentBet.betId, userId, userDisplayName, bet, optionSelected);
 
-        interaction.editReply(`${userDisplayName} you have bet ${bet} potatoes for option ${optionSelected}!`)
+        interaction.editReply(`${userDisplayName} you have bet ${bet.toLocaleString()} potatoes for option ${optionSelected}!`)
     }
 }

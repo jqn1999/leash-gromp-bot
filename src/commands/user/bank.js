@@ -64,7 +64,7 @@ module.exports = {
             if (netAmount.toLowerCase() == 'all') {
                 totalAmount = userPotatoes;
                 if (totalAmount <= Bank.TAX_BASE) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.TAX_BASE} potatoes! You have ${userPotatoes} potatoes left.`);
+                    interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.TAX_BASE.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                     return;
                 }
                 netAmount = Math.round((totalAmount - Bank.TAX_BASE)/(1+Bank.TAX_PERCENT));
@@ -76,7 +76,7 @@ module.exports = {
                 netAmount = Math.floor(Number(netAmount));
                 totalAmount = netAmount + calculateTax(netAmount);
                 if (netAmount > remainingBankSpace) {
-                    interaction.editReply(`${userDisplayName}, you do not have enough bank space to deposit ${netAmount}. You have ${remainingBankSpace} remaining.`);
+                    interaction.editReply(`${userDisplayName}, you do not have enough bank space to deposit ${netAmount.toLocaleString()}. You have ${remainingBankSpace.toLocaleString()} remaining.`);
                     return;
                 }
                 if (isNaN(netAmount)) {
@@ -87,13 +87,13 @@ module.exports = {
 
             const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
             if (!isAmountGreaterThanZero) {
-                interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes} potatoes left.`);
+                interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
 
             const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes ? true : false;
             if (!isAmountLessThanOrEqualUserAmount) {
-                interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount} potatoes! Total amount required is ${totalAmount} potatoes. You have ${userPotatoes} potatoes left.`);
+                interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount.toLocaleString()} potatoes! Total amount required is ${totalAmount.toLocaleString()} potatoes. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
             userPotatoes -= totalAmount;
@@ -101,7 +101,7 @@ module.exports = {
             adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserAndBankStoredPotatoes(userId, userPotatoes, userBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount} potatoes to your bank. You now have ${userPotatoes} potatoes and ${userBankStored} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (userBankStored == 0) {
                 interaction.editReply(`${userDisplayName}, you do not have any potatoes to withdraw.`);
@@ -111,7 +111,7 @@ module.exports = {
             } else {
                 netAmount = Math.floor(Number(netAmount));
                 if (netAmount > userBankStored) {
-                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount} potatoes to withdraw. You have ${userBankStored} potatoes stored. Withdraw 'all' or give a valid amount.`);
+                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount.toLocaleString()} potatoes to withdraw. You have ${userBankStored.toLocaleString()} potatoes stored. Withdraw 'all' or give a valid amount.`);
                     return;
                 }
                 if (isNaN(netAmount)) {
@@ -122,19 +122,19 @@ module.exports = {
 
             const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
             if (!isAmountGreaterThanZero) {
-                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts! You have ${userBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts! You have ${userBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
 
             const isAmountLessThanOrEqualBankStoredAmount = netAmount <= userBankStored ? true : false;
             if (!isAmountLessThanOrEqualBankStoredAmount) {
-                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount} potatoes! You have ${userBankStored} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount.toLocaleString()} potatoes! You have ${userBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
             userPotatoes += netAmount;
             userBankStored -= netAmount;
             await dynamoHandler.updateUserAndBankStoredPotatoes(userId, userPotatoes, userBankStored);
-            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount} potatoes from your bank. You now have ${userPotatoes} potatoes and ${userBankStored} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
         }
     }
 }

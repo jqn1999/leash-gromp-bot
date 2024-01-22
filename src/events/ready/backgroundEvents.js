@@ -1,43 +1,7 @@
-const { ActivityType } = require("discord.js");
+const { getSortedBirthdays } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
-
-function crazyHelper(arr) {
-    const now = new Date();
-    const year = new Date().getFullYear();
-    const nww = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);
-    const nw = new Date(`${year}-${nww}`).getTime();
-
-    const newArr = arr.map(({
-        birthday: d,
-        username,
-        userId
-    }) => ({
-        birthday: d,
-        username,
-        userId,
-        d: `${d < nww ? (year + 1) : year}-${d}`
-    })).map(({
-        d,
-        ...rest
-    }) => ({
-        ...rest,
-        d,
-        ...{
-            t: new Date(d).getTime()
-        }
-    })).sort((a, b) => (a.t - nw) - (b.t - nw)).map(({
-        birthday,
-        username,
-        userId
-    }) => ({
-        birthday,
-        username,
-        userId
-    }));
-    return newArr;
-}
 
 let statuses = [
     {
@@ -72,10 +36,8 @@ module.exports = async (client) => {
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
                 const jsonChannel = JSON.parse(JSON.stringify(channel));
-                const listOfBirthdays = await dynamoHandler.getAllBirthdays();
-
-                const datesInOrder = crazyHelper(listOfBirthdays);
-                const nextBirthdayPerson = datesInOrder[0];
+                const birthdaysInOrder = await getSortedBirthdays();
+                const nextBirthdayPerson = birthdaysInOrder[0];
 
                 const now = new Date();
                 const currentDateFormatted = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);

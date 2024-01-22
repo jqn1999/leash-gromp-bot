@@ -23,7 +23,46 @@ function getUserInteractionDetails(interaction) {
     return [userId, username, userDisplayName];
 }
 
+async function getSortedBirthdays() {
+    const arr = await dynamoHandler.getAllBirthdays();
+
+    const now = new Date();
+    const year = new Date().getFullYear();
+    const nww = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);
+    const nw = new Date(`${year}-${nww}`).getTime();
+
+    const newArr = arr.map(({
+        birthday: d,
+        username,
+        userId
+    }) => ({
+        birthday: d,
+        username,
+        userId,
+        d: `${d < nww ? (year + 1) : year}-${d}`
+    })).map(({
+        d,
+        ...rest
+    }) => ({
+        ...rest,
+        d,
+        ...{
+            t: new Date(d).getTime()
+        }
+    })).sort((a, b) => (a.t - nw) - (b.t - nw)).map(({
+        birthday,
+        username,
+        userId
+    }) => ({
+        birthday,
+        username,
+        userId
+    }));
+    return newArr;
+}
+
 module.exports = {
     convertSecondstoMinutes,
-    getUserInteractionDetails
+    getUserInteractionDetails,
+    getSortedBirthdays
 }
