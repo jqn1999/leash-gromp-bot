@@ -505,9 +505,17 @@ class EmbedFactory {
             }
         }
 
+        // TODO: Remove in future this is mostly for memes
+        let mobDescription = '';
+        if (userDisplayName.includes('Charizard') && mob.name == sweetPotato.name) {
+            mobDescription = 'You meet a lovely sweet potato and it fails to convinces you to spare its life in exchange for buffing one of your stats. You decide to brutally murder the sweet potato and forcefully take the stats for yourself anyway. Check your profile!';
+        } else {
+            mobDescription = mob.description;
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
-            .setDescription(`${mob.description}${sweetPotatoReward}`)
+            .setDescription(`${mobDescription}${sweetPotatoReward}`)
             .setColor("Random")
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
