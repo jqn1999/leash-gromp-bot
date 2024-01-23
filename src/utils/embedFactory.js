@@ -508,7 +508,7 @@ class EmbedFactory {
         // TODO: Remove in future this is mostly for memes
         let mobDescription = '';
         if (userDisplayName.includes('Charizard') && mob.name == sweetPotato.name) {
-            mobDescription = 'Your lips curl up in disgust as you see a sweet potato appear in front of you. It begs and pleads, but it fails to convinces you to spare its life in exchange for buffing one of your stats. You decide to brutally murder the sweet potato and forcefully take the stats for yourself anyway. Check your profile!';
+            mobDescription = 'Your lips curl up in disgust as you see a sweet potato appear in front of you. It begs and pleads, but it fails to convince you to spare its life in exchange for buffing one of your stats. You decide to brutally murder the sweet potato and forcefully take the stats for yourself anyway. Check your profile!';
         } else {
             mobDescription = mob.description;
         }
