@@ -271,7 +271,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
-                amount: 350000,
+                amount: 500000,
                 cost: 5000000,
                 description: "A large squad of trained professionals in the art of potato cultivation",
                 id: 4,
@@ -279,7 +279,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
-                amount: 500000,
+                amount: 1000000,
                 cost: 20000000,
                 description: "Armed with cutting-edge techniques and sustainable practices, this skilled team maximizes potato yields through eco-friendly methods, ensuring a lush harvest every day",
                 id: 5,
@@ -287,7 +287,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
-                amount: 750000,
+                amount: 2000000,
                 cost: 50000000,
                 description: "This top-tier group of agricultural virtuosos seamlessly integrates various cultivation methods, creating a harmonious environment for potato growth",
                 id: 6,
