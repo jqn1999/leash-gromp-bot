@@ -422,7 +422,7 @@ class EmbedFactory {
 
         fields.push({
             name: `Success Chance:`,
-            value: `${(successChance*100).toFixed(2)}% chance`,
+            value: `${(successChance * 100).toFixed(2)}% chance`,
             inline: true,
         })
 
@@ -451,7 +451,7 @@ class EmbedFactory {
 
         fields.push({
             name: `Raid Count:`,
-            value: `${(raidCount+1).toLocaleString()}`,
+            value: `${(raidCount + 1).toLocaleString()}`,
             inline: true,
         })
 
@@ -539,6 +539,131 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(userList)
+        return embed;
+    }
+
+    createCoinflipEmbed(result, headsCount, tailsCount, userPotatoes, bet) {
+        let fields = [];
+        const potatoResultLabel = bet >= 0 ? 'Gained' : 'Lost';
+        const avatarUrl = result == 'heads'
+            ? "https://cdn.discordapp.com/emojis/656933460484685873.webp?size=96&quality=lossless"
+            : "https://cdn.discordapp.com/attachments/533073599435636739/1199161990787104878/Miles_22Tails22_Prower_Sonic_and_All-Stars_Racing_Transformed.png?ex=65c189a1&is=65af14a1&hm=f7d3ad2b55689f5fe5a833322af1e37239039d0eeec3ea55aa45219ff6a30d5d&"
+
+        fields.push({
+            name: `Heads Count:`,
+            value: `${headsCount.toLocaleString()} heads`,
+            inline: true,
+        })
+        fields.push({
+            name: `Tails Count:`,
+            value: `${tailsCount.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: '\n',
+            value: '\n',
+            inline: false
+        })
+        fields.push({
+            name: `Potatoes ${potatoResultLabel}:`,
+            value: `${bet.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Result was... ${result}!`)
+            .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and coinflip stats.`)
+            .setColor("Random")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        let fields = [];
+        const robResultLabel = robOrFineAmount > 0 ? 'Successfully Robbed' : 'Failed to Rob';
+        const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
+
+        fields.push({
+            name: `Chance to Rob:`,
+            value: `${chanceToRob}%`,
+            inline: true,
+        })
+        fields.push({
+            name: `Target's Potatoes:`,
+            value: `${targetUserPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: '\n',
+            value: '\n',
+            inline: false
+        })
+        fields.push({
+            name: `Potatoes ${potatoResultLabel}:`,
+            value: `${robOrFineAmount.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} ${robResultLabel} ${targetUserDisplayName}!`)
+            .setDescription(`Displayed below are your chances to rob, current potatoes, target's potatoes, and how many potatoes were gained or lost.`)
+            .setColor("Random")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        let fields = [];
+
+
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Target's Potatoes:`,
+            value: `${targetUserPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: '\n',
+            value: '\n',
+            inline: false
+        })
+        fields.push({
+            name: `Potatoes Given:`,
+            value: `${amount.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} Gives Potatoes to ${targetUserDisplayName}!`)
+            .setDescription(`Displayed below are your current potatoes, your target's potatoes, and how many potatoes you gave.`)
+            .setColor("Random")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
         return embed;
     }
 }

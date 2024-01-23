@@ -2,6 +2,8 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
@@ -48,6 +50,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userAvatar = interaction.user.avatar;
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -92,6 +95,9 @@ module.exports = {
         const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
         const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
         const userSuccessfulRob = determineRobOutcome(robChance);
+        const robChanceDisplay = (robChance*100).toFixed(2);
+
+        // TODO: Move each of these into flows functions in future
         if (userSuccessfulRob) {
             const robAmount = calculateRobAmount(targetUserPotatoes);
             userPotatoes += robAmount;
@@ -100,7 +106,8 @@ module.exports = {
             targetUserTotalLosses -= robAmount;
             await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
             await dynamoHandler.updateUserPotatoesAndLosses(targetUserId, targetUserPotatoes, targetUserTotalLosses);
-            interaction.editReply(`${userDisplayName}, you rob ${robAmount.toLocaleString()} potatoes from <@${targetUserId}>. You now have ${userPotatoes.toLocaleString()} potatoes and they have ${targetUserPotatoes.toLocaleString()} potatoes. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+            embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            interaction.editReply({ embeds: [embed] });
         } else {
             const fineAmount = calculateFailedRobPenalty(userTotalWealth);
             userPotatoes -= fineAmount;
@@ -109,7 +116,8 @@ module.exports = {
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
             await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Rob.WORK_TIMER_INCREASE_MS);
-            interaction.editReply(`${userDisplayName}, you failed to rob potatoes from <@${targetUserId}>. You lose ${fineAmount.toLocaleString()} potatoes and now have ${userPotatoes.toLocaleString()} potatoes. You will be unable to work for 2 hours. You had a ${(robChance*100).toFixed(2)}% chance to rob them.`);
+            embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            interaction.editReply({ embeds: [embed] });
         }
         await dynamoHandler.updateUserRobTimer(userId, Rob.ROB_TIMER_SECONDS);
     }

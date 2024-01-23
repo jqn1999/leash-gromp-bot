@@ -1,6 +1,8 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "give",
@@ -25,6 +27,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userAvatar = interaction.user.avatar;
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -80,6 +83,7 @@ module.exports = {
 
         await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
         await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
-        interaction.editReply(`${userDisplayName}, you give ${amount.toLocaleString()} potatoes to <@${targetUserId}>. You now have ${userPotatoes.toLocaleString()} potatoes and they have ${targetUserPotatoes.toLocaleString()} potatoes`);
+        embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes);
+        interaction.editReply({ embeds: [embed] });
     }
 }

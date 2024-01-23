@@ -1,21 +1,25 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
-    userPotatoes += bet
-    userTotalEarnings += bet
-    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet)
+    userPotatoes += bet;
+    userTotalEarnings += bet;
+    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet);
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
+    embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, bet);
+    interaction.editReply({ embeds: [embed] });
 }
 
 async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
-    userPotatoes -= bet
-    userTotalLosses -= bet
-    await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet)
+    userPotatoes -= bet;
+    userTotalLosses -= bet;
+    await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet);
     await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-    interaction.editReply(`${coinflipStats.heads}H : ${coinflipStats.tails}T | Result was... ${result}! You now have ${userPotatoes.toLocaleString()} potatoes.`);
+    embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, -bet);
+    interaction.editReply({ embeds: [embed] });
 }
 
 module.exports = {
