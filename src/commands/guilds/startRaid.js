@@ -31,7 +31,7 @@ function determineRaidResult(successChance) {
 
 const raidScenarios = [
     {
-        action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(hardRaidMobs);
@@ -54,7 +54,7 @@ const raidScenarios = [
         chance: .05
     },
     {
-        action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
@@ -77,7 +77,7 @@ const raidScenarios = [
         chance: .3
     },
     {
-        action: async (guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs);
@@ -174,7 +174,7 @@ module.exports = {
         let potatoesGained;
         for (const scenario of raidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildName, raidList, raidCount, totalMultiplier, interaction);
+                potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, interaction);
                 break;
             }
         }
