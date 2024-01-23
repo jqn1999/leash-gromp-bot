@@ -41,6 +41,7 @@ const raidScenarios = [
                 totalRaidReward = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = hardRaidMob.successDescription;
+                await dynamoHandler.updateGuildRaidCount(guildId);
             } else {
                 totalRaidReward = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
@@ -63,6 +64,7 @@ const raidScenarios = [
                 totalRaidReward = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = mediumRaidMob.successDescription;
+                await dynamoHandler.updateGuildRaidCount(guildId);
             } else {
                 totalRaidReward = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
@@ -85,6 +87,7 @@ const raidScenarios = [
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.successDescription;
+                await dynamoHandler.updateGuildRaidCount(guildId);
             } else {
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
@@ -177,7 +180,7 @@ module.exports = {
         }
         guildTotalEarnings += potatoesGained;
         const emptyRaidList = [];
-        await dynamoHandler.updateGuildRaidCountAndTimer(guildId);
+        await dynamoHandler.updateGuildRaidTimer(guildId);
         await dynamoHandler.updateGuildActiveRaidStatus(guildId, false);
         await dynamoHandler.updateGuildRaidList(guildId, emptyRaidList);
         await dynamoHandler.updateGuildTotalEarnings(guildId, guildTotalEarnings);

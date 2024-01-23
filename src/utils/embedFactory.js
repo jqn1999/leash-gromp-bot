@@ -427,6 +427,7 @@ class EmbedFactory {
         })
 
         const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
+        raidCount = totalRaidReward >= 0 ? raidCount+1 : raidCount
         fields.push({
             name: `Total Potatoes ${gainOrLoss}:`,
             value: `${totalRaidReward.toLocaleString()} potatoes`,
@@ -451,7 +452,7 @@ class EmbedFactory {
 
         fields.push({
             name: `Raid Count:`,
-            value: `${(raidCount + 1).toLocaleString()}`,
+            value: `${(raidCount).toLocaleString()}`,
             inline: true,
         })
 

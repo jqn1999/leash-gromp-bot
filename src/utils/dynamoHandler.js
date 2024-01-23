@@ -1175,7 +1175,7 @@ const updateGuildActiveRaidStatus = async function (guildId, activeRaid) {
     return response;
 }
 
-const updateGuildRaidCountAndTimer = async function (guildId) {
+const updateGuildRaidCount = async function (guildId) {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -1185,9 +1185,35 @@ const updateGuildRaidCountAndTimer = async function (guildId) {
         Key: {
             guildId: guildId,
         },
-        UpdateExpression: "set raidCount = :raidCount, raidTimer = :raidTimer",
+        UpdateExpression: "set raidCount = :raidCount",
         ExpressionAttributeValues: {
             ":raidCount": guild.raidCount+1,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateGuildRaidCount: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateGuildRaidCount error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateGuildRaidTimer = async function (guildId) {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const guild = await findGuildById(guildId);
+    const params = {
+        TableName: awsConfigurations.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set raidTimer = :raidTimer",
+        ExpressionAttributeValues: {
             ":raidTimer": Date.now(),
         },
         ReturnValues: "ALL_NEW",
@@ -1195,10 +1221,10 @@ const updateGuildRaidCountAndTimer = async function (guildId) {
 
     const response = await docClient.update(params).promise()
         .then(async function (data) {
-            // console.debug(`updateGuildRaidCountAndTimer: ${JSON.stringify(data)}`)
+            // console.debug(`updateGuildRaidTimer: ${JSON.stringify(data)}`)
         })
         .catch(function (err) {
-            console.debug(`updateGuildRaidCountAndTimer error: ${JSON.stringify(err)}`)
+            console.debug(`updateGuildRaidTimer error: ${JSON.stringify(err)}`)
         });
     return response;
 }
@@ -1406,7 +1432,8 @@ module.exports = {
     updateGuildBankStored,
     updateGuildRaidList,
     updateGuildActiveRaidStatus,
-    updateGuildRaidCountAndTimer,
+    updateGuildRaidCount,
+    updateGuildRaidTimer,
     updateGuildTotalEarnings,
 
     addNewUserAttribute,
