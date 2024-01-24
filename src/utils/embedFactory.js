@@ -585,7 +585,7 @@ class EmbedFactory {
         })
 
         const embed = new EmbedBuilder()
-            .setTitle(`Result was... ${result}!`)
+            .setTitle(`Coinflip result was... ${result}!`)
             .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and coinflip stats.`)
             .setColor("Random")
             .setThumbnail(avatarUrl)
@@ -598,7 +598,7 @@ class EmbedFactory {
     createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
-        const robResultLabel = robOrFineAmount > 0 ? 'Successfully Robbed' : 'Failed to Rob';
+        const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
         const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
 
         fields.push({
@@ -666,7 +666,7 @@ class EmbedFactory {
         
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} Gives Potatoes to ${targetUserDisplayName}!`)
+            .setTitle(`${userDisplayName} gives potatoes to ${targetUserDisplayName}!`)
             .setDescription(`Displayed below are your current potatoes, your target's potatoes, and how many potatoes you gave.`)
             .setColor("Random")
             .setThumbnail(avatarUrl)

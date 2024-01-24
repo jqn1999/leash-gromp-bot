@@ -83,7 +83,7 @@ class WorkFactory {
         let userTotalLosses = userDetails.totalLosses;
         let userMultiplier = userDetails.workMultiplierAmount;
     
-        let potatoesLost = await calculateGainAmount(workGainAmount*5, Work.MAX_POISON_POTATO, multiplier, userMultiplier);
+        let potatoesLost = await calculateGainAmount(workGainAmount*10, Work.MAX_POISON_POTATO, multiplier, userMultiplier);
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost

@@ -5,11 +5,12 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, coinflipStats, result, interaction) {
-    userPotatoes += bet;
-    userTotalEarnings += bet;
-    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, bet);
+    const rewardAfterTaxes = Math.round(bet*.95);
+    userPotatoes += rewardAfterTaxes;
+    userTotalEarnings += rewardAfterTaxes;
+    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, rewardAfterTaxes);
     await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-    embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, bet);
+    embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, rewardAfterTaxes);
     interaction.editReply({ embeds: [embed] });
 }
 
