@@ -1027,7 +1027,8 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         activeRaid: false,
         raidTimer: 0,
         inviteList: [],
-        raidList: []
+        raidList: [],
+        raidRewardMultiplier: 1
     };
 
     var params = {

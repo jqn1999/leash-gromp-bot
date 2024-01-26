@@ -31,14 +31,14 @@ function determineRaidResult(successChance) {
 
 const raidScenarios = [
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(hardRaidMobs);
             const successChance = determinRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY);
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
-                totalRaidReward = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier);
+                totalRaidReward = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = hardRaidMob.successDescription;
                 await dynamoHandler.updateGuildRaidCount(guildId);
@@ -54,14 +54,14 @@ const raidScenarios = [
         chance: .05
     },
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
             const successChance = determinRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY);
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
-                totalRaidReward = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier);
+                totalRaidReward = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = mediumRaidMob.successDescription;
                 await dynamoHandler.updateGuildRaidCount(guildId);
@@ -77,14 +77,14 @@ const raidScenarios = [
         chance: .3
     },
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs);
             const successChance = determinRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY);
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
-                totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier);
+                totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.successDescription;
                 await dynamoHandler.updateGuildRaidCount(guildId);
@@ -130,6 +130,7 @@ module.exports = {
         const guildId = guild.guildId;
         const guildName = guild.guildName;
         const memberList = guild.memberList;
+        const raidRewardMultiplier = guild.raidRewardMultiplier;
         let raidList = guild.raidList;
         let activeRaid = guild.activeRaid;
         let raidCount = guild.raidCount;
@@ -174,7 +175,7 @@ module.exports = {
         let potatoesGained;
         for (const scenario of raidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, interaction);
+                potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
                 break;
             }
         }
