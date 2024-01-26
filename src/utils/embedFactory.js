@@ -334,6 +334,11 @@ class EmbedFactory {
             value: `${guild.activeRaid}`,
             inline: true
         })
+        fields.push({
+            name: `Reward Multiplier:`,
+            value: `${guild.raidRewardMultiplier}`,
+            inline: true
+        })
 
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
