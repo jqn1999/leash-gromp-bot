@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {

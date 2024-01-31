@@ -185,12 +185,12 @@ class EmbedFactory {
 
         fields.push({
             name: `1) ${betDetails.optionOne}`,
-            value: `${betDetails.optionOneTotal} potatoes`,
+            value: `${betDetails.optionOneTotal.toLocaleString()} potatoes`,
             inline: true,
         })
         fields.push({
             name: `2) ${betDetails.optionTwo}`,
-            value: `${betDetails.optionTwoTotal} potatoes`,
+            value: `${betDetails.optionTwoTotal.toLocaleString()} potatoes`,
             inline: true,
         })
 
@@ -213,8 +213,8 @@ class EmbedFactory {
             optionOneSplit = largestVoterOptionOne.bet / (betDetails.optionOneTotal - betDetails.baseAmount);
             optionOnePercentage = (optionOneSplit * 100).toFixed(2);
             fields.push({
-                name: `${betDetails.optionOne} Largest Bet: ${largestVoterOptionOne.bet}`,
-                value: `${largestVoterOptionOne.displayName} wins ${Math.floor(optionOneSplit * betDetails.optionTwoTotal)} potatoes (${optionOnePercentage}%)`,
+                name: `${betDetails.optionOne} Largest Bet: ${largestVoterOptionOne.bet.toLocaleString()}`,
+                value: `${largestVoterOptionOne.displayName} wins ${(Math.floor(optionOneSplit * betDetails.optionTwoTotal)).toLocaleString()} potatoes (${optionOnePercentage}%)`,
                 inline: false,
             })
         }
@@ -233,13 +233,13 @@ class EmbedFactory {
             optionTwoPercentage = (optionTwoSplit * 100).toFixed(2)
             fields.push({
                 name: `${betDetails.optionTwo} Largest Bet: ${largestVoterOptionTwo.bet}`,
-                value: `${largestVoterOptionTwo.displayName} wins ${Math.floor(optionTwoSplit * betDetails.optionOneTotal)} potatoes (${optionTwoPercentage}%)`,
+                value: `${largestVoterOptionTwo.displayName} wins ${(Math.floor(optionTwoSplit * betDetails.optionOneTotal)).toLocaleString()} potatoes (${optionTwoPercentage}%)`,
                 inline: false,
             })
         }
         fields.push({
             name: `Base Bet Amount (per side):`,
-            value: `${betDetails.baseAmount} potatoes)`,
+            value: `${betDetails.baseAmount.toLocaleString()} potatoes)`,
             inline: false,
         })
 

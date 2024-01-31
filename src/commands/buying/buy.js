@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType, EmbedBuilder } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const { shops } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
