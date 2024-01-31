@@ -232,7 +232,7 @@ class EmbedFactory {
             optionTwoSplit = largestVoterOptionTwo.bet / (betDetails.optionTwoTotal - betDetails.baseAmount);
             optionTwoPercentage = (optionTwoSplit * 100).toFixed(2)
             fields.push({
-                name: `${betDetails.optionTwo} Largest Bet: ${largestVoterOptionTwo.bet}`,
+                name: `${betDetails.optionTwo} Largest Bet: ${largestVoterOptionTwo.bet.toLocaleString()}`,
                 value: `${largestVoterOptionTwo.displayName} wins ${(Math.floor(optionTwoSplit * betDetails.optionOneTotal)).toLocaleString()} potatoes (${optionTwoPercentage}%)`,
                 inline: false,
             })

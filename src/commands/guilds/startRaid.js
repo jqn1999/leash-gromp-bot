@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -34,6 +34,28 @@ const raidScenarios = [
         action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const successChance = determinRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY);
+            const successfulRaid = determineRaidResult(successChance);
+            if (successfulRaid) {
+                totalRaidReward = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = metalKingRaidBoss.successDescription;
+                await dynamoHandler.updateGuildRaidCount(guildId);
+            } else {
+                totalRaidReward = Math.round(Raid.LEGENDARY_RAID_PENALTY * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                raidResultDescription = metalKingRaidBoss.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, metalKingRaidBoss, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidReward;
+        },
+        chance: .01
+    },
+    {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let splitRaidReward, totalRaidReward, raidResultDescription;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(hardRaidMobs);
             const successChance = determinRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY);
             const successfulRaid = determineRaidResult(successChance);
@@ -51,7 +73,7 @@ const raidScenarios = [
             interaction.editReply({ embeds: [embed] });
             return totalRaidReward;
         },
-        chance: .05
+        chance: .06
     },
     {
         action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -74,7 +96,7 @@ const raidScenarios = [
             interaction.editReply({ embeds: [embed] });
             return totalRaidReward;
         },
-        chance: .3
+        chance: .26
     },
     {
         action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {

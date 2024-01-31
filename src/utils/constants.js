@@ -35,11 +35,14 @@ const Raid = {
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
     MEDIUM_RAID_REWARD: 500000,
-    MEDIUM_RAID_PENALTY: -400000,
+    MEDIUM_RAID_PENALTY: -500000,
     MEDIUM_RAID_DIFFICULTY: 60,
     HARD_RAID_REWARD: 5000000,
-    HARD_RAID_PENALTY: -1000000,
+    HARD_RAID_PENALTY: -3500000,
     HARD_RAID_DIFFICULTY: 150,
+    LEGENDARY_RAID_REWARD: 20000000,
+    LEGENDARY_RAID_PENALTY: -1000000,
+    LEGENDARY_RAID_DIFFICULTY: 500,
 }
 
 const GuildRoles = {
@@ -95,6 +98,15 @@ const hardRaidMobs = [
         credit: 'Inspired by Zoodbarg'
     }
 ]
+
+const metalKingRaidBoss = {
+        name: "Metal King Potato",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
+        description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
+        successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
+        failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
+        credit: 'Inspired by RednaxeIa'
+}
 
 const regularWorkMobs = [
     {
@@ -385,6 +397,7 @@ module.exports = {
     Raid,
     regularRaidMobs,
     mediumRaidMobs,
+    metalKingRaidBoss,
     hardRaidMobs,
     regularWorkMobs,
     largePotato,
