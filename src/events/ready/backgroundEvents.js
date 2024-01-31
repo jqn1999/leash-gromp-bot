@@ -41,7 +41,8 @@ module.exports = async (client) => {
 
                 const now = new Date();
                 const currentDateFormatted = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);
-                if (currentDateFormatted == nextBirthdayPerson.birthday && (now.getHours() == 0 || now.getHours() == 12)) {
+                // Want to alert from 12-1 AM and 12-1 PM EST. Date is given at UTC so add 5 hours
+                if (currentDateFormatted == nextBirthdayPerson.birthday && (now.getHours() == 5 || now.getHours() == 17)) {
                     const roleId = '1188530438805930105'; // TODO change in future to actual bday role <@&${roleId}> 
                     channel.setName(`happy bday ${nextBirthdayPerson.username}`);
                     channel.send(`🎂 It is <@${nextBirthdayPerson.userId}>\'s birthday! 🥳 Congrats on surviving another year and everyone wish ${nextBirthdayPerson.username} a happy birthday! 🎉`);

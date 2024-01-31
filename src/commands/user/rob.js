@@ -17,10 +17,16 @@ function calculateFailedRobPenalty(userTotalWealth) {
 }
 
 function calculateRobAmount(targetUserPotatoes) {
+    if (targetUserPotatoes < 0) {
+        return 0
+    }
     return Math.floor(targetUserPotatoes * getRandomFromInterval(.25, .50))
 }
 
 function calculateRobChance(userPotatoes, targetUserPotatoes) {
+    if (userPotatoes < 0) {
+        return .25;
+    }
     const total = userPotatoes + targetUserPotatoes;
     const robChance = .05 + (.2 - (userPotatoes/total*.2))
     return robChance

@@ -80,7 +80,7 @@ const mediumRaidMobs = [
 const hardRaidMobs = [
     {
         name: "Netherfig, the Abyssal Figwraith",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        thumbnailUrl: "https://media.discordapp.net/attachments/221456693127675904/1201738231243341885/plant.png?ex=65cae8f1&is=65b873f1&hm=44ed099acc8954ccd201e86299bebd47fcf660430fd54aae7e98f9df089aea5d&",
         description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
         successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
         failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',

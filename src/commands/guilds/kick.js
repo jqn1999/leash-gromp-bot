@@ -1,16 +1,16 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const { GuildRoles } = require("../../utils/constants");
+const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
-    name: "invite",
-    description: "Adds a user to the guild's invitation list",
+    name: "kick",
+    description: "Kick a member from the guild",
     devOnly: false,
     options: [
         {
-            name: 'invitee',
-            description: 'Person you want to invite to the guild',
+            name: 'user',
+            description: 'Person you want to kick from the guild',
             required: true,
             type: ApplicationCommandOptionType.Mentionable,
         }
@@ -19,7 +19,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const targetUser = interaction.options.get('invitee')?.value;
+        const targetUser = interaction.options.get('user')?.value;
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -29,18 +29,12 @@ module.exports = {
 
         const userGuildId = userDetails.guildId;
         if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild and cannot invite anyone!`);
+            interaction.editReply(`${userDisplayName} you have no guild!`);
             return;
         }
-
         let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for your guild information. Try again!`);
-            return;
-        }
         const guildId = guild.guildId;
-        const memberList = guild.memberList;
-        let inviteList = guild.inviteList;
+        let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {
@@ -48,19 +42,25 @@ module.exports = {
             return;
         }
 
-        const doesUserHaveInvitationRights = member.role == GuildRoles.LEADER;
-        if (!doesUserHaveInvitationRights) {
-            interaction.editReply(`${userDisplayName} you do not have valid permission to issue invites to your guild, '${guild.guildName}'.`);
+        if (member.role != GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} you need to be the leader to kick members.`);
             return;
         }
 
-        if (inviteList.includes(targetUser)) {
-            interaction.editReply(`${userDisplayName} the user <@${targetUser}> has already been invited to your guild.`);
+        const targetMember = memberList.find((currentMember) => currentMember.id == targetUser)
+        if (!targetMember) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving your target's data in your guild. Let an admin know!`);
             return;
         }
 
-        inviteList.push(targetUser);
-        await dynamoHandler.updateGuildInviteList(guildId, inviteList);
-        interaction.editReply(`${userDisplayName} you have invited <@${targetUser}> to your guild, '${guild.guildName}'!`);
+        if (userId == targetUser) {
+            interaction.editReply(`${userDisplayName} you cannot kick yourself.`);
+            return;
+        }
+
+        let newMemberList = memberList.filter((user) => user.id != targetUser)
+        await dynamoHandler.updateGuildMemberList(guildId, newMemberList);
+        await dynamoHandler.updateUserGuildId(targetUser, 0)
+        interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }
 }
