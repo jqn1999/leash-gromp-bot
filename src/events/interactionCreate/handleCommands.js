@@ -60,7 +60,7 @@ module.exports = async (client, interaction) => {
             }
         }
 
-        const validChannels = ['1187561420406136843', '796873375632195605', '1188525931346792498', '1188539987118010408'];
+        const validChannels = ['1187561420406136843', '796873375632195605', '1188525931346792498', '1188539987118010408','1203822914437124188'];
         if (!validChannels.includes(interaction.channel.id)) {
             interaction.reply({
                 content: 'This channel is not registered to run commands!',
