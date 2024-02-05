@@ -60,7 +60,7 @@ module.exports = {
 
         let newMemberList = memberList.filter((user) => user.id != targetUser)
         await dynamoHandler.updateGuildMemberList(guildId, newMemberList);
-        await dynamoHandler.updateUserGuildId(targetUser, 0)
+        await dynamoHandler.updateUserDatabase(targetUser, "guildId", guildId);
         interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }
 }

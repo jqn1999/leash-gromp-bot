@@ -1,4 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
+const { awsConfigurations } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -9,7 +10,8 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
     userPotatoes += rewardAfterTaxes;
     userTotalEarnings += rewardAfterTaxes;
     await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, rewardAfterTaxes);
-    await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+    await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, rewardAfterTaxes);
     interaction.editReply({ embeds: [embed] });
 }
@@ -18,7 +20,8 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinf
     userPotatoes -= bet;
     userTotalLosses -= bet;
     await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet);
-    await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
+    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+    await dynamoHandler.updateUserDatabase(userId, "userTotalLosses", userTotalLosses);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, -bet);
     interaction.editReply({ embeds: [embed] });
 }

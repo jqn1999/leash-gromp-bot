@@ -1,5 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
-const { Work } = require("../utils/constants")
+const { Work, awsConfigurations } = require("../utils/constants")
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier) {
@@ -15,7 +15,8 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount*20, Work.MAX_METAL_POTATO, multiplier, userMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
-        await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
 
         rawPassiveRewardAmount = userPassiveAmount * metalPotatoRewards.passiveReward;
         actualPassiveRewardAmount = calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount, metalPotatoRewards.maxPassiveGain);
@@ -35,7 +36,7 @@ class WorkFactory {
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
         await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
-        await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return potatoesGained;
     }
 
@@ -73,7 +74,7 @@ class WorkFactory {
                 await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
                 break;
         }
-        await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return random;
     }
 
@@ -87,9 +88,9 @@ class WorkFactory {
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost
-        
-        await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-        await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Work.POISON_POTATO_TIMER_INCREASE_MS);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now()+Work.POISON_POTATO_TIMER_INCREASE_MS);
         return potatoesLost;
     }
     
@@ -102,8 +103,9 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount*100, Work.MAX_GOLDEN_POTATO, multiplier, userMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
-        await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-        await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return potatoesGained;
     }
     
@@ -116,8 +118,9 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount*10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
-        await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-        await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return potatoesGained;
     }
     
@@ -130,8 +133,9 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, userMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
-        await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-        await dynamoHandler.updateUserWorkTimer(userId);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return potatoesGained;
     }
 }

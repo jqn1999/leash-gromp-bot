@@ -9,9 +9,9 @@ async function handleGuildCreation(userId, username, userPotatoes, guildName, th
     const nextGuildId = mostRecentGuild.length > 0 ? mostRecentGuild[0].guildId + 1 : 1;
 
     userPotatoes -= GUILD_COST;
-    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
     await dynamoHandler.createGuild(nextGuildId, guildName, userId, username, thumbnailUrl);
-    await dynamoHandler.updateUserGuildId(userId, nextGuildId)
+    await dynamoHandler.updateUserDatabase(userId, "guildId", nextGuildId);
 }
 
 module.exports = {

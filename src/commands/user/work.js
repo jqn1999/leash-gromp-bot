@@ -53,7 +53,7 @@ const workScenarios = [
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
             } else {
-                await dynamoHandler.updateUserWorkTimer(userId);
+                await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
                 potatoesGained = 0;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }

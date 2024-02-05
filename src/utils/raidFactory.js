@@ -13,11 +13,13 @@ class RaidFactory {
             if (splitRewardAmount > 0) {
                 userPotatoes += splitRewardAmount;
                 userTotalEarnings += splitRewardAmount;
-                await dynamoHandler.updateUserPotatoesAndEarnings(member.id, userPotatoes, userTotalEarnings);
+                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
+                await dynamoHandler.updateUserDatabase(member.id, "totalEarnings", userTotalEarnings);
             } else {
                 userPotatoes += splitRewardAmount;
                 userTotalLosses += splitRewardAmount;
-                await dynamoHandler.updateUserPotatoesAndLosses(member.id, userPotatoes, userTotalLosses);
+                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
+                await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
             }
         })
         return splitRewardAmount;

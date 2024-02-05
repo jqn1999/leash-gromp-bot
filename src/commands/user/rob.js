@@ -108,10 +108,14 @@ module.exports = {
             const robAmount = calculateRobAmount(targetUserPotatoes);
             userPotatoes += robAmount;
             userTotalEarnings += robAmount;
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+
             targetUserPotatoes -= robAmount;
             targetUserTotalLosses -= robAmount;
-            await dynamoHandler.updateUserPotatoesAndEarnings(userId, userPotatoes, userTotalEarnings);
-            await dynamoHandler.updateUserPotatoesAndLosses(targetUserId, targetUserPotatoes, targetUserTotalLosses);
+            await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
+            await dynamoHandler.updateUserDatabase(targetUserId, "totalLosses", targetUserTotalLosses);
+
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         } else {
@@ -120,11 +124,13 @@ module.exports = {
             userTotalLosses -= fineAmount;
             adminUserShare = Math.floor(fineAmount*.10);
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-            await dynamoHandler.updateUserPotatoesAndLosses(userId, userPotatoes, userTotalLosses);
-            await dynamoHandler.updateUserWorkTimerAdditionalTime(userId, Rob.WORK_TIMER_INCREASE_MS);
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
+            await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now()+Rob.WORK_TIMER_INCREASE_MS);
+
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        await dynamoHandler.updateUserRobTimer(userId, Rob.ROB_TIMER_SECONDS);
+        await dynamoHandler.updateUserDatabase(userId, "robTimer", Rob.ROB_TIMER_SECONDS);
     }
 }

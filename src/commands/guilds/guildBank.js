@@ -115,7 +115,7 @@ module.exports = {
             guildBankStored += netAmount;
             adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-            await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
@@ -154,7 +154,7 @@ module.exports = {
             }
             userPotatoes += netAmount;
             guildBankStored -= netAmount;
-            await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
             interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         }
