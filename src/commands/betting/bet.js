@@ -80,7 +80,7 @@ module.exports = {
         }
 
         userPotatoes -= bet;
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.addUserToBet(mostRecentBet.betId, userId, userDisplayName, bet, optionSelected);
 
         interaction.editReply(`${userDisplayName} you have bet ${bet.toLocaleString()} potatoes for option ${optionSelected}!`)

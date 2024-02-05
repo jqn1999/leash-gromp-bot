@@ -80,9 +80,8 @@ module.exports = {
 
         userPotatoes -= amount;
         targetUserPotatoes += amount;
-
-        await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
-        await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
         embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes);
         interaction.editReply({ embeds: [embed] });
     }

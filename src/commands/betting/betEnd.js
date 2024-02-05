@@ -16,7 +16,8 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
         let userId = user.userId;
         let newUserPotatoes = user.potatoes + userSplit;
         let userTotalEarnings = user.totalEarnings + Math.floor(userBet.bet/(winningSideTotal - betBaseAmount)*losingSideTotal);
-        await dynamoHandler.updateUserPotatoesAndEarnings(userId, newUserPotatoes, userTotalEarnings)
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", newUserPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
         console.log(`handleBetConclusionWinner: ${user.username} bet ${userBet.bet} potatoes and won ${userSplit - userBet.bet} potatoes. `
                     + `They went from ${originalPotatoes} potatoes to ${newUserPotatoes} potatoes.`)
     }));
@@ -29,7 +30,7 @@ async function handleBetConclusion(winningList, winningSideTotal, losingList, lo
 
         let userId = user.userId;
         let userTotalLosses = user.totalLosses - userBet.bet;
-        await dynamoHandler.updateUserLosses(userId, userTotalLosses)
+        await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
         console.log(`handleBetConclusionLoser: ${user.username} bet and lost ${userBet.bet} potatoes.`)
     }));
 }

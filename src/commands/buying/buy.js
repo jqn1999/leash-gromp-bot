@@ -120,7 +120,7 @@ module.exports = {
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
-                    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+                    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserWorkMultiplier(userId, newMultiplier)
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
@@ -134,7 +134,7 @@ module.exports = {
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
-                    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+                    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserPassiveIncome(userId, newPassive);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
@@ -148,7 +148,7 @@ module.exports = {
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;
-                    await dynamoHandler.updateUserPotatoes(userId, userPotatoes);
+                    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserBankCapacity(userId, newBankCapacity);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }

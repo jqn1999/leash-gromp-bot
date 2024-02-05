@@ -64,7 +64,7 @@ module.exports = {
             username: username
         })
         await dynamoHandler.updateGuildMemberList(guildId, memberList);
-        await dynamoHandler.updateUserGuildId(userId, guildId)
+        await dynamoHandler.updateUserDatabase(userId, "guildId", guildId);
         interaction.editReply(`${userDisplayName} you have joined the guild, '${guild.guildName}'!`);
     }
 }

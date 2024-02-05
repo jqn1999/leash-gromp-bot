@@ -53,8 +53,7 @@ module.exports = {
         let targetUserPotatoes = targetUserDetails.potatoes;
 
         targetUserPotatoes += amount;
-
-        await dynamoHandler.updateUserPotatoes(targetUserId, targetUserPotatoes);
+        await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
         interaction.editReply(`${userDisplayName}, you spawn and give ${amount} potatoes to ${targetUserDisplayName}. They now have ${targetUserPotatoes} potatoes`);
     }
 }
