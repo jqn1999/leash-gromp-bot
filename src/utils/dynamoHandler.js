@@ -386,7 +386,58 @@ const lockCurrentBet = async function (betId) {
 }
 
 // Stats
-const updateStatsDatabase = async function (trackingId, attributeName, attributeValue) {
+const updateStatDatabase = async function (trackingId, attributeName, attributeValue) {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: awsConfigurations.aws_stats_table_name,
+        Key: {
+            trackingId: trackingId,
+        },
+        UpdateExpression: `set #attrName = :attrValue`,
+        ExpressionAttributeNames: {
+            "#attrName": attributeName,
+        },
+        ExpressionAttributeValues: {
+            ":attrValue": attributeValue,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateStatDatabase: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateStatDatabase error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const getStatDatabase = async function (trackingId) {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: awsConfigurations.aws_stats_table_name,
+        KeyConditionExpression: 'trackingId = :trackingId',
+        ExpressionAttributeValues: { ':trackingId': trackingId }
+    };
+
+    const response = docClient.query(params).promise()
+        .then(async function (data) {
+            coinflip = data.Items[0]
+            return coinflip;
+        })
+        .catch(function (err) {
+            console.debug(`getStatDatabase error: ${JSON.stringify(err)}`)
+        });
+    return response
+}
+
+// Guilds
+const updateGuildDatabase = async function (trackingId, attributeName, attributeValue) {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
@@ -415,161 +466,6 @@ const updateStatsDatabase = async function (trackingId, attributeName, attribute
     return response;
 }
 
-const getStatsDatabase = async function (trackingId) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_stats_table_name,
-        KeyConditionExpression: 'trackingId = :trackingId',
-        ExpressionAttributeValues: { ':trackingId': trackingId }
-    };
-
-    const response = docClient.query(params).promise()
-        .then(async function (data) {
-            coinflip = data.Items[0]
-            return coinflip;
-        })
-        .catch(function (err) {
-            console.debug(`getStatsDatabase error: ${JSON.stringify(err)}`)
-        });
-    return response
-}
-
-// Shops
-const updateUserSweetPotatoBuffs = async function (userId, newSweetPotatoBuffs) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: userId,
-        },
-        UpdateExpression: "set sweetPotatoBuffs = :sweetPotatoBuffs",
-        ExpressionAttributeValues: {
-            ":sweetPotatoBuffs": newSweetPotatoBuffs,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateUserSweetPotatoBuffs: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`updateUserSweetPotatoBuffs error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-const updateUserWorkMultiplier = async function (userId, newWorkMultiplierAmount) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: userId,
-        },
-        UpdateExpression: "set workMultiplierAmount = :workMultiplierAmount",
-        ExpressionAttributeValues: {
-            ":workMultiplierAmount": newWorkMultiplierAmount,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateUserWorkMultiplier: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`updateUserWorkMultiplier error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-const updateUserPassiveIncome = async function (userId, newPassiveIncome) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: userId,
-        },
-        UpdateExpression: "set passiveAmount = :passiveAmount",
-        ExpressionAttributeValues: {
-            ":passiveAmount": newPassiveIncome,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateUserPassiveIncome: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`updateUserPassiveIncome error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-const updateUserBankCapacity = async function (userId, newBankCapacity) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: userId,
-        },
-        UpdateExpression: "set bankCapacity = :bankCapacity",
-        ExpressionAttributeValues: {
-            ":bankCapacity": newBankCapacity,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateUserBankCapacity: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`updateUserBankCapacity error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-// Banking
-const updateUserAndBankStoredPotatoes = async function (userId, newPotatoes, newBankStored) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: userId,
-        },
-        UpdateExpression: "set potatoes = :potatoes, bankStored = :bankStored",
-        ExpressionAttributeValues: {
-            ":potatoes": newPotatoes,
-            ":bankStored": newBankStored
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateUserAndBankStoredPotatoes: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`updateUserAndBankStoredPotatoes error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-// Guilds
 const getGuilds = async function () {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -1034,15 +930,8 @@ module.exports = {
     endCurrentBet,
     lockCurrentBet,
 
-    updateStatsDatabase,
-    getStatsDatabase,
-
-    updateUserSweetPotatoBuffs,//
-    updateUserWorkMultiplier,//
-    updateUserPassiveIncome,//
-    updateUserBankCapacity,//
-
-    updateUserAndBankStoredPotatoes,
+    updateStatDatabase,
+    getStatDatabase,
 
     findGuildById,
     findGuildByName,

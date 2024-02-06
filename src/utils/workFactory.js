@@ -27,15 +27,15 @@ class WorkFactory {
         userMultiplier += metalPotatoRewards.workMultiplierReward;
         userPassiveAmount += actualPassiveRewardAmount;
         userBankCapacity += actualBankRewardAmount;
-        await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
-        await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
-        await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
+        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
+        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
+        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
 
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
         sweetPotatoBuffs.workMultiplierAmount += metalPotatoRewards.workMultiplierReward;
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
-        await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
+        await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
         await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return potatoesGained;
     }
@@ -54,24 +54,24 @@ class WorkFactory {
             case "workMultiplierAmount":
                 sweetPotatoBuffs.workMultiplierAmount += reward.amount;
                 userMultiplier += reward.amount;
-                await dynamoHandler.updateUserWorkMultiplier(userId, userMultiplier);
-                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
+                await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
+                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
                 break;
             case "passiveAmount":
                 rawRewardAmount = userPassiveAmount * reward.amount;
                 actualRewardAmount = calculatePassiveAmount(userPassiveAmount, rawRewardAmount, reward.maxGainSweetPotato);
                 sweetPotatoBuffs.passiveAmount += actualRewardAmount;
                 userPassiveAmount += actualRewardAmount;
-                await dynamoHandler.updateUserPassiveIncome(userId, userPassiveAmount);
-                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
+                await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
+                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
                 break;
             case "bankCapacity":
                 rawRewardAmount = userBankCapacity * reward.amount;
                 actualRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawRewardAmount, reward.maxGainSweetPotato);
                 sweetPotatoBuffs.bankCapacity += actualRewardAmount;
                 userBankCapacity += actualRewardAmount;
-                await dynamoHandler.updateUserBankCapacity(userId, userBankCapacity);
-                await dynamoHandler.updateUserSweetPotatoBuffs(userId, sweetPotatoBuffs);
+                await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
+                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
                 break;
         }
         await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
