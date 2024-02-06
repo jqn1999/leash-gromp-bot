@@ -100,7 +100,8 @@ module.exports = {
             userBankStored += netAmount;
             adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
-            await dynamoHandler.updateUserAndBankStoredPotatoes(userId, userPotatoes, userBankStored);
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (userBankStored == 0) {
@@ -133,7 +134,8 @@ module.exports = {
             }
             userPotatoes += netAmount;
             userBankStored -= netAmount;
-            await dynamoHandler.updateUserAndBankStoredPotatoes(userId, userPotatoes, userBankStored);
+            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+            await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
             interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
         }
     }
