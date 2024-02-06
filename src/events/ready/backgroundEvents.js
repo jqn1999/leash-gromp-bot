@@ -1,4 +1,5 @@
-const { getSortedBirthdays } = require("../../utils/helperCommands")
+const { getSortedBirthdays } = require("../../utils/helperCommands");
+const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
@@ -30,9 +31,7 @@ module.exports = async (client) => {
         await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
-    // Checks birthday list and updates name or sends message as necessary
-    // Will send a message between 12-1am
-    setInterval(() => {
+    schedule.scheduleJob('0 0 * * *', function () {
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
                 const jsonChannel = JSON.parse(JSON.stringify(channel));
@@ -41,9 +40,7 @@ module.exports = async (client) => {
 
                 const now = new Date();
                 const currentDateFormatted = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);
-                // Want to alert from 12-1 AM and 12-1 PM EST. Date is given at UTC so add 5 hours
-                if (currentDateFormatted == nextBirthdayPerson.birthday && (now.getHours() == 5 || now.getHours() == 17)) {
-                    const roleId = '1188530438805930105'; // TODO change in future to actual bday role <@&${roleId}> 
+                if (currentDateFormatted == nextBirthdayPerson.birthday) {
                     channel.setName(`happy bday ${nextBirthdayPerson.username}`);
                     channel.send(`🎂 It is <@${nextBirthdayPerson.userId}>\'s birthday! 🥳 Congrats on surviving another year and everyone wish <@${nextBirthdayPerson.userId}> a happy birthday! 🎉`);
                 } else if (currentDateFormatted != nextBirthdayPerson.birthday && !jsonChannel.name.includes(nextBirthdayPerson.birthday)) {
@@ -53,5 +50,5 @@ module.exports = async (client) => {
             .catch(err => {
                 console.log(err)
             });
-    }, 3600000);
+    });
 };

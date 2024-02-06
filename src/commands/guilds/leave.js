@@ -39,7 +39,7 @@ module.exports = {
 
         let newMemberList = memberList.filter((user) => user.id != userId)
 
-        await dynamoHandler.updateGuildMemberList(guildId, newMemberList);
+        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', newMemberList);
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have left the guild, '${guild.guildName}'!`);
     }

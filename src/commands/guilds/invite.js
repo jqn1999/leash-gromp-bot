@@ -60,7 +60,7 @@ module.exports = {
         }
 
         inviteList.push(targetUser);
-        await dynamoHandler.updateGuildInviteList(guildId, inviteList);
+        await dynamoHandler.updateGuildDatabase(guildId, 'inviteList', inviteList);
         interaction.editReply(`${userDisplayName} you have invited <@${targetUser}> to your guild, '${guild.guildName}'!`);
     }
 }
