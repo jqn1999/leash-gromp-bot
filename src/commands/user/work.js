@@ -102,15 +102,15 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
-        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer)/1000);
+        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
         const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
-        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS){
+        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
             interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
             return;
         };
         const work = await dynamoHandler.getStatDatabase('work');
-        const newWorkCount = work.workCount+1;
+        const newWorkCount = work.workCount + 1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
         let multiplier = getRandomFromInterval(.8, 1.2);
@@ -121,7 +121,7 @@ module.exports = {
                 break;
             }
         }
-        await dynamoHandler.updateStatDatabase('work', 'workCount', work.workCount);
+        await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
         await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
         return;
     }
