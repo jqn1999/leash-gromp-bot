@@ -109,7 +109,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
             return;
         };
-        const work = await dynamoHandler.getWorkStats();
+        const work = await dynamoHandler.getStatDatabase('work');
         const newWorkCount = work.workCount+1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
@@ -121,8 +121,8 @@ module.exports = {
                 break;
             }
         }
-        await dynamoHandler.addWorkCount(work.workCount);
-        await dynamoHandler.addWorkTotalPayout(work.totalPayout, potatoesGained);
+        await dynamoHandler.updateStatDatabase('work', 'workCount', work.workCount);
+        await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
         return;
     }
 }

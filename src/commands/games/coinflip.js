@@ -9,7 +9,7 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
     const rewardAfterTaxes = Math.round(bet*.95);
     userPotatoes += rewardAfterTaxes;
     userTotalEarnings += rewardAfterTaxes;
-    await dynamoHandler.addCoinflipTotalPayout(coinflipStats.totalPayout, rewardAfterTaxes);
+    await dynamoHandler.updateStatDatabase('coinflip', 'totalPayout', coinflipStats.totalPayout + rewardAfterTaxes);
     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
     await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, rewardAfterTaxes);
@@ -19,7 +19,7 @@ async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, co
 async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinflipStats, result, interaction) {
     userPotatoes -= bet;
     userTotalLosses -= bet;
-    await dynamoHandler.addCoinflipTotalReceived(coinflipStats.totalReceived, bet);
+    await dynamoHandler.updateStatDatabase('coinflip', 'totalReceived', coinflipStats.totalReceived - bet);
     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
     await dynamoHandler.updateUserDatabase(userId, "userTotalLosses", userTotalLosses);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, -bet);
@@ -99,13 +99,13 @@ module.exports = {
 
         let result = Math.random() >= 0.5 ? 'heads' : 'tails';
 
-        let coinflipStats = await dynamoHandler.getCoinflipStats()
+        let coinflipStats = await dynamoHandler.getStatDatabase('coinflip')
         if (result == "heads") {
-            await dynamoHandler.addCoinflipHeads(coinflipStats.heads)
             coinflipStats.heads += 1
+            await dynamoHandler.updateStatDatabase('coinflip', 'heads', coinflipStats.heads)
         } else {
-            await dynamoHandler.addCoinflipTails(coinflipStats.tails)
             coinflipStats.tails += 1
+            await dynamoHandler.updateStatDatabase('coinflip', 'tails', coinflipStats.tails)
         }
 
         if (result == sideSelected) {

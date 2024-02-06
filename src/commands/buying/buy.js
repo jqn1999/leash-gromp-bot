@@ -121,7 +121,7 @@ module.exports = {
                     userPotatoes -= chosenItem.cost;
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-                    await dynamoHandler.updateUserWorkMultiplier(userId, newMultiplier)
+                    await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
@@ -135,7 +135,7 @@ module.exports = {
                     userPotatoes -= chosenItem.cost;
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-                    await dynamoHandler.updateUserPassiveIncome(userId, newPassive);
+                    await dynamoHandler.updateUserDatabase(userId, "passiveAmount", newPassive);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
@@ -149,7 +149,7 @@ module.exports = {
                     userPotatoes -= chosenItem.cost;
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-                    await dynamoHandler.updateUserBankCapacity(userId, newBankCapacity);
+                    await dynamoHandler.updateUserDatabase(userId, "bankCapacity", newBankCapacity);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
