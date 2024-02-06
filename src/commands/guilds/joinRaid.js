@@ -48,7 +48,8 @@ module.exports = {
             return;
         }
         raidList.push(member);
-        await dynamoHandler.updateGuildRaidList(guildId, raidList);
+        
+        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', raidList);
         interaction.editReply(`${userDisplayName} you have joined the raid for the guild, '${guild.guildName}'!`);
     }
 }

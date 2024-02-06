@@ -49,8 +49,9 @@ module.exports = {
             return;
         }
         raidList.push(member);
-        await dynamoHandler.updateGuildActiveRaidStatus(guildId, true)
-        await dynamoHandler.updateGuildRaidList(guildId, raidList);
+        
+        await dynamoHandler.updateGuildDatabase(guildId, 'activeRaid', true);
+        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', raidList);
         interaction.editReply(`${userDisplayName} has created a new raid for the guild, '${guild.guildName}'!`);
     }
 }

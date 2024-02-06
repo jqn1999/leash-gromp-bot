@@ -56,14 +56,14 @@ module.exports = {
         }
 
         let newInviteList = inviteList.filter((id) => id != userId)
-        await dynamoHandler.updateGuildInviteList(guildId, newInviteList);
+        await dynamoHandler.updateGuildDatabase(guildId, 'inviteList', newInviteList);
 
         memberList.push({
             id: userId,
             role: GuildRoles.MEMBER,
             username: username
         })
-        await dynamoHandler.updateGuildMemberList(guildId, memberList);
+        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', memberList);
         await dynamoHandler.updateUserDatabase(userId, "guildId", guildId);
         interaction.editReply(`${userDisplayName} you have joined the guild, '${guild.guildName}'!`);
     }
