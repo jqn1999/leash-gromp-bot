@@ -3,8 +3,8 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank, GuildRoles } = require("../../utils/constants");
 
-function calculateTax(amount){
-    return Bank.GUILD_TAX_BASE + Math.floor(amount*Bank.GUILD_TAX_PERCENT)
+function calculateTax(amount) {
+    return Bank.GUILD_TAX_BASE + Math.floor(amount * Bank.GUILD_TAX_PERCENT)
 }
 
 module.exports = {
@@ -82,7 +82,7 @@ module.exports = {
                     interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit due to the base fee of ${Bank.GUILD_TAX_BASE.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                     return;
                 }
-                netAmount = Math.round((totalAmount - Bank.GUILD_TAX_BASE)/(1+Bank.GUILD_TAX_PERCENT));
+                netAmount = Math.round((totalAmount - Bank.GUILD_TAX_BASE) / (1 + Bank.GUILD_TAX_PERCENT));
                 if (netAmount >= remainingBankSpace) {
                     netAmount = remainingBankSpace;
                     totalAmount = netAmount + calculateTax(netAmount);
@@ -116,7 +116,7 @@ module.exports = {
             adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addAdminUserPotatoes(adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
+            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (member.role != GuildRoles.LEADER) {
@@ -155,7 +155,7 @@ module.exports = {
             userPotatoes += netAmount;
             guildBankStored -= netAmount;
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildBankStored(guildId, guildBankStored);
+            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         }
     }

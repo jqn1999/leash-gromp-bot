@@ -43,7 +43,8 @@ module.exports = {
         }
         
         let newRaidList = raidList.filter((user) => user.id != userId)
-        await dynamoHandler.updateGuildRaidList(guildId, newRaidList);
+        
+        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', newRaidList);
         interaction.editReply(`${userDisplayName} you have left the raid for the guild, '${guild.guildName}'!`);
     }
 }

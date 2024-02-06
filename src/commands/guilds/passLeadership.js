@@ -66,7 +66,7 @@ module.exports = {
                 user.role = GuildRoles.LEADER
             }
         })
-        await dynamoHandler.updateGuildMemberList(guildId, memberList);
+        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', memberList);
         interaction.editReply(`${userDisplayName} you have transferred leadership of '${guild.guildName}' to <@${targetUser}>!`);
     }
 }
