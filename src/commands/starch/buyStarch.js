@@ -17,6 +17,9 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
 
+        // TODO: check if they are allowed to buy
+
+
         // get starch number and basic stuff
         let starches = interaction.options.get('starch-amount')?.value
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
@@ -41,7 +44,8 @@ module.exports = {
         }
 
         // check if they have enough potatoes
-        let price = 10000 // TODO: replace with price from db later
+        const details = await dynamoHandler.getStatDatabase("starch")
+        let price = details.starch_buy
         let cost = price * starches
         const canPurchase = cost <= userPotatoes ? true : false
         if(!canPurchase){

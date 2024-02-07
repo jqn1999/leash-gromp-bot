@@ -1,12 +1,10 @@
 const { EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../utils/dynamoHandler");
-
 class starchFactory{
 
     constructor(){}
 
-    async makeStarchPrices(){
-        let lastPat = PATTERN.SMALL_SPIKE //TODO: replace with call from dynamo
+    async makeStarchPrices(starch, lastPat){
 
         // choose pattern for this week
         const patChance = Math.random()
@@ -19,38 +17,27 @@ class starchFactory{
             }
         }
 
-        // TODO: get starch price from db
-        let starch = 10000
-        pattern = 2
         let prices
 
         // make pattern
         switch(pattern) {
             case 0: // fluctuating
-                console.log("fluc")
                 prices = createFluctuating(starch)
-                lastPat = PATTERN.FLUCTUATING
                 break;
             case 1: // large spike
-                console.log("large")
                 prices = createLarge(starch)
-                lastPat = PATTERN.LARGE_SPIKE
                 break;
             case 2: // decreasing
-                console.log("dec")
                 prices = createDecreasing(starch)
-                lastPat = PATTERN.DECREASING
                 break;
             case 3: // small_spike
-                console.log("small")
                 prices = createSmall(starch)
-                lastPat = PATTERN.SMALL_SPIKE
                 break;
           }
 
 
         // return array and store this pattern as last week
-        // TODO: STORE PATTERN IN DB
+        await dynamoHandler.updateStatDatabase("starch", "starch_last", pattern)
         return prices
     }
 }
