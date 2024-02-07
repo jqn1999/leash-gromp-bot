@@ -9,6 +9,32 @@ const statTrackingIds = {
 }
 
 // User Handling
+const addUserDatabase = async function (userId, attributeName, attributeValue) {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: `add #attrName :attrValue`,
+        ExpressionAttributeNames: {
+            "#attrName": attributeName,
+        },
+        ExpressionAttributeValues: {
+            ":attrValue": attributeValue,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .catch(function (err) {
+            console.debug(`addUserDatabase error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 const updateUserDatabase = async function (userId, attributeName, attributeValue) {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -646,66 +672,11 @@ const getSortedGuildsById = async function () {
     return sortedUsers
 }
 
-const addAdminUserPotatoes = async function (potatoes) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: "1187560268172116029",
-        },
-        UpdateExpression: "set potatoes = :potatoes",
-        ExpressionAttributeValues: {
-            ":potatoes": adminUser.potatoes + potatoes,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`addAdminUserPotatoes: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`addAdminUserPotatoes error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
-const addAdminUserBankedPotatoes = async function (potatoes) {
-    AWS.config.update(awsConfigurations.aws_remote_config);
-    const docClient = new AWS.DynamoDB.DocumentClient();
-
-    const adminUser = await findUser('1187560268172116029', "Leash Gromp")
-
-    const params = {
-        TableName: awsConfigurations.aws_table_name,
-        Key: {
-            userId: "1187560268172116029",
-        },
-        UpdateExpression: "set bankStored = :bankStored",
-        ExpressionAttributeValues: {
-            ":bankStored": adminUser.bankStored + potatoes,
-        },
-        ReturnValues: "ALL_NEW",
-    };
-
-    const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`addAdminUserBankedPotatoes: ${JSON.stringify(data)}`)
-        })
-        .catch(function (err) {
-            console.debug(`addAdminUserBankedPotatoes error: ${JSON.stringify(err)}`)
-        });
-    return response;
-}
-
 module.exports = {
+    addUserDatabase,
+    updateUserDatabase,
     addUser,
     findUser,
-    updateUserDatabase,
     getUsers,
     passivePotatoHandler,
 
@@ -732,6 +703,4 @@ module.exports = {
     getSortedUsers,
     getSortedGuildsByLevelAndMembers,
     getSortedGuildsById,
-    addAdminUserPotatoes,
-    addAdminUserBankedPotatoes,
 }

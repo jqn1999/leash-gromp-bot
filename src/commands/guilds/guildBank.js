@@ -114,7 +114,7 @@ module.exports = {
             userPotatoes -= totalAmount;
             guildBankStored += netAmount;
             adminUserShare = totalAmount - netAmount;
-            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);

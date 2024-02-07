@@ -99,7 +99,7 @@ module.exports = {
             userPotatoes -= totalAmount;
             userBankStored += netAmount;
             adminUserShare = totalAmount - netAmount;
-            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);

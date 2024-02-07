@@ -189,7 +189,7 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount*multiplier*userMultiplier*.95);
     adminUserShare = Math.floor(gainAmount/.95*.05);
-    await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+    await dynamoHandler.addUserDatabase('1187560268172116029', 'potatoes', adminUserShare);
     return gainAmount
 }
 
