@@ -131,6 +131,6 @@ module.exports = {
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        await dynamoHandler.updateUserDatabase(userId, "robTimer", Rob.ROB_TIMER_SECONDS);
+        await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
     }
 }
