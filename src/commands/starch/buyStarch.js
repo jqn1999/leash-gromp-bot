@@ -17,18 +17,25 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
 
-        // TODO: check if they are allowed to buy
-
-
-        // get starch number and basic stuff
-        let starches = interaction.options.get('starch-amount')?.value
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }   
+
+        //check if they are allowed to buy
+        var date = new Date()
+        if(!(date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22)) && !(date.getDay() == 4 && date.getHours() >= 23) && 
+                    !(date.getDay() == 5 && date.getHours() <= 10)){
+                console.log(date.getDay())
+                console.log(date.getHours())
+                interaction.editReply(`${userDisplayName}, you can only buy starches between Monday 6am-6pm and Thursday 6pm-6am (EST)!`);
+                return;            
+        }
+
+        // get starch number and basic stuff
+        let starches = interaction.options.get('starch-amount')?.value
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
