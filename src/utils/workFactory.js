@@ -142,7 +142,7 @@ class WorkFactory {
 
 function calculatePassiveAmount(previousPassiveAmount, newPassiveAmountRaw, maxGain) {
     let newAmount = Math.round(newPassiveAmountRaw / 10000) * 10000;
-    const isIncreaseGreaterThanMin = newAmount - previousPassiveAmount > 10000 ? true : false;
+    const isIncreaseGreaterThanMin = newAmount - previousPassiveAmount > 10000;
     if (isIncreaseGreaterThanMin) {
         const increase = (newAmount - previousPassiveAmount) > maxGain ? maxGain : (newAmount - previousPassiveAmount)
         return increase;
@@ -152,7 +152,7 @@ function calculatePassiveAmount(previousPassiveAmount, newPassiveAmountRaw, maxG
 
 function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw, maxGain) {
     let newCapacity = Math.round(newBankCapacityRaw / 50000) * 50000;
-    const isIncreaseGreaterThanMin = newCapacity - previousBankCapacity > 50000 ? true : false;
+    const isIncreaseGreaterThanMin = newCapacity - previousBankCapacity > 50000;
     if (isIncreaseGreaterThanMin) {
         const increase = (newCapacity - previousBankCapacity) > maxGain ? maxGain : (newCapacity - previousBankCapacity)
         return increase;

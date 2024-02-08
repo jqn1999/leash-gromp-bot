@@ -6,7 +6,7 @@ module.exports = async (client) => {
     // MONDAY 6 AM/THURSDAY 6 PM: SET BUY PRICE, DELETE OLD STARCHS, CALC PRICES FOR WEEK
     schedule.scheduleJob('0 11 * * 1', async function () {
         //DELETE EVERYONES STARCHES
-        dynamoHandler.removeStarches()
+        await dynamoHandler.removeStarches()
 
         const details = await dynamoHandler.getStatDatabase("starch")
         // set price
@@ -23,7 +23,7 @@ module.exports = async (client) => {
 
     schedule.scheduleJob('0 23 * * 4', async function () {
         //DELETE EVERYONES STARCHES
-        dynamoHandler.removeStarches()
+        await dynamoHandler.removeStarches()
 
         const details = await dynamoHandler.getStatDatabase("starch")
         // set price

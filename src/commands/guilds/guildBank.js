@@ -67,7 +67,7 @@ module.exports = {
         }
 
         let remainingBankSpace = guildBankCapacity - guildBankStored;
-        const bankHasCapacity = remainingBankSpace > 0 ? true : false;
+        const bankHasCapacity = remainingBankSpace > 0;
         if (!bankHasCapacity && action == 'deposit') {
             interaction.editReply(`${userDisplayName}, you do not have anymore space in your guild bank! Upgrade your guild bank capacity to store more potatoes`);
             return;
@@ -100,13 +100,13 @@ module.exports = {
                 }
             }
 
-            const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
+            const isAmountGreaterThanZero = netAmount >= 1;
             if (!isAmountGreaterThanZero) {
                 interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
 
-            const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes ? true : false;
+            const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes;
             if (!isAmountLessThanOrEqualUserAmount) {
                 interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount.toLocaleString()} potatoes! Total amount required is ${totalAmount.toLocaleString()} potatoes. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
@@ -141,13 +141,13 @@ module.exports = {
                 }
             }
 
-            const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
+            const isAmountGreaterThanZero = netAmount >= 1;
             if (!isAmountGreaterThanZero) {
                 interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts from the guild bank! You have ${guildBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
 
-            const isAmountLessThanOrEqualBankStoredAmount = netAmount <= guildBankStored ? true : false;
+            const isAmountLessThanOrEqualBankStoredAmount = netAmount <= guildBankStored;
             if (!isAmountLessThanOrEqualBankStoredAmount) {
                 interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount.toLocaleString()} potatoes from the guild bank! You have ${guildBankStored.toLocaleString()} potatoes stored.`);
                 return;

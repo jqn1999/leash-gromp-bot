@@ -25,8 +25,11 @@ module.exports = {
 
         // check date
         var date = new Date()
-        if((date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22)) || (date.getDay() == 4 && date.getHours() >= 23) || 
-                (date.getDay() == 5 && date.getHours() <= 10)){
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22);
+        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
+        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
+
+        if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
             interaction.editReply(`${userDisplayName}, this is a buying period for starches!`);
             return;            
         }
@@ -41,12 +44,12 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, please enter a positive number!`);
             return;
         }
-        const isStarchGreaterThanZero = starches >= 1 ? true : false;
+        const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only sell positive amounts!`);
             return;
         }
-        const sellingTooMuch = starches > userStarches ? true : false;
+        const sellingTooMuch = starches > userStarches;
         if(sellingTooMuch){
             interaction.editReply(`${userDisplayName}, you can only sell up to ${userStarches.toLocaleString()} starches!`);
             return;
@@ -60,6 +63,6 @@ module.exports = {
         userStarches -= starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you sold ${starches.toLocaleString()} starches for ${profit.toLocaleString()} potatoes! You now have ${userPotatoes} potatoes.`);
+        interaction.editReply(`${userDisplayName}, you sold ${starches.toLocaleString()} starches for ${profit.toLocaleString()} potatoes! You now have ${userPotatoes.toLocaleString()} potatoes.`);
     }
 }
