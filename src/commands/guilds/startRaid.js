@@ -1,4 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
@@ -127,8 +128,24 @@ const raidScenarios = [
 module.exports = {
     name: "start-raid",
     description: "Starts a raid",
-    devOnly: false,
     deleted: false,
+    options: [
+        {
+            name: 'raid-select',
+            description: 'Which raid to do',
+            type: ApplicationCommandOptionType.String,
+            choices: [
+                {
+                    name: 'regular',
+                    value: 'regular'
+                },
+                {
+                    name: 'special',
+                    value: 'special'
+                }
+            ]
+        }
+    ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
