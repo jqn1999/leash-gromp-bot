@@ -28,8 +28,6 @@ module.exports = {
         var date = new Date()
         if(!(date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22)) && !(date.getDay() == 4 && date.getHours() >= 23) && 
                     !(date.getDay() == 5 && date.getHours() <= 10)){
-                console.log(date.getDay())
-                console.log(date.getHours())
                 interaction.editReply(`${userDisplayName}, you can only buy starches between Monday 6am-6pm and Thursday 6pm-6am (EST)!`);
                 return;            
         }
@@ -50,7 +48,7 @@ module.exports = {
             return;
         }
 
-        // check if they have enough potatoes
+        // check if they have enough potatoes + get price from
         const details = await dynamoHandler.getStatDatabase("starch")
         let price = details.starch_buy
         let cost = price * starches
