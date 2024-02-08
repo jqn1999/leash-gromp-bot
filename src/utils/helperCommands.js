@@ -2,7 +2,11 @@ const dynamoHandler = require("../utils/dynamoHandler");
 
 function convertSecondstoMinutes(seconds) {
     let timeText = '';
-    let hours = ~~(seconds / 3600);
+    let days = ~~(seconds / 86400);
+    if (days > 0) {
+        timeText += `${days}d `
+    }
+    let hours = ~~(seconds % 86400 / 3600);
     if (hours > 0) {
         timeText += `${hours}h `
     }

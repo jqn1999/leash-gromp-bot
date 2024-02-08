@@ -31,7 +31,7 @@ module.exports = async (client) => {
         await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
-    schedule.scheduleJob('0 0 * * *', function () {
+    schedule.scheduleJob('0 5 * * *', function () {
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
                 const jsonChannel = JSON.parse(JSON.stringify(channel));

@@ -123,7 +123,7 @@ module.exports = {
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
             adminUserShare = Math.floor(fineAmount*.10);
-            await dynamoHandler.addAdminUserPotatoes(adminUserShare);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
             await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now()+Rob.WORK_TIMER_INCREASE_MS);
@@ -131,6 +131,6 @@ module.exports = {
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        await dynamoHandler.updateUserDatabase(userId, "robTimer", Rob.ROB_TIMER_SECONDS);
+        await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
     }
 }
