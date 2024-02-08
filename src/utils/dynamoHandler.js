@@ -672,6 +672,37 @@ const getSortedGuildsById = async function () {
     return sortedUsers
 }
 
+const removeStarches = async function () {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    let userList = await getUsers();
+
+    userList.forEach(async user => {
+        const params = {
+            TableName: awsConfigurations.aws_table_name,
+            Key: {
+                userId: user.userId,
+            },
+            UpdateExpression: "set starches = :starches",
+            ExpressionAttributeValues: {
+                ":starches": 0,
+            },
+            ReturnValues: "ALL_NEW",
+        };
+
+        const response = await docClient.update(params).promise()
+            .then(async function (data) {
+                console.log(`addNewUserAttribute: ${JSON.stringify(data)}`)
+            })
+            .catch(function (err) {
+                console.log(`addNewUserAttribute error: ${JSON.stringify(err)}`)
+            });
+    })
+    console.log('updated all users')
+    // return response;
+}
+
 module.exports = {
     addUserDatabase,
     updateUserDatabase,
@@ -703,4 +734,5 @@ module.exports = {
     getSortedUsers,
     getSortedGuildsByLevelAndMembers,
     getSortedGuildsById,
+    removeStarches
 }
