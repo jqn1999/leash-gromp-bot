@@ -47,13 +47,13 @@ module.exports = {
             }
         }
 
-        const isAmountGreaterThanZero = amount >= 1 ? true : false;
+        const isAmountGreaterThanZero = amount >= 1;
         if (!isAmountGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
-        const isAmountLessThanOrEqualUserAmount = amount <= userPotatoes ? true : false;
+        const isAmountLessThanOrEqualUserAmount = amount <= userPotatoes;
         if (!isAmountLessThanOrEqualUserAmount) {
             interaction.editReply(`${userDisplayName}, you do not have enough potatoes to give ${amount.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;

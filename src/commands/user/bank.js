@@ -52,7 +52,7 @@ module.exports = {
         let userBankCapacity = userDetails.bankCapacity;
 
         let remainingBankSpace = userBankCapacity - userBankStored;
-        const bankHasCapacity = remainingBankSpace > 0 ? true : false;
+        const bankHasCapacity = remainingBankSpace > 0;
         if (!bankHasCapacity && action == 'deposit') {
             interaction.editReply(`${userDisplayName}, you do not have anymore space in your bank! Upgrade your bank capacity to store more potatoes`);
             return;
@@ -85,13 +85,13 @@ module.exports = {
                 }
             }
 
-            const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
+            const isAmountGreaterThanZero = netAmount >= 1;
             if (!isAmountGreaterThanZero) {
                 interaction.editReply(`${userDisplayName}, you can only deposit positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
             }
 
-            const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes ? true : false;
+            const isAmountLessThanOrEqualUserAmount = totalAmount <= userPotatoes;
             if (!isAmountLessThanOrEqualUserAmount) {
                 interaction.editReply(`${userDisplayName}, you do not have enough potatoes to deposit ${netAmount.toLocaleString()} potatoes! Total amount required is ${totalAmount.toLocaleString()} potatoes. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 return;
@@ -121,13 +121,13 @@ module.exports = {
                 }
             }
 
-            const isAmountGreaterThanZero = netAmount >= 1 ? true : false;
+            const isAmountGreaterThanZero = netAmount >= 1;
             if (!isAmountGreaterThanZero) {
                 interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts! You have ${userBankStored.toLocaleString()} potatoes stored.`);
                 return;
             }
 
-            const isAmountLessThanOrEqualBankStoredAmount = netAmount <= userBankStored ? true : false;
+            const isAmountLessThanOrEqualBankStoredAmount = netAmount <= userBankStored;
             if (!isAmountLessThanOrEqualBankStoredAmount) {
                 interaction.editReply(`${userDisplayName}, you do not have enough stored to withdraw ${netAmount.toLocaleString()} potatoes! You have ${userBankStored.toLocaleString()} potatoes stored.`);
                 return;
