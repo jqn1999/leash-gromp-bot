@@ -1,6 +1,7 @@
 const { getSortedBirthdays } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
+const eventFactory = require("../../utils/eventFactory")
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 
@@ -50,5 +51,19 @@ module.exports = async (client) => {
             .catch(err => {
                 console.log(err)
             });
+    });
+
+    // check for random background events
+    schedule.scheduleJob('* * * * *', function () {
+        const chance = Math.random()
+        if(chance >= .9){
+            client.channels.fetch('1146091052781011026')
+            .then(async channel => {
+                channel.send(`Special event on the way this hour!`);
+                // SEND TO THE EVENTS!
+                let eF = new eventFactory.eventFactory()
+            })
+        }
+
     });
 };
