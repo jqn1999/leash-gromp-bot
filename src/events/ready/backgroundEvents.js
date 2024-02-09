@@ -1,7 +1,8 @@
 const { getSortedBirthdays } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
-var { EventFactory, workChances } = require("../../utils/eventFactory");
+var { EventFactory} = require("../../utils/eventFactory");
+const {setWorkScenarios} = require("../../commands/user/work.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 
@@ -57,23 +58,30 @@ module.exports = async (client) => {
         let eF = new EventFactory()
 
         const chance = Math.random()
-        if(chance >= 0){
+        if(chance >= .5){
             // In the future we should store channels in a database for certain events like birthday, or bot channels
             // and add commands that add/remove servers from that list so we dont have to code channel ids
-            client.channels.fetch('796873375632195605') // matt's shit 1146091052781011026
+            //client.channels.fetch('796873375632195605') // matt's shit 1146091052781011026
+            client.channels.fetch('1146091052781011026')
             .then(async channel => {
                 // SEND TO THE EVENTS!
-                eF.setSpecialEvent(workChances)
+                eF.setSpecialEvent()
                 var eventName = eF.getCurrentEvent();
                 channel.send(`Special event on the way this hour! ${eventName}`);
                 // workChances.push(999);
-                console.log(`${workChances} is the work chances`)
+                let wC = eF.getWorkChances()
+                console.log(`${wC} is the work chances`)
+                // set work chances in work.js
+                setWorkScenarios(wC)
             })
         } else {
+            console.log("event over")
             eF.setBaseWorkChances();
             eF.setBaseWorkProbability();
+            // TODO: need to reset work.js chances
+            setWorkScenarios(eF.getWorkChances())
         }
-    }, 5000);
+    }, 10000);
 
     // check for random background events
     // schedule.scheduleJob('* * * * *', function () {
