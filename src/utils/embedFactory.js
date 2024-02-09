@@ -25,6 +25,11 @@ class EmbedFactory {
             inline: false,
         });
         fields.push({
+            name: "Starches:",
+            value: `${userDetails.starches.toLocaleString()} starches`,
+            inline: false,
+        });
+        fields.push({
             name: "Current Work Multiplier:",
             value: `${(userDetails.workMultiplierAmount).toFixed(2)}`,
             inline: false,

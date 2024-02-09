@@ -42,6 +42,6 @@ BOT_TOKEN = <BOT_TOKEN>
 
 **A:** This is currently just a placeholder section until I find any pain points with people trying to setup and contribute to this project
 
-
 ## Development Team
 - Joshua Nguyen - [Developer](https://www.linkedin.com/in/joshua-nguyen-cs/)
+- Matt Li - [Developer](https://github.com/officialmattli)

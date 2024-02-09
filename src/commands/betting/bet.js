@@ -67,13 +67,13 @@ module.exports = {
             }
         }
 
-        const isBetGreaterThanZero = bet >= 1 ? true : false;
+        const isBetGreaterThanZero = bet >= 1;
         if (!isBetGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
         }
 
-        const isBetLessThanOrEqualUserAmount = bet <= userPotatoes ? true : false;
+        const isBetLessThanOrEqualUserAmount = bet <= userPotatoes;
         if (!isBetLessThanOrEqualUserAmount) {
             interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
             return;
