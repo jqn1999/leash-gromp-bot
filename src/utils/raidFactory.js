@@ -1,7 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 
 class RaidFactory {
-    async handleRaid(raidList, totalRaidReward) {
+    async handleRegularRaid(raidList, totalRaidReward) {
         const splitRewardAmount = await calculateRaidSplit(raidList, totalRaidReward);
 
         raidList.forEach(async member => {

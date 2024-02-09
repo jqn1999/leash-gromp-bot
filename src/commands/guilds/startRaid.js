@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss } = require("../../utils/constants")
+const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss, regularStatRaidMobs } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -30,7 +30,7 @@ function determineRaidResult(successChance) {
     return false;
 }
 
-const raidScenarios = [
+const regularRaidScenarios = [
     {
         action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let splitRaidReward, totalRaidReward, raidResultDescription;
@@ -39,12 +39,12 @@ const raidScenarios = [
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
                 totalRaidReward = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = metalKingRaidBoss.successDescription;
-                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount+1);
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount + 1);
             } else {
                 totalRaidReward = Math.round(Raid.LEGENDARY_RAID_PENALTY * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = metalKingRaidBoss.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, metalKingRaidBoss, successChance, raidResultDescription);
@@ -62,13 +62,13 @@ const raidScenarios = [
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
                 totalRaidReward = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = hardRaidMob.successDescription;
-                
-                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount+1);
+
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount + 1);
             } else {
                 totalRaidReward = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, hardRaidMob, successChance, raidResultDescription);
@@ -86,12 +86,12 @@ const raidScenarios = [
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
                 totalRaidReward = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = mediumRaidMob.successDescription;
-                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount+1);
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount + 1);
             } else {
                 totalRaidReward = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mediumRaidMob, successChance, raidResultDescription);
@@ -109,15 +109,40 @@ const raidScenarios = [
             const successfulRaid = determineRaidResult(successChance);
             if (successfulRaid) {
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.successDescription;
-                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount+1);
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount + 1);
             } else {
                 totalRaidReward = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
-                splitRaidReward = await raidFactory.handleRaid(raidList, totalRaidReward);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, regularRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidReward;
+        },
+        chance: 1
+    }
+]
+
+const statRaidScenarios = [
+    {
+        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let splitRaidReward, totalRaidReward, raidResultDescription;
+            const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
+            const successChance = determinRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY);
+            const successfulRaid = determineRaidResult(successChance);
+            if (successfulRaid) {
+                totalRaidReward = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
+                raidResultDescription = regularStatRaidMob.successDescription;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount + 1);
+            } else {
+                totalRaidReward = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
+                splitRaidReward = await raidFactory.handleRegularRaid(raidList, totalRaidReward);
+                raidResultDescription = regularStatRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, regularStatRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed] });
             return totalRaidReward;
         },
@@ -140,8 +165,8 @@ module.exports = {
                     value: 'regular'
                 },
                 {
-                    name: 'special',
-                    value: 'special'
+                    name: 'stat',
+                    value: 'stat'
                 }
             ]
         }
@@ -149,6 +174,7 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const raidSelection = interaction.options.get('raid-select')?.value;
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -212,18 +238,22 @@ module.exports = {
         }
 
         const raidScenarioRoll = Math.random();
-        let potatoesGained;
-        for (const scenario of raidScenarios) {
-            if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
-                break;
+        if (raidSelection == 'regular') {
+            let potatoesGained = 0;
+            for (const scenario of regularRaidScenarios) {
+                if (raidScenarioRoll < scenario.chance) {
+                    potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                    break;
+                }
             }
+            guildTotalEarnings += potatoesGained;
+            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+        } else if (raidSelection == 'stat') {
+
         }
-        guildTotalEarnings += potatoesGained;
-        const emptyRaidList = [];
+
         await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
         await dynamoHandler.updateGuildDatabase(guildId, 'activeRaid', false);
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', emptyRaidList);
-        await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
 }

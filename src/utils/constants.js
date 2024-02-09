@@ -87,7 +87,7 @@ const hardRaidMobs = [
         description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
         successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
         failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, Artwork by RednaxeIa and Charizard'
     },
     {
         name: "Behemoth Broccoli, the Green Guardian",
@@ -107,6 +107,25 @@ const metalKingRaidBoss = {
         failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
         credit: 'Inspired by RednaxeIa'
 }
+
+const regularStatRaidMobs = [
+    {
+        name: "Spectral Spudspecter, the Ghostly Potato Monarch",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        description: `The Spectral Spudspecter, the Ghostly Potato Monarch, materializes as a haunting apparition, cloaked in ethereal potato skins and wreathed in wisps of ghostly vapors. Its spectral form exudes an otherworldly aura, commanding the very essence of the afterlife within the Potato Kingdom.`,
+        successDescription: 'Through courage and cunning, the spud heroes banish the Spectral Spudspecter, dispersing its ghostly visage and restoring peace to the Potato Kingdom. The spectral monarch\'s reign of ethereal terror comes to an end, and the realm is freed from its haunting grasp.',
+        failureDescription: 'Enveloped by the chilling embrace of the Spectral Spudspecter\'s ghostly powers, the potato adventurers fade into the shadows, their efforts to vanquish the Ghostly Potato Monarch thwarted. The realm of potatoes falls deeper into the spectral abyss, haunted by the ghostly presence of its malevolent ruler.',
+        credit: 'Inspired by Moonwave, Artwork by RednaxeIa and Charizard'
+    },
+    {
+        name: "Shiitakethane, the Fungal Tyrant",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        description: `Shiitakethane, the Fungal Tyrant, emerges from the depths of the Potato Kingdom as a towering mushroom sovereign, adorned with spores and mycelial tendrils that writhe with eerie sentience. Its presence heralds a reign of fungal dominance, threatening the very balance of the vegetable realm.`,
+        successDescription: 'Through stalwart resolve and strategic prowess, the spud heroes dismantle Shiitakethane\'s fungal empire, purging the Potato Kingdom of its tyrannical grip. The fungal tyrant\'s reign crumbles, and the realm is restored to harmony and balance.',
+        failureDescription: 'Overwhelmed by the relentless onslaught of fungal minions and toxic spores unleashed by Shiitakethane, the potato adventurers succumb to the fungal tyrant\'s dominion. The Potato Kingdom plunges into darkness, ensnared by the tendrils of the Fungal Tyrant\'s malevolent rule.',
+        credit: 'Inspired by Moonwave, Artwork by RednaxeIa and Charizard'
+    }
+]
 
 const regularWorkMobs = [
     {
@@ -398,12 +417,13 @@ module.exports = {
     regularRaidMobs,
     mediumRaidMobs,
     metalKingRaidBoss,
+    metalPotatoSuccess,
+    metalPotatoFailure,
     hardRaidMobs,
+    regularStatRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
     poisonPotato,
     goldenPotato,
-    metalPotatoSuccess,
-    metalPotatoFailure
 }

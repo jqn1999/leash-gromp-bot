@@ -113,7 +113,8 @@ const addUser = async function (userId, username) {
             workMultiplierAmount: 0,
             passiveAmount: 0,
             bankCapacity: 0
-        }
+        },
+        starches: 0
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
