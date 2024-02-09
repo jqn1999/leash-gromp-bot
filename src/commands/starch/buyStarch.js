@@ -36,6 +36,7 @@ module.exports = {
 
         // get starch number and basic stuff
         let starches = interaction.options.get('starch-amount')?.value
+        starches = Math.round(starches)
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 

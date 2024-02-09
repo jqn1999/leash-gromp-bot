@@ -3,6 +3,7 @@ const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPot
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
+const { workChances, WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 
@@ -16,7 +17,7 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-const workScenarios = [
+var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
@@ -24,7 +25,7 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .001
+        chance: workChances[WORK_SCENARIO_INDICES.GOLDEN]
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -33,7 +34,7 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .01
+        chance: workChances[WORK_SCENARIO_INDICES.POISON]
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -42,7 +43,7 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .05
+        chance: workChances[WORK_SCENARIO_INDICES.LARGE]
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -60,7 +61,7 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .06
+        chance: workChances[WORK_SCENARIO_INDICES.METAL]
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -69,7 +70,7 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .08
+        chance: workChances[WORK_SCENARIO_INDICES.SWEET]
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -102,19 +103,20 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
-        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
-        const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
+        // const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
+        // const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
-        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
-            return;
-        };
+        // if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
+        //     interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
+        //     return;
+        // };
         const work = await dynamoHandler.getStatDatabase('work');
         const newWorkCount = work.workCount + 1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
         let multiplier = getRandomFromInterval(.8, 1.2);
-
+        console.log(`${workScenarioRoll} is the roll`)
+        console.log(`${workChances} is the work chances array`)
         for (const scenario of workScenarios) {
             if (workScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction);
