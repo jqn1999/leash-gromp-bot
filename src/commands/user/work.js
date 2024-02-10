@@ -3,7 +3,7 @@ const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPot
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
-const {WORK_SCENARIO_INDICES} = require("../../utils/eventFactory");
+const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 
@@ -17,9 +17,9 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-function setWorkScenarios(workChances){
-    for(var scenario of workScenarios){
-        if(scenario.type != WORK_SCENARIO_INDICES.NA){ // this line sucks but will figure it out later
+function setWorkScenarios(workChances) {
+    for (var scenario of workScenarios) {
+        if (scenario.type != WORK_SCENARIO_INDICES.REGULAR) {
             scenario.chance = workChances[scenario.type]
         }
     }
@@ -94,7 +94,7 @@ var workScenarios = [
             return potatoesGained;
         },
         chance: 1,
-        type: WORK_SCENARIO_INDICES.NA
+        type: WORK_SCENARIO_INDICES.REGULAR
     }
 ]
 
@@ -118,20 +118,20 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
-        // const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
-        // const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
-        // if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
-        //     interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
-        //     return;
-        // };
+        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
+        const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
+
+        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
+            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
+            return;
+        };
+
         const work = await dynamoHandler.getStatDatabase('work');
         const newWorkCount = work.workCount + 1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
         let multiplier = getRandomFromInterval(.8, 1.2);
-        console.log(`${workScenarioRoll} is the roll`) // special events testing
-        console.log(workScenarios)
         for (const scenario of workScenarios) {
             if (workScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction);
