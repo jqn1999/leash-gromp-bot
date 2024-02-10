@@ -56,13 +56,13 @@ module.exports = async (client) => {
         if(chance >= .9){
             // In the future we should store channels in a database for certain events like birthday, or bot channels
             // and add commands that add/remove servers from that list so we dont have to code channel ids
-            client.channels.fetch('796873375632195605')
-            // client.channels.fetch('1146091052781011026')
+            client.channels.fetch('1188525931346792498')
             .then(async channel => {
                 // SEND TO THE EVENTS!
                 eF.setSpecialEvent()
                 var eventName = eF.getCurrentEvent();
                 channel.send(`Special event on the way this hour! ${eventName}`);
+                let wC = eF.getWorkChances()
                 // set work chances in work.js
                 setWorkScenarios(wC)
             })

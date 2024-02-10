@@ -110,8 +110,6 @@ class EventFactory {
         for (i = 0; i < weights.length; i++)
             if (weights[i] > random)
                 break;
-        console.log(random)
-        console.log(weights)
         return items[i];
     }
 
