@@ -31,18 +31,26 @@ const Rob = {
 const Raid = {
     MAXIMUM_RAID_SUCCESS_RATE: .9,
     RAID_TIMER_SECONDS: 3600,
+
     REGULAR_RAID_REWARD: 100000,
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
+
     MEDIUM_RAID_REWARD: 500000,
     MEDIUM_RAID_PENALTY: -500000,
     MEDIUM_RAID_DIFFICULTY: 60,
+
     HARD_RAID_REWARD: 5000000,
     HARD_RAID_PENALTY: -2000000,
     HARD_RAID_DIFFICULTY: 150,
+
     LEGENDARY_RAID_REWARD: 20000000,
     LEGENDARY_RAID_PENALTY: -5000000,
     LEGENDARY_RAID_DIFFICULTY: 500,
+
+    REGULAR_STAT_RAID_REWARD: 0.2,
+    REGULAR_STAT_RAID_COST: -500000,
+    REGULAR_STAT_RAID_DIFFICULTY: 250
 }
 
 const GuildRoles = {
@@ -72,11 +80,11 @@ const regularRaidMobs = [
 const mediumRaidMobs = [
     {
         name: "Basilbane, the Herbaceous Harbinger",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1205682852172271727/baycil.png?ex=65d942a8&is=65c6cda8&hm=499bab1149a7948b3811db877a628775b9a9a4725cc1382fa14571281575baa7&",
         description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
         successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
         failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, Artwork by RednaxeIa and Charizard'
     }
 ]
 
