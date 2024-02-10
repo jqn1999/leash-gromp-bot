@@ -44,6 +44,8 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, please enter a positive number!`);
             return;
         }
+        
+        starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only sell positive amounts!`);

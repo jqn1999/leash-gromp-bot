@@ -13,7 +13,9 @@ module.exports = {
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
-        }   
+        }
+        let userPotatoes = userDetails.potatoes;
+        let userStarches = userDetails.starches;
     
         const details = await dynamoHandler.getStatDatabase("starch")
 
@@ -25,10 +27,11 @@ module.exports = {
         let buy = details.starch_buy
         let sell = details.starch_sell
         if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
-            interaction.editReply(`${userDisplayName}, you can currently buy starches for ${buy.toLocaleString()} potatoes!`);
+            const maxPossibleStarches = Math.floor(userPotatoes/buy);
+            interaction.editReply(`${userDisplayName}, you can currently buy starches for ${buy.toLocaleString()} potatoes! You can buy ${maxPossibleStarches.toLocaleString()} starches.`);
             return;            
         }else{
-            interaction.editReply(`${userDisplayName}, you can currently sell starches for ${sell.toLocaleString()} potatoes!`);
+            interaction.editReply(`${userDisplayName}, you can currently sell starches for ${sell.toLocaleString()} potatoes! You have ${userStarches.toLocaleString()} starches.`);
         }
 
 

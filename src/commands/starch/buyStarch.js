@@ -35,7 +35,7 @@ module.exports = {
         }
 
         // get starch number and basic stuff
-        let starches = interaction.options.get('starch-amount')?.value
+        let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
@@ -45,6 +45,7 @@ module.exports = {
             return;
         }
         
+        starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only buy positive amounts!`);
