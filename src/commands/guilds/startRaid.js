@@ -155,7 +155,7 @@ module.exports = {
     options: [
         {
             name: 'raid-select',
-            description: 'Which raid to do',
+            description: 'Which raid type to select',
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [

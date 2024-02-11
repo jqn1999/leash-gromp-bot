@@ -65,6 +65,6 @@ module.exports = {
         userStarches -= starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you sold ${starches.toLocaleString()} starches for ${profit.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches and ${userPotatoes.toLocaleString()} potatoes left.`);
+        interaction.editReply(`${userDisplayName}, you sold ${starches.toLocaleString()} starches for ${profit.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches and ${userPotatoes.toLocaleString()} potatoes.`);
     }
 }

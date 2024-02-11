@@ -429,6 +429,7 @@ class EmbedFactory {
             value: `${raidResultDescription}`,
             inline: true,
         })
+        
         if (statRaidReward) {
             fields.push({
                 name: `Stats Granted:`,
