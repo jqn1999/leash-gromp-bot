@@ -75,18 +75,18 @@ class EmbedFactory {
             .setTimestamp(Date.now())
             .addFields(
                 {
-                    name: "Current Work Multiplier Upgrade:",
-                    value: `${multiplierName} (${userBaseWorkMultiplier.toFixed(2)}x + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)})`,
+                    name: "Current Work Multiplier Upgrade:\n(Base + Bonus)",
+                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)})x`,
                     inline: false,
                 },
                 {
                     name: "Current Passive Income Upgrade:",
-                    value: `${passiveName} (${userBasePassiveIncome}x + ${userDetails.sweetPotatoBuffs.passiveAmount})`,
+                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()}) potatoes`,
                     inline: false,
                 },
                 {
                     name: "Current Bank Capacity Upgrade:",
-                    value: `${bankName} (${userBaseBankCapacity}x + ${userDetails.sweetPotatoBuffs.bankCapacity})`,
+                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()}) potatoes`,
                     inline: false,
                 },
                 {

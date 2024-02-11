@@ -30,6 +30,7 @@ const Rob = {
 
 const Raid = {
     MAXIMUM_RAID_SUCCESS_RATE: .9,
+    MAXIMUM_STAT_RAID_SUCCESS_RATE: .45,
     RAID_TIMER_SECONDS: 3600,
 
     REGULAR_RAID_REWARD: 100000,
@@ -418,7 +419,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 100000000,
+                amount: 150000000,
                 cost: 50000000,
                 description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
                 id: 6,
@@ -426,7 +427,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 500000000,
+                amount: 750000000,
                 cost: 200000000,
                 description: "An archaic reserve of potato knowledge and preservation, equipped with magical resovoirs of extraordinary capacity",
                 id: 7,
@@ -434,7 +435,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 2500000000,
+                amount: 4000000000,
                 cost: 1000000000,
                 description: "Mystical reservoir of potato storage",
                 id: 8,
