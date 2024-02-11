@@ -481,6 +481,21 @@ class EmbedFactory {
         return embed;
     }
 
+    createWorldEmbed(mob){
+        //let fields = [], footerText = "Made by Beggar";
+        let footerText = "Made by Beggar"
+
+        const embed = new EmbedBuilder()
+            .setTitle(`'${mob.name}`)
+            .setDescription(`${mob.description}`)
+            .setColor("Random")
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+           // .setFields(fields)
+        return embed;
+    }
+
     createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob) {
         let fields = [], footerText = "Made by Beggar";
 

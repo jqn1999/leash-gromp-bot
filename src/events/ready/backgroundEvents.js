@@ -3,7 +3,7 @@ const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
 var { EventFactory } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
-
+var {worldFactory} = require("../../utils/worldFactory.js");
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 
 let statuses = [
@@ -70,6 +70,23 @@ module.exports = async (client) => {
             eF.setBaseWorkChances();
             eF.setBaseWorkProbability();
             setWorkScenarios(eF.getWorkChances())
+        }
+    });
+
+    schedule.scheduleJob('30 * * * *', function () {
+        // do some checking to see if there was a raid last hour
+        // and perform the necessary actions
+        let wB = new worldFactory()
+        wB.popWorldBoss()
+        const chance = Math.random()
+        console.log(chance)
+        if(chance >= .9){
+            client.channels.fetch('1146091052781011026') // matt rn
+            .then(async channel => {
+                wB.setWorldBoss()
+                embed = wB.getWorldEmbed()
+                channel.send({embeds: [ embed ]});
+            })
         }
     });
 };
