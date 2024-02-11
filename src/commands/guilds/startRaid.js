@@ -127,7 +127,7 @@ const statRaidScenarios = [
             let raidSplit, totalRaidCost, raidResultDescription;
             const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * randomMultiplier);
+            totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * randomMultiplier * raidList.length);
             raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidCost);
 
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY);
@@ -222,13 +222,13 @@ module.exports = {
             return;
         }
 
-        // const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
-        // const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
+        const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
+        const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
 
-        // if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
-        //     interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
-        //     return;
-        // }
+        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
+            return;
+        }
 
         let totalMultiplier = 0;
         for (const [index, element] of raidList.entries()) {

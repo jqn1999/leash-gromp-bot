@@ -44,7 +44,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, please enter a positive number!`);
             return;
         }
-        
+
         starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
@@ -67,6 +67,6 @@ module.exports = {
         userStarches += starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you purchased ${starches.toLocaleString()} starches for ${cost.toLocaleString()} potatoes!`);
+        interaction.editReply(`${userDisplayName}, you purchased ${starches.toLocaleString()} starches for ${cost.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches.`);
     }
 }
