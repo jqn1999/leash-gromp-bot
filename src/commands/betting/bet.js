@@ -59,7 +59,9 @@ module.exports = {
         let userPotatoes = userDetails.potatoes;
         if (bet.toLowerCase() == 'all') {
             bet = userPotatoes;
-        } else{
+        } else if (bet.toLowerCase() == 'half'){
+            bet = Math.round(userPotatoes/2);
+        } else {
             bet = Math.floor(Number(bet));
             if (isNaN(Number(bet))) {
                 interaction.editReply(`${userDisplayName}, something went wrong with your bet. Try again!`);

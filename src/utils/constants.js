@@ -233,15 +233,15 @@ const shops = [
             {
                 amount: 1.5,
                 cost: 50000,
-                description: "A basic set of gear for beginners that makes hunting a bit easier",
+                description: "A humble set of gear for beginners intended to facilitate the hunting process.",
                 id: 1,
-                name: "Spud Seeker Set",
+                name: "Novice Spud Seeker Set",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 3,
                 cost: 200000,
-                description: "An intermediate set of gear for those pursuing a career in potato hunting",
+                description: "A respectable set of gear that's vital for those pursuing a career in potato hunting.",
                 id: 2,
                 name: "Potato Pursuer Kit",
                 type: "workMultiplierAmount"
@@ -249,35 +249,56 @@ const shops = [
             {
                 amount: 5,
                 cost: 1000000,
-                description: "An advanced set of gear for a trained professional",
+                description: "An intermediate set of accessories fit for a seasoned adventurer in the Potato Kingdom.",
                 id: 3,
-                name: "Starch Stalker Ensemble",
+                name: "Spud Striker Gear",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 10,
                 cost: 5000000,
-                description: "An elite set of gear for those that seek the thrill of special grade potatoes",
+                description: "Cutting-edge equipment that lends itself well to defending the Potato Kingdom against nefarious vegetables.",
                 id: 4,
-                name: "Supreme Spud Slayer Gear",
+                name: "Starch Stalker's Ensemble",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 15,
                 cost: 20000000,
-                description: "This arsenal provides hunters with tools to crush and capture legendary potatoes, enhancing their rewards when facing more powerful and elusive spuds",
+                description: "This advanced arsenal provides heroes with the means to safeguard their kingdom in the face of the most vicious foes.",
                 id: 5,
-                name: "Legendary Spud Seeker's Arsenal",
+                name: "Veteran's Spud-Seeking Arsenal",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 20,
                 cost: 50000000,
-                description: "Wielding cosmic forces, this gear allows players to obliterate entire fields of potatoes and face the most extreme potato challenges in their quest",
+                description: "An elite array of imposing weapons that can fell the toughest of enemies with ease.",
                 id: 6,
-                name: "Apocalyptic Tuber Annihilator Gear",
+                name: "Special-Grade Spud Slaying Gear",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 30,
+                cost: 200000000,
+                description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
+                id: 7,
+                name: "Supreme Spud Gladiator's Garments",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 40,
+                cost: 1000000000,
+                description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
+                id: 8,
+                name: "Legendary Leader's Blade",
                 type: "workMultiplierAmount"
             }
+            // 9) Divine Instrument of Potato Blessings
+            // -A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.
+            
+            // 10) Alien Armaments of Tuber Termination 
+            // -This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom. 
         ],
         title: "Work Tools Shop (multiplier for work)"
     },
@@ -332,6 +353,22 @@ const shops = [
                 id: 6,
                 name: "Harvest Harmony Elite",
                 type: "passiveAmount"
+            },
+            {
+                amount: 7000000,
+                cost: 200000000,
+                description: "An integrated network of potato scientists, farmers, and distributors capable of supporting the global potato economy with their robust supply chain",
+                id: 7,
+                name: "Cultivation Conglomerate",
+                type: "passiveAmount"
+            },
+            {
+                amount: 35000000,
+                cost: 1000000000,
+                description: "The greatest grower around",
+                id: 8,
+                name: "Lil David",
+                type: "passiveAmount"
             }
         ],
         title: "Passive Income Workers Shop (amount per day)"
@@ -381,11 +418,27 @@ const shops = [
                 type: "bankCapacity"
             },
             {
-                amount: 50000000,
+                amount: 100000000,
                 cost: 50000000,
                 description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
                 id: 6,
                 name: "Royal Russet Reserve",
+                type: "bankCapacity"
+            },
+            {
+                amount: 500000000,
+                cost: 200000000,
+                description: "An archaic reserve of potato knowledge and preservation, equipped with magical resovoirs of extraordinary capacity",
+                id: 7,
+                name: "Ancient Spud Library",
+                type: "bankCapacity"
+            },
+            {
+                amount: 2500000000,
+                cost: 1000000000,
+                description: "Mystical reservoir of potato storage",
+                id: 8,
+                name: "Mystic Tuber Vault",
                 type: "bankCapacity"
             }
         ],
