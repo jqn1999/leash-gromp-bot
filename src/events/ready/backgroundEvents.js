@@ -53,7 +53,7 @@ module.exports = async (client) => {
         let eF = new EventFactory()
 
         const chance = Math.random()
-        if(chance >= .9){
+        if(chance >= .8){
             // In the future we should store channels in a database for certain events like birthday, or bot channels
             // and add commands that add/remove servers from that list so we dont have to code channel ids
             client.channels.fetch('1188525931346792498')
