@@ -1,16 +1,12 @@
 const { getSortedBirthdays } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
+var { EventFactory } = require("../../utils/eventFactory");
+const { setWorkScenarios } = require("../../commands/user/work.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 
 let statuses = [
-    {
-        name: "Managing Lovense's Super Team"
-    },
-    {
-        name: "Paying off Moonwave's exorbitant fees for coaching"
-    },
     {
         name: "Cultivating new ways of playing with potatoes"
     }
@@ -24,7 +20,7 @@ module.exports = async (client) => {
     //     let random = Math.floor(Math.random() * statuses.length);
     //     client.user.setActivity(statuses[random]);
     // }, 30000);
-    client.user.setActivity(statuses[2]);
+    client.user.setActivity(statuses[0]);
 
     // Manages the passive potato gain of the server per 5 minutes
     setInterval(async () => {
@@ -50,5 +46,30 @@ module.exports = async (client) => {
             .catch(err => {
                 console.log(err)
             });
+    });
+
+    // check for random background events
+    schedule.scheduleJob('0 * * * *', function () {
+        let eF = new EventFactory()
+
+        const chance = Math.random()
+        if(chance >= .9){
+            // In the future we should store channels in a database for certain events like birthday, or bot channels
+            // and add commands that add/remove servers from that list so we dont have to code channel ids
+            client.channels.fetch('1188525931346792498')
+            .then(async channel => {
+                // SEND TO THE EVENTS!
+                eF.setSpecialEvent()
+                var eventName = eF.getCurrentEvent();
+                channel.send(`Special event on the way this hour! ${eventName}`);
+                let wC = eF.getWorkChances()
+                // set work chances in work.js
+                setWorkScenarios(wC)
+            })
+        } else {
+            eF.setBaseWorkChances();
+            eF.setBaseWorkProbability();
+            setWorkScenarios(eF.getWorkChances())
+        }
     });
 };

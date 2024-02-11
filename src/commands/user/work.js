@@ -3,6 +3,7 @@ const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPot
 const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
+const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 
@@ -16,7 +17,15 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-const workScenarios = [
+function setWorkScenarios(workChances) {
+    for (var scenario of workScenarios) {
+        if (scenario.type != WORK_SCENARIO_INDICES.REGULAR) {
+            scenario.chance = workChances[scenario.type]
+        }
+    }
+}
+
+var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier);
@@ -24,7 +33,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .001
+        chance: .001,
+        type: WORK_SCENARIO_INDICES.GOLDEN
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -33,7 +43,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .01
+        chance: .011,
+        type: WORK_SCENARIO_INDICES.POISON
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -42,7 +53,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .05
+        chance: .051,
+        type: WORK_SCENARIO_INDICES.LARGE
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -60,7 +72,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .06
+        chance: .061,
+        type: WORK_SCENARIO_INDICES.METAL
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -69,7 +82,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: .08
+        chance: .081,
+        type: WORK_SCENARIO_INDICES.SWEET
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -79,7 +93,8 @@ const workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return potatoesGained;
         },
-        chance: 1
+        chance: 1,
+        type: WORK_SCENARIO_INDICES.REGULAR
     }
 ]
 
@@ -87,8 +102,8 @@ module.exports = {
     name: "work",
     description: "Allows member to work and gain potatoes",
     devOnly: false,
-    // testOnly: false,
     deleted: false,
+    setWorkScenarios, //adding this so we can see it in backgroundEvents
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const total = await dynamoHandler.getServerTotal();
@@ -102,6 +117,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
+
         const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
         const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
 
@@ -109,12 +125,12 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
             return;
         };
+
         const work = await dynamoHandler.getStatDatabase('work');
         const newWorkCount = work.workCount + 1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
         let multiplier = getRandomFromInterval(.8, 1.2);
-
         for (const scenario of workScenarios) {
             if (workScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction);
