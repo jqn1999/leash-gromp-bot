@@ -29,8 +29,11 @@ class RaidFactory {
         raidList.forEach(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userMultiplier = userDetails.workMultiplierAmount;
+            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             userMultiplier += statRaidReward;
+            sweetPotatoBuffs.workMultiplierAmount += statRaidReward;
             await dynamoHandler.updateUserDatabase(member.id, "workMultiplierAmount", userMultiplier);
+            await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
         })
     }
 }

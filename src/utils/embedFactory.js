@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, Raid } = require("../utils/constants")
+const { GuildRoles, sweetPotato, Raid, shops} = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
@@ -31,7 +31,7 @@ class EmbedFactory {
         });
         fields.push({
             name: "Current Work Multiplier:",
-            value: `${(userDetails.workMultiplierAmount).toFixed(2)}`,
+            value: `${(userDetails.workMultiplierAmount).toFixed(2)}x`,
             inline: false,
         });
         fields.push({
@@ -59,6 +59,13 @@ class EmbedFactory {
     createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
+        const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
+        const userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
+        const userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
+        const multiplierName = findShopItemName(userBaseWorkMultiplier, shops[0].items);
+        const passiveName = findShopItemName(userBasePassiveIncome, shops[1].items);
+        const bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
+
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
@@ -67,6 +74,21 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .addFields(
+                {
+                    name: "Current Work Multiplier Upgrade:",
+                    value: `${multiplierName} (${userBaseWorkMultiplier.toFixed(2)}x + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)})`,
+                    inline: false,
+                },
+                {
+                    name: "Current Passive Income Upgrade:",
+                    value: `${passiveName} (${userBasePassiveIncome}x + ${userDetails.sweetPotatoBuffs.passiveAmount})`,
+                    inline: false,
+                },
+                {
+                    name: "Current Bank Capacity Upgrade:",
+                    value: `${bankName} (${userBaseBankCapacity}x + ${userDetails.sweetPotatoBuffs.bankCapacity})`,
+                    inline: false,
+                },
                 {
                     name: "Total Earnings:",
                     value: `${userDetails.totalEarnings.toLocaleString()} potatoes`,
@@ -693,6 +715,15 @@ class EmbedFactory {
             .setFields(fields)
         return embed;
     }
+}
+
+function findShopItemName(amount, shopItems) {
+    for (const [index, element] of shopItems.entries()) {
+        if (element.amount == amount.toFixed(0)) {
+            return element.name
+        }
+    }
+    return "N/A";
 }
 
 function getUserAvatar(userId, avatarHash) {

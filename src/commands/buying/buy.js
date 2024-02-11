@@ -113,9 +113,9 @@ module.exports = {
         }
         
         let userPotatoes = userDetails.potatoes;
-        let userWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
-        let userPassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
-        let userBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
+        let userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
+        let userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
+        let userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
 
         let chosenItem, userHasEnough, validTier;
         switch (shopSelect) {
@@ -124,7 +124,7 @@ module.exports = {
                 chosenItem = getItemFromShop(workShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBaseWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
@@ -138,7 +138,7 @@ module.exports = {
                 chosenItem = getItemFromShop(passiveIncomeShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userPassiveIncome, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBasePassiveIncome, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
@@ -152,7 +152,7 @@ module.exports = {
                 chosenItem = getItemFromShop(bankShop, itemIdSelected);
                 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBankCapacity, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBaseBankCapacity, chosenItem.amount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;
