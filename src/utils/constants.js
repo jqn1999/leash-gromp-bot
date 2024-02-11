@@ -437,7 +437,7 @@ const shops = [
             {
                 amount: 4000000000,
                 cost: 1000000000,
-                description: "Mystical reservoir of potato storage",
+                description: "A mystical reservoir developed for the most illustrious potato gatherers with capacities that exceed mortal comprehension",
                 id: 8,
                 name: "Mystic Tuber Vault",
                 type: "bankCapacity"
