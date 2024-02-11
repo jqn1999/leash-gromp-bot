@@ -1,8 +1,8 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 
 class RaidFactory {
-    async handleRaid(raidList, totalRaidReward) {
-        const splitRewardAmount = await calculateRaidSplit(raidList, totalRaidReward);
+    async handlePotatoSplit(raidList, totalRaidSplit) {
+        const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
 
         raidList.forEach(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
@@ -10,24 +10,33 @@ class RaidFactory {
             let userTotalEarnings = userDetails.totalEarnings;
             let userTotalLosses = userDetails.totalLosses;
 
-            if (splitRewardAmount > 0) {
-                userPotatoes += splitRewardAmount;
-                userTotalEarnings += splitRewardAmount;
+            if (raidSplitAmount > 0) {
+                userPotatoes += raidSplitAmount;
+                userTotalEarnings += raidSplitAmount;
                 await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
                 await dynamoHandler.updateUserDatabase(member.id, "totalEarnings", userTotalEarnings);
             } else {
-                userPotatoes += splitRewardAmount;
-                userTotalLosses += splitRewardAmount;
+                userPotatoes += raidSplitAmount;
+                userTotalLosses += raidSplitAmount;
                 await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
                 await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
             }
         })
-        return splitRewardAmount;
+        return raidSplitAmount;
+    }
+
+    async handleStatSplit(raidList, statRaidReward) {
+        raidList.forEach(async member => {
+            const userDetails = await dynamoHandler.findUser(member.id, member.username);
+            let userMultiplier = userDetails.workMultiplierAmount;
+            userMultiplier += statRaidReward;
+            await dynamoHandler.updateUserDatabase(member.id, "workMultiplierAmount", userMultiplier);
+        })
     }
 }
 
-async function calculateRaidSplit(raidList, totalRaidReward) {
-    const splitRewardAmount = Math.round(totalRaidReward / raidList.length);
+async function calculateRaidSplit(raidList, totalRaidSplit) {
+    const splitRewardAmount = Math.round(totalRaidSplit / raidList.length);
     return splitRewardAmount
 }
 

@@ -31,18 +31,26 @@ const Rob = {
 const Raid = {
     MAXIMUM_RAID_SUCCESS_RATE: .9,
     RAID_TIMER_SECONDS: 3600,
+
     REGULAR_RAID_REWARD: 100000,
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
+
     MEDIUM_RAID_REWARD: 500000,
     MEDIUM_RAID_PENALTY: -500000,
     MEDIUM_RAID_DIFFICULTY: 60,
+
     HARD_RAID_REWARD: 5000000,
     HARD_RAID_PENALTY: -2000000,
     HARD_RAID_DIFFICULTY: 150,
+
     LEGENDARY_RAID_REWARD: 20000000,
     LEGENDARY_RAID_PENALTY: -5000000,
     LEGENDARY_RAID_DIFFICULTY: 500,
+
+    REGULAR_STAT_RAID_REWARD: 0.2,
+    REGULAR_STAT_RAID_COST: -200000,
+    REGULAR_STAT_RAID_DIFFICULTY: 250
 }
 
 const GuildRoles = {
@@ -72,11 +80,11 @@ const regularRaidMobs = [
 const mediumRaidMobs = [
     {
         name: "Basilbane, the Herbaceous Harbinger",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1205682852172271727/baycil.png?ex=65d942a8&is=65c6cda8&hm=499bab1149a7948b3811db877a628775b9a9a4725cc1382fa14571281575baa7&",
         description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
         successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
         failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
     }
 ]
 
@@ -87,7 +95,7 @@ const hardRaidMobs = [
         description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
         successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
         failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
     },
     {
         name: "Behemoth Broccoli, the Green Guardian",
@@ -107,6 +115,25 @@ const metalKingRaidBoss = {
         failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
         credit: 'Inspired by RednaxeIa'
 }
+
+const regularStatRaidMobs = [
+    {
+        name: "Spectral Spudspecter, the Ghostly Potato Monarch",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        description: `The Spectral Spudspecter, the Ghostly Potato Monarch, materializes as a haunting apparition, cloaked in ethereal potato skins and wreathed in wisps of ghostly vapors. Its spectral form exudes an otherworldly aura, commanding the very essence of the afterlife within the Potato Kingdom.`,
+        successDescription: 'Through courage and cunning, the spud heroes banish the Spectral Spudspecter, dispersing its ghostly visage and restoring peace to the Potato Kingdom. The spectral monarch\'s reign of ethereal terror comes to an end, and the realm is freed from its haunting grasp.',
+        failureDescription: 'Enveloped by the chilling embrace of the Spectral Spudspecter\'s ghostly powers, the potato adventurers fade into the shadows, their efforts to vanquish the Ghostly Potato Monarch thwarted. The realm of potatoes falls deeper into the spectral abyss, haunted by the ghostly presence of its malevolent ruler.',
+        credit: 'Inspired by Moonwave'
+    },
+    {
+        name: "Shiitakethane, the Fungal Tyrant",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        description: `Shiitakethane, the Fungal Tyrant, emerges from the depths of the Potato Kingdom as a towering mushroom sovereign, adorned with spores and mycelial tendrils that writhe with eerie sentience. Its presence heralds a reign of fungal dominance, threatening the very balance of the vegetable realm.`,
+        successDescription: 'Through stalwart resolve and strategic prowess, the spud heroes dismantle Shiitakethane\'s fungal empire, purging the Potato Kingdom of its tyrannical grip. The fungal tyrant\'s reign crumbles, and the realm is restored to harmony and balance.',
+        failureDescription: 'Overwhelmed by the relentless onslaught of fungal minions and toxic spores unleashed by Shiitakethane, the potato adventurers succumb to the fungal tyrant\'s dominion. The Potato Kingdom plunges into darkness, ensnared by the tendrils of the Fungal Tyrant\'s malevolent rule.',
+        credit: 'Inspired by Moonwave'
+    }
+]
 
 const regularWorkMobs = [
     {
@@ -398,12 +425,13 @@ module.exports = {
     regularRaidMobs,
     mediumRaidMobs,
     metalKingRaidBoss,
+    metalPotatoSuccess,
+    metalPotatoFailure,
     hardRaidMobs,
+    regularStatRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
     poisonPotato,
     goldenPotato,
-    metalPotatoSuccess,
-    metalPotatoFailure
 }

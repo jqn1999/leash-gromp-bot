@@ -421,7 +421,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance, raidResultDescription) {
+    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance, raidResultDescription, statRaidReward=null) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -429,6 +429,14 @@ class EmbedFactory {
             value: `${raidResultDescription}`,
             inline: true,
         })
+        
+        if (statRaidReward) {
+            fields.push({
+                name: `Stats Granted:`,
+                value: `${statRaidReward} work multiplier to all members!`,
+                inline: false,
+            })
+        }
 
         fields.push({
             name: `Success Chance:`,

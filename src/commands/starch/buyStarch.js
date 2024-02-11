@@ -35,7 +35,7 @@ module.exports = {
         }
 
         // get starch number and basic stuff
-        let starches = interaction.options.get('starch-amount')?.value
+        let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
@@ -44,7 +44,8 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, please enter a positive number!`);
             return;
         }
-        
+
+        starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only buy positive amounts!`);
@@ -66,6 +67,6 @@ module.exports = {
         userStarches += starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you purchased ${starches.toLocaleString()} starches for ${cost.toLocaleString()} potatoes!`);
+        interaction.editReply(`${userDisplayName}, you purchased ${starches.toLocaleString()} starches for ${cost.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches and ${userPotatoes.toLocaleString()} potatoes left.`);
     }
 }
