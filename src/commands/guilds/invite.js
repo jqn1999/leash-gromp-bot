@@ -33,12 +33,11 @@ module.exports = {
             return;
         }
 
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         if (!guild) {
             interaction.editReply(`${userDisplayName} there was an error looking for your guild information. Try again!`);
             return;
         }
-        const guildId = guild.guildId;
         const memberList = guild.memberList;
         let inviteList = guild.inviteList;
 
@@ -60,7 +59,7 @@ module.exports = {
         }
 
         inviteList.push(targetUser);
-        await dynamoHandler.updateGuildDatabase(guildId, 'inviteList', inviteList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'inviteList', inviteList);
         interaction.editReply(`${userDisplayName} you have invited <@${targetUser}> to your guild, '${guild.guildName}'!`);
     }
 }

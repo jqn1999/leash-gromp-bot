@@ -32,8 +32,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you have no guild!`);
             return;
         }
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        const guildId = guild.guildId;
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
@@ -66,7 +65,7 @@ module.exports = {
                 user.role = GuildRoles.LEADER
             }
         })
-        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', memberList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', memberList);
         interaction.editReply(`${userDisplayName} you have transferred leadership of '${guild.guildName}' to <@${targetUser}>!`);
     }
 }

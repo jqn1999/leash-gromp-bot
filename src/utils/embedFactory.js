@@ -69,7 +69,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

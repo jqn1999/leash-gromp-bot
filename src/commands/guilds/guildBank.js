@@ -54,8 +54,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you have no guild to deposit or withdraw from!`);
             return;
         }
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        const guildId = guild.guildId;
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         const memberList = guild.memberList;
         let guildBankStored = guild.bankStored;
         let guildBankCapacity = guild.bankCapacity;
@@ -116,7 +115,7 @@ module.exports = {
             adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
+            await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (member.role != GuildRoles.LEADER) {
@@ -155,7 +154,7 @@ module.exports = {
             userPotatoes += netAmount;
             guildBankStored -= netAmount;
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
+            await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         }
     }
