@@ -65,17 +65,16 @@ module.exports = {
             return;
         }
 
-        if (member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER) {
+        if (member.role != GuildRoles.LEADER && member.role != GuildRoles.COLEADER) {
             interaction.editReply(`${userDisplayName} you need to be a co-leader or the leader to demote a member.`);
             return;
         }
 
-        let isHigherRole = targetMember.role == GuildRoles.COLEADER && (role == GuildRoles.ELDER || role == GuildRoles.MEMBER);
         if (targetMember.role == role) {
             interaction.editReply(`${userDisplayName} your target is already a ${role}!`);
             return;
-        } else if (isHigherRole) {
-            interaction.editReply(`${userDisplayName} your target is a ${targetMember.role}, which is higher than ${GuildRoles.ELDER}!`);
+        } else if (targetMember.role == GuildRoles.COLEADER && member.role != GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} your target is a ${targetMember.role}, which can only be demoted by the leader!`);
             return;
         }
 

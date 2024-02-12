@@ -118,8 +118,9 @@ module.exports = {
             await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
             interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
-            if (member.role != GuildRoles.LEADER) {
-                interaction.editReply(`${userDisplayName} you cannot withdraw potatoes from the guild bank unless you are the leader of the guild!`);
+            let canWithdraw = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
+            if (!canWithdraw) {
+                interaction.editReply(`${userDisplayName} you cannot withdraw potatoes from the guild bank unless you are a co-leader or the leader of the guild!`);
                 return;
             }
 

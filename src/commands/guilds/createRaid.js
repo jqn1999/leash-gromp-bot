@@ -42,9 +42,9 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
             return;
         }
-
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you must be the guild leader to create a raid!`);
+        let canCreateRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
+        if (!canCreateRaids) {
+            interaction.editReply(`${userDisplayName} you must be an elder, a co-leader, or the leader to create a raid!`);
             return;
         }
         raidList.push(member);
