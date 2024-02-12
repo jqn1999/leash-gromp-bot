@@ -217,8 +217,9 @@ module.exports = {
             return;
         }
 
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you must be the guild leader to start a raid!`);
+        let canStartRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
+        if (!canStartRaids) {
+            interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
             return;
         }
 
