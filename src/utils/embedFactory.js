@@ -137,6 +137,40 @@ class EmbedFactory {
         return embed;
     }
 
+    createUserStarchLeaderboardEmbed(sortedUsers, total, userIndex) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        let userList = []
+        for (const [index, element] of sortedUsers.entries()) {
+            let currentUserTotalStarches = element.starches;
+            if (index < 5) {
+                const user = {
+                    name: `${index + 1}) ${element.username}`,
+                    value: `${element.starches.toLocaleString()} starches (${(currentUserTotalStarches / total * 100).toFixed(2)}%)`,
+                    inline: false,
+                };
+                userList.push(user);
+            } else {
+                break;
+            }
+        }
+        let userTotalStarches = sortedUsers[userIndex].starches;
+        userList.push({
+            name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
+            value: `${sortedUsers[userIndex].starches.toLocaleString()} starches (${(userTotalStarches / total * 100).toFixed(2)}%)`,
+            inline: false,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Server Leaderboard (${total.toLocaleString()} starches)`)
+            .setDescription(`This is where the top 5 members' starches are displayed... your rank is at the bottom.`)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(userList)
+        return embed;
+    }
+
     createGuildLeaderboardEmbed(sortedGuilds, interaction) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         let guildList = []

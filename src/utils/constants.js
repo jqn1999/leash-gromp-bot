@@ -431,7 +431,7 @@ const shops = [
             {
                 amount: 750000000,
                 cost: 200000000,
-                description: "An archaic reserve of potato knowledge and preservation, equipped with magical resovoirs of extraordinary capacity",
+                description: "An archaic reserve of potato knowledge and preservation, equipped with magical resevoirs of extraordinary capacity",
                 id: 7,
                 name: "Ancient Spud Library",
                 type: "bankCapacity"
