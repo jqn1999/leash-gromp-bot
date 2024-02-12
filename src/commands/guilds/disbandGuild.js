@@ -27,7 +27,7 @@ module.exports = {
         let memberList = guild.memberList;
 
         if (memberList.length > 1) {
-            interaction.editReply(`${userDisplayName} you need to pass leadership or have no other members to disband the guild!`);
+            interaction.editReply(`${userDisplayName} you must be the last member before you can disband your guild!`);
             return;
         }
 
@@ -36,7 +36,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you must be the guild leader to disband the guild!`);
             return;
         }
-        
+
         // Leaving the guild in database in case its ever needed again
         await dynamoHandler.updateGuildDatabase(guildId, 'memberList', []);
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);

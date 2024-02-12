@@ -79,10 +79,9 @@ module.exports = {
             interaction.editReply(`${userDisplayName} your target is already a ${role}!`);
             return;
         } else if (targetMember.role == GuildRoles.COLEADER && role == GuildRoles.ELDER) {
-            interaction.editReply(`${userDisplayName} your target is a ${targetMember.role}, which is higher than ${GuildRoles.ELDER}!`);
+            interaction.editReply(`${userDisplayName} your target is a ${GuildRoles.COLEADER}, which is higher than ${GuildRoles.ELDER}!`);
             return;
         }
-
 
         memberList.forEach((user) => {
             if (user.id == targetUser) {
