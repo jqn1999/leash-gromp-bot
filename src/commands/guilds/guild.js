@@ -33,7 +33,7 @@ module.exports = {
                 interaction.editReply(`${userDisplayName} you have no guild to display!`);
                 return;
             }
-            guild = await dynamoHandler.findGuildById(userDetails.guildId);
+            guild = await dynamoHandler.findGuildById(userGuildId);
         } else {
             guild = await dynamoHandler.findGuildByName(guildName);
         }

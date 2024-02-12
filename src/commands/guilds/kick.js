@@ -32,8 +32,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you have no guild!`);
             return;
         }
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        const guildId = guild.guildId;
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
@@ -59,7 +58,7 @@ module.exports = {
         }
 
         let newMemberList = memberList.filter((user) => user.id != targetUser)
-        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', newMemberList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
         await dynamoHandler.updateUserDatabase(targetUser, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }

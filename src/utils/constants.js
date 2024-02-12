@@ -56,6 +56,8 @@ const Raid = {
 
 const GuildRoles = {
     LEADER: "Leader",
+    COLEADER: "Co-Leader",
+    ELDER: "Elder",
     MEMBER: "Member"
 }
 
@@ -109,12 +111,12 @@ const hardRaidMobs = [
 ]
 
 const metalKingRaidBoss = {
-        name: "Metal King Potato",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
-        description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
-        successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
-        failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
-        credit: 'Inspired by RednaxeIa'
+    name: "Metal King Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
+    description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
+    successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
+    failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
+    credit: 'Inspired by RednaxeIa'
 }
 
 const regularStatRaidMobs = [
@@ -297,7 +299,7 @@ const shops = [
             }
             // 9) Divine Instrument of Potato Blessings
             // -A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.
-            
+
             // 10) Alien Armaments of Tuber Termination 
             // -This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom. 
         ],

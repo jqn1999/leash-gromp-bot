@@ -27,7 +27,7 @@ module.exports = {
         let buy = details.starch_buy
         let sell = details.starch_sell
         if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
-            const maxPossibleStarches = Math.floor(userPotatoes/buy);
+            const maxPossibleStarches = Math.floor(userPotatoes/buy) > 0 ? Math.floor(userPotatoes/buy) : 0;
             interaction.editReply(`${userDisplayName}, you can currently buy starches for ${buy.toLocaleString()} potatoes! You can buy ${maxPossibleStarches.toLocaleString()} starches.`);
             return;            
         }else{

@@ -69,7 +69,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -395,10 +395,38 @@ class EmbedFactory {
             value: `${leader.username}`,
             inline: false,
         })
-        const newMemberList = memberList.filter((currentMember) => currentMember.role != GuildRoles.LEADER)
-        if (newMemberList.length > 0) {
+        const coleaderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.COLEADER)
+        if (coleaderList.length > 0) {
             let stringListOfMembers = ``;
-            for (const [index, element] of newMemberList.entries()) {
+            for (const [index, element] of coleaderList.entries()) {
+                stringListOfMembers += `${element.username}\n`
+            }
+            const listOfMembers = {
+                name: `${GuildRoles.COLEADER}`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            userList.push(listOfMembers);
+        }
+        
+        const elderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.ELDER)
+        if (elderList.length > 0) {
+            let stringListOfMembers = ``;
+            for (const [index, element] of elderList.entries()) {
+                stringListOfMembers += `${element.username}\n`
+            }
+            const listOfMembers = {
+                name: `${GuildRoles.ELDER}`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            userList.push(listOfMembers);
+        }
+
+        const regularMemberList = memberList.filter((currentMember) => currentMember.role == GuildRoles.MEMBER)
+        if (regularMemberList.length > 0) {
+            let stringListOfMembers = ``;
+            for (const [index, element] of regularMemberList.entries()) {
                 stringListOfMembers += `${element.username}\n`
             }
             const listOfMembers = {
