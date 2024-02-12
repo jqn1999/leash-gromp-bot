@@ -25,7 +25,7 @@ module.exports = {
 
         //check if they are allowed to buy
         var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22);
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 && date.getHours() <= 22);
         let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
         let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
 
