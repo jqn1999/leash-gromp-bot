@@ -1,5 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-var { towerFactory } = require("../../utils/towerFactory");
+var {towerFactory} = require("../../utils/towerFactory");
+const { getUserInteractionDetails } = require("../../utils/helperCommands");
 
 
 module.exports = {
@@ -18,10 +19,10 @@ module.exports = {
         // TODO: CHECK FOR ELIGIBILITY
 
 
-        tF = new towerFactory()
-        payout = tF.startRun()
+        let tF = new towerFactory(interaction)
+        await tF.startRun(userDetails.workMultiplierAmount)
 
         // TODO: PROCESS PAYOUT AND ELIGIBILITY
-
+        console.log("left")
     }
 }
