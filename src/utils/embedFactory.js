@@ -509,7 +509,7 @@ class EmbedFactory {
         raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
-        const color = totalRaidReward >= 0 || hasStatReward ? 'Green' : 'Red';
+        const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
 
         fields.push({
             name: `Result:`,

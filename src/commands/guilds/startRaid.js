@@ -39,13 +39,14 @@ const regularRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
             } else {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                totalRaidSplit = 0;
+                raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
             interaction.editReply({ embeds: [embed] });
             return totalRaidSplit;
         },
