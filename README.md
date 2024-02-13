@@ -45,3 +45,4 @@ BOT_TOKEN = <BOT_TOKEN>
 ## Development Team
 - Joshua Nguyen - [Developer](https://www.linkedin.com/in/joshua-nguyen-cs/)
 - Matt Li - [Developer](https://github.com/officialmattli)
+- Tom Chen - [Developer](https://www.linkedin.com/in/thomas-chen7/)
