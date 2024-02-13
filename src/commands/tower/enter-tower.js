@@ -15,14 +15,18 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
+        const canEnterTower = userDetails.canEnterTower;
 
-        // TODO: CHECK FOR ELIGIBILITY
-
+        if (!canEnterTower) {
+            interaction.editReply(`${userDisplayName} you have already entered the tower today!`);
+            return;
+        }
 
         let tF = new towerFactory(interaction)
         await tF.startRun(userDetails.workMultiplierAmount)
 
-        // TODO: PROCESS PAYOUT AND ELIGIBILITY
+        // TODO: PROCESS PAYOUT
+        await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
         console.log("left")
     }
 }
