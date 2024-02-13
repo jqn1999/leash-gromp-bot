@@ -52,7 +52,7 @@ module.exports = {
                 const sortedUsers = await dynamoHandler.getSortedUsers();
                 const totalPotatoes = await dynamoHandler.getServerTotal();
                 const userIndex = findUserIndex(sortedUsers, interaction.user.id);
-                embed = embedFactory.createUserLeaderboardEmbed(sortedUsers, total, userIndex);
+                embed = embedFactory.createUserLeaderboardEmbed(sortedUsers, totalPotatoes, userIndex);
                 interaction.editReply({ embeds: [embed] });
                 break;
             case 'guild-leaderboard':
