@@ -6,6 +6,7 @@
  - Developer Setup Guide
  - FAQ
  - Development Team
+ - Showcase
 
 ## Introduction
 A Discord bot that allows users engage in strategic gameplay to accumulate virtual potatoes, subsequently utilizing these resources to unlock and apply various upgrades. Beyond its playful premise, the project was made to gain practical experience with developing a **Node.js** application and gain familiarity with AWS services such as **Amazon DynamoDB** and **Amazon EC2**. The management side of the project made use of Github to allow for easy collaboration with other developers as needed and Jira for managing bodies of work required for the bot to continue to improve.
@@ -31,6 +32,9 @@ BOT_TOKEN = <BOT_TOKEN>
 ### Finally, Get Invitations to Jira, Github, and Discord:
 - Ask for an invite to the Jira project and [Github project](https://github.com/jqn1999/leash-gromp-bot)
 - In order to avoid bot commands being intercepted by each other, developers may want to [create their own personal Discord bots](https://discordjs.guide/preparations/setting-up-a-bot-application.html#creating-your-bot) and provide their particular token in the `.env` file mentioned in the previous section.
+  - Use OAuth2 URL Generator and check off `bot` and `applications.commands`
+  - Give `Administrator` permissions for the easiest selection
+  - Toggle on all Privileged Gateway Intents, which are `Presence Intent`, `Server Members Intent`, and `Message Content Intent`
 
 ## How To Run Locally
 - In order to run the project locally all you need to do is run `node src/index.js` at the root of the project
@@ -46,3 +50,25 @@ BOT_TOKEN = <BOT_TOKEN>
 - Joshua Nguyen - [Developer](https://www.linkedin.com/in/joshua-nguyen-cs/)
 - Matt Li - [Developer](https://github.com/officialmattli)
 - Tom Chen - [Developer](https://www.linkedin.com/in/thomas-chen7/)
+- Jalen Norman - Creative Artist
+- Charizard - Creative Artist
+
+## Showcase
+### Players can view their profiles, stats, work for potatoes, buy upgrades, bank potatoes, and give potatoes
+![alt text](images/profile.png)
+![alt text](images/stats.png)
+![alt text](images/work.png)
+![alt text](images/sweet.png)
+![alt text](images/buy.png)
+![alt text](images/bank.png)
+![alt text](images/give.png)
+
+### Players can join guilds and view guild information, join raids, and start raids
+![alt text](images/guild.png)
+
+![alt text](images/currentRaid.png)
+
+![alt text](images/startRaid.png)
+
+### Players can view shops and leaderboards
+![alt text](images/workShop.png)
