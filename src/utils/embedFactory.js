@@ -798,7 +798,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`Blackjack`)
             .setDescription(`This is a game of blackjack`)
-            .setColor("Orange")
+            .setColor("Blue")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by AiRz" })
             .setTimestamp(Date.now())
