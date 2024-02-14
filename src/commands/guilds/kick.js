@@ -41,14 +41,18 @@ module.exports = {
             return;
         }
 
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you need to be the leader to kick members.`);
-            return;
-        }
-
         const targetMember = memberList.find((currentMember) => currentMember.id == targetUser)
         if (!targetMember) {
             interaction.editReply(`${userDisplayName} there was an error retrieving your target's data in your guild. Let an admin know!`);
+            return;
+        }
+
+        const canUserKick = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
+        if (!canUserKick) {
+            interaction.editReply(`${userDisplayName} you need to be the co-leader or leader to kick members.`);
+            return;
+        } else if (targetMember.role == GuildRoles.COLEADER && member.role != GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} you need to be the leader to kick co-leaders.`);
             return;
         }
 

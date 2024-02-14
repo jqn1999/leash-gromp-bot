@@ -47,7 +47,7 @@ module.exports = {
             return;
         }
 
-        const doesUserHaveInvitationRights = member.role == GuildRoles.LEADER;
+        const doesUserHaveInvitationRights = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
         if (!doesUserHaveInvitationRights) {
             interaction.editReply(`${userDisplayName} you do not have valid permission to issue invites to your guild, '${guild.guildName}'.`);
             return;
