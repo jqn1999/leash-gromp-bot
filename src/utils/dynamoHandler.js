@@ -505,6 +505,7 @@ const getGuilds = async function () {
         .then(async function (data) {
             // console.log(`getGuilds: ${JSON.stringify(data)}`);
             guildList = data.Items;
+            guildList = guildList.filter(guild => guild.memberList.length > 0);
         })
         .catch(function (err) {
             console.log(`getGuilds error: ${JSON.stringify(err)}`);

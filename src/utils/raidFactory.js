@@ -25,14 +25,27 @@ class RaidFactory {
         return raidSplitAmount;
     }
 
-    async handleStatSplit(raidList, statRaidReward) {
+    async handleStatSplit(raidList, rewardType, rewardAmount) {
         raidList.forEach(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userMultiplier = userDetails.workMultiplierAmount;
+            let userPassiveAmount = userDetails.passiveAmount;
+            let userBankCapacity = userDetails.bankCapacity;
             let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-            userMultiplier += statRaidReward;
-            sweetPotatoBuffs.workMultiplierAmount += statRaidReward;
-            await dynamoHandler.updateUserDatabase(member.id, "workMultiplierAmount", userMultiplier);
+
+            if (rewardType == 'workMultiplierAmount') {
+                userMultiplier += rewardAmount;
+                sweetPotatoBuffs.workMultiplierAmount += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userMultiplier);
+            } else if (rewardType == 'passiveAmount') {
+                userPassiveAmount += rewardAmount;
+                sweetPotatoBuffs.passiveAmount += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userPassiveAmount);
+            } else if (rewardType == 'bankCapacity') {
+                userBankCapacity += rewardAmount;
+                sweetPotatoBuffs.bankCapacity += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userBankCapacity);
+            }
             await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
         })
     }

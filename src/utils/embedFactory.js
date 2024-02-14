@@ -505,20 +505,30 @@ class EmbedFactory {
         return embed;
     }
 
-    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance, raidResultDescription, statRaidReward = null) {
-        let fields = [], footerText = "Made by Beggar";
-        const color = totalRaidReward >= 0 || statRaidReward ? 'Green' : 'Red';
+    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
+        let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
+        const hasStatReward = multiplierReward || passiveReward || capacityReward;
+        const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
 
         fields.push({
             name: `Result:`,
             value: `${raidResultDescription}`,
             inline: true,
         })
-
-        if (statRaidReward) {
+        if (multiplierReward) {
+            statRewardMessage += `${multiplierReward.toFixed(2).toLocaleString()} work multiplier to all members!\n`
+        }
+        if (passiveReward) {
+            statRewardMessage += `${passiveReward.toLocaleString()} passive amount to all members!\n`
+        }
+        if (capacityReward) {
+            statRewardMessage += `${capacityReward.toLocaleString()} bank capacity to all members!\n`
+        }
+        if (hasStatReward) {
             fields.push({
                 name: `Stats Granted:`,
-                value: `${statRaidReward} work multiplier to all members!`,
+                value: `${statRewardMessage}`,
                 inline: false,
             })
         }
@@ -583,7 +593,8 @@ class EmbedFactory {
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
-        const color = potatoesGained >= 0 ? 'Green' : 'Red';
+        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato;
+        let color = potatoesGained >= 0 && !isFailedMetal  ? 'Green' : 'Red';
         fields.push({
             name: `Potatoes ${gainOrLoss}:`,
             value: `${potatoesGained.toLocaleString()} potatoes`,

@@ -33,15 +33,20 @@ const regularRaidScenarios = [
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
             } else {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                totalRaidSplit = 0;
+                raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed] });
             return totalRaidSplit;
         },
@@ -133,7 +138,7 @@ const statRaidScenarios = [
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                await raidFactory.handleStatSplit(raidList, Raid.REGULAR_STAT_RAID_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.REGULAR_STAT_RAID_REWARD);
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 raidResultDescription = regularStatRaidMob.successDescription;
