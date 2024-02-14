@@ -759,7 +759,6 @@ class EmbedFactory {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
 
-
         fields.push({
             name: `Current Potatoes:`,
             value: `${userPotatoes.toLocaleString()} potatoes`,
@@ -787,6 +786,68 @@ class EmbedFactory {
             .setColor("Green")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, maxBuyAmount, currentType, starchPrice) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const color = currentType == 'buy' ? 'Green' : 'Orange';
+        let fields = [];
+
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Starches:`,
+            value: `${userStarches.toLocaleString()} starches`,
+            inline: true,
+        })
+        if (currentType == 'buy') {
+            fields.push({
+                name: `Max starches you can ${currentType}:`,
+                value: `${maxBuyAmount.toLocaleString()} starches`,
+                inline: false,
+            })
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} you can currently ${currentType} starches for ${starchPrice.toLocaleString()} potatoes!`)
+            .setDescription(`Displayed below are your current potatoes, starches, and how many you can ${currentType}.`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by izmattk" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const color = currentType == 'buy' ? 'Green' : 'Orange';
+        const starchesText = starchAmount > 1 ? 'starches' : 'starch';
+        let fields = [];
+
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Starches:`,
+            value: `${userStarches.toLocaleString()} ${starchesText}`,
+            inline: true,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
+            .setDescription(`Displayed below are your current potatoes and starches.\nCurrent Price: ${starchPrice.toLocaleString()} potatoes`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by izmattk" })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;
