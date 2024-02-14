@@ -61,7 +61,7 @@ module.exports = async (client) => {
                 // SEND TO THE EVENTS!
                 eF.setSpecialEvent()
                 var eventName = eF.getCurrentEvent();
-                channel.send(`Special event on the way this hour! ${eventName}`);
+                channel.send(`<@&1207117686526582865> Special event on the way this hour! ${eventName}`);
                 let wC = eF.getWorkChances()
                 // set work chances in work.js
                 setWorkScenarios(wC)
