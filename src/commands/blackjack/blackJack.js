@@ -1,6 +1,8 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 
 module.exports = {
@@ -18,6 +20,9 @@ module.exports = {
         }
     ],
     callback: async (client, interaction) => {
-    
+        await interaction.deferReply();
+
+        const embed = await embedFactory.createBlackjackEmbed();
+        interaction.editReply({ embeds: [embed] });
     }
 }
