@@ -17,16 +17,16 @@ module.exports = {
         }
         const canEnterTower = userDetails.canEnterTower;
 
-        if (!canEnterTower) {
+        /*if (!canEnterTower) {
             interaction.editReply(`${userDisplayName} you have already entered the tower today!`);
             return;
-        }
+        }*/
 
-        let tF = new towerFactory(interaction)
-        await tF.startRun(userDetails.workMultiplierAmount)
+        await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
+        let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount)
+        await tF.startRun()
 
         // TODO: PROCESS PAYOUT
-        await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
         console.log("left")
     }
 }
