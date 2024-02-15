@@ -791,20 +791,6 @@ class EmbedFactory {
             .setFields(fields)
         return embed;
     }
-
-    createBlackjackEmbed() {
-        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-
-        const embed = new EmbedBuilder()
-            .setTitle(`Blackjack`)
-            .setDescription(`This is a game of blackjack`)
-            .setColor("Blue")
-            .setThumbnail(avatarUrl)
-            .setFooter({ text: "Made by AiRz" })
-            .setTimestamp(Date.now())
-            
-        return embed;
-    }
 }
 
 function findShopItemName(amount, shopItems) {
