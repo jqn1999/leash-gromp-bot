@@ -32,13 +32,14 @@ class towerFactory{
             cont = await this.execNormalFloor(floor_type)
             floor_type = getFloor()
         }
+        return this.run, this.floor
     }
 
     async execNormalFloor(floor_type){
         let fl
         let index
         // remove this later
-        //floor_type = "TRANSACTION"
+        floor_type = "ENCOUNTER"
         switch(floor_type){
             case "COMBAT":
                 // think we just throw a normal mob from /work that you cant fail
@@ -54,11 +55,9 @@ class towerFactory{
                 index = await this.createFloorEmbed(fl, "TRANSACTION", "Blue")
                 return this.updateTransaction(fl, index)
             case "REWARD":
-                // TODO: CHANGE TO ACTUAL REWARDS
-                fl = tC.COMBATS[Math.floor(Math.random() * tC.COMBATS.length)]
-                index = await this.createFloorEmbed(fl, "COMBAT", "Orange")
+                fl = tC.REWARDS[Math.floor(Math.random() * tC.COMBATS.length)]
+                index = await this.createFloorEmbed(fl, "REWARD", "Purple")
                 return this.updateValue(fl, index)
-                break;
         }
     }
 
@@ -115,6 +114,9 @@ class towerFactory{
     }
 
     updateValue(fl, index){
+        if(fl.choices[index].outcome == tC.CHOICES.EXIT){
+            return this.createNextEmbed(fl, fl.choices[index].result)
+        }
         this.run[fl.choices[index].outcome] += fl.choices[index].value
         return this.createNextEmbed(fl, fl.choices[index].result)
     }
@@ -180,6 +182,7 @@ class towerFactory{
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
         
         await confirmation.update({content: '', components: []})
+        this.floor--
         return false
         
     }

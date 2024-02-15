@@ -38,11 +38,18 @@ const COMBATS = [
 
 const ENCOUNTERS = [
     {
-        name: "DABABY",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: "DABABY OFFERS YOU 200 POTATOES OR 1 WORK MULTIPLIER FOR THIS RUN.\n\nWhat will you take?",
-        choices: [{name: '200 potats', outcome: PAYOUT.POTATOES, value: 200, result: "DABABY grants your POTATOES! NOW HE GONNA CAP A WALMART"}, 
-                 {name: 'work multi', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "DABABY SCREAMS OUT LESSSSS GOOOOOO!!!! YOU HAVE RECEIVED YOUR WORK MULTI"}],
+        name: "MAGIC MUSSEL",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "BEHIND ONE MUSSESL IS 1 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
+        choices: [{name: 'this one!', outcome: CHOICES.EXIT, result: "there is nothing............"}, 
+                 {name: 'that one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "you have chosen the work multi! congrats!"}],
+    },
+    {
+        name: "MAGIC MUSSEL",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "BEHIND ONE MUSSESL IS 1 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
+        choices: [{name: 'this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "you have chosen the work multi! congrats!"}, 
+                 {name: 'that one!', outcome: CHOICES.EXIT, result: "there is nothing............"}],
     }
 ]
 
@@ -54,6 +61,16 @@ const TRANSACTIONS = [
         choices: [{name: "ACCEPT HER OFFER!", outcome: MODIFIER.WORK_MULTIPLIER, value: 1, price: 10000, result: "YOU GET THAT WORK MULTI"},
                 {name: "LEAVE", outcome: CHOICES.EXIT, result: "DONT TRUST THAT HO! WE OUT!"}],
         poor: "YOU WANT TO TAKE HER OFFER, BUT YOU ARE A BROKE BITCH! YOU LEAVE IN SHAME"
+    }
+]
+
+const REWARDS = [
+    {
+        name: "DABABY",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
+        description: "DABABY OFFERS YOU 200 POTATOES OR 1 WORK MULTIPLIER FOR THIS RUN.\n\nWhat will you take?",
+        choices: [{name: '200 potats', outcome: PAYOUT.POTATOES, value: 200, result: "DABABY grants your POTATOES! NOW HE GONNA CAP A WALMART"}, 
+                 {name: 'work multi', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "DABABY SCREAMS OUT LESSSSS GOOOOOO!!!! YOU HAVE RECEIVED YOUR WORK MULTI"}],
     }
 ]
 
@@ -90,6 +107,7 @@ module.exports = {
     COMBATS,
     TRANSACTIONS,
     MODIFIER,
-    ELITES
+    ELITES,
+    REWARDS
 }
 
