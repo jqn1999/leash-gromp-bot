@@ -42,6 +42,17 @@ module.exports = {
                 return;
             }
         }
+        const isBetGreaterThanZero = bet >= 1;
+        if (!isBetGreaterThanZero) {
+            interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+            return;
+        }
+        const isBetLessThanOrEqualUserAmount = bet <= userPotatoes;
+        if (!isBetLessThanOrEqualUserAmount) {
+            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+            return;
+        }
+        //new start here i think
 
 
 
