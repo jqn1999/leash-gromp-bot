@@ -85,6 +85,11 @@ const ELITES = [
     }
 ]
 
+const FIGHT = new ButtonBuilder()
+    .setCustomId('fight')
+    .setLabel('FIGHT')
+    .setStyle(ButtonStyle.Success);
+
 const CONT = new ButtonBuilder()
     .setCustomId('continue')
     .setLabel('CONTINUE')
@@ -108,6 +113,7 @@ module.exports = {
     TRANSACTIONS,
     MODIFIER,
     ELITES,
-    REWARDS
+    REWARDS,
+    FIGHT
 }
 

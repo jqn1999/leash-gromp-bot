@@ -63,26 +63,57 @@ class towerFactory{
 
     async execElite(difficulty){
         let fl = tC.ELITES[Math.floor(Math.random() * tC.ELITES.length)]
-        await this.createFloorEmbed(fl, "ELITE", "Red")
         console.log(difficulty * fl.difficulty)
         console.log(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER])
         let success = (this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]) / (difficulty * fl.difficulty)
         if(success > 1){
             success = 1
         }
-        console.log(success)
+        let fight = await this.createEliteEmbed(fl, success)
+        
+        if(!fight){
+            this.floor--
+            return false
+        }
         if (Math.random() < success){
             this.run[tC.PAYOUT.POTATOES] += fl.choices[0].value
-            return this.createNextEmbed(fl, fl.choices[0].result+`\n\nSUCCESS %: ${(success*100).toFixed(2)}`)
+            return this.createNextEmbed(fl, fl.choices[0].result)
         }
         this.run[tC.PAYOUT.POTATOES] = 0
-        return this.createDeathEmbed(fl.lose+`\n\nSUCCESS %: ${(success*100).toFixed(2)}`)
+        return this.createDeathEmbed(fl.lose)
 
+    }
+
+    async createEliteEmbed(fl, success){
+        const embed = new EmbedBuilder()
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ELITE\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setDescription(fl.description + `\n\nSuccess Chance: ${(success*100).toFixed(2)}%`)
+            .setColor("Red")
+            .setTimestamp(Date.now())
+            .setThumbnail(fl.thumbnailUrl)
+            .setFooter({text: `Tater Tower: ${this.username}`});
+    
+        const row = new ActionRowBuilder().addComponents(tC.FIGHT, tC.LEAVE)
+        const reply = await this.interaction.editReply({
+            embeds: [embed],
+            components: [row],
+        });
+
+        const collectorFilter = i => i.user.id === this.interaction.user.id;
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
+    
+        if(confirmation.customId == "fight"){
+            await confirmation.update({content: '', components: []})
+            return true
+        }else if(confirmation.customId == "leave"){
+            await confirmation.update({content: '', components: []})
+            return false
+        }
     }
 
     async createFloorEmbed(fl, type, color){
         const embed = new EmbedBuilder()
-            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${type}\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${type}\n${fl.name}`)
             .setDescription(fl.description)
             .setColor(color)
             .setTimestamp(Date.now())
