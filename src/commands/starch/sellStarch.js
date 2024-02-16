@@ -1,6 +1,8 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "sell-starch",
@@ -10,13 +12,14 @@ module.exports = {
             name: 'starch-amount',
             description: 'Number of starches to sell',
             required: true,
-            type: ApplicationCommandOptionType.Number,
+            type: ApplicationCommandOptionType.Integer,
         }
     ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userAvatar = interaction.user.avatar;
+
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
@@ -45,7 +48,6 @@ module.exports = {
             return;
         }
 
-        starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only sell positive amounts!`);
@@ -60,11 +62,13 @@ module.exports = {
         // sell
         const details = await dynamoHandler.getStatDatabase("starch")
         let price = details.starch_sell
-        let profit = price * starches       
+        const profit = price * starches
         userPotatoes += profit
         userStarches -= starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you sold ${starches.toLocaleString()} starches for ${profit.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches and ${userPotatoes.toLocaleString()} potatoes.`);
+        embed = embedFactory.createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes,
+            userStarches, 'sell', starches, price, profit);
+        interaction.editReply({ embeds: [embed] });
     }
 }
