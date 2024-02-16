@@ -7,7 +7,7 @@ class EventFactory {
             .04,
             .01,
             .02,
-            .01
+            .02
         ];
         this.workChances = [
             .001,
@@ -15,7 +15,7 @@ class EventFactory {
             .051,
             .061,
             .081,
-            .091
+            .101
         ];
         this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "TAROX2", "GOLDENX5", "METALX5", "POISONX5"];
         this.eventWeights = [3, 3, 3, 3, 3, 1, 1 ,1];
@@ -92,7 +92,7 @@ class EventFactory {
             .051,
             .061,
             .081,
-            .091
+            .101
         ];
     }
 
@@ -103,7 +103,7 @@ class EventFactory {
             .04,
             .01,
             .02,
-            .01
+            .02
         ];
     }
 

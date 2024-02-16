@@ -291,7 +291,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 30,
+                amount: 25,
                 cost: 75000000,
                 description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
                 id: 7,
@@ -299,7 +299,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 40,
+                amount: 30,
                 cost: 100000000,
                 description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
                 id: 8,

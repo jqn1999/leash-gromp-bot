@@ -88,7 +88,7 @@ var workScenarios = [
             interaction.editReply({ embeds: [embed] });
             return starchesGained;
         },
-        chance: .091,
+        chance: .101,
         type: WORK_SCENARIO_INDICES.TARO
     },
     {
