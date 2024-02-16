@@ -46,7 +46,7 @@ const Raid = {
     HARD_RAID_DIFFICULTY: 150,
 
     LEGENDARY_RAID_REWARD: 10000000,
-    LEGENDARY_RAID_MULTIPLIER_REWARD: 1.0,
+    LEGENDARY_RAID_MULTIPLIER_REWARD: 2.0,
     LEGENDARY_RAID_PASSIVE_REWARD: 1000000,
     LEGENDARY_RAID_CAPACITY_REWARD: 10000000,
     LEGENDARY_RAID_PENALTY: 0,
@@ -286,7 +286,7 @@ const shops = [
             },
             {
                 amount: 30,
-                cost: 200000000,
+                cost: 75000000,
                 description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
                 id: 7,
                 name: "Supreme Spud Gladiator's Garments",
@@ -294,7 +294,7 @@ const shops = [
             },
             {
                 amount: 40,
-                cost: 1000000000,
+                cost: 100000000,
                 description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
                 id: 8,
                 name: "Legendary Leader's Blade",
@@ -323,23 +323,23 @@ const shops = [
             {
                 amount: 100000,
                 cost: 200000,
-                description: "A small crew of workers that cultivate and harvest even more potatoes each day",
+                description: "A rag-tag crew of volunteers led by your apprentice and generously harvesting potatoes on your behalf",
                 id: 2,
-                name: "Harvest Helpers Crew",
+                name: "Harvest-Helping Crew",
                 type: "passiveAmount"
             },
             {
                 amount: 180000,
                 cost: 1000000,
-                description: "A skilled squad of musicians that happen to love growing potatoes using their songs",
+                description: "A proficient squad of musicians whose magical melodies can accelerate potato cultivations",
                 id: 3,
-                name: "Spud Symphony Squad",
+                name: "Spud Symphony Troop",
                 type: "passiveAmount"
             },
             {
                 amount: 500000,
                 cost: 5000000,
-                description: "A large squad of trained professionals in the art of potato cultivation",
+                description: "A skilled squad of trained professionals in the art of potato cultivationn",
                 id: 4,
                 name: "Spud Team Six",
                 type: "passiveAmount"
@@ -347,7 +347,7 @@ const shops = [
             {
                 amount: 1000000,
                 cost: 20000000,
-                description: "Armed with cutting-edge techniques and sustainable practices, this skilled team maximizes potato yields through eco-friendly methods, ensuring a lush harvest every day",
+                description: "A regiment armed with cutting-edge techniques and skilled in sustainable practices, these growers leverage eco-friendly methods to ensure a lush harvest every day",
                 id: 5,
                 name: "Verdant Vanguard Growers",
                 type: "passiveAmount"
@@ -355,27 +355,29 @@ const shops = [
             {
                 amount: 2000000,
                 cost: 50000000,
-                description: "This top-tier group of agricultural virtuosos seamlessly integrates various cultivation methods, creating a harmonious environment for potato growth",
+                description: "A top-class group of agricultural virtuosos that seamlessly combines whimsical ballads and precise cultivation techniques, creating a harmonious environment for potato growth",
                 id: 6,
                 name: "Harvest Harmony Elite",
                 type: "passiveAmount"
             },
             {
                 amount: 7000000,
-                cost: 200000000,
+                cost: 75000000,
                 description: "An integrated network of potato scientists, farmers, and distributors capable of supporting the global potato economy with their robust supply chain",
                 id: 7,
                 name: "Cultivation Conglomerate",
                 type: "passiveAmount"
             },
             {
-                amount: 35000000,
-                cost: 1000000000,
-                description: "The greatest grower around",
+                amount: 14000000,
+                cost: 100000000,
+                description: "Led by your once apprentice turned genius investor, this fund employs complex starch trading and hedging strategies to generate exceptional returns each day",
                 id: 8,
-                name: "Lil David",
+                name: "Potato Wedge Fund",
                 type: "passiveAmount"
             }
+            // 27,000,000 | 125,000,000
+            // 60,000,000 | 150,000,000
         ],
         title: "Passive Income Workers Shop (amount per day)"
     },
@@ -386,65 +388,49 @@ const shops = [
             {
                 amount: 100000,
                 cost: 50000,
-                description: "A basic pouch to hold some wealth and keep it safe",
+                description: "A basic pouch fit for holding spuds safely",
                 id: 1,
-                name: "Spud Saver's Starter Pouch",
+                name: "Spud Saver's Sack",
                 type: "bankCapacity"
             },
             {
                 amount: 500000,
                 cost: 200000,
-                description: "A rather secure holding for the more advanced potato collector",
+                description: "A rather secure holding for a more conscious potato collector",
                 id: 2,
-                name: "Savvy Spud Saver Bank",
+                name: "Savvy Saving Bank",
                 type: "bankCapacity"
             },
             {
                 amount: 2500000,
                 cost: 1000000,
-                description: "A large hidden holding of potatoes hidden somewhere in a forest",
+                description: "An underground vault built specifically to guard mountains of potatoes",
                 id: 3,
-                name: "Spud Hoarder Hideaway",
+                name: "Supreme Spud Vault",
                 type: "bankCapacity"
             },
             {
                 amount: 10000000,
                 cost: 5000000,
-                description: "An underground vault specifically made to guard mountains of potatoes",
+                description: "A colossal storage facility designed for the big dreamers of the potato farming world",
                 id: 4,
-                name: "Supreme Spud Vault",
+                name: "Prodigious Potato Preservation",
                 type: "bankCapacity"
             },
             {
                 amount: 25000000,
                 cost: 20000000,
-                description: "A colossal storage facility designed for those who dream big in the world of potato farming",
-                id: 5,
-                name: "Prodigious Potato Reserve",
-                type: "bankCapacity"
-            },
-            {
-                amount: 150000000,
-                cost: 50000000,
                 description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
-                id: 6,
+                id: 5,
                 name: "Royal Russet Reserve",
                 type: "bankCapacity"
             },
             {
-                amount: 750000000,
-                cost: 200000000,
-                description: "An archaic reserve of potato knowledge and preservation, equipped with magical resevoirs of extraordinary capacity",
-                id: 7,
+                amount: 50000000,
+                cost: 50000000,
+                description: "An archaic reserve of potato knowledge and preservation, equipped with magical reservoirs of extraordinary capacity",
+                id: 6,
                 name: "Ancient Spud Library",
-                type: "bankCapacity"
-            },
-            {
-                amount: 4000000000,
-                cost: 1000000000,
-                description: "A mystical reservoir developed for the most illustrious potato gatherers with capacities that exceed mortal comprehension",
-                id: 8,
-                name: "Mystic Tuber Vault",
                 type: "bankCapacity"
             }
         ],

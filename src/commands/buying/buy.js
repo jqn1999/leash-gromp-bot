@@ -11,12 +11,15 @@ function doesUserHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, interac
     return true
 }
 
-function validTierPurchase(currentAmount, itemSelectedAmount, interaction, userDisplayName) {
+function validTierPurchase(currentAmount, itemSelectedAmount, previousItemAmount, interaction, userDisplayName) {
     if (currentAmount == itemSelectedAmount) {
         interaction.editReply(`${userDisplayName} you already have this tier! Check your profile`)
         return false;
     } else if (currentAmount > itemSelectedAmount) {
         interaction.editReply(`${userDisplayName} you currently have a higher tier than the one you're trying to purchase! Check your profile`)
+        return false;
+    } else if (previousItemAmount && currentAmount != previousItemAmount) {
+        interaction.editReply(`${userDisplayName} you need to have the previous tier before the one you're trying to purchase! Check your profile`)
         return false;
     }
     return true
@@ -95,6 +98,14 @@ module.exports = {
                 {
                     name: '8',
                     value: 8
+                },
+                {
+                    name: '9',
+                    value: 9
+                },
+                {
+                    name: '10',
+                    value: 10
                 }
             ]
         }
@@ -117,14 +128,16 @@ module.exports = {
         let userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
         let userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
 
-        let chosenItem, userHasEnough, validTier;
+        let chosenItem, userHasEnough, validTier, previousItemAmount;
         switch (shopSelect) {
             case 'work-shop':
                 const workShop = shops.find((currentShop) => currentShop.shopId == 'workShop');
                 chosenItem = getItemFromShop(workShop, itemIdSelected);
-                
+                if (itemIdSelected > 1) {
+                    previousItemAmount = getItemFromShop(workShop, itemIdSelected-1).amount;
+                }
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBaseWorkMultiplier, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBaseWorkMultiplier, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
@@ -136,9 +149,11 @@ module.exports = {
             case 'passive-income-shop':
                 const passiveIncomeShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
                 chosenItem = getItemFromShop(passiveIncomeShop, itemIdSelected);
-                
+                if (itemIdSelected > 1) {
+                    previousItemAmount = getItemFromShop(passiveIncomeShop, itemIdSelected-1).amount;
+                }
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBasePassiveIncome, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBasePassiveIncome, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
@@ -149,10 +164,16 @@ module.exports = {
                 break;
             case 'bank-shop':
                 const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
+                if (itemIdSelected > 6) {
+                    interaction.editReply(`${userDisplayName} bank shops do not go above tier 6. Good luck increasing your capacity!`);
+                    return;
+                }
                 chosenItem = getItemFromShop(bankShop, itemIdSelected);
-                
+                if (itemIdSelected > 1) {
+                    previousItemAmount = getItemFromShop(bankShop, itemIdSelected-1).amount;
+                }
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBaseBankCapacity, chosenItem.amount, interaction, userDisplayName);
+                validTier = validTierPurchase(userBaseBankCapacity, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;

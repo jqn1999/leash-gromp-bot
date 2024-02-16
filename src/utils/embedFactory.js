@@ -856,7 +856,7 @@ class EmbedFactory {
 
 function findShopItemName(amount, shopItems) {
     for (const [index, element] of shopItems.entries()) {
-        if (element.amount == amount.toFixed(0)) {
+        if (element.amount == amount.toFixed(1)) {
             return element.name
         }
     }
