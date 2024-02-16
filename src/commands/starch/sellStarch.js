@@ -41,6 +41,8 @@ module.exports = {
         let starches = interaction.options.get('starch-amount')?.value
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
+        let userTotalEarnings = userDetails.totalEarnings;
+        let userTotalLosses = userDetails.totalLosses;
 
         // error checking
         if (isNaN(starches)) {
@@ -61,14 +63,24 @@ module.exports = {
 
         // sell
         const details = await dynamoHandler.getStatDatabase("starch")
-        let price = details.starch_sell
-        const profit = price * starches
-        userPotatoes += profit
+        const buyPrice = details.starch_buy
+        const sellPrice = details.starch_sell
+
+        const buyValue = buyPrice * starches
+        const sellValue = sellPrice * starches
+        const profitOrLoss = sellValue - buyValue
+
+        userPotatoes += sellValue
         userStarches -= starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
+        if (profitOrLoss > 0) {
+            await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings + profitOrLoss);
+        } else if (profitOrLoss < 0) {
+            await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses + profitOrLoss);
+        }
         embed = embedFactory.createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes,
-            userStarches, 'sell', starches, price, profit);
+            userStarches, 'sell', starches, sellPrice, sellValue);
         interaction.editReply({ embeds: [embed] });
     }
 }
