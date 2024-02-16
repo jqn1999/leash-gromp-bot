@@ -98,14 +98,6 @@ module.exports = {
                 {
                     name: '8',
                     value: 8
-                },
-                {
-                    name: '9',
-                    value: 9
-                },
-                {
-                    name: '10',
-                    value: 10
                 }
             ]
         }
