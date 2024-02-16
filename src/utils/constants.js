@@ -353,7 +353,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
-                amount: 2000000,
+                amount: 3000000,
                 cost: 50000000,
                 description: "A top-class group of agricultural virtuosos that seamlessly combines whimsical ballads and precise cultivation techniques, creating a harmonious environment for potato growth",
                 id: 6,
