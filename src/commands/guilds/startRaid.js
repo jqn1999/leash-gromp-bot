@@ -1,15 +1,11 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss, regularStatRaidMobs } = require("../../utils/constants")
-const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
-
-function getRandomFromInterval(min, max) {
-    return Math.random() * (max - min) + min;
-}
 
 function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);

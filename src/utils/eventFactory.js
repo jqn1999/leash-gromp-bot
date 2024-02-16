@@ -6,17 +6,19 @@ class EventFactory {
             .01,
             .04,
             .01,
-            .02
+            .02,
+            .01
         ];
         this.workChances = [
             .001,
-            .01,
-            .05,
-            .06,
-            .08
+            .011,
+            .051,
+            .061,
+            .081,
+            .091
         ];
-        this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "GOLDENX5", "METALX5", "POISONX5"];
-        this.eventWeights = [3, 3, 3, 3, 1, 1 ,1];
+        this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "TAROX2", "GOLDENX5", "METALX5", "POISONX5"];
+        this.eventWeights = [3, 3, 3, 3, 3, 1, 1 ,1];
         this.setRandomEventWeights(this.eventWeights);
     }
 
@@ -25,7 +27,6 @@ class EventFactory {
     }
 
     setSpecialEvent() {
-        // let event = EVENTS[Math.floor(Math.random() * EVENTS.length)]
         let event = this.getRandomEvent(this.events, this.eventWeights);
         switch (event) {
             case "LARGEX2":
@@ -47,6 +48,11 @@ class EventFactory {
                 this.workProbability[WORK_SCENARIO_INDICES.POISON] *= 2;
                 this.workChances = this.getNewWorkChancesArray();
                 this.currentEvent = "Poison Potato Chances Doubled >:)"
+                break;
+            case "TAROX2":
+                this.workProbability[WORK_SCENARIO_INDICES.TARO] *= 2;
+                this.workChances = this.getNewWorkChancesArray();
+                this.currentEvent = "Taro Chances Multiplied by 2! :)"
                 break;
             case "GOLDENX5":
                 this.workProbability[WORK_SCENARIO_INDICES.GOLDEN] *= 5;
@@ -85,7 +91,8 @@ class EventFactory {
             .011,
             .051,
             .061,
-            .081
+            .081,
+            .091
         ];
     }
 
@@ -95,7 +102,8 @@ class EventFactory {
             .01,
             .04,
             .01,
-            .02
+            .02,
+            .01
         ];
     }
 
@@ -125,6 +133,7 @@ const WORK_SCENARIO_INDICES = {
     LARGE: 2,
     METAL: 3,
     SWEET: 4,
+    TARO: 5,
     REGULAR: -1
 };
 

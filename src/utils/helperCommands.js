@@ -67,8 +67,13 @@ async function getSortedBirthdays() {
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 
+function getRandomFromInterval(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
 module.exports = {
     convertSecondstoMinutes,
     getUserInteractionDetails,
-    getSortedBirthdays
+    getSortedBirthdays,
+    getRandomFromInterval
 }

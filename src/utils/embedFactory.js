@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, Raid, shops } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
@@ -593,11 +593,12 @@ class EmbedFactory {
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
-        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato;
+        const gainPotatoesOrStarches = mob.name == taroTrader.name ? 'Starches' : 'Potatoes';
+        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato.name;
         let color = potatoesGained >= 0 && !isFailedMetal  ? 'Green' : 'Red';
         fields.push({
-            name: `Potatoes ${gainOrLoss}:`,
-            value: `${potatoesGained.toLocaleString()} potatoes`,
+            name: `${gainPotatoesOrStarches} ${gainOrLoss}:`,
+            value: `${potatoesGained.toLocaleString()} ${gainPotatoesOrStarches.toLowerCase()}`,
             inline: true,
         })
 
