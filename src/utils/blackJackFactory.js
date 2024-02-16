@@ -4,6 +4,11 @@ const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder} = require("d
 
 class blackJackFactory{
 
+    constructor(_interaction, _username) {
+        this.username = _username
+        this.interaction = _interaction
+    }
+
     async createInitalEmbed() {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
 
@@ -26,14 +31,8 @@ class blackJackFactory{
         return embed;
     }
 
-
-    async startRun(){
-        cont = await this.execNormalFloor()
-    }
-
     async startGame(){
-        index = await this.createInitalEmbed()
-        }
+        let emd = await this.createInitalEmbed()
     }
 
 }

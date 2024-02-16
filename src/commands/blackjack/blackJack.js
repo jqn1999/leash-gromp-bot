@@ -29,9 +29,9 @@ module.exports = {
         let userPotatoes = userDetails.potatoes;
 
         //new start here i think
-        let bjF = new blackJackFactory();
+        let bjF = new blackJackFactory(interaction, username);
 
-        bjF.startRun();
+        bjF.startGame();
 
         
     }
