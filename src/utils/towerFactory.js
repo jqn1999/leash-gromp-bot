@@ -39,7 +39,7 @@ class towerFactory{
         let fl
         let index
         // remove this later
-        floor_type = "ENCOUNTER"
+        //floor_type = "ENCOUNTER"
         switch(floor_type){
             case "COMBAT":
                 // think we just throw a normal mob from /work that you cant fail
@@ -82,7 +82,7 @@ class towerFactory{
 
     async createFloorEmbed(fl, type, color){
         const embed = new EmbedBuilder()
-            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${type}\n${fl.name}`)
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${type}\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
             .setDescription(fl.description)
             .setColor(color)
             .setTimestamp(Date.now())
@@ -138,12 +138,34 @@ class towerFactory{
 
     async createNextEmbed(fl, description){
         const embed = new EmbedBuilder()
-            .setTitle(`FLOOR ${this.floor.toLocaleString()}`)
-            .setDescription(`${description}\n\nPOTATOES: ${this.run[tC.PAYOUT.POTATOES]}\nWORK MODIFIER: ${this.run[tC.MODIFIER.WORK_MULTIPLIER]}\nCONTINUE UP THE TOWER?`)
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setDescription(`${description}`)
             .setColor('Green')
             .setTimestamp(Date.now())
             .setThumbnail("https://cdn.discordapp.com/attachments/1146091052781011026/1206817828842242090/F5irpvObIAARN4W.png?ex=65dd63af&is=65caeeaf&hm=e10cc3c6ebc3809ab6907b17f4d710cca58b6e88da6f3a22d4c2bb2d97fc17ac&")
-            .setFooter({text: `Tater Tower: ${this.username}`});
+            .setFooter({text: `Tater Tower: ${this.username}`})
+            .addFields(
+                {
+                    name: "Potatoes:",
+                    value: `${this.run[tC.PAYOUT.POTATOES]}`,
+                    inline: false,
+                },
+                {
+                    name: "Work Multiplier:",
+                    value: `${this.run[tC.PAYOUT.WORK_MULTIPLIER].toFixed(2)}x`,
+                    inline: false,
+                },
+                {
+                    name: "Passive Income:",
+                    value: `${this.run[tC.PAYOUT.PASSIVE_INCOME]}`,
+                    inline: false,
+                },
+                {
+                    name: "Bank Capacity:",
+                    value: `${this.run[tC.PAYOUT.BANK_CAPACITY]}`,
+                    inline: false,
+                }
+            );
     
         const row = new ActionRowBuilder().addComponents(tC.CONT, tC.LEAVE)
         const reply = await this.interaction.editReply({
