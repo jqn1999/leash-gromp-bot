@@ -21,7 +21,7 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinf
     userTotalLosses -= bet;
     await dynamoHandler.updateStatDatabase('coinflip', 'totalReceived', coinflipStats.totalReceived - bet);
     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-    await dynamoHandler.updateUserDatabase(userId, "userTotalLosses", userTotalLosses);
+    await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, -bet);
     interaction.editReply({ embeds: [embed] });
 }
