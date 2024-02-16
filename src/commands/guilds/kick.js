@@ -51,6 +51,9 @@ module.exports = {
         if (!canUserKick) {
             interaction.editReply(`${userDisplayName} you need to be the co-leader or leader to kick members.`);
             return;
+        } else if (targetMember.role == GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} the leader of your guild cannot be kicked!`);
+            return;
         } else if (targetMember.role == GuildRoles.COLEADER && member.role != GuildRoles.LEADER) {
             interaction.editReply(`${userDisplayName} you need to be the leader to kick co-leaders.`);
             return;
