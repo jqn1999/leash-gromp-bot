@@ -102,7 +102,6 @@ module.exports = {
     name: "work",
     description: "Allows member to work and gain potatoes",
     devOnly: false,
-    // testOnly: false,
     deleted: false,
     setWorkScenarios, //adding this so we can see it in backgroundEvents
     callback: async (client, interaction) => {

@@ -21,7 +21,7 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, coinf
     userTotalLosses -= bet;
     await dynamoHandler.updateStatDatabase('coinflip', 'totalReceived', coinflipStats.totalReceived - bet);
     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-    await dynamoHandler.updateUserDatabase(userId, "userTotalLosses", userTotalLosses);
+    await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
     embed = embedFactory.createCoinflipEmbed(result, coinflipStats.heads, coinflipStats.tails, userPotatoes, -bet);
     interaction.editReply({ embeds: [embed] });
 }
@@ -73,7 +73,9 @@ module.exports = {
 
         if (bet.toLowerCase() == 'all') {
             bet = userPotatoes;
-        } else{
+        } else if (bet.toLowerCase() == 'half'){
+            bet = Math.round(userPotatoes/2);
+        } else {
             bet = Math.floor(Number(bet));
             if (isNaN(bet)) {
                 interaction.editReply(`${userDisplayName}, something went wrong with your bet. Try again!`);

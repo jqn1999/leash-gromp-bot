@@ -113,7 +113,8 @@ const addUser = async function (userId, username) {
             workMultiplierAmount: 0,
             passiveAmount: 0,
             bankCapacity: 0
-        }
+        },
+        starches: 0
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -504,6 +505,7 @@ const getGuilds = async function () {
         .then(async function (data) {
             // console.log(`getGuilds: ${JSON.stringify(data)}`);
             guildList = data.Items;
+            guildList = guildList.filter(guild => guild.memberList.length > 0);
         })
         .catch(function (err) {
             console.log(`getGuilds error: ${JSON.stringify(err)}`);
@@ -647,9 +649,24 @@ const getServerTotal = async function () {
     return total
 }
 
+const getServerTotalStarches = async function () {
+    let total = 0;
+    let allUsers = await getUsers();
+    allUsers.forEach(user => {
+        total += user.starches;
+    })
+    return total
+}
+
 const getSortedUsers = async function () {
     let allUsers = await getUsers();
     const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes + b.bankStored) - parseFloat(a.potatoes + a.bankStored));
+    return sortedUsers
+}
+
+const getSortedUserStarches = async function () {
+    let allUsers = await getUsers();
+    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.starches) - parseFloat(a.starches));
     return sortedUsers
 }
 
@@ -731,7 +748,9 @@ module.exports = {
 
     addNewUserAttribute,
     getServerTotal,
+    getServerTotalStarches,
     getSortedUsers,
+    getSortedUserStarches,
     getSortedGuildsByLevelAndMembers,
     getSortedGuildsById,
     removeStarches

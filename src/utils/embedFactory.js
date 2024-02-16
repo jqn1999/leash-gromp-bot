@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, Raid } = require("../utils/constants")
+const { GuildRoles, sweetPotato, Raid, shops } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
@@ -31,7 +31,7 @@ class EmbedFactory {
         });
         fields.push({
             name: "Current Work Multiplier:",
-            value: `${(userDetails.workMultiplierAmount).toFixed(2)}`,
+            value: `${(userDetails.workMultiplierAmount).toFixed(2)}x`,
             inline: false,
         });
         fields.push({
@@ -48,7 +48,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setDescription("This is your profile where\nyou can view your potatoes")
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -59,14 +59,36 @@ class EmbedFactory {
     createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
+        const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
+        const userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
+        const userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
+        const multiplierName = findShopItemName(userBaseWorkMultiplier, shops[0].items);
+        const passiveName = findShopItemName(userBasePassiveIncome, shops[1].items);
+        const bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
+
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .addFields(
+                {
+                    name: "Current Work Multiplier Upgrade:\n(Base + Bonus)",
+                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)})x`,
+                    inline: false,
+                },
+                {
+                    name: "Current Passive Income Upgrade:",
+                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()}) potatoes`,
+                    inline: false,
+                },
+                {
+                    name: "Current Bank Capacity Upgrade:",
+                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()}) potatoes`,
+                    inline: false,
+                },
                 {
                     name: "Total Earnings:",
                     value: `${userDetails.totalEarnings.toLocaleString()} potatoes`,
@@ -107,7 +129,41 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`Server Leaderboard (${total.toLocaleString()} potatoes)`)
             .setDescription(`This is where the top 5 members' wealth are displayed... your rank is at the bottom.`)
-            .setColor("Random")
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(userList)
+        return embed;
+    }
+
+    createUserStarchLeaderboardEmbed(sortedUsers, total, userIndex) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        let userList = []
+        for (const [index, element] of sortedUsers.entries()) {
+            let currentUserTotalStarches = element.starches;
+            if (index < 5) {
+                const user = {
+                    name: `${index + 1}) ${element.username}`,
+                    value: `${element.starches.toLocaleString()} starches (${(currentUserTotalStarches / total * 100).toFixed(2)}%)`,
+                    inline: false,
+                };
+                userList.push(user);
+            } else {
+                break;
+            }
+        }
+        let userTotalStarches = sortedUsers[userIndex].starches;
+        userList.push({
+            name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
+            value: `${sortedUsers[userIndex].starches.toLocaleString()} starches (${(userTotalStarches / total * 100).toFixed(2)}%)`,
+            inline: false,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Server Leaderboard (${total.toLocaleString()} starches)`)
+            .setDescription(`This is where the top 5 members' starches are displayed... your rank is at the bottom.`)
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -141,7 +197,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`Guild Leaderboard (${sortedGuilds.length} Guilds)`)
             .setDescription(`This is where all guilds are displayed, ordered by level and then by members.`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -165,7 +221,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${shopDetails.title}`)
             .setDescription(`${shopDetails.description}`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -251,7 +307,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`(1) ${betDetails.optionOne} vs (2) ${betDetails.optionTwo} (${ratio})`)
             .setDescription(`${betDetails.description}\nBelow are the current bets and their respective totals: `)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(betDetails.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -267,7 +323,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${winningOption} has won the bet!`)
             .setDescription(`Potatoes have been distributed!\nBelow are the final bet amounts and their respective totals: `)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(betDetails.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -348,7 +404,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
             .setDescription(`Below is guild information for guild '${guild.guildName}'`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(guild.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -373,10 +429,38 @@ class EmbedFactory {
             value: `${leader.username}`,
             inline: false,
         })
-        const newMemberList = memberList.filter((currentMember) => currentMember.role != GuildRoles.LEADER)
-        if (newMemberList.length > 0) {
+        const coleaderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.COLEADER)
+        if (coleaderList.length > 0) {
             let stringListOfMembers = ``;
-            for (const [index, element] of newMemberList.entries()) {
+            for (const [index, element] of coleaderList.entries()) {
+                stringListOfMembers += `${element.username}\n`
+            }
+            const listOfMembers = {
+                name: `${GuildRoles.COLEADER}`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            userList.push(listOfMembers);
+        }
+        
+        const elderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.ELDER)
+        if (elderList.length > 0) {
+            let stringListOfMembers = ``;
+            for (const [index, element] of elderList.entries()) {
+                stringListOfMembers += `${element.username}\n`
+            }
+            const listOfMembers = {
+                name: `${GuildRoles.ELDER}`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            userList.push(listOfMembers);
+        }
+
+        const regularMemberList = memberList.filter((currentMember) => currentMember.role == GuildRoles.MEMBER)
+        if (regularMemberList.length > 0) {
+            let stringListOfMembers = ``;
+            for (const [index, element] of regularMemberList.entries()) {
                 stringListOfMembers += `${element.username}\n`
             }
             const listOfMembers = {
@@ -390,7 +474,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
             .setDescription(`Below is the list of members for guild '${guild.guildName}'`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(guild.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -413,7 +497,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)\nRaid Timer: ${raidTime}`)
             .setDescription(`Below is the list of the current raid members for '${guild.guildName}'`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(guild.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -421,14 +505,33 @@ class EmbedFactory {
         return embed;
     }
 
-    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance, raidResultDescription) {
-        let fields = [], footerText = "Made by Beggar";
+    createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
+        let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
+        const hasStatReward = multiplierReward || passiveReward || capacityReward;
+        const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
 
         fields.push({
             name: `Result:`,
             value: `${raidResultDescription}`,
             inline: true,
         })
+        if (multiplierReward) {
+            statRewardMessage += `${multiplierReward.toFixed(2).toLocaleString()} work multiplier to all members!\n`
+        }
+        if (passiveReward) {
+            statRewardMessage += `${passiveReward.toLocaleString()} passive amount to all members!\n`
+        }
+        if (capacityReward) {
+            statRewardMessage += `${capacityReward.toLocaleString()} bank capacity to all members!\n`
+        }
+        if (hasStatReward) {
+            fields.push({
+                name: `Stats Granted:`,
+                value: `${statRewardMessage}`,
+                inline: false,
+            })
+        }
 
         fields.push({
             name: `Success Chance:`,
@@ -437,7 +540,7 @@ class EmbedFactory {
         })
 
         const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
-        raidCount = totalRaidReward >= 0 ? raidCount+1 : raidCount
+        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
         fields.push({
             name: `Total Potatoes ${gainOrLoss}:`,
             value: `${totalRaidReward.toLocaleString()} potatoes`,
@@ -473,7 +576,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`'${guildName}' encountered ${mob.name}!`)
             .setDescription(`${mob.description}`)
-            .setColor("Random")
+            .setColor(color)
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
             .setTimestamp(Date.now())
@@ -505,6 +608,8 @@ class EmbedFactory {
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
+        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato;
+        let color = potatoesGained >= 0 && !isFailedMetal  ? 'Green' : 'Red';
         fields.push({
             name: `Potatoes ${gainOrLoss}:`,
             value: `${potatoesGained.toLocaleString()} potatoes`,
@@ -541,7 +646,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
             .setDescription(`${mobDescription}${sweetPotatoReward}`)
-            .setColor("Random")
+            .setColor(color)
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
             .setTimestamp(Date.now())
@@ -568,7 +673,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`Birthday List`)
             .setDescription(`This is the next 5 birthdays for the server`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -576,9 +681,10 @@ class EmbedFactory {
         return embed;
     }
 
-    createCoinflipEmbed(result, headsCount, tailsCount, userPotatoes, bet) {
+    createCoinflipEmbed(result, headsCount, tailsCount, userPotatoes, amount) {
         let fields = [];
-        const potatoResultLabel = bet >= 0 ? 'Gained' : 'Lost';
+        const potatoResultLabel = amount >= 0 ? 'Gained' : 'Lost';
+        const color = amount >= 0 ? 'Green' : 'Red';
         const avatarUrl = result == 'heads'
             ? "https://cdn.discordapp.com/emojis/656933460484685873.webp?size=96&quality=lossless"
             : "https://cdn.discordapp.com/attachments/533073599435636739/1199161990787104878/Miles_22Tails22_Prower_Sonic_and_All-Stars_Racing_Transformed.png?ex=65c189a1&is=65af14a1&hm=f7d3ad2b55689f5fe5a833322af1e37239039d0eeec3ea55aa45219ff6a30d5d&"
@@ -600,7 +706,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Potatoes ${potatoResultLabel}:`,
-            value: `${bet.toLocaleString()} potatoes`,
+            value: `${amount.toLocaleString()} potatoes`,
             inline: true,
         })
         fields.push({
@@ -612,7 +718,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`Coinflip result was... ${result}!`)
             .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and coinflip stats.`)
-            .setColor("Random")
+            .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -625,6 +731,7 @@ class EmbedFactory {
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
         const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
+        const color = robOrFineAmount >= 0 ? 'Green' : 'Red';
 
         fields.push({
             name: `Chance to Rob:`,
@@ -655,7 +762,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} ${robResultLabel} ${targetUserDisplayName}!`)
             .setDescription(`Displayed below are your chances to rob, current potatoes, target's potatoes, and how many potatoes were gained or lost.`)
-            .setColor("Random")
+            .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -666,7 +773,6 @@ class EmbedFactory {
     createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
-
 
         fields.push({
             name: `Current Potatoes:`,
@@ -688,18 +794,88 @@ class EmbedFactory {
             value: `${amount.toLocaleString()} potatoes`,
             inline: true,
         })
-        
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} gives potatoes to ${targetUserDisplayName}!`)
             .setDescription(`Displayed below are your current potatoes, your target's potatoes, and how many potatoes you gave.`)
-            .setColor("Random")
+            .setColor("Green")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;
     }
+
+    createStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, maxBuyAmount, currentType, starchPrice) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const color = currentType == 'buy' ? 'Green' : 'Orange';
+        let fields = [];
+
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Starches:`,
+            value: `${userStarches.toLocaleString()} starches`,
+            inline: true,
+        })
+        if (currentType == 'buy') {
+            fields.push({
+                name: `Max starches you can ${currentType}:`,
+                value: `${maxBuyAmount.toLocaleString()} starches`,
+                inline: false,
+            })
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} you can currently ${currentType} starches for ${starchPrice.toLocaleString()} potatoes!`)
+            .setDescription(`Displayed below are your current potatoes, starches, and how many you can ${currentType}.`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by izmattk" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const color = currentType == 'buy' ? 'Green' : 'Orange';
+        const starchesText = starchAmount > 1 ? 'starches' : 'starch';
+        let fields = [];
+
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Current Starches:`,
+            value: `${userStarches.toLocaleString()} ${starchesText}`,
+            inline: true,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
+            .setDescription(`Displayed below are your current potatoes and starches.\nCurrent Price: ${starchPrice.toLocaleString()} potatoes`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by izmattk" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+}
+
+function findShopItemName(amount, shopItems) {
+    for (const [index, element] of shopItems.entries()) {
+        if (element.amount == amount.toFixed(1)) {
+            return element.name
+        }
+    }
+    return "N/A";
 }
 
 function getUserAvatar(userId, avatarHash) {

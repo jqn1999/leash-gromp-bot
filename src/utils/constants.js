@@ -30,23 +30,37 @@ const Rob = {
 
 const Raid = {
     MAXIMUM_RAID_SUCCESS_RATE: .9,
+    MAXIMUM_STAT_RAID_SUCCESS_RATE: .45,
     RAID_TIMER_SECONDS: 3600,
+
     REGULAR_RAID_REWARD: 100000,
     REGULAR_RAID_PENALTY: -100000,
     REGULAR_RAID_DIFFICULTY: 25,
+
     MEDIUM_RAID_REWARD: 500000,
     MEDIUM_RAID_PENALTY: -500000,
     MEDIUM_RAID_DIFFICULTY: 60,
+
     HARD_RAID_REWARD: 5000000,
     HARD_RAID_PENALTY: -2000000,
     HARD_RAID_DIFFICULTY: 150,
-    LEGENDARY_RAID_REWARD: 20000000,
-    LEGENDARY_RAID_PENALTY: -5000000,
+
+    LEGENDARY_RAID_REWARD: 10000000,
+    LEGENDARY_RAID_MULTIPLIER_REWARD: 2.0,
+    LEGENDARY_RAID_PASSIVE_REWARD: 1000000,
+    LEGENDARY_RAID_CAPACITY_REWARD: 10000000,
+    LEGENDARY_RAID_PENALTY: 0,
     LEGENDARY_RAID_DIFFICULTY: 500,
+
+    REGULAR_STAT_RAID_REWARD: 0.2,
+    REGULAR_STAT_RAID_COST: -200000,
+    REGULAR_STAT_RAID_DIFFICULTY: 250
 }
 
 const GuildRoles = {
     LEADER: "Leader",
+    COLEADER: "Co-Leader",
+    ELDER: "Elder",
     MEMBER: "Member"
 }
 
@@ -72,11 +86,11 @@ const regularRaidMobs = [
 const mediumRaidMobs = [
     {
         name: "Basilbane, the Herbaceous Harbinger",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198393298507792565/image.png?ex=65bebdbb&is=65ac48bb&hm=c50f01ea8a03bc05e296c17f53abc34aa9dd068239f579c232751af1095925c2&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1205682852172271727/baycil.png?ex=65d942a8&is=65c6cda8&hm=499bab1149a7948b3811db877a628775b9a9a4725cc1382fa14571281575baa7&",
         description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
         successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
         failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
     }
 ]
 
@@ -87,7 +101,7 @@ const hardRaidMobs = [
         description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
         successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
         failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
-        credit: 'Inspired by Moonwave'
+        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
     },
     {
         name: "Behemoth Broccoli, the Green Guardian",
@@ -100,13 +114,32 @@ const hardRaidMobs = [
 ]
 
 const metalKingRaidBoss = {
-        name: "Metal King Potato",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
-        description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
-        successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
-        failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
-        credit: 'Inspired by RednaxeIa'
+    name: "Metal King Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
+    description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
+    successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
+    failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
+    credit: 'Inspired by RednaxeIa'
 }
+
+const regularStatRaidMobs = [
+    {
+        name: "Spectral Spudspecter, the Ghostly Potato Monarch",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1203364521540853911/1206781637254455327/spudspecter.png?ex=65dd41fb&is=65caccfb&hm=a79ff5b02170d5690a8c2634a56fdf84be15293c60df86558596325b446d3b46&",
+        description: `The Spectral Spudspecter, the Ghostly Potato Monarch, materializes as a haunting apparition, cloaked in ethereal potato skins and wreathed in wisps of ghostly vapors. Its spectral form exudes an otherworldly aura, commanding the very essence of the afterlife within the Potato Kingdom.`,
+        successDescription: 'Through courage and cunning, the spud heroes banish the Spectral Spudspecter, dispersing its ghostly visage and restoring peace to the Potato Kingdom. The spectral monarch\'s reign of ethereal terror comes to an end, and the realm is freed from its haunting grasp.',
+        failureDescription: 'Enveloped by the chilling embrace of the Spectral Spudspecter\'s ghostly powers, the potato adventurers fade into the shadows, their efforts to vanquish the Ghostly Potato Monarch thwarted. The realm of potatoes falls deeper into the spectral abyss, haunted by the ghostly presence of its malevolent ruler.',
+        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
+    },
+    {
+        name: "Shiitakethane, the Fungal Tyrant",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        description: `Shiitakethane, the Fungal Tyrant, emerges from the depths of the Potato Kingdom as a towering mushroom sovereign, adorned with spores and mycelial tendrils that writhe with eerie sentience. Its presence heralds a reign of fungal dominance, threatening the very balance of the vegetable realm.`,
+        successDescription: 'Through stalwart resolve and strategic prowess, the spud heroes dismantle Shiitakethane\'s fungal empire, purging the Potato Kingdom of its tyrannical grip. The fungal tyrant\'s reign crumbles, and the realm is restored to harmony and balance.',
+        failureDescription: 'Overwhelmed by the relentless onslaught of fungal minions and toxic spores unleashed by Shiitakethane, the potato adventurers succumb to the fungal tyrant\'s dominion. The Potato Kingdom plunges into darkness, ensnared by the tendrils of the Fungal Tyrant\'s malevolent rule.',
+        credit: 'Inspired by Moonwave'
+    }
+]
 
 const regularWorkMobs = [
     {
@@ -206,15 +239,15 @@ const shops = [
             {
                 amount: 1.5,
                 cost: 50000,
-                description: "A basic set of gear for beginners that makes hunting a bit easier",
+                description: "A humble set of gear for beginners intended to facilitate the hunting process.",
                 id: 1,
-                name: "Spud Seeker Set",
+                name: "Novice Spud Seeker Set",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 3,
                 cost: 200000,
-                description: "An intermediate set of gear for those pursuing a career in potato hunting",
+                description: "A respectable set of gear that's vital for those pursuing a career in potato hunting.",
                 id: 2,
                 name: "Potato Pursuer Kit",
                 type: "workMultiplierAmount"
@@ -222,35 +255,56 @@ const shops = [
             {
                 amount: 5,
                 cost: 1000000,
-                description: "An advanced set of gear for a trained professional",
+                description: "An intermediate set of accessories fit for a seasoned adventurer in the Potato Kingdom.",
                 id: 3,
-                name: "Starch Stalker Ensemble",
+                name: "Spud Striker Gear",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 10,
                 cost: 5000000,
-                description: "An elite set of gear for those that seek the thrill of special grade potatoes",
+                description: "Cutting-edge equipment that lends itself well to defending the Potato Kingdom against nefarious vegetables.",
                 id: 4,
-                name: "Supreme Spud Slayer Gear",
+                name: "Starch Stalker's Ensemble",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 15,
                 cost: 20000000,
-                description: "This arsenal provides hunters with tools to crush and capture legendary potatoes, enhancing their rewards when facing more powerful and elusive spuds",
+                description: "This advanced arsenal provides heroes with the means to safeguard their kingdom in the face of the most vicious foes.",
                 id: 5,
-                name: "Legendary Spud Seeker's Arsenal",
+                name: "Veteran's Spud-Seeking Arsenal",
                 type: "workMultiplierAmount"
             },
             {
                 amount: 20,
                 cost: 50000000,
-                description: "Wielding cosmic forces, this gear allows players to obliterate entire fields of potatoes and face the most extreme potato challenges in their quest",
+                description: "An elite array of imposing weapons that can fell the toughest of enemies with ease.",
                 id: 6,
-                name: "Apocalyptic Tuber Annihilator Gear",
+                name: "Special-Grade Spud Slaying Gear",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 30,
+                cost: 75000000,
+                description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
+                id: 7,
+                name: "Supreme Spud Gladiator's Garments",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 40,
+                cost: 100000000,
+                description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
+                id: 8,
+                name: "Legendary Leader's Blade",
                 type: "workMultiplierAmount"
             }
+            // 9) Divine Instrument of Potato Blessings
+            // -A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.
+
+            // 10) Alien Armaments of Tuber Termination 
+            // -This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom. 
         ],
         title: "Work Tools Shop (multiplier for work)"
     },
@@ -269,23 +323,23 @@ const shops = [
             {
                 amount: 100000,
                 cost: 200000,
-                description: "A small crew of workers that cultivate and harvest even more potatoes each day",
+                description: "A rag-tag crew of volunteers led by your apprentice and generously harvesting potatoes on your behalf",
                 id: 2,
-                name: "Harvest Helpers Crew",
+                name: "Harvest-Helping Crew",
                 type: "passiveAmount"
             },
             {
                 amount: 180000,
                 cost: 1000000,
-                description: "A skilled squad of musicians that happen to love growing potatoes using their songs",
+                description: "A proficient squad of musicians whose magical melodies can accelerate potato cultivations",
                 id: 3,
-                name: "Spud Symphony Squad",
+                name: "Spud Symphony Troop",
                 type: "passiveAmount"
             },
             {
                 amount: 500000,
                 cost: 5000000,
-                description: "A large squad of trained professionals in the art of potato cultivation",
+                description: "A skilled squad of trained professionals in the art of potato cultivationn",
                 id: 4,
                 name: "Spud Team Six",
                 type: "passiveAmount"
@@ -293,19 +347,37 @@ const shops = [
             {
                 amount: 1000000,
                 cost: 20000000,
-                description: "Armed with cutting-edge techniques and sustainable practices, this skilled team maximizes potato yields through eco-friendly methods, ensuring a lush harvest every day",
+                description: "A regiment armed with cutting-edge techniques and skilled in sustainable practices, these growers leverage eco-friendly methods to ensure a lush harvest every day",
                 id: 5,
                 name: "Verdant Vanguard Growers",
                 type: "passiveAmount"
             },
             {
-                amount: 2000000,
+                amount: 3000000,
                 cost: 50000000,
-                description: "This top-tier group of agricultural virtuosos seamlessly integrates various cultivation methods, creating a harmonious environment for potato growth",
+                description: "A top-class group of agricultural virtuosos that seamlessly combines whimsical ballads and precise cultivation techniques, creating a harmonious environment for potato growth",
                 id: 6,
                 name: "Harvest Harmony Elite",
                 type: "passiveAmount"
+            },
+            {
+                amount: 7000000,
+                cost: 75000000,
+                description: "An integrated network of potato scientists, farmers, and distributors capable of supporting the global potato economy with their robust supply chain",
+                id: 7,
+                name: "Cultivation Conglomerate",
+                type: "passiveAmount"
+            },
+            {
+                amount: 14000000,
+                cost: 100000000,
+                description: "Led by your once apprentice turned genius investor, this fund employs complex starch trading and hedging strategies to generate exceptional returns each day",
+                id: 8,
+                name: "Potato Wedge Fund",
+                type: "passiveAmount"
             }
+            // 27,000,000 | 125,000,000
+            // 60,000,000 | 150,000,000
         ],
         title: "Passive Income Workers Shop (amount per day)"
     },
@@ -316,49 +388,49 @@ const shops = [
             {
                 amount: 100000,
                 cost: 50000,
-                description: "A basic pouch to hold some wealth and keep it safe",
+                description: "A basic pouch fit for holding spuds safely",
                 id: 1,
-                name: "Spud Saver's Starter Pouch",
+                name: "Spud Saver's Sack",
                 type: "bankCapacity"
             },
             {
                 amount: 500000,
                 cost: 200000,
-                description: "A rather secure holding for the more advanced potato collector",
+                description: "A rather secure holding for a more conscious potato collector",
                 id: 2,
-                name: "Savvy Spud Saver Bank",
+                name: "Savvy Saving Bank",
                 type: "bankCapacity"
             },
             {
                 amount: 2500000,
                 cost: 1000000,
-                description: "A large hidden holding of potatoes hidden somewhere in a forest",
+                description: "An underground vault built specifically to guard mountains of potatoes",
                 id: 3,
-                name: "Spud Hoarder Hideaway",
+                name: "Supreme Spud Vault",
                 type: "bankCapacity"
             },
             {
                 amount: 10000000,
                 cost: 5000000,
-                description: "An underground vault specifically made to guard mountains of potatoes",
+                description: "A colossal storage facility designed for the big dreamers of the potato farming world",
                 id: 4,
-                name: "Supreme Spud Vault",
+                name: "Prodigious Potato Preservation",
                 type: "bankCapacity"
             },
             {
                 amount: 25000000,
                 cost: 20000000,
-                description: "A colossal storage facility designed for those who dream big in the world of potato farming",
+                description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
                 id: 5,
-                name: "Prodigious Potato Reserve",
+                name: "Royal Russet Reserve",
                 type: "bankCapacity"
             },
             {
                 amount: 50000000,
                 cost: 50000000,
-                description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
+                description: "An archaic reserve of potato knowledge and preservation, equipped with magical reservoirs of extraordinary capacity",
                 id: 6,
-                name: "Royal Russet Reserve",
+                name: "Ancient Spud Library",
                 type: "bankCapacity"
             }
         ],
@@ -398,12 +470,13 @@ module.exports = {
     regularRaidMobs,
     mediumRaidMobs,
     metalKingRaidBoss,
+    metalPotatoSuccess,
+    metalPotatoFailure,
     hardRaidMobs,
+    regularStatRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
     poisonPotato,
     goldenPotato,
-    metalPotatoSuccess,
-    metalPotatoFailure
 }
