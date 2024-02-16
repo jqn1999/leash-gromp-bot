@@ -21,28 +21,20 @@ class blackJackFactory{
                 embeds: [embed],
                 components: [row],
             });
+            console.log("reply ",reply);
             
         return embed;
     }
 
 
+    async startRun(){
+        cont = await this.execNormalFloor()
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    async startGame(){
+        index = await this.createInitalEmbed()
+        }
+    }
 
 }
 

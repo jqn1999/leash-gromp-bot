@@ -29,12 +29,10 @@ module.exports = {
         let userPotatoes = userDetails.potatoes;
 
         //new start here i think
+        let bjF = new blackJackFactory();
 
+        bjF.startRun();
 
-        const embed = await embedFactory.createInitalEmbed();
-        const reply = await this.interaction.editReply({
-            embeds: [embed],
-            components: [row],
-        });
+        
     }
 }

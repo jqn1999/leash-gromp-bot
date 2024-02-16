@@ -469,7 +469,7 @@ const awsConfigurations = {
     },
     testServer: "168379467931058176",
     clientId: "1187560268172116029",
-    devs: ["103243257240121344"]
+    devs: ["103243257240121344", "291037477584502785"]
 }
 
 module.exports = {
