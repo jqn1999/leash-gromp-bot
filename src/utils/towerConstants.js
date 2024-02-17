@@ -40,16 +40,58 @@ const ENCOUNTERS = [
     {
         name: "MAGIC MUSSEL",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
-        description: "BEHIND ONE MUSSESL IS 1 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
+        description: "BEHIND ONE MUSSESL IS 2 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
         choices: [{name: 'this one!', outcome: CHOICES.EXIT, result: "there is nothing............"}, 
-                 {name: 'that one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "you have chosen the work multi! congrats!"}],
+                 {name: 'that one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "you have chosen the work multi! congrats!"}],
     },
     {
         name: "MAGIC MUSSEL",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
-        description: "BEHIND ONE MUSSESL IS 1 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
-        choices: [{name: 'this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "you have chosen the work multi! congrats!"}, 
+        description: "BEHIND ONE MUSSESL IS 2 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
+        choices: [{name: 'this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "you have chosen the work multi! congrats!"}, 
                  {name: 'that one!', outcome: CHOICES.EXIT, result: "there is nothing............"}],
+    },
+    {
+        name: "The Wacky Watermelon",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "You run into an eccentric looking watermelon who offers you two slices of watermelon but you can only choose one.\nWhich slice will you choose?",
+        choices: [{name: 'The left one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: `You eat the slice of watermelon and suddenly feel much more energetic!\n\nYour work modifier has increased by 2!`}, 
+                 {name: 'The right one!', outcome: MODIFIER.WORK_MULTIPLIER, value: -2, result: "You eat the slice of watermelon and start feeling very dizzy......you black out\n\nYour work modifier has decreased by 2."}],
+    },
+    {
+        name: "The Wacky Watermelon",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "You run into an eccentric looking watermelon who offers you two slices of watermelon but you can only choose one.\nWhich slice will you choose?",
+        choices: [{name: 'The left one!', outcome: MODIFIER.WORK_MULTIPLIER, value: -2, result: "You eat the slice of watermelon and start feeling very dizzy......you black out\n\nYour work modifier has decreased by 2."},
+                {name: 'The right one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: `You eat the slice of watermelon and suddenly feel much more energetic!\n\nYour work modifier has increased by 2!`}]
+    },
+    {
+        name: "The Despicable Dragonfruit",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "An evil looking dragonfruit appears before you! What will you do?",
+        choices: [{name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 50000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 50000 potatoes from the deceased fruit."},
+                {name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -50000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 50000 potatoes.`}]
+    },
+    {
+        name: "The Despicable Dragonfruit",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "An evil looking dragonfruit appears before you! What will you do?",
+        choices: [{name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -50000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 50000 potatoes."},
+                {name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: 50000, result: `You tell the dragonfruit that you love its pink complexion. The dragonfruit blushes at your compliment and leaves you some potatoes for your adventure!\n\nYou have gained 50000 potatoes!`}]
+    },
+    {
+        name: "Wandering Woods",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "You enter a dense forest and before long, you seem to be lost within the trees. You eventually find your way to a path with two choices....\n\nWhich path will you take?",
+        choices: [{name: 'Left!', outcome: CHOICES.EXIT, result: `You find your way back onto the main path and manage to leave the forest!`},
+                {name: 'Right!', outcome: CHOICES.ELITE, result: `The path leads you to the lair of a ferious elite......prepare for combat!`}]
+    }, 
+    {
+        name: "Wandering Woods",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "You enter a dense forest and before long, you seem to be lost within the trees. You eventually find your way to a path with two choices....\n\nWhich path will you take?",
+        choices: [{name: 'Left!', outcome: CHOICES.ELITE, result: `The path leads you to the lair of a ferious elite......prepare for combat!`},
+                {name: 'Right!', outcome: CHOICES.EXIT, result: `You find your way back onto the main path and manage to leave the forest!`}]
     }
 ]
 
@@ -57,20 +99,40 @@ const TRANSACTIONS = [
     {
         name: "TATER WITCH",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/679508657058480147/1205176046001983569/IMG_0011.jpg?ex=65d76aa8&is=65c4f5a8&hm=cee60db47d5bfdd2389a78e62ce8a2cb99d0fa63ac03e96c10ffad90b67dc991&",
-        description: "OLD HO COMES UP AND OFFERS YOU 1 WORK MULTIPLIER ON THIS RUN FOR 10000 POTATOES\n\nDO YOU ACCEPT?",
-        choices: [{name: "ACCEPT HER OFFER!", outcome: MODIFIER.WORK_MULTIPLIER, value: 1, price: 10000, result: "YOU GET THAT WORK MULTI"},
+        description: "OLD HO COMES UP AND OFFERS YOU 5 WORK MULTIPLIER ON THIS RUN FOR 100000 POTATOES\n\nDO YOU ACCEPT?",
+        choices: [{name: "ACCEPT HER OFFER!", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 100000, result: "YOU GET THAT WORK MULTI"},
                 {name: "LEAVE", outcome: CHOICES.EXIT, result: "DONT TRUST THAT HO! WE OUT!"}],
-        poor: "YOU WANT TO TAKE HER OFFER, BUT YOU ARE A BROKE BITCH! YOU LEAVE IN SHAME"
-    }
+        poor: "YOU WANT TO TAKE HER OFFER, BUT YOU ARE A BROKE BITCH! YOU LEAVE IN SHAME",
+        poor_outcome: CHOICES.EXIT
+    },
+    {
+        name: "The Wizard Lime",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
+        description: "A magical looking lime threatens to send you to an elite if you don't pay 50000 potatoes.\n\nWhat will you do?",
+        choices: [{name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 50000, result: `You pay the wizard who graciously takes the potatoes and leaves.`},
+                {name: 'Keep your potatoes', outcome: CHOICES.ELITE, result: `The lime casts a spell on you, sending you straight to a dangerous elite!`}],
+        poor: "You try to pay up but you do not have enough potatoes! The lime laughs as it starts casting a spell on you.......",
+        poor_outcome: CHOICES.ELITE
+    },
+    {
+        name: "The Traveling Turnip",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
+        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for 500,000 potatoes.\n\nWill you take the offer?",
+        choices: [{name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.2, price: 500000, result: `You buy the permanent work multiplier from the turnip!`},
+                {name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the turnip's offer and depart`}],
+        poor: "As much as you want to buy the work multiplier, you don't have enough potatoes to buy it",
+        poor_outcome: CHOICES.EXIT
+    },
+
 ]
 
 const REWARDS = [
     {
-        name: "DABABY",
+        name: "Fairy Fig",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: "DABABY OFFERS YOU 200 POTATOES OR 1 WORK MULTIPLIER FOR THIS RUN.\n\nWhat will you take?",
-        choices: [{name: '200 potats', outcome: PAYOUT.POTATOES, value: 200, result: "DABABY grants your POTATOES! NOW HE GONNA CAP A WALMART"}, 
-                 {name: 'work multi', outcome: MODIFIER.WORK_MULTIPLIER, value: 1, result: "DABABY SCREAMS OUT LESSSSS GOOOOOO!!!! YOU HAVE RECEIVED YOUR WORK MULTI"}],
+        description: "A flying fig offers you 250,000 potatoes or 5 work modifier on this run.\n\nWhat will you take?",
+        choices: [{name: '250,000 potatoes', outcome: PAYOUT.POTATOES, value: 250000, result: "The fig turned into dust and granted you 250,000 potatoes!"}, 
+                 {name: '5 work multiplier', outcome: MODIFIER.WORK_MULTIPLIER, value: 5, result: "The fig turned into dust and granted you 5 work modifier!"}],
     }
 ]
 

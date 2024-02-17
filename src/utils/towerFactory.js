@@ -12,19 +12,19 @@ class towerFactory{
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
+        this.difficulty = 1
     }
 
     async startRun(){
         let floor_type = "COMBAT"
         var cont = true
-        var difficulty = 1
         while(cont){
             this.floor++
             console.log(this.run)
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
-                cont = await this.execElite(difficulty)
-                difficulty *= 10
+                cont = await this.execElite(this.difficulty)
+                this.difficulty *= 10
                 floor_type = getFloor()
                 continue;
             }
@@ -39,7 +39,7 @@ class towerFactory{
         let fl
         let index
         // remove this later
-        //floor_type = "ENCOUNTER"
+        floor_type = "TRANSACTION"
         switch(floor_type){
             case "COMBAT":
                 // think we just throw a normal mob from /work that you cant fail
@@ -52,7 +52,7 @@ class towerFactory{
                 return this.updateValue(fl, index)
             case "TRANSACTION":
                 fl = tC.TRANSACTIONS[Math.floor(Math.random() * tC.TRANSACTIONS.length)]
-                index = await this.createFloorEmbed(fl, "TRANSACTION", "Blue")
+                index = await this.createFloorEmbed(fl, `TRANSACTION (${this.run[tC.PAYOUT.POTATOES]} potatoes)`, "Blue")
                 return this.updateTransaction(fl, index)
             case "REWARD":
                 fl = tC.REWARDS[Math.floor(Math.random() * tC.COMBATS.length)]
@@ -86,7 +86,7 @@ class towerFactory{
 
     async createEliteEmbed(fl, success){
         const embed = new EmbedBuilder()
-            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ELITE\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ELITE\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
             .setDescription(fl.description + `\n\nSuccess Chance: ${(success*100).toFixed(2)}%`)
             .setColor("Red")
             .setTimestamp(Date.now())
@@ -144,20 +144,32 @@ class towerFactory{
         }
     }
 
-    updateValue(fl, index){
+    async updateValue(fl, index){
         if(fl.choices[index].outcome == tC.CHOICES.EXIT){
             return this.createNextEmbed(fl, fl.choices[index].result)
+        }else if(fl.choices[index].outcome==tC.CHOICES.ELITE){
+            await this.createEliteEncounter(fl, fl.choices[index].result)
+            return this.execElite(this.difficulty)
         }
         this.run[fl.choices[index].outcome] += fl.choices[index].value
         return this.createNextEmbed(fl, fl.choices[index].result)
     }
 
-    updateTransaction(fl, index){
+    async updateTransaction(fl, index){
+        let poor = this.run[tC.PAYOUT.POTATOES] < fl.choices[index].price
+        console.log(poor)
         if(fl.choices[index].outcome == tC.CHOICES.EXIT){
             return this.createNextEmbed(fl, fl.choices[index].result)
+        }else if(fl.choices[index].outcome==tC.CHOICES.ELITE ){
+            await this.createEliteEncounter(fl, fl.choices[index].result)
+            return this.execElite(this.difficulty)
         }
         // check if enough money
-        if(this.run[tC.PAYOUT.POTATOES] < fl.choices[index].price){
+        if(poor){
+            if(fl.poor_outcome == tC.CHOICES.ELITE){
+                await this.createEliteEncounter(fl, fl.poor)
+                return this.execElite(this.difficulty)
+            }
             return this.createNextEmbed(fl, fl.poor)
         }
 
@@ -169,7 +181,7 @@ class towerFactory{
 
     async createNextEmbed(fl, description){
         const embed = new EmbedBuilder()
-            .setTitle(`FLOOR ${this.floor.toLocaleString()}\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (+${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${fl.name}\n${this.username}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
             .setDescription(`${description}`)
             .setColor('Green')
             .setTimestamp(Date.now())
@@ -213,6 +225,30 @@ class towerFactory{
         }else if(confirmation.customId == "leave"){
             await confirmation.update({content: '', components: []})
             return false
+        }
+    }
+
+    async createEliteEncounter(fl, description){
+        const embed = new EmbedBuilder()
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
+            .setDescription(description)
+            .setColor('Red')
+            .setTimestamp(Date.now())
+            .setThumbnail(fl.thumbnailUrl)
+            .setFooter({text: `Tater Tower: ${this.username}`});
+    
+        const row = new ActionRowBuilder().addComponents(tC.CONT)
+        const reply = await this.interaction.editReply({
+            embeds: [embed],
+            components: [row],
+        });
+    
+        const collectorFilter = i => i.user.id === this.interaction.user.id;
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
+        
+        if(confirmation.customId == "continue"){
+            await confirmation.update({content: '', components: []})
+            return true
         }
     }
 
