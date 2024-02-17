@@ -1,4 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
+const { getRandomFromInterval } = require("../utils/helperCommands")
 const { Work, awsConfigurations } = require("../utils/constants")
 
 class WorkFactory {
@@ -76,6 +77,18 @@ class WorkFactory {
         }
         await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
         return random;
+    }
+
+    async handleTaroTrader(userDetails) {
+        const userId = userDetails.userId;
+        const userMultiplier = userDetails.workMultiplierAmount;
+        let userStarches = userDetails.starches;
+        const starchAmount = Math.round(getRandomFromInterval(1, 3 * userMultiplier));
+        userStarches += starchAmount;
+
+        await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
+        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        return starchAmount;
     }
 
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {

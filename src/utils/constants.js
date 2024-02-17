@@ -204,6 +204,12 @@ const sweetPotato = {
     description: `You meet a lovely sweet potato and it convinces you to spare its life in exchange for buffing one of your stats. Check your profile!`
 }
 
+const taroTrader = {
+    name: "Taro Trader",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208137579002597456/pngtree-taro-hand-drawn-illustration-png-image_8343874.png?ex=65e230cc&is=65cfbbcc&hm=66bad9c30f1671640fdf9adc7a37698381cbf694bd71c092b1960b52a589637d&",
+    description: `You meet a wandering Taro Trader and it offers you some starches to help you with your adventures.`
+}
+
 const poisonPotato = {
     name: "Poisonous Potato",
     thumbnailUrl: "https://static.wikia.nocookie.net/minecraft_gamepedia/images/c/c0/Poisonous_Potato_JE3_BE2.png/revision/latest?cb=20200521233152",
@@ -285,7 +291,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 30,
+                amount: 25,
                 cost: 75000000,
                 description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
                 id: 7,
@@ -293,7 +299,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 40,
+                amount: 30,
                 cost: 100000000,
                 description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
                 id: 8,
@@ -477,6 +483,7 @@ module.exports = {
     regularWorkMobs,
     largePotato,
     sweetPotato,
+    taroTrader,
     poisonPotato,
     goldenPotato,
 }
