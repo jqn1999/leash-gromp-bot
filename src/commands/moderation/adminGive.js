@@ -23,13 +23,15 @@ module.exports = {
     ],
     permissionsRequired: [PermissionFlagsBits.Administrator],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
         const userDisplayName = interaction.user.displayName;
 
         let amount = interaction.options.get('amount')?.value;
         amount = Math.floor(Number(amount));
         if (isNaN(amount)) {
-            interaction.editReply(`${userDisplayName}, something went wrong with your amount to give. Try again!`);
+            interaction.reply({
+                content: `${userDisplayName}, something went wrong with your amount to give. Try again!`,
+                ephemeral: true
+            });
             return;
         }
 
@@ -38,7 +40,10 @@ module.exports = {
         if (targetUserId) {
             const targetUser = await interaction.guild.members.fetch(targetUserId);
             if (!targetUser) {
-                await interaction.editReply('That user doesn\'t exist in this server.');
+                interaction.reply({
+                    content: 'That user doesn\'t exist in this server.',
+                    ephemeral: true
+                });
                 return;
             }
             targetUserId = targetUser.id
@@ -47,13 +52,19 @@ module.exports = {
         }
         const targetUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
         if (!targetUserDetails) {
-            interaction.editReply(`${targetUserDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.reply({
+                content: `${targetUserDisplayName} was not in the DB, they should now be added. Try again!`,
+                ephemeral: true
+            });
             return;
         };
         let targetUserPotatoes = targetUserDetails.potatoes;
 
         targetUserPotatoes += amount;
         await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
-        interaction.editReply(`${userDisplayName}, you spawn and give ${amount} potatoes to ${targetUserDisplayName}. They now have ${targetUserPotatoes} potatoes`);
+        interaction.reply({
+            content: `${userDisplayName}, you spawn and give ${amount} potatoes to ${targetUserDisplayName}. They now have ${targetUserPotatoes} potatoes`,
+            ephemeral: true
+        });
     }
 }

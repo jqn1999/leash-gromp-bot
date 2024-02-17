@@ -31,7 +31,6 @@ module.exports = {
     ],
     deleted: false,
     callback: async (client, interaction) => {
-        await interaction.deferReply();
         let shopSelect = interaction.options.get('shop-select')?.value;
         let embed;
         switch (shopSelect) {
@@ -48,6 +47,6 @@ module.exports = {
                 embed = embedFactory.createShopEmbed(bankShop);
                 break;
         }
-        interaction.editReply({ embeds: [embed] });
+        interaction.reply({ embeds: [embed], ephemeral: true});
     }
 }
