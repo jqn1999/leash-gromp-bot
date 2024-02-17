@@ -150,44 +150,44 @@ const regularWorkMobs = [
     {
         name: "Cruel Carrot",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196674754199949312/image.png?ex=65b87d36&is=65a60836&hm=3d3c266d540733a97911817a7fd46ee349d5987fb08b54d829edd98b509e1711&",
-        description: `You have worked and slain a dangerous vegetable. You gain some potatoes for your efforts!`
+        description: `You bravely face off against the malevolent Cruel Carrot, its orange hue concealing a fierce determination to resist. After a fierce battle, you emerge victorious, earning a bountiful harvest of potatoes as a reward for overcoming this formidable vegetable foe!`
     },
     {
         name: "Blasphemous Bitter Melon",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196815721909452810/image.png?ex=65b9007f&is=65a68b7f&hm=8ace537de38b4a6878160e82a71467a8d18a7007f7fd4543f9d1579595175d16&",
-        description: `You have worked and encountered a wanted criminal, the Bitter Melon! After a short battle you defeat them and are rewarded potatoes for keeping the kingdom safe!`,
+        description: `You come across the Blasphemous Bitter Melon, a wanted criminal known for its bitter deeds. You engage in a swift battle to bring this notorious vegetable to justice. After a short but intense confrontation, you emerge victorious, rewarded with a generous amount of potatoes for ensuring the safety of the kingdom!`,
         credit: `Inspired by Saeriel`
     },
     {
         name: "Egregious Eggplant",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196832421270798549/image.png?ex=65b9100d&is=65a69b0d&hm=4002206f8b697b426c2bfb31b894bb8ee6f14526ed78b0d7b014b44b4355543f&",
-        description: `You have worked and run into the notorious Egregious Eggplant! You defeat the malevolent vegetable before it can continue its reign of terror and earn a fair share of potatoes!`,
+        description: `You encounter the notorious Egregious Eggplant, a malevolent vegetable with a dark reputation. You act swiftly to defeat this villain before it can continue its reign of terror. After a decisive victory, you earn a fair share of potatoes as a reward for putting an end to the Egregious Eggplant's wicked schemes!`,
         credit: `Inspired by Sinfonia`
     },
     {
         name: "Sinister Strawberry",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196837035235881020/image.png?ex=65b91459&is=65a69f59&hm=dd107d74060982694b4d7a9be2509717a8680caa3c8a515263fa938cadb7d7b8&",
-        description: `You have worked and ran into the Sinister Strawberry! After a fierce battle, you defeat the Sinister Strawberry and earn a plentiful reward of potatoes!`
+        description: `You stumble upon the Sinister Strawberry, its crimson exterior pulsating with dark energy. With determination in your heart, you engage in a battle against this nefarious fruit. After an intense struggle, you emerge victorious, rewarded with a plentiful harvest of potatoes for your triumph over the Sinister Strawberry's malevolent forces!`
     },
     {
         name: "Raging Radish",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838130590961754/image.png?ex=65b9155e&is=65a6a05e&hm=29e67c5a4e3405bc36783b1688334a1bad8ac906fd755afe3487bdf339b9f5a1&",
-        description: `You have worked and run into a Raging Radish! You defeat the fiery root vegetable, proving your mettle, and earn a hearty bag of potatoes!`
+        description: `You stumble upon the Raging Radish, its fiery temperament matched only by its fierce determination. You prepare for battle against this formidable root vegetable, as you prove your mettle in a fiery showdown. After emerging victorious, you claim a hearty bag of potatoes as your well-deserved reward for conquering the Raging Radish's fury!`
     },
     {
         name: "Treacherous Tomato",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838369779527701/image.png?ex=65b91597&is=65a6a097&hm=1413759e4e446646cda9a44b21fe1df99247975454ab787c496f4cf3aff19a48&",
-        description: `You have worked and encounter the Treacherous Tomato! After a hard-fought struggle against the cunning and deceitful fruit, you emerge victorious and earn a generous amount of potatoes!`
+        description: `You come face to face with the Treacherous Tomato, its ripe red skin hiding its treacherous nature. You engage in a fierce battle against this deceitful fruit, outwit its cunning tactics, and emerge victorious, rewarded generously with a harvest of potatoes for overcoming its treachery!`
     },
     {
         name: "Menacing Mango",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838574188924928/image.png?ex=65b915c8&is=65a6a0c8&hm=8488d83d107d86c56839abbb5ae0656103f26e036e6b923016baaa19b635ddfe&",
-        description: `You have worked and stumbled into a Menacing Mango! You fight bravely against this malevolent fruit and after a fierce struggle you slay it and earn a bountiful harvest of potatoes!`
+        description: `You encounter the Menacing Mango, its golden skin radiating an aura of malice. You summon your courage and engage in a brave battle against this malevolent fruit. After a fierce struggle, emerge victorious and claim a bountiful harvest of potatoes as your rightful reward for vanquishing the Menacing Mango!`
     },
     {
         name: "Cowardly Cantaloupe",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196839012434980864/image.png?ex=65b91630&is=65a6a130&hm=e9f83f932c02e936de5ac6772659fe570d8f1140f3e6289a162360b9816f4475&",
-        description: `You have worked and stumbled into a Cowardly Cantaloupe! It tries to roll away and escape! However you catch up, break it apart with no remorse, and earn a small share of potatoes!`,
+        description: `You stumble upon a Cowardly Cantaloupe, its pale rind trembling with fear. Despite its attempts to flee, you seize the opportunity, relentlessly pursuing and breaking it apart without remorse. As it yields, you claim your share of potatoes, triumphing over the Cowardly Cantaloupe's feeble attempts to escape your grasp!`,
         credit: `Inspired by Sinfonia`
     }
 ]
@@ -195,19 +195,19 @@ const regularWorkMobs = [
 const largePotato = {
     name: "Large Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196675140117868695/image.png?ex=65b87d92&is=65a60892&hm=fe8d9d61369d404e19ca9aa07d337b0e62ec964c6dd99c0ed6f9ff98dde5a73f&",
-    description: `You come across a rather Large Potato and slay it. You gain many potatoes for your bravery!`
+    description: `You come across an irresistibly cute Large Potato, its round form and endearing eyes tugging at your heartstrings. Despite its adorable nature, the allure of potatoes is too powerful to resist. With a heavy heart, you slay the Large Potato, its sacrifice granting you a bountiful harvest of potatoes.`
 }
 
 const sweetPotato = {
     name: "Sweet Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196681406164770836/image.png?ex=65b88368&is=65a60e68&hm=0eac1e59888d567736222ece1106e06474cb9b8ac3a6b349aa7ce567033c83ac&",
-    description: `You meet a lovely sweet potato and it convinces you to spare its life in exchange for buffing one of your stats. Check your profile!`
+    description: `You encounter a lovely Sweet Potato, its charm and sincerity evident. In a heartwarming exchange, it convinces you to spare its life in exchange for enhancing one of your stats. Check your profile to see the benefits of this heartwarming interaction!`
 }
 
 const taroTrader = {
     name: "Taro Trader",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208137579002597456/pngtree-taro-hand-drawn-illustration-png-image_8343874.png?ex=65e230cc&is=65cfbbcc&hm=66bad9c30f1671640fdf9adc7a37698381cbf694bd71c092b1960b52a589637d&",
-    description: `You meet a wandering Taro Trader and it offers you some starches to help you with your adventures.`
+    description: `You encounter a wandering Taro Trader who offers you some starches, hoping you'll sell them at a wise time. Embrace the opportunity presented by this nomadic merchant and strategize wisely for the most advantageous trade!`
 }
 
 const poisonPotato = {
@@ -220,7 +220,7 @@ const poisonPotato = {
 const goldenPotato = {
     name: "Golden Potato",
     thumbnailUrl: "https://ih0.redbubble.net/image.4402449953.5486/raf,360x360,075,t,fafafa:ca443f4786.jpg",
-    description: `You discovered and sold a Golden Potato! You gain LOTS of potatoes for your amazing discovery!`
+    description: `Congratulations! You've unearthed and sold a Golden Potato, a rare and valuable find! Your amazing discovery earns you an abundance of potatoes, reflecting the extraordinary nature of your find!`
 }
 
 const metalPotatoSuccess = {
