@@ -1,6 +1,10 @@
 class EventFactory {
     constructor() {
-        this.currentEvent = '';
+        if (EventFactory._instance) {
+            return EventFactory._instance
+        }
+        EventFactory._instance = this;
+        this.currentEvent = null;
         this.workProbability = [
             .001,
             .01,
@@ -77,6 +81,10 @@ class EventFactory {
             newWorkChances.push(runningProbabilityTotal)
         }
         return newWorkChances
+    }
+
+    setEmptyCurrentEvent() {
+        this.currentEvent = null;
     }
 
     setBaseWorkChances() {
