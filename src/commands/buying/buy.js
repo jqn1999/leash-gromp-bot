@@ -18,7 +18,7 @@ function validTierPurchase(currentAmount, itemSelectedAmount, previousItemAmount
     } else if (currentAmount > itemSelectedAmount) {
         interaction.editReply(`${userDisplayName} you currently have a higher tier than the one you're trying to purchase! Check your profile`)
         return false;
-    } else if (previousItemAmount && currentAmount != previousItemAmount) {
+    } else if (previousItemAmount && currentAmount.toFixed(1) != previousItemAmount.toFixed(1)) {
         interaction.editReply(`${userDisplayName} you need to have the previous tier before the one you're trying to purchase! Check your profile`)
         return false;
     }
