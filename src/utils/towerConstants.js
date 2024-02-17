@@ -4,7 +4,8 @@ const PAYOUT = {
     POTATOES: 0,
     WORK_MULTIPLIER: 1,
     PASSIVE_INCOME: 2,
-    BANK_CAPACITY: 3
+    BANK_CAPACITY: 3,
+    ELITE_KILL: 5
 }
 
 const MODIFIER = {
@@ -13,8 +14,16 @@ const MODIFIER = {
 
 const CHOICES = {
     EXIT: -1,
-    ELITE: 5
+    ELITE: 6
 }
+
+const REWARD_PAYOUT = {
+    FLOOR: 0,
+    TYPE: 1,
+    AMOUNT: 2
+}
+
+//const 
 
 const RUN = {
     [PAYOUT.POTATOES]: 0,
@@ -22,11 +31,11 @@ const RUN = {
     [PAYOUT.PASSIVE_INCOME]: 0,
     [PAYOUT.BANK_CAPACITY]: 0,
     [MODIFIER.WORK_MULTIPLIER]: 0,
+    [PAYOUT.ELITE_KILL]: []
 }
 
 const FLOOR_TYPES = ["COMBAT", "ENCOUNTER", "TRANSACTION", "REWARD", "ELITE"]
 const FLOOR_WEIGHTS = [4, 6, 8, 9]
-
 const COMBATS = [
     {
         name: "Baby Broccoli",
@@ -143,8 +152,19 @@ const REWARDS = [
         name: "Fairy Fig",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
         description: "A flying fig offers you 250,000 potatoes or 5 work modifier on this run.\n\nWhat will you take?",
+        kill_elite: false,
         choices: [{ name: '250,000 potatoes', outcome: PAYOUT.POTATOES, value: 250000, result: "The fig turned into dust and granted you 250,000 potatoes!" },
         { name: '5 work multiplier', outcome: MODIFIER.WORK_MULTIPLIER, value: 5, result: "The fig turned into dust and granted you 5 work modifier!" }],
+    },
+    {
+        name: "King Kiwi",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
+        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.2 work multiplier, 100,000 passive income, or 1 million bank capacity if you manage to defeat elite on floor `,
+        description2: `.\n\nWhat will you choose?`,
+        kill_elite: true,
+        choices: [{name: '0.2 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.2, result: "The king agrees to give you some work multiplier if you defeat the elite."},
+        {name: '100,000 passive income', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 100000, result: "The king agrees to give you some passive if you defeat the elite."},
+        {name: '1 million bank capacity', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 1000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
     }
 ]
 
@@ -188,6 +208,7 @@ module.exports = {
     MODIFIER,
     ELITES,
     REWARDS,
-    FIGHT
+    FIGHT,
+    REWARD_PAYOUT
 }
 
