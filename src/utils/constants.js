@@ -133,7 +133,7 @@ const regularStatRaidMobs = [
     },
     {
         name: "Shiitakethane, the Fungal Tyrant",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1203364521540853911/1208436318984601670/muchroom.png?ex=65e34706&is=65d0d206&hm=5a67d856537f6d4323d81b954fbe81fe98486b9e4d641310a5de2712af320590&",
         description: `Shiitakethane, the Fungal Tyrant, emerges from the depths of the Potato Kingdom as a towering mushroom sovereign, adorned with spores and mycelial tendrils that writhe with eerie sentience. Its presence heralds a reign of fungal dominance, threatening the very balance of the vegetable realm.`,
         successDescription: 'Through stalwart resolve and strategic prowess, the spud heroes dismantle Shiitakethane\'s fungal empire, purging the Potato Kingdom of its tyrannical grip. The fungal tyrant\'s reign crumbles, and the realm is restored to harmony and balance.',
         failureDescription: 'Overwhelmed by the relentless onslaught of fungal minions and toxic spores unleashed by Shiitakethane, the potato adventurers succumb to the fungal tyrant\'s dominion. The Potato Kingdom plunges into darkness, ensnared by the tendrils of the Fungal Tyrant\'s malevolent rule.',
