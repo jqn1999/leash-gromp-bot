@@ -83,7 +83,7 @@ class WorkFactory {
         const userId = userDetails.userId;
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
-        const starchAmount = Math.round(getRandomFromInterval(1, 3 * userMultiplier));
+        const starchAmount = Math.round(getRandomFromInterval(userMultiplier, 1.5 * userMultiplier));
         userStarches += starchAmount;
 
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
