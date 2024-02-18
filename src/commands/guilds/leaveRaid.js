@@ -28,12 +28,6 @@ module.exports = {
             return;
         }
         let raidList = guild.raidList;
-        let activeRaid = guild.activeRaid;
-
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to leave!`);
-            return;
-        }
 
         const member = raidList.find((currentMember) => currentMember.id == userId)
         if (!member) {

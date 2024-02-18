@@ -581,7 +581,6 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         raidCount: 0,
         totalEarnings: 0,
         thumbnailUrl: guildThumbnailUrl,
-        activeRaid: false,
         raidTimer: 0,
         inviteList: [],
         raidList: [],

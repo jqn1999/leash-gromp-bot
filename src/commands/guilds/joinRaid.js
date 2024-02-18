@@ -29,12 +29,7 @@ module.exports = {
         }
         let memberList = guild.memberList;
         let raidList = guild.raidList;
-        let activeRaid = guild.activeRaid;
 
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to join!`);
-            return;
-        }
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {

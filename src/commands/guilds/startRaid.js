@@ -198,14 +198,8 @@ module.exports = {
         const memberList = guild.memberList;
         const raidRewardMultiplier = guild.raidRewardMultiplier;
         let raidList = guild.raidList;
-        let activeRaid = guild.activeRaid;
         let raidCount = guild.raidCount;
         let guildTotalEarnings = guild.totalEarnings;
-
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to start!`);
-            return;
-        }
 
         if (raidList.length == 0) {
             interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
@@ -227,10 +221,10 @@ module.exports = {
         const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
         const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
 
-        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
-            return;
-        }
+        // if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+        //     interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
+        //     return;
+        // }
 
         let totalMultiplier = 0;
         for (const [index, element] of raidList.entries()) {
@@ -259,7 +253,7 @@ module.exports = {
         }
 
         await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
-        await dynamoHandler.updateGuildDatabase(guildId, 'activeRaid', false);
+        // await dynamoHandler.updateGuildDatabase(guildId, 'activeRaid', false);
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
 }

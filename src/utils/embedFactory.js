@@ -391,11 +391,6 @@ class EmbedFactory {
             inline: true
         })
         fields.push({
-            name: `Active Raid:`,
-            value: `${guild.activeRaid}`,
-            inline: true
-        })
-        fields.push({
             name: `Reward Multiplier:`,
             value: `${guild.raidRewardMultiplier}`,
             inline: true
