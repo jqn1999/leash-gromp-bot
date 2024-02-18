@@ -535,17 +535,22 @@ class EmbedFactory {
         })
 
         const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
-        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
+        let usedBankText = ''
+        if (!splitRaidReward) {
+            usedBankText = totalRaidReward >= 0 ? ' In Guild Bank' : ' From Guild Bank'
+        }
         fields.push({
-            name: `Total Potatoes ${gainOrLoss}:`,
+            name: `Total Potatoes ${gainOrLoss}${usedBankText}:`,
             value: `${totalRaidReward.toLocaleString()} potatoes`,
             inline: false,
         })
-        fields.push({
-            name: `Split Potatoes ${gainOrLoss}:`,
-            value: `${splitRaidReward.toLocaleString()} potatoes`,
-            inline: true,
-        })
+        if (splitRaidReward) {
+            fields.push({
+                name: `Split Potatoes ${gainOrLoss}:`,
+                value: `${splitRaidReward.toLocaleString()} potatoes`,
+                inline: true,
+            })
+        }
 
         let stringListOfMembers = ``;
         for (const [index, element] of raidList.entries()) {
@@ -558,6 +563,7 @@ class EmbedFactory {
         };
         fields.push(listOfMembers);
 
+        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
         fields.push({
             name: `Raid Count:`,
             value: `${(raidCount).toLocaleString()}`,
