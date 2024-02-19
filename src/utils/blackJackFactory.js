@@ -9,7 +9,7 @@ class blackJackFactory{
         this.interaction = _interaction
     }
 
-    async createInitalEmbed() {
+    async createInitalEmbed(game_state) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
 
         const embed = new EmbedBuilder()
@@ -27,6 +27,16 @@ class blackJackFactory{
                 components: [row],
             });
             console.log("reply ", reply);
+
+
+
+            switch(floor_type){
+                case "HIT":
+                    //add logic
+                case "STAND":
+                    //add logic
+            }
+
             
         return embed;
     }
