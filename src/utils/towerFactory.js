@@ -24,7 +24,7 @@ class towerFactory{
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
                 cont = await this.execElite(this.difficulty)
-                this.difficulty *= 10
+                this.difficulty += 2
                 floor_type = getFloor()
                 continue;
             }
@@ -191,7 +191,7 @@ class towerFactory{
             .addFields(
                 {
                     name: "Potatoes:",
-                    value: `${this.run[tC.PAYOUT.POTATOES]}`,
+                    value: `${this.run[tC.PAYOUT.POTATOES].toLocaleString()}`,
                     inline: false,
                 },
                 {
@@ -201,12 +201,12 @@ class towerFactory{
                 },
                 {
                     name: "Passive Income:",
-                    value: `${this.run[tC.PAYOUT.PASSIVE_INCOME]}`,
+                    value: `${this.run[tC.PAYOUT.PASSIVE_INCOME].toLocaleString()}`,
                     inline: false,
                 },
                 {
                     name: "Bank Capacity:",
-                    value: `${this.run[tC.PAYOUT.BANK_CAPACITY]}`,
+                    value: `${this.run[tC.PAYOUT.BANK_CAPACITY].toLocaleString()}`,
                     inline: false,
                 }
             );
@@ -280,7 +280,7 @@ class towerFactory{
         }
     }
 
-    async createDeathEmbed(description, color){
+    async createDeathEmbed(description){
         const embed = new EmbedBuilder()
             .setTitle(`FLOOR ${this.floor.toLocaleString()}`)
             .setDescription(`${description}\n\n`)

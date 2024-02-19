@@ -4,6 +4,27 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
+async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity) {
+    if (rewards[tC.PAYOUT.POTATOES]) {
+        userPotatoes += rewards[tC.PAYOUT.POTATOES]
+        userTotalEarnings += rewards[tC.PAYOUT.POTATOES]
+        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+    }
+    if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
+        userMultiplier += rewards[tC.PAYOUT.WORK_MULTIPLIER]
+        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
+    }
+    if (rewards[tC.PAYOUT.PASSIVE_INCOME]) {
+        userPassiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME]
+        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
+    }
+    if (rewards[tC.PAYOUT.BANK_CAPACITY]) {
+        userBankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY]
+        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
+    }
+}
+
 module.exports = {
     name: "enter-tower",
     description: "Enter the tater tower once a day",
@@ -16,6 +37,11 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
+        let userPotatoes = userDetails.potatoes;
+        let userTotalEarnings = userDetails.totalEarnings;
+        let userMultiplier = userDetails.workMultiplierAmount;
+        let userPassiveAmount = userDetails.passiveAmount;
+        let userBankCapacity = userDetails.bankCapacity;
         const canEnterTower = userDetails.canEnterTower;
 
         /*if (!canEnterTower) {
@@ -35,7 +61,7 @@ module.exports = {
         })
 
         // TODO: PROCESS PAYOUT
-
+        await processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity);
         console.log("left")
     }
 }
@@ -50,7 +76,7 @@ function createResult(rewards, floor, username){
         .addFields(
             {
                 name: "Potatoes:",
-                value: `${rewards[0]} potatoes`,
+                value: `${rewards[0].toLocaleString()} potatoes`,
                 inline: false,
             },
             {
@@ -60,12 +86,12 @@ function createResult(rewards, floor, username){
             },
             {
                 name: "Passive Income:",
-                value: `${rewards[2]} passive`,
+                value: `${rewards[2].toLocaleString()} passive`,
                 inline: false,
             },
             {
                 name: "Bank Capacity:",
-                value: `${rewards[3]} capacity`,
+                value: `${rewards[3].toLocaleString()} capacity`,
                 inline: false,
             }
         );
