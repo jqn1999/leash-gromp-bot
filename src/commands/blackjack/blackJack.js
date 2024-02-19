@@ -26,6 +26,10 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
+        if (!userDetails) {
+            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            return;
+        }
         let userPotatoes = userDetails.potatoes;
 
         //new start here i think
