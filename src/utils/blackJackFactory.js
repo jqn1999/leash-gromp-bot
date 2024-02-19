@@ -26,7 +26,7 @@ class blackJackFactory{
                 embeds: [embed],
                 components: [row],
             });
-            console.log("reply ",reply);
+            console.log("reply ", reply);
             
         return embed;
     }
