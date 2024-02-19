@@ -12,7 +12,7 @@ module.exports = {
             name: 'starch-amount',
             description: 'Number of starches to sell',
             required: true,
-            type: ApplicationCommandOptionType.Integer,
+            type: ApplicationCommandOptionType.String,
         }
     ],
     callback: async (client, interaction) => {
@@ -45,9 +45,16 @@ module.exports = {
         let userTotalLosses = userDetails.totalLosses;
 
         // error checking
-        if (isNaN(starches)) {
-            interaction.editReply(`${userDisplayName}, please enter a positive number!`);
-            return;
+        if (starches.toLowerCase() == 'all') {
+            starches = userStarches;
+        } else if (starches.toLowerCase() == 'half') {
+            starches = Math.round(userStarches/2);
+        } else{
+            starches = Math.floor(Number(starches));
+            if (isNaN(starches)) {
+                interaction.editReply(`${userDisplayName}, something went wrong with starch amount. Try again!`);
+                return;
+            }
         }
 
         const isStarchGreaterThanZero = starches >= 1;
@@ -55,6 +62,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you can only sell positive amounts!`);
             return;
         }
+
         const sellingTooMuch = starches > userStarches;
         if(sellingTooMuch){
             interaction.editReply(`${userDisplayName}, you can only sell up to ${userStarches.toLocaleString()} starches!`);

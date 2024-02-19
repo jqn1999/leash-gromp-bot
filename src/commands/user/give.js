@@ -39,6 +39,8 @@ module.exports = {
         let amount = interaction.options.get('amount')?.value;
         if (amount.toLowerCase() == 'all') {
             amount = userPotatoes;
+        } else if (amount.toLowerCase() == 'half') {
+            amount = Math.round(userPotatoes/2);
         } else{
             amount = Math.floor(Number(amount));
             if (isNaN(amount)) {
