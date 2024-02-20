@@ -59,42 +59,42 @@ const COMBATS = [
 
 const ENCOUNTERS = [
     {
-        name: "MAGIC MUSSEL",
+        name: "Magic Mango",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
-        description: "BEHIND ONE MUSSESL IS 2 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
-        choices: [{ name: 'this one!', outcome: CHOICES.EXIT, result: "there is nothing............" },
-        { name: 'that one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "you have chosen the work multi! congrats!" }],
+        description: "There are two mangos in front of you, behind one is 2x work modifier, and behind the other there is nothing.\n\nWhich mango will you check?",
+        choices: [{ name: 'This one!', outcome: CHOICES.EXIT, result: "You check behind this mango but do not find anything......" },
+        { name: 'No, this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "Behind this mango you find 2x work modifier!" }],
     },
     {
-        name: "MAGIC MUSSEL",
+        name: "Magic Mango",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
-        description: "BEHIND ONE MUSSESL IS 2 WORK MULTI, BEHIND THE OTHER IS NOTHING. WHICH ONE WILL YOU CHECK?",
-        choices: [{ name: 'this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "you have chosen the work multi! congrats!" },
-        { name: 'that one!', outcome: CHOICES.EXIT, result: "there is nothing............" }],
+        description: "There are two mangos in front of you, behind one is 2x work modifier, and behind the other there is nothing.\n\nWhich mango will you check?",
+        choices: [{ name: 'this one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "Behind this mango you find 2x work modifier!" },
+        { name: 'that one!', outcome: CHOICES.EXIT, result: "You check behind this mango but do not find anything......" }],
     },
     {
-        name: "The Wacky Watermelon",
+        name: "Wacky Watermelon",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "You run into an eccentric looking watermelon who offers you two slices of watermelon but you can only choose one.\nWhich slice will you choose?",
         choices: [{ name: 'The left one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: `You eat the slice of watermelon and suddenly feel much more energetic!\n\nYour work modifier has increased by 2!` },
         { name: 'The right one!', outcome: MODIFIER.WORK_MULTIPLIER, value: -2, result: "You eat the slice of watermelon and start feeling very dizzy......you black out\n\nYour work modifier has decreased by 2." }],
     },
     {
-        name: "The Wacky Watermelon",
+        name: "Wacky Watermelon",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "You run into an eccentric looking watermelon who offers you two slices of watermelon but you can only choose one.\nWhich slice will you choose?",
         choices: [{ name: 'The left one!', outcome: MODIFIER.WORK_MULTIPLIER, value: -2, result: "You eat the slice of watermelon and start feeling very dizzy......you black out\n\nYour work modifier has decreased by 2." },
         { name: 'The right one!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: `You eat the slice of watermelon and suddenly feel much more energetic!\n\nYour work modifier has increased by 2!` }]
     },
     {
-        name: "The Despicable Dragonfruit",
+        name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
         choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 50000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 50000 potatoes from the deceased fruit." },
         { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -50000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 50000 potatoes.` }]
     },
     {
-        name: "The Despicable Dragonfruit",
+        name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
         choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -50000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 50000 potatoes." },
@@ -118,12 +118,12 @@ const ENCOUNTERS = [
 
 const TRANSACTIONS = [
     {
-        name: "TATER WITCH",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/679508657058480147/1205176046001983569/IMG_0011.jpg?ex=65d76aa8&is=65c4f5a8&hm=cee60db47d5bfdd2389a78e62ce8a2cb99d0fa63ac03e96c10ffad90b67dc991&",
-        description: "OLD HO COMES UP AND OFFERS YOU 5 WORK MULTIPLIER ON THIS RUN FOR 100000 POTATOES\n\nDO YOU ACCEPT?",
-        choices: [{ name: "ACCEPT HER OFFER!", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 100000, result: "YOU GET THAT WORK MULTI" },
-        { name: "LEAVE", outcome: CHOICES.EXIT, result: "DONT TRUST THAT HO! WE OUT!" }],
-        poor: "YOU WANT TO TAKE HER OFFER, BUT YOU ARE A BROKE BITCH! YOU LEAVE IN SHAME",
+        name: "Sales Spinach",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/932528787407642625/1209336128164073512/cute-spinach-on-white-background-vector-27328402.png?ex=65e68d09&is=65d41809&hm=91e5bf1c2d53606aeff23a1f5a23776558e5bee71666c75ee0faab720da45b2b&",
+        description: "A spinach comes up and offers you 5x work modifier for 50,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 50000, result: "You agree to the spinach's deal and receive the work modifier!" },
+        { name: "Leave", outcome: CHOICES.EXIT, result: "You decline the spinach's offer and move onto the next floor." }],
+        poor: "You try to pay the spinach but realize you don't have enough potatoes. The spinach leaves since he doesn't deal with broke people.",
         poor_outcome: CHOICES.EXIT
     },
     {
@@ -172,7 +172,7 @@ const ELITES = [
     {
         name: "Celerity, the Swift Stalk",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
-        description: `old description was too long lol`,
+        description: `You encounter the powerful Celerity. Prepare for combat!`,
         choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 100000, result: "You have trimphed over Celerity!" }],
         difficulty: 10.0,
         lose: "you suck better luck next time"
