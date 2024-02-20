@@ -10,7 +10,7 @@ module.exports = {
     options: [
         {
             name: 'starch-amount',
-            description: 'Number of starches to sell',
+            description: 'Number of starches to sell: all | half | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
         }

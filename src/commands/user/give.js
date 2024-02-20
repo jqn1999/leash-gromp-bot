@@ -19,7 +19,7 @@ module.exports = {
         },
         {
             name: 'amount',
-            description: 'Amount of potatoes: all | (amount)',
+            description: 'Amount of potatoes: all | half | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
         }

@@ -1,5 +1,4 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { awsConfigurations } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
