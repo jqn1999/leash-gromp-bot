@@ -38,15 +38,18 @@ module.exports = {
         }
 
         // get starch number and basic stuff
+        // check if they have enough potatoes + get price from
+        const details = await dynamoHandler.getStatDatabase("starch")
+        let price = details.starch_buy
         let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
         // error checking
         if (starches.toLowerCase() == 'all') {
-            starches = userStarches;
+            starches = Math.floor(userPotatoes/price);
         } else if (starches.toLowerCase() == 'half') {
-            starches = Math.round(userStarches/2);
+            starches = Math.floor(userPotatoes/price/2);
         } else{
             starches = Math.floor(Number(starches));
             if (isNaN(starches)) {
@@ -61,9 +64,6 @@ module.exports = {
             return;
         }
 
-        // check if they have enough potatoes + get price from
-        const details = await dynamoHandler.getStatDatabase("starch")
-        let price = details.starch_buy
         let cost = price * starches
         const canPurchase = cost <= userPotatoes;
         if (!canPurchase) {
