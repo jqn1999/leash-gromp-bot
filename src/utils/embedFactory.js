@@ -563,7 +563,6 @@ class EmbedFactory {
         };
         fields.push(listOfMembers);
 
-        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
         fields.push({
             name: `Raid Count:`,
             value: `${(raidCount).toLocaleString()}`,
@@ -718,7 +717,7 @@ class EmbedFactory {
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
         const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
-        const color = robOrFineAmount >= 0 ? 'Green' : 'Red';
+        const color = robOrFineAmount > 0 ? 'Green' : 'Red';
 
         fields.push({
             name: `Chance to Rob:`,
