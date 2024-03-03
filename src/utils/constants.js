@@ -305,12 +305,23 @@ const shops = [
                 id: 8,
                 name: "Legendary Leader's Blade",
                 type: "workMultiplierAmount"
+            },
+            {
+                amount: 50,
+                cost: 500000000,
+                description: "A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.",
+                id: 9,
+                name: "Divine Instrument of Potato Blessings",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 100,
+                cost: 1500000000,
+                description: "This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom.",
+                id: 10,
+                name: "Alien Armaments of Tuber Termination",
+                type: "workMultiplierAmount"
             }
-            // 9) Divine Instrument of Potato Blessings
-            // -A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.
-
-            // 10) Alien Armaments of Tuber Termination 
-            // -This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom. 
         ],
         title: "Work Tools Shop (multiplier for work)"
     },
@@ -381,9 +392,23 @@ const shops = [
                 id: 8,
                 name: "Potato Wedge Fund",
                 type: "passiveAmount"
+            },
+            {
+                amount: 27000000,
+                cost: 250000000,
+                description: "A permit granting you access to climb the Giant Potato’s towering beanstalk, atop which grows a garden of golden potatoes",
+                id: 9,
+                name: "Admittance of Avarice",
+                type: "passiveAmount"
+            },
+            {
+                amount: 60000000,
+                cost: 500000000,
+                description: "The ultimate symbol of wealth and power, this circlet heralds your unparalleled status as a monarch and the untold riches that accompany such a title",
+                id: 10,
+                name: "Potato King’s Crown",
+                type: "passiveAmount"
             }
-            // 27,000,000 | 125,000,000
-            // 60,000,000 | 150,000,000
         ],
         title: "Passive Income Workers Shop (amount per day)"
     },
