@@ -4,7 +4,7 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
-async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity) {
+async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity, sweetPotatoBuffs) {
     if (rewards[tC.PAYOUT.POTATOES]) {
         userPotatoes += rewards[tC.PAYOUT.POTATOES]
         userTotalEarnings += rewards[tC.PAYOUT.POTATOES]
@@ -13,15 +13,21 @@ async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarn
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
         userMultiplier += rewards[tC.PAYOUT.WORK_MULTIPLIER]
+        sweetPotatoBuffs.workMultiplierAmount += rewards[tC.PAYOUT.WORK_MULTIPLIER];
         await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
     }
     if (rewards[tC.PAYOUT.PASSIVE_INCOME]) {
         userPassiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME]
+        sweetPotatoBuffs.passiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME];
         await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
     }
     if (rewards[tC.PAYOUT.BANK_CAPACITY]) {
         userBankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY]
+        sweetPotatoBuffs.bankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY];
         await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
+    }
+    if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] ||rewards[tC.PAYOUT.BANK_CAPACITY]) {
+        await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
     }
 }
 
@@ -42,6 +48,7 @@ module.exports = {
         let userMultiplier = userDetails.workMultiplierAmount;
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
+        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
         const canEnterTower = userDetails.canEnterTower;
 
         /*if (!canEnterTower) {
@@ -61,7 +68,7 @@ module.exports = {
         })
 
         // TODO: PROCESS PAYOUT
-        await processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity);
+        await processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity, sweetPotatoBuffs);
         console.log("left")
     }
 }

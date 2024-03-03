@@ -24,7 +24,7 @@ class towerFactory{
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
                 cont = await this.execElite(this.difficulty)
-                this.difficulty += 2
+                this.difficulty += 3
                 floor_type = getFloor()
                 continue;
             }
@@ -38,8 +38,6 @@ class towerFactory{
     async execNormalFloor(floor_type){
         let fl
         let index
-        // TODO: remove this later
-        //floor_type = "REWARD"
         switch(floor_type){
             case "COMBAT":
                 // think we just throw a normal mob from /work that you cant fail
