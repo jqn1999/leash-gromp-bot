@@ -669,14 +669,14 @@ const getSortedUserStarches = async function () {
     return sortedUsers
 }
 
-const getSortedGuildsByLevelAndMembers = async function () {
+const getSortedGuildsByLevelAndRaidCount = async function () {
     let allGuilds = await getGuilds();
     const sortedGuilds = allGuilds.sort((a, b) => {
         // First, compare by level
         const levelComparison = parseFloat(b.level) - parseFloat(a.level);
 
         // If levels are the same, compare by memberCount
-        return levelComparison != 0 ? levelComparison : b.memberList.length - a.memberList.length;
+        return levelComparison != 0 ? levelComparison : b.raidCount - a.raidCount;
     });
 
     return sortedGuilds;
@@ -750,7 +750,7 @@ module.exports = {
     getServerTotalStarches,
     getSortedUsers,
     getSortedUserStarches,
-    getSortedGuildsByLevelAndMembers,
+    getSortedGuildsByLevelAndRaidCount,
     getSortedGuildsById,
     removeStarches
 }

@@ -718,7 +718,7 @@ class EmbedFactory {
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
         const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
-        const color = robOrFineAmount >= 0 ? 'Green' : 'Red';
+        const color = robOrFineAmount > 0 ? 'Green' : 'Red';
 
         fields.push({
             name: `Chance to Rob:`,
@@ -845,7 +845,7 @@ class EmbedFactory {
         })
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
+            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount.toLocaleString()} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
             .setDescription(`Displayed below are your current potatoes and starches.\nCurrent Price: ${starchPrice.toLocaleString()} potatoes`)
             .setColor(color)
             .setThumbnail(avatarUrl)
