@@ -563,7 +563,6 @@ class EmbedFactory {
         };
         fields.push(listOfMembers);
 
-        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
         fields.push({
             name: `Raid Count:`,
             value: `${(raidCount).toLocaleString()}`,
