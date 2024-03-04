@@ -147,6 +147,32 @@ const regularRaidScenarios = [
 const statRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction) => {
+            let raidSplit = 0, totalRaidSplit = 0, raidResultDescription;
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                let workMultiReward = Raid.LEGENDARY_RAID_MULTIPLIER_REWARD*2;
+                let passiveReward = Raid.LEGENDARY_RAID_PASSIVE_REWARD*2;
+                let bankReward = Raid.LEGENDARY_RAID_CAPACITY_REWARD*2;
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', bankReward);
+                raidResultDescription = metalKingRaidBoss.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, workMultiReward, passiveReward, bankReward);
+            } else {
+                raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
+            }
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .01
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction) => {
             let raidSplit, totalRaidCost, raidResultDescription;
             const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
             totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * raidList.length);
