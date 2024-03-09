@@ -90,15 +90,15 @@ const ENCOUNTERS = [
         name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
-        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 50000 potatoes from the deceased fruit." },
-        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -100000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 50000 potatoes.` }]
+        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 100,000 potatoes from the deceased fruit." },
+        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -100000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 100,000 potatoes.` }]
     },
     {
         name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
-        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 50000 potatoes." },
-        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: 100000, result: `You tell the dragonfruit that you love its pink complexion. The dragonfruit blushes at your compliment and leaves you some potatoes for your adventure!\n\nYou have gained 50000 potatoes!` }]
+        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 100,000 potatoes." },
+        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: 100000, result: `You tell the dragonfruit that you love its pink complexion. The dragonfruit blushes at your compliment and leaves you some potatoes for your adventure!\n\nYou have gained 100,000 potatoes!` }]
     },
     {
         name: "Wandering Woods",
@@ -120,17 +120,17 @@ const TRANSACTIONS = [
     {
         name: "Sales Spinach",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/932528787407642625/1209336128164073512/cute-spinach-on-white-background-vector-27328402.png?ex=65e68d09&is=65d41809&hm=91e5bf1c2d53606aeff23a1f5a23776558e5bee71666c75ee0faab720da45b2b&",
-        description: "A spinach comes up and offers you 5x work modifier for 100,000 potatoes.\n\nWill you take the offer?",
-        choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 100000, result: "You agree to the spinach's deal and receive the work modifier!" },
+        description: "A spinach comes up and offers you 5x work modifier for 200,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 200000, result: "You agree to the spinach's deal and receive the work modifier!" },
         { name: "Leave", outcome: CHOICES.EXIT, result: "You decline the spinach's offer and move onto the next floor." }],
-        poor: "You try to pay the spinach but realize you don't have enough potatoes. The spinach leaves since he doesn't deal with broke people.",
+        poor: "You try to pay the spinach, but realize you don't have enough potatoes. The spinach leaves... get it?",
         poor_outcome: CHOICES.EXIT
     },
     {
         name: "The Wizard Lime",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A magical looking lime threatens to send you to an elite if you don't pay 100,000 potatoes.\n\nWhat will you do?",
-        choices: [{ name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 100000, result: `You pay the wizard who graciously takes the potatoes and leaves.` },
+        description: "A magical looking lime threatens to send you to an elite if you don't pay 500,000 potatoes.\n\nWhat will you do?",
+        choices: [{ name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 500000, result: `You pay the wizard who graciously takes the potatoes and leaves.` },
         { name: 'Keep your potatoes', outcome: CHOICES.ELITE, result: `The lime casts a spell on you, sending you straight to a dangerous elite!` }],
         poor: "You try to pay up but you do not have enough potatoes! The lime laughs as it starts casting a spell on you.......",
         poor_outcome: CHOICES.ELITE
@@ -151,18 +151,18 @@ const REWARDS = [
     {
         name: "Fairy Fig",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: "A flying fig offers you 250,000 potatoes or 5 work modifier on this run.\n\nWhat will you take?",
+        description: "A flying fig offers you 500,000 potatoes or 5 work modifier on this run.\n\nWhat will you take?",
         kill_elite: false,
-        choices: [{ name: '250,000 potatoes', outcome: PAYOUT.POTATOES, value: 500000, result: "The fig turned into dust and granted you 500,000 potatoes!" },
+        choices: [{ name: '500,000 potatoes', outcome: PAYOUT.POTATOES, value: 500000, result: "The fig turned into dust and granted you 500,000 potatoes!" },
         { name: '5 work multiplier', outcome: MODIFIER.WORK_MULTIPLIER, value: 5, result: "The fig turned into dust and granted you 5 work modifier!" }],
     },
     {
         name: "King Kiwi",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.6 work multiplier, 300,000 passive income, or 2 million bank capacity if you manage to defeat elite on floor `,
+        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.4 work multiplier, 300,000 passive income, or 2 million bank capacity if you manage to defeat elite on floor `,
         description2: `.\n\nWhat will you choose?`,
         kill_elite: true,
-        choices: [{name: '0.6 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.6, result: "The king agrees to give you some work multiplier if you defeat the elite."},
+        choices: [{name: '0.4 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.4, result: "The king agrees to give you some work multiplier if you defeat the elite."},
         {name: '300,000 passive income', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 300000, result: "The king agrees to give you some passive if you defeat the elite."},
         {name: '2 million bank capacity', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 2000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
     }
@@ -173,9 +173,9 @@ const ELITES = [
         name: "Celerity, the Swift Stalk",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the powerful Celerity. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 300000, result: "You have trimphed over Celerity!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 300000, result: "You have triumphed over Celerity!" }],
         difficulty: 10.0,
-        lose: "you suck better luck next time"
+        lose: "You lost, better luck next time!"
     }
 ]
 

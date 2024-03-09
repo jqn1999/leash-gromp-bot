@@ -24,7 +24,7 @@ class towerFactory{
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
                 cont = await this.execElite(this.difficulty)
-                this.difficulty += 3
+                this.difficulty += 4
                 floor_type = getFloor()
                 continue;
             }
@@ -50,7 +50,7 @@ class towerFactory{
                 return this.updateValue(fl, index)
             case "TRANSACTION":
                 fl = tC.TRANSACTIONS[Math.floor(Math.random() * tC.TRANSACTIONS.length)]
-                index = await this.createFloorEmbed(fl, `TRANSACTION (${this.run[tC.PAYOUT.POTATOES]} potatoes)`, "Blue", fl.description)
+                index = await this.createFloorEmbed(fl, `TRANSACTION (${this.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes)`, "Blue", fl.description)
                 return this.updateTransaction(fl, index)
             case "REWARD":
                 fl = tC.REWARDS[Math.floor(Math.random() * tC.REWARDS.length)]
@@ -184,7 +184,7 @@ class towerFactory{
             .setDescription(`${description}`)
             .setColor('Green')
             .setTimestamp(Date.now())
-            .setThumbnail("https://cdn.discordapp.com/attachments/1146091052781011026/1206817828842242090/F5irpvObIAARN4W.png?ex=65dd63af&is=65caeeaf&hm=e10cc3c6ebc3809ab6907b17f4d710cca58b6e88da6f3a22d4c2bb2d97fc17ac&")
+            .setThumbnail("https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png")
             .setFooter({text: `Tater Tower: ${this.username}`})
             .addFields(
                 {
