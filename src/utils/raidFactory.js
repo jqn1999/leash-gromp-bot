@@ -26,7 +26,7 @@ class RaidFactory {
     }
 
     async handleStatSplit(raidList, rewardType, rewardAmount) {
-        raidList.forEach(async member => {
+        await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userMultiplier = userDetails.workMultiplierAmount;
             let userPassiveAmount = userDetails.passiveAmount;
@@ -47,7 +47,7 @@ class RaidFactory {
                 await dynamoHandler.updateUserDatabase(member.id, rewardType, userBankCapacity);
             }
             await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
-        })
+        }))
     }
 }
 
