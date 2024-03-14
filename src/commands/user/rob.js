@@ -95,7 +95,19 @@ module.exports = {
 
         const userTotalWealth = userPotatoes + userBankedPotatoes;
         const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
-        const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+        let robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+
+        // CHECK GUILD BUFF ADD 10% IF ROB
+        const userGuildId = userDetails.guildId;
+        if (userGuildId){
+            let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+            if(guild){
+                if(guild.guildBuff == "rob %"){
+                    robChance += .1
+                }
+            }
+        }
+
         const userSuccessfulRob = determineRobOutcome(robChance);
         const robChanceDisplay = (robChance*100).toFixed(2);
 
@@ -127,6 +139,6 @@ module.exports = {
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
+        //await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
     }
 }

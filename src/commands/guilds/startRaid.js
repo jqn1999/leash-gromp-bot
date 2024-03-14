@@ -540,7 +540,13 @@ module.exports = {
             }
         }
 
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
+        // check buff for raid timer - remove 5 minutes if true
+        if(guild.guildBuff == "raid timer"){
+            await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() - 5000*60);
+        }
+        else{
+            await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
+        }
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
 }
