@@ -28,7 +28,10 @@ module.exports = async (client) => {
         await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
-    schedule.scheduleJob('0 5 * * *', async function () {
+    schedule.scheduleJob('0 4 * * *', async function () {
+        // Reset all user tower entries at midnight 12 AM EST
+        await dynamoHandler.resetAllTowerEntries()
+        
         // Birthday shit
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
@@ -48,9 +51,6 @@ module.exports = async (client) => {
             .catch(err => {
                 console.log(err)
             });
-
-        // Reset all user tower entries at midnight 12 AM EST
-        await dynamoHandler.resetAllTowerEntries()
     });
 
     // check for random background events

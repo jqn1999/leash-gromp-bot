@@ -24,7 +24,7 @@ class towerFactory{
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
                 cont = await this.execElite(this.difficulty)
-                this.difficulty += 4
+                this.difficulty += 4 
                 floor_type = getFloor()
                 continue;
             }

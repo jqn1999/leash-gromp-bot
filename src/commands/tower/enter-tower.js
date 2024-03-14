@@ -26,7 +26,7 @@ async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarn
         sweetPotatoBuffs.bankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY];
         await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
     }
-    if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] ||rewards[tC.PAYOUT.BANK_CAPACITY]) {
+    if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] || rewards[tC.PAYOUT.BANK_CAPACITY]) {
         await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
     }
 }
@@ -51,10 +51,10 @@ module.exports = {
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
         const canEnterTower = userDetails.canEnterTower;
 
-        /*if (!canEnterTower) {
+        if (!canEnterTower) {
             interaction.editReply(`${userDisplayName} you have already entered the tower today!`);
             return;
-        }*/
+        }
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
         let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount)
@@ -67,9 +67,7 @@ module.exports = {
             embeds: [embed]
         })
 
-        // TODO: PROCESS PAYOUT
         await processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity, sweetPotatoBuffs);
-        console.log("left")
     }
 }
 
