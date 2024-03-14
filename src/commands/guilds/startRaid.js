@@ -503,8 +503,8 @@ module.exports = {
         }
 
         const raidScenarioRoll = Math.random();
+        let potatoesGained = 0;
         if (raidSelection == 'regular') {
-            let potatoesGained = 0;
             for (const scenario of regularRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
                     potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
@@ -520,6 +520,8 @@ module.exports = {
                     break;
                 }
             }
+            guildTotalEarnings += potatoesGained;
+            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
         } else if (raidSelection == 'legendary') {
             for (const scenario of hardestRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
@@ -527,6 +529,8 @@ module.exports = {
                     break;
                 }
             }
+            guildTotalEarnings += potatoesGained;
+            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
         } else if (raidSelection == 'stat') {
             for (const scenario of statRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
