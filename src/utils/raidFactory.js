@@ -4,7 +4,7 @@ class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
         const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
 
-        raidList.forEach(async member => {
+        await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userPotatoes = userDetails.potatoes;
             let userTotalEarnings = userDetails.totalEarnings;
@@ -21,17 +21,33 @@ class RaidFactory {
                 await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
                 await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
             }
-        })
+        }))
         return raidSplitAmount;
     }
 
-    async handleStatSplit(raidList, statRaidReward) {
-        raidList.forEach(async member => {
+    async handleStatSplit(raidList, rewardType, rewardAmount) {
+        await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userMultiplier = userDetails.workMultiplierAmount;
-            userMultiplier += statRaidReward;
-            await dynamoHandler.updateUserDatabase(member.id, "workMultiplierAmount", userMultiplier);
-        })
+            let userPassiveAmount = userDetails.passiveAmount;
+            let userBankCapacity = userDetails.bankCapacity;
+            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+
+            if (rewardType == 'workMultiplierAmount') {
+                userMultiplier += rewardAmount;
+                sweetPotatoBuffs.workMultiplierAmount += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userMultiplier);
+            } else if (rewardType == 'passiveAmount') {
+                userPassiveAmount += rewardAmount;
+                sweetPotatoBuffs.passiveAmount += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userPassiveAmount);
+            } else if (rewardType == 'bankCapacity') {
+                userBankCapacity += rewardAmount;
+                sweetPotatoBuffs.bankCapacity += rewardAmount;
+                await dynamoHandler.updateUserDatabase(member.id, rewardType, userBankCapacity);
+            }
+            await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
+        }))
     }
 }
 

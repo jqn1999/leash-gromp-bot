@@ -505,6 +505,7 @@ const getGuilds = async function () {
         .then(async function (data) {
             // console.log(`getGuilds: ${JSON.stringify(data)}`);
             guildList = data.Items;
+            guildList = guildList.filter(guild => guild.memberList.length > 0);
         })
         .catch(function (err) {
             console.log(`getGuilds error: ${JSON.stringify(err)}`);
@@ -580,7 +581,6 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         raidCount: 0,
         totalEarnings: 0,
         thumbnailUrl: guildThumbnailUrl,
-        activeRaid: false,
         raidTimer: 0,
         inviteList: [],
         raidList: [],
@@ -643,20 +643,35 @@ const getServerTotal = async function () {
     return total
 }
 
+const getServerTotalStarches = async function () {
+    let total = 0;
+    let allUsers = await getUsers();
+    allUsers.forEach(user => {
+        total += user.starches;
+    })
+    return total
+}
+
 const getSortedUsers = async function () {
     let allUsers = await getUsers();
     const sortedUsers = allUsers.sort((a, b) => parseFloat(b.potatoes + b.bankStored) - parseFloat(a.potatoes + a.bankStored));
     return sortedUsers
 }
 
-const getSortedGuildsByLevelAndMembers = async function () {
+const getSortedUserStarches = async function () {
+    let allUsers = await getUsers();
+    const sortedUsers = allUsers.sort((a, b) => parseFloat(b.starches) - parseFloat(a.starches));
+    return sortedUsers
+}
+
+const getSortedGuildsByLevelAndRaidCount = async function () {
     let allGuilds = await getGuilds();
     const sortedGuilds = allGuilds.sort((a, b) => {
         // First, compare by level
         const levelComparison = parseFloat(b.level) - parseFloat(a.level);
 
         // If levels are the same, compare by memberCount
-        return levelComparison != 0 ? levelComparison : b.memberList.length - a.memberList.length;
+        return levelComparison != 0 ? levelComparison : b.raidCount - a.raidCount;
     });
 
     return sortedGuilds;
@@ -756,8 +771,10 @@ module.exports = {
 
     addNewUserAttribute,
     getServerTotal,
+    getServerTotalStarches,
     getSortedUsers,
-    getSortedGuildsByLevelAndMembers,
+    getSortedUserStarches,
+    getSortedGuildsByLevelAndRaidCount,
     getSortedGuildsById,
     removeStarches,
     resetAllTowerEntries

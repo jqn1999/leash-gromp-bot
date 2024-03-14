@@ -41,7 +41,6 @@ module.exports = {
     deleted: false,
     permissionsRequired: [PermissionFlagsBits.Administrator],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
         const optionOne = interaction.options.get('option-1').value;
         const optionTwo = interaction.options.get('option-2').value;
         const description = interaction.options.get('description').value;
@@ -50,16 +49,17 @@ module.exports = {
 
         const mostRecentBet = await dynamoHandler.getMostRecentBet();
         if (mostRecentBet && mostRecentBet.isActive == true) {
-            interaction.editReply({
+            interaction.reply({
                 content: "There is already an active bet!",
                 ephemeral: true
             })
             return;
         }
+        
         const total = await dynamoHandler.getServerTotal();
         const baseAmount = calculateBetBaseAmount(total);
         const nextBetId = mostRecentBet ? mostRecentBet.betId + 1 : 1;
         await dynamoHandler.addBet(nextBetId, optionOne, optionTwo, description, thumbnailUrl, baseAmount);
-        interaction.editReply(`New bet has been added for ${optionOne} vs ${optionTwo}`)
+        interaction.reply(`New bet has been added for ${optionOne} vs ${optionTwo}`)
     }
 }

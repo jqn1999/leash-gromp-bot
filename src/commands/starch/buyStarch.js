@@ -1,6 +1,8 @@
 const { ApplicationCommandOptionType } = require("discord.js"); //types?
 const { getUserInteractionDetails } = require("../../utils/helperCommands"); // getting info about user?
 const dynamoHandler = require("../../utils/dynamoHandler"); // helpers for accessing db
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "buy-starch",
@@ -8,15 +10,16 @@ module.exports = {
     options: [
         {
             name: 'starch-amount',
-            description: 'Number of starches to buy',
+            description: 'Number of starches to buy: all | half | (amount)',
             required: true,
-            type: ApplicationCommandOptionType.Number,
+            type: ApplicationCommandOptionType.String,
         }
     ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userAvatar = interaction.user.avatar;
+
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
@@ -25,7 +28,7 @@ module.exports = {
 
         //check if they are allowed to buy
         var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 || date.getHours() <= 22);
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 && date.getHours() <= 22);
         let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
         let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
 
@@ -35,26 +38,32 @@ module.exports = {
         }
 
         // get starch number and basic stuff
+        // check if they have enough potatoes + get price from
+        const details = await dynamoHandler.getStatDatabase("starch")
+        let price = details.starch_buy
         let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
         // error checking
-        if (isNaN(starches)) {
-            interaction.editReply(`${userDisplayName}, please enter a positive number!`);
-            return;
+        if (starches.toLowerCase() == 'all') {
+            starches = Math.floor(userPotatoes/price);
+        } else if (starches.toLowerCase() == 'half') {
+            starches = Math.floor(userPotatoes/price/2);
+        } else{
+            starches = Math.floor(Number(starches));
+            if (isNaN(starches)) {
+                interaction.editReply(`${userDisplayName}, something went wrong with starch amount. Try again!`);
+                return;
+            }
         }
 
-        starches = Math.round(starches);
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only buy positive amounts!`);
             return;
         }
 
-        // check if they have enough potatoes + get price from
-        const details = await dynamoHandler.getStatDatabase("starch")
-        let price = details.starch_buy
         let cost = price * starches
         const canPurchase = cost <= userPotatoes;
         if (!canPurchase) {
@@ -63,10 +72,13 @@ module.exports = {
         }
 
         // buy them
-        userPotatoes -= price * starches
+        const totalPrice = price * starches;
+        userPotatoes -= totalPrice
         userStarches += starches
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        interaction.editReply(`${userDisplayName}, you purchased ${starches.toLocaleString()} starches for ${cost.toLocaleString()} potatoes! You now have ${userStarches.toLocaleString()} starches and ${userPotatoes.toLocaleString()} potatoes left.`);
+        embed = embedFactory.createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes,
+            userStarches, 'buy', starches, price, totalPrice);
+        interaction.editReply({ embeds: [embed] });
     }
 }

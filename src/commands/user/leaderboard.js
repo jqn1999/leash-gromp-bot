@@ -34,6 +34,10 @@ module.exports = {
                 {
                     name: 'guild-leaderboard',
                     value: 'guild-leaderboard'
+                },
+                {
+                    name: 'starch-leaderboard',
+                    value: 'starch-leaderboard'
                 }
             ]
         }
@@ -46,14 +50,21 @@ module.exports = {
         switch (leaderboardChoice) {
             case 'user-leaderboard':
                 const sortedUsers = await dynamoHandler.getSortedUsers();
-                const total = await dynamoHandler.getServerTotal();
+                const totalPotatoes = await dynamoHandler.getServerTotal();
                 const userIndex = findUserIndex(sortedUsers, interaction.user.id);
-                embed = embedFactory.createUserLeaderboardEmbed(sortedUsers, total, userIndex);
+                embed = embedFactory.createUserLeaderboardEmbed(sortedUsers, totalPotatoes, userIndex);
                 interaction.editReply({ embeds: [embed] });
                 break;
             case 'guild-leaderboard':
-                const sortedGuildList = await dynamoHandler.getSortedGuildsByLevelAndMembers();
+                const sortedGuildList = await dynamoHandler.getSortedGuildsByLevelAndRaidCount();
                 embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList, interaction);
+                interaction.editReply({ embeds: [embed] });
+                break;
+            case 'starch-leaderboard':
+                const sortedUserStarches = await dynamoHandler.getSortedUserStarches();
+                const totalStarches = await dynamoHandler.getServerTotalStarches();
+                const userStarchIndex = findUserIndex(sortedUserStarches, interaction.user.id);
+                embed = embedFactory.createUserStarchLeaderboardEmbed(sortedUserStarches, totalStarches, userStarchIndex);
                 interaction.editReply({ embeds: [embed] });
                 break;
         }

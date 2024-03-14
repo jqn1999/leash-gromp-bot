@@ -19,7 +19,7 @@ module.exports = {
         },
         {
             name: 'amount',
-            description: 'Amount of potatoes: all | (amount)',
+            description: 'Amount of potatoes: all | half | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
         }
@@ -39,6 +39,8 @@ module.exports = {
         let amount = interaction.options.get('amount')?.value;
         if (amount.toLowerCase() == 'all') {
             amount = userPotatoes;
+        } else if (amount.toLowerCase() == 'half') {
+            amount = Math.round(userPotatoes/2);
         } else{
             amount = Math.floor(Number(amount));
             if (isNaN(amount)) {

@@ -32,18 +32,12 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you have no guild!`);
             return;
         }
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        const guildId = guild.guildId;
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {
             interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
-            return;
-        }
-
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you need to be the leader to kick members.`);
             return;
         }
 
@@ -53,13 +47,25 @@ module.exports = {
             return;
         }
 
+        const canUserKick = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
+        if (!canUserKick) {
+            interaction.editReply(`${userDisplayName} you need to be the co-leader or leader to kick members.`);
+            return;
+        } else if (targetMember.role == GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} the leader of your guild cannot be kicked!`);
+            return;
+        } else if (targetMember.role == GuildRoles.COLEADER && member.role != GuildRoles.LEADER) {
+            interaction.editReply(`${userDisplayName} you need to be the leader to kick co-leaders.`);
+            return;
+        }
+
         if (userId == targetUser) {
             interaction.editReply(`${userDisplayName} you cannot kick yourself.`);
             return;
         }
 
         let newMemberList = memberList.filter((user) => user.id != targetUser)
-        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', newMemberList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
         await dynamoHandler.updateUserDatabase(targetUser, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }

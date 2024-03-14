@@ -61,18 +61,18 @@ module.exports = {
     deleted: false,
     permissionsRequired: [PermissionFlagsBits.Administrator],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
         const winner = interaction.options.get('winner').value;
 
         const mostRecentBet = await dynamoHandler.getMostRecentBet();
         if (!mostRecentBet.isActive) {
-            interaction.editReply({
+            interaction.reply({
                 content: `There is no currently active bet to end`,
                 ephemeral: true
             });
             return;
         }
-
+        
+        await interaction.deferReply();
         const optionOneTotal = mostRecentBet.optionOneTotal;
         const optionOneVoters = mostRecentBet.optionOneVoters;
         const optionTwoTotal = mostRecentBet.optionTwoTotal;

@@ -22,8 +22,11 @@ module.exports = {
             interaction.editReply(`${userDisplayName} you have no guild to leave!`);
             return;
         }
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        const guildId = guild.guildId;
+        let guild = await dynamoHandler.findGuildById(userGuildId);
+        if (!guild) {
+            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
+            return;
+        }
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
@@ -39,7 +42,7 @@ module.exports = {
 
         let newMemberList = memberList.filter((user) => user.id != userId)
 
-        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', newMemberList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have left the guild, '${guild.guildName}'!`);
     }

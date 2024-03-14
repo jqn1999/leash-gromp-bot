@@ -1,15 +1,11 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, regularRaidMobs, mediumRaidMobs, hardRaidMobs, metalKingRaidBoss, regularStatRaidMobs } = require("../../utils/constants")
-const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
-
-function getRandomFromInterval(min, max) {
-    return Math.random() * (max - min) + min;
-}
 
 function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);
@@ -17,52 +13,79 @@ function chooseMobFromList(mobList) {
     return reward
 }
 
-function calculateRaidSuccessChance(totalMultiplier, raidDifficulty) {
+function calculateRaidSuccessChance(totalMultiplier, raidDifficulty, maximumSuccessRate) {
     const totalRaidSuccessChance = totalMultiplier / raidDifficulty;
-    const actualRaidSuccessChance = totalRaidSuccessChance > Raid.MAXIMUM_RAID_SUCCESS_RATE ? Raid.MAXIMUM_RAID_SUCCESS_RATE : totalRaidSuccessChance
+    const actualRaidSuccessChance = totalRaidSuccessChance > maximumSuccessRate ? maximumSuccessRate : totalRaidSuccessChance
     return actualRaidSuccessChance
+}
+
+async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost) {
+    let raidSplit = null;
+    if (guildBankStored + totalRaidCost >= 0) {
+        guildBankStored += totalRaidCost;
+        await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
+    } else {
+        raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidCost);
+    }
+    return raidSplit
+}
+
+async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit) {
+    let raidSplit = null;
+    if (remainingBankSpace >= totalRaidSplit) {
+        guildBankStored += totalRaidSplit;
+        await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
+    } else {
+        raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+    }
+    return raidSplit
 }
 
 const regularRaidScenarios = [
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
             } else {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                totalRaidSplit = 0;
+                raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed] });
             return totalRaidSplit;
         },
         chance: .01
     },
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(hardRaidMobs);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
                 totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
@@ -72,21 +95,21 @@ const regularRaidScenarios = [
         chance: .06
     },
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
                 totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
@@ -96,21 +119,233 @@ const regularRaidScenarios = [
         chance: .26
     },
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
                 totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
-                raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = regularRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: 1
+    }
+]
+
+const harderRaidScenarios = [
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                raidResultDescription = metalKingRaidBoss.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+            } else {
+                totalRaidSplit = 0;
+                raidSplit = 0;
+                raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
+            }
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .01
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 4;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const hardRaidMob = chooseMobFromList(hardRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = hardRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = hardRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .11
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 5;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = mediumRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = mediumRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .51
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 6;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const regularRaidMob = chooseMobFromList(regularRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = regularRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = regularRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: 1
+    }
+]
+
+const hardestRaidScenarios = [
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                raidResultDescription = metalKingRaidBoss.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+            } else {
+                totalRaidSplit = 0;
+                raidSplit = 0;
+                raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
+            }
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .01
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 6;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const hardRaidMob = chooseMobFromList(hardRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = hardRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = hardRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .21
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 8;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const mediumRaidMob = chooseMobFromList(mediumRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = mediumRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
+                raidResultDescription = mediumRaidMob.failureDescription;
+            }
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .71
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
+            let raidSplit, totalRaidSplit, raidResultDescription;
+            const DIFFICULTY_MULTIPLIER = 10;
+            const randomMultiplier = getRandomFromInterval(.8, 1.2);
+            const regularRaidMob = chooseMobFromList(regularRaidMobs);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
+                raidResultDescription = regularRaidMob.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+            } else {
+                totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
@@ -123,17 +358,42 @@ const regularRaidScenarios = [
 
 const statRaidScenarios = [
     {
-        action: async (guildId, guildName, raidList, raidCount, totalMultiplier, interaction) => {
-            let raidSplit, totalRaidCost, raidResultDescription;
-            const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
-            const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * randomMultiplier * raidList.length);
-            raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidCost);
-
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY);
+        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction) => {
+            let raidSplit = 0, totalRaidSplit = 0, raidResultDescription;
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                await raidFactory.handleStatSplit(raidList, Raid.REGULAR_STAT_RAID_REWARD);
+                let workMultiReward = Raid.LEGENDARY_RAID_MULTIPLIER_REWARD * 2;
+                let passiveReward = Raid.LEGENDARY_RAID_PASSIVE_REWARD * 2;
+                let bankReward = Raid.LEGENDARY_RAID_CAPACITY_REWARD * 2;
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', bankReward);
+                raidResultDescription = metalKingRaidBoss.successDescription;
+                raidCount += 1;
+                await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
+                    raidResultDescription, workMultiReward, passiveReward, bankReward);
+            } else {
+                raidResultDescription = metalKingRaidBoss.failureDescription;
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
+            }
+            interaction.editReply({ embeds: [embed] });
+            return totalRaidSplit;
+        },
+        chance: .01
+    },
+    {
+        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction) => {
+            let raidSplit, totalRaidCost, raidResultDescription;
+            const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
+            totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * raidList.length);
+            raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost);
+
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
+            const successfulRaid = Math.random() < successChance;
+            if (successfulRaid) {
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.REGULAR_STAT_RAID_REWARD);
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 raidResultDescription = regularStatRaidMob.successDescription;
@@ -162,6 +422,14 @@ module.exports = {
                 {
                     name: 'regular',
                     value: 'regular'
+                },
+                {
+                    name: 'elite',
+                    value: 'elite'
+                },
+                {
+                    name: 'legendary',
+                    value: 'legendary'
                 },
                 {
                     name: 'stat',
@@ -197,14 +465,11 @@ module.exports = {
         const memberList = guild.memberList;
         const raidRewardMultiplier = guild.raidRewardMultiplier;
         let raidList = guild.raidList;
-        let activeRaid = guild.activeRaid;
         let raidCount = guild.raidCount;
         let guildTotalEarnings = guild.totalEarnings;
-
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to start!`);
-            return;
-        }
+        let guildBankStored = guild.bankStored;
+        let guildBankCapacity = guild.bankCapacity;
+        let remainingBankSpace = guildBankCapacity - guildBankStored;
 
         if (raidList.length == 0) {
             interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
@@ -217,8 +482,9 @@ module.exports = {
             return;
         }
 
-        if (member.role != GuildRoles.LEADER) {
-            interaction.editReply(`${userDisplayName} you must be the guild leader to start a raid!`);
+        let canStartRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
+        if (!canStartRaids) {
+            interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
             return;
         }
 
@@ -237,11 +503,29 @@ module.exports = {
         }
 
         const raidScenarioRoll = Math.random();
+        let potatoesGained = 0;
         if (raidSelection == 'regular') {
-            let potatoesGained = 0;
             for (const scenario of regularRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
-                    potatoesGained = await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                    break;
+                }
+            }
+            guildTotalEarnings += potatoesGained;
+            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+        } else if (raidSelection == 'elite') {
+            for (const scenario of harderRaidScenarios) {
+                if (raidScenarioRoll < scenario.chance) {
+                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                    break;
+                }
+            }
+            guildTotalEarnings += potatoesGained;
+            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+        } else if (raidSelection == 'legendary') {
+            for (const scenario of hardestRaidScenarios) {
+                if (raidScenarioRoll < scenario.chance) {
+                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
                     break;
                 }
             }
@@ -250,14 +534,13 @@ module.exports = {
         } else if (raidSelection == 'stat') {
             for (const scenario of statRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
-                    await scenario.action(guildId, guildName, raidList, raidCount, totalMultiplier, interaction);
+                    await scenario.action(guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction);
                     break;
                 }
             }
         }
 
         await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
-        await dynamoHandler.updateGuildDatabase(guildId, 'activeRaid', false);
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
 }

@@ -1,13 +1,9 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
-
-function getRandomFromInterval(min, max) {
-    return Math.random() * (max - min) + min;
-}
 
 function calculateFailedRobPenalty(userTotalWealth) {
     if (userTotalWealth < 0) {

@@ -22,20 +22,14 @@ module.exports = {
             return;
         }
 
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        let guild = await dynamoHandler.findGuildById(userGuildId);
         if (!guild) {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
-        const guildId = guild.guildId;
         let memberList = guild.memberList;
         let raidList = guild.raidList;
-        let activeRaid = guild.activeRaid;
 
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to join!`);
-            return;
-        }
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {
@@ -49,7 +43,7 @@ module.exports = {
         }
         raidList.push(member);
         
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', raidList);
+        await dynamoHandler.updateGuildDatabase(userGuildId, 'raidList', raidList);
         interaction.editReply(`${userDisplayName} you have joined the raid for the guild, '${guild.guildName}'!`);
     }
 }
