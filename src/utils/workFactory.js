@@ -37,7 +37,7 @@ class WorkFactory {
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
         await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return potatoesGained;
     }
 
@@ -75,7 +75,7 @@ class WorkFactory {
                 await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
                 break;
         }
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return random;
     }
 
@@ -87,7 +87,7 @@ class WorkFactory {
         userStarches += starchAmount;
 
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return starchAmount;
     }
 
@@ -118,7 +118,7 @@ class WorkFactory {
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return potatoesGained;
     }
     
@@ -133,7 +133,7 @@ class WorkFactory {
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return potatoesGained;
     }
     
@@ -148,7 +148,7 @@ class WorkFactory {
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+        await dynamoHandler.updateWorkTimer(userDetails);
         return potatoesGained;
     }
 }
@@ -171,6 +171,19 @@ function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw, m
         return increase;
     }
     return 50000;
+}
+
+async function getWorkMulti(userDetails){
+    let userMultiplier = userDetails.workMultiplierAmount;
+
+    if (userGuildId){
+        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        if(guild){
+            if(guild.guildBuff == "work multi"){
+                userMultiplier += 5
+            }
+        }
+    }
 }
 
 const metalPotatoRewards = {

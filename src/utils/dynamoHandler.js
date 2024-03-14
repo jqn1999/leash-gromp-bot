@@ -64,6 +64,48 @@ const updateUserDatabase = async function (userId, attributeName, attributeValue
     return response;
 }
 
+const updateWorkTimer = async function (userDetails) {
+    let userId = userDetails.userId
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    // check for work timer guild buff
+    const userGuildId = userDetails.guildId;
+    time = Date.now()
+    if (userGuildId){
+        let guild = await findGuildById(userDetails.guildId);
+        if(guild){
+            if(guild.guildBuff == "work timer"){
+                time -= 1000 * 30
+            }
+        }
+    }
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: `set #attrName = :attrValue`,
+        ExpressionAttributeNames: {
+            "#attrName": "workTimer",
+        },
+        ExpressionAttributeValues: {
+            ":attrValue": time,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserDatabase: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserDatabase error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
 const findUser = async function (userId, username) {
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
@@ -721,6 +763,7 @@ const removeStarches = async function () {
 
 module.exports = {
     addUserDatabase,
+    updateWorkTimer,
     updateUserDatabase,
     addUser,
     findUser,

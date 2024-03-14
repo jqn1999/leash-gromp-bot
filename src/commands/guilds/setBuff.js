@@ -27,9 +27,13 @@ module.exports = {
                     value: 'work timer'
                 },
                 {
-                    name: 'work multi',
+                    name: 'work multi (ONLY WORKS)',
                     value: 'work multi'
-                }               
+                },
+                {
+                    name: "raid multi",
+                    value: "raid multi"
+                }         
             ]
         }
     ],
