@@ -55,6 +55,7 @@ module.exports = {
 
         if (userMultiplier < 20) {
             interaction.editReply(`${userDisplayName} you are barred entry due to being too weak, reach 20x multiplier before you can enter!`)
+            return;
         }
 
         const canEnterTower = userDetails.canEnterTower;
