@@ -35,7 +35,7 @@ const RUN = {
 }
 
 const FLOOR_TYPES = ["COMBAT", "ENCOUNTER", "TRANSACTION", "REWARD", "ELITE"]
-const FLOOR_WEIGHTS = [4, 6, 8, 9]
+const FLOOR_WEIGHTS = [11, 14, 17, 18]
 const COMBATS = [
     {
         name: "Baby Broccoli",
@@ -120,8 +120,8 @@ const TRANSACTIONS = [
     {
         name: "Sales Spinach",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/932528787407642625/1209336128164073512/cute-spinach-on-white-background-vector-27328402.png?ex=65e68d09&is=65d41809&hm=91e5bf1c2d53606aeff23a1f5a23776558e5bee71666c75ee0faab720da45b2b&",
-        description: "A spinach comes up and offers you 5x work modifier for 200,000 potatoes.\n\nWill you take the offer?",
-        choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 200000, result: "You agree to the spinach's deal and receive the work modifier!" },
+        description: "A spinach comes up and offers you 5x work modifier for 300,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 300000, result: "You agree to the spinach's deal and receive the work modifier!" },
         { name: "Leave", outcome: CHOICES.EXIT, result: "You decline the spinach's offer and move onto the next floor." }],
         poor: "You try to pay the spinach, but realize you don't have enough potatoes. The spinach leaves... get it?",
         poor_outcome: CHOICES.EXIT
@@ -129,8 +129,8 @@ const TRANSACTIONS = [
     {
         name: "The Wizard Lime",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A magical looking lime threatens to send you to an elite if you don't pay 500,000 potatoes.\n\nWhat will you do?",
-        choices: [{ name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 500000, result: `You pay the wizard who graciously takes the potatoes and leaves.` },
+        description: "A magical looking lime threatens to send you to an elite if you don't pay 1,000,000 potatoes.\n\nWhat will you do?",
+        choices: [{ name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 1000000, result: `You pay the wizard who graciously takes the potatoes and leaves.` },
         { name: 'Keep your potatoes', outcome: CHOICES.ELITE, result: `The lime casts a spell on you, sending you straight to a dangerous elite!` }],
         poor: "You try to pay up but you do not have enough potatoes! The lime laughs as it starts casting a spell on you.......",
         poor_outcome: CHOICES.ELITE
@@ -138,8 +138,8 @@ const TRANSACTIONS = [
     {
         name: "The Traveling Turnip",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A traveling turnip salesman is offering you 0.5 PERMANENT work multiplier for 500,000 potatoes.\n\nWill you take the offer?",
-        choices: [{ name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.5, price: 500000, result: `You buy the permanent work multiplier from the turnip!` },
+        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for 1,500,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.2, price: 1500000, result: `You buy the permanent work multiplier from the turnip!` },
         { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the turnip's offer and depart` }],
         poor: "As much as you want to buy the work multiplier, you don't have enough potatoes to buy it",
         poor_outcome: CHOICES.EXIT
@@ -159,10 +159,10 @@ const REWARDS = [
     {
         name: "King Kiwi",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.4 work multiplier, 300,000 passive income, or 2 million bank capacity if you manage to defeat elite on floor `,
+        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.2 work multiplier, 300,000 passive income, or 2 million bank capacity if you manage to defeat elite on floor `,
         description2: `.\n\nWhat will you choose?`,
         kill_elite: true,
-        choices: [{name: '0.4 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.4, result: "The king agrees to give you some work multiplier if you defeat the elite."},
+        choices: [{name: '0.2 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.2, result: "The king agrees to give you some work multiplier if you defeat the elite."},
         {name: '300,000 passive income', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 300000, result: "The king agrees to give you some passive if you defeat the elite."},
         {name: '2 million bank capacity', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 2000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
     }
@@ -173,7 +173,7 @@ const ELITES = [
         name: "Celerity, the Swift Stalk",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the powerful Celerity. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 300000, result: "You have triumphed over Celerity!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over Celerity!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!"
     }

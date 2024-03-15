@@ -6,9 +6,7 @@ class towerFactory{
 
     constructor(_interaction, _username, multi) {
         this.floor = 0
-        this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "GOLDENX5", "METALX5", "POISONX5"];
-        this.eventWeights = [3, 3, 3, 3, 1, 1 ,1];
-        this.run = tC.RUN
+        this.run = Object.assign({}, tC.RUN)
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
@@ -20,11 +18,11 @@ class towerFactory{
         var cont = true
         while(cont){
             this.floor++
-            console.log(this.run)
+            // console.log(this.run, this.username)
             if(this.floor % 10 == 0){
                 // EVERY TEN: THROW ELITE ASK FOR CONTINUE THEN RAISE DIFFICULTY
                 cont = await this.execElite(this.difficulty)
-                this.difficulty += 4 
+                this.difficulty += 4.5
                 floor_type = getFloor()
                 continue;
             }
@@ -32,7 +30,7 @@ class towerFactory{
             cont = await this.execNormalFloor(floor_type)
             floor_type = getFloor()
         }
-        return this.run, this.floor
+        return [this.run, this.floor]
     }
 
     async execNormalFloor(floor_type){
@@ -82,7 +80,9 @@ class towerFactory{
             this.checkElitePayout()
             return this.createNextEmbed(fl, fl.choices[0].result)
         }
-        this.run[tC.PAYOUT.POTATOES] = 0
+        this.run[tC.PAYOUT.WORK_MULTIPLIER] = 0
+        this.run[tC.PAYOUT.PASSIVE_INCOME] = 0
+        this.run[tC.PAYOUT.BANK_CAPACITY] = 0
         return this.createDeathEmbed(fl.lose)
 
     }
@@ -131,15 +131,15 @@ class towerFactory{
     async checkElitePayout(){
         let remove_index = []
         for(const [i, payout] of this.run[tC.PAYOUT.ELITE_KILL].entries()){
-            console.log(i)
-            console.log(payout)
+            // console.log(i)
+            // console.log(payout)
             if(this.floor == payout[tC.REWARD_PAYOUT.FLOOR]){
                 this.run[payout[tC.REWARD_PAYOUT.TYPE]] += payout[tC.REWARD_PAYOUT.AMOUNT]
                 remove_index.push(i)
             }
         }
 
-        console.log(remove_index)
+        // console.log(remove_index)
         for(let i = remove_index.length - 1; i >= 0; i--){
             this.run[tC.PAYOUT.ELITE_KILL].splice(remove_index[i], 1)
         }
@@ -306,7 +306,7 @@ class towerFactory{
 function getFloor() {
     var random = Math.floor(Math.random() * tC.FLOOR_WEIGHTS[tC.FLOOR_WEIGHTS.length - 1]);
     for (var i = 0; i < tC.FLOOR_WEIGHTS.length; i++)
-        if (random < tC.FLOOR_WEIGHTS[i])
+        if (random <= tC.FLOOR_WEIGHTS[i])
             break;
     return tC.FLOOR_TYPES[i];
 }

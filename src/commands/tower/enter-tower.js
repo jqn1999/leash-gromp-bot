@@ -4,12 +4,20 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
-async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity, sweetPotatoBuffs) {
+async function processRewardPayouts(userId, rewards, username) {
+    const userDetails = await dynamoHandler.findUser(userId, username);
+    if (!userDetails) {
+        interaction.editReply(`${userDisplayName} was not found in the DB, contact an admin!`);
+        return;
+    }
+    let userMultiplier = userDetails.workMultiplierAmount;
+    let userPassiveAmount = userDetails.passiveAmount;
+    let userBankCapacity = userDetails.bankCapacity;
+    let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+
     if (rewards[tC.PAYOUT.POTATOES]) {
-        userPotatoes += rewards[tC.PAYOUT.POTATOES]
-        userTotalEarnings += rewards[tC.PAYOUT.POTATOES]
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
+        await dynamoHandler.addUserDatabase(userId, "potatoes", rewards[tC.PAYOUT.POTATOES]);
+        await dynamoHandler.addUserDatabase(userId, "totalEarnings", rewards[tC.PAYOUT.POTATOES])
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
         userMultiplier += rewards[tC.PAYOUT.WORK_MULTIPLIER]
@@ -34,7 +42,6 @@ async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarn
 module.exports = {
     name: "enter-tower",
     description: "Enter the tater tower once a day",
-    testOnly: true,
     callback: async (client, interaction) => {
         await interaction.deferReply();
 
@@ -44,12 +51,11 @@ module.exports = {
             interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
             return;
         }
-        let userPotatoes = userDetails.potatoes;
-        let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
-        let userPassiveAmount = userDetails.passiveAmount;
-        let userBankCapacity = userDetails.bankCapacity;
-        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+
+        if (userMultiplier < 20) {
+            interaction.editReply(`${userDisplayName} you are barred entry due to being too weak, reach 20x multiplier before you can enter!`)
+        }
 
         const canEnterTower = userDetails.canEnterTower;
         if (!canEnterTower) {
@@ -59,8 +65,9 @@ module.exports = {
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
         let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount)
-        let rewards = tC.RUN
-        rewards, floor = await tF.startRun()
+        let tower_out = await tF.startRun()
+        let rewards = tower_out[0];
+        let floor = tower_out[1];
 
         // embed for final results
         let embed = createResult(rewards, floor, username)
@@ -68,7 +75,7 @@ module.exports = {
             embeds: [embed]
         })
 
-        await processRewardPayouts(userId, rewards, userPotatoes, userTotalEarnings, userMultiplier, userPassiveAmount, userBankCapacity, sweetPotatoBuffs);
+        await processRewardPayouts(userId, rewards, username);
     }
 }
 
