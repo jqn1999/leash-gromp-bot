@@ -12,8 +12,9 @@ class WorkFactory {
         let userBankCapacity = userDetails.bankCapacity;
         let rawPassiveRewardAmount, actualPassiveRewardAmount;
         let rawBankRewardAmount, actualBankRewardAmount;
+        let guildMultiplier = await getGuildMulti(userDetails)
 
-        const potatoesGained = await calculateGainAmount(workGainAmount*20, Work.MAX_METAL_POTATO, multiplier, userMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount*20, Work.MAX_METAL_POTATO, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -83,7 +84,7 @@ class WorkFactory {
         const userId = userDetails.userId;
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
-        const starchAmount = Math.round(getRandomFromInterval(userMultiplier, 1.5 * userMultiplier));
+        const starchAmount = Math.round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier)));
         userStarches += starchAmount;
 
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
@@ -96,8 +97,9 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userTotalLosses = userDetails.totalLosses;
         let userMultiplier = userDetails.workMultiplierAmount;
+        let guildMultiplier = await getGuildMulti(userDetails)
     
-        let potatoesLost = await calculateGainAmount(workGainAmount*10, Work.MAX_POISON_POTATO, multiplier, userMultiplier);
+        let potatoesLost = await calculateGainAmount(workGainAmount*10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier);
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost
@@ -112,8 +114,9 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
+        let guildMultiplier = await getGuildMulti(userDetails)
     
-        const potatoesGained = await calculateGainAmount(workGainAmount*100, Work.MAX_GOLDEN_POTATO, multiplier, userMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount*100, Work.MAX_GOLDEN_POTATO, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -127,8 +130,9 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
+        let guildMultiplier = await getGuildMulti(userDetails)
     
-        const potatoesGained = await calculateGainAmount(workGainAmount*10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount*10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -142,8 +146,9 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
+        let guildMultiplier = await getGuildMulti(userDetails)
     
-        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, userMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -173,17 +178,18 @@ function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw, m
     return 50000;
 }
 
-async function getWorkMulti(userDetails){
-    let userMultiplier = userDetails.workMultiplierAmount;
+async function getGuildMulti(userDetails){
 
+    const userGuildId = userDetails.guildId;
     if (userGuildId){
         let guild = await dynamoHandler.findGuildById(userDetails.guildId);
         if(guild){
             if(guild.guildBuff == "work multi"){
-                userMultiplier += 5
+                return 10
             }
         }
     }
+    return 0
 }
 
 const metalPotatoRewards = {

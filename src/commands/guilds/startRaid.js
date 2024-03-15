@@ -502,6 +502,11 @@ module.exports = {
             totalMultiplier += userDetails.workMultiplierAmount;
         }
 
+        // check for guild buff - multi
+        if(guild.guildBuff == "raid multi"){
+            totalMultiplier += 20
+        }
+
         const raidScenarioRoll = Math.random();
         let potatoesGained = 0;
         if (raidSelection == 'regular') {
