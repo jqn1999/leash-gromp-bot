@@ -34,6 +34,7 @@ async function processRewardPayouts(userId, rewards, userPotatoes, userTotalEarn
 module.exports = {
     name: "enter-tower",
     description: "Enter the tater tower once a day",
+    testOnly: true,
     callback: async (client, interaction) => {
         await interaction.deferReply();
 
@@ -49,8 +50,8 @@ module.exports = {
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-        const canEnterTower = userDetails.canEnterTower;
 
+        const canEnterTower = userDetails.canEnterTower;
         if (!canEnterTower) {
             interaction.editReply(`${userDisplayName} you have already entered the tower today!`);
             return;
