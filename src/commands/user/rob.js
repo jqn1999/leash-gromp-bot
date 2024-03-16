@@ -102,7 +102,7 @@ module.exports = {
         if (userGuildId){
             let guild = await dynamoHandler.findGuildById(userDetails.guildId);
             if(guild){
-                if(guild.guildBuff == "rob %"){
+                if(guild.guildBuff == "robChance"){
                     robChance += .1
                 }
             }
@@ -139,6 +139,6 @@ module.exports = {
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        //await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
+        await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
     }
 }

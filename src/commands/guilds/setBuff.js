@@ -6,7 +6,6 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 module.exports = {
     name: "set-buff",
     description: "Set guild buff for all members",
-    devOnly: false,
     options: [
         {
             name: 'buff',
@@ -15,32 +14,31 @@ module.exports = {
             type: ApplicationCommandOptionType.String,
             choices: [
                 {
-                    name: 'rob %',
-                    value: 'rob %'
+                    name: 'rob-chance',
+                    value: 'robChance'
                 },
                 {
-                    name: 'raid timer',
-                    value: 'raid timer'
+                    name: 'raid-timer',
+                    value: 'raidTimer'
                 },
                 {
-                    name: 'work timer',
-                    value: 'work timer'
+                    name: 'work-timer',
+                    value: 'workTimer'
                 },
                 {
-                    name: 'work multi (ONLY WORKS)',
-                    value: 'work multi'
+                    name: 'work-multi (ONLY WORKS)',
+                    value: 'workMulti'
                 },
                 {
-                    name: "raid multi",
-                    value: "raid multi"
-                }         
+                    name: "raid-multi",
+                    value: "raidMulti"
+                }
             ]
         }
     ],
 
     callback: async (client, interaction) => {
         await interaction.deferReply()
-
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
@@ -60,10 +58,9 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
-
         const guildId = guild.guildId;
         const memberList = guild.memberList;
-        
+
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {
             interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
@@ -72,14 +69,13 @@ module.exports = {
 
         let canBuff = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
         if (!canBuff) {
-            interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
+            interaction.editReply(`${userDisplayName} you must be a co-leader or the guild leader to start a raid!`);
             return;
-        }       
-
+        }
         let buffSelect = interaction.options.get('buff')?.value;
+
         // store buff into guild db
         await dynamoHandler.updateGuildDatabase(guildId, 'guildBuff', buffSelect);
-
-        interaction.editReply(`Guild buff set to ${buffSelect}!`)
+        interaction.editReply(`Guild buff for ${guild.guildName} has been set to ${buffSelect}!`)
     }
 }

@@ -71,11 +71,11 @@ const updateWorkTimer = async function (userDetails) {
 
     // check for work timer guild buff
     const userGuildId = userDetails.guildId;
-    time = Date.now()
+    let time = Date.now()
     if (userGuildId){
         let guild = await findGuildById(userDetails.guildId);
         if(guild){
-            if(guild.guildBuff == "work timer"){
+            if(guild.guildBuff == "workTimer"){
                 time -= 1000 * 30
             }
         }
@@ -156,7 +156,8 @@ const addUser = async function (userId, username) {
             passiveAmount: 0,
             bankCapacity: 0
         },
-        starches: 0
+        starches: 0,
+        canEnterTower: true
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -626,7 +627,8 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         raidTimer: 0,
         inviteList: [],
         raidList: [],
-        raidRewardMultiplier: 1
+        raidRewardMultiplier: 1,
+        guildBuff: ""
     };
 
     var params = {

@@ -58,6 +58,11 @@ module.exports = {
             totalMultiplier += userDetails.workMultiplierAmount;
         }
 
+        // check for guild buff - multi
+        if(guild.guildBuff == "raidMulti"){
+            totalMultiplier *= 1.15;
+        }
+
         embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds);
         interaction.editReply({ embeds: [embed] });
     }
