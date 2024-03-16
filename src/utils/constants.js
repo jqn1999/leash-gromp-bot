@@ -470,7 +470,7 @@ const shops = [
 ]
 
 const awsConfigurations = {
-    aws_table_name: 'leash-gromp-bot',
+    aws_table_name: 'leash-gromp-bot-restored',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',

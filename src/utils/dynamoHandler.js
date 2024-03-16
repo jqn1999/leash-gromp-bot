@@ -649,11 +649,6 @@ const addNewUserAttribute = async function () {
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     let userList = await getUsers();
-    const newObject = {
-        workMultiplierAmount: 0,
-        passiveAmount: 0,
-        bankCapacity: 0
-    };
 
     userList.forEach(async user => {
         const params = {
@@ -661,9 +656,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set sweetPotatoBuffs = :sweetPotatoBuffs",
+            UpdateExpression: "set canEnterTower = :canEnterTower",
             ExpressionAttributeValues: {
-                ":sweetPotatoBuffs": newObject,
+                ":canEnterTower": true,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -761,6 +756,35 @@ const removeStarches = async function () {
     // return response;
 }
 
+const resetAllTowerEntries = async function () {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    let userList = await getUsers();
+
+    userList.forEach(async user => {
+        const params = {
+            TableName: awsConfigurations.aws_table_name,
+            Key: {
+                userId: user.userId,
+            },
+            UpdateExpression: "set canEnterTower = :canEnterTower",
+            ExpressionAttributeValues: {
+                ":canEnterTower": true,
+            },
+            ReturnValues: "ALL_NEW",
+        };
+
+        const response = await docClient.update(params).promise()
+            .then(async function (data) {
+                console.log(`resetAllTowerEntries: ${JSON.stringify(data)}`)
+            })
+            .catch(function (err) {
+                console.log(`resetAllTowerEntries error: ${JSON.stringify(err)}`)
+            });
+    })
+}
+
 module.exports = {
     addUserDatabase,
     updateWorkTimer,
@@ -795,5 +819,6 @@ module.exports = {
     getSortedUserStarches,
     getSortedGuildsByLevelAndRaidCount,
     getSortedGuildsById,
-    removeStarches
+    removeStarches,
+    resetAllTowerEntries
 }

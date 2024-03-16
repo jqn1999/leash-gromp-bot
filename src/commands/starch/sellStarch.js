@@ -28,9 +28,9 @@ module.exports = {
 
         // check date
         var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 && date.getHours() <= 22);
-        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
-        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 10 && date.getHours() <= 21);
+        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 22;
+        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 9;
 
         if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
             interaction.editReply(`${userDisplayName}, this is a buying period for starches!`);
