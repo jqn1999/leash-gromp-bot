@@ -502,6 +502,11 @@ module.exports = {
             totalMultiplier += userDetails.workMultiplierAmount;
         }
 
+        // check for guild buff - multi
+        if(guild.guildBuff == "raidMulti"){
+            totalMultiplier *= 1.15;
+        }
+
         const raidScenarioRoll = Math.random();
         let potatoesGained = 0;
         if (raidSelection == 'regular') {
@@ -540,7 +545,11 @@ module.exports = {
             }
         }
 
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
+        // check buff for raid timer - remove 5 minutes if true
+        guild.guildBuff == "raidTimer"
+            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() - 15*60000) // 15 minutes
+            : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
+
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
 }

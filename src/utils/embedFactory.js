@@ -29,9 +29,16 @@ class EmbedFactory {
             value: `${userDetails.starches.toLocaleString()} starches`,
             inline: false,
         });
+        let workMultiLabel = ``;
+        const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+        if (additionalWorkMulti) {
+            workMultiLabel += `${(userDetails.workMultiplierAmount + additionalWorkMulti).toFixed(2)}x (+${(additionalWorkMulti).toFixed(2)}x)`
+        } else {
+            workMultiLabel += `${(userDetails.workMultiplierAmount).toFixed(2)}x`
+        }
         fields.push({
             name: "Current Work Multiplier:",
-            value: `${(userDetails.workMultiplierAmount).toFixed(2)}x`,
+            value: workMultiLabel,
             inline: false,
         });
         fields.push({
@@ -393,6 +400,11 @@ class EmbedFactory {
         fields.push({
             name: `Reward Multiplier:`,
             value: `${guild.raidRewardMultiplier}`,
+            inline: true
+        })
+        fields.push({
+            name: `Guild Buff:`,
+            value: `${guild.guildBuff}`,
             inline: true
         })
 
@@ -866,6 +878,19 @@ function findShopItemName(amount, shopItems) {
 
 function getUserAvatar(userId, avatarHash) {
     return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png`;
+}
+
+async function getGuildWorkMulti(userDetails, userMultiplier){
+    const userGuildId = userDetails.guildId;
+    if (userGuildId){
+        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        if(guild){
+            if(guild.guildBuff == "workMulti"){
+                return userMultiplier * .10
+            }
+        }
+    }
+    return 0
 }
 
 module.exports = {
