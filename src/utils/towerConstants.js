@@ -138,8 +138,8 @@ const TRANSACTIONS = [
     {
         name: "The Traveling Turnip",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for 800,000 potatoes.\n\nWill you take the offer?",
-        choices: [{ name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.2, price: 800000, result: `You buy the permanent work multiplier from the turnip!` },
+        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for 600,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.2, price: 600000, result: `You buy the permanent work multiplier from the turnip!` },
         { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the turnip's offer and depart` }],
         poor: "As much as you want to buy the work multiplier, you don't have enough potatoes to buy it",
         poor_outcome: CHOICES.EXIT
