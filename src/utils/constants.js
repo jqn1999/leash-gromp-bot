@@ -8,7 +8,7 @@ const Work = {
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
     MAX_GOLDEN_POTATO: 500000,
-    POISON_POTATO_TIMER_INCREASE_MS: 3300000
+    POISON_POTATO_TIMER_INCREASE_SECONDS: 3600
 }
 
 const Bet = {
@@ -470,7 +470,7 @@ const shops = [
 ]
 
 const awsConfigurations = {
-    aws_table_name: 'leash-gromp-bot-restored',
+    aws_table_name: 'leash-gromp-bot',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',

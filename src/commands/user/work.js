@@ -61,7 +61,7 @@ var workScenarios = [
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
             } else {
-                await dynamoHandler.updateWorkTimer(userDetails);
+                await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
                 potatoesGained = 0;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }
@@ -124,11 +124,9 @@ module.exports = {
             return;
         }
 
-        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
-        const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
-
-        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
+        const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
+        if (timeUntilWorkAvailableInMS > 0) {
+            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
             return;
         };
 
