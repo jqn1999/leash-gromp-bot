@@ -1,12 +1,6 @@
-const { awsConfigurations } = require("../utils/constants.js");
+const { awsConfigurations, Work } = require("../utils/constants.js");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
-
-const statTrackingIds = {
-    COINFLIP: "coinflip",
-    WORK: "work",
-    BET: "bet",
-}
 
 // User Handling
 const addUserDatabase = async function (userId, attributeName, attributeValue) {
@@ -64,19 +58,20 @@ const updateUserDatabase = async function (userId, attributeName, attributeValue
     return response;
 }
 
-const updateWorkTimer = async function (userDetails) {
+const updateWorkTimer = async function (userDetails, cooldownTime) {
     let userId = userDetails.userId
     AWS.config.update(awsConfigurations.aws_remote_config);
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     // check for work timer guild buff
     const userGuildId = userDetails.guildId;
-    let time = Date.now()
-    if (userGuildId){
+    let time = cooldownTime == Work.POISON_POTATO_TIMER_INCREASE_SECONDS ? Date.now() + cooldownTime*1000 : Date.now() + Work.WORK_TIMER_SECONDS*1000
+    if (userGuildId) {
         let guild = await findGuildById(userDetails.guildId);
-        if(guild){
-            if(guild.guildBuff == "workTimer"){
-                time -= 1000 * 30
+        if (guild) {
+            if (guild.guildBuff == "workTimer") {
+                const timeReduced = cooldownTime * 1000 * .10; // 10% reduction
+                time -= timeReduced;
             }
         }
     }

@@ -603,11 +603,9 @@ module.exports = {
             return;
         }
 
-        const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
-        const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
-
-        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
+        const timeUntilRaidAvailableInMS = guild.raidTimer - Date.now()
+        if (timeUntilRaidAvailableInMS > 0) {
+            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS/1000))} before raiding again!`);
             return;
         }
 
@@ -660,10 +658,9 @@ module.exports = {
             }
         }
 
-        // check buff for raid timer - remove 5 minutes if true
         guild.guildBuff == "raidTimer"
-            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() - 15 * 60000) // 15 minutes
-            : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now());
+            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * .10))
+            : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
 
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
     }
