@@ -27,16 +27,37 @@ const regularRaidMobs = [
         }
     ],
     [
-        Scallionshade, the Shadowy Scion 
+        {
+            name: "Scallionshade, the Shadowy Scion",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607716355706971/kawaii-smiling-leek-vegetable-cartoon-illustration-spring-onions-on-color-background-smiling-leek-vegetable-cartoon-illustration-free-vector.png?ex=661331d7&is=6600bcd7&hm=3815e4de70195853ef982e0194b758fbd0f8fab0200adc5cb126d92bfce8c099&",
+            description: `Scallionshade, the Shadowy Scion, emerges from the depths of the Potato Kingdom as a mysterious figure cloaked in darkness, his form obscured by swirling shadows that dance around him like wisps of smoke. With eyes gleaming like dimly lit embers, he wields the power of shadows, commanding them to do his bidding as he seeks to envelop the realm in eternal darkness.`,
+            successDescription: 'Through unwavering resolve and strategic prowess, the spud heroes manage to penetrate Scallionshade\'s veil of darkness, dispersing his shadowy form and banishing him back into the abyss from whence he came. Though defeated for now, whispers linger of his inevitable return, a reminder that the Shadowy Scion\'s darkness may yet shroud the Potato Kingdom once more.',
+            failureDescription: 'Overwhelmed by Scallionshade\'s relentless onslaught and the suffocating embrace of darkness, the potato adventurers fall one by one, their spirits consumed by the shadows. As Scallionshade\'s influence spreads unchecked, the Potato Kingdom plunges into eternal night, its inhabitants forever lost in the abyss of the Shadowy Scion\'s domain.',
+            credit: 'Made by Beggar'
+        }
     ],
     [
-        Garlicore, the Pungent Overlord 
+        {
+            name: "Garlicore, the Pungent Overlord",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607411710689280/dacedaaa-00fe-11ee-8c31-f23c938336bc-9759-0.png?ex=6613318f&is=6600bc8f&hm=da68c0239e8813f999453ac161974cbc47c4485c8e6a7c2a92b177732fb8eaee&",
+            description: `Garlicore, the Pungent Overlord, rises from the depths of the Potato Kingdom as a towering figure draped in robes of garlic cloves, emanating an overpowering aroma that strikes fear into the hearts of all who dare to oppose him. With each step, his presence saturates the air with the unmistakable scent of garlic, a harbinger of his potent and pungent power.`,
+            successDescription: 'Through strategic teamwork and unwavering determination, the spud heroes manage to overcome Garlicore, dispersing his pungent aura and banishing him back into the depths from whence he came. The Potato Kingdom celebrates the defeat of the Pungent Overlord, breathing a sigh of relief as the air clears of his oppressive scent.',
+            failureDescription: 'Overwhelmed by Garlicore\'s relentless assault and the suffocating aroma of garlic, the potato adventurers fall one by one, their senses overwhelmed by the pungent onslaught. As Garlicore\'s influence spreads unchecked, the Potato Kingdom becomes forever tainted by the lingering scent of the Pungent Overlord, a reminder of their failure to rid the realm of his foul presence.',
+            credit: 'Made by Beggar'
+        }
     ]
 ]
 
 const eliteRaidMobs = [
-    [Radishreaper, the Reaper of Roots
-
+    [
+        {
+            name: "Scarlet Seraph, the Strawberry Sovereign",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607252868206642/cefb8ca7615585269517650efddcfe7c.png?ex=66133169&is=6600bc69&hm=9a30d618ada308ee125e11320fee4f1042e2fdd8d953295ba1104aee49508dde&",
+            description: `Scarlet Seraph, the Strawberry Sovereign, stands as a majestic figure, draped in robes the color of ripe strawberries and crowned with a halo of strawberry leaves. With wings of crimson and a regal demeanor, this celestial being commands the essence of strawberries, exuding an aura of fruity power and majesty.`,
+            successDescription: 'Through unwavering courage and strategic prowess, the spud heroes manage to weaken Scarlet Seraph, the Strawberry Sovereign, forcing it to retreat into the celestial realm. Though temporarily defeated, whispers linger of its inevitable return, reminding all that the Strawberry Sovereign may rise again to reign over the Potato Kingdom.',
+            failureDescription: 'Overwhelmed by Scarlet Seraph\'s formidable powers and celestial aura, the potato adventurers fall one by one, their efforts futile against the Strawberry Sovereign\'s might. As Scarlet Seraph retreats to the celestial realm, the Potato Kingdom remains under the shadow of its impending return, its inhabitants living in fear of the Strawberry Sovereign\'s inevitable resurgence.',
+            credit: 'Made by Beggar'
+        }
     ],
     [
         {
@@ -49,7 +70,14 @@ const eliteRaidMobs = [
         }
     ],
     [
-
+        {
+            name: "Bitterblade, the Brutal Blight-bringer",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607142352621680/main-qimg-24a1dffefd5f8458caf079ad72ef15d4-lq.png?ex=6613314f&is=6600bc4f&hm=ede01984f3d4b0bafe8ea2790adfe83f4e7e01613b306d96ad7d2d24f4b3dcae&",
+            description: `Bitterblade, the Brutal Blight-bringer, stands as a menacing figure clad in armor forged from the darkest of bitter melon rinds. His blade, honed to perfection, exudes an aura of malevolence as he seeks to spread decay and despair throughout the Potato Kingdom, his every strike heralding the onset of blight.`,
+            successDescription: 'Through unwavering determination and strategic cunning, the spud heroes manage to overcome Bitterblade, temporarily driving him back into the depths from whence he came. Yet, whispers persist of his inevitable return, a constant reminder that the Brutal Blight-bringer\'s reign may yet resume, casting a shadow over the realm\'s future.',
+            failureDescription: 'Overwhelmed by Bitterblade\'s relentless assault and dark magic, the potato adventurers fall one by one, their hopes dashed against the unyielding might of the Blight-bringer. As Bitterblade\'s influence spreads unchecked, the Potato Kingdom descends further into darkness, its inhabitants left to lament the failure to stem the tide of blight and despair.',
+            credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
+        }
     ]
 ]
 
@@ -57,7 +85,7 @@ const legendaryRaidMobs = [
     [
         {
             name: "Gourdor, the Pumpkin Knight",
-            thumbnailUrl: "",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221606969618600018/dgbnu01-7f36e865-7ecd-490b-885a-0400daa36655.png?ex=66133125&is=6600bc25&hm=72d0d36cfed52d777e96c65e91b5e5b364de42b8bb67490c8caaabf0639b0b01&",
             description: `Gourdor, the Pumpkin Knight, is a malevolent entity draped in twisted pumpkin vines and wielding a sinister blade forged from the darkest gourd. His presence instills fear and dread as he roams the realms, seeking to sow chaos and destruction with his wicked powers.`,
             successDescription: 'Through sheer determination and cunning strategy, the spud heroes vanquish Gourdor, the embodiment of autumnal terror, shattering his malevolent reign and restoring peace to the realms. The shadow of his evil dissipates, allowing hope to blossom once more.',
             failureDescription: 'Overpowered by Gourdor\'s dark magic and relentless fury, the potato adventurers fall before the Pumpkin Knight\'s tyranny, leaving the realms to languish in eternal darkness under his oppressive rule, their hopes crushed beneath the weight of his malevolence.',
@@ -83,7 +111,14 @@ const legendaryRaidMobs = [
         }
     ],
     [
-        Bitterblade, the Brutal Blight-bringer
+        {
+            name: "Radishreaper, the Reaper of Roots",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221606879978061854/illustration-of-evil-radish-mascot-character-free-vector.png?ex=66133110&is=6600bc10&hm=804ab41db2a44b15fdd46b98ab75da68f1edc152829bfeaa4a04e508da3e5d96&",
+            description: `Radishreaper, the Reaper of Roots, emerges from the depths of the Potato Kingdom as a sinister figure draped in tattered robes adorned with gnarled radish roots. His presence instills fear as he wields a scythe crafted from the toughest radish stems, harvesting souls with every swing.`,
+            successDescription: 'With steadfast resolve, the spud heroes manage to banish Radishreaper, dispersing his spectral form for now and freeing the Potato Kingdom from immediate peril. However, whispers persist that his dark presence may one day return, lurking in the depths of the earth, biding its time for another harvest.',
+            failureDescription: 'Overwhelmed by Radishreaper\'s relentless onslaught and spectral minions, the potato adventurers fall one by one, their souls harvested by the Reaper of Roots. Despite their efforts, Radishreaper\'s power remains unchecked, and his return is foretold, casting a shadow of uncertainty over the Potato Kingdom\'s future.',
+            credit: 'Made by Beggar'
+        }
     ]
 ]
 
@@ -154,7 +189,7 @@ const regularRaidScenarios = [
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const hardRaidMob = chooseMobFromList(legendaryRaidMobs);
+            const hardRaidMob = chooseMobFromList(regularRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -178,7 +213,7 @@ const regularRaidScenarios = [
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const mediumRaidMob = chooseMobFromList(eliteRaidMobs);
+            const mediumRaidMob = chooseMobFromList(regularRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -202,7 +237,7 @@ const regularRaidScenarios = [
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const regularRaidMob = chooseMobFromList(regularRaidMobs);
+            const regularRaidMob = chooseMobFromList(regularRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -258,7 +293,7 @@ const harderRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 3;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const hardRaidMob = chooseMobFromList(legendaryRaidMobs);
+            const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -283,7 +318,7 @@ const harderRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 4.5;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const mediumRaidMob = chooseMobFromList(eliteRaidMobs);
+            const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -308,7 +343,7 @@ const harderRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const regularRaidMob = chooseMobFromList(regularRaidMobs);
+            const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -364,7 +399,7 @@ const hardestRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const hardRaidMob = chooseMobFromList(legendaryRaidMobs);
+            const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -389,7 +424,7 @@ const hardestRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 8;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const mediumRaidMob = chooseMobFromList(eliteRaidMobs);
+            const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -414,7 +449,7 @@ const hardestRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 10;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const regularRaidMob = chooseMobFromList(regularRaidMobs);
+            const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -571,10 +606,10 @@ module.exports = {
         const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
         const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
 
-        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
-            return;
-        }
+        // if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+        //     interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
+        //     return;
+        // }
 
         let totalMultiplier = 0;
         for (const [index, element] of raidList.entries()) {
