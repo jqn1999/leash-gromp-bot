@@ -606,10 +606,10 @@ module.exports = {
         const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
         const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
 
-        // if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
-        //     interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
-        //     return;
-        // }
+        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(timeUntilRaidAvailableInSeconds)} before raiding again!`);
+            return;
+        }
 
         let totalMultiplier = 0;
         for (const [index, element] of raidList.entries()) {
