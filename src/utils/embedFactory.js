@@ -489,13 +489,13 @@ class EmbedFactory {
         return embed;
     }
 
-    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds) {
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds) {
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
 
         let raidTime = '';
-        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+        if (timeUntilRaidAvailableInSeconds > 0) {
             raidTime = convertSecondstoMinutes(timeUntilRaidAvailableInSeconds);
         } else {
             raidTime = 'Ready'

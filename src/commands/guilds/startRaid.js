@@ -76,7 +76,7 @@ const eliteRaidMobs = [
             description: `Bitterblade, the Brutal Blight-bringer, stands as a menacing figure clad in armor forged from the darkest of bitter melon rinds. His blade, honed to perfection, exudes an aura of malevolence as he seeks to spread decay and despair throughout the Potato Kingdom, his every strike heralding the onset of blight.`,
             successDescription: 'Through unwavering determination and strategic cunning, the spud heroes manage to overcome Bitterblade, temporarily driving him back into the depths from whence he came. Yet, whispers persist of his inevitable return, a constant reminder that the Brutal Blight-bringer\'s reign may yet resume, casting a shadow over the realm\'s future.',
             failureDescription: 'Overwhelmed by Bitterblade\'s relentless assault and dark magic, the potato adventurers fall one by one, their hopes dashed against the unyielding might of the Blight-bringer. As Bitterblade\'s influence spreads unchecked, the Potato Kingdom descends further into darkness, its inhabitants left to lament the failure to stem the tide of blight and despair.',
-            credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
+            credit: 'Made by Beggar'
         }
     ]
 ]

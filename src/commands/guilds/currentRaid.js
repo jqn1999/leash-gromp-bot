@@ -32,8 +32,7 @@ module.exports = {
         }
         const raidList = guild.raidList;
 
-        const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
-        const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
+        const timeUntilRaidAvailableInSeconds = Math.floor((guild.raidTimer - Date.now())/1000);
 
         if (raidList.length == 0) {
             interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
@@ -63,7 +62,7 @@ module.exports = {
             totalMultiplier *= 1.15;
         }
 
-        embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds);
+        embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
         interaction.editReply({ embeds: [embed] });
     }
 }
