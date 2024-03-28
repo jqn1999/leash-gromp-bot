@@ -30,19 +30,19 @@ const regularRaidMobs = [
         {
             name: "Scallionshade, the Shadowy Scion",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607716355706971/kawaii-smiling-leek-vegetable-cartoon-illustration-spring-onions-on-color-background-smiling-leek-vegetable-cartoon-illustration-free-vector.png?ex=661331d7&is=6600bcd7&hm=3815e4de70195853ef982e0194b758fbd0f8fab0200adc5cb126d92bfce8c099&",
-            description: `Scallionshade, the Shadowy Scion, emerges from the depths of the Potato Kingdom as a mysterious figure cloaked in darkness, his form obscured by swirling shadows that dance around him like wisps of smoke. With eyes gleaming like dimly lit embers, he wields the power of shadows, commanding them to do his bidding as he seeks to envelop the realm in eternal darkness.`,
-            successDescription: 'Through unwavering resolve and strategic prowess, the spud heroes manage to penetrate Scallionshade\'s veil of darkness, dispersing his shadowy form and banishing him back into the abyss from whence he came. Though defeated for now, whispers linger of his inevitable return, a reminder that the Shadowy Scion\'s darkness may yet shroud the Potato Kingdom once more.',
-            failureDescription: 'Overwhelmed by Scallionshade\'s relentless onslaught and the suffocating embrace of darkness, the potato adventurers fall one by one, their spirits consumed by the shadows. As Scallionshade\'s influence spreads unchecked, the Potato Kingdom plunges into eternal night, its inhabitants forever lost in the abyss of the Shadowy Scion\'s domain.',
+            description: `Scallionshade, the Shadowy Scion, haunts a once peaceful village located in the Potato Kingdom's outskirts. Answering the call of the village's fearful residents, the kingdom's heroes venture out to liberate it from his shadowy grasp. Their arrival triggers the emergence of the scion himself: a mysterious figure obscured by shadows that dance around him like wisps of smoke.`,
+            successDescription: 'The potato adventurers beat back Scallionshade\'s dark forces and neutralize his shadowy minions. His influence begins to wane, and the dark veil that the scion once cast is lifted from the village. As their weakened foe recoils in the sunlight, the party lands a decisive blow that sends Scallionshade back into the obscurity of the beyond.',
+            failureDescription: 'Try as they might, the potato adventurers are ultimately suffocated by Scallionshade\'s darkness. The heroes\' and villagers\' souls alike succumb to the embrace of his shadows, and his veil of darkness begins to spread further beyond the walls of the wailing village.',
             credit: 'Made by Beggar'
         }
     ],
     [
         {
-            name: "Garlicore, the Pungent Overlord",
+            name: "Garlicore, the Pungent Pilferer",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607411710689280/dacedaaa-00fe-11ee-8c31-f23c938336bc-9759-0.png?ex=6613318f&is=6600bc8f&hm=da68c0239e8813f999453ac161974cbc47c4485c8e6a7c2a92b177732fb8eaee&",
-            description: `Garlicore, the Pungent Overlord, rises from the depths of the Potato Kingdom as a towering figure draped in robes of garlic cloves, emanating an overpowering aroma that strikes fear into the hearts of all who dare to oppose him. With each step, his presence saturates the air with the unmistakable scent of garlic, a harbinger of his potent and pungent power.`,
-            successDescription: 'Through strategic teamwork and unwavering determination, the spud heroes manage to overcome Garlicore, dispersing his pungent aura and banishing him back into the depths from whence he came. The Potato Kingdom celebrates the defeat of the Pungent Overlord, breathing a sigh of relief as the air clears of his oppressive scent.',
-            failureDescription: 'Overwhelmed by Garlicore\'s relentless assault and the suffocating aroma of garlic, the potato adventurers fall one by one, their senses overwhelmed by the pungent onslaught. As Garlicore\'s influence spreads unchecked, the Potato Kingdom becomes forever tainted by the lingering scent of the Pungent Overlord, a reminder of their failure to rid the realm of his foul presence.',
+            description: `The economic equilibrium of the potato kingdom is threatened by Garlicore, a bulbous vegetable thief known throughout the criminal underworld. Making a name for himself as the “Pungent Pilferer,” Garlicore exercises his overpowering fragrance to incapacitate his opposition. Not particularly skilled in combat himself, he relies on hired hands to ensure his dark dealings continue unimpeded.`,
+            successDescription: 'The potato adventurers infiltrate Garlicore\'s hideout, leading to a scuffle with his stenchy henchmen. Realizing his subordinates are no match for the heroes, he begins to flee. However, with speedy precision, the party braves the Pungent Pilferer\'s stench, apprehending him and delivering him to justice.',
+            failureDescription: 'The potato adventurers\' infiltration mission takes an unfortunate turn when they\'re discovered and captured by Garlicore\'s underlings. The boss himself emerges from his lair, saturating the air with his unmistakable scent. The party\'s consciousness begins to fade, and it\'s only after they awaken that they realize their belongings have been pilfered by their putrid foe.',
             credit: 'Made by Beggar'
         }
     ]
@@ -51,11 +51,11 @@ const regularRaidMobs = [
 const eliteRaidMobs = [
     [
         {
-            name: "Scarlet Seraph, the Strawberry Sovereign",
+            name: "Scarlet, the Strawberry Seraph",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607252868206642/cefb8ca7615585269517650efddcfe7c.png?ex=66133169&is=6600bc69&hm=9a30d618ada308ee125e11320fee4f1042e2fdd8d953295ba1104aee49508dde&",
-            description: `Scarlet Seraph, the Strawberry Sovereign, stands as a majestic figure, draped in robes the color of ripe strawberries and crowned with a halo of strawberry leaves. With wings of crimson and a regal demeanor, this celestial being commands the essence of strawberries, exuding an aura of fruity power and majesty.`,
-            successDescription: 'Through unwavering courage and strategic prowess, the spud heroes manage to weaken Scarlet Seraph, the Strawberry Sovereign, forcing it to retreat into the celestial realm. Though temporarily defeated, whispers linger of its inevitable return, reminding all that the Strawberry Sovereign may rise again to reign over the Potato Kingdom.',
-            failureDescription: 'Overwhelmed by Scarlet Seraph\'s formidable powers and celestial aura, the potato adventurers fall one by one, their efforts futile against the Strawberry Sovereign\'s might. As Scarlet Seraph retreats to the celestial realm, the Potato Kingdom remains under the shadow of its impending return, its inhabitants living in fear of the Strawberry Sovereign\'s inevitable resurgence.',
+            description: `The majestic Strawberry Seraph, Scarlet, is said to exist within the vegetable realm to answer for the wrongdoings of the Sinister Strawberries. Though not an enemy of the kingdom, she offers adventurers the opportunity to test themselves against her. Sporting a regal attitude, potent fruity magic, and wings of crimson, this celestial being offers a considerable reward to those who can best her in combat.`,
+            successDescription: 'The adventurers\' coordination allows them to halt Scarlet\'s flight with a staggering blow. They ward off her spells and subdue the Strawberry Seraph, leaving her no choice but to begrudgingly surrender. As the party boasts of their decisive victory, Scarlet contends that they simply got lucky this time around.',
+            failureDescription: 'The Strawberry Seraph\'s agility and magic prove too overbearing for the party to manage. They suffer a rather embarrassing defeat in front of the other adventurers, and Scarlet jeers that heroes these days must be getting too soft.',
             credit: 'Made by Beggar'
         }
     ],
@@ -71,11 +71,11 @@ const eliteRaidMobs = [
     ],
     [
         {
-            name: "Bitterblade, the Brutal Blight-bringer",
+            name: "Evertart, the Blighted Bitterblade",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221607142352621680/main-qimg-24a1dffefd5f8458caf079ad72ef15d4-lq.png?ex=6613314f&is=6600bc4f&hm=ede01984f3d4b0bafe8ea2790adfe83f4e7e01613b306d96ad7d2d24f4b3dcae&",
-            description: `Bitterblade, the Brutal Blight-bringer, stands as a menacing figure clad in armor forged from the darkest of bitter melon rinds. His blade, honed to perfection, exudes an aura of malevolence as he seeks to spread decay and despair throughout the Potato Kingdom, his every strike heralding the onset of blight.`,
-            successDescription: 'Through unwavering determination and strategic cunning, the spud heroes manage to overcome Bitterblade, temporarily driving him back into the depths from whence he came. Yet, whispers persist of his inevitable return, a constant reminder that the Brutal Blight-bringer\'s reign may yet resume, casting a shadow over the realm\'s future.',
-            failureDescription: 'Overwhelmed by Bitterblade\'s relentless assault and dark magic, the potato adventurers fall one by one, their hopes dashed against the unyielding might of the Blight-bringer. As Bitterblade\'s influence spreads unchecked, the Potato Kingdom descends further into darkness, its inhabitants left to lament the failure to stem the tide of blight and despair.',
+            description: `Travelers rumor of a ruthless fruit fully clad in a tough, bitter melon rind armor. They say he bears a gnarly blade exuding an aura of overwhelming malice, and his arrival heralds blight and decay. To assuage the growing grief of the kingdom's residents, the adventurers set out to put an end to this enigmatic figure's streak of woe.`,
+            successDescription: 'Tracking him by his wake of corruption, the party comes face-to-face with Evertart, the Bitterblade. The heroes cut past his accursed blade and deliver a seemingly-fatal stab through his sordid figure, only for it to vanish into the air. Though he was surely vanquished, faint whispers persist of the wraithlike Bitterblade\'s supposed return…',
+            failureDescription: 'Tracking him by his wake of corruption, the party comes face-to-face with Evertart, the Bitterblade. They\'re stunned by the malicious enchantments echoing from his blade, and are brutally beaten by an onslaught of steel and spellcraft. As the heroes lie broken in his wake, Evertart continues to wreak blight and havoc throughout the realm.',
             credit: 'Made by Beggar'
         }
     ]
@@ -86,9 +86,9 @@ const legendaryRaidMobs = [
         {
             name: "Gourdor, the Pumpkin Knight",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221606969618600018/dgbnu01-7f36e865-7ecd-490b-885a-0400daa36655.png?ex=66133125&is=6600bc25&hm=72d0d36cfed52d777e96c65e91b5e5b364de42b8bb67490c8caaabf0639b0b01&",
-            description: `Gourdor, the Pumpkin Knight, is a malevolent entity draped in twisted pumpkin vines and wielding a sinister blade forged from the darkest gourd. His presence instills fear and dread as he roams the realms, seeking to sow chaos and destruction with his wicked powers.`,
-            successDescription: 'Through sheer determination and cunning strategy, the spud heroes vanquish Gourdor, the embodiment of autumnal terror, shattering his malevolent reign and restoring peace to the realms. The shadow of his evil dissipates, allowing hope to blossom once more.',
-            failureDescription: 'Overpowered by Gourdor\'s dark magic and relentless fury, the potato adventurers fall before the Pumpkin Knight\'s tyranny, leaving the realms to languish in eternal darkness under his oppressive rule, their hopes crushed beneath the weight of his malevolence.',
+            description: `The Pumpkin Knight Gourdor was once a celebrated hero and champion of a neighboring kingdom's army. This once noble figure has been resurrected by evil energies, and he now gallops throughout the realm as a malevolent entity draped in twisted pumpkin vines. Brandishing a twisted, sinister blade forged from the darkest gourd, he seeks to sow chaos with his wicked powers.`,
+            successDescription: 'The potato adventurers brave Gourdor\'s swarm of minions and madness, facing off against the Pumpkin Knight himself. Outclassed in one-on-one combat, the party relies on their numbers to triumph over the once proud knight. Though his weary soul may momentarily rest, the wicked powers that reanimated Gourdor still persist beyond the far reaches of the realm…',
+            failureDescription: 'The party cannot hope to match Gourdor\'s fiendish powers, nor his martial prowess. They\'re swarmed by his malevolent munchkin pumpkins, allowing him to reap their souls with little effort. After humiliating the Potato Kingdom\'s finest, Gourdor continues to propagate discord throughout the realm unabated.',
             credit: 'Made by Beggar'
         }
     ],
@@ -112,11 +112,11 @@ const legendaryRaidMobs = [
     ],
     [
         {
-            name: "Radishreaper, the Reaper of Roots",
+            name: "Radishrend, the Root Reaper",
             thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1221606879978061854/illustration-of-evil-radish-mascot-character-free-vector.png?ex=66133110&is=6600bc10&hm=804ab41db2a44b15fdd46b98ab75da68f1edc152829bfeaa4a04e508da3e5d96&",
-            description: `Radishreaper, the Reaper of Roots, emerges from the depths of the Potato Kingdom as a sinister figure draped in tattered robes adorned with gnarled radish roots. His presence instills fear as he wields a scythe crafted from the toughest radish stems, harvesting souls with every swing.`,
-            successDescription: 'With steadfast resolve, the spud heroes manage to banish Radishreaper, dispersing his spectral form for now and freeing the Potato Kingdom from immediate peril. However, whispers persist that his dark presence may one day return, lurking in the depths of the earth, biding its time for another harvest.',
-            failureDescription: 'Overwhelmed by Radishreaper\'s relentless onslaught and spectral minions, the potato adventurers fall one by one, their souls harvested by the Reaper of Roots. Despite their efforts, Radishreaper\'s power remains unchecked, and his return is foretold, casting a shadow of uncertainty over the Potato Kingdom\'s future.',
+            description: `A physical personification of death itself, Radishrend is a primal force of evil. Like other great dangers to the kingdom, the Root Reaper's wicked powers are likely fueled by the Spud Entity. Yet his heinous tragedies precede even the void's emergence, and he needs no excuse to spread suffering with the swing of his radish-stemmed scythe.`,
+            successDescription: 'As the Root Reaper\'s ghostly visage materializes before the potato adventurers, they steel their resolve for the ultimate showdown. Valiantly safeguarding their beloved kingdom, the party casts Radishrend away with their strongest weapons and most potent magic. Though momentarily vanquished, the reaper subsides into the beyond in preparation for yet another harvest of souls.',
+            failureDescription: 'As the Root Reaper\'s ghostly visage materializes before the potato adventurers, they steel their resolve for the ultimate showdown. His hordes of undead vegetables overwhelm the heroes, and not even their finest fighters can find an opening in Radishrend\'s front. With his opposition occupied, the reaper continues unimpeded, harvesting soul after soul from the once peaceful kingdom.',
             credit: 'Made by Beggar'
         }
     ]
@@ -605,7 +605,7 @@ module.exports = {
 
         const timeUntilRaidAvailableInMS = guild.raidTimer - Date.now()
         if (timeUntilRaidAvailableInMS > 0) {
-            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS/1000))} before raiding again!`);
+            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS / 1000))} before raiding again!`);
             return;
         }
 

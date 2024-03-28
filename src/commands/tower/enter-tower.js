@@ -95,7 +95,7 @@ function createResult(rewards, floor, username){
             },
             {
                 name: "Work Multiplier:",
-                value: `${rewards[1]} work multiplier`,
+                value: `${rewards[1].toFixed(2)} work multiplier`,
                 inline: false,
             },
             {

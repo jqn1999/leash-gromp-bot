@@ -50,6 +50,14 @@ const guildShops = [
             {
                 amount: 1500000000,
                 cost: 1200000000,
+            },
+            {
+                amount: 2000000000,
+                cost: 1500000000,
+            },
+            {
+                amount: 2500000000,
+                cost: 2000000000,
             }
         ],
         title: "Guild Potato Storage Shop (increase bank capacity)"
