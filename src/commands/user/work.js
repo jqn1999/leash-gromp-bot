@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
-const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
@@ -11,10 +11,6 @@ function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);
     const reward = mobList[random];
     return reward
-}
-
-function getRandomFromInterval(min, max) {
-    return Math.random() * (max - min) + min;
 }
 
 function setWorkScenarios(workChances) {
@@ -65,7 +61,7 @@ var workScenarios = [
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier);
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
             } else {
-                await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now());
+                await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
                 potatoesGained = 0;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }
@@ -84,6 +80,16 @@ var workScenarios = [
         },
         chance: .081,
         type: WORK_SCENARIO_INDICES.SWEET
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
+            starchesGained = await workFactory.handleTaroTrader(userDetails);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader);
+            interaction.editReply({ embeds: [embed] });
+            return starchesGained;
+        },
+        chance: .101,
+        type: WORK_SCENARIO_INDICES.TARO
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction) => {
@@ -118,11 +124,9 @@ module.exports = {
             return;
         }
 
-        const timeSinceLastWorkedInSeconds = Math.floor((Date.now() - userDetails.workTimer) / 1000);
-        const timeUntilWorkAvailableInSeconds = Work.WORK_TIMER_SECONDS - timeSinceLastWorkedInSeconds
-
-        if (timeSinceLastWorkedInSeconds < Work.WORK_TIMER_SECONDS) {
-            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(timeUntilWorkAvailableInSeconds)} before working again!`);
+        const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
+        if (timeUntilWorkAvailableInMS > 0) {
+            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
             return;
         };
 

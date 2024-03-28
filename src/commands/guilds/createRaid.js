@@ -6,7 +6,7 @@ module.exports = {
     name: "create-raid",
     description: "Creates a raid and allows members to join the raid",
     devOnly: false,
-    deleted: false,
+    deleted: true,
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);

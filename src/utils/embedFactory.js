@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, Raid, shops } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
@@ -29,9 +29,16 @@ class EmbedFactory {
             value: `${userDetails.starches.toLocaleString()} starches`,
             inline: false,
         });
+        let workMultiLabel = ``;
+        const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+        if (additionalWorkMulti) {
+            workMultiLabel += `${(userDetails.workMultiplierAmount + additionalWorkMulti).toFixed(2)}x (+${(additionalWorkMulti).toFixed(2)}x)`
+        } else {
+            workMultiLabel += `${(userDetails.workMultiplierAmount).toFixed(2)}x`
+        }
         fields.push({
             name: "Current Work Multiplier:",
-            value: `${(userDetails.workMultiplierAmount).toFixed(2)}x`,
+            value: workMultiLabel,
             inline: false,
         });
         fields.push({
@@ -391,13 +398,13 @@ class EmbedFactory {
             inline: true
         })
         fields.push({
-            name: `Active Raid:`,
-            value: `${guild.activeRaid}`,
+            name: `Reward Multiplier:`,
+            value: `${guild.raidRewardMultiplier}`,
             inline: true
         })
         fields.push({
-            name: `Reward Multiplier:`,
-            value: `${guild.raidRewardMultiplier}`,
+            name: `Guild Buff:`,
+            value: `${guild.guildBuff}`,
             inline: true
         })
 
@@ -482,13 +489,13 @@ class EmbedFactory {
         return embed;
     }
 
-    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds) {
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds) {
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
 
         let raidTime = '';
-        if (timeSinceLastRaidInSeconds < Raid.RAID_TIMER_SECONDS) {
+        if (timeUntilRaidAvailableInSeconds > 0) {
             raidTime = convertSecondstoMinutes(timeUntilRaidAvailableInSeconds);
         } else {
             raidTime = 'Ready'
@@ -540,17 +547,22 @@ class EmbedFactory {
         })
 
         const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
-        raidCount = totalRaidReward >= 0 ? raidCount + 1 : raidCount
+        let usedBankText = ''
+        if (!splitRaidReward) {
+            usedBankText = totalRaidReward >= 0 ? ' In Guild Bank' : ' From Guild Bank'
+        }
         fields.push({
-            name: `Total Potatoes ${gainOrLoss}:`,
+            name: `Total Potatoes ${gainOrLoss}${usedBankText}:`,
             value: `${totalRaidReward.toLocaleString()} potatoes`,
             inline: false,
         })
-        fields.push({
-            name: `Split Potatoes ${gainOrLoss}:`,
-            value: `${splitRaidReward.toLocaleString()} potatoes`,
-            inline: true,
-        })
+        if (splitRaidReward) {
+            fields.push({
+                name: `Split Potatoes ${gainOrLoss}:`,
+                value: `${splitRaidReward.toLocaleString()} potatoes`,
+                inline: true,
+            })
+        }
 
         let stringListOfMembers = ``;
         for (const [index, element] of raidList.entries()) {
@@ -608,11 +620,12 @@ class EmbedFactory {
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
-        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato;
+        const gainPotatoesOrStarches = mob.name == taroTrader.name ? 'Starches' : 'Potatoes';
+        const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato.name;
         let color = potatoesGained >= 0 && !isFailedMetal  ? 'Green' : 'Red';
         fields.push({
-            name: `Potatoes ${gainOrLoss}:`,
-            value: `${potatoesGained.toLocaleString()} potatoes`,
+            name: `${gainPotatoesOrStarches} ${gainOrLoss}:`,
+            value: `${potatoesGained.toLocaleString()} ${gainPotatoesOrStarches.toLowerCase()}`,
             inline: true,
         })
 
@@ -731,7 +744,7 @@ class EmbedFactory {
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
         const potatoResultLabel = robOrFineAmount > 0 ? 'Gained' : 'Lost';
-        const color = robOrFineAmount >= 0 ? 'Green' : 'Red';
+        const color = robOrFineAmount > 0 ? 'Green' : 'Red';
 
         fields.push({
             name: `Chance to Rob:`,
@@ -858,7 +871,7 @@ class EmbedFactory {
         })
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
+            .setTitle(`${userDisplayName} ${currentType}s ${starchAmount.toLocaleString()} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)
             .setDescription(`Displayed below are your current potatoes and starches.\nCurrent Price: ${starchPrice.toLocaleString()} potatoes`)
             .setColor(color)
             .setThumbnail(avatarUrl)
@@ -880,6 +893,19 @@ function findShopItemName(amount, shopItems) {
 
 function getUserAvatar(userId, avatarHash) {
     return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.png`;
+}
+
+async function getGuildWorkMulti(userDetails, userMultiplier){
+    const userGuildId = userDetails.guildId;
+    if (userGuildId){
+        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        if(guild){
+            if(guild.guildBuff == "workMulti"){
+                return userMultiplier * .10
+            }
+        }
+    }
+    return 0
 }
 
 module.exports = {

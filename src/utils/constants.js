@@ -8,7 +8,7 @@ const Work = {
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
     MAX_GOLDEN_POTATO: 500000,
-    POISON_POTATO_TIMER_INCREASE_MS: 3300000
+    POISON_POTATO_TIMER_INCREASE_SECONDS: 3600
 }
 
 const Bet = {
@@ -42,7 +42,7 @@ const Raid = {
     MEDIUM_RAID_DIFFICULTY: 60,
 
     HARD_RAID_REWARD: 5000000,
-    HARD_RAID_PENALTY: -2000000,
+    HARD_RAID_PENALTY: -5000000,
     HARD_RAID_DIFFICULTY: 150,
 
     LEGENDARY_RAID_REWARD: 10000000,
@@ -53,7 +53,7 @@ const Raid = {
     LEGENDARY_RAID_DIFFICULTY: 500,
 
     REGULAR_STAT_RAID_REWARD: 0.2,
-    REGULAR_STAT_RAID_COST: -200000,
+    REGULAR_STAT_RAID_COST: -300000,
     REGULAR_STAT_RAID_DIFFICULTY: 250
 }
 
@@ -64,79 +64,30 @@ const GuildRoles = {
     MEMBER: "Member"
 }
 
-const regularRaidMobs = [
-    {
-        name: "Celerity, the Swift Stalk",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
-        description: `Deep within the verdant forests of the Potato Realm, adventurers encounter Celerity, the Swift Stalk, a celery stick infused with the essence of unparalleled speed. In this high-paced raid, players must navigate through a maze of rapidly growing vines and swiftly dodging the Stalk's lightning-fast attacks, testing their agility and coordination to claim victory over this fleet-footed foe.`,
-        successDescription: 'With synchronized precision, the brave warriors strategically severs Celerity\'s roots, halting its lightning-speed assaults and claiming triumph over the Swift Stalk.',
-        failureDescription: 'Overwhelmed by the relentless barrage of swift strikes, the adventurers succumb to Celerity\'s lightning-fast onslaught, leaving the forest engulfed in the echoes of their unsuccessful struggle.',
-        credit: 'Inspired by Moonwave'
-    },
-    {
-        name: "Baron Durianwrath, the Aromatic Abomination",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1198039614112399542/image.png?ex=65bd7456&is=65aaff56&hm=4a1bca2d540e14b0c2258bcb6a4b5ca6ddb9289d8221bc4fb5294df98e62247e&",
-        description: `In the dimly lit caverns of Potato Kingdom, brave spud adventurers face the daunting challenge of Baron Durianwrath, a colossal durian infused with the essence of foul-smelling durians. As the air becomes thick with the pungent aroma, players must navigate the stench-filled battleground, dodging explosive durian attacks and combating the Baron's formidable durian minions to emerge victorious in this aromatic raid.`,
-        successDescription: 'The courageous group of hunters withstand the overwhelming stench, strategically targeting and neutralizing Baron Durianwrath\'s minions before delivering the final blow, purging the Potato Kingdom of the Aromatic Abomination... for now.',
-        failureDescription: 'Succumbing to the noxious fumes and explosive durian attacks, the brave adventurers fall one by one, overwhelmed by the potent combination of odor and destructive force unleashed by Baron Durianwrath and his minions.',
-        credit: 'Inspired by Moonwave'
-    }
-]
-
-const mediumRaidMobs = [
-    {
-        name: "Basilbane, the Herbaceous Harbinger",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1205682852172271727/baycil.png?ex=65d942a8&is=65c6cda8&hm=499bab1149a7948b3811db877a628775b9a9a4725cc1382fa14571281575baa7&",
-        description: `Basilbane, the Herbaceous Harbinger, stands as a colossal basil plant adorned with twisting vines and vibrant basil leaves. This formidable foe harnesses the power of nature, unleashing entangling vines, toxic spores, and a pervasive herbal aura that challenges even the bravest spud adventurers in the heart of the Potato Kingdom.`,
-        successDescription: 'Through keen tactics and herbal expertise, the potato adventurers successfully counter Basilbane\'s botanical onslaught, plucking the herbaceous harbringer from its roots and restoring balance to the Potato Kingdom.',
-        failureDescription: 'Overwhelmed by the entangling vines and toxic spores unleashed by Basilbane, the spud heroes succumb to the relentless onslaught of nature\'s fury, leaving the Potato Kingdom in the clutches of the herbaceous menace.',
-        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
-    }
-]
-
-const hardRaidMobs = [
-    {
-        name: "Netherfig, the Abyssal Figwraith",
-        thumbnailUrl: "https://media.discordapp.net/attachments/221456693127675904/1201738231243341885/plant.png?ex=65cae8f1&is=65b873f1&hm=44ed099acc8954ccd201e86299bebd47fcf660430fd54aae7e98f9df089aea5d&",
-        description: `Netherfig, the Abyssal Figwraith, emerges from the shadowy depths of the Potato Kingdom, a sinister fig draped in ethereal fig foliage. Dark energy emanates from its core, as it commands otherworldly fig minions and weaves dark spells to ensnare any daring adventurers.`,
-        successDescription: 'With unwavering resolve, the spud heroes dispel the abyssal energies, shattering the spectral figwraith\'s influence and banishing Netherfig back into the shadows, restoring peace to the Potato Kingdom.',
-        failureDescription: 'Succumbing to the dark enchantments and relentless figwraith minions, the potato adventurers are consumed by the abyssal forces, leaving the Potato Kingdom plunged into an eternal night under the rule of Netherfig, the malevolent harbinger of darkness.',
-        credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
-    },
-    {
-        name: "Behemoth Broccoli, the Green Guardian",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198836128179032125/SPOILER_image.png?ex=65c05a26&is=65ade526&hm=ae08d9219546b86ef8a79e0de03c87ba36245c0cfdb302999da13bd05dbd3305&",
-        description: `Behemoth Broccoli, the Green Guardian, looms over the Potato Kingdom as an immense, sentient broccoli with towering florets and a formidable, leafy armor. Its presence exudes an aura of plant-based might, defending the vegetable realm with unwavering determination.`,
-        successDescription: 'Through strategic teamwork and perseverance, the spud heroes dismantle Behemoth Broccoli\'s leafy defenses, exposing its vulnerable core and bringing an end to its reign as the Green Guardian, restoring harmony to the Potato Kingdom.',
-        failureDescription: 'Overpowered by the broccoli behemoth\'s resilient defenses and potent vegetable magic, the potato adventurers succumb to the Green Guardian\'s formidable might, leaving the Potato Kingdom under the eternal watch of Behemoth Broccoli.',
-        credit: 'Inspired by Zoodbarg'
-    }
-]
-
 const metalKingRaidBoss = {
     name: "Metal King Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
-    description: `Metal Potatoes rumor that there exists a silvery sovereign presiding over them all. This mythical figure, the Metal King Potato, is said be an amalgamation of eight Metal Potatoes! Boasting devastating magic, impenetrable defence, and its signature evasion, this regal rival offers your party an unusual challenge.`,
-    successDescription: 'In a desperate gambit, the potato adventurers launch an all-or-nothing attack at the fleeting foe. The Metal King is caught off guard, and in its stupor suffers a critical blow! Thanks to their decisive maneuver, the adventurers earn a beautiful bounty!',
-    failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispell it before it can escape. However, following a disorienting explosion spell, the adventurers come to the sad realization that their slippery assailant is nowhere to be found...',
+    description: `You had an extremely lucky encounter with the Metal King Potato! It\'s said that this silvery sovereign, an amalgamation of eight Metal Potatoes, presides over them all. Like its subjects, the King boasts impenetrable defence and its signature evasion. With the addition of advanced magic to its arsenal, this regal rival offers your party an unusual challenge.`,
+    successDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispel it before it can escape. A desperate gambit on an all-or-nothing attack catches the fleeting foe off guard, and it suffers a critical blow in its stupor! Thanks to their decisive maneuver, the adventurers earn astronomical augments to each of their stats!',
+    failureDescription: 'The potato adventurers struggle in a race against the clock, praying they can discover a weakness in the King\'s preposterous defence and dispel it before it can escape. However, following a disorienting explosion spell, our heroes come to the sad realization that their slippery assailant is nowhere to be found...',
     credit: 'Inspired by RednaxeIa'
 }
 
 const regularStatRaidMobs = [
     {
-        name: "Spectral Spudspecter, the Ghostly Potato Monarch",
+        name: "Grimtater, the Ghostly Potato Monarch",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1203364521540853911/1206781637254455327/spudspecter.png?ex=65dd41fb&is=65caccfb&hm=a79ff5b02170d5690a8c2634a56fdf84be15293c60df86558596325b446d3b46&",
-        description: `The Spectral Spudspecter, the Ghostly Potato Monarch, materializes as a haunting apparition, cloaked in ethereal potato skins and wreathed in wisps of ghostly vapors. Its spectral form exudes an otherworldly aura, commanding the very essence of the afterlife within the Potato Kingdom.`,
-        successDescription: 'Through courage and cunning, the spud heroes banish the Spectral Spudspecter, dispersing its ghostly visage and restoring peace to the Potato Kingdom. The spectral monarch\'s reign of ethereal terror comes to an end, and the realm is freed from its haunting grasp.',
-        failureDescription: 'Enveloped by the chilling embrace of the Spectral Spudspecter\'s ghostly powers, the potato adventurers fade into the shadows, their efforts to vanquish the Ghostly Potato Monarch thwarted. The realm of potatoes falls deeper into the spectral abyss, haunted by the ghostly presence of its malevolent ruler.',
+        description: `Once the ruler of a distant, long-forgotten Potato Kingdom, Grimtater conquered the afterlife through a pact with the Spud Entity. Mindlessly serving its dark master, this spectral scion materializes in the living world cloaked in ethereal potato skins and wreathed in wisps of ghostly vapors. Now without a will of its own, the ghastly monarch commands the essence of the afterlife against the peaceful Potato Kingdom.`,
+        successDescription: 'The spud heroes vanquish Grimtater with courage and cunning, dispersing its ghostly visage and freeing their realm from its haunting grasp. The spectral monarch\'s threat of ethereal terror over the living wanes, and it returns to the beyond to gather its strength once more...',
+        failureDescription: 'The Potato Kingdom is enveloped by the chilling embrace of Grimtater\'s otherworldly powers. With the heroes\' efforts having been thwarted, many of the kingdom\'s inhabitants fade into an abyss of shadows. As they plunge deeper into the malevolent void, the line between the living and the dead begins to blur...',
         credit: 'Inspired by Moonwave, artwork by RednaxeIa and Charizard'
     },
     {
         name: "Shiitakethane, the Fungal Tyrant",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1205607647781453914/1mwXHpdt6CTQHxH78dwc6NA.png?ex=65d8fc9e&is=65c6879e&hm=4cd919639eb3529c9a807565c3abfdd5f497db00ed9eb36bd9788e1801d5ec86&",
-        description: `Shiitakethane, the Fungal Tyrant, emerges from the depths of the Potato Kingdom as a towering mushroom sovereign, adorned with spores and mycelial tendrils that writhe with eerie sentience. Its presence heralds a reign of fungal dominance, threatening the very balance of the vegetable realm.`,
-        successDescription: 'Through stalwart resolve and strategic prowess, the spud heroes dismantle Shiitakethane\'s fungal empire, purging the Potato Kingdom of its tyrannical grip. The fungal tyrant\'s reign crumbles, and the realm is restored to harmony and balance.',
-        failureDescription: 'Overwhelmed by the relentless onslaught of fungal minions and toxic spores unleashed by Shiitakethane, the potato adventurers succumb to the fungal tyrant\'s dominion. The Potato Kingdom plunges into darkness, ensnared by the tendrils of the Fungal Tyrant\'s malevolent rule.',
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1203364521540853911/1208436318984601670/muchroom.png?ex=65e34706&is=65d0d206&hm=5a67d856537f6d4323d81b954fbe81fe98486b9e4d641310a5de2712af320590&",
+        description: `From the swampy wetlands emerges Shiitakethane, the Fungal Tyrant. This towering mushroom sovereign is adorned with spores and mycelial tendrils that writhe with eerie sentience. It heralds a reign of fungal dominance that threatens the peace of the Potato Kingdom and the wider vegetable realm.`,
+        successDescription: 'The potato adventurers demonstrate stalwart resolve and strategic prowess, driving back the Fungal Tyrant\'s twisted advances. As Shiitakethane is repelled, its fungal dominion wanes and harmony returns to the vegetable realm.',
+        failureDescription: 'The potato adventurers are overwhelmed by a relentless onslaught of toxic spores, fungal minions, and writhing tendrils. The party is left with no choice but to submit to the Fungal Tyrant and watch as Shiitakethane\'s cruel dominion spreads further throughout the realm.',
         credit: 'Inspired by Moonwave'
     }
 ]
@@ -145,49 +96,49 @@ const regularWorkMobs = [
     {
         name: "Baby Broccoli",
         thumbnailUrl: "https://banner2.cleanpng.com/20231112/oze/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg",
-        description: `You have worked and slain a rather cute vegetable... you still gain some potatoes, but people look at you a bit differently now.`
+        description: `You happen upon a rather cute vegetable and bring yourself to slay it. You gain some potatoes as a reward, but people seem to look at you a bit differently now...`
     },
     {
         name: "Cruel Carrot",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196674754199949312/image.png?ex=65b87d36&is=65a60836&hm=3d3c266d540733a97911817a7fd46ee349d5987fb08b54d829edd98b509e1711&",
-        description: `You have worked and slain a dangerous vegetable. You gain some potatoes for your efforts!`
+        description: `You encounter a Cruel Carrot, a malevolent vegetable whose orange hues conceal a fierce determination. Bravely beating it in battle, you earn a bountiful harvest of potatoes as a reward!`
     },
     {
         name: "Blasphemous Bitter Melon",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196815721909452810/image.png?ex=65b9007f&is=65a68b7f&hm=8ace537de38b4a6878160e82a71467a8d18a7007f7fd4543f9d1579595175d16&",
-        description: `You have worked and encountered a wanted criminal, the Bitter Melon! After a short battle you defeat them and are rewarded potatoes for keeping the kingdom safe!`,
+        description: `You come across a Blasphemous Bitter Melon, which are common criminals known for their bitter deeds. After a swift battle, you bring the bitter baddie to justice and earn a generous reward of potatoes!`,
         credit: `Inspired by Saeriel`
     },
     {
         name: "Egregious Eggplant",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196832421270798549/image.png?ex=65b9100d&is=65a69b0d&hm=4002206f8b697b426c2bfb31b894bb8ee6f14526ed78b0d7b014b44b4355543f&",
-        description: `You have worked and run into the notorious Egregious Eggplant! You defeat the malevolent vegetable before it can continue its reign of terror and earn a fair share of potatoes!`,
+        description: `You encounter an Egregious Eggplant, a notoriously dark creature known for terrorizing the innocent. Hastily putting an end to its schemes, you claim a considerable reward of potatoes!`,
         credit: `Inspired by Sinfonia`
     },
     {
         name: "Sinister Strawberry",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196837035235881020/image.png?ex=65b91459&is=65a69f59&hm=dd107d74060982694b4d7a9be2509717a8680caa3c8a515263fa938cadb7d7b8&",
-        description: `You have worked and ran into the Sinister Strawberry! After a fierce battle, you defeat the Sinister Strawberry and earn a plentiful reward of potatoes!`
+        description: `You’re startled by a Sinister Strawberry, whose crimson exterior pulsates with dark energy. You take down your nefarious foe and are rewarded with a plentiful harvest of potatoes!`
     },
     {
         name: "Raging Radish",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838130590961754/image.png?ex=65b9155e&is=65a6a05e&hm=29e67c5a4e3405bc36783b1688334a1bad8ac906fd755afe3487bdf339b9f5a1&",
-        description: `You have worked and run into a Raging Radish! You defeat the fiery root vegetable, proving your mettle, and earn a hearty bag of potatoes!`
+        description: `You stumble upon a Raging Radish, a creature known for its fiery temperament and fierce determination. After beating back the furious root vegetable, you claim a hearty bag of potatoes!`
     },
     {
         name: "Treacherous Tomato",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838369779527701/image.png?ex=65b91597&is=65a6a097&hm=1413759e4e446646cda9a44b21fe1df99247975454ab787c496f4cf3aff19a48&",
-        description: `You have worked and encounter the Treacherous Tomato! After a hard-fought struggle against the cunning and deceitful fruit, you emerge victorious and earn a generous amount of potatoes!`
+        description: `You face a Treacherous Tomato, whose ripe red skin belies its deceitfulness. Outwitting its cunning tactics, you claim victory and a generous harvest of potatoes as a reward!`
     },
     {
         name: "Menacing Mango",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196838574188924928/image.png?ex=65b915c8&is=65a6a0c8&hm=8488d83d107d86c56839abbb5ae0656103f26e036e6b923016baaa19b635ddfe&",
-        description: `You have worked and stumbled into a Menacing Mango! You fight bravely against this malevolent fruit and after a fierce struggle you slay it and earn a bountiful harvest of potatoes!`
+        description: `You encounter a Menacing Mango, whose glistening skin radiates with malice. Summoning your courage, you vanquish your malevolent foe and claim a bountiful harvest of potatoes!`
     },
     {
         name: "Cowardly Cantaloupe",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196839012434980864/image.png?ex=65b91630&is=65a6a130&hm=e9f83f932c02e936de5ac6772659fe570d8f1140f3e6289a162360b9816f4475&",
-        description: `You have worked and stumbled into a Cowardly Cantaloupe! It tries to roll away and escape! However you catch up, break it apart with no remorse, and earn a small share of potatoes!`,
+        description: `You stumble upon a Cowardly Cantaloupe, its pale rind trembling with fear. Despite its attempts to flee, you give chase and break it apart without remorse. As it yields, you claim a fair share of potatoes!`,
         credit: `Inspired by Sinfonia`
     }
 ]
@@ -195,39 +146,45 @@ const regularWorkMobs = [
 const largePotato = {
     name: "Large Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196675140117868695/image.png?ex=65b87d92&is=65a60892&hm=fe8d9d61369d404e19ca9aa07d337b0e62ec964c6dd99c0ed6f9ff98dde5a73f&",
-    description: `You come across a rather Large Potato and slay it. You gain many potatoes for your bravery!`
+    description: `You come across an irresistibly cute Large Potato, its round form and endearing eyes tugging at your heartstrings. Despite its adorable nature, the allure of potatoes is too powerful to resist. With a heavy heart, you slay the Large Potato, its sacrifice granting you a bountiful harvest of potatoes.`
 }
 
 const sweetPotato = {
     name: "Sweet Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196681406164770836/image.png?ex=65b88368&is=65a60e68&hm=0eac1e59888d567736222ece1106e06474cb9b8ac3a6b349aa7ce567033c83ac&",
-    description: `You meet a lovely sweet potato and it convinces you to spare its life in exchange for buffing one of your stats. Check your profile!`
+    description: `You encounter a lovely Sweet Potato and are subsequently charmed by its evident sincerity. A heartwarming exchange ensues, and it convinces you to spare its life. In return, the Sweet Potato augments one of your stats as a show of gratitude. Check your profile to see the benefits of this heartwarming interaction!`
+}
+
+const taroTrader = {
+    name: "Taro Trader",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208137579002597456/pngtree-taro-hand-drawn-illustration-png-image_8343874.png?ex=65e230cc&is=65cfbbcc&hm=66bad9c30f1671640fdf9adc7a37698381cbf694bd71c092b1960b52a589637d&",
+    description: `You encounter a wandering Taro Trader and receive a convincing starch market pitch. Feeling overwhelmed by the nomadic merchant's proposal, you accept his gesture of goodwill: a small sample of starches. With a clever strategy, this generous gift could become a lucrative trade in the future!`
 }
 
 const poisonPotato = {
     name: "Poisonous Potato",
     thumbnailUrl: "https://static.wikia.nocookie.net/minecraft_gamepedia/images/c/c0/Poisonous_Potato_JE3_BE2.png/revision/latest?cb=20200521233152",
-    description: `OH NO! While wandering around, you encounter a Poisonous Potato and you get dealthly ill. You lose many potatoes to pay for medicine and have to take a longer break from working!`,
+    description: `OH NO! While wandering around, you’re met with a Poisonous Potato and come down with a terrible illness. You pay a hefty sum of potatoes for medicinal herbs and are left with no choice but to take a long break from working as you recuperate!`,
     credit: `Inspired by Saeriel`
 }
 
 const goldenPotato = {
     name: "Golden Potato",
     thumbnailUrl: "https://ih0.redbubble.net/image.4402449953.5486/raf,360x360,075,t,fafafa:ca443f4786.jpg",
-    description: `You discovered and sold a Golden Potato! You gain LOTS of potatoes for your amazing discovery!`
+    description: `Congratulations! You encountered a Golden Potato, one of a select few mythical tubers who reward keen adventurers with considerable riches. As you covet the bounty granted by the benevolent tuber, it vanishes, returning to the magical garden it once grew from.`
 }
 
 const metalPotatoSuccess = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You had a rare chance encounter with a Metal Potato! Even when your attacks land on this elusive tater, they do very little damage. Your frustration mounts, as you know that this exceptional potato could escape at any moment! After an arduous battle against the metal spud, you emerge victorious. Check your profile for your increased stats and potatoes!`,
+    description: `You had a lucky encounter with a Metal Potato! Thanks to its extraordinary speed and aggravating defences, none of your attacks seem to affect it. Frustrated beyond your wit\'s end, you launch a careless attack that critically strikes the slippery spud! Left in disbelief, you earn a deceptively large stimulus of potatoes and a significant increase to each of your stats!`,
     credit: `Inspired by Rednaxeia`
 }
 
 const metalPotatoFailure = {
     name: "Metal Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1196999133697953802/image.png?ex=65b9ab50&is=65a73650&hm=5bcd001cd5ab30d2e03bc09137a1df25109399326484ccc1bdea87fc7427a443&",
-    description: `You have a rare chance encounter with a Metal Potato! With exceptional speed and defence, nearly all of your attacks seem futile against it. It hops on away from you, leaving you winded, confused, and most of all excited for the chance to find another one in the future. Better luck next time.`,
+    description: `You had a lucky encounter with a Metal Potato! Thanks to its extraordinary speed and aggravating defences, none of your attacks seem to affect it. Thoroughly content with its confounding routine, the Metal Potato casually hops away. You\'re left winded and confused, yet excited for the chance to find another.`,
     credit: `Inspired by Rednaxeia`
 }
 
@@ -285,7 +242,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 30,
+                amount: 25,
                 cost: 75000000,
                 description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
                 id: 7,
@@ -293,18 +250,29 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
-                amount: 40,
+                amount: 30,
                 cost: 100000000,
                 description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
                 id: 8,
                 name: "Legendary Leader's Blade",
                 type: "workMultiplierAmount"
+            },
+            {
+                amount: 50,
+                cost: 500000000,
+                description: "A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.",
+                id: 9,
+                name: "Divine Instrument of Potato Blessings",
+                type: "workMultiplierAmount"
+            },
+            {
+                amount: 100,
+                cost: 1500000000,
+                description: "This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom.",
+                id: 10,
+                name: "Alien Armaments of Tuber Termination",
+                type: "workMultiplierAmount"
             }
-            // 9) Divine Instrument of Potato Blessings
-            // -A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.
-
-            // 10) Alien Armaments of Tuber Termination 
-            // -This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom. 
         ],
         title: "Work Tools Shop (multiplier for work)"
     },
@@ -375,9 +343,23 @@ const shops = [
                 id: 8,
                 name: "Potato Wedge Fund",
                 type: "passiveAmount"
+            },
+            {
+                amount: 27000000,
+                cost: 250000000,
+                description: "A permit granting you access to climb the Giant Potato\'s towering beanstalk, atop which grows a garden of golden potatoes",
+                id: 9,
+                name: "Admittance of Avarice",
+                type: "passiveAmount"
+            },
+            {
+                amount: 60000000,
+                cost: 500000000,
+                description: "The ultimate symbol of wealth and power, this circlet heralds your unparalleled status as a monarch and the untold riches that accompany such a title",
+                id: 10,
+                name: "Potato King\'s Crown",
+                type: "passiveAmount"
             }
-            // 27,000,000 | 125,000,000
-            // 60,000,000 | 150,000,000
         ],
         title: "Passive Income Workers Shop (amount per day)"
     },
@@ -439,7 +421,7 @@ const shops = [
 ]
 
 const awsConfigurations = {
-    aws_table_name: 'leash-gromp-bot',
+    aws_table_name: 'leash-gromp-bot-restored',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',
@@ -467,16 +449,14 @@ module.exports = {
     Rob,
     GuildRoles,
     Raid,
-    regularRaidMobs,
-    mediumRaidMobs,
     metalKingRaidBoss,
     metalPotatoSuccess,
     metalPotatoFailure,
-    hardRaidMobs,
     regularStatRaidMobs,
     regularWorkMobs,
     largePotato,
     sweetPotato,
+    taroTrader,
     poisonPotato,
     goldenPotato,
 }

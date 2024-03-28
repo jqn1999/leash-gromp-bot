@@ -30,20 +30,18 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
-        let activeRaid = guild.activeRaid;
-        const memberList = guild.raidList;
+        const raidList = guild.raidList;
 
-        if (!activeRaid) {
-            interaction.editReply(`${userDisplayName} there is no active raid to display the information of!`);
+        const timeUntilRaidAvailableInSeconds = Math.floor((guild.raidTimer - Date.now())/1000);
+
+        if (raidList.length == 0) {
+            interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
             return;
         }
 
-        const timeSinceLastRaidInSeconds = Math.floor((Date.now() - guild.raidTimer) / 1000);
-        const timeUntilRaidAvailableInSeconds = Raid.RAID_TIMER_SECONDS - timeSinceLastRaidInSeconds
-
         let totalMultiplier = 0;
-        let raidList = [];
-        for (const [index, element] of memberList.entries()) {
+        let raidMemberList = [];
+        for (const [index, element] of raidList.entries()) {
             const userDetails = await dynamoHandler.findUser(element.id, element.username);
             if (!userDetails) {
                 interaction.editReply(`${element.username} was not in the DB, they should now be added. Try again!`);
@@ -55,11 +53,16 @@ module.exports = {
                 value: `${userDetails.workMultiplierAmount.toFixed(2)}x Multiplier`,
                 inline: false,
             };
-            raidList.push(user);
+            raidMemberList.push(user);
             totalMultiplier += userDetails.workMultiplierAmount;
         }
 
-        embed = await embedFactory.createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeSinceLastRaidInSeconds, timeUntilRaidAvailableInSeconds);
+        // check for guild buff - multi
+        if(guild.guildBuff == "raidMulti"){
+            totalMultiplier *= 1.15;
+        }
+
+        embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
         interaction.editReply({ embeds: [embed] });
     }
 }

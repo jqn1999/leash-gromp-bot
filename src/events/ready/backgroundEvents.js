@@ -1,10 +1,12 @@
 const { getSortedBirthdays } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
-var { EventFactory } = require("../../utils/eventFactory");
+const { EventFactory } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
-var {worldFactory} = require("../../utils/worldFactory.js");
+var { worldFactory } = require("../../utils/worldFactory.js");
+
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
+let eF = new EventFactory()
 
 let statuses = [
     {
@@ -27,7 +29,11 @@ module.exports = async (client) => {
         await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
-    schedule.scheduleJob('0 5 * * *', function () {
+    schedule.scheduleJob('0 4 * * *', async function () {
+        // Reset all user tower entries at midnight 12 AM EST
+        await dynamoHandler.resetAllTowerEntries()
+        
+        // Birthday shit
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
                 const jsonChannel = JSON.parse(JSON.stringify(channel));
@@ -50,8 +56,6 @@ module.exports = async (client) => {
 
     // check for random background events
     schedule.scheduleJob('0 * * * *', function () {
-        let eF = new EventFactory()
-
         const chance = Math.random()
         if(chance >= .8){
             // In the future we should store channels in a database for certain events like birthday, or bot channels
@@ -65,10 +69,11 @@ module.exports = async (client) => {
                 let wC = eF.getWorkChances()
                 // set work chances in work.js
                 setWorkScenarios(wC)
+                eF.setBaseWorkChances();
+                eF.setBaseWorkProbability();
             })
         } else {
-            eF.setBaseWorkChances();
-            eF.setBaseWorkProbability();
+            eF.setEmptyCurrentEvent();
             setWorkScenarios(eF.getWorkChances())
         }
     });

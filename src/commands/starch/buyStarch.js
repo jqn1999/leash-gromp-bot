@@ -10,9 +10,9 @@ module.exports = {
     options: [
         {
             name: 'starch-amount',
-            description: 'Number of starches to buy',
+            description: 'Number of starches to buy: all | half | (amount)',
             required: true,
-            type: ApplicationCommandOptionType.Integer,
+            type: ApplicationCommandOptionType.String,
         }
     ],
     callback: async (client, interaction) => {
@@ -28,9 +28,9 @@ module.exports = {
 
         //check if they are allowed to buy
         var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 && date.getHours() <= 22);
-        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
-        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 10 && date.getHours() <= 21);
+        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 22;
+        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 9;
 
         if (!isMondayAndBuyingTime && !isThursdayAndBuyingTime && !isFridayAndBuyingTime) {
             interaction.editReply(`${userDisplayName}, you can only buy starches between Monday 6am-6pm and Thursday 6pm-6am (EST)!`);
@@ -38,14 +38,24 @@ module.exports = {
         }
 
         // get starch number and basic stuff
+        // check if they have enough potatoes + get price from
+        const details = await dynamoHandler.getStatDatabase("starch")
+        let price = details.starch_buy
         let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;
 
         // error checking
-        if (isNaN(starches)) {
-            interaction.editReply(`${userDisplayName}, please enter a positive number!`);
-            return;
+        if (starches.toLowerCase() == 'all') {
+            starches = Math.floor(userPotatoes/price);
+        } else if (starches.toLowerCase() == 'half') {
+            starches = Math.floor(userPotatoes/price/2);
+        } else{
+            starches = Math.floor(Number(starches));
+            if (isNaN(starches)) {
+                interaction.editReply(`${userDisplayName}, something went wrong with starch amount. Try again!`);
+                return;
+            }
         }
 
         const isStarchGreaterThanZero = starches >= 1;
@@ -54,9 +64,6 @@ module.exports = {
             return;
         }
 
-        // check if they have enough potatoes + get price from
-        const details = await dynamoHandler.getStatDatabase("starch")
-        let price = details.starch_buy
         let cost = price * starches
         const canPurchase = cost <= userPotatoes;
         if (!canPurchase) {

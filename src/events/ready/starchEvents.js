@@ -4,7 +4,7 @@ const starchFactory = require("../../utils/starchFactory");
 
 module.exports = async (client) => {
     // MONDAY 6 AM/THURSDAY 6 PM: SET BUY PRICE, DELETE OLD STARCHS, CALC PRICES FOR WEEK
-    schedule.scheduleJob('0 11 * * 1', async function () {
+    schedule.scheduleJob('0 10 * * 1', async function () {
         //DELETE EVERYONES STARCHES
         await dynamoHandler.removeStarches()
 
@@ -21,7 +21,7 @@ module.exports = async (client) => {
         await dynamoHandler.updateStatDatabase("starch", "starch_values", prices)
     });
 
-    schedule.scheduleJob('0 23 * * 4', async function () {
+    schedule.scheduleJob('0 22 * * 4', async function () {
         //DELETE EVERYONES STARCHES
         await dynamoHandler.removeStarches()
 
@@ -39,7 +39,7 @@ module.exports = async (client) => {
     });
 
     // EVERYDAY (minus mon/thurs) AT 6AM/PM: LOAD NEXT PRICE
-    schedule.scheduleJob('0 23 * * 1-3,5-7', async function () {
+    schedule.scheduleJob('0 22 * * 1-3,5-7', async function () {
         const details = await dynamoHandler.getStatDatabase("starch")
         let vals = details.starch_values
     
@@ -50,7 +50,7 @@ module.exports = async (client) => {
         await dynamoHandler.updateStatDatabase("starch", "starch_values", vals) 
     });
 
-    schedule.scheduleJob('0 11 * * 2-7', async function () {
+    schedule.scheduleJob('0 10 * * 2-7', async function () {
         const details = await dynamoHandler.getStatDatabase("starch")
         let vals = details.starch_values
     

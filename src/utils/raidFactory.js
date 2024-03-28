@@ -4,7 +4,7 @@ class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
         const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
 
-        raidList.forEach(async member => {
+        await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userPotatoes = userDetails.potatoes;
             let userTotalEarnings = userDetails.totalEarnings;
@@ -21,12 +21,12 @@ class RaidFactory {
                 await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
                 await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
             }
-        })
+        }))
         return raidSplitAmount;
     }
 
     async handleStatSplit(raidList, rewardType, rewardAmount) {
-        raidList.forEach(async member => {
+        await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             let userMultiplier = userDetails.workMultiplierAmount;
             let userPassiveAmount = userDetails.passiveAmount;
@@ -47,7 +47,7 @@ class RaidFactory {
                 await dynamoHandler.updateUserDatabase(member.id, rewardType, userBankCapacity);
             }
             await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
-        })
+        }))
     }
 }
 

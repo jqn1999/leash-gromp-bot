@@ -10,9 +10,9 @@ module.exports = {
     options: [
         {
             name: 'starch-amount',
-            description: 'Number of starches to sell',
+            description: 'Number of starches to sell: all | half | (amount)',
             required: true,
-            type: ApplicationCommandOptionType.Integer,
+            type: ApplicationCommandOptionType.String,
         }
     ],
     callback: async (client, interaction) => {
@@ -28,9 +28,9 @@ module.exports = {
 
         // check date
         var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 11 && date.getHours() <= 22);
-        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 23;
-        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 10;
+        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 10 && date.getHours() <= 21);
+        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 22;
+        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 9;
 
         if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
             interaction.editReply(`${userDisplayName}, this is a buying period for starches!`);
@@ -45,9 +45,16 @@ module.exports = {
         let userTotalLosses = userDetails.totalLosses;
 
         // error checking
-        if (isNaN(starches)) {
-            interaction.editReply(`${userDisplayName}, please enter a positive number!`);
-            return;
+        if (starches.toLowerCase() == 'all') {
+            starches = userStarches;
+        } else if (starches.toLowerCase() == 'half') {
+            starches = Math.round(userStarches/2);
+        } else{
+            starches = Math.floor(Number(starches));
+            if (isNaN(starches)) {
+                interaction.editReply(`${userDisplayName}, something went wrong with starch amount. Try again!`);
+                return;
+            }
         }
 
         const isStarchGreaterThanZero = starches >= 1;
@@ -55,6 +62,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName}, you can only sell positive amounts!`);
             return;
         }
+
         const sellingTooMuch = starches > userStarches;
         if(sellingTooMuch){
             interaction.editReply(`${userDisplayName}, you can only sell up to ${userStarches.toLocaleString()} starches!`);

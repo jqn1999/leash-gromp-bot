@@ -10,7 +10,7 @@ const client = new Client({
         IntentsBitField.Flags.MessageContent,
     ],
     allowedMentions: {
-        parse: ['users', 'roles'],
+        parse: ['users', 'roles', 'everyone'],
         repliedUser: false
     }
 });

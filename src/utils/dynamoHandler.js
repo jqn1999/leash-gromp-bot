@@ -1,12 +1,6 @@
-const { awsConfigurations } = require("../utils/constants.js");
+const { awsConfigurations, Work } = require("../utils/constants.js");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
-
-const statTrackingIds = {
-    COINFLIP: "coinflip",
-    WORK: "work",
-    BET: "bet",
-}
 
 // User Handling
 const addUserDatabase = async function (userId, attributeName, attributeValue) {
@@ -50,6 +44,49 @@ const updateUserDatabase = async function (userId, attributeName, attributeValue
         },
         ExpressionAttributeValues: {
             ":attrValue": attributeValue,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    const response = await docClient.update(params).promise()
+        .then(async function (data) {
+            // console.debug(`updateUserDatabase: ${JSON.stringify(data)}`)
+        })
+        .catch(function (err) {
+            console.debug(`updateUserDatabase error: ${JSON.stringify(err)}`)
+        });
+    return response;
+}
+
+const updateWorkTimer = async function (userDetails, cooldownTime) {
+    let userId = userDetails.userId
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    // check for work timer guild buff
+    const userGuildId = userDetails.guildId;
+    let time = cooldownTime == Work.POISON_POTATO_TIMER_INCREASE_SECONDS ? Date.now() + cooldownTime*1000 : Date.now() + Work.WORK_TIMER_SECONDS*1000
+    if (userGuildId) {
+        let guild = await findGuildById(userDetails.guildId);
+        if (guild) {
+            if (guild.guildBuff == "workTimer") {
+                const timeReduced = cooldownTime * 1000 * .10; // 10% reduction
+                time -= timeReduced;
+            }
+        }
+    }
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: `set #attrName = :attrValue`,
+        ExpressionAttributeNames: {
+            "#attrName": "workTimer",
+        },
+        ExpressionAttributeValues: {
+            ":attrValue": time,
         },
         ReturnValues: "ALL_NEW",
     };
@@ -114,7 +151,8 @@ const addUser = async function (userId, username) {
             passiveAmount: 0,
             bankCapacity: 0
         },
-        starches: 0
+        starches: 0,
+        canEnterTower: true
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -581,11 +619,11 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         raidCount: 0,
         totalEarnings: 0,
         thumbnailUrl: guildThumbnailUrl,
-        activeRaid: false,
         raidTimer: 0,
         inviteList: [],
         raidList: [],
-        raidRewardMultiplier: 1
+        raidRewardMultiplier: 1,
+        guildBuff: ""
     };
 
     var params = {
@@ -608,11 +646,6 @@ const addNewUserAttribute = async function () {
     const docClient = new AWS.DynamoDB.DocumentClient();
 
     let userList = await getUsers();
-    const newObject = {
-        workMultiplierAmount: 0,
-        passiveAmount: 0,
-        bankCapacity: 0
-    };
 
     userList.forEach(async user => {
         const params = {
@@ -620,9 +653,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set sweetPotatoBuffs = :sweetPotatoBuffs",
+            UpdateExpression: "set canEnterTower = :canEnterTower",
             ExpressionAttributeValues: {
-                ":sweetPotatoBuffs": newObject,
+                ":canEnterTower": true,
             },
             ReturnValues: "ALL_NEW",
         };
@@ -670,14 +703,14 @@ const getSortedUserStarches = async function () {
     return sortedUsers
 }
 
-const getSortedGuildsByLevelAndMembers = async function () {
+const getSortedGuildsByLevelAndRaidCount = async function () {
     let allGuilds = await getGuilds();
     const sortedGuilds = allGuilds.sort((a, b) => {
         // First, compare by level
         const levelComparison = parseFloat(b.level) - parseFloat(a.level);
 
         // If levels are the same, compare by memberCount
-        return levelComparison != 0 ? levelComparison : b.memberList.length - a.memberList.length;
+        return levelComparison != 0 ? levelComparison : b.raidCount - a.raidCount;
     });
 
     return sortedGuilds;
@@ -720,8 +753,38 @@ const removeStarches = async function () {
     // return response;
 }
 
+const resetAllTowerEntries = async function () {
+    AWS.config.update(awsConfigurations.aws_remote_config);
+    const docClient = new AWS.DynamoDB.DocumentClient();
+
+    let userList = await getUsers();
+
+    userList.forEach(async user => {
+        const params = {
+            TableName: awsConfigurations.aws_table_name,
+            Key: {
+                userId: user.userId,
+            },
+            UpdateExpression: "set canEnterTower = :canEnterTower",
+            ExpressionAttributeValues: {
+                ":canEnterTower": true,
+            },
+            ReturnValues: "ALL_NEW",
+        };
+
+        const response = await docClient.update(params).promise()
+            .then(async function (data) {
+                console.log(`resetAllTowerEntries: ${JSON.stringify(data)}`)
+            })
+            .catch(function (err) {
+                console.log(`resetAllTowerEntries error: ${JSON.stringify(err)}`)
+            });
+    })
+}
+
 module.exports = {
     addUserDatabase,
+    updateWorkTimer,
     updateUserDatabase,
     addUser,
     findUser,
@@ -751,7 +814,8 @@ module.exports = {
     getServerTotalStarches,
     getSortedUsers,
     getSortedUserStarches,
-    getSortedGuildsByLevelAndMembers,
+    getSortedGuildsByLevelAndRaidCount,
     getSortedGuildsById,
-    removeStarches
+    removeStarches,
+    resetAllTowerEntries
 }

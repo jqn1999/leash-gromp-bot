@@ -1,13 +1,9 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { convertSecondstoMinutes, getUserInteractionDetails } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
-
-function getRandomFromInterval(min, max) {
-    return Math.random() * (max - min) + min;
-}
 
 function calculateFailedRobPenalty(userTotalWealth) {
     if (userTotalWealth < 0) {
@@ -99,7 +95,19 @@ module.exports = {
 
         const userTotalWealth = userPotatoes + userBankedPotatoes;
         const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
-        const robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+        let robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+
+        // CHECK GUILD BUFF ADD 10% IF ROB
+        const userGuildId = userDetails.guildId;
+        if (userGuildId){
+            let guild = await dynamoHandler.findGuildById(userDetails.guildId);
+            if(guild){
+                if(guild.guildBuff == "robChance"){
+                    robChance += .1
+                }
+            }
+        }
+
         const userSuccessfulRob = determineRobOutcome(robChance);
         const robChanceDisplay = (robChance*100).toFixed(2);
 
