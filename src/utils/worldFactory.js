@@ -99,11 +99,11 @@ const worldBossMobs = [
         description: `Once a loyal servant to the Potato Kingdom, the Dragon Fruit Griseous was banished for its violence. It retreated to a warped dimension on the flipside of the vegetable realm, where common knowledge is distorted and strange. Having gazed upon the prosperous kingdom silently for years, the exiled Griseous has grown bitter with resentment. Now, this ferocious serpent descends upon the land once more, threatening to reign fiery vengeance and enshroud the world in eternal darkness.\n\nJoin this world raid with /join-world-raid!`,
         successDescription: `The heroes sunder the monstrous Dragon Fruit from the sky, sending Griseous plummeting toward the Earth. Their foe, now grounded, adapts quickly by firmly planting its six legs and bellowing shadowy flames. Guarding against the devastating dark onslaught, the potato adventurers execute a valiant maneuver that silences the unruly renegade. The Dragon Fruit sinks back into its shadowy exile, leaving the Potato Kingdom safe from its vengeance… for now.`,
         failureDescription: `Despite their best efforts, the potato adventurers are no match for Griseous’s spectral assault of shadowy flames. Succumbing to their foe’s merciless onslaught, the inhabitants of the potato kingdom are forced to seek shelter as their Kingdom is laid to waste by the rancorous Dragon Fruit.`,
-        potatoReward: 20000000,
-        potatoPenalty: -2000000,
-        workMultiReward: 1,
-        passiveReward: 1000000,
-        bankCapacityReward: 5000000,
+        potatoReward: 5000000,
+        potatoPenalty: 0,
+        workMultiReward: 0.4,
+        passiveReward: 200000,
+        bankCapacityReward: 1000000,
         difficulty: 1000
     }
 

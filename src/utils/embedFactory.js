@@ -683,7 +683,7 @@ class EmbedFactory {
         }
         const embed = new EmbedBuilder()
             .setTitle(`The Potato Kingdom encountered ${mob.name}!`)
-            .setDescription(`${raidResultDescription}`)
+            .setDescription(`${mob.description}`)
             .setColor(color)
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
