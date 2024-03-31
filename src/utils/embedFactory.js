@@ -512,6 +512,19 @@ class EmbedFactory {
         return embed;
     }
 
+    async createWorldRaidMemberListEmbed(raidList, totalMultiplier, name, thumbnail) {
+        const embed = new EmbedBuilder()
+            .setTitle(`${name}: (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
+            .setDescription(`Below is the list of the current raid members`)
+            .setColor("Random")
+            .setThumbnail(thumbnail)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(raidList);
+        return embed;
+
+    }
+
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
         raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';

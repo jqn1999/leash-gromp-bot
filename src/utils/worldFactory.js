@@ -111,4 +111,5 @@ const worldBossMobs = [
 
 module.exports = {
     worldFactory,
+    worldBossMobs
 }
