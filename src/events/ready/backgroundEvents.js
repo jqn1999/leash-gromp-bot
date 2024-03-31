@@ -78,20 +78,30 @@ module.exports = async (client) => {
         }
     });
 
-    schedule.scheduleJob('30 * * * *', function () {
+    schedule.scheduleJob('* * * * *', async function () {
         // do some checking to see if there was a raid last hour
         // and perform the necessary actions
+        const mainChannelId = '796873375632195605' // josh rn
         let wB = new worldFactory()
-        wB.popWorldBoss()
-        const chance = Math.random()
-        console.log(chance)
-        if(chance >= .9){
-            client.channels.fetch('1146091052781011026') // matt rn
+        let result = await wB.popWorldBoss()
+        const bossFought = result[0]
+        let embed = result[1]
+        if (bossFought) {
+            client.channels.fetch(mainChannelId)
             .then(async channel => {
-                wB.setWorldBoss()
-                embed = wB.getWorldEmbed()
                 channel.send({embeds: [ embed ]});
+
             })
+        } else {
+            const chance = Math.random()
+            if(chance >= 0){
+                client.channels.fetch(mainChannelId)
+                .then(async channel => {
+                    wB.setWorldBoss()
+                    embed = wB.getWorldEmbed()
+                    channel.send({embeds: [ embed ]});
+                })
+            }
         }
     });
 };

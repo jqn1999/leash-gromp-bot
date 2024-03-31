@@ -24,12 +24,12 @@ module.exports = {
             return;
         }
 
-        if (worldList.filter(currentMember => currentMember == userId).length > 0) {
+        if (worldList.filter(currentMember => currentMember.id == userId).length > 0) {
             interaction.editReply(`${userDisplayName} you have already joined this world raid.`);
             return;
         }
 
-        worldList.push(userId)
+        worldList.push({id: userId, username: username})
         await dynamoHandler.updateStatDatabase("world", "world_list", worldList)
         interaction.editReply(`${userDisplayName} you have joined the world raid!`);
     }
