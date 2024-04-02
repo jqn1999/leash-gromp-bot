@@ -78,10 +78,8 @@ module.exports = async (client) => {
         }
     });
 
-    schedule.scheduleJob('* * * * *', async function () {
-        // do some checking to see if there was a raid last hour
-        // and perform the necessary actions
-        const mainChannelId = '796873375632195605' // josh rn
+    schedule.scheduleJob('30 * * * *', async function () {
+        const mainChannelId = '1188525931346792498'
         let wB = new worldFactory()
         let result = await wB.popWorldBoss()
         const bossFought = result[0]
@@ -94,7 +92,7 @@ module.exports = async (client) => {
             })
         } else {
             const chance = Math.random()
-            if(chance >= 0){
+            if(chance > .95){
                 client.channels.fetch(mainChannelId)
                 .then(async channel => {
                     wB.setWorldBoss()
