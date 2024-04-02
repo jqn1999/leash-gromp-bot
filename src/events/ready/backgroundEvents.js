@@ -3,9 +3,10 @@ const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EventFactory } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
-let eF = new EventFactory()
+var { worldFactory } = require("../../utils/worldFactory.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
+let eF = new EventFactory()
 
 let statuses = [
     {
@@ -74,6 +75,33 @@ module.exports = async (client) => {
         } else {
             eF.setEmptyCurrentEvent();
             setWorkScenarios(eF.getWorkChances())
+        }
+    });
+
+    schedule.scheduleJob('* * * * *', async function () {
+        // do some checking to see if there was a raid last hour
+        // and perform the necessary actions
+        const mainChannelId = '796873375632195605' // josh rn
+        let wB = new worldFactory()
+        let result = await wB.popWorldBoss()
+        const bossFought = result[0]
+        let embed = result[1]
+        if (bossFought) {
+            client.channels.fetch(mainChannelId)
+            .then(async channel => {
+                channel.send({embeds: [ embed ]});
+
+            })
+        } else {
+            const chance = Math.random()
+            if(chance >= 0){
+                client.channels.fetch(mainChannelId)
+                .then(async channel => {
+                    wB.setWorldBoss()
+                    embed = wB.getWorldEmbed()
+                    channel.send({embeds: [ embed ]});
+                })
+            }
         }
     });
 };

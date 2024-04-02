@@ -512,6 +512,19 @@ class EmbedFactory {
         return embed;
     }
 
+    async createWorldRaidMemberListEmbed(raidList, totalMultiplier, name, thumbnail) {
+        const embed = new EmbedBuilder()
+            .setTitle(`${name}: (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
+            .setDescription(`Below is the list of the current raid members`)
+            .setColor("Orange")
+            .setThumbnail(thumbnail)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(raidList);
+        return embed;
+
+    }
+
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
         raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
@@ -587,6 +600,95 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`'${guildName}' encountered ${mob.name}!`)
+            .setDescription(`${mob.description}`)
+            .setColor(color)
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createWorldEmbed(mob){
+        //let fields = [], footerText = "Made by Beggar";
+        let footerText = "Made by Beggar"
+
+        const embed = new EmbedBuilder()
+            .setTitle(`'${mob.name}`)
+            .setDescription(`${mob.description}`)
+            .setColor("Orange")
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+           // .setFields(fields)
+        return embed;
+    }
+
+
+    createWorldResultEmbed(raidList, totalRaidReward, mob, successChance,
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
+        let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
+        const hasStatReward = multiplierReward || passiveReward || capacityReward;
+        const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
+        fields.push({
+            name: `Result:`,
+            value: `${raidResultDescription}`,
+            inline: true,
+        })
+        if (multiplierReward) {
+            statRewardMessage += `${multiplierReward.toFixed(2).toLocaleString()} work multiplier to all members!\n`
+        }
+        if (passiveReward) {
+            statRewardMessage += `${passiveReward.toLocaleString()} passive amount to all members!\n`
+        }
+        if (capacityReward) {
+            statRewardMessage += `${capacityReward.toLocaleString()} bank capacity to all members!\n`
+        }
+        if (hasStatReward) {
+            fields.push({
+                name: `Stats Granted:`,
+                value: `${statRewardMessage}`,
+                inline: false,
+            })
+        }
+
+        fields.push({
+            name: `Success Chance:`,
+            value: `${(successChance * 100).toFixed(2)}% chance`,
+            inline: true,
+        })
+
+        let stringListOfMembers = ``;
+        if (raidList.length == 0) {
+            fields.push({
+                name: 'Members In Raid:',
+                value: 'None',
+                inline: false,
+            })
+        } else {
+            for (const [index, element] of raidList.entries()) {
+                stringListOfMembers += `${element.username} - ${Math.round(element.raidShare * totalRaidReward).toLocaleString()} potatoes gained\n`
+            }
+            const listOfMembers = {
+                name: `Members In Raid:`,
+                value: `${stringListOfMembers}`,
+                inline: false,
+            };
+            fields.push(listOfMembers);
+
+            const gainOrLoss = totalRaidReward >= 0 ? 'Gained' : 'Lost'
+            fields.push({
+                name: `Total Potatoes ${gainOrLoss}:`,
+                value: `${totalRaidReward.toLocaleString()} potatoes`,
+                inline: false,
+            })
+        }
+
+        if (mob.credit) {
+            footerText = mob.credit;
+        }
+        const embed = new EmbedBuilder()
+            .setTitle(`The Potato Kingdom encountered ${mob.name}!`)
             .setDescription(`${mob.description}`)
             .setColor(color)
             .setThumbnail(mob.thumbnailUrl)

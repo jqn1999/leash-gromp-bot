@@ -623,7 +623,7 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         inviteList: [],
         raidList: [],
         raidRewardMultiplier: 1,
-        guildBuff: ""
+        guildBuff: "workMulti"
     };
 
     var params = {
