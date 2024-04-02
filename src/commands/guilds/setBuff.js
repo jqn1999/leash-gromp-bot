@@ -69,7 +69,7 @@ module.exports = {
 
         let canBuff = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
         if (!canBuff) {
-            interaction.editReply(`${userDisplayName} you must be a co-leader or the guild leader to start a raid!`);
+            interaction.editReply(`${userDisplayName} you must be a co-leader or the guild leader to set the guild buff!`);
             return;
         }
         let buffSelect = interaction.options.get('buff')?.value;
