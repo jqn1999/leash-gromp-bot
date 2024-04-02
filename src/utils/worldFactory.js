@@ -91,7 +91,7 @@ function determineRaidResult(successChance) {
 
 function determinRaidSuccessChance(totalMultiplier, raidDifficulty) {
     const totalRaidSuccessChance = totalMultiplier / raidDifficulty; // 1/10 = .1
-    const actualRaidSuccessChance = totalRaidSuccessChance > Raid.MAXIMUM_RAID_SUCCESS_RATE ? Raid.MAXIMUM_RAID_SUCCESS_RATE : totalRaidSuccessChance
+    const actualRaidSuccessChance = totalRaidSuccessChance > .75 ? .75 : totalRaidSuccessChance
     return actualRaidSuccessChance
 }
 
@@ -108,7 +108,7 @@ const worldBossMobs = [
         workMultiReward: 1,
         passiveReward: 500000,
         bankCapacityReward: 5000000,
-        difficulty: 1200
+        difficulty: 1800
     },
     {
         name: "Thunderlord Raikon",
@@ -121,7 +121,7 @@ const worldBossMobs = [
         workMultiReward: 2,
         passiveReward: 1000000,
         bankCapacityReward: 10000000,
-        difficulty: 1200
+        difficulty: 1800
     }
 ]
 
