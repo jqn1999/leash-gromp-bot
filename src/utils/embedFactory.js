@@ -516,7 +516,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${name}: (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
             .setDescription(`Below is the list of the current raid members`)
-            .setColor("Random")
+            .setColor("Orange")
             .setThumbnail(thumbnail)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -625,7 +625,7 @@ class EmbedFactory {
     }
 
 
-    createWorldResultEmbed(raidList, totalRaidReward, splitRaidReward, mob, successChance,
+    createWorldResultEmbed(raidList, totalRaidReward, mob, successChance,
         raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
@@ -667,7 +667,7 @@ class EmbedFactory {
             })
         } else {
             for (const [index, element] of raidList.entries()) {
-                stringListOfMembers += `${element.username}\n`
+                stringListOfMembers += `${element.username} - ${Math.round(element.raidShare * totalRaidReward).toLocaleString()} potatoes gained\n`
             }
             const listOfMembers = {
                 name: `Members In Raid:`,
@@ -682,13 +682,6 @@ class EmbedFactory {
                 value: `${totalRaidReward.toLocaleString()} potatoes`,
                 inline: false,
             })
-            if (splitRaidReward) {
-                fields.push({
-                    name: `Split Potatoes ${gainOrLoss}:`,
-                    value: `${splitRaidReward.toLocaleString()} potatoes`,
-                    inline: true,
-                })
-            }
         }
 
         if (mob.credit) {

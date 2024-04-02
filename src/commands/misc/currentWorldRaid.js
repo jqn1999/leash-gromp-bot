@@ -1,6 +1,8 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const {worldBossMobs} = require("../../utils/worldFactory")
+const { worldBossMobs } = require("../../utils/worldFactory")
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "current-world-raid",
@@ -19,7 +21,7 @@ module.exports = {
 
         let world = await dynamoHandler.getStatDatabase("world")
         let worldList = world.world_list
-        let worldIndex = world_index
+        let worldIndex = world.world_index
 
         if (!world.world_active) {
             interaction.editReply(`${userDisplayName}, there is no active raid!`);
@@ -47,7 +49,7 @@ module.exports = {
         bossName = worldBossMobs[worldIndex].name
         thumbnail = worldBossMobs[worldIndex].thumbnailUrl
 
-        embed = await embedFactory.CreateWorldRaidMemberListEmbed(raidlist, totalMultiplier, bossName, thumbnail)
+        embed = await embedFactory.createWorldRaidMemberListEmbed(raidList, totalMultiplier, bossName, thumbnail)
         interaction.editReply({ embeds: [embed] });
     }
 
