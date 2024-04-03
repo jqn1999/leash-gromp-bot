@@ -88,7 +88,7 @@ module.exports = async (client) => {
             client.channels.fetch(mainChannelId)
             .then(async channel => {
                 channel.send({embeds: [ embed ]});
-
+                channel.send(`<@&1207117686526582865>`);
             })
         } else {
             const chance = Math.random()
@@ -98,6 +98,7 @@ module.exports = async (client) => {
                     wB.setWorldBoss()
                     embed = wB.getWorldEmbed()
                     channel.send({embeds: [ embed ]});
+                    channel.send(`<@&1207117686526582865>`);
                 })
             }
         }
