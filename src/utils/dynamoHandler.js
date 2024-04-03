@@ -152,7 +152,8 @@ const addUser = async function (userId, username) {
             bankCapacity: 0
         },
         starches: 0,
-        canEnterTower: true
+        canEnterTower: true,
+        workCount: 0
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -653,9 +654,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set canEnterTower = :canEnterTower",
+            UpdateExpression: "set workCount = :workCount",
             ExpressionAttributeValues: {
-                ":canEnterTower": true,
+                ":workCount": 0,
             },
             ReturnValues: "ALL_NEW",
         };

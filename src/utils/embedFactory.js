@@ -51,6 +51,11 @@ class EmbedFactory {
             value: `${userDetails.bankCapacity.toLocaleString()} potatoes`,
             inline: false,
         });
+        fields.push({
+            name: "Work Count:",
+            value: `${userDetails.workCount.toLocaleString()} works`,
+            inline: false,
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(title)
