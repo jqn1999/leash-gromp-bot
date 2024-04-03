@@ -7,6 +7,7 @@ class towerFactory{
     constructor(_interaction, _username, multi) {
         this.floor = 0
         this.run = Object.assign({}, tC.RUN)
+        this.run[tC.PAYOUT.ELITE_KILL] = new Array()
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
