@@ -37,27 +37,27 @@ const guildShops = [
             },
             {
                 amount: 800000000,
-                cost: 600000000,
+                cost: 400000000,
             },
             {
                 amount: 1000000000,
-                cost: 800000000,
+                cost: 400000000,
             },
             {
                 amount: 1200000000,
-                cost: 1000000000,
+                cost: 600000000,
             },
             {
                 amount: 1500000000,
-                cost: 1200000000,
+                cost: 600000000,
             },
             {
                 amount: 2000000000,
-                cost: 1500000000,
+                cost: 800000000,
             },
             {
                 amount: 2500000000,
-                cost: 2000000000,
+                cost: 800000000,
             }
         ],
         title: "Guild Potato Storage Shop (increase bank capacity)"

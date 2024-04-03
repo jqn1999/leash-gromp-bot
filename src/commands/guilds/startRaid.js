@@ -161,19 +161,19 @@ const regularRaidScenarios = [
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
-                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
@@ -190,16 +190,16 @@ const regularRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(regularRaidMobs[2]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -214,16 +214,16 @@ const regularRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(regularRaidMobs[1]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -238,16 +238,16 @@ const regularRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs[0]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -259,24 +259,24 @@ const regularRaidScenarios = [
     }
 ]
 
-const harderRaidScenarios = [
+const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
-                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
@@ -294,16 +294,16 @@ const harderRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 3;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -319,16 +319,16 @@ const harderRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 4.5;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -344,16 +344,16 @@ const harderRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -365,24 +365,24 @@ const harderRaidScenarios = [
     }
 ]
 
-const hardestRaidScenarios = [
+const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.LEGENDARY_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
-                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.LEGENDARY_RAID_MULTIPLIER_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.LEGENDARY_RAID_PASSIVE_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.LEGENDARY_RAID_MULTIPLIER_REWARD, Raid.LEGENDARY_RAID_PASSIVE_REWARD, Raid.LEGENDARY_RAID_CAPACITY_REWARD);
+                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
@@ -400,16 +400,16 @@ const hardestRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.HARD_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.HARD_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -425,16 +425,16 @@ const hardestRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 8;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.MEDIUM_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.MEDIUM_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -450,16 +450,16 @@ const hardestRaidScenarios = [
             const DIFFICULTY_MULTIPLIER = 10;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.REGULAR_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -475,12 +475,12 @@ const statRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction) => {
             let raidSplit = 0, totalRaidSplit = 0, raidResultDescription;
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_RAID_DIFFICULTY, Raid.MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                let workMultiReward = Raid.LEGENDARY_RAID_MULTIPLIER_REWARD * 2;
-                let passiveReward = Raid.LEGENDARY_RAID_PASSIVE_REWARD * 2;
-                let bankReward = Raid.LEGENDARY_RAID_CAPACITY_REWARD * 2;
+                let workMultiReward = Raid.METAL_KING_MULTIPLIER_REWARD * 2;
+                let passiveReward = Raid.METAL_KING_PASSIVE_REWARD * 2;
+                let bankReward = Raid.METAL_KING_CAPACITY_REWARD * 2;
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
                 await raidFactory.handleStatSplit(raidList, 'bankCapacity', bankReward);
@@ -632,7 +632,7 @@ module.exports = {
             guildTotalEarnings += potatoesGained;
             await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
         } else if (raidSelection == 'elite') {
-            for (const scenario of harderRaidScenarios) {
+            for (const scenario of eliteRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
                     potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
                     break;
@@ -641,7 +641,7 @@ module.exports = {
             guildTotalEarnings += potatoesGained;
             await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
         } else if (raidSelection == 'legendary') {
-            for (const scenario of hardestRaidScenarios) {
+            for (const scenario of legendaryRaidScenarios) {
                 if (raidScenarioRoll < scenario.chance) {
                     potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
                     break;
