@@ -259,6 +259,7 @@ const regularRaidScenarios = [
     }
 ]
 
+ELITE_PENALTY_INCREASE = 2;
 const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -303,7 +304,7 @@ const eliteRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -328,7 +329,7 @@ const eliteRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -353,7 +354,7 @@ const eliteRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -365,6 +366,7 @@ const eliteRaidScenarios = [
     }
 ]
 
+LEGENDARY_PENALTY_INCREASE = 3;
 const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -409,7 +411,7 @@ const legendaryRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -434,7 +436,7 @@ const legendaryRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -459,7 +461,7 @@ const legendaryRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
