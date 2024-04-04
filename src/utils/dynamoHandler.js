@@ -153,7 +153,17 @@ const addUser = async function (userId, username) {
         },
         starches: 0,
         canEnterTower: true,
-        workCount: 0
+        workCount: 0,
+        workScenarioCounts: {
+            regular: 0,
+            large: 0,
+            sweet: 0,
+            taro: 0,
+            poison: 0,
+            metalSuccess: 0,
+            metalFailure: 0,
+            golden: 0
+        }
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -654,9 +664,18 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set workCount = :workCount",
+            UpdateExpression: "set workScenarioCounts = :workScenarioCounts",
             ExpressionAttributeValues: {
-                ":workCount": 0,
+                ":workScenarioCounts": {
+                    regular: 0,
+                    large: 0,
+                    sweet: 0,
+                    taro: 0,
+                    poison: 0,
+                    metalSuccess: 0,
+                    metalFailure: 0,
+                    golden: 0
+                },
             },
             ReturnValues: "ALL_NEW",
         };

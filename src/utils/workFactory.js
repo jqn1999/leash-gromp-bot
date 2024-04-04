@@ -39,6 +39,11 @@ class WorkFactory {
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
         await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.metalSuccess += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
         return potatoesGained;
     }
@@ -77,6 +82,11 @@ class WorkFactory {
                 await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
                 break;
         }
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.sweet += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
         return random;
@@ -89,6 +99,10 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const starchAmount = Math.round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier)));
         userStarches += starchAmount;
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.taro += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
@@ -107,6 +121,11 @@ class WorkFactory {
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.poison += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
@@ -124,6 +143,11 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.golden += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
@@ -141,6 +165,11 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.large += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
@@ -158,6 +187,11 @@ class WorkFactory {
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, userMultiplier + guildMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.regular += 1;
+        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
         await dynamoHandler.addUserDatabase(userId, "workCount", 1);
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);

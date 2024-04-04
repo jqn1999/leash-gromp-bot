@@ -63,6 +63,11 @@ var workScenarios = [
             } else {
                 await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
                 potatoesGained = 0;
+
+                let workScenarioCounts = userDetails.workScenarioCounts;
+                workScenarioCounts.metalFailure += 1;
+                await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
+
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }
             interaction.editReply({ embeds: [embed] });
