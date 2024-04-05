@@ -25,6 +25,10 @@ module.exports = {
                 {
                     name: 'bank-shop',
                     value: 'bank-shop'
+                },
+                {
+                    name: 'starch-shop',
+                    value: 'starch-shop'
                 }
             ]
         }
@@ -45,6 +49,10 @@ module.exports = {
             case 'bank-shop':
                 const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
                 embed = embedFactory.createShopEmbed(bankShop);
+                break;
+            case 'starch-shop':
+                const starchShop = shops.find((currentShop) => currentShop.shopId == 'starchShop');
+                embed = embedFactory.createShopEmbed(starchShop);
                 break;
         }
         interaction.reply({ embeds: [embed], ephemeral: true});

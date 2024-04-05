@@ -8,54 +8,67 @@ const guildShops = [
         description: "This is where you upgrade your guild bank",
         items: [
             {
+                currentAmount: 0,
                 amount: 10000000,
                 cost: 1000000,
             },
             {
+                currentAmount: 10000000,
                 amount: 25000000,
                 cost: 10000000,
             },
             {
+                currentAmount: 25000000,
                 amount: 50000000,
                 cost: 25000000,
             },
             {
+                currentAmount: 50000000,
                 amount: 100000000,
                 cost: 50000000,
             },
             {
+                currentAmount: 100000000,
                 amount: 200000000,
                 cost: 100000000,
             },
             {
+                currentAmount: 200000000,
                 amount: 400000000,
                 cost: 200000000,
             },
             {
+                currentAmount: 400000000,
                 amount: 600000000,
                 cost: 400000000,
             },
             {
+                currentAmount: 600000000,
                 amount: 800000000,
                 cost: 400000000,
             },
             {
+                currentAmount: 800000000,
                 amount: 1000000000,
                 cost: 400000000,
             },
             {
+                currentAmount: 1000000000,
                 amount: 1200000000,
                 cost: 600000000,
             },
             {
+                currentAmount: 1200000000,
                 amount: 1500000000,
                 cost: 600000000,
             },
             {
+                currentAmount: 1500000000,
                 amount: 2000000000,
                 cost: 800000000,
             },
             {
+                currentAmount: 2000000000,
                 amount: 2500000000,
                 cost: 800000000,
             }
@@ -75,14 +88,12 @@ function doesGuildHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, intera
 function getNextItemFromShop(shop, currentAmount) {
     let chosenItem;
     for (const [index, element] of shop.items.entries()) {
-        if (element.cost == currentAmount) {
-            if (index == shop.items.length-1) {
-                return 0
-            }
+        if (element.currentAmount == currentAmount) {
             chosenItem = shop.items[index];
+            return chosenItem
         }
     }
-    return chosenItem;
+    return -1;
 }
 
 module.exports = {
@@ -130,11 +141,10 @@ module.exports = {
             case 'bank-capacity':
                 const bankShop = guildShops.find((currentShop) => currentShop.shopId == 'bankCapacity');
                 chosenItem = getNextItemFromShop(bankShop, guildBankCapacity);
-                if (chosenItem == 0) {
+                if (chosenItem == -1) {
                     interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
                     return;
                 }
-                console.log(chosenItem)
                 guildHasEnough = doesGuildHaveEnoughToPurchase(guildBankStored, chosenItem.cost, interaction, userDisplayName);
                 if (guildHasEnough) {
                     guildBankStored -= chosenItem.cost;

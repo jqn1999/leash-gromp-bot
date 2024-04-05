@@ -25,14 +25,15 @@ function validTierPurchase(currentAmount, itemSelectedAmount, previousItemAmount
     return true
 }
 
-function getItemFromShop(shop, selectedItemId) {
+function getNextItemFromShop(shop, currentAmount) {
     let chosenItem;
-    shop.items.forEach(item => {
-        if (item.id == selectedItemId) {
-            chosenItem = item;
+    for (const [index, element] of shop.items.entries()) {
+        if (element.currentAmount == currentAmount) {
+            chosenItem = shop.items[index];
+            return chosenItem
         }
-    })
-    return chosenItem;
+    }
+    return -1;
 }
 
 module.exports = {
@@ -60,54 +61,6 @@ module.exports = {
                     value: 'bank-shop'
                 }
             ]
-        },
-        {
-            name: 'item-id',
-            description: 'Which item to buy from the shop',
-            type: ApplicationCommandOptionType.Number,
-            required: true,
-            choices: [
-                {
-                    name: '1',
-                    value: 1
-                },
-                {
-                    name: '2',
-                    value: 2
-                },
-                {
-                    name: '3',
-                    value: 3
-                },
-                {
-                    name: '4',
-                    value: 4
-                },
-                {
-                    name: '5',
-                    value: 5
-                },
-                {
-                    name: '6',
-                    value: 6
-                },
-                {
-                    name: '7',
-                    value: 7
-                },
-                {
-                    name: '8',
-                    value: 8
-                },
-                {
-                    name: '9',
-                    value: 9
-                },
-                {
-                    name: '10',
-                    value: 10
-                }
-            ]
         }
     ],
     deleted: false,
@@ -124,23 +77,26 @@ module.exports = {
         }
         
         let userPotatoes = userDetails.potatoes;
-        let userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
-        let userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
-        let userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
+        let userBaseWorkMultiplier = (userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount).toFixed(1);
+        let userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount - userDetails.regrades.passiveAmount.regradeAmount;
+        let userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity - userDetails.regrades.bankCapacity.regradeAmount;
 
         let chosenItem, userHasEnough, validTier, previousItemAmount;
         switch (shopSelect) {
             case 'work-shop':
                 const workShop = shops.find((currentShop) => currentShop.shopId == 'workShop');
-                chosenItem = getItemFromShop(workShop, itemIdSelected);
-                if (itemIdSelected > 1) {
-                    previousItemAmount = getItemFromShop(workShop, itemIdSelected-1).amount;
+                chosenItem = getNextItemFromShop(workShop, userBaseWorkMultiplier)
+                if (chosenItem == -1) {
+                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
+                    return;
                 }
+
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
                 validTier = validTierPurchase(userBaseWorkMultiplier, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
+
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
-                    const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount;
+                    const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount + userDetails.regrades.workMulti.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
@@ -148,15 +104,17 @@ module.exports = {
                 break;
             case 'passive-income-shop':
                 const passiveIncomeShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
-                chosenItem = getItemFromShop(passiveIncomeShop, itemIdSelected);
-                if (itemIdSelected > 1) {
-                    previousItemAmount = getItemFromShop(passiveIncomeShop, itemIdSelected-1).amount;
+                chosenItem = getNextItemFromShop(passiveIncomeShop, userBasePassiveIncome)
+                if (chosenItem == -1) {
+                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
+                    return;
                 }
+
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
                 validTier = validTierPurchase(userBasePassiveIncome, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
-                    const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount;
+                    const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount + userDetails.regrades.passiveAmount.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "passiveAmount", newPassive);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
@@ -164,19 +122,17 @@ module.exports = {
                 break;
             case 'bank-shop':
                 const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
-                if (itemIdSelected > 6) {
-                    interaction.editReply(`${userDisplayName} bank shops do not go above tier 6. Good luck increasing your capacity!`);
+                chosenItem = getNextItemFromShop(bankShop, userBaseBankCapacity)
+                if (chosenItem == -1) {
+                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
                     return;
                 }
-                chosenItem = getItemFromShop(bankShop, itemIdSelected);
-                if (itemIdSelected > 1) {
-                    previousItemAmount = getItemFromShop(bankShop, itemIdSelected-1).amount;
-                }
+
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
                 validTier = validTierPurchase(userBaseBankCapacity, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
                 if (userHasEnough && validTier) {
                     userPotatoes -= chosenItem.cost;
-                    const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity;
+                    const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity + userDetails.regrades.bankCapacity.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "bankCapacity", newBankCapacity);
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
