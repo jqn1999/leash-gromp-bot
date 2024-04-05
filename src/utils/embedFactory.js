@@ -71,12 +71,12 @@ class EmbedFactory {
     createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
-        const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount;
-        const userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount;
-        const userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity;
-        const multiplierName = findShopItemName(userBaseWorkMultiplier, shops[0].items);
-        const passiveName = findShopItemName(userBasePassiveIncome, shops[1].items);
-        const bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
+        const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount;
+        const userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount - userDetails.regrades.passiveAmount.regradeAmount;
+        const userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity - userDetails.regrades.bankCapacity.regradeAmount;
+        let multiplierName = findShopItemName(userBaseWorkMultiplier, shops[0].items);
+        let passiveName = findShopItemName(userBasePassiveIncome, shops[1].items);
+        let bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
 
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
@@ -87,18 +87,18 @@ class EmbedFactory {
             .setTimestamp(Date.now())
             .addFields(
                 {
-                    name: "Current Work Multiplier Upgrade:\n(Base + Bonus)",
-                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)})x`,
+                    name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
+                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x`,
                     inline: false,
                 },
                 {
                     name: "Current Passive Income Upgrade:",
-                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()}) potatoes`,
+                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()} + ${userDetails.regrades.passiveAmount.regradeAmount.toFixed(2)}) potatoes`,
                     inline: false,
                 },
                 {
                     name: "Current Bank Capacity Upgrade:",
-                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()}) potatoes`,
+                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toFixed(2)}) potatoes`,
                     inline: false,
                 },
                 {
@@ -940,6 +940,63 @@ class EmbedFactory {
             .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by izmattk" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const color = increaseAmount > 0 ? 'Green' : 'Red';
+        const succeededOrFailed = increaseAmount > 0 ? 'Succeeded' : 'Failed';
+        let typeText;
+        if (regradeType == 'Work Multiplier') {
+            typeText = 'work multi';
+        } else if (regradeType == 'Passive Amount') {
+            typeText = 'potatoes';
+        } else if (regradeType == 'Bank Capacity') {
+            typeText = 'potatoes';
+        }
+        let fields = [];
+        fields.push({
+            name: `Current Potatoes:`,
+            value: `${userPotatoes.toLocaleString()} potatoes`,
+            inline: true,
+        })
+        fields.push({
+            name: `Cost:`,
+            value: `${cost.toLocaleString()} potatoes\n\n`,
+            inline: true,
+        })
+        fields.push({
+            name: '\n',
+            value: '\n',
+            inline: false
+        })
+        if (increaseAmount > 0) {
+            fields.push({
+                name: `New ${regradeType}:`,
+                value: `${newBaseAmount.toLocaleString()} ${typeText}`,
+                inline: true,
+            })
+            fields.push({
+                name: `Increase Amount:`,
+                value: `${increaseAmount.toLocaleString()}`,
+                inline: true,
+            })
+        }
+        fields.push({
+            name: `Success Chance:`,
+            value: `${(successChance*100).toFixed(2)}% (+${(failStack*100).toFixed(2)}%)`,
+            inline: false,
+        })
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} ${succeededOrFailed} a ${regradeType} regrade!`)
+            .setDescription(`Displayed below are your current potatoes and current base amount`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;

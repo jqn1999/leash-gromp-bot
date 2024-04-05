@@ -163,6 +163,20 @@ const addUser = async function (userId, username) {
             metalSuccess: 0,
             metalFailure: 0,
             golden: 0
+        },
+        regrades: {
+            workMulti: {
+                regradeAmount: 0,
+                failStack: 0
+            },
+            passiveAmount: {
+                regradeAmount: 0,
+                failStack: 0
+            },
+            bankCapacity: {
+                regradeAmount: 0,
+                failStack: 0
+            }
         }
     };
     var params = {
@@ -664,17 +678,21 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set workScenarioCounts = :workScenarioCounts",
+            UpdateExpression: "set regrades = :regrades",
             ExpressionAttributeValues: {
-                ":workScenarioCounts": {
-                    regular: 0,
-                    large: 0,
-                    sweet: 0,
-                    taro: 0,
-                    poison: 0,
-                    metalSuccess: 0,
-                    metalFailure: 0,
-                    golden: 0
+                ":regrades": {
+                    workMulti: {
+                        regradeAmount: 0,
+                        failStack: 0,
+                    },
+                    passiveAmount: {
+                        regradeAmount: 0,
+                        failStack: 0,
+                    },
+                    bankCapacity: {
+                        regradeAmount: 0,
+                        failStack: 0,
+                    }
                 },
             },
             ReturnValues: "ALL_NEW",
