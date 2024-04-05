@@ -196,6 +196,7 @@ const shops = [
         description: "This is where you buy tools and gear to improve work yield",
         items: [
             {
+                currentAmount: 1,
                 amount: 1.5,
                 cost: 50000,
                 description: "A humble set of gear for beginners intended to facilitate the hunting process.",
@@ -204,6 +205,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 1.5,
                 amount: 3,
                 cost: 200000,
                 description: "A respectable set of gear that's vital for those pursuing a career in potato hunting.",
@@ -212,6 +214,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 3,
                 amount: 5,
                 cost: 1000000,
                 description: "An intermediate set of accessories fit for a seasoned adventurer in the Potato Kingdom.",
@@ -220,6 +223,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 5,
                 amount: 10,
                 cost: 5000000,
                 description: "Cutting-edge equipment that lends itself well to defending the Potato Kingdom against nefarious vegetables.",
@@ -228,6 +232,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 10,
                 amount: 15,
                 cost: 20000000,
                 description: "This advanced arsenal provides heroes with the means to safeguard their kingdom in the face of the most vicious foes.",
@@ -236,6 +241,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 15,
                 amount: 20,
                 cost: 50000000,
                 description: "An elite array of imposing weapons that can fell the toughest of enemies with ease.",
@@ -244,6 +250,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 20,
                 amount: 25,
                 cost: 75000000,
                 description: "Ceremonious garments and gadgets said to have played a vital role in triumphing over an insurmountable force long ago.",
@@ -252,6 +259,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 25,
                 amount: 30,
                 cost: 100000000,
                 description: "A brilliant weapon, and one bearing a striking resemblance to those wielded by the first kings of the Potato Realm in the war to consolidate influence over their subjects.",
@@ -260,6 +268,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 30,
                 amount: 50,
                 cost: 500000000,
                 description: "A glistening implement echoing with the success of its forebears, this tool is said to usher an age of good fortune for those blessed with the privilege of wielding it.",
@@ -268,6 +277,7 @@ const shops = [
                 type: "workMultiplierAmount"
             },
             {
+                currentAmount: 50,
                 amount: 100,
                 cost: 1500000000,
                 description: "This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom.",
@@ -283,6 +293,7 @@ const shops = [
         description: "This is where you buy workers to improve passive yield",
         items: [
             {
+                currentAmount: 0,
                 amount: 50000,
                 cost: 50000,
                 description: "An apprentice that helps gather some additional potatoes each day",
@@ -291,6 +302,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 50000,
                 amount: 100000,
                 cost: 200000,
                 description: "A rag-tag crew of volunteers led by your apprentice and generously harvesting potatoes on your behalf",
@@ -299,6 +311,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 100000,
                 amount: 180000,
                 cost: 1000000,
                 description: "A proficient squad of musicians whose magical melodies can accelerate potato cultivations",
@@ -307,6 +320,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 180000,
                 amount: 500000,
                 cost: 5000000,
                 description: "A skilled squad of trained professionals in the art of potato cultivationn",
@@ -315,6 +329,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 500000,
                 amount: 1000000,
                 cost: 20000000,
                 description: "A regiment armed with cutting-edge techniques and skilled in sustainable practices, these growers leverage eco-friendly methods to ensure a lush harvest every day",
@@ -323,6 +338,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 1000000,
                 amount: 3000000,
                 cost: 50000000,
                 description: "A top-class group of agricultural virtuosos that seamlessly combines whimsical ballads and precise cultivation techniques, creating a harmonious environment for potato growth",
@@ -331,6 +347,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 3000000,
                 amount: 7000000,
                 cost: 75000000,
                 description: "An integrated network of potato scientists, farmers, and distributors capable of supporting the global potato economy with their robust supply chain",
@@ -339,6 +356,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 7000000,
                 amount: 14000000,
                 cost: 100000000,
                 description: "Led by your once apprentice turned genius investor, this fund employs complex starch trading and hedging strategies to generate exceptional returns each day",
@@ -347,6 +365,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 14000000,
                 amount: 27000000,
                 cost: 250000000,
                 description: "A permit granting you access to climb the Giant Potato\'s towering beanstalk, atop which grows a garden of golden potatoes",
@@ -355,6 +374,7 @@ const shops = [
                 type: "passiveAmount"
             },
             {
+                currentAmount: 27000000,
                 amount: 60000000,
                 cost: 500000000,
                 description: "The ultimate symbol of wealth and power, this circlet heralds your unparalleled status as a monarch and the untold riches that accompany such a title",
@@ -370,6 +390,7 @@ const shops = [
         description: "This is where you upgrade your bank to protect your potatoes from would-be robbers",
         items: [
             {
+                currentAmount: 0,
                 amount: 100000,
                 cost: 50000,
                 description: "A basic pouch fit for holding spuds safely",
@@ -378,6 +399,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
+                currentAmount: 100000,
                 amount: 500000,
                 cost: 200000,
                 description: "A rather secure holding for a more conscious potato collector",
@@ -386,6 +408,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
+                currentAmount: 500000,
                 amount: 2500000,
                 cost: 1000000,
                 description: "An underground vault built specifically to guard mountains of potatoes",
@@ -394,6 +417,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
+                currentAmount: 2500000,
                 amount: 10000000,
                 cost: 5000000,
                 description: "A colossal storage facility designed for the big dreamers of the potato farming world",
@@ -402,6 +426,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
+                currentAmount: 10000000,
                 amount: 25000000,
                 cost: 20000000,
                 description: "A prestigious storage solution for the truly distinguished potato farmer, offering a blend of elegance and functionality",
@@ -410,6 +435,7 @@ const shops = [
                 type: "bankCapacity"
             },
             {
+                currentAmount: 25000000,
                 amount: 50000000,
                 cost: 50000000,
                 description: "An archaic reserve of potato knowledge and preservation, equipped with magical reservoirs of extraordinary capacity",
@@ -419,11 +445,63 @@ const shops = [
             }
         ],
         title: "Potato Storage Shop (increase bank capacity)"
+    },
+    {
+        shopId: "starchShop",
+        description: "This is where you upgrade your max starches to continue on your investing journey",
+        items: [
+            {
+                currentAmount: 25000,
+                amount: 50000,
+                cost: 125000000,
+                description: "Better than nothin",
+                id: 1,
+                name: "Robinhood",
+                type: "maxStarches"
+            },
+            {
+                currentAmount: 50000,
+                amount: 75000,
+                cost: 187500000,
+                description: "Slightly better than Robinhood... slightly",
+                id: 2,
+                name: "Ally Invest",
+                type: "maxStarches"
+            },
+            {
+                currentAmount: 75000,
+                amount: 100000,
+                cost: 250000000,
+                description: "Trusted by many retail investors for their investment needs",
+                id: 3,
+                name: "Fidelity",
+                type: "maxStarches"
+            },
+            {
+                currentAmount: 100000,
+                amount: 150000,
+                cost: 500000000,
+                description: "A good firm for holding large amounts of starches",
+                id: 4,
+                name: "Charles Schwab",
+                type: "maxStarches"
+            },
+            {
+                currentAmount: 150000,
+                amount: 200000,
+                cost: 750000000,
+                description: "The best investment firm for holding your large stash of starches",
+                id: 5,
+                name: "Vanguard",
+                type: "maxStarches"
+            }
+        ],
+        title: "Starch Storage Shop (increase max starches)"
     }
 ]
 
 const awsConfigurations = {
-    aws_table_name: 'leash-gromp-bot-restored',
+    aws_table_name: 'leash-gromp-bot',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
     aws_betting_table_name: 'leash-gromp-bot-betting',
     aws_stats_table_name: 'leash-gromp-stats',

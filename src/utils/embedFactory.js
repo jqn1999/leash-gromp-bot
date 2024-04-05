@@ -52,6 +52,11 @@ class EmbedFactory {
             inline: false,
         });
         fields.push({
+            name: "Current Starch Capacity:",
+            value: `${userDetails.maxStarches.toLocaleString()} starches`,
+            inline: false,
+        });
+        fields.push({
             name: "Work Count:",
             value: `${userDetails.workCount.toLocaleString()} works`,
             inline: false,
@@ -74,9 +79,11 @@ class EmbedFactory {
         const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount;
         const userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount - userDetails.regrades.passiveAmount.regradeAmount;
         const userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity - userDetails.regrades.bankCapacity.regradeAmount;
+        const userBaseMaxStarches = userDetails.maxStarches;
         let multiplierName = findShopItemName(userBaseWorkMultiplier, shops[0].items);
         let passiveName = findShopItemName(userBasePassiveIncome, shops[1].items);
         let bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
+        let starchName = findShopItemName(userBaseMaxStarches, shops[3].items);
 
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
@@ -99,6 +106,11 @@ class EmbedFactory {
                 {
                     name: "Current Bank Capacity Upgrade:",
                     value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toFixed(2)}) potatoes`,
+                    inline: false,
+                },
+                {
+                    name: "Current Starch Capacity Upgrade:",
+                    value: `${starchName}\n(${userBaseMaxStarches.toLocaleString()} + 0 + 0) starches`,
                     inline: false,
                 },
                 {

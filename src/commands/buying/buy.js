@@ -11,20 +11,6 @@ function doesUserHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, interac
     return true
 }
 
-function validTierPurchase(currentAmount, itemSelectedAmount, previousItemAmount, interaction, userDisplayName) {
-    if (currentAmount == itemSelectedAmount) {
-        interaction.editReply(`${userDisplayName} you already have this tier! Check your profile`)
-        return false;
-    } else if (currentAmount > itemSelectedAmount) {
-        interaction.editReply(`${userDisplayName} you currently have a higher tier than the one you're trying to purchase! Check your profile`)
-        return false;
-    } else if (previousItemAmount && currentAmount.toFixed(1) != previousItemAmount.toFixed(1)) {
-        interaction.editReply(`${userDisplayName} you need to have the previous tier before the one you're trying to purchase! Check your profile`)
-        return false;
-    }
-    return true
-}
-
 function getNextItemFromShop(shop, currentAmount) {
     let chosenItem;
     for (const [index, element] of shop.items.entries()) {
@@ -59,6 +45,10 @@ module.exports = {
                 {
                     name: 'bank-shop',
                     value: 'bank-shop'
+                },
+                {
+                    name: 'starch-shop',
+                    value: 'starch-shop'
                 }
             ]
         }
@@ -67,7 +57,6 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         let shopSelect = interaction.options.get('shop-select')?.value;
-        let itemIdSelected = interaction.options.get('item-id')?.value;
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await dynamoHandler.findUser(userId, username);
@@ -80,6 +69,7 @@ module.exports = {
         let userBaseWorkMultiplier = (userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount).toFixed(1);
         let userBasePassiveIncome = userDetails.passiveAmount - userDetails.sweetPotatoBuffs.passiveAmount - userDetails.regrades.passiveAmount.regradeAmount;
         let userBaseBankCapacity = userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity - userDetails.regrades.bankCapacity.regradeAmount;
+        let userMaxStarches = userDetails.maxStarches;
 
         let chosenItem, userHasEnough, validTier, previousItemAmount;
         switch (shopSelect) {
@@ -92,9 +82,8 @@ module.exports = {
                 }
 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBaseWorkMultiplier, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
 
-                if (userHasEnough && validTier) {
+                if (userHasEnough) {
                     userPotatoes -= chosenItem.cost;
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount + userDetails.regrades.workMulti.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -111,8 +100,7 @@ module.exports = {
                 }
 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBasePassiveIncome, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
-                if (userHasEnough && validTier) {
+                if (userHasEnough) {
                     userPotatoes -= chosenItem.cost;
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount + userDetails.regrades.passiveAmount.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -129,8 +117,7 @@ module.exports = {
                 }
 
                 userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
-                validTier = validTierPurchase(userBaseBankCapacity, chosenItem.amount, previousItemAmount, interaction, userDisplayName);
-                if (userHasEnough && validTier) {
+                if (userHasEnough) {
                     userPotatoes -= chosenItem.cost;
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity + userDetails.regrades.bankCapacity.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
@@ -138,6 +125,23 @@ module.exports = {
                     interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
                 }
                 break;
+            case 'starch-shop':
+                    const starchShop = shops.find((currentShop) => currentShop.shopId == 'starchShop');
+                    chosenItem = getNextItemFromShop(starchShop, userMaxStarches)
+                    if (chosenItem == -1) {
+                        interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
+                        return;
+                    }
+    
+                    userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, chosenItem.cost, interaction, userDisplayName);
+                    if (userHasEnough) {
+                        userPotatoes -= chosenItem.cost;
+                        const newMaxStarches = chosenItem.amount;
+                        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+                        await dynamoHandler.updateUserDatabase(userId, "maxStarches", newMaxStarches);
+                        interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                    }
+                    break;
         }
         return
     }

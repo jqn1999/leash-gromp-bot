@@ -177,7 +177,8 @@ const addUser = async function (userId, username) {
                 regradeAmount: 0,
                 failStack: 0
             }
-        }
+        },
+        maxStarches: 25000
     };
     var params = {
         TableName: awsConfigurations.aws_table_name,
@@ -678,22 +679,9 @@ const addNewUserAttribute = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set regrades = :regrades",
+            UpdateExpression: "set maxStarches = :maxStarches",
             ExpressionAttributeValues: {
-                ":regrades": {
-                    workMulti: {
-                        regradeAmount: 0,
-                        failStack: 0,
-                    },
-                    passiveAmount: {
-                        regradeAmount: 0,
-                        failStack: 0,
-                    },
-                    bankCapacity: {
-                        regradeAmount: 0,
-                        failStack: 0,
-                    }
-                },
+                ":maxStarches": 25000,
             },
             ReturnValues: "ALL_NEW",
         };

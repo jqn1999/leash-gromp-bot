@@ -58,6 +58,18 @@ module.exports = {
             }
         }
 
+        let maxStarches = userDetails.maxStarches;
+        let remainingAvailableStarches;
+        if (starches + userStarches > maxStarches) {
+            remainingAvailableStarches = maxStarches - userStarches;
+            starches = remainingAvailableStarches > 0 ? remainingAvailableStarches : 0
+        }
+
+        if (starches == 0) {
+            interaction.editReply(`${userDisplayName}, you are at the maximum amount of starches. Upgrade your starch capacity!`);
+            return;
+        }
+
         const isStarchGreaterThanZero = starches >= 1;
         if (!isStarchGreaterThanZero) {
             interaction.editReply(`${userDisplayName}, you can only buy positive amounts!`);
