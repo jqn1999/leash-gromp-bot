@@ -92,6 +92,138 @@ const workRegradeTiers = [
     }
 ]
 
+const passiveRegradeTiers = [
+    {
+        currentRegradeAmount: 0,
+        cost: 500000000,
+        increase: 12000000,
+        chance: .5,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 12000000,
+        cost: 500000000,
+        increase: 12000000,
+        chance: .45,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 24000000,
+        cost: 1000000000,
+        increase: 12000000,
+        chance: .40,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 36000000,
+        cost: 1000000000,
+        increase: 12000000,
+        chance: .35,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 48000000,
+        cost: 1500000000,
+        increase: 24000000,
+        chance: .30,
+        failStackIncrease: .04
+    },
+    {
+        currentRegradeAmount: 72000000,
+        cost: 1500000000,
+        increase: 24000000,
+        chance: .10,
+        failStackIncrease: .04
+    },
+    {
+        currentRegradeAmount: 96000000,
+        cost: 2000000000,
+        increase: 36000000,
+        chance: .08,
+        failStackIncrease: .03
+    },
+    {
+        currentRegradeAmount: 132000000,
+        cost: 2500000000,
+        increase: 48000000,
+        chance: .03,
+        failStackIncrease: .02
+    },
+    {
+        currentRegradeAmount: 180000000,
+        cost: 3000000000,
+        increase: 60000000,
+        chance: .02,
+        failStackIncrease: .01
+    }
+]
+
+const bankRegradeTiers = [
+    {
+        currentRegradeAmount: 0,
+        cost: 500000000,
+        increase: 200000000,
+        chance: .5,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 200000000,
+        cost: 500000000,
+        increase: 200000000,
+        chance: .45,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 400000000,
+        cost: 1000000000,
+        increase: 200000000,
+        chance: .40,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 600000000,
+        cost: 1000000000,
+        increase: 200000000,
+        chance: .35,
+        failStackIncrease: .05
+    },
+    {
+        currentRegradeAmount: 800000000,
+        cost: 1500000000,
+        increase: 400000000,
+        chance: .30,
+        failStackIncrease: .04
+    },
+    {
+        currentRegradeAmount: 1200000000,
+        cost: 1500000000,
+        increase: 400000000,
+        chance: .10,
+        failStackIncrease: .04
+    },
+    {
+        currentRegradeAmount: 1600000000,
+        cost: 2000000000,
+        increase: 600000000,
+        chance: .08,
+        failStackIncrease: .03
+    },
+    {
+        currentRegradeAmount: 2200000000,
+        cost: 2500000000,
+        increase: 800000000,
+        chance: .03,
+        failStackIncrease: .02
+    },
+    {
+        currentRegradeAmount: 3000000000,
+        cost: 3000000000,
+        increase: 100000000000,
+        chance: .02,
+        failStackIncrease: .01
+    }
+]
+
 module.exports = {
     name: "regrade",
     description: "Regrades your gear in the selected category",
@@ -107,14 +239,14 @@ module.exports = {
                     name: 'work-multi',
                     value: 'work-multi'
                 },
-                // {
-                //     name: 'passive-income',
-                //     value: 'passive-income'
-                // },
-                // {
-                //     name: 'bank-capacity',
-                //     value: 'bank-capacity'
-                // }
+                {
+                    name: 'passive-income',
+                    value: 'passive-income'
+                },
+                {
+                    name: 'bank-capacity',
+                    value: 'bank-capacity'
+                }
             ]
         }
     ],
@@ -168,38 +300,61 @@ module.exports = {
                 }
                 break;
             case 'passive-income':
-                const passiveIncomeShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
-                requiredBaseAmount = workShop.items[workShop.items.length - 1].amount
-                userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, 500000000, interaction, userDisplayName);
-                canRegrade = hasRequiredBaseAmount(userBaseWorkMultiplier, requiredBaseAmount, interaction, userDisplayName);
-                if (userHasEnough && canRegrade) {
-                    userPotatoes -= 500000000;
-                    if (Math.random() > .5) {
-                        const newMultiplier = userBaseWorkMultiplier + 10;
-                        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
-                        // make embed
-                    } else {
+                currentTier = findCurrentRegradeTier(passiveRegradeTiers, userRegrades.passiveAmount.regradeAmount);
+                const passiveShop = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
+                requiredBaseAmount = passiveShop.items[passiveShop.items.length - 1].amount
 
+                userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, currentTier.cost, interaction, userDisplayName);
+                canRegrade = hasRequiredBaseAmount(userBasePassiveIncome, requiredBaseAmount, interaction, userDisplayName);
+                if (userHasEnough && canRegrade) {
+                    await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
+                    let failStack = userRegrades.passiveAmount.failStack;
+                    let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack;
+                    if (Math.random() < chanceOfSuccess) {
+                        userRegrades.passiveAmount.regradeAmount += currentTier.increase;
+                        userRegrades.passiveAmount.failStack = 0;
+                        await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
+
+                        const newPassive = userDetails.passiveAmount + currentTier.increase;
+                        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", newPassive);
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', newPassive, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost)
+                    } else {
+                        userRegrades.passiveAmount.failStack += currentTier.failStackIncrease;
+                        await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', userDetails.passiveAmount, 0, chanceOfSuccess, failStack, -currentTier.cost)
                     }
-                    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+                    interaction.editReply({ embeds: [embed]});
                 }
                 break;
             case 'bank-capacity':
+                currentTier = findCurrentRegradeTier(bankRegradeTiers, userRegrades.bankCapacity.regradeAmount);
                 const bankShop = shops.find((currentShop) => currentShop.shopId == 'bankShop');
-                requiredBaseAmount = workShop.items[workShop.items.length - 1].amount
-                userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, 500000000, interaction, userDisplayName);
-                canRegrade = hasRequiredBaseAmount(userBaseWorkMultiplier, requiredBaseAmount, interaction, userDisplayName);
-                if (userHasEnough && canRegrade) {
-                    userPotatoes -= 500000000;
-                    if (Math.random() > .5) {
-                        const newMultiplier = userBaseWorkMultiplier + 10;
-                        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
-                        // make embed
-                    } else {
+                requiredBaseAmount = bankShop.items[bankShop.items.length - 1].amount
 
+                userHasEnough = doesUserHaveEnoughToPurchase(userPotatoes, currentTier.cost, interaction, userDisplayName);
+                canRegrade = hasRequiredBaseAmount(userBaseBankCapacity, requiredBaseAmount, interaction, userDisplayName);
+                if (userHasEnough && canRegrade) {
+                    await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
+                    let failStack = userRegrades.bankCapacity.failStack;
+                    let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack;
+                    if (Math.random() < chanceOfSuccess) {
+                        userRegrades.bankCapacity.regradeAmount += currentTier.increase;
+                        userRegrades.bankCapacity.failStack = 0;
+                        await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
+
+                        const newBank = userDetails.bankCapacity + currentTier.increase;
+                        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", newBank);
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', newBank, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost)
+                    } else {
+                        userRegrades.bankCapacity.failStack += currentTier.failStackIncrease;
+                        await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', userDetails.bankCapacity, 0, chanceOfSuccess, failStack, -currentTier.cost)
                     }
-                    await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
+                    interaction.editReply({ embeds: [embed]});
                 }
+                break;
+            case 'starch-capacity':
+                //
                 break;
         }
         return

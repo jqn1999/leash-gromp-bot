@@ -442,6 +442,42 @@ const shops = [
                 id: 6,
                 name: "Ancient Spud Library",
                 type: "bankCapacity"
+            },
+            {
+                currentAmount: 50000000,
+                amount: 250000000,
+                cost: 500000000,
+                description: "Cookin by the book",
+                id: 7,
+                name: "Lazy Town Bank",
+                type: "bankCapacity"
+            },
+            {
+                currentAmount: 250000000,
+                amount: 500000000,
+                cost: 1000000000,
+                description: "A lot of money flowin through here",
+                id: 8,
+                name: "Chinese Restaurant",
+                type: "bankCapacity"
+            },
+            {
+                currentAmount: 500000000,
+                amount: 750000000,
+                cost: 1500000000,
+                description: "Money n such",
+                id: 9,
+                name: "The Norman Manor",
+                type: "bankCapacity"
+            },
+            {
+                currentAmount: 750000000,
+                amount: 1000000000,
+                cost: 2000000000,
+                description: "Well funded gentlemen's club",
+                id: 10,
+                name: "The Huang Estate",
+                type: "bankCapacity"
             }
         ],
         title: "Potato Storage Shop (increase bank capacity)"
