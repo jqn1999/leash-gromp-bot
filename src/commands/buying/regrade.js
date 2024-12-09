@@ -89,6 +89,41 @@ const workRegradeTiers = [
         increase: 50,
         chance: .02,
         failStackIncrease: .01
+    },
+    {
+        currentRegradeAmount: 200,
+        cost: 3000000000,
+        increase: 50,
+        chance: .01,
+        failStackIncrease: .005
+    },
+    {
+        currentRegradeAmount: 250,
+        cost: 4000000000,
+        increase: 50,
+        chance: .01,
+        failStackIncrease: .005
+    },
+    {
+        currentRegradeAmount: 300,
+        cost: 4000000000,
+        increase: 50,
+        chance: .01,
+        failStackIncrease: .005
+    },
+    {
+        currentRegradeAmount: 350,
+        cost: 4500000000,
+        increase: 50,
+        chance: .01,
+        failStackIncrease: .005
+    },
+    {
+        currentRegradeAmount: 400,
+        cost: 5000000000,
+        increase: 100,
+        chance: .005,
+        failStackIncrease: .0025
     }
 ]
 
@@ -155,6 +190,34 @@ const passiveRegradeTiers = [
         increase: 60000000,
         chance: .02,
         failStackIncrease: .01
+    },
+    {
+        currentRegradeAmount: 240000000,
+        cost: 4000000000,
+        increase: 60000000,
+        chance: .02,
+        failStackIncrease: .01
+    },
+    {
+        currentRegradeAmount: 300000000,
+        cost: 4000000000,
+        increase: 60000000,
+        chance: .02,
+        failStackIncrease: .01
+    },
+    {
+        currentRegradeAmount: 360000000,
+        cost: 4500000000,
+        increase: 60000000,
+        chance: .02,
+        failStackIncrease: .01
+    },
+    {
+        currentRegradeAmount: 420000000,
+        cost: 5000000000,
+        increase: 180000000,
+        chance: .01,
+        failStackIncrease: .005
     }
 ]
 
