@@ -4,10 +4,14 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
-async function processRewardPayouts(userId, rewards, username) {
+async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
-        interaction.editReply(`${userDisplayName} was not found in the DB, contact an admin!`);
+        // The run's results embed has already been sent by this point (see the
+        // followUp below in the callback) — this is a genuine DB error on crediting
+        // the reward, not a "no reward earned" case, so the player needs to know their
+        // run's reward didn't actually get saved rather than assuming it silently did.
+        await interaction.followUp(`${userDisplayName}, your tower run's rewards could not be saved due to a database error — contact an admin!`);
         return;
     }
     let userMultiplier = userDetails.workMultiplierAmount;
@@ -77,7 +81,7 @@ module.exports = {
             embeds: [embed]
         })
 
-        await processRewardPayouts(userId, rewards, username);
+        await processRewardPayouts(interaction, userId, rewards, username, userDisplayName);
 
         // Only a survived run (voluntarily left, not lost to an Elite) counts for the
         // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.

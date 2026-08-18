@@ -74,6 +74,12 @@ module.exports = {
 
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;
+
+        if (targetUserId == userId) {
+            interaction.editReply(`${userDisplayName}, you cannot rob yourself.`);
+            return;
+        }
+
         if (targetUserId) {
             const targetUser = await interaction.guild.members.fetch(targetUserId);
             if (!targetUser) {
@@ -116,13 +122,20 @@ module.exports = {
             const robAmount = calculateRobAmount(targetUserPotatoes);
             userPotatoes += robAmount;
             userTotalEarnings += robAmount;
-            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-
             targetUserPotatoes -= robAmount;
             targetUserTotalLosses -= robAmount;
-            await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
-            await dynamoHandler.updateUserDatabase(targetUserId, "totalLosses", targetUserTotalLosses);
+
+            await Promise.all([
+                dynamoHandler.updateUserFields(userId, {
+                    potatoes: userPotatoes,
+                    totalEarnings: userTotalEarnings,
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS
+                }),
+                dynamoHandler.updateUserFields(targetUserId, {
+                    potatoes: targetUserPotatoes,
+                    totalLosses: targetUserTotalLosses
+                })
+            ]);
 
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
@@ -131,14 +144,19 @@ module.exports = {
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
             adminUserShare = Math.floor(fineAmount*.10);
-            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
-            await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
-            await dynamoHandler.updateUserDatabase(userId, "workTimer", Date.now()+Rob.WORK_TIMER_INCREASE_MS);
+
+            await Promise.all([
+                dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare),
+                dynamoHandler.updateUserFields(userId, {
+                    potatoes: userPotatoes,
+                    totalLosses: userTotalLosses,
+                    workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS
+                })
+            ]);
 
             embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             interaction.editReply({ embeds: [embed] });
         }
-        await dynamoHandler.updateUserDatabase(userId, "robTimer", Date.now()+Rob.ROB_TIMER_SECONDS);
     }
 }

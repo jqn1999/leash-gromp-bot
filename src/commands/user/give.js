@@ -78,6 +78,12 @@ module.exports = {
 
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;
+
+        if (targetUserId == userId) {
+            interaction.editReply(`${userDisplayName}, you cannot give to yourself.`);
+            return;
+        }
+
         if (targetUserId) {
             const targetUser = await interaction.guild.members.fetch(targetUserId);
             if (!targetUser) {

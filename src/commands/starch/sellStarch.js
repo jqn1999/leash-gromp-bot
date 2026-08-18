@@ -33,8 +33,8 @@ module.exports = {
         let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 9;
 
         if(isMondayAndBuyingTime || isThursdayAndBuyingTime || isFridayAndBuyingTime){
-            interaction.editReply(`${userDisplayName}, this is a buying period for starches!`);
-            return;            
+            interaction.editReply(`${userDisplayName}, this is a buying period for starches (Monday 6am-6pm and Thursday 6pm-6am EST) — selling reopens once that window closes!`);
+            return;
         }
 
         // get starch number and basic stuff

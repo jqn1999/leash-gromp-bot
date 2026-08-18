@@ -51,6 +51,10 @@ module.exports = {
             return;
         }
         let guild = await dynamoHandler.findGuildById(userGuildId);
+        if (!guild) {
+            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
+            return;
+        }
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
