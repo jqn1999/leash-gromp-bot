@@ -2,6 +2,8 @@ const { EmbedBuilder } = require("discord.js");
 const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
+const { EventFactory } = require("../utils/eventFactory");
+const eventFactory = new EventFactory();
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
 // matches the medal convention createTowerLeaderboardResultsEmbed already established.
@@ -758,6 +760,14 @@ class EmbedFactory {
 
         if (mob.credit) {
             footerText = mob.credit;
+        }
+
+        // Surfaces the hourly special-odds event (if one's live) right on the result
+        // embed, since the announcement in chat is easy to miss/scroll past and there
+        // was previously no way to check "is something boosted right now?".
+        const activeEvent = eventFactory.getCurrentEvent();
+        if (activeEvent) {
+            footerText += ` • 🎉 ${activeEvent}`;
         }
 
         let sweetPotatoReward = '';

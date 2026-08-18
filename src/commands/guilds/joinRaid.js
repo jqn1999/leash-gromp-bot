@@ -3,7 +3,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
     name: "join-raid",
-    description: "Join a raid (must have an active raid)",
+    description: "Add yourself to your guild's raid roster, ready for an Elder+ to start with /start-raid",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {

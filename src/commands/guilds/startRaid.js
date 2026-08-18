@@ -134,24 +134,41 @@ function calculateRaidSuccessChance(totalMultiplier, raidDifficulty, maximumSucc
     return actualRaidSuccessChance
 }
 
+// Drains as much of the penalty as the bank can actually cover instead of an
+// all-or-nothing choice — previously a guild sitting just short of full coverage (e.g.
+// 4,999,999 banked against a 5,000,000 penalty) got the exact same "members eat the
+// entire penalty" outcome as a guild with an empty bank, instead of the bank absorbing
+// almost all of it and members only covering the 1-potato shortfall.
 async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost) {
     let raidSplit = null;
     if (guildBankStored + totalRaidCost >= 0) {
         guildBankStored += totalRaidCost;
         await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
     } else {
-        raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidCost);
+        const shortfall = totalRaidCost + guildBankStored; // still negative — what's left once the bank drains to 0
+        if (guildBankStored > 0) {
+            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', 0);
+        }
+        raidSplit = await raidFactory.handlePotatoSplit(raidList, shortfall);
     }
     return raidSplit
 }
 
+// Same fix, mirrored for rewards: fills the bank up to capacity first, only spilling the
+// excess that doesn't fit to members directly, instead of the whole reward bypassing the
+// bank the moment it's even slightly larger than the remaining space.
 async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit) {
     let raidSplit = null;
     if (remainingBankSpace >= totalRaidSplit) {
         guildBankStored += totalRaidSplit;
         await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
     } else {
-        raidSplit = await raidFactory.handlePotatoSplit(raidList, totalRaidSplit);
+        const excess = totalRaidSplit - remainingBankSpace; // what doesn't fit once the bank is topped off
+        if (remainingBankSpace > 0) {
+            guildBankStored += remainingBankSpace;
+            await dynamoHandler.updateGuildDatabase(guildId, 'bankStored', guildBankStored);
+        }
+        raidSplit = await raidFactory.handlePotatoSplit(raidList, excess);
     }
     return raidSplit
 }

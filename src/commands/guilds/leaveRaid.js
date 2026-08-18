@@ -3,7 +3,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
     name: "leave-raid",
-    description: "Leave a raid (must be in the active raid)",
+    description: "Remove yourself from your guild's raid roster",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
