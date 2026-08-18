@@ -94,8 +94,14 @@ Current bosses:
 
 | Boss | Reward | Stat bonus | Difficulty | Penalty on failure |
 |---|---|---|---|---|
+| Brassica, the Blooming Calamity | 70,000,000 | +0.75 work multi, +350,000 passive, +3,500,000 bank | 1200 | none |
 | Griseous, the Dragon Fruit | 150,000,000 | +1 work multi, +500,000 passive, +5,000,000 bank | 1800 | none |
 | Thunderlord Raikon | 50,000,000 | +2 work multi, +1,000,000 passive, +10,000,000 bank | 1800 | none |
+| Yamsalot, the Iron Yam | 140,000,000 | +3 work multi, +1,500,000 passive, +15,000,000 bank | 2500 | none |
+
+Brassica and Yamsalot were added to give the pool an actual difficulty gradient — the original two
+both sat at difficulty 1800 with no easier/harder alternative. `thumbnailUrl` for both is currently a
+placeholder (the bot's generic avatar); they need real commissioned artwork like Griseous/Raikon's.
 
 Success chance: `min(totalMultiplier/difficulty, .75)`. Unlike guild raids, reward is split
 **proportionally by each participant's work-multiplier share** (`handlePotatoSplitByShare`), and
