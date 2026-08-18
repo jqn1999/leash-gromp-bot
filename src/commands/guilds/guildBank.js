@@ -2,6 +2,8 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank, GuildRoles } = require("../../utils/constants");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 function calculateTax(amount) {
     return Bank.GUILD_TAX_BASE + Math.floor(amount * Bank.GUILD_TAX_PERCENT)
@@ -41,6 +43,7 @@ module.exports = {
         await interaction.deferReply();
         const action = interaction.options.get('action')?.value;
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userAvatar = interaction.user.avatar;
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
@@ -116,11 +119,13 @@ module.exports = {
             }
             userPotatoes -= totalAmount;
             guildBankStored += netAmount;
-            adminUserShare = totalAmount - netAmount;
+            const adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank (${adminUserShare.toLocaleString()} potato fee charged). You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
+
+            const embed = embedFactory.createGuildBankEmbed(userDisplayName, userId, userAvatar, guild.guildName, 'deposit', netAmount, adminUserShare, userPotatoes, guildBankStored, guildBankCapacity);
+            interaction.editReply({ embeds: [embed] });
         } else if (action == 'withdraw') {
             let canWithdraw = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
             if (!canWithdraw) {
@@ -160,7 +165,9 @@ module.exports = {
             guildBankStored -= netAmount;
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
-            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
+
+            const embed = embedFactory.createGuildBankEmbed(userDisplayName, userId, userAvatar, guild.guildName, 'withdraw', netAmount, 0, userPotatoes, guildBankStored, guildBankCapacity);
+            interaction.editReply({ embeds: [embed] });
         }
     }
 }

@@ -1,10 +1,22 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank } = require("../../utils/constants");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
 function calculateTax(amount){
     return Bank.TAX_BASE + Math.floor(amount*Bank.TAX_PERCENT)
+}
+
+function buildAmountPickerRow(action) {
+    const actionLabel = action === 'deposit' ? 'Deposit' : 'Withdraw';
+    const buttons = [25, 50, 100].map(pct => new ButtonBuilder()
+        .setCustomId(`bank_pct_${pct}`)
+        .setLabel(pct === 100 ? `${actionLabel} All` : `${pct}%`)
+        .setStyle(pct === 100 ? ButtonStyle.Primary : ButtonStyle.Secondary));
+    buttons.push(new ButtonBuilder().setCustomId('bank_cancel').setLabel('Cancel').setStyle(ButtonStyle.Danger));
+    return new ActionRowBuilder().addComponents(buttons);
 }
 
 module.exports = {
@@ -32,8 +44,8 @@ module.exports = {
         },
         {
             name: 'amount',
-            description: 'Amount of potatoes: all | (amount)',
-            required: true,
+            description: 'Amount of potatoes: all | (amount) — omit to pick a quick percentage instead',
+            required: false,
             type: ApplicationCommandOptionType.String,
         }
     ],
@@ -41,7 +53,8 @@ module.exports = {
         await interaction.deferReply();
         const action = interaction.options.get('action')?.value;
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        
+        const userAvatar = interaction.user.avatar;
+
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
             interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
@@ -58,8 +71,41 @@ module.exports = {
             return;
         }
 
-        let totalAmount;
         let netAmount = interaction.options.get('amount')?.value;
+
+        // No amount typed — offer a quick percentage picker instead of forcing a re-run
+        // with a typed number.
+        if (!netAmount) {
+            if (action === 'deposit' && userPotatoes < 1) {
+                interaction.editReply(`${userDisplayName}, you don't have any potatoes to deposit.`);
+                return;
+            }
+            if (action === 'withdraw' && userBankStored < 1) {
+                interaction.editReply(`${userDisplayName}, you don't have any potatoes to withdraw.`);
+                return;
+            }
+
+            const pickerEmbed = embedFactory.createBankAmountPickerEmbed(userDisplayName, userId, userAvatar, action, userPotatoes, userBankStored, userBankCapacity);
+            const reply = await interaction.editReply({ embeds: [pickerEmbed], components: [buildAmountPickerRow(action)] });
+
+            const collectorFilter = i => i.user.id === interaction.user.id;
+            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+            if (!confirmation) {
+                await reply.edit({ content: `${userDisplayName}, bank action timed out — nothing happened.`, embeds: [], components: [] }).catch(() => {});
+                return;
+            }
+            if (confirmation.customId === 'bank_cancel') {
+                await confirmation.update({ content: `${userDisplayName}, bank action cancelled.`, embeds: [], components: [] }).catch(() => {});
+                return;
+            }
+
+            await confirmation.deferUpdate();
+            const pct = Number(confirmation.customId.replace('bank_pct_', ''));
+            netAmount = pct === 100 ? 'all' : String(Math.floor((action === 'deposit' ? userPotatoes : userBankStored) * pct / 100));
+        }
+
+        let totalAmount;
         if (action == 'deposit') {
             if (netAmount.toLowerCase() == 'all') {
                 totalAmount = userPotatoes;
@@ -98,11 +144,13 @@ module.exports = {
             }
             userPotatoes -= totalAmount;
             userBankStored += netAmount;
-            adminUserShare = totalAmount - netAmount;
+            const adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank (${adminUserShare.toLocaleString()} potato fee charged). You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
+
+            const embed = embedFactory.createBankEmbed(userDisplayName, userId, userAvatar, 'deposit', netAmount, adminUserShare, userPotatoes, userBankStored, userBankCapacity);
+            interaction.editReply({ content: '', embeds: [embed], components: [] });
         } else if (action == 'withdraw') {
             if (userBankStored == 0) {
                 interaction.editReply(`${userDisplayName}, you do not have any potatoes to withdraw.`);
@@ -136,7 +184,9 @@ module.exports = {
             userBankStored -= netAmount;
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
-            interaction.editReply(`${userDisplayName}, you withdraw ${netAmount.toLocaleString()} potatoes from your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
+
+            const embed = embedFactory.createBankEmbed(userDisplayName, userId, userAvatar, 'withdraw', netAmount, 0, userPotatoes, userBankStored, userBankCapacity);
+            interaction.editReply({ content: '', embeds: [embed], components: [] });
         }
     }
 }

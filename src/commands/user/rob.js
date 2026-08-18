@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
@@ -19,6 +19,22 @@ function calculateRobAmount(targetUserPotatoes) {
     return Math.floor(targetUserPotatoes * getRandomFromInterval(.25, .50))
 }
 
+// Same bounds as calculateFailedRobPenalty/calculateRobAmount but without the roll,
+// so the preview embed can show the range the player is actually agreeing to.
+function calculateFailedRobPenaltyRange(userTotalWealth) {
+    if (userTotalWealth < 0) {
+        return [Rob.BASE_ROB_PENALTY, Rob.BASE_ROB_PENALTY];
+    }
+    return [Math.floor(userTotalWealth * .25), Math.floor(userTotalWealth * .50)];
+}
+
+function calculateRobAmountRange(targetUserPotatoes) {
+    if (targetUserPotatoes < 0) {
+        return [0, 0];
+    }
+    return [Math.floor(targetUserPotatoes * .25), Math.floor(targetUserPotatoes * .50)];
+}
+
 function calculateRobChance(userPotatoes, targetUserPotatoes) {
     if (userPotatoes < 0) {
         return .25;
@@ -33,6 +49,18 @@ function determineRobOutcome(robChance) {
         return true
     }
     return false
+}
+
+function buildConfirmRow() {
+    const confirmButton = new ButtonBuilder()
+        .setCustomId('rob_confirm')
+        .setLabel('Rob them')
+        .setStyle(ButtonStyle.Danger);
+    const cancelButton = new ButtonBuilder()
+        .setCustomId('rob_cancel')
+        .setLabel('Back out')
+        .setStyle(ButtonStyle.Secondary);
+    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
 }
 
 module.exports = {
@@ -114,8 +142,33 @@ module.exports = {
             }
         }
 
-        const userSuccessfulRob = determineRobOutcome(robChance);
         const robChanceDisplay = (robChance*100).toFixed(2);
+
+        // Show the odds and stakes before rolling, so the player commits knowingly
+        // instead of finding out both at once in the result embed.
+        const [minGain, maxGain] = calculateRobAmountRange(targetUserPotatoes);
+        const [minFine, maxFine] = calculateFailedRobPenaltyRange(userTotalWealth);
+        const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine);
+        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmRow()] });
+
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        if (!confirmation) {
+            const cancelledEmbed = embedFactory.createRobCancelledEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName);
+            await reply.edit({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+            return;
+        }
+
+        if (confirmation.customId === 'rob_cancel') {
+            const cancelledEmbed = embedFactory.createRobCancelledEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName);
+            await confirmation.update({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+            return;
+        }
+
+        await confirmation.deferUpdate();
+
+        const userSuccessfulRob = determineRobOutcome(robChance);
 
         // TODO: Move each of these into flows functions in future
         if (userSuccessfulRob) {
@@ -137,8 +190,8 @@ module.exports = {
                 })
             ]);
 
-            embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
-            interaction.editReply({ embeds: [embed] });
+            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            await interaction.editReply({ embeds: [embed], components: [] });
         } else {
             const fineAmount = calculateFailedRobPenalty(userTotalWealth);
             userPotatoes -= fineAmount;
@@ -155,8 +208,8 @@ module.exports = {
                 })
             ]);
 
-            embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
-            interaction.editReply({ embeds: [embed] });
+            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            await interaction.editReply({ embeds: [embed], components: [] });
         }
     }
 }

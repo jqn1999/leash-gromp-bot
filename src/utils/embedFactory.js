@@ -10,6 +10,13 @@ function rankLabel(index) {
     return LEADERBOARD_MEDALS[index] || `${index + 1}.`;
 }
 
+// Used by the bank embeds to show capacity fill at a glance instead of just raw numbers.
+function buildProgressBar(current, max, length = 10) {
+    const ratio = max > 0 ? Math.min(Math.max(current / max, 0), 1) : 0;
+    const filled = Math.round(ratio * length);
+    return '█'.repeat(filled) + '░'.repeat(length - filled);
+}
+
 class EmbedFactory {
     async createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
         const potatoes = userDetails.potatoes;
@@ -859,6 +866,56 @@ class EmbedFactory {
         return embed;
     }
 
+    // Shown before the roll happens so the player can back out — previously the odds
+    // and stakes were only ever revealed in the same embed as the already-decided result.
+    createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, chanceToRob, minGain, maxGain, minFine, maxFine) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const fields = [
+            {
+                name: `Chance to Rob:`,
+                value: `${chanceToRob}%`,
+                inline: true,
+            },
+            {
+                name: '\n',
+                value: '\n',
+                inline: false
+            },
+            {
+                name: `If Successful:`,
+                value: `+${minGain.toLocaleString()} to ${maxGain.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `If Caught:`,
+                value: `-${minFine.toLocaleString()} to ${maxFine.toLocaleString()} potatoes`,
+                inline: true,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, rob ${targetUserDisplayName}?`)
+            .setDescription(`Confirm to make the attempt — either outcome puts you on cooldown, and getting caught also extends your next /work.`)
+            .setColor("Yellow")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createRobCancelledEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`No attempt was made on ${targetUserDisplayName} — no cooldown applied, try again whenever.`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
@@ -933,6 +990,113 @@ class EmbedFactory {
             .setTitle(`${userDisplayName} gives ${currencyLower} to ${targetUserDisplayName}!`)
             .setDescription(`Displayed below are your current ${currencyLower}, your target's ${currencyLower}, and how many ${currencyLower} you gave.`)
             .setColor("Green")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Shown when /bank is run with no amount, offering quick percentage buttons instead
+    // of requiring a typed number.
+    createBankAmountPickerEmbed(userDisplayName, userId, userAvatar, action, userPotatoes, userBankStored, userBankCapacity) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const bar = buildProgressBar(userBankStored, userBankCapacity);
+        const fillPercent = userBankCapacity > 0 ? (userBankStored / userBankCapacity * 100) : 0;
+        const available = action === 'deposit' ? userPotatoes : userBankStored;
+        const availableLabel = action === 'deposit' ? 'Liquid Potatoes' : 'Banked Potatoes';
+
+        const fields = [
+            {
+                name: `${availableLabel}:`,
+                value: `${available.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Bank Capacity:`,
+                value: `${bar} ${fillPercent.toFixed(1)}%\n${userBankStored.toLocaleString()} / ${userBankCapacity.toLocaleString()} potatoes`,
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🏦 ${userDisplayName}, how much do you want to ${action}?`)
+            .setDescription(`Pick a quick amount below, or run \`/bank\` again with a specific number.`)
+            .setColor("Blue")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createBankEmbed(userDisplayName, userId, userAvatar, action, netAmount, feeAmount, userPotatoes, userBankStored, userBankCapacity) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const actionLabel = action === 'deposit' ? 'Deposited' : 'Withdrew';
+        const color = action === 'deposit' ? 'Green' : 'Blue';
+        const bar = buildProgressBar(userBankStored, userBankCapacity);
+        const fillPercent = userBankCapacity > 0 ? (userBankStored / userBankCapacity * 100) : 0;
+
+        const fields = [
+            {
+                name: `${actionLabel}:`,
+                value: feeAmount > 0
+                    ? `${netAmount.toLocaleString()} potatoes (${feeAmount.toLocaleString()} potato fee charged)`
+                    : `${netAmount.toLocaleString()} potatoes`,
+                inline: false,
+            },
+            {
+                name: `Liquid Potatoes:`,
+                value: `${userPotatoes.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Bank Capacity:`,
+                value: `${bar} ${fillPercent.toFixed(1)}%\n${userBankStored.toLocaleString()} / ${userBankCapacity.toLocaleString()} potatoes`,
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🏦 ${userDisplayName}'s Bank`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createGuildBankEmbed(userDisplayName, userId, userAvatar, guildName, action, netAmount, feeAmount, userPotatoes, guildBankStored, guildBankCapacity) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const actionLabel = action === 'deposit' ? 'Deposited' : 'Withdrew';
+        const color = action === 'deposit' ? 'Green' : 'Blue';
+        const bar = buildProgressBar(guildBankStored, guildBankCapacity);
+        const fillPercent = guildBankCapacity > 0 ? (guildBankStored / guildBankCapacity * 100) : 0;
+
+        const fields = [
+            {
+                name: `${actionLabel}:`,
+                value: feeAmount > 0
+                    ? `${netAmount.toLocaleString()} potatoes (${feeAmount.toLocaleString()} potato fee charged)`
+                    : `${netAmount.toLocaleString()} potatoes`,
+                inline: false,
+            },
+            {
+                name: `Your Liquid Potatoes:`,
+                value: `${userPotatoes.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `${guildName}'s Guild Bank:`,
+                value: `${bar} ${fillPercent.toFixed(1)}%\n${guildBankStored.toLocaleString()} / ${guildBankCapacity.toLocaleString()} potatoes`,
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🏰 ${guildName}'s Guild Bank`)
+            .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
