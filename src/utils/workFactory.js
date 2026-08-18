@@ -3,7 +3,7 @@ const { getRandomFromInterval } = require("../utils/helperCommands")
 const { Work, awsConfigurations } = require("../utils/constants")
 
 class WorkFactory {
-    async handleMetalPotato(userDetails, workGainAmount, multiplier) {
+    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
@@ -13,13 +13,11 @@ class WorkFactory {
         let rawPassiveRewardAmount, actualPassiveRewardAmount;
         let rawBankRewardAmount, actualBankRewardAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, userMultiplier + guildMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
 
         rawPassiveRewardAmount = userPassiveAmount * metalPotatoRewards.passiveReward;
         actualPassiveRewardAmount = calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount, metalPotatoRewards.maxPassiveGain);
@@ -30,21 +28,28 @@ class WorkFactory {
         userMultiplier += metalPotatoRewards.workMultiplierReward;
         userPassiveAmount += actualPassiveRewardAmount;
         userBankCapacity += actualBankRewardAmount;
-        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
-        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
-        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
 
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
         sweetPotatoBuffs.workMultiplierAmount += metalPotatoRewards.workMultiplierReward;
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
-        await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.metalSuccess += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            workMultiplierAmount: userMultiplier,
+            passiveAmount: userPassiveAmount,
+            bankCapacity: userBankCapacity,
+            sweetPotatoBuffs: sweetPotatoBuffs,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return potatoesGained;
     }
 
@@ -58,59 +63,70 @@ class WorkFactory {
         let random = Math.floor(Math.random() * sweetPotatoRewards.length);
         const reward = sweetPotatoRewards[random];
         let rawRewardAmount, actualRewardAmount;
+        const setAttributes = {};
         switch (reward.type) {
             case "workMultiplierAmount":
                 sweetPotatoBuffs.workMultiplierAmount += reward.amount;
                 userMultiplier += reward.amount;
-                await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
-                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+                setAttributes.workMultiplierAmount = userMultiplier;
                 break;
             case "passiveAmount":
                 rawRewardAmount = userPassiveAmount * reward.amount;
                 actualRewardAmount = calculatePassiveAmount(userPassiveAmount, rawRewardAmount, reward.maxGainSweetPotato);
                 sweetPotatoBuffs.passiveAmount += actualRewardAmount;
                 userPassiveAmount += actualRewardAmount;
-                await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
-                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+                setAttributes.passiveAmount = userPassiveAmount;
                 break;
             case "bankCapacity":
                 rawRewardAmount = userBankCapacity * reward.amount;
                 actualRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawRewardAmount, reward.maxGainSweetPotato);
                 sweetPotatoBuffs.bankCapacity += actualRewardAmount;
                 userBankCapacity += actualRewardAmount;
-                await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
-                await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+                setAttributes.bankCapacity = userBankCapacity;
                 break;
         }
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.sweet += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            ...setAttributes,
+            sweetPotatoBuffs: sweetPotatoBuffs,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return random;
     }
 
-    async handleTaroTrader(userDetails) {
+    async handleTaroTrader(userDetails, catchUpBonus = 0) {
         const userId = userDetails.userId;
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const starchAmount = Math.round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier)));
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.taro += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            starches: userStarches,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return starchAmount;
     }
 
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {
+        // Note: catch-up intentionally does not apply here — Poison Potato is a loss,
+        // and boosting a struggling player's penalty would undermine the whole point.
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalLosses = userDetails.totalLosses;
@@ -124,78 +140,97 @@ class WorkFactory {
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.poison += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalLosses: userTotalLosses,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return potatoesLost;
     }
 
-    async handleGoldenPotato(userDetails, workGainAmount, multiplier) {
+    async handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, userMultiplier + guildMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.golden += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return potatoesGained;
     }
 
-    async handleLargePotato(userDetails, workGainAmount, multiplier) {
+    async handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, userMultiplier + guildMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.large += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return potatoesGained;
     }
 
-    async handleRegularWork(userDetails, workGainAmount, multiplier) {
+    async handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, userMultiplier + guildMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.regular += 1;
-        await dynamoHandler.updateUserDatabase(userId, "workScenarioCounts", workScenarioCounts);
 
-        await dynamoHandler.addUserDatabase(userId, "workCount", 1);
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-        await dynamoHandler.updateWorkTimer(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
         return potatoesGained;
     }
 }
@@ -218,6 +253,10 @@ function calculateBankCapacityAmount(previousBankCapacity, newBankCapacityRaw, m
         return increase;
     }
     return 50000;
+}
+
+function applyCatchUp(effectiveMultiplier, catchUpBonus) {
+    return effectiveMultiplier * (1 + catchUpBonus);
 }
 
 async function getGuildWorkMulti(userDetails, userMultiplier) {

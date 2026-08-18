@@ -46,13 +46,19 @@ async function startWorldBoss(world, mob){
     let totalMultiplier = 0;
     let raidListByMulti = [];
     if (raidList.length > 0) {
-        for (const [index, element] of raidList.entries()) {
-            const userDetails = await dynamoHandler.findUser(element.id, element.username);
-            totalMultiplier += userDetails.workMultiplierAmount;
-            raidListByMulti.push({id: element.id, username: element.username, multiplier: userDetails.workMultiplierAmount})
-        }
+        const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+        raidList.forEach((element, index) => {
+            const userDetails = raidMemberDetails[index];
+            // A malformed participant record (missing workMultiplierAmount) would
+            // otherwise poison totalMultiplier to NaN for every participant, which
+            // guarantees the raid resolves as a failure (Math.random() < NaN is always
+            // false) regardless of anyone else's actual multiplier.
+            const memberMultiplier = Number.isFinite(userDetails?.workMultiplierAmount) ? userDetails.workMultiplierAmount : 0;
+            totalMultiplier += memberMultiplier;
+            raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier})
+        })
         for (const element of raidListByMulti) {
-            element.raidShare = element.multiplier / totalMultiplier;
+            element.raidShare = totalMultiplier > 0 ? element.multiplier / totalMultiplier : 0;
         }
     }
     const randomMultiplier = getRandomFromInterval(.8, 1.2);

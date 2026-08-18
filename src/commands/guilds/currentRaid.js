@@ -15,7 +15,7 @@ module.exports = {
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
 
@@ -41,10 +41,11 @@ module.exports = {
 
         let totalMultiplier = 0;
         let raidMemberList = [];
+        const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
         for (const [index, element] of raidList.entries()) {
-            const userDetails = await dynamoHandler.findUser(element.id, element.username);
+            const userDetails = raidMemberDetails[index];
             if (!userDetails) {
-                interaction.editReply(`${element.username} was not in the DB, they should now be added. Try again!`);
+                interaction.editReply(`${element.username} could not be looked up due to a database error, please try again!`);
                 return;
             }
 

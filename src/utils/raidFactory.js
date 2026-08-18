@@ -6,20 +6,19 @@ class RaidFactory {
 
         await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
-            let userPotatoes = userDetails.potatoes;
-            let userTotalEarnings = userDetails.totalEarnings;
-            let userTotalLosses = userDetails.totalLosses;
+            if (!userDetails) return;
+            let userPotatoes = userDetails.potatoes + raidSplitAmount;
 
             if (raidSplitAmount > 0) {
-                userPotatoes += raidSplitAmount;
-                userTotalEarnings += raidSplitAmount;
-                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
-                await dynamoHandler.updateUserDatabase(member.id, "totalEarnings", userTotalEarnings);
+                await dynamoHandler.updateUserFields(member.id, {
+                    potatoes: userPotatoes,
+                    totalEarnings: userDetails.totalEarnings + raidSplitAmount
+                });
             } else {
-                userPotatoes += raidSplitAmount;
-                userTotalLosses += raidSplitAmount;
-                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
-                await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
+                await dynamoHandler.updateUserFields(member.id, {
+                    potatoes: userPotatoes,
+                    totalLosses: userDetails.totalLosses + raidSplitAmount
+                });
             }
         }))
         return raidSplitAmount;
@@ -28,21 +27,21 @@ class RaidFactory {
     async handlePotatoSplitByShare(raidListByMulti, totalRaidSplit) {
         await Promise.all(raidListByMulti.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
-            let userPotatoes = userDetails.potatoes;
-            let userTotalEarnings = userDetails.totalEarnings;
-            let userTotalLosses = userDetails.totalLosses;
+            if (!userDetails) return;
             let raidSplitAmount = Math.round(member.raidShare * totalRaidSplit);
             member.raidSplitAmount = raidSplitAmount;
+            let userPotatoes = userDetails.potatoes + raidSplitAmount;
+
             if (raidSplitAmount > 0) {
-                userPotatoes += raidSplitAmount;
-                userTotalEarnings += raidSplitAmount;
-                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
-                await dynamoHandler.updateUserDatabase(member.id, "totalEarnings", userTotalEarnings);
+                await dynamoHandler.updateUserFields(member.id, {
+                    potatoes: userPotatoes,
+                    totalEarnings: userDetails.totalEarnings + raidSplitAmount
+                });
             } else {
-                userPotatoes += raidSplitAmount;
-                userTotalLosses += raidSplitAmount;
-                await dynamoHandler.updateUserDatabase(member.id, "potatoes", userPotatoes);
-                await dynamoHandler.updateUserDatabase(member.id, "totalLosses", userTotalLosses);
+                await dynamoHandler.updateUserFields(member.id, {
+                    potatoes: userPotatoes,
+                    totalLosses: userDetails.totalLosses + raidSplitAmount
+                });
             }
         }))
         return raidListByMulti;
@@ -51,25 +50,21 @@ class RaidFactory {
     async handleStatSplit(raidList, rewardType, rewardAmount) {
         await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
-            let userMultiplier = userDetails.workMultiplierAmount;
-            let userPassiveAmount = userDetails.passiveAmount;
-            let userBankCapacity = userDetails.bankCapacity;
+            if (!userDetails) return;
             let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+            const setAttributes = { sweetPotatoBuffs };
 
             if (rewardType == 'workMultiplierAmount') {
-                userMultiplier += rewardAmount;
+                setAttributes.workMultiplierAmount = userDetails.workMultiplierAmount + rewardAmount;
                 sweetPotatoBuffs.workMultiplierAmount += rewardAmount;
-                await dynamoHandler.updateUserDatabase(member.id, rewardType, userMultiplier);
             } else if (rewardType == 'passiveAmount') {
-                userPassiveAmount += rewardAmount;
+                setAttributes.passiveAmount = userDetails.passiveAmount + rewardAmount;
                 sweetPotatoBuffs.passiveAmount += rewardAmount;
-                await dynamoHandler.updateUserDatabase(member.id, rewardType, userPassiveAmount);
             } else if (rewardType == 'bankCapacity') {
-                userBankCapacity += rewardAmount;
+                setAttributes.bankCapacity = userDetails.bankCapacity + rewardAmount;
                 sweetPotatoBuffs.bankCapacity += rewardAmount;
-                await dynamoHandler.updateUserDatabase(member.id, rewardType, userBankCapacity);
             }
-            await dynamoHandler.updateUserDatabase(member.id, "sweetPotatoBuffs", sweetPotatoBuffs);
+            await dynamoHandler.updateUserFields(member.id, setAttributes);
         }))
     }
 }

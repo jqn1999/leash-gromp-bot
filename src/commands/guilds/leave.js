@@ -13,7 +13,7 @@ module.exports = {
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
 

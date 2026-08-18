@@ -1,27 +1,38 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { Give } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 module.exports = {
     name: "give",
-    description: "Allows member to give their potatoes to another member",
+    description: "Allows member to give their potatoes or starches to another member",
     devOnly: false,
     // testOnly: false,
     deleted: false,
     options: [
         {
             name: 'recipient',
-            description: 'Person you give your potatoes to',
+            description: 'Person you give to',
             required: true,
             type: ApplicationCommandOptionType.Mentionable,
         },
         {
             name: 'amount',
-            description: 'Amount of potatoes: all | half | (amount)',
+            description: 'Amount to give: all | half | (amount)',
             required: true,
             type: ApplicationCommandOptionType.String,
+        },
+        {
+            name: 'currency',
+            description: 'What to give — defaults to potatoes. Starches are taxed less (10% vs 30%)',
+            required: false,
+            type: ApplicationCommandOptionType.String,
+            choices: [
+                { name: 'potatoes', value: 'potatoes' },
+                { name: 'starches', value: 'starches' }
+            ]
         }
     ],
     callback: async (client, interaction) => {
@@ -31,17 +42,21 @@ module.exports = {
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         };
-        let userPotatoes = userDetails.potatoes;
+
+        const currency = interaction.options.get('currency')?.value || 'potatoes';
+        const isStarches = currency === 'starches';
+        const taxPercent = isStarches ? Give.STARCH_TAX_PERCENT : Give.POTATO_TAX_PERCENT;
+        let userBalance = isStarches ? userDetails.starches : userDetails.potatoes;
 
         let amount = interaction.options.get('amount')?.value;
         if (amount.toLowerCase() == 'all') {
-            amount = userPotatoes;
+            amount = userBalance;
         } else if (amount.toLowerCase() == 'half') {
-            amount = Math.round(userPotatoes/2);
-        } else{
+            amount = Math.round(userBalance / 2);
+        } else {
             amount = Math.floor(Number(amount));
             if (isNaN(amount)) {
                 interaction.editReply(`${userDisplayName}, something went wrong with your amount to give. Try again!`);
@@ -51,13 +66,13 @@ module.exports = {
 
         const isAmountGreaterThanZero = amount >= 1;
         if (!isAmountGreaterThanZero) {
-            interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you can only give positive amounts! You have ${userBalance.toLocaleString()} ${currency} left.`);
             return;
         }
 
-        const isAmountLessThanOrEqualUserAmount = amount <= userPotatoes;
+        const isAmountLessThanOrEqualUserAmount = amount <= userBalance;
         if (!isAmountLessThanOrEqualUserAmount) {
-            interaction.editReply(`${userDisplayName}, you do not have enough potatoes to give ${amount.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+            interaction.editReply(`${userDisplayName}, you do not have enough ${currency} to give ${amount.toLocaleString()}! You have ${userBalance.toLocaleString()} ${currency} left.`);
             return;
         }
 
@@ -75,16 +90,35 @@ module.exports = {
         }
         const targetUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
         if (!targetUserDetails) {
-            interaction.editReply(`${targetUserDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${targetUserDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
-        let targetUserPotatoes = targetUserDetails.potatoes;
 
-        userPotatoes -= amount;
-        targetUserPotatoes += amount;
-        await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-        await dynamoHandler.updateUserDatabase(targetUserId, "potatoes", targetUserPotatoes);
-        embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes);
+        // amount is what leaves the giver (unchanged from the potatoes-only version); the
+        // recipient only gets the post-tax portion, the rest goes to the house.
+        const taxAmount = Math.floor(amount * taxPercent);
+        const receivedAmount = amount - taxAmount;
+
+        if (isStarches) {
+            const remainingCapacity = targetUserDetails.maxStarches - targetUserDetails.starches;
+            if (receivedAmount > remainingCapacity) {
+                interaction.editReply(`${targetUserDisplayName} does not have enough starch capacity to receive ${receivedAmount.toLocaleString()} starches! They have ${remainingCapacity.toLocaleString()} space remaining.`);
+                return;
+            }
+        }
+
+        let targetUserBalance = isStarches ? targetUserDetails.starches : targetUserDetails.potatoes;
+
+        userBalance -= amount;
+        targetUserBalance += receivedAmount;
+
+        const balanceField = isStarches ? "starches" : "potatoes";
+        await dynamoHandler.updateUserDatabase(userId, balanceField, userBalance);
+        await dynamoHandler.updateUserDatabase(targetUserId, balanceField, targetUserBalance);
+        await dynamoHandler.addUserDatabase(client.user.id, balanceField, taxAmount);
+
+        const currencyLabel = isStarches ? "Starches" : "Potatoes";
+        embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, currencyLabel, amount, taxAmount, receivedAmount, userBalance, targetUserDisplayName, targetUserBalance);
         interaction.editReply({ embeds: [embed] });
     }
 }

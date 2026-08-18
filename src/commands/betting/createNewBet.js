@@ -56,7 +56,7 @@ module.exports = {
             return;
         }
         
-        const total = await dynamoHandler.getServerTotal();
+        const total = await dynamoHandler.getCachedServerTotal();
         const baseAmount = calculateBetBaseAmount(total);
         const nextBetId = mostRecentBet ? mostRecentBet.betId + 1 : 1;
         await dynamoHandler.addBet(nextBetId, optionOne, optionTwo, description, thumbnailUrl, baseAmount);

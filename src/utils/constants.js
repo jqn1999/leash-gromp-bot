@@ -11,6 +11,142 @@ const Work = {
     POISON_POTATO_TIMER_INCREASE_SECONDS: 3600
 }
 
+// Each entry's statPath is looked up on the user record via dot notation (e.g.
+// "workScenarioCounts.golden"); an achievement unlocks the first time that value
+// reaches threshold. See src/utils/achievementFactory.js for the checking logic.
+const Achievements = [
+    { id: "first_steps", name: "Sprouting Start", description: "Complete your first /work", statPath: "workCount", threshold: 1 },
+    { id: "dedicated_worker", name: "Diligent Digger", description: "Complete 100 /work sessions", statPath: "workCount", threshold: 100 },
+    { id: "potato_veteran", name: "Potato Veteran", description: "Complete 1,000 /work sessions", statPath: "workCount", threshold: 1000 },
+
+    { id: "lucky_find", name: "Glimmer in the Dirt", description: "Find your first Golden Potato", statPath: "workScenarioCounts.golden", threshold: 1 },
+    { id: "golden_touch", name: "Golden Harvest", description: "Find 10 Golden Potatoes", statPath: "workScenarioCounts.golden", threshold: 10 },
+
+    { id: "metal_detector", name: "Tater Detector", description: "Best a Metal Potato for the first time", statPath: "workScenarioCounts.metalSuccess", threshold: 1 },
+    { id: "iron_will", name: "Spud of Steel", description: "Best 25 Metal Potatoes", statPath: "workScenarioCounts.metalSuccess", threshold: 25 },
+
+    { id: "sweet_tooth", name: "Sweet Tooth", description: "Befriend 10 Sweet Potatoes", statPath: "workScenarioCounts.sweet", threshold: 10 },
+    { id: "taro_regular", name: "Taro's Favorite Customer", description: "Trade with the Taro Trader 10 times", statPath: "workScenarioCounts.taro", threshold: 10 },
+    { id: "iron_stomach", name: "Spud-Proof Stomach", description: "Survive 10 Poison Potato encounters", statPath: "workScenarioCounts.poison", threshold: 10 },
+
+    { id: "first_million", name: "Spud Millionaire", description: "Earn 1,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 1000000 },
+    { id: "potato_mogul", name: "Potato Mogul", description: "Earn 100,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 100000000 },
+    { id: "potato_tycoon", name: "Potato Tycoon", description: "Earn 1,000,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 1000000000 },
+
+    { id: "sharper_blade", name: "Sharper Spade", description: "Successfully regrade your Work Multiplier", statPath: "regrades.workMulti.regradeAmount", threshold: 1 },
+    { id: "efficient_worker", name: "Efficient Farmhand", description: "Successfully regrade your Passive Income", statPath: "regrades.passiveAmount.regradeAmount", threshold: 1 },
+    { id: "fortress_builder", name: "Root Cellar Architect", description: "Successfully regrade your Bank Capacity", statPath: "regrades.bankCapacity.regradeAmount", threshold: 1 },
+
+    { id: "starch_hoarder", name: "Starch Hoarder", description: "Hold 100,000 starches at once", statPath: "starches", threshold: 100000 },
+    { id: "starch_magnate", name: "Starch Magnate", description: "Hold 200,000 starches at once", statPath: "starches", threshold: 200000 },
+
+    // Long-run, hard-to-reach tier. Thresholds are grounded in the actual per-work
+    // encounter odds (see systems/economy-and-work.md) and the regrade tier ladders in
+    // regrade.js, not arbitrary round numbers:
+    // - Golden/Metal-success each land at ~0.1% per /work, so 25/50 hits average ~25,000/50,000 works.
+    // - Poison also carries the 1hr cooldown penalty on every hit, so 100 hits costs real calendar time too.
+    // - The regrade thresholds below are read directly off workRegradeTiers/passiveRegradeTiers/
+    //   bankRegradeTiers in regrade.js; the max value for each is that stat's absolute completion cap.
+    { id: "grizzled_farmer", name: "Grizzled Spud Farmer", description: "Complete 5,000 /work sessions", statPath: "workCount", threshold: 5000 },
+    { id: "potato_immortal", name: "Potato Immortal", description: "Complete 10,000 /work sessions", statPath: "workCount", threshold: 10000 },
+
+    { id: "midas_touch", name: "Spud Midas", description: "Find 25 Golden Potatoes", statPath: "workScenarioCounts.golden", threshold: 25 },
+    { id: "metal_legend", name: "Legendary Tin Tater", description: "Best 50 Metal Potatoes", statPath: "workScenarioCounts.metalSuccess", threshold: 50 },
+    { id: "sweetest_soul", name: "Sweet Potato Sage", description: "Befriend 100 Sweet Potatoes", statPath: "workScenarioCounts.sweet", threshold: 100 },
+    { id: "master_trader", name: "Taro's Most Trusted", description: "Trade with the Taro Trader 100 times", statPath: "workScenarioCounts.taro", threshold: 100 },
+    { id: "unkillable", name: "Immune to Toxic Tubers", description: "Survive 100 Poison Potato encounters", statPath: "workScenarioCounts.poison", threshold: 100 },
+
+    { id: "potato_deity", name: "Potato Deity", description: "Earn 10,000,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 10000000000 },
+
+    { id: "regrade_adept", name: "Master of the Spade", description: "Reach +200 regraded Work Multiplier", statPath: "regrades.workMulti.regradeAmount", threshold: 200 },
+    { id: "regrade_master", name: "Spade Perfection", description: "Fully max out your Work Multiplier regrade (+500)", statPath: "regrades.workMulti.regradeAmount", threshold: 500 },
+    { id: "passive_powerhouse", name: "Harvest Powerhouse", description: "Reach +240,000,000 regraded Passive Income", statPath: "regrades.passiveAmount.regradeAmount", threshold: 240000000 },
+    { id: "passive_perfection", name: "Master of the Fields", description: "Fully max out your Passive Income regrade (+600,000,000)", statPath: "regrades.passiveAmount.regradeAmount", threshold: 600000000 },
+    { id: "vault_architect", name: "Root Cellar Magnate", description: "Reach +3,000,000,000 regraded Bank Capacity", statPath: "regrades.bankCapacity.regradeAmount", threshold: 3000000000 },
+    { id: "fort_knox", name: "Fort Spudnox", description: "Fully max out your Bank Capacity regrade — the rarest achievement in the game", statPath: "regrades.bankCapacity.regradeAmount", threshold: 103000000000 },
+
+    { id: "weekly_regular", name: "Weekly Harvest Habit", description: "Reach a 7-day login streak", statPath: "loginStreak", threshold: 7 },
+    { id: "monthly_regular", name: "Devoted Spudkeeper", description: "Reach a 30-day login streak", statPath: "loginStreak", threshold: 30 },
+
+    { id: "tower_champion", name: "Tater Tower Titan", description: "Place #1 on the daily Tater Tower leaderboard", statPath: "towerChampionCount", threshold: 1 }
+]
+
+const CatchUp = {
+    // Max bonus factor applied to a fully-eligible player's effective work multiplier
+    // once the economy is mature (e.g. 1.5 => up to 2.5x their own multiplier).
+    CATCHUP_STRENGTH: 1.5,
+    // medianTotalEarnings at which the mechanic reaches full strength. Below this,
+    // the bonus scales down toward 0 so a shallow/early economy isn't affected.
+    MATURITY_REFERENCE: 50000000,
+    // Minimum number of accounts with workCount > 0 before catch-up activates at all,
+    // so the median isn't computed off a handful of noisy early data points.
+    MIN_POPULATION: 15
+}
+
+// Reward scales with the player's own workMultiplierAmount (so it stays meaningful as
+// the economy matures, same philosophy as /work's server-wealth-scaled base gain), times
+// a day-based factor that ramps linearly from 1x on day 1 to MAX_DAY_MULTIPLIER on day
+// MAX_SCALING_DAYS, then stays flat. See dailyStreakFactory.js for the exact formula and
+// the day-boundary + streak-continuation logic.
+const DailyStreak = {
+    BASE_REWARD_PER_MULTIPLIER: 500,
+    MAX_SCALING_DAYS: 14,
+    MAX_DAY_MULTIPLIER: 28.5
+}
+
+// Daily rotation (3 of 5) refreshes every day; weekly rotation (2 of 6) only refreshes
+// on Mondays, both at the same 4am UTC cron the Tower/streak/economy jobs already use —
+// see questFactory.js. Dailies pay potatoes scaled by the player's own
+// workMultiplierAmount (same reasoning as the daily streak — stays meaningful as the
+// economy matures); weeklies pay a flat permanent stat bonus (matching how every other
+// stat bonus in this game already works — Metal Potato, Sweet Potato, Tower rewards are
+// all flat, not scaled). Every quest condition is a *count* delta (work N times, trigger
+// encounter type N times), never a potato-amount delta — a fixed potato threshold is a
+// wildly different difficulty for a fresh player vs. a developed one, but doing the same
+// number of actions isn't.
+const DailyQuest = {
+    ACTIVE_COUNT: 3,
+    BASE_REWARD_PER_MULTIPLIER: 750
+}
+
+const WeeklyQuest = {
+    ACTIVE_COUNT: 2
+}
+
+// statPath is resolved the same way as Achievements (dot-notation via getStatValue in
+// achievementFactory.js), but quest progress is tracked as a *delta* from a per-user
+// baseline snapshotted when the quest rotates in, not a lifetime total — see
+// questFactory.js. Golden/Metal Potato encounters are deliberately excluded from this
+// pool: at ~0.1% per /work, even a threshold of 1 needs ~1,000 average work calls,
+// unrealistic within a day or even a week for anyone but a true no-lifer.
+const Quests = [
+    { id: "daily_work_3", name: "Sprout Sprint", description: "Complete 3 /work sessions today", category: "daily", statPath: "workCount", threshold: 3 },
+    { id: "daily_work_5", name: "Harvest Hustle", description: "Complete 5 /work sessions today", category: "daily", statPath: "workCount", threshold: 5 },
+    { id: "daily_taro", name: "Starch Sampler", description: "Trade with the Taro Trader today", category: "daily", statPath: "workScenarioCounts.taro", threshold: 1 },
+    { id: "daily_sweet", name: "Sweet Encounter", description: "Befriend a Sweet Potato today", category: "daily", statPath: "workScenarioCounts.sweet", threshold: 1 },
+    { id: "daily_poison", name: "Toxin Tolerance", description: "Survive a Poison Potato today", category: "daily", statPath: "workScenarioCounts.poison", threshold: 1 },
+
+    { id: "weekly_work_25", name: "Weekly Grind", description: "Complete 25 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 25, reward: { statType: "workMultiplierAmount", amount: 0.5 } },
+    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "bankCapacity", amount: 500000 } },
+    { id: "weekly_sweet_5", name: "Sweet Streak", description: "Befriend 5 Sweet Potatoes this week", category: "weekly", statPath: "workScenarioCounts.sweet", threshold: 5, reward: { statType: "passiveAmount", amount: 75000 } },
+    { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", amount: 0.5 } },
+    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "bankCapacity", amount: 500000 } },
+    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", amount: 75000 } }
+]
+
+// Daily Tater Tower leaderboard: survived runs only (dying to an Elite excludes a run
+// entirely, regardless of floor reached), ranked by floor. Top finishers get a bonus
+// equal to TIER_PERCENTAGES[place] of everything THAT run earned (potatoes, work
+// multiplier, passive income, bank capacity) — see towerLeaderboardFactory.js. The
+// *_ROUND constants match the rounding increments workFactory.js already uses for
+// Sweet/Metal Potato stat rewards, so bonus amounts don't come out oddly specific.
+const TowerLeaderboard = {
+    TIER_PERCENTAGES: [0.5, 0.25, 0.125], // index 0 = 1st place, etc.
+    WORK_MULTIPLIER_ROUND: 0.1,
+    PASSIVE_INCOME_ROUND: 10000,
+    BANK_CAPACITY_ROUND: 50000
+}
+
 const Bet = {
     PERCENT_OF_SERVER_TOTAL_TO_BASE: .025
 }
@@ -26,6 +162,17 @@ const Rob = {
     WORK_TIMER_INCREASE_MS: 6900000,
     ROB_TIMER_SECONDS: 3600,
     BASE_ROB_PENALTY: 5000
+}
+
+// Unlike Bank's tax (added on top of a chosen net amount), Give tax is taken out of the
+// amount the sender specifies — what they type is what leaves their balance, and the
+// recipient gets less. Starches get the lower rate deliberately: since starches can be
+// sold on the starch market for potatoes (see systems/starch-trading.md), gifting
+// starches instead of potatoes directly is a more tax-efficient way to move wealth to
+// someone else — not a separate "trade" mechanic, just a cheaper currency to gift.
+const Give = {
+    POTATO_TAX_PERCENT: .30,
+    STARCH_TAX_PERCENT: .10
 }
 
 const Raid = {
@@ -560,9 +707,17 @@ module.exports = {
     shops,
     awsConfigurations,
     Work,
+    Achievements,
+    CatchUp,
+    DailyStreak,
+    TowerLeaderboard,
+    DailyQuest,
+    WeeklyQuest,
+    Quests,
     Bet,
     Bank,
     Rob,
+    Give,
     GuildRoles,
     Raid,
     metalKingRaidBoss,

@@ -50,7 +50,7 @@ module.exports = {
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
         let userPotatoes = userDetails.potatoes;
@@ -66,7 +66,7 @@ module.exports = {
         }
         const targetUserDetails = await dynamoHandler.findUser(targetUser.id, targetUsername);
         if (!targetUserDetails) {
-            interaction.editReply(`${targetUserDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${targetUserDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
         let targetUserPotatoes = targetUserDetails.potatoes;

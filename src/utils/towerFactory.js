@@ -12,6 +12,7 @@ class towerFactory{
         this.interaction = _interaction
         this.multi = multi
         this.difficulty = 1
+        this.died = false
     }
 
     async startRun(){
@@ -31,7 +32,7 @@ class towerFactory{
             cont = await this.execNormalFloor(floor_type)
             floor_type = getFloor()
         }
-        return [this.run, this.floor]
+        return [this.run, this.floor, this.died]
     }
 
     async execNormalFloor(floor_type){
@@ -84,6 +85,7 @@ class towerFactory{
         this.run[tC.PAYOUT.WORK_MULTIPLIER] = 0
         this.run[tC.PAYOUT.PASSIVE_INCOME] = 0
         this.run[tC.PAYOUT.BANK_CAPACITY] = 0
+        this.died = true
         return this.createDeathEmbed(fl.lose)
 
     }

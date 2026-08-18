@@ -48,7 +48,7 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -69,6 +69,7 @@ module.exports = {
         let tower_out = await tF.startRun()
         let rewards = tower_out[0];
         let floor = tower_out[1];
+        let died = tower_out[2];
 
         // embed for final results
         let embed = createResult(rewards, floor, username)
@@ -77,6 +78,20 @@ module.exports = {
         })
 
         await processRewardPayouts(userId, rewards, username);
+
+        // Only a survived run (voluntarily left, not lost to an Elite) counts for the
+        // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
+        if (!died) {
+            await dynamoHandler.recordTowerLeaderboardEntry({
+                userId,
+                username,
+                floor,
+                potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
+                workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
+                passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
+                bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+            });
+        }
     }
 }
 

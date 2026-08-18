@@ -4,9 +4,15 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { EventFactory } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
 var { worldFactory } = require("../../utils/worldFactory.js");
+const { TowerLeaderboardFactory } = require("../../utils/towerLeaderboardFactory.js");
+const { QuestFactory } = require("../../utils/questFactory.js");
+const { EmbedFactory } = require("../../utils/embedFactory.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 let eF = new EventFactory()
+let towerLeaderboardFactory = new TowerLeaderboardFactory()
+let questFactory = new QuestFactory()
+let embedFactory = new EmbedFactory()
 
 let statuses = [
     {
@@ -30,9 +36,35 @@ module.exports = async (client) => {
     }, 300000);
 
     schedule.scheduleJob('0 4 * * *', async function () {
+        // Pay out today's Tater Tower leaderboard winners (survived runs only) before
+        // resetting for the new day — see towerLeaderboardFactory.js.
+        const towerWinners = await towerLeaderboardFactory.payoutWinners()
+        if (towerWinners.length > 0) {
+            client.channels.fetch('1188525931346792498')
+                .then(async channel => {
+                    const resultsEmbed = embedFactory.createTowerLeaderboardResultsEmbed(towerWinners)
+                    channel.send({ embeds: [resultsEmbed] })
+                })
+                .catch(err => {
+                    console.log(err)
+                });
+        }
+
         // Reset all user tower entries at midnight 12 AM EST
         await dynamoHandler.resetAllTowerEntries()
-        
+
+        // Rotate the daily quest set (always) and the weekly set (Mondays only) — see
+        // questFactory.js.
+        const { activeQuests, weeklyRotated } = await questFactory.rotateQuests()
+        client.channels.fetch('1188525931346792498')
+            .then(async channel => {
+                const questEmbed = embedFactory.createQuestRotationEmbed(activeQuests, weeklyRotated)
+                channel.send({ embeds: [questEmbed] })
+            })
+            .catch(err => {
+                console.log(err)
+            });
+
         // Birthday shit
         client.channels.fetch('1188539987118010408')
             .then(async channel => {

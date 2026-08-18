@@ -562,7 +562,7 @@ module.exports = {
 
         const userDetails = await dynamoHandler.findUser(userId, username);
         if (!userDetails) {
-            interaction.editReply(`${userDisplayName} was not in the DB, they should now be added. Try again!`);
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
             return;
         }
 
@@ -612,9 +612,12 @@ module.exports = {
         }
 
         let totalMultiplier = 0;
-        for (const [index, element] of raidList.entries()) {
-            const userDetails = await dynamoHandler.findUser(element.id, element.username);
-            totalMultiplier += userDetails.workMultiplierAmount;
+        const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+        for (const memberDetails of raidMemberDetails) {
+            // A malformed member record (missing workMultiplierAmount) would otherwise
+            // poison totalMultiplier to NaN for the whole raid, and Math.random() < NaN
+            // is always false — guaranteeing failure regardless of everyone else's stats.
+            totalMultiplier += Number.isFinite(memberDetails?.workMultiplierAmount) ? memberDetails.workMultiplierAmount : 0;
         }
 
         // check for guild buff - multi

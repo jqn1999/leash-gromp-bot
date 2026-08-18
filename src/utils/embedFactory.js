@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
@@ -8,9 +8,13 @@ class EmbedFactory {
         const potatoes = userDetails.potatoes;
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
         let title = `${currentName}`;
-        if (userDetails.guildId != 0) {
+        // Loose `!= 0` treats a genuinely unset guildId (undefined) as "has a guild" —
+        // undefined != 0 is true — calling findGuildById(undefined) and crashing on
+        // guild.guildName once findGuildById's own error handling returns nothing.
+        // Truthy check treats 0 and undefined/null the same, both correctly "no guild".
+        if (userDetails.guildId) {
             const guild = await dynamoHandler.findGuildById(userDetails.guildId);
-            title += ` (${guild.guildName})`
+            if (guild) title += ` (${guild.guildName})`
         }
 
         let fields = [];
@@ -59,6 +63,11 @@ class EmbedFactory {
         fields.push({
             name: "Work Count:",
             value: `${userDetails.workCount.toLocaleString()} works`,
+            inline: false,
+        });
+        fields.push({
+            name: "Daily Login Streak:",
+            value: `${(userDetails.loginStreak || 0).toLocaleString()} days`,
             inline: false,
         });
 
@@ -887,18 +896,19 @@ class EmbedFactory {
         return embed;
     }
 
-    createGiveEmbed(userDisplayName, userId, userAvatar, amount, userPotatoes, targetUserDisplayName, targetUserPotatoes) {
+    createGiveEmbed(userDisplayName, userId, userAvatar, currencyLabel, amount, taxAmount, receivedAmount, userBalance, targetUserDisplayName, targetUserBalance) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
+        const currencyLower = currencyLabel.toLowerCase();
         let fields = [];
 
         fields.push({
-            name: `Current Potatoes:`,
-            value: `${userPotatoes.toLocaleString()} potatoes`,
+            name: `Current ${currencyLabel}:`,
+            value: `${userBalance.toLocaleString()} ${currencyLower}`,
             inline: true,
         })
         fields.push({
-            name: `Target's Potatoes:`,
-            value: `${targetUserPotatoes.toLocaleString()} potatoes`,
+            name: `Target's ${currencyLabel}:`,
+            value: `${targetUserBalance.toLocaleString()} ${currencyLower}`,
             inline: true,
         })
         fields.push({
@@ -907,14 +917,14 @@ class EmbedFactory {
             inline: false
         })
         fields.push({
-            name: `Potatoes Given:`,
-            value: `${amount.toLocaleString()} potatoes`,
+            name: `${currencyLabel} Given:`,
+            value: `${amount.toLocaleString()} sent — ${receivedAmount.toLocaleString()} received (-${taxAmount.toLocaleString()} tax)`,
             inline: true,
         })
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} gives potatoes to ${targetUserDisplayName}!`)
-            .setDescription(`Displayed below are your current potatoes, your target's potatoes, and how many potatoes you gave.`)
+            .setTitle(`${userDisplayName} gives ${currencyLower} to ${targetUserDisplayName}!`)
+            .setDescription(`Displayed below are your current ${currencyLower}, your target's ${currencyLower}, and how many ${currencyLower} you gave.`)
             .setColor("Green")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -1041,6 +1051,221 @@ class EmbedFactory {
             .setFields(fields)
         return embed;
     }
+
+    createDailyStreakEmbed(userDisplayName, streak, reward) {
+        const embed = new EmbedBuilder()
+            .setTitle(`🥔 ${userDisplayName}'s Daily Spud Streak: Day ${streak}!`)
+            .setDescription(`+${reward.toLocaleString()} potatoes for showing up today. Come back tomorrow to keep the streak going!`)
+            .setColor("Orange")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createTowerLeaderboardEmbed(sortedEntries) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        let entryList = [];
+        if (sortedEntries.length === 0) {
+            entryList.push({
+                name: "No survivors yet today!",
+                value: "Be the first to leave the Tater Tower alive and claim the top spot.",
+                inline: false,
+            });
+        } else {
+            sortedEntries.slice(0, 5).forEach((entry, index) => {
+                entryList.push({
+                    name: `${index + 1}) ${entry.username}`,
+                    value: `Floor ${entry.floor.toLocaleString()}`,
+                    inline: false,
+                });
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle("🗼 Tater Tower Leaderboard (Today)")
+            .setDescription("Only survived runs count — die to an Elite and your run won't rank, no matter how deep you got. Resets daily at 4am UTC.")
+            .setColor("Purple")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(entryList)
+        return embed;
+    }
+
+    createTowerLeaderboardResultsEmbed(winners) {
+        const medals = ['🥇', '🥈', '🥉'];
+        const fields = winners.map((winner, index) => {
+            const bonusParts = [];
+            if (winner.bonus.potatoes > 0) bonusParts.push(`+${winner.bonus.potatoes.toLocaleString()} potatoes`);
+            if (winner.bonus.workMultiplier > 0) bonusParts.push(`+${winner.bonus.workMultiplier.toFixed(1)}x work multiplier`);
+            if (winner.bonus.passiveIncome > 0) bonusParts.push(`+${winner.bonus.passiveIncome.toLocaleString()} passive income`);
+            if (winner.bonus.bankCapacity > 0) bonusParts.push(`+${winner.bonus.bankCapacity.toLocaleString()} bank capacity`);
+            return {
+                name: `${medals[index] || ''} #${winner.place} ${winner.username} — Floor ${winner.floor.toLocaleString()}`,
+                value: bonusParts.length > 0 ? bonusParts.join('\n') : "No bonus earned this run",
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle("🗼 Tater Tower Daily Results!")
+            .setDescription("Today's top survivors of the Tater Tower have claimed their rewards!")
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // One page's worth (pageItems, already sliced by the caller) of the active quest
+    // list — used by the /quests button-pagination flow, mirroring
+    // createAchievementsPageEmbed's shape even though the active count (5) rarely needs
+    // more than one page today.
+    createQuestsPageEmbed(userDisplayName, pageItems, pageIndex, totalPages, completedCount, totalCount) {
+        const fields = pageItems.map(({ quest, isCompleted, progress }) => {
+            const status = isCompleted ? '✅' : '📜';
+            const categoryLabel = quest.category === 'daily' ? 'Daily' : 'Weekly';
+            const value = isCompleted
+                ? `${quest.description} (${categoryLabel})`
+                : `${quest.description} (${categoryLabel})\n(${progress.toLocaleString()} / ${quest.threshold.toLocaleString()})`;
+            return {
+                name: `${status} ${quest.name}`,
+                value: value,
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Quests`)
+            .setDescription(`${completedCount} / ${totalCount} completed — dailies reset 4am UTC, weeklies reset Mondays\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createQuestCompleteEmbed(userDisplayName, completedQuests, userMultiplier) {
+        const fields = completedQuests.map(quest => {
+            let rewardText;
+            if (quest.category === 'daily') {
+                const perQuestReward = Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userMultiplier);
+                rewardText = `+${perQuestReward.toLocaleString()} potatoes`;
+            } else if (quest.reward) {
+                const labels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+                const amount = quest.reward.statType === 'workMultiplierAmount'
+                    ? `+${quest.reward.amount.toFixed(1)}x`
+                    : `+${quest.reward.amount.toLocaleString()}`;
+                rewardText = `${amount} ${labels[quest.reward.statType]}`;
+            }
+            return {
+                name: `✅ ${quest.name}`,
+                value: `${quest.description}\n${rewardText}`,
+                inline: false,
+            };
+        });
+
+        const title = completedQuests.length > 1
+            ? `${userDisplayName} completed ${completedQuests.length} quests!`
+            : `${userDisplayName} completed a quest!`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📜 ${title}`)
+            .setColor("Green")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createQuestRotationEmbed(activeQuests, weeklyRotated) {
+        const dailyTemplates = Quests.filter(quest => activeQuests.dailyQuestIds.includes(quest.id));
+        const fields = dailyTemplates.map(quest => ({
+            name: `📜 ${quest.name}`,
+            value: quest.description,
+            inline: false,
+        }));
+
+        if (weeklyRotated) {
+            const weeklyTemplates = Quests.filter(quest => activeQuests.weeklyQuestIds.includes(quest.id));
+            weeklyTemplates.forEach(quest => {
+                fields.push({
+                    name: `🗓️ ${quest.name} (Weekly)`,
+                    value: quest.description,
+                    inline: false,
+                });
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle("📜 New Quests Available!")
+            .setDescription(weeklyRotated ? "Today's quests, plus this week's new weekly quests:" : "Today's quests (weeklies unchanged):")
+            .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Discord caps a single embed at 25 fields and a message at 10 embeds, so both
+    // achievement embed builders below chunk into multiple embeds rather than risk
+    // throwing (or silently truncating) once the achievement list grows past 25.
+    createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked) {
+        const fields = newlyUnlocked.map(achievement => ({
+            name: achievement.name,
+            value: achievement.description,
+            inline: false,
+        }));
+
+        const title = newlyUnlocked.length > 1
+            ? `${userDisplayName} unlocked ${newlyUnlocked.length} achievements!`
+            : `${userDisplayName} unlocked an achievement!`;
+
+        const chunks = chunkFields(fields, 25);
+        return chunks.map((chunk, index) => {
+            const embed = new EmbedBuilder()
+                .setColor("Gold")
+                .setFooter({ text: "Made by Beggar" })
+                .setTimestamp(Date.now())
+                .setFields(chunk)
+            if (index === 0) embed.setTitle(`🏆 ${title}`);
+            return embed;
+        });
+    }
+
+    // One page's worth (pageItems, already sliced by the caller) of the achievement list —
+    // used by the /achievements button-pagination flow in achievements.js, so each page
+    // stays a single small embed rather than growing into a wall of text.
+    createAchievementsPageEmbed(userDisplayName, pageItems, pageIndex, totalPages, unlockedCount, totalCount) {
+        const fields = pageItems.map(({ achievement, isUnlocked, currentValue }) => {
+            const status = isUnlocked ? '✅' : '🔒';
+            const value = isUnlocked
+                ? achievement.description
+                : `${achievement.description}\n(${Math.min(currentValue, achievement.threshold).toLocaleString()} / ${achievement.threshold.toLocaleString()})`;
+            return {
+                name: `${status} ${achievement.name}`,
+                value: value,
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Achievements`)
+            .setDescription(`${unlockedCount} / ${totalCount} unlocked\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+}
+
+function chunkFields(fields, size) {
+    const chunks = [];
+    for (let i = 0; i < fields.length; i += size) {
+        chunks.push(fields.slice(i, i + size));
+    }
+    return chunks.length > 0 ? chunks : [[]];
 }
 
 function findShopItemName(amount, shopItems) {
