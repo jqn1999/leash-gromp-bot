@@ -11,12 +11,14 @@ class worldFactory{
         this.mob = null
     }
 
-    async setWorldBoss(){
-        let random = Math.floor(Math.random() * worldBossMobs.length);
-        this.mob = worldBossMobs[random];
+    // index lets a caller (the admin trigger command) force a specific mob instead of
+    // the usual random pick the hourly cron uses.
+    async setWorldBoss(index = null){
+        const selectedIndex = index !== null ? index : Math.floor(Math.random() * worldBossMobs.length);
+        this.mob = worldBossMobs[selectedIndex];
         // aws set world_active to true
         await dynamoHandler.updateStatDatabase("world", "world_active", true)
-        await dynamoHandler.updateStatDatabase("world", "world_index", random)
+        await dynamoHandler.updateStatDatabase("world", "world_index", selectedIndex)
     }
     
     getWorldEmbed(){
