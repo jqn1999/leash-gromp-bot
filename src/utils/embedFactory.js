@@ -3,6 +3,13 @@ const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests } =
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 
+// Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
+// matches the medal convention createTowerLeaderboardResultsEmbed already established.
+const LEADERBOARD_MEDALS = ['🥇', '🥈', '🥉'];
+function rankLabel(index) {
+    return LEADERBOARD_MEDALS[index] || `${index + 1}.`;
+}
+
 class EmbedFactory {
     async createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
         const potatoes = userDetails.potatoes;
@@ -138,31 +145,34 @@ class EmbedFactory {
 
     createUserLeaderboardEmbed(sortedUsers, total, userIndex) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-        let userList = []
-        for (const [index, element] of sortedUsers.entries()) {
-            let currentUserTotalPotatoes = element.potatoes + element.bankStored;
-            if (index < 5) {
-                const user = {
-                    name: `${index + 1}) ${element.username}`,
-                    value: `${element.potatoes.toLocaleString()} potatoes (${currentUserTotalPotatoes.toLocaleString()} potatoes total) (${(currentUserTotalPotatoes / total * 100).toFixed(2)}%)`,
-                    inline: false,
-                };
-                userList.push(user);
-            } else {
-                break;
-            }
+        const topCount = Math.min(5, sortedUsers.length);
+        const formatEntry = (element, index) => {
+            const totalWealth = element.potatoes + element.bankStored;
+            const isYou = index === userIndex;
+            return {
+                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}`,
+                value: `${totalWealth.toLocaleString()} potatoes total (${(totalWealth / total * 100).toFixed(2)}% of server)\n${element.potatoes.toLocaleString()} liquid • ${element.bankStored.toLocaleString()} banked`,
+                inline: false,
+            };
+        };
+
+        let userList = [];
+        for (let index = 0; index < topCount; index++) {
+            userList.push(formatEntry(sortedUsers[index], index));
         }
-        let userTotalPotatoes = sortedUsers[userIndex].potatoes + sortedUsers[userIndex].bankStored;
-        userList.push({
-            name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
-            value: `${sortedUsers[userIndex].potatoes.toLocaleString()} potatoes (${userTotalPotatoes.toLocaleString()} potatoes total) (${(userTotalPotatoes / total * 100).toFixed(2)}%)`,
-            inline: false,
-        });
+
+        // Only break out a separate "Your Rank" entry if you're not already visible in
+        // the top 5 — otherwise this used to duplicate you at the bottom of your own list.
+        if (userIndex >= topCount) {
+            userList.push({ name: '​', value: '​', inline: false });
+            const youEntry = formatEntry(sortedUsers[userIndex], userIndex);
+            userList.push({ name: `Your Rank — ${youEntry.name}`, value: youEntry.value, inline: false });
+        }
 
         const embed = new EmbedBuilder()
-            .setTitle(`Server Leaderboard (${total.toLocaleString()} potatoes)`)
-            .setDescription(`This is where the top 5 members' wealth are displayed... your rank is at the bottom.`)
-            .setColor("Orange")
+            .setTitle(`🏆 Server Leaderboard`)
+            .setDescription(`${total.toLocaleString()} potatoes across ${sortedUsers.length.toLocaleString()} players`)
+            .setColor("Gold")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -172,31 +182,31 @@ class EmbedFactory {
 
     createUserStarchLeaderboardEmbed(sortedUsers, total, userIndex) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-        let userList = []
-        for (const [index, element] of sortedUsers.entries()) {
-            let currentUserTotalStarches = element.starches;
-            if (index < 5) {
-                const user = {
-                    name: `${index + 1}) ${element.username}`,
-                    value: `${element.starches.toLocaleString()} starches (${(currentUserTotalStarches / total * 100).toFixed(2)}%)`,
-                    inline: false,
-                };
-                userList.push(user);
-            } else {
-                break;
-            }
+        const topCount = Math.min(5, sortedUsers.length);
+        const formatEntry = (element, index) => {
+            const isYou = index === userIndex;
+            return {
+                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}`,
+                value: `${element.starches.toLocaleString()} starches (${(element.starches / total * 100).toFixed(2)}% of server)`,
+                inline: false,
+            };
+        };
+
+        let userList = [];
+        for (let index = 0; index < topCount; index++) {
+            userList.push(formatEntry(sortedUsers[index], index));
         }
-        let userTotalStarches = sortedUsers[userIndex].starches;
-        userList.push({
-            name: `${userIndex + 1}) ${sortedUsers[userIndex].username}`,
-            value: `${sortedUsers[userIndex].starches.toLocaleString()} starches (${(userTotalStarches / total * 100).toFixed(2)}%)`,
-            inline: false,
-        });
+
+        if (userIndex >= topCount) {
+            userList.push({ name: '​', value: '​', inline: false });
+            const youEntry = formatEntry(sortedUsers[userIndex], userIndex);
+            userList.push({ name: `Your Rank — ${youEntry.name}`, value: youEntry.value, inline: false });
+        }
 
         const embed = new EmbedBuilder()
-            .setTitle(`Server Leaderboard (${total.toLocaleString()} starches)`)
-            .setDescription(`This is where the top 5 members' starches are displayed... your rank is at the bottom.`)
-            .setColor("Orange")
+            .setTitle(`🥔 Starch Leaderboard`)
+            .setDescription(`${total.toLocaleString()} starches across ${sortedUsers.length.toLocaleString()} players`)
+            .setColor("Gold")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -204,33 +214,29 @@ class EmbedFactory {
         return embed;
     }
 
-    createGuildLeaderboardEmbed(sortedGuilds, interaction) {
+    createGuildLeaderboardEmbed(sortedGuilds) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        const topCount = Math.min(5, sortedGuilds.length);
         let guildList = []
 
-        for (const [index, element] of sortedGuilds.entries()) {
+        for (let index = 0; index < topCount; index++) {
+            const element = sortedGuilds[index];
+            // A guild with a data anomaly (no member holding LEADER) shouldn't take the
+            // whole leaderboard down with it — show it as "Unknown" instead of crashing.
             const leader = element.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
-            if (!leader) {
-                interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
-                return;
-            }
+            const leaderName = leader ? leader.username : 'Unknown';
 
-            if (index < 5) {
-                const guild = {
-                    name: `${index + 1}) ${element.guildName} (Level: ${element.level}, Members: ${element.memberList.length})`,
-                    value: `Leader: ${leader.username}, Raid Count: ${element.raidCount.toLocaleString()}`,
-                    inline: false,
-                };
-                guildList.push(guild);
-            } else {
-                break;
-            }
+            guildList.push({
+                name: `${rankLabel(index)} ${element.guildName} — Level ${element.level}`,
+                value: `👑 ${leaderName} • 👥 ${element.memberList.length}/${element.memberCap} members • ⚔️ ${element.raidCount.toLocaleString()} raids`,
+                inline: false,
+            });
         }
 
         const embed = new EmbedBuilder()
-            .setTitle(`Guild Leaderboard (${sortedGuilds.length} Guilds)`)
-            .setDescription(`This is where all guilds are displayed, ordered by level and then by members.`)
-            .setColor("Orange")
+            .setTitle(`🏰 Guild Leaderboard`)
+            .setDescription(`${sortedGuilds.length.toLocaleString()} guilds, ranked by level then members`)
+            .setColor("Gold")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -1075,7 +1081,7 @@ class EmbedFactory {
         } else {
             sortedEntries.slice(0, 5).forEach((entry, index) => {
                 entryList.push({
-                    name: `${index + 1}) ${entry.username}`,
+                    name: `${rankLabel(index)} ${entry.username}`,
                     value: `Floor ${entry.floor.toLocaleString()}`,
                     inline: false,
                 });

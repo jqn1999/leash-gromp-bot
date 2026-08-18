@@ -57,7 +57,7 @@ module.exports = {
                 break;
             case 'guild-leaderboard':
                 const sortedGuildList = await dynamoHandler.getSortedGuildsByLevelAndRaidCount();
-                embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList, interaction);
+                embed = embedFactory.createGuildLeaderboardEmbed(sortedGuildList);
                 interaction.editReply({ embeds: [embed] });
                 break;
             case 'starch-leaderboard':
