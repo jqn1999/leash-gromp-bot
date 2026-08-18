@@ -159,7 +159,7 @@ const Bank = {
 }
 
 const Rob = {
-    WORK_TIMER_INCREASE_MS: 6900000,
+    WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
     BASE_ROB_PENALTY: 5000
 }

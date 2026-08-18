@@ -5,11 +5,16 @@ const { Rob } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
-function calculateFailedRobPenalty(userTotalWealth) {
-    if (userTotalWealth < 0) {
+// Scoped to liquid potatoes only, same basis as calculateRobAmount's reward — your bank
+// is exactly as off-limits when YOU fail a rob as it is when someone robs YOU. Previously
+// this was based on total wealth (liquid + banked) while only ever being deducted from
+// liquid, which could drive a well-banked player's liquid balance deeply negative off a
+// single unlucky roll.
+function calculateFailedRobPenalty(userPotatoes) {
+    if (userPotatoes < 0) {
         return Rob.BASE_ROB_PENALTY;
     }
-    return Math.floor(userTotalWealth * getRandomFromInterval(.25, .50))
+    return Math.floor(userPotatoes * getRandomFromInterval(.25, .50))
 }
 
 function calculateRobAmount(targetUserPotatoes) {
@@ -21,11 +26,11 @@ function calculateRobAmount(targetUserPotatoes) {
 
 // Same bounds as calculateFailedRobPenalty/calculateRobAmount but without the roll,
 // so the preview embed can show the range the player is actually agreeing to.
-function calculateFailedRobPenaltyRange(userTotalWealth) {
-    if (userTotalWealth < 0) {
+function calculateFailedRobPenaltyRange(userPotatoes) {
+    if (userPotatoes < 0) {
         return [Rob.BASE_ROB_PENALTY, Rob.BASE_ROB_PENALTY];
     }
-    return [Math.floor(userTotalWealth * .25), Math.floor(userTotalWealth * .50)];
+    return [Math.floor(userPotatoes * .25), Math.floor(userPotatoes * .50)];
 }
 
 function calculateRobAmountRange(targetUserPotatoes) {
@@ -88,7 +93,6 @@ module.exports = {
             return;
         };
         let userPotatoes = userDetails.potatoes;
-        let userBankedPotatoes = userDetails.bankStored;
         let userTotalEarnings = userDetails.totalEarnings;
         let userTotalLosses = userDetails.totalLosses;
 
@@ -124,11 +128,8 @@ module.exports = {
             return;
         };
         let targetUserPotatoes = targetUserDetails.potatoes;
-        let targetUserBankedPotatoes = targetUserDetails.bankStored;
         let targetUserTotalLosses = targetUserDetails.totalLosses;
 
-        const userTotalWealth = userPotatoes + userBankedPotatoes;
-        const targetUserTotalWealth = targetUserPotatoes + targetUserBankedPotatoes;
         let robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
 
         // CHECK GUILD BUFF ADD 10% IF ROB
@@ -147,7 +148,7 @@ module.exports = {
         // Show the odds and stakes before rolling, so the player commits knowingly
         // instead of finding out both at once in the result embed.
         const [minGain, maxGain] = calculateRobAmountRange(targetUserPotatoes);
-        const [minFine, maxFine] = calculateFailedRobPenaltyRange(userTotalWealth);
+        const [minFine, maxFine] = calculateFailedRobPenaltyRange(userPotatoes);
         const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine);
         const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmRow()] });
 
@@ -193,7 +194,7 @@ module.exports = {
             const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             await interaction.editReply({ embeds: [embed], components: [] });
         } else {
-            const fineAmount = calculateFailedRobPenalty(userTotalWealth);
+            const fineAmount = calculateFailedRobPenalty(userPotatoes);
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
             adminUserShare = Math.floor(fineAmount*.10);
