@@ -4,14 +4,33 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
-async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName) {
+async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
         // The run's results embed has already been sent by this point (see the
         // followUp below in the callback) — this is a genuine DB error on crediting
         // the reward, not a "no reward earned" case, so the player needs to know their
         // run's reward didn't actually get saved rather than assuming it silently did.
-        await interaction.followUp(`${userDisplayName}, your tower run's rewards could not be saved due to a database error — contact an admin!`);
+        // Since nothing was written, an admin has nothing to look up either — hand the
+        // player the exact numbers as a copy-pasteable block so they can be credited
+        // manually instead of the run just being lost.
+        const failureReport = {
+            userId,
+            username,
+            floor,
+            died,
+            rewards: {
+                potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
+                workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
+                passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
+                bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+            },
+            timestamp: new Date().toISOString()
+        };
+        await interaction.followUp({
+            content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
+            ephemeral: true
+        });
         return;
     }
     let userMultiplier = userDetails.workMultiplierAmount;
@@ -81,7 +100,7 @@ module.exports = {
             embeds: [embed]
         })
 
-        await processRewardPayouts(interaction, userId, rewards, username, userDisplayName);
+        await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died);
 
         // Only a survived run (voluntarily left, not lost to an Elite) counts for the
         // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
