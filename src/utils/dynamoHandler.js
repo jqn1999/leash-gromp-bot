@@ -316,7 +316,12 @@ const findUser = async function (userId, username) {
 }
 
 const addUser = async function (userId, username) {
-    const Item = getDefaultUserFields(userId, username);
+    // webLinkToken is a GSI key (webLinkToken-index, type String); the schema default of
+    // `null` is DynamoDB's distinct NULL type and gets rejected on Put with "Type mismatch
+    // for Index Key webLinkToken Expected: S Actual: NULL" — the same reason findUser's
+    // healing step skips backfilling it. Omit it entirely here too so brand-new users can
+    // actually be created; it gets set with the correct String type later via linkWeb.js.
+    const { webLinkToken, ...Item } = getDefaultUserFields(userId, username);
     var params = {
         TableName: awsConfigurations.aws_table_name,
         Item: Item
