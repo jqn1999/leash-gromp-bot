@@ -47,6 +47,11 @@ module.exports = {
             return;
         }
 
+        if (userId == targetUser) {
+            interaction.editReply(`${userDisplayName} you cannot kick yourself.`);
+            return;
+        }
+
         const canUserKick = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
         if (!canUserKick) {
             interaction.editReply(`${userDisplayName} you need to be the co-leader or leader to kick members.`);
@@ -56,11 +61,6 @@ module.exports = {
             return;
         } else if (targetMember.role == GuildRoles.COLEADER && member.role != GuildRoles.LEADER) {
             interaction.editReply(`${userDisplayName} you need to be the leader to kick co-leaders.`);
-            return;
-        }
-
-        if (userId == targetUser) {
-            interaction.editReply(`${userDisplayName} you cannot kick yourself.`);
             return;
         }
 

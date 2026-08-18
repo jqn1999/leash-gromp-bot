@@ -116,7 +116,7 @@ module.exports = {
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your guild bank (${adminUserShare.toLocaleString()} potato fee charged). You now have ${userPotatoes.toLocaleString()} potatoes and ${guildBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             let canWithdraw = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
             if (!canWithdraw) {

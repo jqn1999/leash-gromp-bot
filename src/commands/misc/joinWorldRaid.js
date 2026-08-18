@@ -31,6 +31,6 @@ module.exports = {
 
         worldList.push({id: userId, username: username})
         await dynamoHandler.updateStatDatabase("world", "world_list", worldList)
-        interaction.editReply(`${userDisplayName} you have joined the world raid!`);
+        interaction.editReply(`${userDisplayName} you have joined the world raid! ${worldList.length.toLocaleString()} member${worldList.length == 1 ? '' : 's'} in so far — check /current-world-raid for the full roster and total multiplier.`);
     }
 }

@@ -88,7 +88,7 @@ module.exports = {
                     const newMultiplier = chosenItem.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount + userDetails.regrades.workMulti.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
-                    interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                    interaction.editReply(`${userDisplayName} bought '${chosenItem.name}' for ${chosenItem.cost.toLocaleString()} potatoes! Work multiplier is now ${newMultiplier.toFixed(2)}x. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 }
                 break;
             case 'passive-income-shop':
@@ -105,7 +105,7 @@ module.exports = {
                     const newPassive = chosenItem.amount + userDetails.sweetPotatoBuffs.passiveAmount + userDetails.regrades.passiveAmount.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "passiveAmount", newPassive);
-                    interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                    interaction.editReply(`${userDisplayName} bought '${chosenItem.name}' for ${chosenItem.cost.toLocaleString()} potatoes! Passive income is now ${newPassive.toLocaleString()} potatoes per day. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 }
                 break;
             case 'bank-shop':
@@ -122,7 +122,7 @@ module.exports = {
                     const newBankCapacity = chosenItem.amount + userDetails.sweetPotatoBuffs.bankCapacity + userDetails.regrades.bankCapacity.regradeAmount;
                     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                     await dynamoHandler.updateUserDatabase(userId, "bankCapacity", newBankCapacity);
-                    interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                    interaction.editReply(`${userDisplayName} bought '${chosenItem.name}' for ${chosenItem.cost.toLocaleString()} potatoes! Bank capacity is now ${newBankCapacity.toLocaleString()} potatoes. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                 }
                 break;
             case 'starch-shop':
@@ -139,7 +139,7 @@ module.exports = {
                         const newMaxStarches = chosenItem.amount;
                         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
                         await dynamoHandler.updateUserDatabase(userId, "maxStarches", newMaxStarches);
-                        interaction.editReply(`${userDisplayName} your purchase for '${chosenItem.name}' has completed and profile has been updated.`);
+                        interaction.editReply(`${userDisplayName} bought '${chosenItem.name}' for ${chosenItem.cost.toLocaleString()} potatoes! Max starches is now ${newMaxStarches.toLocaleString()}. You have ${userPotatoes.toLocaleString()} potatoes left.`);
                     }
                     break;
         }

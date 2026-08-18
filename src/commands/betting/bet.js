@@ -43,10 +43,7 @@ module.exports = {
         }
 
         if (mostRecentBet.isLocked) {
-            interaction.editReply({
-                content: "The bet is locked and not allowing any new bets to enter.",
-                ephemeral: true
-            });
+            interaction.editReply("The bet is locked and not allowing any new bets to enter.");
             return;
         }
 

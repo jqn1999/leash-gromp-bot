@@ -102,7 +102,7 @@ module.exports = {
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
-            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank. You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
+            interaction.editReply(`${userDisplayName}, you deposit ${netAmount.toLocaleString()} potatoes to your bank (${adminUserShare.toLocaleString()} potato fee charged). You now have ${userPotatoes.toLocaleString()} potatoes and ${userBankStored.toLocaleString()} potatoes stored.`);
         } else if (action == 'withdraw') {
             if (userBankStored == 0) {
                 interaction.editReply(`${userDisplayName}, you do not have any potatoes to withdraw.`);
