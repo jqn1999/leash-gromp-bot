@@ -822,7 +822,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Tails Count:`,
-            value: `${tailsCount.toLocaleString()} potatoes`,
+            value: `${tailsCount.toLocaleString()} tails`,
             inline: true,
         })
         fields.push({
