@@ -164,6 +164,15 @@ module.exports = {
             if (newlyUnlocked.length > 0) {
                 const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
                 interaction.followUp({ embeds: achievementEmbeds });
+
+                // checkAndUnlock persists the new achievement list straight to the DB
+                // without mutating updatedUserDetails — mirror that here so a quest
+                // keyed on achievements.length (e.g. "Weekly Milestone") sees the
+                // unlock immediately instead of needing a second /work call to notice.
+                updatedUserDetails.achievements = [
+                    ...(updatedUserDetails.achievements || []),
+                    ...newlyUnlocked.map(achievement => achievement.id)
+                ];
             }
 
             const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
