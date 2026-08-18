@@ -535,15 +535,19 @@ class EmbedFactory {
         return embed;
     }
 
-    async createWorldRaidMemberListEmbed(raidList, totalMultiplier, name, thumbnail) {
+    // Paginated exactly like createAchievementsPageEmbed/createShopPageEmbed — unlike a
+    // guild raid (capped at memberCap, currently 5), anyone on the server can join a
+    // world raid, so raidList has no upper bound and could otherwise exceed Discord's
+    // 25-field embed limit and throw.
+    createWorldRaidPageEmbed(pageItems, pageIndex, totalPages, totalMultiplier, name, thumbnail) {
         const embed = new EmbedBuilder()
             .setTitle(`${name}: (Total Multiplier: ${totalMultiplier.toFixed(2)}x)`)
-            .setDescription(`Below is the list of the current raid members`)
+            .setDescription(`Below is the list of the current raid members\nPage ${pageIndex + 1} / ${totalPages}`)
             .setColor("Orange")
             .setThumbnail(thumbnail)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
-            .setFields(raidList);
+            .setFields(pageItems);
         return embed;
 
     }

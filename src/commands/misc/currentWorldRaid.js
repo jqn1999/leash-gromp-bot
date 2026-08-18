@@ -1,8 +1,33 @@
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { worldBossMobs } = require("../../utils/worldFactory")
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+
+const PAGE_SIZE = 10;
+
+function chunkArray(array, size) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+        chunks.push(array.slice(i, i + size));
+    }
+    return chunks.length > 0 ? chunks : [[]];
+}
+
+function buildPaginationRow(pageIndex, totalPages) {
+    const prevButton = new ButtonBuilder()
+        .setCustomId('world_raid_prev')
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === 0);
+    const nextButton = new ButtonBuilder()
+        .setCustomId('world_raid_next')
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === totalPages - 1);
+    return new ActionRowBuilder().addComponents(prevButton, nextButton);
+}
 
 module.exports = {
     name: "current-world-raid",
@@ -32,26 +57,45 @@ module.exports = {
         let raidList = [];
         const worldMemberDetails = await Promise.all(worldList.map(element => dynamoHandler.findUser(element.id, element.username)));
         for (const [index, element] of worldList.entries()) {
-            const userDetails = worldMemberDetails[index];
-            if (!userDetails) {
+            const memberDetails = worldMemberDetails[index];
+            if (!memberDetails) {
                 interaction.editReply(`${element.username} could not be looked up due to a database error, please try again!`);
                 return;
             }
 
             const user = {
                 name: `${index + 1}) ${element.username}`,
-                value: `${userDetails.workMultiplierAmount.toFixed(2)}x Multiplier`,
+                value: `${memberDetails.workMultiplierAmount.toFixed(2)}x Multiplier`,
                 inline: false,
             };
             raidList.push(user);
-            totalMultiplier += userDetails.workMultiplierAmount;
+            totalMultiplier += memberDetails.workMultiplierAmount;
         }
 
-        bossName = worldBossMobs[worldIndex].name
-        thumbnail = worldBossMobs[worldIndex].thumbnailUrl
+        const bossName = worldBossMobs[worldIndex].name
+        const thumbnail = worldBossMobs[worldIndex].thumbnailUrl
 
-        embed = await embedFactory.createWorldRaidMemberListEmbed(raidList, totalMultiplier, bossName, thumbnail)
-        interaction.editReply({ embeds: [embed] });
+        const pages = chunkArray(raidList, PAGE_SIZE);
+        let pageIndex = 0;
+
+        const embed = embedFactory.createWorldRaidPageEmbed(pages[pageIndex], pageIndex, pages.length, totalMultiplier, bossName, thumbnail);
+        const components = pages.length > 1 ? [buildPaginationRow(pageIndex, pages.length)] : [];
+        const reply = await interaction.editReply({ embeds: [embed], components: components });
+
+        if (pages.length <= 1) return;
+
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        while (true) {
+            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
+            if (!confirmation) {
+                await reply.edit({ components: [] }).catch(() => {});
+                break;
+            }
+
+            pageIndex = confirmation.customId === 'world_raid_next' ? pageIndex + 1 : pageIndex - 1;
+            const pageEmbed = embedFactory.createWorldRaidPageEmbed(pages[pageIndex], pageIndex, pages.length, totalMultiplier, bossName, thumbnail);
+            await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(pageIndex, pages.length)] });
+        }
     }
 
 }
