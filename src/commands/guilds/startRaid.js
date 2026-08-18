@@ -189,6 +189,7 @@ const regularRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
             } else {
@@ -215,6 +216,7 @@ const regularRaidScenarios = [
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -239,6 +241,7 @@ const regularRaidScenarios = [
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -263,6 +266,7 @@ const regularRaidScenarios = [
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -281,20 +285,30 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
+            // Metal King previously paid the exact same reward at the exact same
+            // difficulty regardless of tier, making Elite/Legendary strictly worse than
+            // Regular for the identical 1% shot (lower success cap, nothing gained for
+            // it). Scaled the same way T3 already is for this tier — bigger jackpot,
+            // matching harder difficulty.
+            const DIFFICULTY_MULTIPLIER = 3;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
+            const workMultiReward = Raid.METAL_KING_MULTIPLIER_REWARD * DIFFICULTY_MULTIPLIER;
+            const passiveReward = Raid.METAL_KING_PASSIVE_REWARD * DIFFICULTY_MULTIPLIER;
+            const capacityReward = Raid.METAL_KING_CAPACITY_REWARD * DIFFICULTY_MULTIPLIER;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
-                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', capacityReward);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
@@ -320,6 +334,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -345,6 +360,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -370,6 +386,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -388,20 +405,27 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
+            // Same reasoning as the Elite Metal King branch — matches T3's multiplier
+            // for this tier so Legendary is the best (and hardest) Metal King shot.
+            const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
+            const workMultiReward = Raid.METAL_KING_MULTIPLIER_REWARD * DIFFICULTY_MULTIPLIER;
+            const passiveReward = Raid.METAL_KING_PASSIVE_REWARD * DIFFICULTY_MULTIPLIER;
+            const capacityReward = Raid.METAL_KING_CAPACITY_REWARD * DIFFICULTY_MULTIPLIER;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
+                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit);
-                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
-                await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
+                await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
+                await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
+                await raidFactory.handleStatSplit(raidList, 'bankCapacity', capacityReward);
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
@@ -427,6 +451,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -452,6 +477,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -477,6 +503,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
@@ -506,6 +533,7 @@ const statRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, workMultiReward, passiveReward, bankReward);
             } else {
@@ -530,6 +558,7 @@ const statRaidScenarios = [
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.REGULAR_STAT_RAID_REWARD);
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
+                await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 raidResultDescription = regularStatRaidMob.successDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, Raid.REGULAR_STAT_RAID_REWARD);
             } else {
@@ -594,11 +623,15 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier) 
     }[raidSelection];
 
     const odds = bracketOdds(tierConfig.scenarios);
+    // Metal King scales with the same multiplier as this tier's T3 bracket — bigger
+    // jackpot and permanent stats, matching harder difficulty, instead of the old flat
+    // reward that made Elite/Legendary strictly worse than Regular for the same 1% shot.
+    const metalKingMult = tierConfig.mult.t3;
     const brackets = [{
         name: 'Metal King',
         odds: odds[0],
-        successChance: calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, tierConfig.maxRate),
-        rewardText: `+${Math.round(Raid.METAL_KING_REWARD * raidRewardMultiplier).toLocaleString()} potatoes, plus permanent stats — same reward regardless of tier chosen`,
+        successChance: calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * metalKingMult, tierConfig.maxRate),
+        rewardText: `+${Math.round(Raid.METAL_KING_REWARD * raidRewardMultiplier * metalKingMult).toLocaleString()} potatoes, plus permanent stats (${metalKingMult}x Work Multiplier/Passive/Bank Capacity rewards)`,
         penaltyText: `Nothing — this bracket costs nothing win or lose`,
     }];
 

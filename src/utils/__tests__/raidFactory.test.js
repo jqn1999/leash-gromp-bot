@@ -69,3 +69,20 @@ describe('handleStatSplit', () => {
         expect(setAttributes.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(1.1);
     });
 });
+
+describe('incrementCounter', () => {
+    test('ADDs the given amount to every member with no read first (feeds achievement counters)', async () => {
+        const raidList = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }];
+        await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
+
+        expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(2);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('a', {}, { guildRaidWinCount: 1 });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('b', {}, { guildRaidWinCount: 1 });
+    });
+
+    test('defaults to +1 but accepts a custom amount', async () => {
+        await raidFactory.incrementCounter([{ id: 'a', username: 'a' }], 'worldBossWinCount', 5);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('a', {}, { worldBossWinCount: 5 });
+    });
+});

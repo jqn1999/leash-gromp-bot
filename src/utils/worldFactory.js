@@ -77,6 +77,7 @@ async function startWorldBoss(world, mob){
         await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
         await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
         await raidFactory.handleStatSplit(raidList, 'bankCapacity', bankCapacityReward);
+        await raidFactory.incrementCounter(raidList, 'worldBossWinCount');
         raidResultDescription = mob.successDescription;
     } else {
         totalRaidReward = Math.round(mob.potatoPenalty * randomMultiplier);

@@ -235,7 +235,9 @@ function getDefaultUserFields(userId, username) {
         lastLoginDate: null,
         towerChampionCount: 0,
         webLinkToken: null,
-        quests: {}
+        quests: {},
+        guildRaidWinCount: 0,
+        worldBossWinCount: 0
     };
 }
 

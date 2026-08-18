@@ -1,11 +1,13 @@
 const mockHandlePotatoSplitByShare = jest.fn(async (raidListByMulti) => raidListByMulti);
 const mockHandleStatSplit = jest.fn(async () => {});
+const mockIncrementCounter = jest.fn(async () => {});
 
 jest.mock('../dynamoHandler');
 jest.mock('../raidFactory', () => ({
     RaidFactory: jest.fn().mockImplementation(() => ({
         handlePotatoSplitByShare: mockHandlePotatoSplitByShare,
         handleStatSplit: mockHandleStatSplit,
+        incrementCounter: mockIncrementCounter,
     })),
 }));
 
@@ -17,6 +19,7 @@ beforeEach(() => {
     dynamoHandler.updateStatDatabase.mockResolvedValue({});
     mockHandlePotatoSplitByShare.mockImplementation(async (raidListByMulti) => raidListByMulti);
     mockHandleStatSplit.mockImplementation(async () => {});
+    mockIncrementCounter.mockImplementation(async () => {});
 });
 
 describe('setWorldBoss', () => {

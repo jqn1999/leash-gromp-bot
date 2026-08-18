@@ -14,7 +14,7 @@ Each achievement is a plain data record, not a function:
 
 `statPath` is dot-notation into the user record (e.g. `"workScenarioCounts.golden"`,
 `"regrades.workMulti.regradeAmount"`), resolved by `getStatValue` in `achievementFactory.js`. An
-achievement unlocks the first time that value reaches `threshold`. 35 achievements ship as of this
+achievement unlocks the first time that value reaches `threshold`. 39 achievements ship as of this
 writing. **Names are potato-punned to match the game's tone** (Spud of Steel, Root Cellar
 Architect, Fort Spudnox, Tater Tower Titan, etc. — see the full list live via `Achievements` in
 `constants.js`); `id` is the only field that's ever persisted per-user (in `userDetails.achievements`),
@@ -33,12 +33,20 @@ so renaming `name`/`description` later is always safe and never needs a migratio
   the "master"/"perfection"/`fort_knox` variants require that stat's absolute regrade completion cap
   (500 / 600,000,000 / 103,000,000,000 respectively — note the bank tier ladder's final jump from
   3B to 103B is real data straight out of `bankRegradeTiers`, not a typo introduced here).
-- **Cross-system** (3): `weekly_regular`/`monthly_regular` (7/30-day `loginStreak`, see
+- **Cross-system** (7): `weekly_regular`/`monthly_regular` (7/30-day `loginStreak`, see
   [systems/daily-streak.md](daily-streak.md)) and `tower_champion` (first daily Tater Tower #1
   finish, tracked via `towerChampionCount` — see [systems/tower.md](tower.md#daily-leaderboard)).
   `tower_champion` is set from a background cron (no live interaction to check+notify through), so
   it resolves lazily on the winner's next `/work` call rather than instantly at payout time — same
-  pattern as regrade-driven achievements.
+  pattern as regrade-driven achievements. `raid_novice`/`raid_veteran` (1/25 wins, `guildRaidWinCount`
+  — see [systems/raids-and-world-events.md](raids-and-world-events.md#guild-raids)) and
+  `world_slayer`/`world_champion` (1/10 wins, `worldBossWinCount` — see
+  [systems/raids-and-world-events.md](raids-and-world-events.md#world-raids)) follow the exact same
+  lazy pattern: both counters are incremented via `RaidFactory.incrementCounter` (a plain atomic ADD,
+  no read-then-write) on every winning participant the moment a raid/world boss resolves — from
+  `startRaid.js`'s scenario tables and `worldFactory.js`'s `startWorldBoss` respectively — but since
+  neither of those call sites re-runs `checkAndUnlock`, the achievement itself still only unlocks on
+  that player's next `/work`.
 
 Unlocked IDs are stored per-user as a flat array: `userDetails.achievements = ["first_steps", ...]`.
 New users get `achievements: []` from `addUser`. Existing users predating this feature simply don't

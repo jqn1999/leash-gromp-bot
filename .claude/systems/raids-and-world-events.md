@@ -15,6 +15,11 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   so bigger contributors get a bigger cut).
 - `handleStatSplit` — applies a flat stat buff to every participant, recorded into each user's
   `sweetPotatoBuffs`.
+- `incrementCounter` — a plain atomic ADD (no read-then-write) used to tally `guildRaidWinCount` /
+  `worldBossWinCount` on every winning participant, feeding the `raid_novice`/`raid_veteran` and
+  `world_slayer`/`world_champion` achievements (see
+  [systems/achievements.md](achievements.md#data-model)). Called from every success branch in
+  `startRaid.js`'s four scenario tables and from `worldFactory.js`'s `startWorldBoss` success path.
 
 ## Guild raids
 
@@ -55,6 +60,13 @@ Base reward/penalty/difficulty (from `constants.js` `Raid`):
 | T2 | 500,000 | -500,000 | 60 |
 | T3 | 5,000,000 | -5,000,000 | 150 |
 | Metal King | 10,000,000 (+2.0× work multi, +1,000,000 passive, +10,000,000 bank capacity, split across raiders) | none | 500 |
+
+Metal King now scales with the tier's T3 multiplier (regular ×1, elite ×3, legendary ×6) — applied
+to its reward, all three permanent stat bonuses, *and* its difficulty. Previously it paid the exact
+same flat reward at the exact same difficulty regardless of tier, which made Elite/Legendary
+strictly worse than Regular for the identical 1% shot (lower success-rate cap, nothing gained for
+it). Its failure penalty stays 0 at every tier — it's the one bracket that costs nothing to attempt,
+win or lose.
 
 Reward/penalty amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and scaled by the
 guild's `raidRewardMultiplier`. On success, the reward goes to the guild bank if it fits, else it's

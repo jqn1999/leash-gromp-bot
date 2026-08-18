@@ -140,7 +140,9 @@ Created by `addUser` in `dynamoHandler.js`:
   lastLoginDate: null,        // "YYYY-MM-DD" in EST, or null pre-first-claim
   towerChampionCount: 0,      // # of daily Tater Tower #1 finishes, see systems/tower.md
   webLinkToken: null,         // added externally, outside this knowledge base's scope
-  quests: {}                  // per-quest-id progress snapshots, see systems/quests.md
+  quests: {},                 // per-quest-id progress snapshots, see systems/quests.md
+  guildRaidWinCount: 0,       // wins across all raid-select tiers, see systems/raids-and-world-events.md
+  worldBossWinCount: 0        // world bosses defeated while joined, see systems/raids-and-world-events.md
 }
 ```
 

@@ -67,6 +67,15 @@ class RaidFactory {
             await dynamoHandler.updateUserFields(member.id, setAttributes);
         }))
     }
+
+    // Atomic ADD, no read-then-write needed — used to tally wins (guildRaidWinCount,
+    // worldBossWinCount) for the achievements those feed. Works on both guild raidList
+    // and world raidList shapes ({id, username}[]).
+    async incrementCounter(memberList, fieldName, amount = 1) {
+        await Promise.all(memberList.map(member =>
+            dynamoHandler.updateUserFields(member.id, {}, { [fieldName]: amount })
+        ));
+    }
 }
 
 async function calculateRaidSplit(raidList, totalRaidSplit) {
