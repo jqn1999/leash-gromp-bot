@@ -64,11 +64,27 @@ pre-action value.
   as the daily login streak, so the reward stays meaningful as the economy matures. If multiple
   daily quests complete in the same check (e.g. two conditions cross their threshold in the same
   `/work` call), rewards are summed into one combined write.
-- **Weekly**: a flat permanent stat bonus (Work Multiplier, Passive Income, or Bank Capacity),
-  baked into each weekly template's `reward: { statType, amount }`. Flat, not scaled — matching how
-  every other stat bonus in this game already works (Metal Potato +0.6, Sweet Potato +0.2, Tower
-  rewards are all flat). Folds into `sweetPotatoBuffs`, same convention as every other permanent
-  stat source.
+- **Weekly**: a permanent stat bonus (Work Multiplier, Passive Income, or Bank Capacity), baked into
+  each weekly template's `reward: { statType, min, max }`. Unlike every other permanent stat source
+  in the game (Metal Potato +0.6, Sweet Potato +0.2, Tower rewards, Metal King — all flat, all
+  uncapped), the weekly amount **ramps** with the player's own regrade progress *on that specific
+  stat* — `questFactory.js`'s `calculateWeeklyStatReward` reads
+  `regrades.<workMulti|passiveAmount|bankCapacity>.regradeAmount`, computes
+  `t = min(regradeProgress / absoluteRegradeCap, 1)`, and returns `min + (max - min) * t`. A player
+  with zero regrade progress on that stat (including the entire time they're still buying shop
+  tiers, since regrade isn't unlockable until the shop's maxed) gets `min`; a player who's fully
+  maxed that stat's regrade track gets `max` — and stays capped there forever, never growing past
+  it no matter how much longer they play. This deliberately caps the *rate*, not the lifetime total
+  (the stat itself keeps growing forever from every other source) — see the progression-balance
+  discussion this came out of for why a flat amount undersized itself relative to organic weekly
+  gain by mid-game and badly by end-game, and why scaling by *current* stat value (rather than
+  regrade progress specifically) was rejected: it would compound a permanent bonus off its own
+  size, unlike the one-time potato payouts daily quests/streak scale by workMultiplierAmount.
+  Current min/max pairs: work multiplier 0.2 → 1.0, passive income 30,000 → 150,000, bank capacity
+  200,000 → 1,000,000. Folds into `sweetPotatoBuffs`, same convention as every other permanent stat
+  source. The actual computed amount for a completion is carried on the completed-quest object as
+  `grantedRewardAmount` (not a static template value) so `createQuestCompleteEmbed` can display what
+  that specific player actually got.
 
 ## Where it's checked
 

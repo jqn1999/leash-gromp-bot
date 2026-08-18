@@ -132,12 +132,17 @@ const Quests = [
     { id: "daily_sweet", name: "Sweet Encounter", description: "Befriend a Sweet Potato today", category: "daily", statPath: "workScenarioCounts.sweet", threshold: 1 },
     { id: "daily_poison", name: "Toxin Tolerance", description: "Survive a Poison Potato today", category: "daily", statPath: "workScenarioCounts.poison", threshold: 1 },
 
-    { id: "weekly_work_25", name: "Weekly Grind", description: "Complete 25 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 25, reward: { statType: "workMultiplierAmount", amount: 0.5 } },
-    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "bankCapacity", amount: 500000 } },
-    { id: "weekly_sweet_5", name: "Sweet Streak", description: "Befriend 5 Sweet Potatoes this week", category: "weekly", statPath: "workScenarioCounts.sweet", threshold: 5, reward: { statType: "passiveAmount", amount: 75000 } },
-    { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", amount: 0.5 } },
-    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "bankCapacity", amount: 500000 } },
-    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", amount: 75000 } }
+    // reward.min/max replace what used to be a single flat `amount` — questFactory.js's
+    // calculateWeeklyStatReward ramps between them based on the player's own regrade
+    // progress on that stat (0 progress -> min, fully regraded -> max, capped there
+    // forever). Min/max values are anchored to that stat's regrade track and its
+    // absolute completion cap — see systems/quests.md.
+    { id: "weekly_work_25", name: "Weekly Grind", description: "Complete 25 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 25, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "bankCapacity", min: 200000, max: 1000000 } },
+    { id: "weekly_sweet_5", name: "Sweet Streak", description: "Befriend 5 Sweet Potatoes this week", category: "weekly", statPath: "workScenarioCounts.sweet", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+    { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "bankCapacity", min: 200000, max: 1000000 } },
+    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } }
 ]
 
 // Daily Tater Tower leaderboard: survived runs only (dying to an Elite excludes a run

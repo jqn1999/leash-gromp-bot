@@ -17,6 +17,33 @@ function pickRandomIds(pool, count) {
     return shuffled.slice(0, count).map(quest => quest.id);
 }
 
+// Maps each weekly reward's statType to that stat's own regrade track and absolute
+// completion cap (see regrade.js's workRegradeTiers/passiveRegradeTiers/bankRegradeTiers
+// — the cap is that ladder's final currentRegradeAmount + increase). Deliberately reads
+// regrade depth on the SAME stat the quest rewards, not overall progress — a player deep
+// into work-multi regrade but untouched on passive still gets a small passive weekly
+// until they actually invest there.
+const WEEKLY_REWARD_REGRADE_INFO = {
+    workMultiplierAmount: { regradePath: 'regrades.workMulti.regradeAmount', cap: 500 },
+    passiveAmount: { regradePath: 'regrades.passiveAmount.regradeAmount', cap: 600000000 },
+    bankCapacity: { regradePath: 'regrades.bankCapacity.regradeAmount', cap: 103000000000 },
+};
+
+// Ramps linearly from reward.min (no regrade progress yet — includes the entire time a
+// player is still buying shop tiers, since regrade isn't even unlockable until then, so
+// this reads 0 for that whole phase) up to reward.max once that stat's regrade track is
+// fully maxed, then stays capped at reward.max forever — never keeps growing past that,
+// unlike every other permanent-stat source in the game.
+function calculateWeeklyStatReward(userDetails, reward) {
+    const info = WEEKLY_REWARD_REGRADE_INFO[reward.statType];
+    const regradeProgress = getStatValue(userDetails, info.regradePath) || 0;
+    const t = Math.min(regradeProgress / info.cap, 1);
+    const rawAmount = reward.min + (reward.max - reward.min) * t;
+    // Work multiplier stays fractional (same precision as sweet/metal potato buffs);
+    // potato-denominated stats round to whole numbers like every other reward source.
+    return reward.statType === 'workMultiplierAmount' ? Math.round(rawAmount * 100) / 100 : Math.round(rawAmount);
+}
+
 class QuestFactory {
     // Refreshes the daily quest set every time this runs, and the weekly set only on
     // Mondays (otherwise keeps whatever's already active). Returns the new active set,
@@ -93,13 +120,17 @@ class QuestFactory {
             const progress = currentValue - baseline.startValue;
             if (progress >= template.threshold) {
                 updatedQuestState[template.id] = { ...baseline, completed: true };
-                completedQuests.push(template);
                 stateChanged = true;
 
                 if (template.category === 'daily') {
+                    completedQuests.push(template);
                     totalPotatoReward += Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount);
                 } else if (template.reward) {
-                    statRewards[template.reward.statType] = (statRewards[template.reward.statType] || 0) + template.reward.amount;
+                    const grantedRewardAmount = calculateWeeklyStatReward(userDetails, template.reward);
+                    completedQuests.push({ ...template, grantedRewardAmount });
+                    statRewards[template.reward.statType] = (statRewards[template.reward.statType] || 0) + grantedRewardAmount;
+                } else {
+                    completedQuests.push(template);
                 }
             }
         }

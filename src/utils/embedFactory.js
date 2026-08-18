@@ -1366,9 +1366,12 @@ class EmbedFactory {
                 rewardText = `+${perQuestReward.toLocaleString()} potatoes`;
             } else if (quest.reward) {
                 const labels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+                // grantedRewardAmount is the actual amount questFactory computed for this
+                // player (ramped by their regrade progress on that stat) — not a flat
+                // template value, so it varies player to player.
                 const amount = quest.reward.statType === 'workMultiplierAmount'
-                    ? `+${quest.reward.amount.toFixed(1)}x`
-                    : `+${quest.reward.amount.toLocaleString()}`;
+                    ? `+${quest.grantedRewardAmount.toFixed(2)}x`
+                    : `+${Math.round(quest.grantedRewardAmount).toLocaleString()}`;
                 rewardText = `${amount} ${labels[quest.reward.statType]}`;
             }
             return {

@@ -94,18 +94,49 @@ describe('checkAndClaimQuests', () => {
     });
 
     test('weekly stat reward is written to both the effective field and sweetPotatoBuffs, without changing the base', async () => {
-        const userDetails = baseUser({ workCount: 25, workMultiplierAmount: 2, sweetPotatoBuffs: { workMultiplierAmount: 0.3, passiveAmount: 0, bankCapacity: 0 } });
+        // regradeAmount 250 of 500 -> halfway between min (0.2) and max (1.0) -> 0.6
+        const userDetails = baseUser({
+            workCount: 25, workMultiplierAmount: 2,
+            sweetPotatoBuffs: { workMultiplierAmount: 0.3, passiveAmount: 0, bankCapacity: 0 },
+            regrades: { workMulti: { regradeAmount: 250, failStack: 0 }, passiveAmount: { regradeAmount: 0, failStack: 0 }, bankCapacity: { regradeAmount: 0, failStack: 0 } },
+        });
         await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0 }));
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        const rewardAmount = Quests.find(q => q.id === 'weekly_work_25').reward.amount; // 0.5
-        expect(setFields.workMultiplierAmount).toBe(2 + rewardAmount);
+        const rewardAmount = 0.6;
+        expect(setFields.workMultiplierAmount).toBeCloseTo(2 + rewardAmount);
         expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.3 + rewardAmount);
 
         // base (effective - buffs) is unchanged by the reward — only the buff share grew
         const baseBefore = 2 - 0.3;
         const baseAfter = setFields.workMultiplierAmount - setFields.sweetPotatoBuffs.workMultiplierAmount;
         expect(baseAfter).toBeCloseTo(baseBefore);
+    });
+
+    test('weekly stat reward ramps from min at zero regrade progress to max once that stat is fully regraded, and never exceeds max', async () => {
+        const noRegrade = baseUser({ workCount: 25 }); // no `regrades` field at all — still buying shop tiers
+        const resultAtMin = await questFactory.checkAndClaimQuests(noRegrade, baseUser({ workCount: 0 }));
+        expect(resultAtMin.statRewards.workMultiplierAmount).toBeCloseTo(0.2); // reward.min
+
+        jest.clearAllMocks();
+        dynamoHandler.getActiveQuests.mockResolvedValue(activeQuests);
+        dynamoHandler.updateUserFields.mockResolvedValue({});
+        const maxedRegrade = baseUser({
+            workCount: 25,
+            regrades: { workMulti: { regradeAmount: 500, failStack: 0 }, passiveAmount: { regradeAmount: 0, failStack: 0 }, bankCapacity: { regradeAmount: 0, failStack: 0 } },
+        });
+        const resultAtMax = await questFactory.checkAndClaimQuests(maxedRegrade, baseUser({ workCount: 0 }));
+        expect(resultAtMax.statRewards.workMultiplierAmount).toBeCloseTo(1.0); // reward.max
+
+        jest.clearAllMocks();
+        dynamoHandler.getActiveQuests.mockResolvedValue(activeQuests);
+        dynamoHandler.updateUserFields.mockResolvedValue({});
+        const overMaxedRegrade = baseUser({
+            workCount: 25,
+            regrades: { workMulti: { regradeAmount: 999999, failStack: 0 }, passiveAmount: { regradeAmount: 0, failStack: 0 }, bankCapacity: { regradeAmount: 0, failStack: 0 } },
+        });
+        const resultOverMax = await questFactory.checkAndClaimQuests(overMaxedRegrade, baseUser({ workCount: 0 }));
+        expect(resultOverMax.statRewards.workMultiplierAmount).toBeCloseTo(1.0); // still capped at max, not extrapolated past it
     });
 
     // Regression: work.js's achievement check writes newly-unlocked achievements to the
