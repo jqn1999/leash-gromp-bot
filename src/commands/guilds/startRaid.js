@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
@@ -542,6 +542,102 @@ const statRaidScenarios = [
     }
 ]
 
+// Same shape a random ±20% roll would use, but for a preview we show the deterministic
+// range instead of pre-rolling it.
+function midRange(base) {
+    return [Math.round(base * 0.8), Math.round(base * 1.2)];
+}
+
+// scenarios' .chance values are cumulative thresholds ([.01, .06, .26, 1] for regular,
+// etc.) — converts them into the actual probability mass of each bracket ([.01, .05,
+// .20, .74]) so the preview shows real odds instead of raw thresholds.
+function bracketOdds(scenarios) {
+    let previous = 0;
+    return scenarios.map(scenario => {
+        const odds = scenario.chance - previous;
+        previous = scenario.chance;
+        return odds;
+    });
+}
+
+// Mirrors exactly what each raid-select's scenario table actually rolls against
+// (calculateRaidSuccessChance, the same reward/penalty constants and multipliers), just
+// without rolling — so the preview a player sees can't drift out of sync with the real
+// outcome logic above.
+function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier) {
+    if (raidSelection === 'stat') {
+        const metalKingChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
+        const regularChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
+        const odds = bracketOdds(statRaidScenarios);
+        return [
+            {
+                name: 'Metal King',
+                odds: odds[0],
+                successChance: metalKingChance,
+                rewardText: `+${(Raid.METAL_KING_MULTIPLIER_REWARD * 2).toFixed(1)}x work multiplier, +${(Raid.METAL_KING_PASSIVE_REWARD * 2).toLocaleString()} passive, +${(Raid.METAL_KING_CAPACITY_REWARD * 2).toLocaleString()} bank capacity, all permanent`,
+                penaltyText: `Nothing — this bracket costs nothing win or lose`,
+            },
+            {
+                name: 'Standard Stat Raid',
+                odds: odds[1],
+                successChance: regularChance,
+                rewardText: `+${Raid.REGULAR_STAT_RAID_REWARD.toFixed(1)}x work multiplier to every raider, permanent`,
+                penaltyText: `Costs ${Math.abs(Raid.REGULAR_STAT_RAID_COST).toLocaleString()} potatoes per raider upfront — charged whether you win or lose`,
+            }
+        ];
+    }
+
+    const tierConfig = {
+        regular: { scenarios: regularRaidScenarios, maxRate: Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE, mult: { t3: 1, t2: 1, t1: 1 }, penaltyMult: 1 },
+        elite: { scenarios: eliteRaidScenarios, maxRate: Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE, mult: { t3: 3, t2: 4.5, t1: 6 }, penaltyMult: ELITE_PENALTY_INCREASE },
+        legendary: { scenarios: legendaryRaidScenarios, maxRate: Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE, mult: { t3: 6, t2: 8, t1: 10 }, penaltyMult: LEGENDARY_PENALTY_INCREASE },
+    }[raidSelection];
+
+    const odds = bracketOdds(tierConfig.scenarios);
+    const brackets = [{
+        name: 'Metal King',
+        odds: odds[0],
+        successChance: calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, tierConfig.maxRate),
+        rewardText: `+${Math.round(Raid.METAL_KING_REWARD * raidRewardMultiplier).toLocaleString()} potatoes, plus permanent stats — same reward regardless of tier chosen`,
+        penaltyText: `Nothing — this bracket costs nothing win or lose`,
+    }];
+
+    const tiers = [
+        { key: 't3', label: 'Tier 3', reward: Raid.T3_RAID_REWARD, penalty: Raid.T3_RAID_PENALTY, difficulty: Raid.T3_RAID_DIFFICULTY },
+        { key: 't2', label: 'Tier 2', reward: Raid.T2_RAID_REWARD, penalty: Raid.T2_RAID_PENALTY, difficulty: Raid.T2_RAID_DIFFICULTY },
+        { key: 't1', label: 'Tier 1', reward: Raid.T1_RAID_REWARD, penalty: Raid.T1_RAID_PENALTY, difficulty: Raid.T1_RAID_DIFFICULTY },
+    ];
+
+    tiers.forEach((tier, index) => {
+        const mult = tierConfig.mult[tier.key];
+        const difficulty = tier.difficulty * mult;
+        const successChance = calculateRaidSuccessChance(totalMultiplier, difficulty, tierConfig.maxRate);
+        const [rewardMin, rewardMax] = midRange(tier.reward * mult * raidRewardMultiplier);
+        const [penaltyMin, penaltyMax] = midRange(Math.abs(tier.penalty) * mult * tierConfig.penaltyMult);
+        brackets.push({
+            name: tier.label,
+            odds: odds[index + 1],
+            successChance,
+            rewardText: `+${rewardMin.toLocaleString()} to ${rewardMax.toLocaleString()} potatoes`,
+            penaltyText: `-${penaltyMin.toLocaleString()} to ${penaltyMax.toLocaleString()} potatoes`,
+        });
+    });
+
+    return brackets;
+}
+
+function buildRaidConfirmRow() {
+    const confirmButton = new ButtonBuilder()
+        .setCustomId('raid_confirm')
+        .setLabel('Start the raid')
+        .setStyle(ButtonStyle.Danger);
+    const cancelButton = new ButtonBuilder()
+        .setCustomId('raid_cancel')
+        .setLabel('Not yet')
+        .setStyle(ButtonStyle.Secondary);
+    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
+}
+
 module.exports = {
     name: "start-raid",
     description: "Starts a raid",
@@ -641,6 +737,30 @@ module.exports = {
         if (guild.guildBuff == "raidMulti") {
             totalMultiplier *= 1.15;
         }
+
+        // Which difficulty bracket (Metal King/T3/T2/T1) gets rolled is random, so show
+        // every bracket's odds and stakes up front — this commits the whole roster's
+        // raid list on one roll, previously with zero preview of what that meant.
+        const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier);
+        const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets);
+        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildRaidConfirmRow()] });
+
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        if (!confirmation) {
+            const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
+            await reply.edit({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+            return;
+        }
+
+        if (confirmation.customId === 'raid_cancel') {
+            const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
+            await confirmation.update({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+            return;
+        }
+
+        await confirmation.deferUpdate();
 
         const raidScenarioRoll = Math.random();
         let potatoesGained = 0;

@@ -550,6 +550,38 @@ class EmbedFactory {
         return embed;
     }
 
+    // Shown before /start-raid actually rolls — a raid's difficulty bracket (Metal
+    // King/T3/T2/T1) is picked randomly, so there's no single "success chance" to
+    // preview like /rob has; instead this breaks down every bracket you could land in
+    // along with its own odds, success chance, and stakes, so whoever's starting it (and
+    // committing the whole roster's raid list) isn't picking blind.
+    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets) {
+        const fields = brackets.map(bracket => ({
+            name: `${bracket.name} (${(bracket.odds * 100).toFixed(0)}% odds of this bracket)`,
+            value: `${(bracket.successChance * 100).toFixed(1)}% success chance\n✅ ${bracket.rewardText}\n❌ ${bracket.penaltyText}`,
+            inline: false,
+        }));
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}, start a ${raidSelection} raid?`)
+            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x combined work multiplier. Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
+            .setColor("Yellow")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createRaidCancelledEmbed(guildName) {
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}'s raid was not started`)
+            .setDescription(`No roll happened — the raid roster is untouched, start it again whenever ready.`)
+            .setColor("Grey")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     // Paginated exactly like createAchievementsPageEmbed/createShopPageEmbed — unlike a
     // guild raid (capped at memberCap, currently 5), anyone on the server can join a
     // world raid, so raidList has no upper bound and could otherwise exceed Discord's
