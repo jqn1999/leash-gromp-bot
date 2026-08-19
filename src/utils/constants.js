@@ -258,6 +258,18 @@ const GuildRoles = {
     MEMBER: "Member"
 }
 
+// Human-readable effect text for each guild.guildBuff value — see systems/guilds.md's
+// buff table. Shared between /guild's embed and /set-buff's confirmation so neither one
+// shows the raw internal key (e.g. "workMulti") on its own, which reads as meaningless
+// to a player who hasn't read the source.
+const GuildBuffLabels = {
+    robChance: "+10% /rob success chance for guild members",
+    raidTimer: "-10% guild raid cooldown",
+    workTimer: "-10% /work cooldown",
+    workMulti: "+10% effective work multiplier",
+    raidMulti: "+15% total raid success multiplier"
+}
+
 const metalKingRaidBoss = {
     name: "Metal King Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
@@ -764,6 +776,7 @@ module.exports = {
     Bet,
     Bank,
     GuildHistory,
+    GuildBuffLabels,
     Rob,
     Give,
     GuildRoles,

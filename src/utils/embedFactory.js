@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
@@ -462,8 +462,8 @@ class EmbedFactory {
         })
         fields.push({
             name: `Guild Buff:`,
-            value: `${guild.guildBuff}`,
-            inline: true
+            value: GuildBuffLabels[guild.guildBuff] || `${guild.guildBuff}`,
+            inline: false
         })
 
         const embed = new EmbedBuilder()

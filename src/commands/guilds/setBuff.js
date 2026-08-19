@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles } = require("../../utils/constants");
+const { GuildRoles, GuildBuffLabels } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
@@ -76,6 +76,6 @@ module.exports = {
 
         // store buff into guild db
         await dynamoHandler.updateGuildDatabase(guildId, 'guildBuff', buffSelect);
-        interaction.editReply(`Guild buff for ${guild.guildName} has been set to ${buffSelect}!`)
+        interaction.editReply(`Guild buff for ${guild.guildName} has been set to **${buffSelect}**: ${GuildBuffLabels[buffSelect]}`)
     }
 }
