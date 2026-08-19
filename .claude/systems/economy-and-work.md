@@ -183,8 +183,9 @@ and lifetime milestones.
 **Reward**: a percentage of your current total (`userDetails[stat]` at rebirth time — base(maxed) +
 regrade(maxed) + existing `sweetPotatoBuffs`) folded permanently into `sweetPotatoBuffs`, the same
 convention every other permanent-stat source uses. The percentage itself escalates with each
-rebirth — `Rebirth.BASE_BONUS_PERCENT` (5%) on rebirth #1, `+ Rebirth.BONUS_PERCENT_STEP` (1%) per
-rebirth after that, held at `Rebirth.MAX_BONUS_PERCENT` (15%) once reached — computed by
+rebirth — `Rebirth.BASE_BONUS_PERCENT` (5%) on rebirth #1, `+ Rebirth.BONUS_PERCENT_STEP` (9.5%) per
+rebirth after that, held at `Rebirth.MAX_BONUS_PERCENT` (100%) once reached at rebirth #11 —
+computed by
 `rebirthFactory.getRebirthBonusPercent(rebirthNumber)`. Because the bonus is a % of a total that
 itself keeps growing (`sweetPotatoBuffs` accumulates every rebirth) AND the % keeps climbing, the
 absolute gain grows for two compounding reasons rather than repeating the same flat number —

@@ -259,8 +259,8 @@ const Rob = {
 // Unlimited rebirths; each one costs redoing the entire shop+regrade grind from scratch.
 const Rebirth = {
     BASE_BONUS_PERCENT: 0.05,   // rebirth #1
-    BONUS_PERCENT_STEP: 0.01,   // +1% per subsequent rebirth
-    MAX_BONUS_PERCENT: 0.15     // reached at rebirth #11 and held there
+    BONUS_PERCENT_STEP: 0.095,  // +9.5% per subsequent rebirth
+    MAX_BONUS_PERCENT: 1.00     // reached at rebirth #11 and held there
 }
 
 // Companions: a second permanent-bonus track obtained through luck (a rare /work

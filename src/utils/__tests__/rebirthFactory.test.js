@@ -189,7 +189,7 @@ describe('computeRebirthState', () => {
         const secondPreview = previewRebirthBonus(secondInput);
         const afterSecond = computeRebirthState(secondInput);
 
-        expect(secondPreview.effectivePercent).toBeCloseTo(0.06); // rebirth #2
+        expect(secondPreview.effectivePercent).toBeCloseTo(0.145); // rebirth #2
         expect(afterSecond.sweetPotatoBuffs.workMultiplierAmount).toBeGreaterThan(afterFirst.sweetPotatoBuffs.workMultiplierAmount);
         expect(afterSecond.sweetPotatoBuffs.workMultiplierAmount - afterFirst.sweetPotatoBuffs.workMultiplierAmount)
             .not.toBeCloseTo(afterFirst.sweetPotatoBuffs.workMultiplierAmount - 5); // second gain != first gain
