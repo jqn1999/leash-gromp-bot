@@ -287,6 +287,20 @@ const CompanionMarket = {
     }
 }
 
+// Rolling a companion you already own pays out potatoes instead of nothing — these are
+// maxGain caps fed into workFactory's existing calculateGainAmount, same shape as
+// Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO, so the payout scales with
+// server wealth and the player's own multiplier exactly like every other /work reward
+// rather than being a flat amount that goes stale as the economy grows. Deliberately
+// modest relative to Large/Metal/Golden at the same rarity feel, since this is a
+// consolation, not the primary reward for that rarity.
+const CompanionDuplicateReward = {
+    [CompanionRarity.COMMON]: 5000,
+    [CompanionRarity.RARE]: 20000,
+    [CompanionRarity.LEGENDARY]: 75000,
+    [CompanionRarity.MYTHIC]: 250000
+}
+
 // perks: an array so a companion can carry more than one (Mochi is the one deliberate
 // exception — see systems/companions.md for why it's the generalist Mythic next to
 // Elder Rootbeard's specialist). Each perk's `type` is read by whichever call site
@@ -952,6 +966,7 @@ module.exports = {
     CompanionRarity,
     CompanionRarityOdds,
     CompanionMarket,
+    CompanionDuplicateReward,
     Companions,
     Give,
     GuildRoles,
