@@ -199,7 +199,7 @@ const regularRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .01
@@ -224,7 +224,7 @@ const regularRaidScenarios = [
                 raidResultDescription = hardRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .06
@@ -249,7 +249,7 @@ const regularRaidScenarios = [
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .26
@@ -274,7 +274,7 @@ const regularRaidScenarios = [
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: 1
@@ -316,7 +316,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .01
@@ -342,7 +342,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = hardRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .11
@@ -368,7 +368,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .51
@@ -394,7 +394,7 @@ const eliteRaidScenarios = [
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: 1
@@ -433,7 +433,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .01
@@ -459,7 +459,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = hardRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .21
@@ -485,7 +485,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .71
@@ -511,7 +511,7 @@ const legendaryRaidScenarios = [
                 raidResultDescription = regularRaidMob.failureDescription;
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: 1
@@ -541,7 +541,7 @@ const statRaidScenarios = [
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription);
             }
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
         chance: .01
@@ -566,7 +566,7 @@ const statRaidScenarios = [
                 raidResultDescription = regularStatRaidMob.failureDescription;
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription);
             }
-            interaction.editReply({ embeds: [embed] });
+            interaction.editReply({ embeds: [embed], components: [] });
         },
         chance: 1
     }
