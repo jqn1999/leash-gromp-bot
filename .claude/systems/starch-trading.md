@@ -34,30 +34,50 @@ explicitly for the same reason; this closes the one place starch trading didn't.
 
 ## Price pattern generation (`makeStarchPrices`)
 
-Picks one of five weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX`, keyed by the
-*previous* week's pattern → cumulative probability of each next pattern):
-`FLUCTUATING(0)`, `LARGE_SPIKE(1)`, `DECREASING(2)`, `SMALL_SPIKE(3)`, `STEADY_CLIMB(4)`.
+Picks one of seven weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX`, keyed by the
+*previous* week's pattern → cumulative probability of each next pattern): `FLUCTUATING(0)`,
+`LARGE_SPIKE(1)`, `DECREASING(2)`, `SMALL_SPIKE(3)`, `STEADY_CLIMB(4)`, `NARROW_PEAK(5)`,
+`CHOPPY(6)`.
 
 Example: after a `FLUCTUATING` week — 20% stay fluctuating, next 30% (cumulative to .50) large
-spike, next 15% (to .65) decreasing, next 17.5% (to .825) small spike, remaining 17.5% steady climb.
+spike, next 15% (to .65) decreasing, next 17.5% (to .825) small spike, next 10.5% (to .93) steady
+climb, next 3.5% (to .965) narrow peak, remaining 3.5% choppy.
 
-**The pattern-selection loop reads `MATRIX[lastPat][i]` for `i = 0..4` in strict ascending numeric
+**The pattern-selection loop reads `MATRIX[lastPat][i]` for `i = 0..6` in strict ascending numeric
 order** and stops at the first index whose cumulative value exceeds the roll — so every row's
 values must themselves be ascending by pattern index, regardless of how the object literal is
 written (JS reorders integer-like object keys ascending on its own). Get that backwards for any
 pattern — e.g. give a lower index the final `1` catch-all — and every higher-numbered pattern
 becomes permanently unreachable no matter what rolls: a real bug hit while adding `STEADY_CLIMB`
-here, caught by a reachability test (`starchFactory.test.js`) rather than by inspection.
+here, caught by a reachability test (`starchFactory.test.js`) rather than by inspection, and
+re-verified by an exhaustive per-row sweep when `NARROW_PEAK`/`CHOPPY` were added on top.
 
 Each pattern generator (`createFluctuating`, `createLarge`, `createDecreasing`, `createSmall`,
-`createSteadyClimb`) produces 6 price points using a `normal()` helper that approximates a normal
-distribution by averaging 6 `Math.random()` calls, applied as a multiplier against the base buy
-price. Large-spike weeks can reach roughly `starch*(5+normal())` ≈ 5–6× the buy price.
-`STEADY_CLIMB` is the fifth, added as a lower-drama alternative to the two spike patterns and pure
-`DECREASING` — starts around 55–65% of the buy price and climbs ~8–20% per step across all 6
-points, rewarding whoever holds to the last couple of price points rather than timing one specific
-peak. Its slice in each row was carved out of what used to be the pure `SMALL_SPIKE` remainder
-(split roughly in half), so every pre-existing pattern's own odds are unchanged.
+`createSteadyClimb`, `createNarrowPeak`, `createChoppy`) produces 6 price points, applied as a
+multiplier against the base buy price. Large-spike weeks can reach roughly `starch*(5+normal())` ≈
+5–6× the buy price. `STEADY_CLIMB` starts around 55–65% of the buy price and climbs ~8–20% per step
+across all 6 points, rewarding whoever holds to the last couple of price points rather than timing
+one specific peak.
+
+**`NARROW_PEAK`/`CHOPPY` are deliberately "semi difficult to profit"** — every other pattern is
+either a real spike to catch, a reliable payoff (`STEADY_CLIMB`), or a guaranteed loss
+(`DECREASING`, whose values never clear 1.0× the buy price even at their best roll). These two sit
+between "clearly profitable if timed" and "clearly a loss," a real coinflip rather than either
+extreme:
+- `NARROW_PEAK` — one randomly-positioned day out of the 6 gets a shot at `0.75-1.25×` the buy
+  price; the other 5 sit clearly underwater at `0.55-0.75×`. Since the peak's own range straddles
+  1.0×, there's a flat 50/50 chance that single shot doesn't even clear breakeven at all — on top of
+  needing to correctly identify which of the 6 days it landed on.
+- `CHOPPY` — every one of the 6 days is an **independent uniform** roll (`Math.random()` directly,
+  not the `normal()` helper every other pattern uses, which clusters toward the middle) between
+  `0.65-1.15×`, no trend connecting one day to the next. A single check has ~30% odds of clearing
+  breakeven; checking all 6 days across the week pushes real odds to ~88%, so it rewards active
+  checking without ever guaranteeing a win, and the upside on any individual hit is capped modest
+  (15%) rather than a big payoff.
+
+Both patterns' slices in each row were carved out of what used to be `STEADY_CLIMB`'s catch-all
+remainder (60/20/20 split — `STEADY_CLIMB` keeps 60% of its old share, `NARROW_PEAK`/`CHOPPY` split
+the rest), so every pattern below `SMALL_SPIKE` keeps its exact prior odds unchanged.
 
 ## Commands
 

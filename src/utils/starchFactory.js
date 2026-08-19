@@ -32,7 +32,7 @@ class starchFactory {
         const patChance = Math.random()
         let pattern;
 
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 7; i++) {
             if (patChance < PROBABILITY_MATRIX[lastPat][i]) {
                 pattern = i
                 break;
@@ -57,6 +57,12 @@ class starchFactory {
                 break;
             case 4: // steady_climb
                 prices = createSteadyClimb(starch)
+                break;
+            case 5: // narrow_peak
+                prices = createNarrowPeak(starch)
+                break;
+            case 6: // choppy
+                prices = createChoppy(starch)
                 break;
         }
 
@@ -210,60 +216,132 @@ async function createSteadyClimb(starch) {
     return vals
 }
 
+// Genuinely "maybe, maybe not" rather than "profitable if you time it right" — every
+// other pattern either has a real spike to catch (FLUCTUATING/LARGE_SPIKE/SMALL_SPIKE),
+// a reliable payoff (STEADY_CLIMB), or a guaranteed loss (DECREASING, never clears 1.0×
+// buy price even at its best point). NARROW_PEAK sits in between those extremes: one
+// randomly-positioned day out of the 6 gets a shot at profit, 0.75-1.25× the buy price —
+// a flat 50/50 on whether that single shot even clears breakeven at all, on top of the
+// existing difficulty of correctly identifying which of the 6 days it landed on. The
+// other 5 days sit clearly underwater (0.55-0.75×) so there's no fallback if you guess
+// wrong or miss the day.
+async function createNarrowPeak(starch) {
+    const vals = []
+    const peakIndex = Math.floor(Math.random() * 6)
+
+    for (var i = 0; i < 6; i++) {
+        if (i === peakIndex) {
+            vals.push(starch * (.75 + (normal() * .5)))
+        } else {
+            vals.push(starch * (.55 + (normal() * .2)))
+        }
+    }
+
+    return vals
+}
+
+// The other "semi difficult" pattern, but noisy instead of a single narrow shot — every
+// one of the 6 days is an independent, uniformly-random roll (not the normal() helper
+// every other pattern uses, which clusters toward the middle — genuine flat
+// unpredictability instead of a bell curve) between 0.65-1.15× the buy price, with no
+// trend connecting one day to the next. A single check has roughly a 30% chance of
+// landing above breakeven; checking every day across the week pushes real odds up
+// (~88%), so it rewards active checking without being a guaranteed win even then — the
+// upside on any individual hit is capped modest (15%) rather than a big payoff.
+async function createChoppy(starch) {
+    const vals = []
+    for (var i = 0; i < 6; i++) {
+        vals.push(starch * (.65 + (Math.random() * .5)))
+    }
+    return vals
+}
+
 const PATTERN = {
     FLUCTUATING: 0,
     LARGE_SPIKE: 1,
     DECREASING: 2,
     SMALL_SPIKE: 3,
     STEADY_CLIMB: 4,
+    NARROW_PEAK: 5,
+    CHOPPY: 6,
 };
 
-// Cumulative thresholds MUST be assigned in ascending order by pattern index (0-4), not
+// Cumulative thresholds MUST be assigned in ascending order by pattern index (0-6), not
 // by "narrative" grouping — makeStarchPrices's selection loop reads MATRIX[lastPat][i]
-// for i = 0..4 in strict numeric order (JS reorders integer-like object keys ascending
+// for i = 0..6 in strict numeric order (JS reorders integer-like object keys ascending
 // regardless of source order, so this isn't about how the object literal is written
 // below, it's a hard constraint on the values themselves) and breaks on the first index
-// whose cumulative value exceeds the roll. Since SMALL_SPIKE(3) is checked before
-// STEADY_CLIMB(4), SMALL_SPIKE must carry the smaller cumulative value in every row and
-// STEADY_CLIMB the final 1 — swapping that (as an earlier version of this file did) makes
-// index 4 permanently unreachable, since index 3's catch-all of 1 always matches first.
-// Each row otherwise keeps every existing pattern's odds unchanged and splits the old
-// pure-SMALL_SPIKE remainder in half between the two lower-drama patterns.
+// whose cumulative value exceeds the roll. A lower-indexed pattern must never carry a
+// higher cumulative value than a later one — get that backwards and every higher-numbered
+// pattern becomes permanently unreachable, since an earlier catch-all always matches
+// first (hit exactly this bug once already adding STEADY_CLIMB, see starch-trading.md).
+// NARROW_PEAK(5)/CHOPPY(6) are carved out of what used to be each row's STEADY_CLIMB
+// catch-all-to-1 (60/20/20 split: STEADY_CLIMB keeps 60% of its old remainder, the two
+// new "semi difficult" patterns split the rest) — every pattern below SMALL_SPIKE keeps
+// its exact prior odds.
 const PROBABILITY_MATRIX = {
     [PATTERN.FLUCTUATING]: {
         [PATTERN.FLUCTUATING]: 0.20,
         [PATTERN.LARGE_SPIKE]: 0.50,
         [PATTERN.DECREASING]: 0.65,
         [PATTERN.SMALL_SPIKE]: 0.825,
-        [PATTERN.STEADY_CLIMB]: 1,
+        [PATTERN.STEADY_CLIMB]: 0.93,
+        [PATTERN.NARROW_PEAK]: 0.965,
+        [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.LARGE_SPIKE]: {
         [PATTERN.FLUCTUATING]: 0.50,
         [PATTERN.LARGE_SPIKE]: 0.55,
         [PATTERN.DECREASING]: 0.75,
         [PATTERN.SMALL_SPIKE]: 0.875,
-        [PATTERN.STEADY_CLIMB]: 1,
+        [PATTERN.STEADY_CLIMB]: 0.95,
+        [PATTERN.NARROW_PEAK]: 0.975,
+        [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.DECREASING]: {
         [PATTERN.FLUCTUATING]: 0.25,
         [PATTERN.LARGE_SPIKE]: 0.70,
         [PATTERN.DECREASING]: 0.75,
         [PATTERN.SMALL_SPIKE]: 0.875,
-        [PATTERN.STEADY_CLIMB]: 1,
+        [PATTERN.STEADY_CLIMB]: 0.95,
+        [PATTERN.NARROW_PEAK]: 0.975,
+        [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.SMALL_SPIKE]: {
         [PATTERN.FLUCTUATING]: 0.45,
         [PATTERN.LARGE_SPIKE]: 0.70,
         [PATTERN.DECREASING]: 0.85,
         [PATTERN.SMALL_SPIKE]: 0.925,
-        [PATTERN.STEADY_CLIMB]: 1,
+        [PATTERN.STEADY_CLIMB]: 0.97,
+        [PATTERN.NARROW_PEAK]: 0.985,
+        [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.STEADY_CLIMB]: {
         [PATTERN.FLUCTUATING]: 0.20,
         [PATTERN.LARGE_SPIKE]: 0.45,
         [PATTERN.DECREASING]: 0.60,
         [PATTERN.SMALL_SPIKE]: 0.75,
-        [PATTERN.STEADY_CLIMB]: 1,
+        [PATTERN.STEADY_CLIMB]: 0.90,
+        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.CHOPPY]: 1,
+    },
+    [PATTERN.NARROW_PEAK]: {
+        [PATTERN.FLUCTUATING]: 0.20,
+        [PATTERN.LARGE_SPIKE]: 0.45,
+        [PATTERN.DECREASING]: 0.60,
+        [PATTERN.SMALL_SPIKE]: 0.75,
+        [PATTERN.STEADY_CLIMB]: 0.90,
+        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.CHOPPY]: 1,
+    },
+    [PATTERN.CHOPPY]: {
+        [PATTERN.FLUCTUATING]: 0.20,
+        [PATTERN.LARGE_SPIKE]: 0.45,
+        [PATTERN.DECREASING]: 0.60,
+        [PATTERN.SMALL_SPIKE]: 0.75,
+        [PATTERN.STEADY_CLIMB]: 0.90,
+        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.CHOPPY]: 1,
     },
 };
 

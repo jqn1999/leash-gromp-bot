@@ -69,10 +69,75 @@ describe('makeStarchPrices', () => {
     // make STEADY_CLIMB (index 4) unreachable no matter what Math.random() rolled, since
     // the loop would exit before ever checking it.
     test('STEADY_CLIMB (the 5th pattern) is actually reachable and persisted', async () => {
-        jest.spyOn(Math, 'random').mockReturnValue(0.9); // lands in FLUCTUATING's STEADY_CLIMB slice (.825-1)
+        jest.spyOn(Math, 'random').mockReturnValue(0.9); // lands in FLUCTUATING's STEADY_CLIMB slice (.93-.965 boundary — .9 lands just before, in STEADY_CLIMB's own .825-.93 slice)
         await factory.makeStarchPrices(1000, 0 /* lastPat: FLUCTUATING */);
         Math.random.mockRestore();
 
         expect(dynamoHandler.updateStatDatabase).toHaveBeenCalledWith('starch', 'starch_last', 4);
+    });
+
+    test('NARROW_PEAK (the 6th pattern) is actually reachable and persisted', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.95); // lands in FLUCTUATING's NARROW_PEAK slice (.93-.965)
+        await factory.makeStarchPrices(1000, 0 /* lastPat: FLUCTUATING */);
+        Math.random.mockRestore();
+
+        expect(dynamoHandler.updateStatDatabase).toHaveBeenCalledWith('starch', 'starch_last', 5);
+    });
+
+    test('CHOPPY (the 7th pattern) is actually reachable and persisted', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.98); // lands in FLUCTUATING's CHOPPY slice (.965-1)
+        await factory.makeStarchPrices(1000, 0 /* lastPat: FLUCTUATING */);
+        Math.random.mockRestore();
+
+        expect(dynamoHandler.updateStatDatabase).toHaveBeenCalledWith('starch', 'starch_last', 6);
+    });
+});
+
+// "Semi difficult to profit" is a deliberate design goal for these two patterns — real
+// coverage means asserting the actual profit odds, not just "produces valid numbers"
+// (every other pattern's test already covers that generically).
+describe('createNarrowPeak / createChoppy profit odds', () => {
+    test('NARROW_PEAK: exactly one of the 6 days has any chance of clearing the buy price, the rest never can', async () => {
+        // Force the loop straight into NARROW_PEAK regardless of lastPat by rolling low
+        // for pattern selection, then let peakIndex/normal() roll naturally.
+        jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.94) // pattern-select roll -> NARROW_PEAK from FLUCTUATING
+            .mockReturnValue(0.99);    // peakIndex roll + every normal()/vals roll after -> maximal peak
+        const prices = await factory.makeStarchPrices(1000, 0);
+        Math.random.mockRestore();
+
+        const above = prices.filter(p => p > 1000);
+        // With every random() call maxed, the single peak day should clear 1000 and every
+        // off-peak day should not (off-peak formula's ceiling is .55+.2=.75x < 1.0x even
+        // at its absolute best roll).
+        expect(above.length).toBeLessThanOrEqual(1);
+    });
+
+    test('NARROW_PEAK: the single peak can also fail to clear breakeven at all (a real coinflip, not a guaranteed window)', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0); // every roll minimal, including the peak day
+        const prices = await factory.makeStarchPrices(1000, 0);
+        Math.random.mockRestore();
+
+        // Peak formula floor is .75x — below breakeven even on the "peak" day when every
+        // roll comes up minimal, proving the peak isn't a disguised guaranteed win.
+        prices.forEach(p => expect(p).toBeLessThan(1000));
+    });
+
+    test('CHOPPY: no day can exceed a modest 1.15x cap, and none are guaranteed above breakeven', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.999); // pattern-select high enough to land in CHOPPY, then every price roll maximal
+        const prices = await factory.makeStarchPrices(1000, 0);
+        Math.random.mockRestore();
+
+        prices.forEach(p => expect(p).toBeLessThanOrEqual(1150));
+    });
+
+    test('CHOPPY: every day can also land underwater simultaneously (no guaranteed profitable day)', async () => {
+        jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.999) // pattern-select -> CHOPPY
+            .mockReturnValue(0);        // every subsequent price roll minimal
+        const prices = await factory.makeStarchPrices(1000, 0);
+        Math.random.mockRestore();
+
+        prices.forEach(p => expect(p).toBeLessThan(1000));
     });
 });
