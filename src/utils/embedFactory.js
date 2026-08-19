@@ -973,6 +973,26 @@ class EmbedFactory {
         return embed;
     }
 
+    // pageItems: { listing, companion } pairs for this page (listing from the shared
+    // companion_market doc, companion resolved from the roster). Paginated exactly like
+    // createCompanionListEmbed.
+    createCompanionMarketEmbed(pageItems, pageIndex, totalPages, totalListings) {
+        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }) => ({
+            name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — ${listing.price.toLocaleString()} potatoes`,
+            value: `${formatCompanionPerks(companion)}\nSeller: ${listing.sellerUsername}\nListing ID: \`${listing.listingId}\``,
+            inline: false,
+        })) : [{ name: 'No active listings', value: 'Nobody has listed a companion for sale right now.', inline: false }];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Companion Market`)
+            .setDescription(`${totalListings} active listing${totalListings === 1 ? '' : 's'}\nPage ${pageIndex + 1} / ${totalPages}\n\nUse \`/companion-buy\` with a listing id to purchase.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     createBirthdayEmbed(sortedBirthdays) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         let userList = []
