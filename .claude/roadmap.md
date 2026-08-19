@@ -268,7 +268,17 @@ and needs its own balance pass.
   | Spudsprite | Legendary | -15% `/work` cooldown |
   | Rootcarver, the Cellar Keeper | Legendary | +10% Bank Capacity |
   | Elder Rootbeard | Mythic | +3% flat regrade success chance, all 3 tracks — roughly triples-to-quadruples the odds at the hardest tiers (0.5-1% base) |
-  | Mochi, the Undying Stray | Mythic | +20% rebirth bonus magnitude — boosts `Rebirth.WORK_MULTI_BONUS`/`PASSIVE_BONUS`/`BANK_CAPACITY_BONUS` while active at the moment a rebirth commits |
+  | Mochi, the Undying Stray | Mythic | +8% Passive Income (always-on) **and** +20% rebirth bonus magnitude at the moment a rebirth commits |
+
+  Mochi is deliberately the one dual-perk companion, and deliberately the *generalist* Mythic next to
+  Elder Rootbeard's *specialist* one — the always-on +8% passive is bigger than Ladybug's Common +5%
+  (Mythic should clearly outclass Common on the same axis) and, per the daily-gain EV analysis,
+  passive is the stat that dominates a developed player's income the most, so this is the pick that
+  should feel like "just leave it equipped" by default — worth keeping active for the ongoing passive
+  gain alone, with the rebirth bonus as a bonus reason to already have it on when that moment comes.
+  A player optimizing for something specific (grinding regrades, farming `/work`) has a real reason
+  to temporarily swap to Elder Rootbeard or Fieldmouse/Spudsprite instead — Mochi is the strong
+  default, not a strictly-dominant pick that makes every other companion pointless.
 
   Mochi was moved here from the world boss roster (previously in `worldFactory.js`, difficulty
   1500) rather than being a new character — its established flavor (a small zombie cat that just
@@ -312,16 +322,46 @@ and needs its own balance pass.
   active: id|null }` field, untouched by `/rebirth`'s reset — same "survives a prestige reset"
   precedent Idle Miner sets for pets, and consistent with `sweetPotatoBuffs`/achievements/records
   already being on that keep-list.
+
+  **Viewing owned companions**: `/companion` (no args, or a `view` subcommand if `/companion equip`
+  needs the same namespace) — paginated embed, same 5/page Previous/Next pattern every other list in
+  this bot uses (`/achievements`, `/quests`, `/shop`, `/guild-history`), showing each owned
+  companion's name, tier, perk text, and whether it's the currently-active one. `/companion equip
+  <id>` switches the active slot from that same owned list.
+
+  **`/profile` integration**: active companion (if any) shown as a field on page 1 (Overview) —
+  alongside Work Multiplier/Passive Income/etc. rather than page 2 (Activity & Records), since it's
+  an ongoing, currently-in-effect modifier like those stats, not a lifetime record. Something like
+  `Active Companion: Mochi, the Undying Stray (+8% Passive Income, +20% rebirth bonus)` or "None
+  equipped" if the slot is empty.
+
+  **Achievements** (new entries in `constants.js`'s `Achievements` array, same generic
+  `statPath`-threshold shape every other achievement already uses — no new checking code needed,
+  same as every prior addition this session): needs 1-2 new denormalized counters on the user record
+  for the generic checker to read, mirroring how `workScenarioCounts.golden` etc. are pre-computed
+  counters rather than derived from raw data on every check — `companions.ownedCount` (bumped on
+  every *new* distinct companion, not on duplicate-pull consolation payouts or market purchases of an
+  already-owned one) and `companions.mythicOwnedCount`.
+  | id | Name | Threshold |
+  |---|---|---|
+  | `first_companion` | New Best Friend | `companions.ownedCount >= 1` |
+  | `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
+  | `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 10` (all of them) |
+  | `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
+
   Touches: a new `companionFactory.js` (rarity roll, perk lookup, equip logic — testable, mirrors
   every other `src/utils/*Factory.js`), a new `companionMarketFactory.js` (listing/escrow/purchase,
   same atomic-write care `guildContractFactory.js`'s completion race and `updateGuildFieldsWithLock`
-  already model in this codebase), new `/companion` (view/equip) and `/companion-market`
-  (list/browse/buy/cancel) commands, one new `/work` scenario slot, `getDefaultUserFields` schema
-  addition, wiring the active companion's perk into whichever existing calculation it modifies (work
-  cooldown into `dynamoHandler.calculateWorkTimerValue`, rob chance into `rob.js`, regrade chance
-  into `regrade.js`'s `chanceOfSuccess` calc, rebirth bonus into `rebirthFactory.js`'s
-  `computeRebirthState`, etc. — same shape the guild buff system already uses for "one active
-  modifier changes several existing formulas").
+  already model in this codebase), new `/companion` (view/equip, paginated) and `/companion-market`
+  (list/browse/buy/cancel, paginated) commands, one new `/work` scenario slot, `getDefaultUserFields`
+  schema addition (`companions` field + the two new achievement counters), `createUserEmbed` gaining
+  an active-companion field on profile page 1, 4 new `Achievements` entries, and wiring the active
+  companion's perk into whichever existing calculation it modifies (work cooldown into
+  `dynamoHandler.calculateWorkTimerValue`, rob chance into `rob.js`, regrade chance into
+  `regrade.js`'s `chanceOfSuccess` calc, rebirth bonus into `rebirthFactory.js`'s
+  `computeRebirthState`, passive income into wherever `passiveAmount` is read for the personal
+  passive tick — same shape the guild buff system already uses for "one active modifier changes
+  several existing formulas").
   Remaining open question: is 10 the right roster size and is this exact perk set balanced? Easy to
   add more once the roll/equip/market infrastructure exists — the roster itself is just data, same
   as Achievements.
