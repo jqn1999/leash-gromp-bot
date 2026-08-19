@@ -1,6 +1,8 @@
 const { GuildRoles } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { GuildContractFactory } = require("../../utils/guildContractFactory");
+const guildContractFactory = new GuildContractFactory();
 
 module.exports = {
     name: "leave",
@@ -42,7 +44,19 @@ module.exports = {
 
         let newMemberList = memberList.filter((user) => user.id != userId)
 
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
+        // Fold this member's pre-departure Guild Contract contribution into the guild's
+        // frozenContribution bucket before they're removed from memberList, so it's
+        // preserved (not retroactively wiped) but also doesn't keep growing off their
+        // lifetime workCount after they've left — see guildContractFactory.js. This
+        // writes only the guildContract attribute, so it's independent of the guarded
+        // memberList write below regardless of ordering.
+        await guildContractFactory.freezeDepartureContribution(guild, userId, userDetails);
+
+        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList: newMemberList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, your guild changed while processing this. Please try again!`);
+            return;
+        }
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have left the guild, '${guild.guildName}'!`);
     }

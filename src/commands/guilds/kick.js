@@ -2,6 +2,8 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { GuildContractFactory } = require("../../utils/guildContractFactory");
+const guildContractFactory = new GuildContractFactory();
 
 module.exports = {
     name: "kick",
@@ -69,6 +71,14 @@ module.exports = {
         }
 
         let newMemberList = memberList.filter((user) => user.id != targetUser)
+
+        // Fold the kicked member's pre-departure Guild Contract contribution into the
+        // guild's frozenContribution bucket — same reasoning as leave.js. This writes
+        // only the guildContract attribute, so it's independent of the guarded
+        // memberList write below regardless of ordering.
+        const targetUserDetails = await dynamoHandler.findUser(targetUser, targetMember.username);
+        await guildContractFactory.freezeDepartureContribution(guild, targetUser, targetUserDetails);
+
         const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList: newMemberList });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this kick. Please try again!`);

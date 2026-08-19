@@ -4,12 +4,24 @@ const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterva
 const { WorkFactory } = require("../../utils/workFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
+const { GuildContractFactory } = require("../../utils/guildContractFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 const achievementFactory = new AchievementFactory();
 const questFactory = new QuestFactory();
+const guildContractFactory = new GuildContractFactory();
+
+// Scenario types whose return value is a genuine potato gain, used to scope the
+// "biggest single /work payout" personal record — see the comment at its write site
+// below for why Poison/Taro/Sweet Potato are excluded.
+const POTATO_PAYOUT_SCENARIO_TYPES = [
+    WORK_SCENARIO_INDICES.GOLDEN,
+    WORK_SCENARIO_INDICES.LARGE,
+    WORK_SCENARIO_INDICES.METAL,
+    WORK_SCENARIO_INDICES.REGULAR
+];
 
 function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);
@@ -145,16 +157,30 @@ module.exports = {
         const newWorkCount = work.workCount + 1;
         const workScenarioRoll = Math.random();
         let potatoesGained;
+        let matchedScenarioType;
         let multiplier = getRandomFromInterval(.8, 1.2);
         const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
         for (const scenario of workScenarios) {
             if (workScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus);
+                matchedScenarioType = scenario.type;
                 break;
             }
         }
         await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
         await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
+
+        // Personal-best "biggest single /work payout" only tracks scenarios whose
+        // return value is actually a potato amount: Golden/Large/Metal(success)/Regular.
+        // Poison is excluded (a loss, always <= 0 anyway). Taro's gain is starches, a
+        // different currency, so it's out of scope for this potato-denominated record
+        // rather than folded in as if it were comparable. Sweet Potato is excluded for
+        // a sharper reason — its handler's return value isn't a gain amount at all,
+        // it's the array index (0-2) of which stat buff was rolled, so treating it as
+        // a potato figure would corrupt the record with a stray 0/1/2.
+        if (POTATO_PAYOUT_SCENARIO_TYPES.includes(matchedScenarioType) && potatoesGained > 0) {
+            await dynamoHandler.updateIfNewRecord(userId, 'biggestWorkPayout', potatoesGained);
+        }
 
         // Re-fetch since the scenario handlers wrote stat updates straight to the DB
         // without mutating this in-memory userDetails object.
@@ -179,6 +205,19 @@ module.exports = {
             if (questResult.completedQuests.length > 0) {
                 const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
                 interaction.followUp({ embeds: [questEmbed] });
+            }
+
+            // Guild Contract is a guild-wide aggregate, not a per-user check — only
+            // relevant if this member is actually in a guild right now.
+            if (updatedUserDetails.guildId) {
+                const guild = await dynamoHandler.findGuildById(updatedUserDetails.guildId);
+                if (guild) {
+                    const contractResult = await guildContractFactory.checkAndClaimContract(guild, updatedUserDetails, userDetails);
+                    if (contractResult.completedNow) {
+                        const contractEmbed = embedFactory.createGuildContractCompleteEmbed(guild.guildName, contractResult.template, contractResult.bankCapacityReward);
+                        interaction.followUp({ embeds: [contractEmbed] });
+                    }
+                }
             }
         }
         return;

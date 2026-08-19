@@ -157,6 +157,49 @@ const claimDailyStreak = async function (userId, newStreak, today, newPotatoes, 
         });
 }
 
+// Persists a new personal-best on a user's `records.<fieldName>` (see
+// getDefaultUserFields) only if newValue actually beats the value currently stored —
+// used at every "personal record" write site (Tower floor reached, biggest single
+// /work payout, largest raid contribution) instead of duplicating a
+// read-compare-write dance three times inline. The comparison itself is enforced by a
+// DynamoDB ConditionExpression on the write, the same race-safety pattern
+// claimDailyStreak uses, rather than an app-level max() over a possibly-stale
+// in-memory value — two near-simultaneous record-breaking writes for the same user
+// can't clobber each other into leaving the smaller value stored. Assumes
+// `records` already exists as a map on the item, which every call site can rely on
+// since it's only ever reached after that request's own findUser call has already
+// healed the field (findUser is the single point that backfills new top-level fields
+// onto existing records, same as every other field here). Returns true if newValue
+// became the new record, false if it lost the comparison (or hit any other error).
+const updateIfNewRecord = async function (userId, fieldName, newValue) {
+    if (!Number.isFinite(newValue) || newValue <= 0) return false;
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "set records.#field = :newValue",
+        ConditionExpression: "attribute_not_exists(records.#field) OR records.#field < :newValue",
+        ExpressionAttributeNames: {
+            "#field": fieldName,
+        },
+        ExpressionAttributeValues: {
+            ":newValue": newValue,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`updateIfNewRecord error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 // Computes the work-timer expiry (including the guild workTimer-buff discount) without
 // writing it, so callers can fold the result into a combined updateUserFields call.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
@@ -237,7 +280,12 @@ function getDefaultUserFields(userId, username) {
         webLinkToken: null,
         quests: {},
         guildRaidWinCount: 0,
-        worldBossWinCount: 0
+        worldBossWinCount: 0,
+        records: {                  // all-time personal bests, see architecture/data-model.md
+            highestTowerFloor: 0,
+            biggestWorkPayout: 0,
+            largestRaidContribution: 0
+        }
     };
 }
 
@@ -711,6 +759,12 @@ const getStatDatabase = async function (trackingId) {
 }
 
 // Guilds
+// Note: previously had a comment-only `.then()` handler, which meant every call
+// resolved to `undefined` on BOTH success and failure — harmless while every existing
+// call site fired-and-forgot the return value, but it made the return value useless for
+// anything that needed to know whether the write actually landed (e.g. findGuildById's
+// healing loop below). Matches updateUserFields's shape now: resolves to the DynamoDB
+// response (truthy) on success, undefined (falsy) on failure.
 const updateGuildDatabase = async function (guildId, attributeName, attributeValue) {
     const params = {
         TableName: awsConfigurations.aws_guilds_table_name,
@@ -728,9 +782,6 @@ const updateGuildDatabase = async function (guildId, attributeName, attributeVal
     };
 
     const response = await docClient.update(params).promise()
-        .then(async function (data) {
-            // console.debug(`updateGuildDatabase: ${JSON.stringify(data)}`)
-        })
         .catch(function (err) {
             console.debug(`updateGuildDatabase error: ${JSON.stringify(err)}`)
         });
@@ -797,8 +848,49 @@ const findGuildById = async function (guildId) {
 
     const response = docClient.query(params).promise()
         .then(async function (data) {
-            guild = data.Items[0]
-            // console.debug(`findGuild found guild: ${JSON.stringify(user)}`)
+            let guild = data.Items[0];
+            if (!guild) return guild;
+
+            // Heal a guild record that predates a schema field added after the guild
+            // was created. The guild table has no ADD-only write path that could
+            // auto-vivify a partial item the way the user table's tax-skim writes
+            // did — but every guild created before a given feature shipped is still
+            // permanently missing that feature's field(s) unless something backfills
+            // it, since createGuild only ever `put`s the schema as it existed at
+            // creation time. Same failure mode (and fix) as findUser's own healing
+            // step — see architecture/data-model.md. guildLeaderId/guildLeaderUsername
+            // are passed as undefined here since they only ever affect the memberList
+            // default, which a *found* guild record will never actually be missing
+            // (it's been present since the guild's very first write) — so that default
+            // is constructed but never actually used by this path.
+            const defaults = getDefaultGuildFields(guild.guildId, guild.guildName, undefined, undefined, guild.thumbnailUrl);
+            const missingFields = {};
+            for (const key of Object.keys(defaults)) {
+                if (guild[key] === undefined) {
+                    missingFields[key] = defaults[key];
+                }
+            }
+
+            if (Object.keys(missingFields).length > 0) {
+                // Heal one field at a time rather than one combined write — same
+                // reasoning as findUser: an unexpected failure on one field (e.g. a
+                // future secondary index key type conflict) shouldn't block every
+                // other legitimately-fixable field too.
+                const healedFields = {};
+                for (const [key, value] of Object.entries(missingFields)) {
+                    const healed = await updateGuildDatabase(guildId, key, value);
+                    if (healed) {
+                        healedFields[key] = value;
+                    } else {
+                        console.log(`findGuildById could not heal field "${key}" for ${guildId} — leaving it unset`);
+                    }
+                }
+                if (Object.keys(healedFields).length > 0) {
+                    console.log(`findGuildById healed fields for ${guildId}: ${Object.keys(healedFields).join(', ')}`);
+                    guild = { ...guild, ...healedFields };
+                }
+            }
+
             return guild;
         })
         .catch(function (err) {
@@ -827,8 +919,11 @@ const findGuildByName = async function (guildName) {
     return response
 }
 
-const createGuild = async function (guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
-    const Item = {
+// The full default guild shape. Extracted so both createGuild (new records) and
+// findGuildById's healing step (existing-but-partial records — see below) stay in sync
+// with exactly one schema definition, mirroring getDefaultUserFields/findUser.
+function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
+    return {
         guildId: guildId,
         guildName: guildName,
         guildNameLowercase: guildName.toLowerCase(),
@@ -851,8 +946,19 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         raidList: [],
         raidRewardMultiplier: 1,
         guildBuff: "workMulti",
-        guildVersion: 0
+        guildVersion: 0,
+        guildContract: {                  // see systems/guild-contracts.md
+            templateId: null,
+            rotationDate: null,
+            memberBaselines: {},
+            frozenContribution: 0,
+            completed: false
+        }
     };
+}
+
+const createGuild = async function (guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl) {
+    const Item = getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUsername, guildThumbnailUrl);
 
     var params = {
         TableName: awsConfigurations.aws_guilds_table_name,
@@ -1043,6 +1149,52 @@ const setActiveQuests = async function (activeQuests) {
     await updateStatFields("active_quests", activeQuests);
 }
 
+// Which Guild Contract is currently live server-wide (template + rotation date) — each
+// guild's own progress against it (roster snapshot + accumulated per-member deltas) is
+// tracked separately on the guild record itself (guild.guildContract), not here. Mirrors
+// getActiveQuests/setActiveQuests, just for the single shared weekly guild objective
+// instead of the daily/weekly per-user quest sets — see guildContractFactory.js.
+const getActiveGuildContract = async function () {
+    return getStatDatabase("active_guild_contract");
+}
+
+const setActiveGuildContract = async function (activeContract) {
+    await updateStatFields("active_guild_contract", activeContract);
+}
+
+// Persists a Guild Contract's completion — the bankCapacity reward and the
+// guildContract map itself (marked completed: true) — in one atomic conditional write,
+// so two guild members finishing the objective via near-simultaneous /work calls can't
+// both grant the reward. Same race-safety shape as claimDailyStreak/updateIfNewRecord.
+// Returns true if this call won the completion, false if it lost the race (or hit any
+// other error) — a lost race isn't a bug, it just means another concurrent call already
+// applied the reward first.
+const completeGuildContract = async function (guildId, newBankCapacity, updatedGuildContract) {
+    const params = {
+        TableName: awsConfigurations.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set bankCapacity = :bankCapacity, guildContract = :guildContract",
+        ConditionExpression: "attribute_not_exists(guildContract.completed) OR guildContract.completed = :false",
+        ExpressionAttributeValues: {
+            ":bankCapacity": newBankCapacity,
+            ":guildContract": updatedGuildContract,
+            ":false": false,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`completeGuildContract error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 module.exports = {
     addUserDatabase,
     updateWorkTimer,
@@ -1050,6 +1202,7 @@ module.exports = {
     updateUserDatabase,
     updateUserFields,
     claimDailyStreak,
+    updateIfNewRecord,
     addUser,
     findUser,
     getUsers,
@@ -1092,5 +1245,9 @@ module.exports = {
     clearTowerLeaderboard,
 
     getActiveQuests,
-    setActiveQuests
+    setActiveQuests,
+
+    getActiveGuildContract,
+    setActiveGuildContract,
+    completeGuildContract
 }

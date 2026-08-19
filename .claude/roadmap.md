@@ -99,15 +99,136 @@ and needs its own balance pass.
   baseline or claims a reward, only real gameplay actions do. `/quests` pagination directly mirrors
   `/achievements`'s exact button/collector shape.
 
-- [ ] **6. Guild vs. Guild Raids** — L
-  What: guilds compete against each other (not just PvE mobs) for a pooled prize, comparing combined
-  `workMultiplierAmount` totals in a formula similar to the existing raid success-chance math.
-  Why last: touches the most systems (guild schema, a challenge/matchmaking flow, a new raid
-  resolution type, new embeds) and needs its own balance pass — biggest lift on the list.
-  Touches: guild schema (challenge state), a `startRaid`-like flow but two-sided, `raidFactory.js`
-  extension, new challenge/accept commands, `embedFactory.js`.
-  Open question: open challenges (any guild vs. any guild) and how mismatched guild sizes/levels are
-  handled.
+- [x] **6. Admin Economy Dashboard** — S — **Done**
+  What: a devOnly/Administrator-gated `/admin-stats` command surfacing the `economy` stats doc's
+  already-cached fields — server total, median total earnings, active user count, current starch
+  cycle state, active world boss, current quest rotation — in one embed, instead of admins checking
+  DynamoDB directly to sanity-check the game's health.
+  Why first: pure read exposure of data that already refreshes every 5 minutes via
+  `passivePotatoHandler`/`getCachedServerTotal` — no new persisted state, no new formula, no
+  balance risk. Safest possible item on this list to ship first.
+  Touches: one new command (`src/commands/moderation/adminStats.js`), one new
+  `embedFactory.js` method (`createAdminStatsEmbed`) — no `dynamoHandler.js` or factory
+  changes needed.
+  Notable design points: gated identically to `adminGive.js` (`devOnly: true` +
+  `permissionsRequired: [PermissionFlagsBits.Administrator]`, checked in `handleCommands.js`
+  against `awsConfigurations.devs`), and replies ephemeral since server economy internals aren't
+  meant for the general channel. Starch cycle state isn't its own stats doc field — it's derived
+  the same way `starchPrice.js`/`buyStarch.js`/`sellStarch.js` already derive it (day-of-week/hour
+  check against the buy window), reusing that inline logic rather than adding a shared helper,
+  matching how those three commands already each carry their own copy. World boss name is resolved
+  from `world_index` against `worldFactory.js`'s `worldBossMobs` array the same way
+  `currentWorldRaid.js` does it. Every one of the four stats-table docs
+  (`economy`/`starch`/`world`/`active_quests`) can legitimately be missing (a fresh deploy before
+  the relevant cron/tick has ever run) — verified via a mocked-DynamoDB simulation that the embed
+  falls back to a "not cached/rotated yet" string per field instead of throwing, rather than
+  assuming the happy path.
+
+- [x] **7. Personal Records Board** — S — **Done**
+  What: persists each player's all-time bests — highest Tower floor ever reached (survived or not),
+  biggest single `/work` payout, largest single raid contribution — as a new `records` object on
+  the user record, surfaced as a new field on the existing `/profile` embed.
+  Why second: same low-risk complexity class as the dashboard (no new formula, nothing to balance)
+  but directly player-facing — a cheap, immediate answer to "give veteran players something to
+  chase besides bigger numbers," without the far larger balance pass Specialization Paths
+  (see below) would need.
+  Touches: `records: { highestTowerFloor, biggestWorkPayout, largestRaidContribution }` added to
+  `getDefaultUserFields` (backfilled onto existing accounts by `findUser`'s existing generic
+  diff-and-heal loop — no special-case needed, unlike `guildId`/`webLinkToken`); a new
+  `dynamoHandler.updateIfNewRecord(userId, fieldName, newValue)` helper called from all three write
+  sites (`enter-tower.js` after a run ends, `work.js` after a scenario resolves,
+  `raidFactory.js`'s `handlePotatoSplit`/`handlePotatoSplitByShare` after each member's split is
+  computed); one new field on `embedFactory.js`'s `createUserEmbed`.
+  Notable design points: `/profile` over a new `/records` command — the three stats are single
+  numbers with no list/pagination need, so a new command would only add a second place to look for
+  the same handful of fields an already-open, frequently-used embed can show in one more field;
+  chose to add exactly one combined "Personal Records:" field (three lines) rather than three
+  separate fields, mirroring how Give/Trade's tax rework folded its extra info into an existing
+  field instead of growing the field count. `updateIfNewRecord`'s max-comparison is enforced via a
+  DynamoDB `ConditionExpression` on the write itself (`records.#field < :newValue`), the same
+  race-safety shape `claimDailyStreak` already uses, rather than an app-level `Math.max` over a
+  possibly-stale in-memory read — closes the (admittedly rare) case of two near-simultaneous
+  record-breaking writes for the same user clobbering each other into leaving the smaller value
+  stored, for barely more code than the plain version. Verified via a mocked-DynamoDB simulation
+  that a lower or equal value is correctly rejected (no write, returns false) while a genuinely
+  higher value is accepted, and that unrelated `records.*` fields are left untouched by an update to
+  one of them. "Highest Tower floor" intentionally counts a died run too, not just survival-eligible
+  ones like the daily Tower leaderboard — `floor` already reflects the last floor actually reached
+  either way, since `towerFactory.js` decrements it back by one on a lost Elite fight, so treating
+  a died run as "you got at least this far" is consistent with what the number already represents.
+  Biggest `/work` payout is scoped to scenarios that actually return a potato amount —
+  Golden/Large/Metal-success/Regular — and deliberately excludes three others: Poison (a loss,
+  always ≤ 0 anyway), Taro Trader (its gain is starches, a different currency, not a smaller/bigger
+  version of the same thing a potato record should track), and Sweet Potato (its handler's return
+  value isn't a gain amount at all — it's the array index of which stat buff was rolled — so
+  treating it as a potato figure would have silently corrupted the record with a stray 0/1/2).
+  Largest raid contribution only records the positive-payout branch of each split helper (the
+  penalty/negative branch is a loss, not a contribution worth chasing), and covers both guild raids
+  (`handlePotatoSplit`'s equal split) and world boss raids (`handlePotatoSplitByShare`'s
+  multiplier-weighted split) since both represent "what did this player personally receive."
+
+- [x] **8. Guild Contracts** — M — **Done**
+  What: a shared, guild-wide weekly objective — v1 ships one fixed template, "Complete 500 combined
+  /work actions across the guild this week" — tracked in aggregate across a snapshotted member
+  roster, rotating (Mondays only) on the same 4am cron already driving Quests/Tower. Completing it
+  grants +25,000,000 permanent guild bank capacity, applied once per rotation. New `/guild-contract`
+  shows the active contract and the guild's live progress, read-only like `/quests`. See
+  [systems/guild-contracts.md](systems/guild-contracts.md).
+  Why third: reuses the exact delta/snapshot/stale-rotation pattern Quests already proved out (see
+  [systems/quests.md](systems/quests.md)), just aggregated per-guild instead of per-user — real new
+  state, but the hard design problems (baseline snapshotting, rotation staleness) are already
+  solved elsewhere in this codebase, not being invented from scratch here.
+  Resolved open question (roster churn): snapshotting current `memberList` at rotation time, lazily
+  per guild (mirroring Quests' lazy per-user baseline, not an eager whole-table pass at cron time) —
+  departures stop contributing further, but their pre-departure delta is folded into a permanent
+  `guildContract.frozenContribution` bucket rather than either disappearing or continuing to grow
+  off their lifetime `workCount` after they've left (which is unscoped to any guild and never
+  resets, so without this a departed member's *later* work — even in a different guild — would
+  otherwise silently keep inflating their old guild's contract forever). This is the one place the
+  design goes further than a straight copy of Quests: it required a new `freezeDepartureContribution`
+  hook in `leave.js`/`kick.js` (the two membership-departure paths) that Quests never needed, since a
+  user quest's baseline is scoped to the user who owns it and never needs to "hand off" partial
+  credit anywhere.
+  Bank-capacity vs. second-`guildBuff`-slot reward: went with bank capacity. A second simultaneous
+  buff slot would mean every existing `guild.guildBuff == "x"` single-value check across
+  `raidFactory.js`/`startRaid.js`/`currentRaid.js`/`rob.js`/`workFactory.js`/`dynamoHandler.js`'s
+  `calculateWorkTimerValue` (see [systems/guilds.md](systems/guilds.md)) would need to become an
+  array-membership check instead — six-plus call sites, several of them in raid success-chance math
+  where a mistake silently skews outcomes rather than throwing. Bank capacity is a single additive
+  field bump, the same shape Tower leaderboard bonuses and weekly quest stat rewards already use
+  safely; the buff-slot idea isn't rejected, just deferred until it's worth that blast radius on its
+  own merits rather than bundled into this ticket.
+  Guild self-healing gap (flagged by an earlier architecture review of a shelved guild-vs-guild
+  feature): fixed properly rather than worked around locally. Extracted `getDefaultGuildFields` out
+  of `createGuild`'s inline `Item` literal and gave `findGuildById` the same diff-and-heal-one-
+  field-at-a-time loop `findUser` already uses for user records — every existing guild (all created
+  before this field existed) now gets `guildContract` backfilled transparently on first read, and
+  every *future* guild field gets this for free too. This uncovered and fixed a latent bug along the
+  way: `updateGuildDatabase` had a comment-only `.then()` handler that made it resolve to `undefined`
+  on both success AND failure — harmless as long as every caller fired-and-forgot the return value
+  (which, until now, all ~20 call sites did), but it would have silently broken the heal loop's
+  success check. Verified via a mocked-DynamoDB simulation: a guild record missing `guildContract`
+  entirely gets healed and persisted correctly, not left `undefined` for a later
+  `guild.guildContract.rotationDate` read to throw on.
+  Completion is guarded by a new `completeGuildContract` DynamoDB `ConditionExpression`
+  (`guildContract.completed` must still be `false`), the same race-safety shape
+  `claimDailyStreak`/`updateIfNewRecord` already use — closes the case where two guild members'
+  near-simultaneous `/work` calls both observe `completed: false` and would otherwise both grant the
+  reward. Verified directly: completing twice in a row only grants the bank-capacity bump once, and
+  a simulated lost race (condition already false) returns `completedNow: false` rather than
+  double-applying.
+
+- [ ] **9. Potato High-Low** — S/M
+  What: a card-comparison push-your-luck game in `games/`, alongside `/coinflip`/`/rps`. Wager
+  `all`/`half`/an amount, guess higher or lower against a 1–10 draw; a correct guess compounds a
+  multiplier priced off the true odds of that specific guess times the same 95% house edge
+  `/coinflip` already uses, cash out anytime or bust and lose the wager.
+  Why last of this batch: self-contained — no dependency on any other system — but needs a real
+  balance pass on the payout curve before it ships, to confirm no guess-direction or cash-out
+  strategy is strictly dominant. Same category of work the Tower leaderboard's reward rounding
+  needed, just for a brand-new game instead of an existing one.
+  Touches: one new command, wager/house-edge logic mirroring `coinflip.js`'s existing pattern, a new
+  embed for the round-by-round reveal.
 
 ## Needs more design discussion before it can be scoped
 
@@ -120,3 +241,9 @@ and needs its own balance pass.
 
 Prestige/rebirth, companion/pet system, seasonal/limited-time events. Not forgotten — just not
 selected this round. Say the word if you want any of these added back into the priority list.
+
+**Guild vs. Guild Raids** — fully scoped (targeted challenge + accept flow, bank-percentage ante,
+0.5–2x eligibility band, two-sided win-chance formula, separate 24h cooldown) and given a full
+technical design (new `gvgFactory.js`, cross-guild match state via a new stats-table doc, ante
+escrow via a conditional atomic write) before being shelved — not rejected for being a bad idea,
+just deprioritized for now. If revisited, the design work doesn't need to restart from scratch.

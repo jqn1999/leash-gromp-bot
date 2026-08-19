@@ -102,6 +102,13 @@ module.exports = {
 
         await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died);
 
+        // "Highest floor ever reached" is a broader personal-best than the daily
+        // leaderboard's survival-only eligibility below — floor already reflects the
+        // last floor actually reached either way (towerFactory decrements it back by
+        // one on a lost Elite fight, since dying happens on the way to the next
+        // floor), so a died run still legitimately counts toward this record.
+        await dynamoHandler.updateIfNewRecord(userId, 'highestTowerFloor', floor);
+
         // Only a survived run (voluntarily left, not lost to an Elite) counts for the
         // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
         if (!died) {
