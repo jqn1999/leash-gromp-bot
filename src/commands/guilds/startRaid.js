@@ -3,6 +3,7 @@ const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonSty
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo } = require("../../utils/raidFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -770,6 +771,15 @@ module.exports = {
         // check for guild buff - multi
         if (guild.guildBuff == "raidMulti") {
             totalMultiplier *= 1.15;
+        }
+
+        // Firefly — whichever participant has the best guildRaidMultiplierPercent perk
+        // active lifts the whole raid, same multiplicative shape as the guild raidMulti
+        // buff. Takes the best rather than summing everyone's, so multiple members
+        // equipping Firefly doesn't stack into an unintended snowball.
+        const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
+        if (raidCompanionBoost > 0) {
+            totalMultiplier *= (1 + raidCompanionBoost);
         }
 
         // Which difficulty bracket (Metal King/T3/T2/T1) gets rolled is random, so show

@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const { shops } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -345,7 +346,7 @@ module.exports = {
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
                     let failStack = userRegrades.workMulti.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.workMulti.failStack;
+                    let chanceOfSuccess = currentTier.chance + userRegrades.workMulti.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.workMulti.regradeAmount += currentTier.increase;
                         userRegrades.workMulti.failStack = 0;
@@ -372,7 +373,7 @@ module.exports = {
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
                     let failStack = userRegrades.passiveAmount.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack;
+                    let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.passiveAmount.regradeAmount += currentTier.increase;
                         userRegrades.passiveAmount.failStack = 0;
@@ -399,7 +400,7 @@ module.exports = {
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
                     let failStack = userRegrades.bankCapacity.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack;
+                    let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.bankCapacity.regradeAmount += currentTier.increase;
                         userRegrades.bankCapacity.failStack = 0;

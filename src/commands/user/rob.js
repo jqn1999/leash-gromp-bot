@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonSty
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -142,6 +143,9 @@ module.exports = {
                 }
             }
         }
+
+        // Barn Owl — stacks with the guild robChance buff, if it has one.
+        robChance += companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
 
         const robChanceDisplay = (robChance*100).toFixed(2);
 
