@@ -117,7 +117,7 @@ const ONBOARDING_PAGES = [
             },
             {
                 name: "Trading windows (EST)",
-                value: "Buying: Monday 10am–10pm, and Thursday 10pm through Friday 10am. Selling: every other time.",
+                value: "Buying: Monday 10am–10pm, and Thursday 10am–10pm. Selling: every other time.",
                 inline: false,
             },
             {

@@ -11,7 +11,9 @@ earned primarily from the Taro Trader `/work` encounter (see
 
 ## Trading windows (all times EST, checked identically in all 3 commands)
 
-- **Buying allowed**: Monday 10:00–21:59, Thursday 22:00–23:59, Friday 00:00–09:59.
+- **Buying allowed**: Monday 10:00–21:59, Thursday 10:00–21:59 — two identically shaped
+  same-day windows. Thursday used to span overnight into Friday morning; moved to match
+  Monday's shape for simplicity.
 - **Selling allowed**: all other times.
 
 All 3 commands share `starchFactory.js`'s `isStarchBuyingWindow()`, which converts to
@@ -23,14 +25,16 @@ explicitly for the same reason; this closes the one place starch trading didn't.
 
 ## Price cycle
 
-- **Buy price** is set once per cycle — cron `0 10 * * 1` (Monday 10am) and `0 22 * * 4`
-  (Thursday 10pm) — to `floor(random*1500 + 9500)` (range 9500–10999), stored as `starch_buy` in
-  the stats table's `starch` doc.
+- **Buy price** is set once per cycle — one cron, `0 10 * * 1,4` (Monday AND Thursday, both
+  10am, now that both windows open at the same time of day) — to `floor(random*1500 + 9500)`
+  (range 9500–10999), stored as `starch_buy` in the stats table's `starch` doc.
 - On the **same** schedule: every user's `starches` balance is wiped
   (`dynamoHandler.removeStarches()`), and a full week of future **sell** prices is pre-generated via
   `starchFactory.makeStarchPrices(buyPrice, lastPattern)` and stored as the `starch_values` array.
 - The next sell price is shifted off `starch_values` and set as `starch_sell` daily at `22:00`
-  (Mon–Wed, Fri–Sun via cron `0 22 * * 1-3,5-7`) and `10:00` (Tue–Sun via cron `0 10 * * 2-7`).
+  (every day, via cron `0 22 * * *` — Monday and Thursday's buying windows both close at 10pm, and
+  every other day sells all day anyway) and `10:00` (every day except Monday/Thursday, when 10am
+  opens a buying window instead — cron `0 10 * * 2,3,5,6,7`).
 
 ## Price pattern generation (`makeStarchPrices`)
 

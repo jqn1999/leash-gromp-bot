@@ -30,7 +30,7 @@ module.exports = {
 
         //check if they are allowed to buy
         if (!isStarchBuyingWindow()) {
-            interaction.editReply(`${userDisplayName}, you can only buy starches Monday 10am-10pm, or Thursday 10pm through Friday 10am (EST)!`);
+            interaction.editReply(`${userDisplayName}, you can only buy starches Monday 10am-10pm, or Thursday 10am-10pm (EST)!`);
             return;
         }
 

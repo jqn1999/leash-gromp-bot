@@ -29,7 +29,7 @@ module.exports = {
 
         // check date
         if (isStarchBuyingWindow()) {
-            interaction.editReply(`${userDisplayName}, this is a buying period for starches (Monday 10am-10pm, or Thursday 10pm through Friday 10am EST) — selling reopens once that window closes!`);
+            interaction.editReply(`${userDisplayName}, this is a buying period for starches (Monday 10am-10pm, or Thursday 10am-10pm EST) — selling reopens once that window closes!`);
             return;
         }
 

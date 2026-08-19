@@ -23,12 +23,21 @@ describe('isStarchBuyingWindow', () => {
         expect(isStarchBuyingWindow(new Date('2026-08-17T13:00:00Z'))).toBe(false); // Mon 09:00 EDT
     });
 
-    test('open Thursday 10pm EST through midnight', () => {
-        expect(isStarchBuyingWindow(new Date('2026-08-21T02:00:00Z'))).toBe(true); // Thu 22:00 EDT
+    test('open Thursday 10am EST (the window\'s opening instant, same shape as Monday)', () => {
+        expect(isStarchBuyingWindow(new Date('2026-08-20T14:00:00Z'))).toBe(true); // Thu 10:00 EDT
     });
 
-    test('open Friday up to 9am EST, closed at 10am', () => {
-        expect(isStarchBuyingWindow(new Date('2026-08-21T13:00:00Z'))).toBe(true);  // Fri 09:00 EDT
+    test('open Thursday 9:59pm EST, closed one minute later at 10pm', () => {
+        expect(isStarchBuyingWindow(new Date('2026-08-21T01:59:00Z'))).toBe(true);  // Thu 21:59 EDT
+        expect(isStarchBuyingWindow(new Date('2026-08-21T02:00:00Z'))).toBe(false); // Thu 22:00 EDT
+    });
+
+    test('closed Thursday morning before 10am', () => {
+        expect(isStarchBuyingWindow(new Date('2026-08-20T13:00:00Z'))).toBe(false); // Thu 09:00 EDT
+    });
+
+    test('closed all day Friday — no more overnight spillover from Thursday', () => {
+        expect(isStarchBuyingWindow(new Date('2026-08-21T13:00:00Z'))).toBe(false); // Fri 09:00 EDT
         expect(isStarchBuyingWindow(new Date('2026-08-21T14:00:00Z'))).toBe(false); // Fri 10:00 EDT
     });
 
