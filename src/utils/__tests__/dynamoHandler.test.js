@@ -82,6 +82,60 @@ describe('findUser', () => {
         expect(healedFieldNames).not.toContain('guildId');
         expect(healedFieldNames).not.toContain('webLinkToken');
     });
+
+    // Regression: an account created before workScenarioCounts.companion existed in the
+    // schema already has a workScenarioCounts object — so the top-level `user[key] ===
+    // undefined` check never fires for it — but that object is still missing the
+    // .companion sub-key specifically. workFactory.js's `workScenarioCounts.companion +=
+    // 1` on such an account produces NaN, which DynamoDB's UpdateItem rejects outright,
+    // silently failing that entire write (including the actual companion grant sitting
+    // right next to it). This only surfaced when testing companions on an account that
+    // predated the feature — findUser has to shallow-heal missing sub-keys of an
+    // already-present object, not just missing top-level fields.
+    test('shallow-heals a missing sub-key of an already-present nested object (workScenarioCounts.companion)', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u5', username: 'name5',
+                // Every ORIGINAL workScenarioCounts key present, but companion (added
+                // to the schema later) is missing — exactly what an account that
+                // predates the companion system looks like.
+                workScenarioCounts: { regular: 3, large: 1, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0 },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u5', 'name5');
+
+        expect(user.workScenarioCounts.companion).toBe(0);
+        // The existing counts must survive the heal untouched, not get reset to defaults.
+        expect(user.workScenarioCounts.regular).toBe(3);
+        expect(user.workScenarioCounts.large).toBe(1);
+
+        const workScenarioCountsWrite = docClient.update.mock.calls.find(
+            ([params]) => Object.values(params.ExpressionAttributeNames).includes('workScenarioCounts')
+        );
+        expect(workScenarioCountsWrite).toBeDefined();
+        const writtenValue = Object.values(workScenarioCountsWrite[0].ExpressionAttributeValues)[0];
+        expect(writtenValue).toEqual({ regular: 3, large: 1, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 0 });
+    });
+
+    test('does not touch a nested object that already has every sub-key', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u6', username: 'name6',
+                workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 5 },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.findUser('u6', 'name6');
+
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).not.toContain('workScenarioCounts');
+    });
 });
 
 // Regression coverage for the guild memberList/inviteList race: every guild command

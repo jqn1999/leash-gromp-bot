@@ -7,6 +7,12 @@ const AWS = require('aws-sdk');
 AWS.config.update(awsConfigurations.aws_remote_config);
 const docClient = new AWS.DynamoDB.DocumentClient();
 
+// Excludes arrays and null — both are `typeof === 'object'` in JS but neither has
+// meaningful "sub-keys" to shallow-heal the way a plain nested schema object does.
+function isPlainObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 // Builds a DynamoDB UpdateExpression covering multiple SET/ADD attributes in one call,
 // so callers can persist a whole scenario's worth of field changes in a single round trip
 // instead of one UpdateItem call per attribute.
@@ -337,6 +343,30 @@ const findUser = async function (userId, username) {
             for (const key of Object.keys(defaults)) {
                 if (user[key] === undefined) {
                     missingFields[key] = defaults[key];
+                } else if (isPlainObject(defaults[key]) && isPlainObject(user[key])) {
+                    // A top-level object field (workScenarioCounts, regrades, etc.) that
+                    // already exists on an older account can still be missing a sub-key
+                    // added to the schema later — e.g. workScenarioCounts.companion,
+                    // added well after plenty of real accounts already had a
+                    // workScenarioCounts object. The check above only ever sees the
+                    // whole object as "present," so a sub-key like that would silently
+                    // stay undefined forever. Caught the hard way: `workScenarioCounts
+                    // .companion += 1` on an unhealed account produces NaN, which
+                    // DynamoDB's UpdateItem rejects outright — failing the ENTIRE
+                    // combined write for that action (including the real companion
+                    // grant sitting right next to it in the same call), silently, since
+                    // updateUserFields only logs write failures rather than surfacing
+                    // them. One level of nesting is enough for every current schema
+                    // field; go deeper only if a field actually nests further.
+                    const missingNested = {};
+                    for (const nestedKey of Object.keys(defaults[key])) {
+                        if (user[key][nestedKey] === undefined) {
+                            missingNested[nestedKey] = defaults[key][nestedKey];
+                        }
+                    }
+                    if (Object.keys(missingNested).length > 0) {
+                        missingFields[key] = { ...user[key], ...missingNested };
+                    }
                 }
             }
             // Two fields are known secondary-index keys whose default value doesn't

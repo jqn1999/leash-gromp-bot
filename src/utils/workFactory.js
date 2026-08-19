@@ -118,7 +118,12 @@ class WorkFactory {
         const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
 
         let workScenarioCounts = userDetails.workScenarioCounts;
-        workScenarioCounts.companion += 1;
+        // Defensive default — findUser's healing backfills this for any account fetched
+        // through it, but `|| 0` keeps a bare `+= 1` from ever producing NaN (which
+        // DynamoDB's UpdateItem rejects outright, failing this entire combined write —
+        // including the actual companion grant sitting right next to it) if this ever
+        // runs against a userDetails object that skipped healing.
+        workScenarioCounts.companion = (workScenarioCounts.companion || 0) + 1;
 
         const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
 
