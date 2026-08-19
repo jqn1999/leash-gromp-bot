@@ -31,6 +31,8 @@ those AWS services.
   scheduled background events (passive income tick, special work events, birthday announcer).
 - [systems/tower.md](systems/tower.md) — the `/enter-tower` roguelike minigame.
 - [systems/starch-trading.md](systems/starch-trading.md) — the starch investment/trading subsystem.
+- [systems/companions.md](systems/companions.md) — the companion collection/equip/perk system and
+  its player-to-player marketplace.
 - [systems/betting-and-games.md](systems/betting-and-games.md) — prediction-market betting, coinflip,
   RPS, rob.
 - [reference/commands.md](reference/commands.md) — one-line summary of every slash command by category.

@@ -230,7 +230,10 @@ and needs its own balance pass.
   Touches: one new command, wager/house-edge logic mirroring `coinflip.js`'s existing pattern, a new
   embed for the round-by-round reveal.
 
-- [ ] **10. Companions** — L (grew from M/L once trading was added — see below)
+- [x] **10. Companions** — L (grew from M/L once trading was added — see below) — **Done**
+  Shipped as designed below — see [systems/companions.md](systems/companions.md) for the
+  implementation (all 9 perk types wired, `/companion` view/equip, the full marketplace with
+  escrow, 4 achievements, `/profile` integration).
   What: a second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck
   rather than pure grinding — same encounter-roll shape Sweet/Golden/Metal Potato already use. A new
   `/work` scenario ("Wandering Companion," ~1.5% chance, between Sweet Potato and Taro Trader in the
@@ -376,7 +379,8 @@ and needs its own balance pass.
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
-Companion/pet system now has a real design above (#10). Seasonal/limited-time events remain
+Companion/pet system also **shipped** (see #10 above, [systems/companions.md](systems/companions.md)).
+Seasonal/limited-time events remain
 undesigned — not forgotten, just not selected this round. Say the word if you want that one added
 back into the priority list.
 

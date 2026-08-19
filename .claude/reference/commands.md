@@ -16,6 +16,11 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `stats.js` | `/user-stats` | Raw lifetime stat counters for self or a target user |
 | `achievements.js` | `/achievements` | Full achievement list (unlocked + locked-with-progress) for self or a target user — see [systems/achievements.md](../systems/achievements.md) |
 | `quests.js` | `/quests` | Active daily/weekly quest list with progress, self or a target user (read-only, doesn't snapshot/claim) — see [systems/quests.md](../systems/quests.md) |
+| `companion.js` | `/companion` | Paginated list of owned companions, or equip one as active — see [systems/companions.md](../systems/companions.md) |
+| `companionMarket.js` | `/companion-market` | Paginated browser of active companion market listings — see [systems/companions.md](../systems/companions.md) |
+| `companionSell.js` | `/companion-sell` | List an owned companion for sale (confirm/cancel flow, escrow) — see [systems/companions.md](../systems/companions.md) |
+| `companionBuy.js` | `/companion-buy` | Buy a listed companion by listing id — see [systems/companions.md](../systems/companions.md) |
+| `companionCancel.js` | `/companion-cancel` | Pull back your own companion listing, no fee — see [systems/companions.md](../systems/companions.md) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 

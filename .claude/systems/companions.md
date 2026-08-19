@@ -1,0 +1,137 @@
+# Companions
+
+[src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
+`CompanionMarket`, `CompanionDuplicateReward`, `Companions`) +
+[src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
+[src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
+[src/commands/user/{companion,companionMarket,companionSell,companionBuy,companionCancel}.js](../../src/commands/user/).
+
+A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
+pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
+active at a time — equipping is a deliberate choice via `/companion equip`, not another additive
+stack. Perks are computed fresh at the usage site and never folded into a stored stat, the same
+"one active modifier" pattern the guild buff system already uses (see
+[economy-and-work.md](economy-and-work.md)) — this matters because `/rebirth` and `/regrade` both
+depend on `effective - sweetPotatoBuffs - regradeAmount` staying a clean base value.
+
+## Obtaining a companion
+
+`/work` has a ~1.5% chance per roll (`WORK_SCENARIO_INDICES.COMPANION`, sitting between Sweet
+Potato and Taro Trader in the roll table — see `eventFactory.js`'s `workChances`) to trigger a
+"Wandering Companion" encounter (`workFactory.handleCompanionEncounter`). On a hit, a companion is
+rolled by rarity (`companionFactory.rollRarity`, cumulative thresholds in `CompanionRarityOdds`:
+Common 65% / Rare 25% / Legendary 8% / Mythic 2%) and then uniformly among that rarity's roster
+(`companionFactory.rollCompanion`). `CompanionRarityOdds` is keyed by rarity *strings*, not
+integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't subject to JS's
+integer-key reordering trap; `Object.keys` already preserves ascending threshold order here.
+
+- **New companion**: added to `owned`, not auto-equipped (equipping stays a deliberate choice).
+  Bumps `companions.ownedCount` (and `mythicOwnedCount` for a Mythic) — the achievement counters.
+- **Duplicate** (already owned): pays a modest potato consolation instead of nothing, scaled the
+  same server-wealth-aware way every other `/work` reward is (`CompanionDuplicateReward[rarity]` as
+  the `maxGain` cap fed into `workFactory`'s existing `calculateGainAmount`).
+
+Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
+companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,
+since `applyCompanionAward` is the single code path both routes go through.
+
+## Starting roster (10)
+
+| Companion | Rarity | Perk type | Value |
+|---|---|---|---|
+| Sprout | Common | `workMultiplierPercent` | +2% |
+| Fieldmouse | Common | `workCooldownPercent` | -5% |
+| Ladybug | Common | `passiveIncomePercent` | +5% |
+| Barn Owl | Rare | `robChanceFlat` | +10% |
+| Mole | Rare | `starchCapacityPercent` | +10% |
+| Firefly | Rare | `guildRaidMultiplierPercent` | +5% |
+| Spudsprite | Legendary | `workCooldownPercent` | -15% |
+| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` | +10% |
+| Elder Rootbeard | Mythic | `regradeChanceFlat` | +3% (all 3 tracks) |
+| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` + `rebirthBonusPercent` | +8% / +20% |
+
+Mochi is the one deliberate dual-perk companion — the generalist Mythic next to Elder Rootbeard's
+specialist. Mythic perks target what matters late-game (regrade odds, rebirth payoff) rather than
+bigger versions of the early-game levers, since work multiplier/cooldown lose relative value once a
+player is deep into their build. Mochi was moved here from the world boss roster
+(`worldFactory.js`) — see that file's comment.
+
+Every perk except the two `*Flat` ones (Barn Owl, Elder Rootbeard — which mirror the existing
+guild `robChance` buff's flat-add shape) is percentage-of-current-stat, the same
+compounding-avoidance reasoning applied to rebirth/guild raid levels: a flat bonus sized right for
+an early player becomes negligible for a maxed one, but a % scales itself automatically.
+
+## Perk application sites
+
+Every perk is read via `companionFactory.getActivePerkValue(userDetails, perkType)` — returns 0 if
+nothing is equipped or the active companion doesn't carry that perk type, so every call site can
+add/multiply it in unconditionally. `getActivePerkValue`/`getActiveCompanion`/`ownsCompanion` treat a
+missing `userDetails.companions` field as "no companion" rather than throwing, since not every call
+site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
+`passivePotatoHandler`'s raw table scan).
+
+| Perk type | Applied in |
+|---|---|
+| `workMultiplierPercent` | `workFactory.js`'s `getCompanionWorkMulti`, alongside `getGuildWorkMulti` in every `/work` handler |
+| `workCooldownPercent` | `dynamoHandler.calculateWorkTimerValue`, alongside the guild `workTimer` buff |
+| `passiveIncomePercent` | `dynamoHandler.passivePotatoHandler`'s per-user passive tick |
+| `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
+| `regradeChanceFlat` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks |
+| `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple Fireflies can't stack into an unintended snowball |
+| `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion) |
+| `bankCapacityPercent` | `bank.js`'s deposit cap |
+| `rebirthBonusPercent` | `rebirthFactory.computeRebirthState` — amplifies the flat `Rebirth.*_BONUS` amounts for that rebirth; companions persist through rebirth, so this reads whatever is active at the moment the rebirth commits |
+
+## Viewing and equipping
+
+`/companion` — no args shows a paginated (5/page) list of owned companions, perk text, and which
+one is active. The `equip` option (choices drawn from the full roster) switches the active slot,
+rejected if the caller doesn't own that companion.
+
+## Marketplace
+
+The first player-to-player trading this bot has ever had. Listings live in a shared stats-table doc
+(`companion_market`, same shape as `world`/`starch`/`active_quests`) rather than on a user record,
+guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-concurrency write (same
+`version`-field-conditioned shape as `updateGuildFieldsWithLock`) since list/buy/cancel can all race
+on the same `listings` array.
+
+- **`/companion-sell <companion> <price>`** — must currently own it; rejected if `price` is below
+  that rarity's floor (`CompanionMarket.MINIMUM_PRICE`: Common 5,000,000 / Rare 25,000,000 /
+  Legendary 100,000,000 / Mythic 500,000,000). Confirm/cancel button flow, then **escrow removal**:
+  the companion is pulled out of `owned` entirely (unequipped first if it was active) rather than
+  just balance-checked at purchase time — there's no window where it could be equipped, re-listed,
+  or duplicated while for sale. Escrow removal deliberately does **not** decrement
+  `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a companion
+  you already earned credit for shouldn't claw the achievement back.
+- **`/companion-market`** — paginated (5/page) browser of active listings: companion, tier, price,
+  seller, listing id.
+- **`/companion-buy <listing-id>`** — deducts the price from the buyer (rejected if they can't
+  afford it), credits the seller minus `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s
+  deposit tax — a real sink without being punitive), the fee goes to the house account, and adds the
+  companion to the buyer's `owned` via the same `applyCompanionAward` path a `/work` win uses. The
+  listing is removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a
+  contested listing fails cleanly with no partial state.
+- **`/companion-cancel <listing-id>`** — seller-only, no fee, companion returns to `owned`.
+
+## Achievements
+
+New `Achievements` entries (see [achievements.md](achievements.md)) read the same
+`companions.ownedCount`/`companions.mythicOwnedCount` counters through the existing generic
+`statPath`-threshold checker — no new checking code needed:
+
+| id | Name | Threshold |
+|---|---|---|
+| `first_companion` | New Best Friend | `companions.ownedCount >= 1` |
+| `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
+| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 10` |
+| `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
+
+## Persistence
+
+`userDetails.companions: { owned: [{ id, level }], active: id|null, ownedCount, mythicOwnedCount }`,
+backfilled onto existing accounts by `findUser`'s self-healing pattern like every other field.
+Untouched by `/rebirth`'s reset, same "survives a prestige reset" precedent `sweetPotatoBuffs`/
+achievements/records/starches already set. `level` is stored as `1` from day one even though
+nothing reads it yet — static leveling for v1, so a future leveling system is additive rather than a
+migration.
