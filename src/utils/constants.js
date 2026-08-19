@@ -74,7 +74,10 @@ const Achievements = [
     { id: "raid_veteran", name: "Seasoned Raider", description: "Win 25 guild raids", statPath: "guildRaidWinCount", threshold: 25 },
 
     { id: "world_slayer", name: "World Boss Slayer", description: "Help defeat your first world boss", statPath: "worldBossWinCount", threshold: 1 },
-    { id: "world_champion", name: "Kingdom's Champion", description: "Help defeat 10 world bosses", statPath: "worldBossWinCount", threshold: 10 }
+    { id: "world_champion", name: "Kingdom's Champion", description: "Help defeat 10 world bosses", statPath: "worldBossWinCount", threshold: 10 },
+
+    { id: "first_rebirth", name: "Reborn Spud", description: "Rebirth for the first time", statPath: "rebirthCount", threshold: 1 },
+    { id: "serial_rebirther", name: "Cycle of the Harvest", description: "Rebirth 5 times", statPath: "rebirthCount", threshold: 5 }
 ]
 
 const CatchUp = {
@@ -232,6 +235,22 @@ const Rob = {
     WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
     BASE_ROB_PENALTY: 5000
+}
+
+// Prestige-style reset: available once every base shop AND every regrade track is fully
+// maxed (see rebirth.js's isEligibleForRebirth). Wipes potatoes, bankStored, and the
+// base+regrade portion of workMultiplierAmount/passiveAmount/bankCapacity/maxStarches
+// back to their getDefaultUserFields values — but NOT sweetPotatoBuffs, achievements,
+// records, or starches, which persist across a rebirth same as Idle Miner's "keep
+// boosters/pets/shards" precedent. In exchange, grants a flat, permanent bonus (folded
+// into sweetPotatoBuffs, same convention as every other permanent-stat source) sized at
+// 5% of the full max-base-plus-regrade totals — so it stacks meaningfully across repeat
+// rebirths without trivializing the next full grind. Unlimited rebirths; each one costs
+// redoing the entire shop+regrade grind from scratch again.
+const Rebirth = {
+    WORK_MULTI_BONUS: 30,          // 5% of maxed base+regrade (100 + 500)
+    PASSIVE_BONUS: 33000000,       // 5% of maxed base+regrade (60,000,000 + 600,000,000)
+    BANK_CAPACITY_BONUS: 5200000000 // 5% of maxed base+regrade (1,000,000,000 + 103,000,000,000)
 }
 
 // Unlike Bank's tax (added on top of a chosen net amount), Give tax is taken out of the
@@ -804,6 +823,7 @@ module.exports = {
     GuildBuffLabels,
     RaidLevel,
     Rob,
+    Rebirth,
     Give,
     GuildRoles,
     Raid,

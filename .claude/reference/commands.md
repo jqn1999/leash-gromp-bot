@@ -23,6 +23,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 |---|---|---|
 | `buy.js` | `/buy` | Purchase the next tier in one of the 4 personal shops |
 | `regrade.js` | `/regrade` | Gacha-style permanent stat enhancement past max shop tier, with pity fail-stack |
+| `rebirth.js` | `/rebirth` | Prestige reset once every shop tier and regrade track is maxed, for a permanent buff — see [systems/economy-and-work.md](../systems/economy-and-work.md#rebirth-prestige-reset) |
 | `shop.js` | `/shop` | Read-only ephemeral display of shop tiers/prices for a category |
 
 ## `guilds/` — [systems/guilds.md](../systems/guilds.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md)

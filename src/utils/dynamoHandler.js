@@ -281,6 +281,7 @@ function getDefaultUserFields(userId, username) {
         quests: {},
         guildRaidWinCount: 0,
         worldBossWinCount: 0,
+        rebirthCount: 0,
         records: {                  // all-time personal bests, see architecture/data-model.md
             highestTowerFloor: 0,
             biggestWorkPayout: 0,

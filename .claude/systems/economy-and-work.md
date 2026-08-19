@@ -140,6 +140,36 @@ Success chance decreases across tiers (from 50% down to 0.5%). Failures build a 
 (pity counter) that's added to the *next* attempt's chance — resets to 0 on success. This is the
 only progression path once a stat has exhausted its shop tiers.
 
+## Rebirth (prestige reset)
+
+[rebirth.js](../../src/commands/buying/rebirth.js) +
+[rebirthFactory.js](../../src/utils/rebirthFactory.js) — a prestige-style reset available only once
+**every** base shop tier (all 4: work/passive/bank/starch) AND **every** regrade track (all 3) is
+fully maxed — `checkRebirthEligibility` computes the same base-value formula `buy.js`/`regrade.js`
+use (effective stat minus `sweetPotatoBuffs` minus `regrades.<stat>.regradeAmount`) so a player can't
+use an earned buff to fake their way past a shop tier they haven't actually finished.
+
+Confirm-before-committing, same 30s Confirm/Cancel pattern as `/rob`/`/start-raid` — and re-checks
+eligibility against a fresh read right before committing, since the confirmation window is long
+enough for a regrade attempt or a Sweet Potato encounter to land in between.
+
+**Resets to their `getDefaultUserFields` base**: `potatoes`, `bankStored`, and the base+regrade
+portion of `workMultiplierAmount`/`passiveAmount`/`bankCapacity`/`maxStarches`. `bankStored` resets
+alongside `potatoes` deliberately — both are the same currency in two pools, and leaving `bankStored`
+untouched would let a player dodge the reset by banking everything right before rebirthing.
+
+**Kept as-is**: `sweetPotatoBuffs`, `achievements`, `records`, and `starches` — matching the genre
+convention (Idle Miner: "lose all your progress but retain boosters, crates, pets, and shards").
+These aren't part of the shop/regrade grind being reset, they're separately-earned permanent bonuses
+and lifetime milestones.
+
+**Reward**: a flat, permanent bonus (`Rebirth.WORK_MULTI_BONUS`/`PASSIVE_BONUS`/`BANK_CAPACITY_BONUS`
+— sized at 5% of the fully-maxed base+regrade totals) folded directly into `sweetPotatoBuffs`, the
+same convention every other permanent-stat source uses. Stacks additively with every repeat
+rebirth — `rebirthCount` tracks how many times, and unlocks two achievements
+(`first_rebirth`/`serial_rebirther`) checked right after the reset commits, same as any other
+action-triggered unlock.
+
 ## Bank
 
 [bank.js](../../src/commands/user/bank.js) — deposit is taxed `Bank.TAX_BASE(1000) + Bank.TAX_PERCENT(.05)`

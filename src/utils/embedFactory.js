@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
@@ -987,6 +987,103 @@ class EmbedFactory {
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createRebirthNotEligibleEmbed(userDisplayName, userId, userAvatar, missing) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} isn't ready to rebirth yet`)
+            .setDescription(`Rebirth requires every base shop tier AND every regrade track fully maxed out. Still needed:\n${missing.map(m => `❌ ${m}`).join('\n')}`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, userDetails) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const nextRebirthCount = (userDetails.rebirthCount || 0) + 1;
+        const fields = [
+            {
+                name: `Resets to zero:`,
+                value: `Potatoes, banked potatoes, all 3 regrade tracks, and the shop-purchased portion of Work Multiplier / Passive Income / Bank Capacity / Starch Capacity`,
+                inline: false,
+            },
+            {
+                name: `Kept:`,
+                value: `Achievements, personal records, starches, and every permanent buff you've earned (Sweet Potato, Metal Potato, raids, quests)`,
+                inline: false,
+            },
+            {
+                name: `Permanent gain:`,
+                value: `+${Rebirth.WORK_MULTI_BONUS.toFixed(2)}x Work Multiplier, +${Rebirth.PASSIVE_BONUS.toLocaleString()} Passive Income, +${Rebirth.BANK_CAPACITY_BONUS.toLocaleString()} Bank Capacity — folded into your permanent buffs, stacks with every future rebirth`,
+                inline: false,
+            },
+            {
+                name: `This will be rebirth #:`,
+                value: `${nextRebirthCount}`,
+                inline: true,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, rebirth? This cannot be undone.`)
+            .setDescription(`You're maxed out on every shop tier and every regrade track. Confirm to reset and gain a permanent boost — decline and nothing changes.`)
+            .setColor("Yellow")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createRebirthCancelledEmbed(userDisplayName, userId, userAvatar) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`Nothing was reset — your progress is untouched, rebirth whenever you're ready.`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createRebirthCompleteEmbed(userDisplayName, userId, userAvatar, newState) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const fields = [
+            {
+                name: `Rebirth #:`,
+                value: `${newState.rebirthCount}`,
+                inline: true,
+            },
+            {
+                name: `New Work Multiplier:`,
+                value: `${newState.workMultiplierAmount.toFixed(2)}x`,
+                inline: true,
+            },
+            {
+                name: `New Passive Income:`,
+                value: `${newState.passiveAmount.toLocaleString()} potatoes/day`,
+                inline: true,
+            },
+            {
+                name: `New Bank Capacity:`,
+                value: `${newState.bankCapacity.toLocaleString()} potatoes`,
+                inline: true,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} has been reborn!`)
+            .setDescription(`Potatoes, bank, shops, and regrades are back to zero — but your permanent buffs, achievements, records, and starches came with you, plus this rebirth's boost.`)
+            .setColor("Purple")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
         return embed;
     }
 

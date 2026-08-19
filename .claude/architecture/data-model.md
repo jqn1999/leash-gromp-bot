@@ -154,6 +154,7 @@ Created by `addUser` in `dynamoHandler.js`:
   quests: {},                 // per-quest-id progress snapshots, see systems/quests.md
   guildRaidWinCount: 0,       // wins across all raid-select tiers, see systems/raids-and-world-events.md
   worldBossWinCount: 0,       // world bosses defeated while joined, see systems/raids-and-world-events.md
+  rebirthCount: 0,            // prestige resets completed, see systems/economy-and-work.md#rebirth-prestige-reset
   records: {                  // all-time personal bests, see roadmap.md item 7
     highestTowerFloor: 0,          // max(), regardless of survived vs. died — see enter-tower.js
     biggestWorkPayout: 0,          // max() of a single /work call's potato gain only
