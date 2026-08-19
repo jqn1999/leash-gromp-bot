@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js"); //types?
 const { getUserInteractionDetails } = require("../../utils/helperCommands"); // getting info about user?
 const dynamoHandler = require("../../utils/dynamoHandler"); // helpers for accessing db
 const { isStarchBuyingWindow } = require("../../utils/starchFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -54,7 +55,9 @@ module.exports = {
             }
         }
 
-        let maxStarches = userDetails.maxStarches;
+        // Mole — computed fresh here, never folded into the stored maxStarches.
+        const starchCapacityPercent = companionFactory.getActivePerkValue(userDetails, "starchCapacityPercent");
+        let maxStarches = Math.round(userDetails.maxStarches * (1 + starchCapacityPercent));
         let remainingAvailableStarches;
         if (starches + userStarches > maxStarches) {
             remainingAvailableStarches = maxStarches - userStarches;

@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonSty
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank } = require("../../utils/constants");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -62,7 +63,9 @@ module.exports = {
         };
         let userPotatoes = userDetails.potatoes;
         let userBankStored = userDetails.bankStored;
-        let userBankCapacity = userDetails.bankCapacity;
+        // Rootcarver — computed fresh here, never folded into the stored bankCapacity.
+        const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
+        let userBankCapacity = Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent));
 
         let remainingBankSpace = userBankCapacity - userBankStored;
         const bankHasCapacity = remainingBankSpace > 0;

@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Give } = require("../../utils/constants");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -106,7 +107,9 @@ module.exports = {
         const receivedAmount = amount - taxAmount;
 
         if (isStarches) {
-            const remainingCapacity = targetUserDetails.maxStarches - targetUserDetails.starches;
+            const targetStarchCapacityPercent = companionFactory.getActivePerkValue(targetUserDetails, "starchCapacityPercent");
+            const targetMaxStarches = Math.round(targetUserDetails.maxStarches * (1 + targetStarchCapacityPercent));
+            const remainingCapacity = targetMaxStarches - targetUserDetails.starches;
             if (receivedAmount > remainingCapacity) {
                 interaction.editReply(`${targetUserDisplayName} does not have enough starch capacity to receive ${receivedAmount.toLocaleString()} starches! They have ${remainingCapacity.toLocaleString()} space remaining.`);
                 return;
