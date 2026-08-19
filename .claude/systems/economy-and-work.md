@@ -180,10 +180,17 @@ convention (Idle Miner: "lose all your progress but retain boosters, crates, pet
 These aren't part of the shop/regrade grind being reset, they're separately-earned permanent bonuses
 and lifetime milestones.
 
-**Reward**: a flat, permanent bonus (`Rebirth.WORK_MULTI_BONUS`/`PASSIVE_BONUS`/`BANK_CAPACITY_BONUS`
-— sized at 5% of the fully-maxed base+regrade totals) folded directly into `sweetPotatoBuffs`, the
-same convention every other permanent-stat source uses. Stacks additively with every repeat
-rebirth — `rebirthCount` tracks how many times, and unlocks two achievements
+**Reward**: a percentage of your current total (`userDetails[stat]` at rebirth time — base(maxed) +
+regrade(maxed) + existing `sweetPotatoBuffs`) folded permanently into `sweetPotatoBuffs`, the same
+convention every other permanent-stat source uses. The percentage itself escalates with each
+rebirth — `Rebirth.BASE_BONUS_PERCENT` (5%) on rebirth #1, `+ Rebirth.BONUS_PERCENT_STEP` (1%) per
+rebirth after that, held at `Rebirth.MAX_BONUS_PERCENT` (15%) once reached — computed by
+`rebirthFactory.getRebirthBonusPercent(rebirthNumber)`. Because the bonus is a % of a total that
+itself keeps growing (`sweetPotatoBuffs` accumulates every rebirth) AND the % keeps climbing, the
+absolute gain grows for two compounding reasons rather than repeating the same flat number —
+`previewRebirthBonus(userDetails)` computes this without committing, shared by the `/rebirth`
+confirmation embed and `computeRebirthState` itself so the two can never drift apart.
+`rebirthCount` tracks how many times, and unlocks two achievements
 (`first_rebirth`/`serial_rebirther`) checked right after the reset commits, same as any other
 action-triggered unlock.
 

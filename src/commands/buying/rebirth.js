@@ -1,7 +1,7 @@
 const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { checkRebirthEligibility, computeRebirthState } = require("../../utils/rebirthFactory");
+const { checkRebirthEligibility, previewRebirthBonus, computeRebirthState } = require("../../utils/rebirthFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -42,7 +42,8 @@ module.exports = {
             return;
         }
 
-        const previewEmbed = embedFactory.createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, userDetails);
+        const preview = previewRebirthBonus(userDetails);
+        const previewEmbed = embedFactory.createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, preview);
         const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmRow()] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;

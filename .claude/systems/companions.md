@@ -80,7 +80,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple Fireflies can't stack into an unintended snowball |
 | `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion) |
 | `bankCapacityPercent` | `bank.js`'s deposit cap |
-| `rebirthBonusPercent` | `rebirthFactory.computeRebirthState` — amplifies the flat `Rebirth.*_BONUS` amounts for that rebirth; companions persist through rebirth, so this reads whatever is active at the moment the rebirth commits |
+| `rebirthBonusPercent` | `rebirthFactory.previewRebirthBonus`/`computeRebirthState` — amplifies that rebirth's escalating bonus percentage (see [economy-and-work.md](economy-and-work.md#rebirth-prestige-reset)) by +20%; companions persist through rebirth, so this reads whatever is active at the moment the rebirth commits |
 
 ## Viewing and equipping
 

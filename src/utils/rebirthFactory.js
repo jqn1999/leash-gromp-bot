@@ -49,24 +49,57 @@ function checkRebirthEligibility(userDetails) {
     return { eligible: missing.length === 0, missing };
 }
 
+// The % a given rebirth grants — BASE_BONUS_PERCENT on rebirth #1, +BONUS_PERCENT_STEP
+// per rebirth after that, held at MAX_BONUS_PERCENT once reached. rebirthNumber is
+// 1-indexed (the rebirth about to happen, i.e. userDetails.rebirthCount + 1).
+function getRebirthBonusPercent(rebirthNumber) {
+    return Math.min(
+        Rebirth.BASE_BONUS_PERCENT + (rebirthNumber - 1) * Rebirth.BONUS_PERCENT_STEP,
+        Rebirth.MAX_BONUS_PERCENT
+    );
+}
+
+// Pure preview of what a rebirth would grant right now, without committing anything —
+// used both by the confirmation embed (so players see real numbers before confirming)
+// and internally by computeRebirthState, so the two can never drift apart. The % applies
+// to userDetails[stat] directly — at rebirth-eligibility time that's already base(maxed)
+// + regrade(maxed) + sweetPotatoBuffs, i.e. the player's full current total — not just
+// sweetPotatoBuffs alone, which would be 0 on anyone's very first rebirth.
+function previewRebirthBonus(userDetails) {
+    const rebirthNumber = (userDetails.rebirthCount || 0) + 1;
+    const basePercent = getRebirthBonusPercent(rebirthNumber);
+    // Mochi's rebirthBonusPercent — companions persist through rebirth (see
+    // systems/companions.md), so if it's active at the moment a rebirth commits, its
+    // +20% amplifies this specific rebirth's percentage.
+    const rebirthBonusPercent = companionFactory.getActivePerkValue(userDetails, "rebirthBonusPercent");
+    const effectivePercent = basePercent * (1 + rebirthBonusPercent);
+
+    return {
+        rebirthNumber,
+        basePercent,
+        effectivePercent,
+        workMultiplierGain: Math.round(userDetails.workMultiplierAmount * effectivePercent * 100) / 100,
+        passiveGain: Math.round(userDetails.passiveAmount * effectivePercent),
+        bankCapacityGain: Math.round(userDetails.bankCapacity * effectivePercent)
+    };
+}
+
 // Computes the full set of fields a rebirth writes. Wipes potatoes and bankStored (both
 // are the same currency, just split across two pools — leaving bankStored untouched
 // would let a player dodge the reset by banking everything right before rebirthing) and
 // the base+regrade portion of every grindable stat, but keeps sweetPotatoBuffs,
-// achievements, records, and starches exactly as they were. Grants a flat permanent
-// bonus on top of the preserved sweetPotatoBuffs, so repeat rebirths stack real,
-// escalating power without touching the reset stats themselves.
-// Mochi's rebirthBonusPercent — companions persist through rebirth (see
-// systems/companions.md), so if it's active at the moment a rebirth commits, that
-// bonus amplifies the flat Rebirth.*_BONUS amounts below rather than being folded into
-// them permanently.
+// achievements, records, and starches exactly as they were. Grants previewRebirthBonus's
+// percentage-of-current-total gain on top of the preserved sweetPotatoBuffs, so repeat
+// rebirths stack real, escalating power without touching the reset stats themselves —
+// and because the gain is a % of a total that itself keeps growing (sweetPotatoBuffs
+// accumulates every rebirth), the absolute bonus grows even before the % curve itself
+// escalates.
 function computeRebirthState(userDetails) {
-    const rebirthBonusPercent = companionFactory.getActivePerkValue(userDetails, "rebirthBonusPercent");
-    const bonusMultiplier = 1 + rebirthBonusPercent;
+    const preview = previewRebirthBonus(userDetails);
     const newSweetPotatoBuffs = {
-        workMultiplierAmount: userDetails.sweetPotatoBuffs.workMultiplierAmount + Rebirth.WORK_MULTI_BONUS * bonusMultiplier,
-        passiveAmount: userDetails.sweetPotatoBuffs.passiveAmount + Rebirth.PASSIVE_BONUS * bonusMultiplier,
-        bankCapacity: userDetails.sweetPotatoBuffs.bankCapacity + Rebirth.BANK_CAPACITY_BONUS * bonusMultiplier
+        workMultiplierAmount: userDetails.sweetPotatoBuffs.workMultiplierAmount + preview.workMultiplierGain,
+        passiveAmount: userDetails.sweetPotatoBuffs.passiveAmount + preview.passiveGain,
+        bankCapacity: userDetails.sweetPotatoBuffs.bankCapacity + preview.bankCapacityGain
     };
 
     return {
@@ -82,11 +115,13 @@ function computeRebirthState(userDetails) {
             passiveAmount: { regradeAmount: 0, failStack: 0 },
             bankCapacity: { regradeAmount: 0, failStack: 0 }
         },
-        rebirthCount: (userDetails.rebirthCount || 0) + 1
+        rebirthCount: preview.rebirthNumber
     };
 }
 
 module.exports = {
     checkRebirthEligibility,
+    getRebirthBonusPercent,
+    previewRebirthBonus,
     computeRebirthState
 }

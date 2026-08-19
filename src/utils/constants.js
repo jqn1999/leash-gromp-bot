@@ -247,15 +247,20 @@ const Rob = {
 // base+regrade portion of workMultiplierAmount/passiveAmount/bankCapacity/maxStarches
 // back to their getDefaultUserFields values — but NOT sweetPotatoBuffs, achievements,
 // records, or starches, which persist across a rebirth same as Idle Miner's "keep
-// boosters/pets/shards" precedent. In exchange, grants a flat, permanent bonus (folded
-// into sweetPotatoBuffs, same convention as every other permanent-stat source) sized at
-// 5% of the full max-base-plus-regrade totals — so it stacks meaningfully across repeat
-// rebirths without trivializing the next full grind. Unlimited rebirths; each one costs
-// redoing the entire shop+regrade grind from scratch again.
+// boosters/pets/shards" precedent. In exchange, grants a percentage of your current
+// effective stat (base + regrade + sweetPotatoBuffs — i.e. the full total right before
+// it resets) folded permanently into sweetPotatoBuffs. Self-scaling by construction: the
+// % applies to a total that itself grows every rebirth (sweetPotatoBuffs keeps
+// accumulating), and the % ITSELF also escalates per rebirth (BASE_BONUS_PERCENT, +
+// BONUS_PERCENT_STEP per rebirth, capped at MAX_BONUS_PERCENT so it never runs away).
+// Percentage-of-current-stat rather than a flat amount deliberately — same
+// compounding-avoidance reasoning as every companion perk (see systems/companions.md): a
+// flat number sized right for an early rebirth becomes negligible after several more.
+// Unlimited rebirths; each one costs redoing the entire shop+regrade grind from scratch.
 const Rebirth = {
-    WORK_MULTI_BONUS: 30,          // 5% of maxed base+regrade (100 + 500)
-    PASSIVE_BONUS: 33000000,       // 5% of maxed base+regrade (60,000,000 + 600,000,000)
-    BANK_CAPACITY_BONUS: 5200000000 // 5% of maxed base+regrade (1,000,000,000 + 103,000,000,000)
+    BASE_BONUS_PERCENT: 0.05,   // rebirth #1
+    BONUS_PERCENT_STEP: 0.01,   // +1% per subsequent rebirth
+    MAX_BONUS_PERCENT: 0.15     // reached at rebirth #11 and held there
 }
 
 // Companions: a second permanent-bonus track obtained through luck (a rare /work

@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth, CompanionRarity, Companions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, CompanionRarity, Companions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -1127,9 +1127,11 @@ class EmbedFactory {
         return embed;
     }
 
-    createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, userDetails) {
+    // preview: previewRebirthBonus(userDetails)'s output — computed by the caller so the
+    // exact same numbers this embed shows are what computeRebirthState will actually grant.
+    createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, preview) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const nextRebirthCount = (userDetails.rebirthCount || 0) + 1;
+        const percentText = `${(preview.effectivePercent * 100).toFixed(1)}%`;
         const fields = [
             {
                 name: `Resets to zero:`,
@@ -1142,13 +1144,13 @@ class EmbedFactory {
                 inline: false,
             },
             {
-                name: `Permanent gain:`,
-                value: `+${Rebirth.WORK_MULTI_BONUS.toFixed(2)}x Work Multiplier, +${Rebirth.PASSIVE_BONUS.toLocaleString()} Passive Income, +${Rebirth.BANK_CAPACITY_BONUS.toLocaleString()} Bank Capacity — folded into your permanent buffs, stacks with every future rebirth`,
+                name: `Permanent gain (${percentText} of your current totals):`,
+                value: `+${preview.workMultiplierGain.toFixed(2)}x Work Multiplier, +${preview.passiveGain.toLocaleString()} Passive Income, +${preview.bankCapacityGain.toLocaleString()} Bank Capacity — folded into your permanent buffs, stacks with every future rebirth. The % itself grows with each rebirth you complete.`,
                 inline: false,
             },
             {
                 name: `This will be rebirth #:`,
-                value: `${nextRebirthCount}`,
+                value: `${preview.rebirthNumber}`,
                 inline: true,
             },
         ];
