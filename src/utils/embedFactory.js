@@ -61,6 +61,11 @@ class EmbedFactory {
     async createUserEmbed(userId, currentName, userAvatarHash, userDetails, pageIndex = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
         let title = `${currentName}`;
+        // Only shown once there's something to show — a fresh account that has never
+        // rebirthed doesn't get a "Rebirth 0" tag cluttering every profile.
+        if (userDetails.rebirthCount > 0) {
+            title += ` 🌱Rebirth ${userDetails.rebirthCount}`;
+        }
         // Loose `!= 0` treats a genuinely unset guildId (undefined) as "has a guild" —
         // undefined != 0 is true — calling findGuildById(undefined) and crashing on
         // guild.guildName once findGuildById's own error handling returns nothing.
