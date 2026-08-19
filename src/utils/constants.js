@@ -145,6 +145,28 @@ const Quests = [
     { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } }
 ]
 
+// Guild Contracts: a shared weekly objective tracked in aggregate across a guild's
+// snapshotted member roster (see guildContractFactory.js) — the exact delta-from-
+// baseline-snapshot pattern Quests already proved out above, just aggregated per-guild
+// instead of per-user. statPath resolves against each tracked member's OWN user record
+// the same way Quests/Achievements do (dot-notation via getStatValue). v1 ships with a
+// single fixed template rather than Quests' full pool — the roadmap's own example
+// threshold is used directly; the array shape still leaves room to grow the pool later
+// without a factory rewrite.
+const GuildContracts = [
+    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 500 combined /work actions across the guild this week", statPath: "workCount", threshold: 500 }
+]
+
+// Reward for completing the active Guild Contract: a flat, permanent, uncapped bump to
+// the guild's bankCapacity — matching how every other stat bonus in this game already
+// works (Metal Potato, Sweet Potato, weekly quest stat rewards are all flat additions,
+// never scaled). Sized as roughly a free mid-tier guildShops.bankCapacity jump (see
+// guildBuy.js — going from 25M to 50M capacity costs 25M banked potatoes) without
+// requiring the guild to have banked anything at all.
+const GuildContract = {
+    BANK_CAPACITY_REWARD: 25000000
+}
+
 // Daily Tater Tower leaderboard: survived runs only (dying to an Elite excludes a run
 // entirely, regardless of floor reached), ranked by floor. Top finishers get a bonus
 // equal to TIER_PERCENTAGES[place] of everything THAT run earned (potatoes, work
@@ -725,6 +747,8 @@ module.exports = {
     DailyQuest,
     WeeklyQuest,
     Quests,
+    GuildContracts,
+    GuildContract,
     Bet,
     Bank,
     Rob,

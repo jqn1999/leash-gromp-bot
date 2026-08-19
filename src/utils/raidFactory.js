@@ -14,6 +14,10 @@ class RaidFactory {
                     potatoes: userPotatoes,
                     totalEarnings: userDetails.totalEarnings + raidSplitAmount
                 });
+                // "Largest raid contribution" only tracks a positive payout received
+                // from a raid — a penalty split (raidSplitAmount <= 0, the other
+                // branch here) is a loss, not a contribution worth recording.
+                await dynamoHandler.updateIfNewRecord(member.id, 'largestRaidContribution', raidSplitAmount);
             } else {
                 await dynamoHandler.updateUserFields(member.id, {
                     potatoes: userPotatoes,
@@ -37,6 +41,7 @@ class RaidFactory {
                     potatoes: userPotatoes,
                     totalEarnings: userDetails.totalEarnings + raidSplitAmount
                 });
+                await dynamoHandler.updateIfNewRecord(member.id, 'largestRaidContribution', raidSplitAmount);
             } else {
                 await dynamoHandler.updateUserFields(member.id, {
                     potatoes: userPotatoes,

@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
@@ -84,6 +84,17 @@ class EmbedFactory {
         fields.push({
             name: "Daily Login Streak:",
             value: `${(userDetails.loginStreak || 0).toLocaleString()} days`,
+            inline: false,
+        });
+        // records is backfilled by findUser's self-healing for any account that
+        // existed before this field was added, but guard with `|| {}`/`|| 0` anyway
+        // rather than assume every caller of createUserEmbed went through findUser.
+        const records = userDetails.records || {};
+        fields.push({
+            name: "Personal Records:",
+            value: `Highest Tower floor: ${(records.highestTowerFloor || 0).toLocaleString()}\n`
+                + `Biggest /work payout: ${(records.biggestWorkPayout || 0).toLocaleString()} potatoes\n`
+                + `Largest raid contribution: ${(records.largestRaidContribution || 0).toLocaleString()} potatoes`,
             inline: false,
         });
 
@@ -1423,6 +1434,83 @@ class EmbedFactory {
         return embed;
     }
 
+    // /guild-contract — read-only display of the active weekly Guild Contract and this
+    // guild's aggregate progress toward it. progressResult is whatever
+    // GuildContractFactory.getProgress returned (never null here — the command replies
+    // with a plain message instead of building this embed when there's no active
+    // contract at all).
+    createGuildContractEmbed(guild, progressResult) {
+        const { template, progress, threshold, isCompleted } = progressResult;
+
+        const fields = [
+            {
+                name: "Progress",
+                value: `${progress.toLocaleString()} / ${threshold.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: "Status",
+                value: isCompleted ? "✅ Completed — reward already granted" : "📜 In progress",
+                inline: true,
+            },
+            {
+                name: "Reward",
+                value: `+${GuildContract.BANK_CAPACITY_REWARD.toLocaleString()} Bank Capacity (guild-wide)`,
+                inline: false,
+            }
+        ];
+
+        if (!guild.thumbnailUrl) {
+            guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🤝 ${guild.guildName}'s Guild Contract`)
+            .setDescription(`${template.name}: ${template.description}`)
+            .setColor("Orange")
+            .setThumbnail(guild.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Follow-up sent from /work when a guild member's action pushes their guild's
+    // active Guild Contract over its threshold — mirrors createQuestCompleteEmbed's
+    // shape, one level up (guild-wide instead of per-user).
+    createGuildContractCompleteEmbed(guildName, template, bankCapacityReward) {
+        const embed = new EmbedBuilder()
+            .setTitle(`🤝 ${guildName} completed its Guild Contract!`)
+            .setDescription(`${template.name}: ${template.description}`)
+            .addFields({
+                name: "Reward",
+                value: `+${bankCapacityReward.toLocaleString()} Bank Capacity (guild-wide, permanent)`,
+                inline: false,
+            })
+            .setColor("Green")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Posted to the events channel by the 4am cron on the Mondays a new Guild Contract
+    // actually rotates in (mirrors createQuestRotationEmbed, which only posts weekly
+    // quest changes on the Mondays they actually happen).
+    createGuildContractRotationEmbed(activeContract, template) {
+        const embed = new EmbedBuilder()
+            .setTitle("🤝 New Guild Contract Available!")
+            .setDescription(`This week, every guild can work toward:\n**${template.name}** — ${template.description}`)
+            .addFields({
+                name: "Reward",
+                value: `+${GuildContract.BANK_CAPACITY_REWARD.toLocaleString()} Bank Capacity (guild-wide) on completion`,
+                inline: false,
+            })
+            .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     // Discord caps a single embed at 25 fields and a message at 10 embeds, so both
     // achievement embed builders below chunk into multiple embeds rather than risk
     // throwing (or silently truncating) once the achievement list grows past 25.
@@ -1469,6 +1557,75 @@ class EmbedFactory {
             .setTitle(`${userDisplayName}'s Achievements`)
             .setDescription(`${unlockedCount} / ${totalCount} unlocked\nPage ${pageIndex + 1} / ${totalPages}`)
             .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Admin-only sanity-check dashboard (/admin-stats) — surfaces state that's already
+    // cached/persisted elsewhere (economy stats doc, starch doc, world doc, active_quests
+    // doc) in one place instead of admins checking DynamoDB directly. Every param can be
+    // null/undefined (a fresh deploy before the relevant cron/tick has ever run) so each
+    // field falls back to a "not available yet" string rather than throwing.
+    createAdminStatsEmbed(economy, starchStatus, worldStatus, activeQuests) {
+        let fields = [];
+
+        fields.push({
+            name: "Server Total",
+            value: economy
+                ? `${economy.serverTotal.toLocaleString()} potatoes\n${economy.serverTotalStarches.toLocaleString()} starches`
+                : "Not cached yet",
+            inline: true,
+        });
+        fields.push({
+            name: "Median Lifetime Earnings",
+            value: economy ? `${economy.medianTotalEarnings.toLocaleString()} potatoes` : "Not cached yet",
+            inline: true,
+        });
+        fields.push({
+            name: "Active Users",
+            value: economy ? `${economy.activeUserCount.toLocaleString()}` : "Not cached yet",
+            inline: true,
+        });
+
+        fields.push({
+            name: "Starch Cycle",
+            value: starchStatus.price != null
+                ? `Currently **${starchStatus.phase === 'buy' ? 'buying' : 'selling'}** at ${starchStatus.price.toLocaleString()} potatoes/starch`
+                : "Not cached yet",
+            inline: false,
+        });
+
+        fields.push({
+            name: "Active World Boss",
+            value: worldStatus.active
+                ? `${worldStatus.bossName} — ${worldStatus.raidMemberCount} joined`
+                : "None active",
+            inline: false,
+        });
+
+        const dailyNames = activeQuests
+            ? Quests.filter(quest => activeQuests.dailyQuestIds?.includes(quest.id)).map(quest => quest.name)
+            : [];
+        const weeklyNames = activeQuests
+            ? Quests.filter(quest => activeQuests.weeklyQuestIds?.includes(quest.id)).map(quest => quest.name)
+            : [];
+        fields.push({
+            name: `Daily Quests${activeQuests ? ` (since ${activeQuests.dailyRotationDate})` : ''}`,
+            value: dailyNames.length ? dailyNames.join(", ") : "Not rotated yet",
+            inline: false,
+        });
+        fields.push({
+            name: `Weekly Quests${activeQuests ? ` (since ${activeQuests.weeklyRotationDate})` : ''}`,
+            value: weeklyNames.length ? weeklyNames.join(", ") : "Not rotated yet",
+            inline: false,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle("🛠️ Admin Economy Dashboard")
+            .setDescription("Cached game-health snapshot — refreshes every 5 minutes via the passive income tick, except quests/world which update on their own triggers.")
+            .setColor("Blue")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)

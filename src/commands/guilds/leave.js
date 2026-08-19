@@ -1,6 +1,8 @@
 const { GuildRoles } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { GuildContractFactory } = require("../../utils/guildContractFactory");
+const guildContractFactory = new GuildContractFactory();
 
 module.exports = {
     name: "leave",
@@ -41,6 +43,12 @@ module.exports = {
         }
 
         let newMemberList = memberList.filter((user) => user.id != userId)
+
+        // Fold this member's pre-departure Guild Contract contribution into the guild's
+        // frozenContribution bucket before they're removed from memberList, so it's
+        // preserved (not retroactively wiped) but also doesn't keep growing off their
+        // lifetime workCount after they've left — see guildContractFactory.js.
+        await guildContractFactory.freezeDepartureContribution(guild, userId, userDetails);
 
         await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);

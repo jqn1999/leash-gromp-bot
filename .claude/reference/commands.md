@@ -47,6 +47,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `joinRaid.js` | `/join-raid` | Join the guild's pending raid roster |
 | `startRaid.js` | `/start-raid` | Elder+ resolves the raid (regular/elite/legendary/stat) against the roster |
 | `currentRaid.js` | `/current-raid` | Shows raid roster, combined multiplier, cooldown remaining |
+| `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract and the guild's aggregate progress (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 
@@ -95,3 +96,4 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | File | Command | Summary |
 |---|---|---|
 | `adminGive.js` | `/admin-give` | `devOnly` + Administrator — spawns potatoes into a target user's balance |
+| `adminStats.js` | `/admin-stats` | `devOnly` + Administrator — ephemeral dashboard of cached economy/starch/world/quest state, so admins don't need to check DynamoDB directly |

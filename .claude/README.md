@@ -25,6 +25,8 @@ those AWS services.
 - [systems/quests.md](systems/quests.md) — daily/weekly quest pool, rotation, and the
   delta/snapshot progress tracking that makes reused quest IDs safe across rotations.
 - [systems/guilds.md](systems/guilds.md) — roles, guild bank, guild buffs, membership commands.
+- [systems/guild-contracts.md](systems/guild-contracts.md) — shared weekly guild-wide objective,
+  aggregated delta/snapshot progress tracking, roster-churn handling, guild self-healing.
 - [systems/raids-and-world-events.md](systems/raids-and-world-events.md) — guild raids, world raids,
   scheduled background events (passive income tick, special work events, birthday announcer).
 - [systems/tower.md](systems/tower.md) — the `/enter-tower` roguelike minigame.

@@ -6,12 +6,15 @@ const { setWorkScenarios } = require("../../commands/user/work.js");
 var { worldFactory } = require("../../utils/worldFactory.js");
 const { TowerLeaderboardFactory } = require("../../utils/towerLeaderboardFactory.js");
 const { QuestFactory } = require("../../utils/questFactory.js");
+const { GuildContracts } = require("../../utils/constants.js");
+const { GuildContractFactory } = require("../../utils/guildContractFactory.js");
 const { EmbedFactory } = require("../../utils/embedFactory.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 let eF = new EventFactory()
 let towerLeaderboardFactory = new TowerLeaderboardFactory()
 let questFactory = new QuestFactory()
+let guildContractFactory = new GuildContractFactory()
 let embedFactory = new EmbedFactory()
 
 let statuses = [
@@ -64,6 +67,24 @@ module.exports = async (client) => {
             .catch(err => {
                 console.log(err)
             });
+
+        // Rotate the active Guild Contract — Mondays only, same weekly-only cadence as
+        // the quest system's weekly set, reusing this same daily cron — see
+        // guildContractFactory.js. Per-guild progress snapshots aren't touched here;
+        // each guild lazily establishes its own baseline the first time a member's
+        // /work triggers a check against the new rotation.
+        const { activeContract, rotated: contractRotated } = await guildContractFactory.rotateContract()
+        if (contractRotated) {
+            const contractTemplate = GuildContracts.find(contract => contract.id === activeContract.templateId)
+            client.channels.fetch('1188525931346792498')
+                .then(async channel => {
+                    const contractEmbed = embedFactory.createGuildContractRotationEmbed(activeContract, contractTemplate)
+                    channel.send({ embeds: [contractEmbed] })
+                })
+                .catch(err => {
+                    console.log(err)
+                });
+        }
 
         // Birthday shit
         client.channels.fetch('1188539987118010408')

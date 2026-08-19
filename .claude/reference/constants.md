@@ -14,6 +14,7 @@ changes without this knowledge base being updated alongside it.
 | `DailyStreak` | Login streak reward scaling (per-multiplier base, day-ramp, max scaling days) | [systems/daily-streak.md](../systems/daily-streak.md) |
 | `TowerLeaderboard` | Daily Tower leaderboard tier percentages + stat-bonus rounding increments | [systems/tower.md](../systems/tower.md#daily-leaderboard) |
 | `DailyQuest`, `WeeklyQuest`, `Quests` | Quest pool, active-count per rotation, daily reward scaling | [systems/quests.md](../systems/quests.md) |
+| `GuildContracts`, `GuildContract` | Guild Contract template pool (v1: one fixed template) and its bank-capacity reward | [systems/guild-contracts.md](../systems/guild-contracts.md) |
 | `Bank` | Personal + guild bank deposit tax (flat + percent) | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/guilds.md](../systems/guilds.md) |
 | `Give` | `/give` tax rates — potatoes vs. the cheaper starches rate | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Rob` | `/rob` cooldown, penalty amounts, work-timer penalty on failure | [systems/economy-and-work.md](../systems/economy-and-work.md) |

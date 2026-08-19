@@ -4,6 +4,12 @@ Commands live in [src/commands/guilds/](../../src/commands/guilds/); roles come 
 in [constants.js](../../src/utils/constants.js). See [architecture/data-model.md](../architecture/data-model.md)
 for the guild item shape.
 
+`findGuildById` now self-heals a guild record that's missing a field it should have (e.g. any guild
+created before a given feature shipped a new field), the same diff-and-heal pattern `findUser`
+already uses for user records — see [architecture/data-model.md](../architecture/data-model.md) and
+[systems/guild-contracts.md](guild-contracts.md#guild-self-healing-a-gap-this-feature-had-to-close-first)
+for why this was previously missing and how it was fixed.
+
 ## Roles
 
 `GuildRoles`: `Leader` > `Co-Leader` > `Elder` > `Member`. Stored per-member in
@@ -51,3 +57,10 @@ stacking multiple.
 | `raidMulti` | +15% total raid success multiplier | `start-raid`, `current-raid`, world-raid join/status |
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
+
+## Guild Contracts
+
+A shared, weekly, guild-wide objective tracked in aggregate across the member roster — the same
+delta-from-baseline-snapshot pattern Quests uses, aggregated per-guild instead of per-user. See
+[systems/guild-contracts.md](guild-contracts.md) for the full design (rotation, roster-churn
+handling, exactly-once completion). Viewed via `/guild-contract`.

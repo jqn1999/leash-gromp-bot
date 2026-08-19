@@ -14,6 +14,17 @@ internal `buildUpdateExpression` helper. Prefer these over `updateUserDatabase`/
 see the `/work` handlers in [workFactory.js](../../src/utils/workFactory.js) for the pattern: each
 encounter now does one combined write instead of chaining 6–9 single-attribute calls.
 
+**Personal records (`records.*`).** `updateIfNewRecord(userId, fieldName, newValue)` is the one
+helper every personal-best write site calls (highest Tower floor in `enter-tower.js`, biggest
+single `/work` payout in `work.js`, largest raid contribution in `raidFactory.js`'s split
+functions) instead of each site doing its own read-compare-write. Unlike a plain app-level
+`Math.max` over an in-memory value, the comparison itself is a DynamoDB `ConditionExpression` on
+the write (`records.#field < :newValue`, same race-safety shape as `claimDailyStreak`'s), so two
+near-simultaneous record-breaking writes for the same user can't clobber each other into leaving
+the smaller value stored. It assumes `records` already exists as a map on the item — safe because
+every call site is only ever reached after that request's own `findUser` call has already healed
+the field, the same as any other field.
+
 **Cached server total.** `getCachedServerTotal()` reads a `serverTotal` value cached in the stats
 table's `economy` doc, refreshed every 5 minutes by `passivePotatoHandler` (which already scans
 every user for the passive-income tick, so computing the total there is free — no extra scan).
@@ -142,7 +153,17 @@ Created by `addUser` in `dynamoHandler.js`:
   webLinkToken: null,         // added externally, outside this knowledge base's scope
   quests: {},                 // per-quest-id progress snapshots, see systems/quests.md
   guildRaidWinCount: 0,       // wins across all raid-select tiers, see systems/raids-and-world-events.md
-  worldBossWinCount: 0        // world bosses defeated while joined, see systems/raids-and-world-events.md
+  worldBossWinCount: 0,       // world bosses defeated while joined, see systems/raids-and-world-events.md
+  records: {                  // all-time personal bests, see roadmap.md item 7
+    highestTowerFloor: 0,          // max(), regardless of survived vs. died — see enter-tower.js
+    biggestWorkPayout: 0,          // max() of a single /work call's potato gain only
+                                    // (Golden/Large/Metal-success/Regular; excludes Poison
+                                    // since it's a loss, Taro since its gain is starches not
+                                    // potatoes, Sweet Potato since its return value is a stat-
+                                    // roll index, not an amount)
+    largestRaidContribution: 0     // max() of a single member's own payout from one guild raid
+                                    // or world boss split (raidFactory.js's split helpers)
+  }
 }
 ```
 
@@ -158,7 +179,11 @@ against the **base** stat only (stat minus buffs minus regrades) — see
 
 ## Guild item (`leash-gromp-bot-guilds`, key: `guildId`)
 
-Created by `createGuild`:
+Created by `createGuild`, via `getDefaultGuildFields(guildId, guildName, guildLeaderId,
+guildLeaderUsername, guildThumbnailUrl)` — the guild-table equivalent of `getDefaultUserFields`,
+extracted for the same reason: one schema definition both `createGuild` (new records) and
+`findGuildById`'s healing step (existing-but-partial records, see below) build off, so they can't
+drift into two different copies:
 
 ```js
 {
@@ -175,13 +200,37 @@ Created by `createGuild`:
   inviteList: [],       // pending invited user IDs
   raidList: [],          // members who've joined the pending raid
   raidRewardMultiplier: 1,
-  guildBuff: "workMulti" // single active buff — see systems/guilds.md
+  guildBuff: "workMulti", // single active buff — see systems/guilds.md
+  guildContract: {        // this guild's progress on the active weekly Guild Contract
+    templateId: null,        // see systems/guild-contracts.md
+    rotationDate: null,
+    memberBaselines: {},
+    frozenContribution: 0,
+    completed: false
+  }
 }
 ```
 
 `getGuilds()` filters out any guild whose `memberList` is empty (i.e. abandoned/all-members-left
 guilds are treated as nonexistent for leaderboard/listing purposes even though the row isn't
 deleted).
+
+**`findGuildById` now self-heals too**, mirroring `findUser`'s pattern above — a gap flagged by an
+earlier architecture review of a since-shelved guild feature (Guild vs. Guild Raids), and closed as
+part of building Guild Contracts rather than left for the next feature to hit. Unlike the user
+table, the guild table has no `ADD`-only write path that could auto-vivify a partial item — but every
+guild created before a given feature added a new field is still permanently missing that field
+unless something backfills it, since `createGuild` only ever `put`s the schema as it existed at
+creation time. `findGuildById` diffs a found record against `getDefaultGuildFields`'s keys and heals
+whatever's missing, one field at a time (same reasoning as `findUser`: an unexpected failure on one
+field shouldn't block every other legitimately-fixable field too) via `updateGuildDatabase`. No
+guild field is currently known to need the user table's `guildId`/`webLinkToken`-style exclusion
+(the guild table has no secondary indexes today), so every missing field is healed unconditionally.
+Building this surfaced a latent bug in `updateGuildDatabase` itself: a comment-only `.then()`
+handler made it resolve to `undefined` on both success and failure, which would have silently broken
+the heal loop's success check — fixed to match `updateUserFields`'s shape (resolves to the DynamoDB
+response on success, `undefined` on failure), safe because every one of its ~20 existing call sites
+already discarded the return value.
 
 ## Bet item (`leash-gromp-bot-betting`, key: `betId`)
 
@@ -222,6 +271,10 @@ whatever fields that subsystem needs. Known docs in use:
 - `active_quests` — `dailyQuestIds`, `dailyRotationDate`, `weeklyQuestIds`, `weeklyRotationDate`.
   The currently-live quest set, shared server-wide (same quests for everyone) — see
   [systems/quests.md](../systems/quests.md).
+- `active_guild_contract` — `templateId`, `rotationDate`. The currently-live Guild Contract
+  template pointer, shared server-wide — each guild's own progress against it lives on the guild
+  record itself (`guild.guildContract`), not here. See
+  [systems/guild-contracts.md](../systems/guild-contracts.md).
 - coinflip doc — `heads`/`tails` global counters.
 
 There's no schema registry for this table; if you add a new background/global counter, follow this
