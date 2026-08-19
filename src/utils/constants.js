@@ -253,6 +253,131 @@ const Rebirth = {
     BANK_CAPACITY_BONUS: 5200000000 // 5% of maxed base+regrade (1,000,000,000 + 103,000,000,000)
 }
 
+// Companions: a second permanent-bonus track obtained through luck (a rare /work
+// encounter, see WORK_SCENARIO_INDICES.COMPANION) rather than pure grinding. Unlike
+// sweetPotatoBuffs, only ONE companion is ever active at a time — equipping is a choice,
+// not another additive stack — so perks are computed fresh at each usage site (same
+// pattern the guild buff system already uses: "one active modifier changes whichever
+// existing formula it targets"), never folded into the stat itself. See
+// systems/companions.md for the full design and every perk's exact application site.
+const CompanionRarity = {
+    COMMON: 'common',
+    RARE: 'rare',
+    LEGENDARY: 'legendary',
+    MYTHIC: 'mythic'
+}
+
+// Cumulative — rollCompanion() reads these as thresholds against a single roll, same
+// shape as every other cumulative-chance table in this codebase (workScenarios' chance
+// field, starchFactory's PROBABILITY_MATRIX).
+const CompanionRarityOdds = {
+    [CompanionRarity.COMMON]: 0.65,
+    [CompanionRarity.RARE]: 0.90,
+    [CompanionRarity.LEGENDARY]: 0.98,
+    [CompanionRarity.MYTHIC]: 1
+}
+
+const CompanionMarket = {
+    TAX_PERCENT: 0.05, // same shape as Bank.GUILD_TAX_PERCENT — a real sink, not punitive
+    MINIMUM_PRICE: {
+        [CompanionRarity.COMMON]: 5000000,
+        [CompanionRarity.RARE]: 25000000,
+        [CompanionRarity.LEGENDARY]: 100000000,
+        [CompanionRarity.MYTHIC]: 500000000
+    }
+}
+
+// perks: an array so a companion can carry more than one (Mochi is the one deliberate
+// exception — see systems/companions.md for why it's the generalist Mythic next to
+// Elder Rootbeard's specialist). Each perk's `type` is read by whichever call site
+// applies that kind of modifier — see systems/companions.md's application-site table for
+// the full list of which file reads which type.
+const Companions = [
+    {
+        id: "sprout",
+        name: "Sprout",
+        rarity: CompanionRarity.COMMON,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A tiny potato sprout that took a liking to you after one too many /work sessions nearby. It doesn't do much, but it tries.",
+        perks: [{ type: "workMultiplierPercent", value: 0.02 }]
+    },
+    {
+        id: "fieldmouse",
+        name: "Fieldmouse",
+        rarity: CompanionRarity.COMMON,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A quick little fieldmouse that scouts ahead between work sessions, shaving a little time off every cooldown.",
+        perks: [{ type: "workCooldownPercent", value: 0.05 }]
+    },
+    {
+        id: "ladybug",
+        name: "Ladybug",
+        rarity: CompanionRarity.COMMON,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A ladybug that's taken up residence in your passive income stream, somehow making it a little more generous just by being there.",
+        perks: [{ type: "passiveIncomePercent", value: 0.05 }]
+    },
+    {
+        id: "barn_owl",
+        name: "Barn Owl",
+        rarity: CompanionRarity.RARE,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A watchful barn owl that spots the best moment to strike when you're robbing someone — stacks with your guild's rob-chance buff, if it has one.",
+        perks: [{ type: "robChanceFlat", value: 0.10 }]
+    },
+    {
+        id: "mole",
+        name: "Mole",
+        rarity: CompanionRarity.RARE,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A mole that's dug you a little extra room in your starch vault — nobody's quite sure how it did that.",
+        perks: [{ type: "starchCapacityPercent", value: 0.10 }]
+    },
+    {
+        id: "firefly",
+        name: "Firefly",
+        rarity: CompanionRarity.RARE,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A firefly that lights the way during guild raids, giving your party's odds a small but real lift.",
+        perks: [{ type: "guildRaidMultiplierPercent", value: 0.05 }]
+    },
+    {
+        id: "spudsprite",
+        name: "Spudsprite",
+        rarity: CompanionRarity.LEGENDARY,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A small potato spirit that seems to bend time itself around your work cooldown, if only a little.",
+        perks: [{ type: "workCooldownPercent", value: 0.15 }]
+    },
+    {
+        id: "rootcarver",
+        name: "Rootcarver, the Cellar Keeper",
+        rarity: CompanionRarity.LEGENDARY,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should.",
+        perks: [{ type: "bankCapacityPercent", value: 0.10 }]
+    },
+    {
+        id: "elder_rootbeard",
+        name: "Elder Rootbeard",
+        rarity: CompanionRarity.MYTHIC,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "An ancient root-vegetable elder, said to whisper the exact flaw in every regrade attempt's technique — the specialist's pick for grinding the hardest tiers.",
+        perks: [{ type: "regradeChanceFlat", value: 0.03 }]
+    },
+    {
+        id: "mochi",
+        name: "Mochi, the Undying Stray",
+        rarity: CompanionRarity.MYTHIC,
+        thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
+        description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — and somehow, it always finds its way back after a rebirth.",
+        perks: [
+            { type: "passiveIncomePercent", value: 0.08 },
+            { type: "rebirthBonusPercent", value: 0.20 }
+        ]
+    }
+]
+
 // Unlike Bank's tax (added on top of a chosen net amount), Give tax is taken out of the
 // amount the sender specifies — what they type is what leaves their balance, and the
 // recipient gets less. Starches get the lower rate deliberately: since starches can be
@@ -824,6 +949,10 @@ module.exports = {
     RaidLevel,
     Rob,
     Rebirth,
+    CompanionRarity,
+    CompanionRarityOdds,
+    CompanionMarket,
+    Companions,
     Give,
     GuildRoles,
     Raid,
