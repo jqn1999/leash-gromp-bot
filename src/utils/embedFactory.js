@@ -3,6 +3,7 @@ const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, Gu
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
+const { getRaidLevelInfo } = require("../utils/raidFactory");
 const eventFactory = new EventFactory();
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
@@ -258,9 +259,10 @@ class EmbedFactory {
             // whole leaderboard down with it — show it as "Unknown" instead of crashing.
             const leader = element.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
             const leaderName = leader ? leader.username : 'Unknown';
+            const { level } = getRaidLevelInfo(element.raidCount);
 
             guildList.push({
-                name: `${rankLabel(index)} ${element.guildName} — Level ${element.level}`,
+                name: `${rankLabel(index)} ${element.guildName} — Level ${level}`,
                 value: `👑 ${leaderName} • 👥 ${element.memberList.length}/${element.memberCap} members • ⚔️ ${element.raidCount.toLocaleString()} raids`,
                 inline: false,
             });
@@ -268,7 +270,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`🏰 Guild Leaderboard`)
-            .setDescription(`${sortedGuilds.length.toLocaleString()} guilds, ranked by level then members`)
+            .setDescription(`${sortedGuilds.length.toLocaleString()} guilds, ranked by raid wins (level is a readout of that, see /guild)`)
             .setColor("Gold")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -419,6 +421,9 @@ class EmbedFactory {
         }
 
         const leader = guild.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
+        // Computed live from raidCount (wins only) rather than a stored field — see
+        // raidFactory.js's getRaidLevelInfo and constants.js's RaidLevel.
+        const raidLevelInfo = getRaidLevelInfo(guild.raidCount);
 
         fields.push({
             name: `Leader:`,
@@ -432,7 +437,9 @@ class EmbedFactory {
         })
         fields.push({
             name: `Guild Level:`,
-            value: `${guild.level}`,
+            value: raidLevelInfo.winsToNextLevel !== null
+                ? `${raidLevelInfo.level} (${raidLevelInfo.winsToNextLevel.toLocaleString()} raid wins to next level)`
+                : `${raidLevelInfo.level} (max)`,
             inline: true
         })
         fields.push({
@@ -457,7 +464,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Reward Multiplier:`,
-            value: `${guild.raidRewardMultiplier}`,
+            value: `${raidLevelInfo.multiplier.toFixed(2)}x (raid wins only)`,
             inline: true
         })
         fields.push({
@@ -575,16 +582,21 @@ class EmbedFactory {
     // preview like /rob has; instead this breaks down every bracket you could land in
     // along with its own odds, success chance, and stakes, so whoever's starting it (and
     // committing the whole roster's raid list) isn't picking blind.
-    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets) {
+    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets, guildLevel, raidRewardMultiplier) {
         const fields = brackets.map(bracket => ({
             name: `${bracket.name} (${(bracket.odds * 100).toFixed(0)}% odds of this bracket)`,
             value: `${(bracket.successChance * 100).toFixed(1)}% success chance\n✅ ${bracket.rewardText}\n❌ ${bracket.penaltyText}`,
             inline: false,
         }));
 
+        // Reward numbers in each bracket above already have the level multiplier baked
+        // in — this line just makes it visible why, instead of leaving players to infer
+        // it from the raw numbers.
+        const levelNote = guildLevel > 1 ? ` Guild Level ${guildLevel} (${raidRewardMultiplier.toFixed(2)}x reward multiplier) is already applied below.` : '';
+
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}, start a ${raidSelection} raid?`)
-            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x combined work multiplier. Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
+            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x combined work multiplier.${levelNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
             .setColor("Yellow")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

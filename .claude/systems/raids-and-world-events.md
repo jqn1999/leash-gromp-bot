@@ -68,12 +68,15 @@ strictly worse than Regular for the identical 1% shot (lower success-rate cap, n
 it). Its failure penalty stays 0 at every tier — it's the one bracket that costs nothing to attempt,
 win or lose.
 
-Reward/penalty amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and scaled by the
-guild's `raidRewardMultiplier`. On success, the reward goes to the guild bank if it fits, else it's
-split directly to members' liquid balances. On failure, the penalty is deducted from the guild bank
-if it covers the full amount, else it's split as a loss across members' liquid balances.
-`guild.raidCount` increments on success (drives the guild leaderboard sort). `raidList` is cleared
-after every `start-raid` call regardless of outcome.
+Reward amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and, on the winning side only,
+scaled by the guild's raid reward multiplier — computed live from `raidCount` via
+`raidFactory.js`'s `getRaidLevelInfo`, not a stored field; see [systems/guilds.md](guilds.md#guild-level)
+for the full level curve (1.00x at level 1 up to 10.00x at level 10/12,000 wins). Penalties are
+never scaled by it. On success, the reward goes to the guild bank if it fits, else it's split
+directly to members' liquid balances. On failure, the penalty is deducted from the guild bank if it
+covers the full amount, else it's split as a loss across members' liquid balances. `guild.raidCount`
+increments on success (drives both the guild leaderboard sort and the level curve). `raidList` is
+cleared after every `start-raid` call regardless of outcome.
 
 **Stat raid** (`raid-select: stat`): costs `Raid.REGULAR_STAT_RAID_COST(-300,000)` potatoes per
 member upfront, difficulty `250`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for

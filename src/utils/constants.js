@@ -203,6 +203,31 @@ const GuildHistory = {
     MAX_ENTRIES: 25
 }
 
+// Guild level and raid reward multiplier, both computed live from guild.raidCount
+// (wins only, never attempts) rather than stored — see raidFactory.js's
+// getRaidLevelInfo. Thresholds accelerate (roughly doubling from level 4 on) so it reads
+// as a multi-year veteran-guild reward, matching real raidCount data from guilds that
+// had been playing for a long time. Multiplier only ever scales the WIN side of a raid
+// (every scenario in startRaid.js applies it exclusively in the success branch), so a
+// higher level is pure upside with no added risk. Capped at 10x specifically because the
+// reward is guild-wide and split across however many members actually raided — 10x
+// split across a real 3-10 person roster lands in a meaningful-but-not-absurd
+// per-player range once a guild is genuinely maxed out.
+const RaidLevel = {
+    THRESHOLDS: [
+        { level: 1, winsRequired: 0, multiplier: 1.00 },
+        { level: 2, winsRequired: 25, multiplier: 1.30 },
+        { level: 3, winsRequired: 75, multiplier: 1.70 },
+        { level: 4, winsRequired: 175, multiplier: 2.30 },
+        { level: 5, winsRequired: 400, multiplier: 3.00 },
+        { level: 6, winsRequired: 800, multiplier: 4.00 },
+        { level: 7, winsRequired: 1500, multiplier: 5.20 },
+        { level: 8, winsRequired: 3000, multiplier: 6.70 },
+        { level: 9, winsRequired: 6000, multiplier: 8.30 },
+        { level: 10, winsRequired: 12000, multiplier: 10.00 },
+    ]
+}
+
 const Rob = {
     WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
@@ -777,6 +802,7 @@ module.exports = {
     Bank,
     GuildHistory,
     GuildBuffLabels,
+    RaidLevel,
     Rob,
     Give,
     GuildRoles,

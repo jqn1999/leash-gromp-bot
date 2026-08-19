@@ -192,14 +192,16 @@ drift into two different copies:
   memberList: [{ id, username, role }],   // role: one of GuildRoles
   bankCapacity: 1000000,
   bankStored: 0,
-  level: 1,
+  // No stored level/raidRewardMultiplier — both are computed live from raidCount by
+  // raidFactory.js's getRaidLevelInfo (see systems/guilds.md#guild-level). The old
+  // stored fields were permanently stuck at their creation-time defaults with nothing
+  // ever writing to them again.
   raidCount: 0,
   totalEarnings: 0,
   thumbnailUrl,
   raidTimer: 0,        // epoch ms — start-raid cooldown expiry
   inviteList: [],       // pending invited user IDs
   raidList: [],          // members who've joined the pending raid
-  raidRewardMultiplier: 1,
   guildBuff: "workMulti", // single active buff — see systems/guilds.md
   guildVersion: 0,        // optimistic-lock counter — see systems/guilds.md#membership-commands
   guildContract: {        // this guild's progress on the active weekly Guild Contract

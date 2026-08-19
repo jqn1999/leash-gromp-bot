@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { RaidFactory } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -726,7 +726,7 @@ module.exports = {
         const guildId = guild.guildId;
         const guildName = guild.guildName;
         const memberList = guild.memberList;
-        const raidRewardMultiplier = guild.raidRewardMultiplier;
+        const { level: guildLevel, multiplier: raidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
         let raidList = guild.raidList;
         let raidCount = guild.raidCount;
         const raidCountBeforeThisRaid = raidCount;
@@ -776,7 +776,7 @@ module.exports = {
         // every bracket's odds and stakes up front — this commits the whole roster's
         // raid list on one roll, previously with zero preview of what that meant.
         const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier);
-        const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets);
+        const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier);
         const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildRaidConfirmRow()] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;

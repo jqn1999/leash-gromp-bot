@@ -965,14 +965,17 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         ],
         bankCapacity: 1000000,
         bankStored: 0,
-        level: 1,
+        // No stored level/raidRewardMultiplier field — both are computed live from
+        // raidCount by raidFactory.js's getRaidLevelInfo (see constants.js's RaidLevel).
+        // The old stored fields were permanently stuck at their defaults with no code
+        // path ever updating them; computing them removes that sync-drift class of bug
+        // entirely instead of adding a second write path to keep in sync.
         raidCount: 0,
         totalEarnings: 0,
         thumbnailUrl: guildThumbnailUrl,
         raidTimer: 0,
         inviteList: [],
         raidList: [],
-        raidRewardMultiplier: 1,
         guildBuff: "workMulti",
         guildVersion: 0,
         guildContract: {                  // see systems/guild-contracts.md
@@ -1075,17 +1078,13 @@ const getSortedUserStarches = async function () {
     return sortedUsers
 }
 
+// Guild level (see raidFactory.js's getRaidLevelInfo) is now computed purely from
+// raidCount, so sorting by level-then-raidCount is exactly equivalent to sorting by
+// raidCount alone — level is a monotonic readout of the same number, not a separate
+// signal. Simplified accordingly rather than keeping a two-key sort over one value.
 const getSortedGuildsByLevelAndRaidCount = async function () {
     let allGuilds = await getGuilds();
-    const sortedGuilds = allGuilds.sort((a, b) => {
-        // First, compare by level
-        const levelComparison = parseFloat(b.level) - parseFloat(a.level);
-
-        // If levels are the same, compare by memberCount
-        return levelComparison != 0 ? levelComparison : b.raidCount - a.raidCount;
-    });
-
-    return sortedGuilds;
+    return allGuilds.sort((a, b) => b.raidCount - a.raidCount);
 }
 
 const getSortedGuildsById = async function () {

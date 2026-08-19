@@ -91,14 +91,41 @@ stacking multiple.
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
 
-## Known-dead field: `guild.level`
+## Guild level
 
-Set to `1` at creation and never incremented anywhere in the codebase, yet it's the primary sort
-key on the guild leaderboard (`getSortedGuildsByLevelAndRaidCount`, tie-broken by `raidCount`) and
-shown in `/guild`'s embed as "Guild Level: 1" forever. Since every guild ties at level 1, the
-leaderboard is in practice sorted by `raidCount` alone. Left as-is deliberately for now rather than
-wired up to something — worth deciding on a real leveling source (raid wins, bank capacity tier,
-member activity) before touching it, rather than picking one ad hoc.
+`guild.level` and the guild's raid reward multiplier used to be stored fields, both permanently
+stuck at their creation-time default (`1`) — nothing anywhere ever wrote to either one again. Both
+are now **computed live from `guild.raidCount`** (raid *wins* only, never attempts) by
+`raidFactory.js`'s `getRaidLevelInfo`, against the curve in `constants.js`'s `RaidLevel.THRESHOLDS`:
+
+| Level | Raid wins needed | Reward multiplier |
+|---|---|---|
+| 1 | 0 | 1.00x |
+| 2 | 25 | 1.30x |
+| 3 | 75 | 1.70x |
+| 4 | 175 | 2.30x |
+| 5 | 400 | 3.00x |
+| 6 | 800 | 4.00x |
+| 7 | 1,500 | 5.20x |
+| 8 | 3,000 | 6.70x |
+| 9 | 6,000 | 8.30x |
+| 10 (max) | 12,000 | 10.00x |
+
+Deliberately computed, not stored — a second write path to keep `level` in sync with `raidCount`
+would just reintroduce the same class of sync-drift bug that left the old fields dead in the first
+place. The multiplier scales **only the winning side** of a guild raid — every scenario closure in
+`startRaid.js` applies it exclusively inside the success branch, penalties are untouched — so a
+guild leveling up is pure upside with no added risk. Capped at 10x specifically because the reward
+is guild-wide and split across whoever actually raided: at max level, a guild farming T3 raids
+non-stop nets roughly 18M–120M potatoes/day *per player* depending on roster size and raid
+frequency, meaningfully competitive with active `/work` grinding without dwarfing it.
+
+Read everywhere the old stored fields used to be read: `/guild`'s embed (shows current level, wins
+to next level, and the multiplier), the raid preview embed (states the multiplier already baked
+into the numbers shown), `/guild-leaderboard` (now sorted by `raidCount` directly — since level is
+a monotonic function of it, sorting by level-then-raidCount and sorting by raidCount alone produce
+the identical order, so the old two-key sort was simplified to one), and `start-raid`'s actual
+reward calculation.
 
 ## Guild Contracts
 

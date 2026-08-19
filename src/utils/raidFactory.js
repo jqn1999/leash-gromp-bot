@@ -1,4 +1,24 @@
 const dynamoHandler = require("../utils/dynamoHandler");
+const { RaidLevel } = require("../utils/constants");
+
+// Guild level + raid reward multiplier, computed live from raidCount (wins only) rather
+// than read from a stored field — see constants.js's RaidLevel for the curve and why
+// this replaced the old guild.level/guild.raidRewardMultiplier fields, which were
+// permanently stuck at their defaults with no code path ever updating them. Highest
+// threshold not exceeded by raidCount wins; findLast rather than find since the array is
+// ascending and we want the highest qualifying tier, not the first.
+function getRaidLevelInfo(raidCount) {
+    const wins = Number.isFinite(raidCount) ? raidCount : 0;
+    const sorted = RaidLevel.THRESHOLDS;
+    const tierIndex = [...sorted].reverse().find(t => wins >= t.winsRequired).level - 1;
+    const tier = sorted[tierIndex];
+    const nextTier = sorted[tierIndex + 1];
+    return {
+        level: tier.level,
+        multiplier: tier.multiplier,
+        winsToNextLevel: nextTier ? nextTier.winsRequired - wins : null
+    };
+}
 
 class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
@@ -89,5 +109,6 @@ async function calculateRaidSplit(raidList, totalRaidSplit) {
 }
 
 module.exports = {
-    RaidFactory
+    RaidFactory,
+    getRaidLevelInfo
 }

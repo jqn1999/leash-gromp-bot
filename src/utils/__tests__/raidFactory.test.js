@@ -1,7 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo } = require('../raidFactory');
+const { RaidLevel } = require('../constants');
 
 const raidFactory = new RaidFactory();
 
@@ -84,5 +85,43 @@ describe('incrementCounter', () => {
     test('defaults to +1 but accepts a custom amount', async () => {
         await raidFactory.incrementCounter([{ id: 'a', username: 'a' }], 'worldBossWinCount', 5);
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('a', {}, { worldBossWinCount: 5 });
+    });
+});
+
+// Guild level/raidRewardMultiplier used to be stored fields that nothing ever wrote to
+// after guild creation — permanently stuck at 1. Computing them live from raidCount
+// removes that sync-drift bug entirely (there's no second write path to forget).
+describe('getRaidLevelInfo', () => {
+    test('starts at level 1, 1.00x, with zero or missing raidCount', () => {
+        expect(getRaidLevelInfo(0)).toMatchObject({ level: 1, multiplier: 1.00 });
+        expect(getRaidLevelInfo(undefined)).toMatchObject({ level: 1, multiplier: 1.00 });
+        expect(getRaidLevelInfo(null)).toMatchObject({ level: 1, multiplier: 1.00 });
+    });
+
+    test('every threshold in the curve resolves to its own level and multiplier exactly at the boundary', () => {
+        RaidLevel.THRESHOLDS.forEach(tier => {
+            const result = getRaidLevelInfo(tier.winsRequired);
+            expect(result.level).toBe(tier.level);
+            expect(result.multiplier).toBe(tier.multiplier);
+        });
+    });
+
+    test('one win short of a threshold stays at the previous level', () => {
+        const tier5 = RaidLevel.THRESHOLDS.find(t => t.level === 5);
+        const result = getRaidLevelInfo(tier5.winsRequired - 1);
+        expect(result.level).toBe(4);
+    });
+
+    test('caps at the top level and reports no further threshold once maxed', () => {
+        const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
+        const result = getRaidLevelInfo(maxTier.winsRequired + 999999);
+        expect(result.level).toBe(maxTier.level);
+        expect(result.multiplier).toBe(maxTier.multiplier);
+        expect(result.winsToNextLevel).toBeNull();
+    });
+
+    test('reports how many wins remain until the next level while not maxed', () => {
+        const result = getRaidLevelInfo(10); // level 1, next threshold at 25
+        expect(result.winsToNextLevel).toBe(15);
     });
 });
