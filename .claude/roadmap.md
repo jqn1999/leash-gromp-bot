@@ -233,7 +233,10 @@ and needs its own balance pass.
 - [x] **10. Companions** — L (grew from M/L once trading was added — see below) — **Done**
   Shipped as designed below — see [systems/companions.md](systems/companions.md) for the
   implementation (all 9 perk types wired, `/companion` view/equip, the full marketplace with
-  escrow, 4 achievements, `/profile` integration).
+  escrow, 4 achievements, `/profile` integration). The roster/perk table below is the original
+  pitch — the actual shipped roster was rebalanced after launch (Legendary went dual-perk, Mythic
+  went quad-perk on both Elder Rootbeard and Mochi, Ladybug/Firefly's perks changed); treat
+  [systems/companions.md](systems/companions.md)'s roster table as current, this one as history.
   What: a second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck
   rather than pure grinding — same encounter-roll shape Sweet/Golden/Metal Potato already use. A new
   `/work` scenario ("Wandering Companion," ~1.5% chance, between Sweet Potato and Taro Trader in the

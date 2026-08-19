@@ -311,11 +311,13 @@ const CompanionDuplicateReward = {
     [CompanionRarity.MYTHIC]: 250000
 }
 
-// perks: an array so a companion can carry more than one (Mochi is the one deliberate
-// exception — see systems/companions.md for why it's the generalist Mythic next to
-// Elder Rootbeard's specialist). Each perk's `type` is read by whichever call site
-// applies that kind of modifier — see systems/companions.md's application-site table for
-// the full list of which file reads which type.
+// perks: an array so a companion can carry more than one — Legendary tier introduces
+// dual perks, Mythic tier goes further still (both Elder Rootbeard and Mochi are 4-perk
+// generalists at that tier, see systems/companions.md). Common tier deliberately excludes
+// passiveIncomePercent — passive income only becomes available starting at Legendary, so
+// it stays a coveted late-game find rather than a common roll. Each perk's `type` is read
+// by whichever call site applies that kind of modifier — see systems/companions.md's
+// application-site table for the full list of which file reads which type.
 const Companions = [
     {
         id: "sprout",
@@ -338,8 +340,8 @@ const Companions = [
         name: "Ladybug",
         rarity: CompanionRarity.COMMON,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A ladybug that's taken up residence in your passive income stream, somehow making it a little more generous just by being there.",
-        perks: [{ type: "passiveIncomePercent", value: 0.05 }]
+        description: "A ladybug that's taken a shine to your bank vault, tucking a little extra room into the corners whenever no one's looking.",
+        perks: [{ type: "bankCapacityPercent", value: 0.05 }]
     },
     {
         id: "barn_owl",
@@ -362,42 +364,55 @@ const Companions = [
         name: "Firefly",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A firefly that lights the way during guild raids, giving your party's odds a small but real lift.",
-        perks: [{ type: "guildRaidMultiplierPercent", value: 0.05 }]
+        description: "A firefly that lights the way while you work, somehow making every session a little more productive.",
+        perks: [{ type: "workMultiplierPercent", value: 0.05 }]
     },
     {
         id: "spudsprite",
         name: "Spudsprite",
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A small potato spirit that seems to bend time itself around your work cooldown, if only a little.",
-        perks: [{ type: "workCooldownPercent", value: 0.15 }]
+        description: "A small potato spirit that bends time itself around your work cooldown, and sharpens your focus while it's at it.",
+        perks: [
+            { type: "workCooldownPercent", value: 0.15 },
+            { type: "workMultiplierPercent", value: 0.08 }
+        ]
     },
     {
         id: "rootcarver",
         name: "Rootcarver, the Cellar Keeper",
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should.",
-        perks: [{ type: "bankCapacityPercent", value: 0.10 }]
+        description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should, and quietly turns a profit besides.",
+        perks: [
+            { type: "bankCapacityPercent", value: 0.10 },
+            { type: "passiveIncomePercent", value: 0.05 }
+        ]
     },
     {
         id: "elder_rootbeard",
         name: "Elder Rootbeard",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "An ancient root-vegetable elder, said to whisper the exact flaw in every regrade attempt's technique — the specialist's pick for grinding the hardest tiers.",
-        perks: [{ type: "regradeChanceFlat", value: 0.03 }]
+        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, guards your bank, and always finds room for one more starch.",
+        perks: [
+            { type: "regradeChanceFlat", value: 0.03 },
+            { type: "bankCapacityPercent", value: 0.15 },
+            { type: "robChanceFlat", value: 0.15 },
+            { type: "starchCapacityPercent", value: 0.15 }
+        ]
     },
     {
         id: "mochi",
         name: "Mochi, the Undying Stray",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
-        description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — and somehow, it always finds its way back after a rebirth.",
+        description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — keeping pace with you at work, stretching your patience through every cooldown — and somehow, it always finds its way back after a rebirth, more devoted each time.",
         perks: [
-            { type: "passiveIncomePercent", value: 0.08 },
-            { type: "rebirthBonusPercent", value: 0.20 }
+            { type: "passiveIncomePercent", value: 0.10 },
+            { type: "rebirthBonusPercent", value: 0.20 },
+            { type: "workMultiplierPercent", value: 0.12 },
+            { type: "workCooldownPercent", value: 0.20 }
         ]
     }
 ]

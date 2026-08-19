@@ -37,29 +37,49 @@ since `applyCompanionAward` is the single code path both routes go through.
 
 ## Starting roster (10)
 
-| Companion | Rarity | Perk type | Value |
-|---|---|---|---|
-| Sprout | Common | `workMultiplierPercent` | +2% |
-| Fieldmouse | Common | `workCooldownPercent` | -5% |
-| Ladybug | Common | `passiveIncomePercent` | +5% |
-| Barn Owl | Rare | `robChanceFlat` | +10% |
-| Mole | Rare | `starchCapacityPercent` | +10% |
-| Firefly | Rare | `guildRaidMultiplierPercent` | +5% |
-| Spudsprite | Legendary | `workCooldownPercent` | -15% |
-| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` | +10% |
-| Elder Rootbeard | Mythic | `regradeChanceFlat` | +3% (all 3 tracks) |
-| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` + `rebirthBonusPercent` | +8% / +20% |
+Perk count and magnitude both scale with rarity — Common is always single-perk, Legendary is
+dual-perk, Mythic is quad-perk — and every shared perk type increases monotonically tier over tier
+(see the per-perk-type table below). Passive income is deliberately unavailable at Common: it stays
+a Legendary-or-better find rather than something you can roll on your very first companion.
 
-Mochi is the one deliberate dual-perk companion — the generalist Mythic next to Elder Rootbeard's
-specialist. Mythic perks target what matters late-game (regrade odds, rebirth payoff) rather than
-bigger versions of the early-game levers, since work multiplier/cooldown lose relative value once a
-player is deep into their build. Mochi was moved here from the world boss roster
-(`worldFactory.js`) — see that file's comment.
+| Companion | Rarity | Perks |
+|---|---|---|
+| Sprout | Common | `workMultiplierPercent` +2% |
+| Fieldmouse | Common | `workCooldownPercent` -5% |
+| Ladybug | Common | `bankCapacityPercent` +5% |
+| Barn Owl | Rare | `robChanceFlat` +10% |
+| Mole | Rare | `starchCapacityPercent` +10% |
+| Firefly | Rare | `workMultiplierPercent` +5% |
+| Spudsprite | Legendary | `workCooldownPercent` -15% + `workMultiplierPercent` +8% |
+| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +10% + `passiveIncomePercent` +5% |
+| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +15% + `robChanceFlat` +15% + `starchCapacityPercent` +15% |
+| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +10% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownPercent` -20% |
 
-Every perk except the two `*Flat` ones (Barn Owl, Elder Rootbeard — which mirror the existing
-guild `robChance` buff's flat-add shape) is percentage-of-current-stat, the same
-compounding-avoidance reasoning applied to rebirth/guild raid levels: a flat bonus sized right for
-an early player becomes negligible for a maxed one, but a % scales itself automatically.
+Per-perk-type progression (blank = no companion currently grants that perk at that tier):
+
+| Perk | Common | Rare | Legendary | Mythic |
+|---|---|---|---|---|
+| Work Multiplier | 2% (Sprout) | 5% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
+| Work Cooldown | -5% (Fieldmouse) | — | -15% (Spudsprite) | -20% (Mochi) |
+| Bank Capacity | 5% (Ladybug) | — | 10% (Rootcarver) | 15% (Elder Rootbeard) |
+| Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
+| Starch Capacity | — | 10% (Mole) | — | 15% (Elder Rootbeard) |
+| Passive Income | *(none by design)* | — | 5% (Rootcarver) | 10% (Mochi) |
+| Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
+| Rebirth Bonus | — | — | — | 20% (Mochi) |
+
+Both Mythics are now 4-perk generalists rather than one specialist/one generalist — Elder Rootbeard
+covers regrade + bank + rob + starch, Mochi covers passive + rebirth + work multi + work cooldown.
+Firefly's original perk was `guildRaidMultiplierPercent` (+5%, applied to `startRaid.js`'s
+`totalMultiplier`); no companion currently grants that perk type, so that consumption code sits
+dormant rather than being removed — ready for a future companion, harmless as dead code since
+`getActivePerkValue` just returns 0 for a perk type nothing grants. Mochi was originally moved here
+from the world boss roster (`worldFactory.js`) — see that file's comment.
+
+Every perk except the `*Flat` ones (Barn Owl, Elder Rootbeard's rob/regrade — which mirror the
+existing guild `robChance` buff's flat-add shape) is percentage-of-current-stat, the same
+compounding-avoidance reasoning applied to rebirth: a flat bonus sized right for an early player
+becomes negligible for a maxed one, but a % scales itself automatically.
 
 ## Perk application sites
 
@@ -77,7 +97,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | `passiveIncomePercent` | `dynamoHandler.passivePotatoHandler`'s per-user passive tick |
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
 | `regradeChanceFlat` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks |
-| `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple Fireflies can't stack into an unintended snowball |
+| `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple companions with this perk couldn't stack into an unintended snowball. Currently dormant: Firefly (the original holder) was reassigned to `workMultiplierPercent`, so no companion grants this perk right now — the wiring stays in place for a future one |
 | `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion) |
 | `bankCapacityPercent` | `bank.js`'s deposit cap |
 | `rebirthBonusPercent` | `rebirthFactory.getLiveRebirthPercent` — multiplies the live rebirth bonus (see [economy-and-work.md](economy-and-work.md#rebirth-prestige-reset)) by +20%, recomputed fresh every time it's read same as every other companion perk; equip/unequip Mochi and your effective rebirth bonus changes immediately, there's no "moment of rebirth" tied to it anymore |
