@@ -14,6 +14,13 @@ earned primarily from the Taro Trader `/work` encounter (see
 - **Buying allowed**: Monday 10:00–21:59, Thursday 22:00–23:59, Friday 00:00–09:59.
 - **Selling allowed**: all other times.
 
+All 3 commands share `starchFactory.js`'s `isStarchBuyingWindow()`, which converts to
+`America/New_York` before comparing — they used to each inline their own
+`date.getDay()/date.getHours()` check, which reads the **host machine's local time**, not EST, and
+was silently wrong on any deployment not already running in America/New_York. Every other
+day-boundary check in this codebase (`isMondayEST`, the Tower reset, etc.) already converts
+explicitly for the same reason; this closes the one place starch trading didn't.
+
 ## Price cycle
 
 - **Buy price** is set once per cycle — cron `0 10 * * 1` (Monday 10am) and `0 22 * * 4`
@@ -27,17 +34,30 @@ earned primarily from the Taro Trader `/work` encounter (see
 
 ## Price pattern generation (`makeStarchPrices`)
 
-Picks one of four weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX`, keyed by the
+Picks one of five weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX`, keyed by the
 *previous* week's pattern → cumulative probability of each next pattern):
-`FLUCTUATING(0)`, `LARGE_SPIKE(1)`, `DECREASING(2)`, `SMALL_SPIKE(3)`.
+`FLUCTUATING(0)`, `LARGE_SPIKE(1)`, `DECREASING(2)`, `SMALL_SPIKE(3)`, `STEADY_CLIMB(4)`.
 
 Example: after a `FLUCTUATING` week — 20% stay fluctuating, next 30% (cumulative to .50) large
-spike, next 15% (to .65) decreasing, remaining 35% small spike.
+spike, next 15% (to .65) decreasing, next 17.5% (to .825) small spike, remaining 17.5% steady climb.
 
-Each pattern generator (`createFluctuating`, `createLarge`, `createDecreasing`, `createSmall`)
-produces 6 price points using a `normal()` helper that approximates a normal distribution by
-averaging 6 `Math.random()` calls, applied as a multiplier against the base buy price. Large-spike
-weeks can reach roughly `starch*(5+normal())` ≈ 5–6× the buy price.
+**The pattern-selection loop reads `MATRIX[lastPat][i]` for `i = 0..4` in strict ascending numeric
+order** and stops at the first index whose cumulative value exceeds the roll — so every row's
+values must themselves be ascending by pattern index, regardless of how the object literal is
+written (JS reorders integer-like object keys ascending on its own). Get that backwards for any
+pattern — e.g. give a lower index the final `1` catch-all — and every higher-numbered pattern
+becomes permanently unreachable no matter what rolls: a real bug hit while adding `STEADY_CLIMB`
+here, caught by a reachability test (`starchFactory.test.js`) rather than by inspection.
+
+Each pattern generator (`createFluctuating`, `createLarge`, `createDecreasing`, `createSmall`,
+`createSteadyClimb`) produces 6 price points using a `normal()` helper that approximates a normal
+distribution by averaging 6 `Math.random()` calls, applied as a multiplier against the base buy
+price. Large-spike weeks can reach roughly `starch*(5+normal())` ≈ 5–6× the buy price.
+`STEADY_CLIMB` is the fifth, added as a lower-drama alternative to the two spike patterns and pure
+`DECREASING` — starts around 55–65% of the buy price and climbs ~8–20% per step across all 6
+points, rewarding whoever holds to the last couple of price points rather than timing one specific
+peak. Its slice in each row was carved out of what used to be the pure `SMALL_SPIKE` remainder
+(split roughly in half), so every pre-existing pattern's own odds are unchanged.
 
 ## Commands
 

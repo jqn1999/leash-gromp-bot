@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js"); //types?
 const { getUserInteractionDetails } = require("../../utils/helperCommands"); // getting info about user?
 const dynamoHandler = require("../../utils/dynamoHandler"); // helpers for accessing db
+const { isStarchBuyingWindow } = require("../../utils/starchFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -27,13 +28,8 @@ module.exports = {
         }
 
         //check if they are allowed to buy
-        var date = new Date()
-        let isMondayAndBuyingTime = date.getDay() == 1 && (date.getHours() >= 10 && date.getHours() <= 21);
-        let isThursdayAndBuyingTime = date.getDay() == 4 && date.getHours() >= 22;
-        let isFridayAndBuyingTime = date.getDay() == 5 && date.getHours() <= 9;
-
-        if (!isMondayAndBuyingTime && !isThursdayAndBuyingTime && !isFridayAndBuyingTime) {
-            interaction.editReply(`${userDisplayName}, you can only buy starches between Monday 6am-6pm and Thursday 6pm-6am (EST)!`);
+        if (!isStarchBuyingWindow()) {
+            interaction.editReply(`${userDisplayName}, you can only buy starches Monday 10am-10pm, or Thursday 10pm through Friday 10am (EST)!`);
             return;
         }
 

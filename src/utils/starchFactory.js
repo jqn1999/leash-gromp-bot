@@ -1,5 +1,27 @@
 const { EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../utils/dynamoHandler");
+
+function getESTWeekdayAndHour(date) {
+    const weekday = date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' });
+    const hour = Number(date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }));
+    return { weekday, hour };
+}
+
+// Buying window: Monday 10:00-21:59, Thursday 22:00-23:59, Friday 00:00-09:59 (all EST) —
+// see systems/starch-trading.md. All 3 starch commands previously checked bare
+// date.getDay()/date.getHours() — the host machine's own local time, not EST — which is
+// silently wrong unless the host happens to be running in America/New_York. Every other
+// day-boundary check in this codebase (isMondayEST in questFactory.js/
+// guildContractFactory.js, the Tower reset, etc.) already guards against exactly this by
+// converting explicitly, so this closes the one place starch trading didn't.
+function isStarchBuyingWindow(date = new Date()) {
+    const { weekday, hour } = getESTWeekdayAndHour(date);
+    if (weekday === 'Monday') return hour >= 10 && hour <= 21;
+    if (weekday === 'Thursday') return hour >= 22;
+    if (weekday === 'Friday') return hour <= 9;
+    return false;
+}
+
 class starchFactory {
 
     constructor() { }
@@ -10,7 +32,7 @@ class starchFactory {
         const patChance = Math.random()
         let pattern;
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 5; i++) {
             if (patChance < PROBABILITY_MATRIX[lastPat][i]) {
                 pattern = i
                 break;
@@ -32,6 +54,9 @@ class starchFactory {
                 break;
             case 3: // small_spike
                 prices = createSmall(starch)
+                break;
+            case 4: // steady_climb
+                prices = createSteadyClimb(starch)
                 break;
         }
 
@@ -165,40 +190,84 @@ async function createSmall(starch) {
     return vals
 }
 
+// A slower, more predictable payoff than the other 4 patterns — no single dramatic peak
+// to time (unlike LARGE_SPIKE/SMALL_SPIKE), just a steady rise across the week, rewarding
+// whoever holds to the last couple of price points rather than whoever catches a specific
+// spike. Starts around 55-65% of the buy price and climbs roughly 8-20% per step over 5
+// steps, so it can still land anywhere from a modest gain to a genuine payoff depending
+// on how the normal() rolls stack — a real fifth risk/reward profile, not just a
+// relabeled DECREASING.
+async function createSteadyClimb(starch) {
+    let vals = []
+    let climbStarch = starch * (.55 + (normal() * .1))
+    vals.push(climbStarch)
+
+    for (var i = 0; i < 5; i++) {
+        climbStarch = climbStarch * (1.08 + (normal() * .12))
+        vals.push(climbStarch)
+    }
+
+    return vals
+}
+
 const PATTERN = {
     FLUCTUATING: 0,
     LARGE_SPIKE: 1,
     DECREASING: 2,
     SMALL_SPIKE: 3,
+    STEADY_CLIMB: 4,
 };
 
+// Cumulative thresholds MUST be assigned in ascending order by pattern index (0-4), not
+// by "narrative" grouping — makeStarchPrices's selection loop reads MATRIX[lastPat][i]
+// for i = 0..4 in strict numeric order (JS reorders integer-like object keys ascending
+// regardless of source order, so this isn't about how the object literal is written
+// below, it's a hard constraint on the values themselves) and breaks on the first index
+// whose cumulative value exceeds the roll. Since SMALL_SPIKE(3) is checked before
+// STEADY_CLIMB(4), SMALL_SPIKE must carry the smaller cumulative value in every row and
+// STEADY_CLIMB the final 1 — swapping that (as an earlier version of this file did) makes
+// index 4 permanently unreachable, since index 3's catch-all of 1 always matches first.
+// Each row otherwise keeps every existing pattern's odds unchanged and splits the old
+// pure-SMALL_SPIKE remainder in half between the two lower-drama patterns.
 const PROBABILITY_MATRIX = {
     [PATTERN.FLUCTUATING]: {
         [PATTERN.FLUCTUATING]: 0.20,
         [PATTERN.LARGE_SPIKE]: 0.50,
         [PATTERN.DECREASING]: 0.65,
-        [PATTERN.SMALL_SPIKE]: 1,
+        [PATTERN.SMALL_SPIKE]: 0.825,
+        [PATTERN.STEADY_CLIMB]: 1,
     },
     [PATTERN.LARGE_SPIKE]: {
         [PATTERN.FLUCTUATING]: 0.50,
         [PATTERN.LARGE_SPIKE]: 0.55,
         [PATTERN.DECREASING]: 0.75,
-        [PATTERN.SMALL_SPIKE]: 1,
+        [PATTERN.SMALL_SPIKE]: 0.875,
+        [PATTERN.STEADY_CLIMB]: 1,
     },
     [PATTERN.DECREASING]: {
         [PATTERN.FLUCTUATING]: 0.25,
         [PATTERN.LARGE_SPIKE]: 0.70,
         [PATTERN.DECREASING]: 0.75,
-        [PATTERN.SMALL_SPIKE]: 1,
+        [PATTERN.SMALL_SPIKE]: 0.875,
+        [PATTERN.STEADY_CLIMB]: 1,
     },
     [PATTERN.SMALL_SPIKE]: {
         [PATTERN.FLUCTUATING]: 0.45,
         [PATTERN.LARGE_SPIKE]: 0.70,
         [PATTERN.DECREASING]: 0.85,
-        [PATTERN.SMALL_SPIKE]: 1,
+        [PATTERN.SMALL_SPIKE]: 0.925,
+        [PATTERN.STEADY_CLIMB]: 1,
+    },
+    [PATTERN.STEADY_CLIMB]: {
+        [PATTERN.FLUCTUATING]: 0.20,
+        [PATTERN.LARGE_SPIKE]: 0.45,
+        [PATTERN.DECREASING]: 0.60,
+        [PATTERN.SMALL_SPIKE]: 0.75,
+        [PATTERN.STEADY_CLIMB]: 1,
     },
 };
 
 module.exports = {
-    starchFactory
+    starchFactory,
+    isStarchBuyingWindow
 }
