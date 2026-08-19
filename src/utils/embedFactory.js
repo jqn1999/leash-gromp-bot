@@ -395,14 +395,10 @@ class EmbedFactory {
         }
 
         const leader = guild.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER)
-        if (!leader) {
-            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
-            return;
-        }
 
         fields.push({
             name: `Leader:`,
-            value: `${leader.username}`,
+            value: leader ? `${leader.username}` : 'Unknown',
             inline: true
         })
         fields.push({

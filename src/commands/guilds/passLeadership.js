@@ -69,7 +69,11 @@ module.exports = {
                 user.role = GuildRoles.LEADER
             }
         })
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', memberList);
+        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, your guild changed while processing this leadership transfer. Please try again!`);
+            return;
+        }
         interaction.editReply(`${userDisplayName} you have transferred leadership of '${guild.guildName}' to <@${targetUser}>!`);
     }
 }

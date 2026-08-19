@@ -56,14 +56,17 @@ module.exports = {
         }
 
         let newInviteList = inviteList.filter((id) => id != userId)
-        await dynamoHandler.updateGuildDatabase(guildId, 'inviteList', newInviteList);
-
         memberList.push({
             id: userId,
             role: GuildRoles.MEMBER,
             username: username
         })
-        await dynamoHandler.updateGuildDatabase(guildId, 'memberList', memberList);
+
+        const written = await dynamoHandler.updateGuildFieldsWithLock(guildId, guild.guildVersion, { inviteList: newInviteList, memberList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, this guild changed while processing your join. Please try again!`);
+            return;
+        }
         await dynamoHandler.updateUserDatabase(userId, "guildId", guildId);
         interaction.editReply(`${userDisplayName} you have joined the guild, '${guild.guildName}'!`);
     }

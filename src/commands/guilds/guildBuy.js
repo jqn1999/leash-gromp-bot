@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { GuildRoles } = require("../../utils/constants");
 
 const guildShops = [
     {
@@ -137,6 +138,18 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
+        const member = guild.memberList.find((currentMember) => currentMember.id == userId);
+        if (!member) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+            return;
+        }
+
+        const canUpgrade = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER;
+        if (!canUpgrade) {
+            interaction.editReply(`${userDisplayName} you need to be a co-leader or the leader to spend the guild bank on upgrades.`);
+            return;
+        }
+
         let guildBankStored = guild.bankStored;
         let guildBankCapacity = guild.bankCapacity;
 

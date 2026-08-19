@@ -69,7 +69,11 @@ module.exports = {
         }
 
         let newMemberList = memberList.filter((user) => user.id != targetUser)
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', newMemberList);
+        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList: newMemberList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, your guild changed while processing this kick. Please try again!`);
+            return;
+        }
         await dynamoHandler.updateUserDatabase(targetUser, "guildId", 0);
         interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }

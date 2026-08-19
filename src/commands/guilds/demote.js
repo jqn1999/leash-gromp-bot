@@ -87,7 +87,11 @@ module.exports = {
                 user.role = role;
             }
         })
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'memberList', memberList);
+        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, your guild changed while processing this demotion. Please try again!`);
+            return;
+        }
         interaction.editReply(`${userDisplayName} you have demoted <@${targetUser}> to ${role} for the guild '${guild.guildName}'!`);
     }
 }

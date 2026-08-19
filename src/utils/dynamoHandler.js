@@ -737,6 +737,43 @@ const updateGuildDatabase = async function (guildId, attributeName, attributeVal
     return response;
 }
 
+// Optimistic-concurrency write for guild attributes that get read-modify-written by
+// several commands (memberList, inviteList) — invite/join-guild/kick/promote/demote/
+// pass-leadership all read the whole guild, mutate a list locally, then write the whole
+// list back with no locking, so two near-simultaneous mutations (e.g. two invitees
+// joining at once) can silently clobber each other. Conditioning the write on the
+// guildVersion the caller actually read closes that race: if another command wrote to
+// this guild in between, the write is rejected instead of overwriting it, and the
+// caller re-prompts the user to retry instead of losing the change. attribute_not_exists
+// covers guild records created before this field existed, healing them to version 0 on
+// their first guarded write. Returns true if the write landed, false if it lost the race
+// (or hit any other error).
+const updateGuildFieldsWithLock = async function (guildId, expectedVersion, setAttributes) {
+    const version = expectedVersion || 0;
+    const { expression, names, values } = buildUpdateExpression({ ...setAttributes, guildVersion: version + 1 });
+
+    const params = {
+        TableName: awsConfigurations.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: expression,
+        ConditionExpression: "attribute_not_exists(guildVersion) OR guildVersion = :expectedVersion",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: { ...values, ":expectedVersion": version },
+    };
+
+    try {
+        await docClient.update(params).promise();
+        return true;
+    } catch (err) {
+        if (err.code !== 'ConditionalCheckFailedException') {
+            console.debug(`updateGuildFieldsWithLock error: ${JSON.stringify(err)}`);
+        }
+        return false;
+    }
+}
+
 const getGuilds = async function () {
     const params = {
         TableName: awsConfigurations.aws_guilds_table_name
@@ -813,7 +850,8 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         inviteList: [],
         raidList: [],
         raidRewardMultiplier: 1,
-        guildBuff: "workMulti"
+        guildBuff: "workMulti",
+        guildVersion: 0
     };
 
     var params = {
@@ -1033,6 +1071,7 @@ module.exports = {
     getStatDatabase,
 
     updateGuildDatabase,
+    updateGuildFieldsWithLock,
     findGuildById,
     findGuildByName,
     createGuild,

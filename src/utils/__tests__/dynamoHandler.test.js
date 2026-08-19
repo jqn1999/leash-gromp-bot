@@ -83,3 +83,42 @@ describe('findUser', () => {
         expect(healedFieldNames).not.toContain('webLinkToken');
     });
 });
+
+// Regression coverage for the guild memberList/inviteList race: every guild command
+// that mutates one of these lists reads the whole guild, mutates locally, and writes
+// the whole list back with no locking, so two near-simultaneous mutations (two invitees
+// joining at once, a kick racing a promote, etc.) could silently clobber each other.
+// updateGuildFieldsWithLock conditions the write on the guildVersion the caller actually
+// read so a lost race is rejected instead of overwriting someone else's change.
+describe('updateGuildFieldsWithLock', () => {
+    test('writes the new fields and bumps guildVersion, conditioned on the version the caller read', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        const result = await dynamoHandler.updateGuildFieldsWithLock('g1', 3, { memberList: [{ id: 'u1' }] });
+
+        expect(result).toBe(true);
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.ConditionExpression).toBe('attribute_not_exists(guildVersion) OR guildVersion = :expectedVersion');
+        expect(params.ExpressionAttributeValues[':expectedVersion']).toBe(3);
+        const setValues = Object.entries(params.ExpressionAttributeNames)
+            .reduce((acc, [nameKey, fieldName]) => ({ ...acc, [fieldName]: params.ExpressionAttributeValues[nameKey.replace('#', ':')] }), {});
+        expect(setValues.memberList).toEqual([{ id: 'u1' }]);
+        expect(setValues.guildVersion).toBe(4);
+    });
+
+    test('treats a missing expectedVersion (guild record predating this field) as 0', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.updateGuildFieldsWithLock('g1', undefined, { inviteList: [] });
+
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.ExpressionAttributeValues[':expectedVersion']).toBe(0);
+    });
+
+    test('returns false (not a throw) when another write already changed the guild in between', async () => {
+        const conditionalFailure = new Error('The conditional request failed');
+        conditionalFailure.code = 'ConditionalCheckFailedException';
+        docClient.update.mockReturnValue(rejected(conditionalFailure));
+
+        const result = await dynamoHandler.updateGuildFieldsWithLock('g1', 3, { memberList: [] });
+        expect(result).toBe(false);
+    });
+});

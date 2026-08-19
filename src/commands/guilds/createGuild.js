@@ -58,6 +58,12 @@ module.exports = {
             return;
         }
 
+        const existingGuild = await dynamoHandler.findGuildByName(guildName);
+        if (existingGuild) {
+            interaction.editReply(`${userDisplayName} a guild named '${existingGuild.guildName}' already exists! Guild names must be unique (capitalization doesn't matter). Try a different name.`)
+            return;
+        }
+
         await handleGuildCreation(userId, username, userPotatoes, guildName, thumbnailUrl);
         interaction.editReply(`New guild '${guildName}' has been created!`)
     }

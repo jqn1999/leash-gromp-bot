@@ -26,7 +26,7 @@ module.exports = {
                     value: 'workTimer'
                 },
                 {
-                    name: 'work-multi (ONLY WORKS)',
+                    name: 'work-multi',
                     value: 'workMulti'
                 },
                 {

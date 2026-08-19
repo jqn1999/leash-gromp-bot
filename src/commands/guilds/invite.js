@@ -59,7 +59,11 @@ module.exports = {
         }
 
         inviteList.push(targetUser);
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'inviteList', inviteList);
+        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { inviteList });
+        if (!written) {
+            interaction.editReply(`${userDisplayName}, your guild changed while processing this invite. Please try again!`);
+            return;
+        }
         interaction.editReply(`${userDisplayName} you have invited <@${targetUser}> to your guild, '${guild.guildName}'!`);
     }
 }
