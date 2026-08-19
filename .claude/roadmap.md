@@ -230,6 +230,61 @@ and needs its own balance pass.
   Touches: one new command, wager/house-edge logic mirroring `coinflip.js`'s existing pattern, a new
   embed for the round-by-round reveal.
 
+- [ ] **10. Companions** — M/L
+  What: a second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck
+  rather than pure grinding — same encounter-roll shape Sweet/Golden/Metal Potato already use. A new
+  `/work` scenario ("Wandering Companion," ~1.5% chance, between Sweet Potato and Taro Trader in the
+  roll table) grants a random companion on a rarity roll (Common 70% / Rare 25% / Legendary 5%). One
+  **active** companion slot at a time — `/companion equip <id>` switches between owned ones — rather
+  than every owned companion stacking simultaneously, so which one to run is an actual choice, not
+  just another number that goes up. Duplicate pulls (already own that companion) grant a modest
+  consolation potato payout instead of nothing.
+  Why a single active slot, not a stack: `sweetPotatoBuffs` already owns "permanent stat that
+  compounds forever" — a companion that just added another flat bonus to the same three stats would
+  be a redundant reskin of a system that already exists. Making companions a *choice* (which one is
+  active) instead of another additive stack gives them their own identity, and keeps the total power
+  ceiling from silently doubling every existing progression track's cap.
+  Starting roster (8, thematically matching the existing mob/encounter cast — small helpful
+  creatures, distinct from the world-boss/raid-mob cast which are challenges, not companions):
+
+  | Companion | Rarity | Perk |
+  |---|---|---|
+  | Sprout | Common | +2% Work Multiplier |
+  | Fieldmouse | Common | -5% `/work` cooldown |
+  | Ladybug | Common | +5% Passive Income |
+  | Barn Owl | Rare | +10% personal `/rob` success chance (stacks with the guild `robChance` buff) |
+  | Mole | Rare | +10% Starch max capacity |
+  | Firefly | Rare | +5% guild raid success chance while active |
+  | Golden Sprout | Legendary | +5% Work Multiplier and +5% Passive Income |
+  | Spudsprite | Legendary | -15% `/work` cooldown |
+
+  Percentage-of-current-stat perks deliberately, not flat additions — avoids the exact compounding
+  risk flagged in the weekly-quest-reward design earlier (see systems/quests.md): a flat bonus sized
+  right for an early player becomes negligible for a maxed one, but a % scales itself automatically
+  without needing a ramp formula the way the quest reward did.
+  Persistence: companions live in a new `userDetails.companions: { owned: [...], active: id|null }`
+  field, untouched by `/rebirth`'s reset — same "survives a prestige reset" precedent Idle Miner
+  sets for pets, and consistent with `sweetPotatoBuffs`/achievements/records already being on that
+  keep-list.
+  Touches: a new `companionFactory.js` (rarity roll, perk lookup, equip logic — testable, mirrors
+  every other `src/utils/*Factory.js`), a new `/companion` command (view owned + equip), one new
+  `/work` scenario slot, `getDefaultUserFields` schema addition, wiring the active companion's perk
+  into whichever existing calculation it modifies (work cooldown into
+  `dynamoHandler.calculateWorkTimerValue`, rob chance into `rob.js`, etc. — same shape the guild buff
+  system already uses for "one active modifier changes several existing formulas").
+  Open questions before this gets scoped for real (flagging rather than deciding unilaterally, since
+  each is a real design fork, not an implementation detail):
+  - Should companions eventually be tradeable between players? The research pass that surfaced this
+    idea also flagged that this bot has no player-to-player trading of *anything* today (starch
+    trading is bot-priced, not peer-to-peer) — a tradeable companion would be the first instance of
+    that and probably deserves to be scoped together with real trading infrastructure, not smuggled
+    in as a companion-only side mechanic.
+  - Should a companion be able to level up or evolve (Idle Miner/Bconomy both do this), or stay
+    static once obtained? Recommend static for v1 — leveling adds real scope (a second progression
+    curve nested inside this one) for something that hasn't shipped in any form yet.
+  - Is 8 the right starting roster size, and are these 8 perks the right set? Easy to add more once
+    the roll/equip infrastructure exists — the roster itself is just data, same as Achievements.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
@@ -239,8 +294,10 @@ and needs its own balance pass.
 
 ## Discussed earlier, not picked up in this pass
 
-Prestige/rebirth, companion/pet system, seasonal/limited-time events. Not forgotten — just not
-selected this round. Say the word if you want any of these added back into the priority list.
+Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
+Companion/pet system now has a real design above (#10). Seasonal/limited-time events remain
+undesigned — not forgotten, just not selected this round. Say the word if you want that one added
+back into the priority list.
 
 **Guild vs. Guild Raids** — fully scoped (targeted challenge + accept flow, bank-percentage ante,
 0.5–2x eligibility band, two-sided win-chance formula, separate 24h cooldown) and given a full
