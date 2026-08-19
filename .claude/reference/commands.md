@@ -103,4 +103,5 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | File | Command | Summary |
 |---|---|---|
 | `adminGive.js` | `/admin-give` | `devOnly` + Administrator — spawns potatoes into a target user's balance |
+| `adminWork.js` | `/admin-work` | `devOnly` — forces a specific `/work` scenario (and optionally an exact companion) on the caller, reusing the real scenario action/embed; skips the workTimer cooldown and doesn't touch the shared `work` stats doc |
 | `adminStats.js` | `/admin-stats` | `devOnly` + Administrator — ephemeral dashboard of cached economy/starch/world/quest state, so admins don't need to check DynamoDB directly |

@@ -109,10 +109,12 @@ class WorkFactory {
     // companionFactory.js). A new companion is added to owned (not auto-equipped,
     // equipping stays a deliberate /companion equip choice); a duplicate pays out a
     // modest potato consolation instead, scaled the same server-wealth-aware way every
-    // other /work reward is (see calculateGainAmount below).
-    async handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
+    // other /work reward is (see calculateGainAmount below). forcedCompanionId lets
+    // /admin-work skip the roll and test a specific companion directly — every real
+    // /work call leaves it null/undefined, which falls through to the normal roll.
+    async handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus = 0, forcedCompanionId = null) {
         const userId = userDetails.userId;
-        const companion = companionFactory.rollCompanion();
+        const companion = forcedCompanionId ? companionFactory.getCompanionById(forcedCompanionId) : companionFactory.rollCompanion();
         const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
 
         let workScenarioCounts = userDetails.workScenarioCounts;

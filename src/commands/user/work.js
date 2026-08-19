@@ -124,8 +124,11 @@ var workScenarios = [
         type: WORK_SCENARIO_INDICES.SWEET
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
-            const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus);
+        // forcedCompanionId is a trailing optional arg only /admin-work ever passes —
+        // every real /work call omits it, leaving it undefined and falling through to
+        // the normal roll inside handleCompanionEncounter.
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId) => {
+            const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus, forcedCompanionId);
             embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult);
             await safeEditReply(interaction, embed);
             return companionResult.potatoesGained;
@@ -162,6 +165,7 @@ module.exports = {
     devOnly: false,
     deleted: false,
     setWorkScenarios, //adding this so we can see it in backgroundEvents
+    workScenarios, // exposed so /admin-work can force a specific scenario's real action/embed
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const total = await dynamoHandler.getCachedServerTotal();
