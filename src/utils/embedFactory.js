@@ -1810,6 +1810,20 @@ class EmbedFactory {
         return embed;
     }
 
+    // page: a static { title, description, fields } entry from start.js's ONBOARDING_PAGES —
+    // pre-authored content, not derived from user data, so this is a thin renderer rather
+    // than the chunk-a-list pattern createAchievementsPageEmbed/createCompanionListEmbed use.
+    createOnboardingPageEmbed(userDisplayName, page, pageIndex, totalPages) {
+        const embed = new EmbedBuilder()
+            .setTitle(page.title)
+            .setDescription(`${page.description}\n\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setColor("Blue")
+            .setFooter({ text: `For ${userDisplayName} • Made by Beggar` })
+            .setTimestamp(Date.now())
+            .setFields(page.fields)
+        return embed;
+    }
+
     // Follow-up sent from /work when a guild member's action pushes their guild's
     // active Guild Contract over its threshold — mirrors createQuestCompleteEmbed's
     // shape, one level up (guild-wide instead of per-user).

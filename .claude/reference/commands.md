@@ -92,6 +92,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 | File | Command | Summary |
 |---|---|---|
+| `start.js` | `/start` | Ephemeral, paginated (9 pages) onboarding tour covering every system in the bot — the recommended first command for a new player |
 | `currentEvent.js` | `/current-event` | Shows the active hourly special work event, if any |
 | `currentWorldRaid.js` | `/current-world-raid` | Shows the active world boss and its joined participants |
 | `joinWorldRaid.js` | `/join-world-raid` | Joins the current world boss encounter |
