@@ -29,6 +29,25 @@ function chooseMobFromList(mobList) {
     return reward
 }
 
+// Every scenario's editReply used to be fire-and-forget (no await, no catch) — if it
+// ever threw (rate limit, network blip, stale interaction token), the DB write for that
+// /work call (potatoes gained, cooldown consumed) still happened, but nothing downstream
+// depends on this call succeeding, so the failure was silently swallowed and the player
+// saw no result at all despite the action having gone through. Falls back to a followUp
+// with the same embed so a failed edit still reaches the player instead of vanishing.
+async function safeEditReply(interaction, embed) {
+    try {
+        await interaction.editReply({ embeds: [embed] });
+    } catch (e) {
+        console.log(`work.js editReply failed, falling back to followUp: ${e}`);
+        try {
+            await interaction.followUp({ embeds: [embed] });
+        } catch (fallbackError) {
+            console.log(`work.js followUp fallback also failed: ${fallbackError}`);
+        }
+    }
+}
+
 function setWorkScenarios(workChances) {
     for (var scenario of workScenarios) {
         if (scenario.type != WORK_SCENARIO_INDICES.REGULAR) {
@@ -42,7 +61,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: .001,
@@ -53,7 +72,7 @@ var workScenarios = [
             // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
             potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: .011,
@@ -63,7 +82,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: .051,
@@ -88,7 +107,7 @@ var workScenarios = [
 
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
             }
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: .061,
@@ -98,7 +117,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: .081,
@@ -108,7 +127,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return starchesGained;
         },
         chance: .101,
@@ -119,7 +138,7 @@ var workScenarios = [
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus);
             const regularMob = chooseMobFromList(regularWorkMobs);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob);
-            interaction.editReply({ embeds: [embed] });
+            await safeEditReply(interaction, embed);
             return potatoesGained;
         },
         chance: 1,
