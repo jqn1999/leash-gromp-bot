@@ -1,4 +1,5 @@
 const { shops, Rebirth } = require("../utils/constants");
+const companionFactory = require("../utils/companionFactory");
 
 // Regrade caps aren't exported as a single lookup elsewhere (regrade.js hardcodes its
 // three tier arrays inline) — mirror the same absolute caps questFactory.js already
@@ -55,11 +56,17 @@ function checkRebirthEligibility(userDetails) {
 // achievements, records, and starches exactly as they were. Grants a flat permanent
 // bonus on top of the preserved sweetPotatoBuffs, so repeat rebirths stack real,
 // escalating power without touching the reset stats themselves.
+// Mochi's rebirthBonusPercent — companions persist through rebirth (see
+// systems/companions.md), so if it's active at the moment a rebirth commits, that
+// bonus amplifies the flat Rebirth.*_BONUS amounts below rather than being folded into
+// them permanently.
 function computeRebirthState(userDetails) {
+    const rebirthBonusPercent = companionFactory.getActivePerkValue(userDetails, "rebirthBonusPercent");
+    const bonusMultiplier = 1 + rebirthBonusPercent;
     const newSweetPotatoBuffs = {
-        workMultiplierAmount: userDetails.sweetPotatoBuffs.workMultiplierAmount + Rebirth.WORK_MULTI_BONUS,
-        passiveAmount: userDetails.sweetPotatoBuffs.passiveAmount + Rebirth.PASSIVE_BONUS,
-        bankCapacity: userDetails.sweetPotatoBuffs.bankCapacity + Rebirth.BANK_CAPACITY_BONUS
+        workMultiplierAmount: userDetails.sweetPotatoBuffs.workMultiplierAmount + Rebirth.WORK_MULTI_BONUS * bonusMultiplier,
+        passiveAmount: userDetails.sweetPotatoBuffs.passiveAmount + Rebirth.PASSIVE_BONUS * bonusMultiplier,
+        bankCapacity: userDetails.sweetPotatoBuffs.bankCapacity + Rebirth.BANK_CAPACITY_BONUS * bonusMultiplier
     };
 
     return {

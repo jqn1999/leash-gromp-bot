@@ -127,4 +127,20 @@ describe('computeRebirthState', () => {
         expect(afterSecond.sweetPotatoBuffs.workMultiplierAmount).toBe(afterFirst.sweetPotatoBuffs.workMultiplierAmount + Rebirth.WORK_MULTI_BONUS);
         expect(afterSecond.rebirthCount).toBe(2);
     });
+
+    test('Mochi active at rebirth amplifies the flat bonus by rebirthBonusPercent (+20%)', () => {
+        const user = maxedUser({
+            companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 }
+        });
+        const result = computeRebirthState(user);
+        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBe(5 + Rebirth.WORK_MULTI_BONUS * 1.20);
+        expect(result.sweetPotatoBuffs.passiveAmount).toBe(10000 + Rebirth.PASSIVE_BONUS * 1.20);
+        expect(result.sweetPotatoBuffs.bankCapacity).toBe(100000 + Rebirth.BANK_CAPACITY_BONUS * 1.20);
+    });
+
+    test('no companion equipped applies the plain, unamplified bonus', () => {
+        const user = maxedUser({ companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 } });
+        const result = computeRebirthState(user);
+        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBe(5 + Rebirth.WORK_MULTI_BONUS);
+    });
 });
