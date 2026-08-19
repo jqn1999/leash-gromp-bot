@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank } = require("../utils/constants.js");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
 
@@ -443,6 +443,34 @@ const passivePotatoHandler = async function (timesInADay) {
     const medianTotalEarnings = calculateMedian(activeTotalEarnings);
     await updateStatFields("economy", { serverTotal, serverTotalStarches, medianTotalEarnings, activeUserCount: activeTotalEarnings.length });
     return;
+}
+
+// Guild treasury interest: a daily % of bankStored, scaled by member count, applied
+// fractionally on the same 5-minute cadence passivePotatoHandler already uses for
+// personal passive income — see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER. Unlike
+// personal passive income (a flat amount unrelated to what's already banked), this is a
+// genuine percentage of bankStored, so an empty or freshly-emptied treasury earns
+// nothing — there has to be something banked for a bigger roster to be worth it. Never
+// pushes bankStored past bankCapacity, same "cap wins" rule every other guild deposit
+// path already follows.
+const applyGuildTreasuryInterest = async function (timesInADay) {
+    const allGuilds = await getGuilds();
+
+    await Promise.all(allGuilds.map(async guild => {
+        const bankStored = toNumber(guild.bankStored);
+        if (bankStored <= 0) return;
+
+        const memberCount = Array.isArray(guild.memberList) ? guild.memberList.length : 0;
+        const dailyRate = Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER * memberCount;
+        const interest = Math.round(bankStored * dailyRate / timesInADay);
+        if (interest <= 0) return;
+
+        const bankCapacity = toNumber(guild.bankCapacity);
+        const newBankStored = Math.min(bankStored + interest, bankCapacity);
+        if (newBankStored === bankStored) return;
+
+        await updateGuildDatabase(guild.guildId, 'bankStored', newBankStored);
+    }));
 }
 
 // Returns the catch-up multiplier bonus (e.g. 0.8 => +80%) for a user's personal work
@@ -953,7 +981,9 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
             memberBaselines: {},
             frozenContribution: 0,
             completed: false
-        }
+        },
+        raidHistory: [],       // most recent HISTORY_MAX_ENTRIES guild raids — see startRaid.js
+        contractHistory: []    // most recent HISTORY_MAX_ENTRIES completed Guild Contracts — see guildContractFactory.js
     };
 }
 
@@ -1207,6 +1237,7 @@ module.exports = {
     findUser,
     getUsers,
     passivePotatoHandler,
+    applyGuildTreasuryInterest,
     getCatchUpBonus,
 
     addBirthday,

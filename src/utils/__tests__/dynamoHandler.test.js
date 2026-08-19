@@ -122,3 +122,55 @@ describe('updateGuildFieldsWithLock', () => {
         expect(result).toBe(false);
     });
 });
+
+// Guild treasury interest: a daily % of bankStored, scaled by member count, applied
+// fractionally every 5-minute tick (see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER).
+describe('applyGuildTreasuryInterest', () => {
+    test('credits interest scaled by member count, never past bankCapacity', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }] }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        // dailyRate = .001 * 2 members = .002; per-tick = 1,000,000 * .002 / 288 ≈ 6.94 → rounds to 7
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.Key.guildId).toBe('g1');
+        const newValue = Object.values(params.ExpressionAttributeValues)[0];
+        expect(newValue).toBe(1000007);
+    });
+
+    test('caps the credited amount so bankStored never exceeds bankCapacity', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 4999999, bankCapacity: 5000000, memberList: Array.from({ length: 25 }, (_, i) => ({ id: `m${i}` })) }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        const params = docClient.update.mock.calls[0][0];
+        const newValue = Object.values(params.ExpressionAttributeValues)[0];
+        expect(newValue).toBe(5000000);
+    });
+
+    test('skips guilds with nothing stored — an empty treasury earns no interest', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 0, bankCapacity: 5000000, memberList: [{ id: 'a' }] }],
+        }));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+
+    test('skips a guild whose per-tick interest rounds to 0 rather than writing a no-op', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 100, bankCapacity: 5000000, memberList: [{ id: 'a' }] }],
+        }));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+});

@@ -34,7 +34,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `guild.js` | `/guild` | Guild info embed |
 | `guildMembers.js` | `/guild-members` | Member list with roles |
 | `guildBank.js` | `/guild-bank` | Deposit (taxed, any member) / withdraw (Co-Leader+, untaxed) |
-| `guildBuy.js` | `/guild-upgrade` | Spends guild bank potatoes on bank-capacity tier upgrades |
+| `guildBuy.js` | `/guild-upgrade` | Spends guild bank potatoes on bank-capacity or member-cap tier upgrades |
 | `invite.js` | `/invite` | Elder+ invites a user to the guild |
 | `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap |
 | `leave.js` | `/leave` | Non-Leader member leaves the guild |
@@ -47,7 +47,8 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `joinRaid.js` | `/join-raid` | Join the guild's pending raid roster |
 | `startRaid.js` | `/start-raid` | Elder+ resolves the raid (regular/elite/legendary/stat) against the roster |
 | `currentRaid.js` | `/current-raid` | Shows raid roster, combined multiplier, cooldown remaining |
-| `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract and the guild's aggregate progress (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
+| `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract, the guild's aggregate progress, and a Top Contributors leaderboard (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
+| `guildHistory.js` | `/guild-history` | Paginated past raids or completed Guild Contracts (`type: raids \| contracts`) — see [systems/guilds.md](../systems/guilds.md#guild-history) |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 

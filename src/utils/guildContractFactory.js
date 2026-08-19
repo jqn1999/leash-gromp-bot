@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getStatValue } = require("../utils/achievementFactory");
-const { GuildContracts, GuildContract } = require("../utils/constants");
+const { GuildContracts, GuildContract, GuildHistory } = require("../utils/constants");
 
 // "Week" boundaries computed in EST, matching every other day/week-based reset in this
 // game (Tower, daily streak, Quests' own weekly rotation, the 4am cron itself).
@@ -21,21 +21,27 @@ function isMondayEST(date) {
 // m.username))) member-list aggregation pattern, with the same Number.isFinite(...) ? ... : 0
 // guard so one malformed/unlookupable member record can't poison the whole guild's
 // progress with NaN (see architecture/data-model.md).
-async function computeLiveMemberSum(guild, memberBaselines, statPath) {
+// Per-member breakdown of live delta-from-baseline, the same lookup computeLiveMemberSum
+// needs — extracted so a per-member leaderboard (getMemberBreakdown) and the aggregate
+// sum can share one fetch instead of two.
+async function computeMemberDeltas(guild, memberBaselines, statPath) {
     const trackedMembers = guild.memberList.filter(member => memberBaselines[member.id] !== undefined);
-    if (trackedMembers.length === 0) return 0;
+    if (trackedMembers.length === 0) return [];
 
     const memberDetails = await Promise.all(trackedMembers.map(member => dynamoHandler.findUser(member.id, member.username)));
 
-    let liveSum = 0;
-    trackedMembers.forEach((member, index) => {
+    return trackedMembers.map((member, index) => {
         const details = memberDetails[index];
         const currentValue = details ? getStatValue(details, statPath) : undefined;
         const numericCurrent = Number.isFinite(currentValue) ? currentValue : 0;
         const baseline = Number.isFinite(memberBaselines[member.id]) ? memberBaselines[member.id] : 0;
-        liveSum += Math.max(0, numericCurrent - baseline);
+        return { id: member.id, username: member.username, delta: Math.max(0, numericCurrent - baseline) };
     });
-    return liveSum;
+}
+
+async function computeLiveMemberSum(guild, memberBaselines, statPath) {
+    const deltas = await computeMemberDeltas(guild, memberBaselines, statPath);
+    return deltas.reduce((sum, member) => sum + member.delta, 0);
 }
 
 class GuildContractFactory {
@@ -127,6 +133,19 @@ class GuildContractFactory {
 
             const won = await dynamoHandler.completeGuildContract(guild.guildId, newBankCapacity, updatedContractState);
             if (won) {
+                // Only the single winner of the completion race reaches here, so this
+                // append can't double-write — no lock needed, unlike the memberList
+                // writes elsewhere in guilds.md's concurrency section.
+                const historyEntry = {
+                    templateName: template.name,
+                    rotationDate: contractState.rotationDate,
+                    completedAt: Date.now(),
+                    reward: GuildContract.BANK_CAPACITY_REWARD
+                };
+                const existingHistory = Array.isArray(guild.contractHistory) ? guild.contractHistory : [];
+                const newHistory = [...existingHistory, historyEntry].slice(-GuildHistory.MAX_ENTRIES);
+                await dynamoHandler.updateGuildDatabase(guild.guildId, 'contractHistory', newHistory);
+
                 return { completedNow: true, template, progress, threshold: template.threshold, bankCapacityReward: GuildContract.BANK_CAPACITY_REWARD };
             }
             // Lost the race to another concurrent completion — another call already
@@ -169,6 +188,29 @@ class GuildContractFactory {
             isCompleted: Boolean(contractState.completed),
             rotationDate: contractState.rotationDate
         };
+    }
+
+    // Per-member live contribution toward the active contract, sorted highest-first, for
+    // a leaderboard in /guild-contract. Read-only, same as getProgress — never
+    // establishes a baseline or persists anything. Returns an empty breakdown (not an
+    // error) if this guild has no fresh baseline yet, mirroring getProgress's "show 0"
+    // behavior rather than computing a delta against nothing.
+    async getMemberBreakdown(guild) {
+        const activeContract = await dynamoHandler.getActiveGuildContract();
+        if (!activeContract) return null;
+
+        const template = GuildContracts.find(contract => contract.id === activeContract.templateId);
+        if (!template) return null;
+
+        const contractState = guild.guildContract;
+        const hasFreshBaseline = Boolean(contractState && contractState.rotationDate === activeContract.rotationDate);
+        if (!hasFreshBaseline) {
+            return { template, breakdown: [] };
+        }
+
+        const breakdown = await computeMemberDeltas(guild, contractState.memberBaselines, template.statPath);
+        breakdown.sort((a, b) => b.delta - a.delta);
+        return { template, breakdown };
     }
 
     // Called from leave.js/kick.js right before a member is removed from

@@ -39,7 +39,8 @@ module.exports = {
             return;
         }
 
-        const embed = embedFactory.createGuildContractEmbed(guild, progressResult);
+        const breakdownResult = await guildContractFactory.getMemberBreakdown(guild);
+        const embed = embedFactory.createGuildContractEmbed(guild, progressResult, breakdownResult?.breakdown);
         interaction.editReply({ embeds: [embed] });
     }
 }

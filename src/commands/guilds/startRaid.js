@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs } = require("../../utils/constants")
+const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -729,6 +729,7 @@ module.exports = {
         const raidRewardMultiplier = guild.raidRewardMultiplier;
         let raidList = guild.raidList;
         let raidCount = guild.raidCount;
+        const raidCountBeforeThisRaid = raidCount;
         let guildTotalEarnings = guild.totalEarnings;
         let guildBankStored = guild.bankStored;
         let guildBankCapacity = guild.bankCapacity;
@@ -832,6 +833,24 @@ module.exports = {
                 }
             }
         }
+
+        // Win/loss is derived from a fresh re-fetch of raidCount rather than threading a
+        // result object through all 14 scenario closures above — every winning closure
+        // already increments and persists raidCount, so comparing against the value read
+        // before this raid started is a reliable, much lower-risk signal than touching
+        // each closure's return contract (which guildTotalEarnings math above depends on
+        // staying a bare number).
+        const freshGuild = await dynamoHandler.findGuildById(guildId);
+        const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
+        const raidHistoryEntry = {
+            timestamp: Date.now(),
+            raidTier: raidSelection,
+            won: wonThisRaid,
+            potatoDelta: potatoesGained
+        };
+        const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
+        const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
+        await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
 
         guild.guildBuff == "raidTimer"
             ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * .10))

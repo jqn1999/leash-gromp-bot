@@ -75,6 +75,33 @@ const guildShops = [
             }
         ],
         title: "Guild Potato Storage Shop (increase bank capacity)"
+    },
+    {
+        shopId: "memberCap",
+        description: "This is where you upgrade your guild's member limit",
+        items: [
+            {
+                currentAmount: 5,
+                amount: 8,
+                cost: 5000000,
+            },
+            {
+                currentAmount: 8,
+                amount: 12,
+                cost: 20000000,
+            },
+            {
+                currentAmount: 12,
+                amount: 17,
+                cost: 60000000,
+            },
+            {
+                currentAmount: 17,
+                amount: 25,
+                cost: 150000000,
+            }
+        ],
+        title: "Guild Roster Expansion Shop (increase member cap)"
     }
 ]
 
@@ -112,6 +139,10 @@ module.exports = {
                 {
                     name: 'bank-capacity',
                     value: 'bank-capacity'
+                },
+                {
+                    name: 'member-cap',
+                    value: 'member-cap'
                 }
             ]
         }
@@ -169,6 +200,22 @@ module.exports = {
                     await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
                     await dynamoHandler.updateGuildDatabase(userGuildId, "bankCapacity", newBankCapacity);
                     interaction.editReply(`${userDisplayName} your guild bank upgrade has completed and you now have a max guild bank capacity of ${newBankCapacity.toLocaleString()}`);
+                }
+                break;
+            case 'member-cap':
+                const memberCapShop = guildShops.find((currentShop) => currentShop.shopId == 'memberCap');
+                chosenItem = getNextItemFromShop(memberCapShop, guild.memberCap);
+                if (chosenItem == -1) {
+                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
+                    return;
+                }
+                guildHasEnough = doesGuildHaveEnoughToPurchase(guildBankStored, chosenItem.cost, interaction, userDisplayName);
+                if (guildHasEnough) {
+                    guildBankStored -= chosenItem.cost;
+                    const newMemberCap = chosenItem.amount;
+                    await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
+                    await dynamoHandler.updateGuildDatabase(userGuildId, "memberCap", newMemberCap);
+                    interaction.editReply(`${userDisplayName} your guild's member cap has been upgraded to ${newMemberCap} members!`);
                 }
                 break;
         }

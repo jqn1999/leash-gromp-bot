@@ -201,13 +201,16 @@ drift into two different copies:
   raidList: [],          // members who've joined the pending raid
   raidRewardMultiplier: 1,
   guildBuff: "workMulti", // single active buff — see systems/guilds.md
+  guildVersion: 0,        // optimistic-lock counter — see systems/guilds.md#membership-commands
   guildContract: {        // this guild's progress on the active weekly Guild Contract
     templateId: null,        // see systems/guild-contracts.md
     rotationDate: null,
     memberBaselines: {},
     frozenContribution: 0,
     completed: false
-  }
+  },
+  raidHistory: [],        // most recent GuildHistory.MAX_ENTRIES raids — see systems/guilds.md#guild-history
+  contractHistory: []     // most recent GuildHistory.MAX_ENTRIES completed Guild Contracts
 }
 ```
 

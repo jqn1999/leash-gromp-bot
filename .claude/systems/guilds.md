@@ -55,10 +55,24 @@ in the condition).
 - **Withdraw**: Co-Leader/Leader only, no tax.
 
 [guildBuy.js](../../src/commands/guilds/guildBuy.js) (`guild-upgrade`): spends `guild.bankStored`
-(not personal potatoes) against a tiered `guildShops.bankCapacity` list — costs 1M→800M potatoes,
-capacity 10M→2.5B — tier lookup keyed by an exact `currentAmount` match, same pattern as the
-personal shops in [economy-and-work.md](economy-and-work.md). Restricted to Co-Leader/Leader,
-same as bank withdrawals — a regular Member can deposit into the shared bank but can't spend it.
+(not personal potatoes) against a tiered shop list — tier lookup keyed by an exact `currentAmount`
+match, same pattern as the personal shops in [economy-and-work.md](economy-and-work.md). Restricted
+to Co-Leader/Leader, same as bank withdrawals — a regular Member can deposit into the shared bank
+but can't spend it. Two shops:
+- `bank-capacity`: costs 1M→800M potatoes, capacity 10M→2.5B.
+- `member-cap`: costs 5M→150M potatoes, cap 5→25 members. Closes a real gap — `memberCap` was
+  hardcoded to `5` at guild creation with **no** upgrade path anywhere in the code, even though
+  `join-guild`'s own at-capacity error message told players to "upgrade their member cap." The
+  error message was apparently written assuming this would exist; it didn't until now.
+
+**Guild treasury interest**: `dynamoHandler.applyGuildTreasuryInterest`, on the same 5-minute
+`setInterval` tick `passivePotatoHandler` already uses in `backgroundEvents.js`. Unlike personal
+passive income (a flat amount unrelated to what's already banked), this is a real
+percentage of `bankStored` — `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (0.1%) × memberList.length`
+per day, applied fractionally per tick, never pushed past `bankCapacity`. An empty or freshly-spent
+treasury earns nothing (there has to be something banked for a bigger roster to matter), and a
+bigger roster earns faster — a deliberate reason to want the new `member-cap` upgrade beyond just
+raid headcount.
 
 ## Guild buffs
 
@@ -91,4 +105,25 @@ member activity) before touching it, rather than picking one ad hoc.
 A shared, weekly, guild-wide objective tracked in aggregate across the member roster — the same
 delta-from-baseline-snapshot pattern Quests uses, aggregated per-guild instead of per-user. See
 [systems/guild-contracts.md](guild-contracts.md) for the full design (rotation, roster-churn
-handling, exactly-once completion). Viewed via `/guild-contract`.
+handling, exactly-once completion). Viewed via `/guild-contract`, which also shows a **Top
+Contributors** leaderboard — each tracked member's live delta toward the active contract, sorted
+highest-first (`GuildContractFactory.getMemberBreakdown`, read-only, same per-member fetch
+`computeLiveMemberSum` already does for the aggregate total, just not summed away).
+
+## Guild history
+
+`/guild-history` (`type: raids | contracts`, defaults to raids) — paginated 5/page exactly like
+`/quests`. Two append-and-cap lists on the guild record, both capped at `GuildHistory.MAX_ENTRIES`
+(25, dropping the oldest), displayed most-recent-first:
+- `guild.raidHistory` — appended once per `/start-raid` resolution, in `startRaid.js` right before
+  the existing `raidTimer`/`raidList` reset. Win/loss is derived by **re-fetching the guild and
+  comparing `raidCount` against the value read before this raid started**, rather than threading a
+  result object through all 14 scenario closures in that file (regular/elite/legendary × Metal
+  King/T3/T2/T1, plus 2 stat-raid variants) — every winning closure already increments and persists
+  `raidCount` itself, so this is a reliable signal without touching that already-repetitive code.
+  Each entry: `{ timestamp, raidTier, won, potatoDelta }` — tier and outcome, not the specific mob
+  (that's already shown in the raid's own result embed; adding mob-level granularity here would mean
+  touching all 14 closures).
+- `guild.contractHistory` — appended in `guildContractFactory.js`'s `checkAndClaimContract`, only on
+  the branch that actually wins the completion race (so it can't double-append the way a naive check
+  on every caller would). Each entry: `{ templateName, rotationDate, completedAt, reward }`.

@@ -1365,6 +1365,45 @@ class EmbedFactory {
         return embed;
     }
 
+    // Paginated exactly like createQuestsPageEmbed — pageItems is already the reversed
+    // (most-recent-first), sliced-to-page-size history array from guildHistory.js.
+    createGuildHistoryPageEmbed(guildName, type, pageItems, pageIndex, totalPages, totalCount) {
+        const fields = pageItems.map(entry => {
+            const when = new Date(entry.timestamp || entry.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            if (type === 'raid') {
+                const status = entry.won ? '✅ Won' : '❌ Lost';
+                return {
+                    name: `${when} — ${entry.raidTier} raid`,
+                    value: `${status} — ${entry.potatoDelta.toLocaleString()} potatoes ${entry.won ? 'gained' : 'at stake'}`,
+                    inline: false,
+                };
+            }
+            return {
+                name: `${when} — ${entry.templateName}`,
+                value: `✅ Completed — +${entry.reward.toLocaleString()} Bank Capacity`,
+                inline: false,
+            };
+        });
+
+        if (fields.length === 0) {
+            fields.push({
+                name: 'Nothing here yet',
+                value: type === 'raid' ? 'No guild raids have been fought yet.' : 'No Guild Contracts have been completed yet.',
+                inline: false,
+            });
+        }
+
+        const title = type === 'raid' ? `${guildName}'s Raid History` : `${guildName}'s Guild Contract History`;
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(`${totalCount} total — Page ${pageIndex + 1} / ${totalPages}`)
+            .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     createQuestCompleteEmbed(userDisplayName, completedQuests, userMultiplier) {
         const fields = completedQuests.map(quest => {
             let rewardText;
@@ -1435,7 +1474,7 @@ class EmbedFactory {
     // GuildContractFactory.getProgress returned (never null here — the command replies
     // with a plain message instead of building this embed when there's no active
     // contract at all).
-    createGuildContractEmbed(guild, progressResult) {
+    createGuildContractEmbed(guild, progressResult, breakdown) {
         const { template, progress, threshold, isCompleted } = progressResult;
 
         const fields = [
@@ -1455,6 +1494,20 @@ class EmbedFactory {
                 inline: false,
             }
         ];
+
+        // Only worth showing once there's something to rank — a guild with no fresh
+        // baseline yet (nobody's worked since the contract rotated in) gets an empty
+        // breakdown, same case getProgress reports as 0 progress.
+        if (breakdown && breakdown.length > 0) {
+            const topContributors = breakdown.slice(0, 5)
+                .map((member, index) => `${index + 1}. ${member.username}: ${member.delta.toLocaleString()}`)
+                .join('\n');
+            fields.push({
+                name: "Top Contributors",
+                value: topContributors,
+                inline: false,
+            });
+        }
 
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';

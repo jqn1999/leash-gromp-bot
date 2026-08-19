@@ -188,7 +188,19 @@ const Bank = {
     TAX_BASE: 1000,
     TAX_PERCENT: .05,
     GUILD_TAX_BASE: 5000,
-    GUILD_TAX_PERCENT: .05
+    GUILD_TAX_PERCENT: .05,
+    // Guild treasury interest: a daily % of bankStored, scaled by member count — a
+    // fuller roster earns a faster-growing shared bank, tying nicely into the new
+    // memberCap upgrade. Applied fractionally on the same 5-minute tick
+    // passivePotatoHandler already uses (288x/day), never past bankCapacity.
+    GUILD_TREASURY_DAILY_RATE_PER_MEMBER: .001
+}
+
+// Shared cap for guild.raidHistory/guild.contractHistory — both are append-and-trim
+// lists (newest last), capped so a long-lived guild's history doesn't grow the guild
+// record without bound. Paginated 5/page in /guild-history, so 25 is 5 pages deep.
+const GuildHistory = {
+    MAX_ENTRIES: 25
 }
 
 const Rob = {
@@ -751,6 +763,7 @@ module.exports = {
     GuildContract,
     Bet,
     Bank,
+    GuildHistory,
     Rob,
     Give,
     GuildRoles,
