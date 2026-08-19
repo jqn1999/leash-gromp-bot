@@ -164,21 +164,13 @@ const worldBossMobs = [
         passiveReward: 1500000,
         bankCapacityReward: 15000000,
         difficulty: 2500
-    },
-    {
-        name: "Mochi, the Undying Stray",
-        thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
-        description: `Nobody in the Kingdom quite remembers whose cat Mochi used to be. What they do know is that the old graveyard behind the potato patch fields has been dug up, and a small, stitched-together, faintly glowing stray has been padding through the crops ever since — leaving trails of wilted vines and confused, half-rotten sprouts in its wake. It doesn't seem to mean any harm. It just wants headpats, and it does not understand that its claws are undead and enormous. The fields need tending before the "affection" spreads any further.\n\nJoin this world raid with /join-world-raid!`,
-        successDescription: `The potato adventurers manage to corner Mochi with a trail of treats instead of a fight, and the little zombie cat flops over contentedly, purring static and glowing embers, before wandering back to its graveyard for a nap. The fields are safe, and somehow everyone leaves a little fonder of the Kingdom's new undead mascot.`,
-        failureDescription: `Mochi headbutts the lead adventurer so hard it knocks them clean off their feet, and in the resulting chaos its glowing fur sheds sparks across half the field, wilting an entire season's crop. The stray saunters off unbothered, tail held high, leaving the Kingdom's farmers to clean up the mess.`,
-        potatoReward: 90000000,
-        potatoPenalty: 0,
-        workMultiReward: 1,
-        passiveReward: 450000,
-        bankCapacityReward: 4500000,
-        difficulty: 1500
     }
 ]
+// Mochi, the Undying Stray previously lived here as a world boss (difficulty 1500,
+// between Brassica and Griseous/Raikon) — moved to roadmap.md's planned companion system
+// instead, as a top-tier companion rather than a raid target. Its established flavor
+// (zombie cat, graveyard, headpats) fit a "joins you" companion far better than a "fight
+// it" world boss, and the character carries over rather than being retired outright.
 
 module.exports = {
     worldFactory,

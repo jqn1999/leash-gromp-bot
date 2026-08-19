@@ -255,8 +255,16 @@ and needs its own balance pass.
   | Barn Owl | Rare | +10% personal `/rob` success chance (stacks with the guild `robChance` buff) |
   | Mole | Rare | +10% Starch max capacity |
   | Firefly | Rare | +5% guild raid success chance while active |
-  | Golden Sprout | Legendary | +5% Work Multiplier and +5% Passive Income |
+  | Mochi, the Undying Stray | Legendary | +5% Work Multiplier and +5% Passive Income |
   | Spudsprite | Legendary | -15% `/work` cooldown |
+
+  Mochi was moved here from the world boss roster (previously in `worldFactory.js`, difficulty
+  1500) rather than being a new character — its established flavor (a small zombie cat that just
+  wants headpats and doesn't understand its claws are undead) fits "joins you as a companion" far
+  better than "fight it as a raid target," and reusing it means the character carries over instead
+  of just being deleted. Its perk/rarity above are a first pass, not settled — reasonable to swap
+  for something more distinctly on-theme (e.g. a Bank Capacity lean, playing on "loyal to the
+  hoard") once this actually gets scoped.
 
   Percentage-of-current-stat perks deliberately, not flat additions — avoids the exact compounding
   risk flagged in the weekly-quest-reward design earlier (see systems/quests.md): a flat bonus sized
