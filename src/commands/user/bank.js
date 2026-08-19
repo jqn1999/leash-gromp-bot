@@ -3,6 +3,7 @@ const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
+const rebirthFactory = require("../../utils/rebirthFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -63,9 +64,11 @@ module.exports = {
         };
         let userPotatoes = userDetails.potatoes;
         let userBankStored = userDetails.bankStored;
-        // Rootcarver — computed fresh here, never folded into the stored bankCapacity.
+        // Rootcarver and the live rebirth bonus — computed fresh here, never folded
+        // into the stored bankCapacity.
         const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
-        let userBankCapacity = Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent));
+        const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+        let userBankCapacity = Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
 
         let remainingBankSpace = userBankCapacity - userBankStored;
         const bankHasCapacity = remainingBankSpace > 0;

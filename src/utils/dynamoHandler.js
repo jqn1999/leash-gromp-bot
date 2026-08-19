@@ -1,5 +1,6 @@
 const { awsConfigurations, Work, CatchUp, Bank } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
+const rebirthFactory = require("../utils/rebirthFactory");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
 
@@ -446,11 +447,12 @@ const passivePotatoHandler = async function (timesInADay) {
     const activeTotalEarnings = [];
 
     await Promise.all(allUsers.map(async user => {
-        // Ladybug (+5%) / Mochi (+8%) — computed fresh here, never folded into
-        // passiveAmount itself, same "one active modifier at the usage site" pattern
-        // the guild buff system and every other companion perk already follow.
+        // Ladybug (+5%) / Mochi (+8%) and the live rebirth bonus — computed fresh here,
+        // never folded into passiveAmount itself, same "one active modifier at the usage
+        // site" pattern the guild buff system and every other companion perk follow.
         const passiveIncomePercent = companionFactory.getActivePerkValue(user, "passiveIncomePercent");
-        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent) / timesInADay);
+        const rebirthPercent = rebirthFactory.getLiveRebirthPercent(user);
+        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent) / timesInADay);
         const userBankStored = toNumber(user.bankStored) + passiveGain;
         const userTotalEarnings = toNumber(user.totalEarnings) + passiveGain;
         await updateBankStoredPotatoesAndTotalEarnings(user.userId, userBankStored, userTotalEarnings);

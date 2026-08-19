@@ -180,20 +180,25 @@ convention (Idle Miner: "lose all your progress but retain boosters, crates, pet
 These aren't part of the shop/regrade grind being reset, they're separately-earned permanent bonuses
 and lifetime milestones.
 
-**Reward**: a percentage of your current total (`userDetails[stat]` at rebirth time — base(maxed) +
-regrade(maxed) + existing `sweetPotatoBuffs`) folded permanently into `sweetPotatoBuffs`, the same
-convention every other permanent-stat source uses. The percentage itself escalates with each
-rebirth — `Rebirth.BASE_BONUS_PERCENT` (5%) on rebirth #1, `+ Rebirth.BONUS_PERCENT_STEP` (9.5%) per
-rebirth after that, held at `Rebirth.MAX_BONUS_PERCENT` (100%) once reached at rebirth #11 —
-computed by
-`rebirthFactory.getRebirthBonusPercent(rebirthNumber)`. Because the bonus is a % of a total that
-itself keeps growing (`sweetPotatoBuffs` accumulates every rebirth) AND the % keeps climbing, the
-absolute gain grows for two compounding reasons rather than repeating the same flat number —
-`previewRebirthBonus(userDetails)` computes this without committing, shared by the `/rebirth`
-confirmation embed and `computeRebirthState` itself so the two can never drift apart.
-`rebirthCount` tracks how many times, and unlocks two achievements
-(`first_rebirth`/`serial_rebirther`) checked right after the reset commits, same as any other
-action-triggered unlock.
+**Reward**: a LIVE percentage bonus, not a one-time snapshot folded into `sweetPotatoBuffs`.
+`rebirthFactory.getRebirthBonusPercent(rebirthCount)` maps your current rebirth count to a
+percentage — `Rebirth.BASE_BONUS_PERCENT` (5%) at count 1, `+ Rebirth.BONUS_PERCENT_STEP` (9.5%)
+per count after that, held at `Rebirth.MAX_BONUS_PERCENT` (100%) once reached at count 11. Only
+your *current* rebirth count's percentage applies — it's a lookup, not a running sum across every
+rebirth you've ever done. `rebirthFactory.getLiveRebirthPercent(userDetails)` is the actual value
+every consuming file reads, computed fresh at each usage site (work gain in `workFactory.js`,
+the passive tick in `dynamoHandler.passivePotatoHandler`, bank capacity in `bank.js`) exactly the
+same "one active modifier, never folded into the stored stat" shape `getGuildWorkMulti` and every
+companion perk already use. `computeRebirthState` no longer writes anything into `sweetPotatoBuffs`
+for rebirth at all — a rebirth's only lasting effect is `rebirthCount` going up, which raises the
+live percentage applied to whatever `workMultiplierAmount`/`passiveAmount`/`bankCapacity` happen to
+grow to afterward, forever, until the next rebirth raises it again. Mochi's `rebirthBonusPercent`
+companion perk (see [companions.md](companions.md)) multiplies this live percentage by +20%
+whenever it's equipped, recomputed fresh the same way — there's no longer a single "moment of
+rebirth" for it to amplify. `previewRebirthBonus(userDetails)` shows what a rebirth would change the
+live percentage to (current → next), used by the `/rebirth` confirmation embed.
+`rebirthCount` also unlocks two achievements (`first_rebirth`/`serial_rebirther`) checked right
+after the reset commits, same as any other action-triggered unlock.
 
 ## Bank
 

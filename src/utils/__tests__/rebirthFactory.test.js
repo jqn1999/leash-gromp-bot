@@ -1,4 +1,4 @@
-const { checkRebirthEligibility, getRebirthBonusPercent, previewRebirthBonus, computeRebirthState } = require('../rebirthFactory');
+const { checkRebirthEligibility, getRebirthBonusPercent, getLiveRebirthPercent, previewRebirthBonus, computeRebirthState } = require('../rebirthFactory');
 const { Rebirth } = require('../constants');
 
 function maxedUser(overrides = {}) {
@@ -78,11 +78,16 @@ describe('checkRebirthEligibility', () => {
 });
 
 describe('getRebirthBonusPercent', () => {
-    test('rebirth #1 is the base percent', () => {
+    test('0 rebirths (never rebirthed) is 0%', () => {
+        expect(getRebirthBonusPercent(0)).toBe(0);
+        expect(getRebirthBonusPercent(undefined)).toBe(0);
+    });
+
+    test('rebirth count 1 is the base percent', () => {
         expect(getRebirthBonusPercent(1)).toBe(Rebirth.BASE_BONUS_PERCENT);
     });
 
-    test('each rebirth after the first adds one step', () => {
+    test('each rebirth count after 1 adds one step', () => {
         expect(getRebirthBonusPercent(2)).toBeCloseTo(Rebirth.BASE_BONUS_PERCENT + Rebirth.BONUS_PERCENT_STEP);
         expect(getRebirthBonusPercent(5)).toBeCloseTo(Rebirth.BASE_BONUS_PERCENT + 4 * Rebirth.BONUS_PERCENT_STEP);
     });
@@ -92,44 +97,54 @@ describe('getRebirthBonusPercent', () => {
         expect(getRebirthBonusPercent(rebirthAtCap)).toBeCloseTo(Rebirth.MAX_BONUS_PERCENT);
         expect(getRebirthBonusPercent(rebirthAtCap + 10)).toBeCloseTo(Rebirth.MAX_BONUS_PERCENT);
     });
+
+    test('does not stack across multiple rebirths — it is a lookup on the current count, not a running sum', () => {
+        // rebirth count 3's own percent, NOT percent(1) + percent(2) + percent(3).
+        const sumOfAll = getRebirthBonusPercent(1) + getRebirthBonusPercent(2) + getRebirthBonusPercent(3);
+        expect(getRebirthBonusPercent(3)).not.toBeCloseTo(sumOfAll);
+        expect(getRebirthBonusPercent(3)).toBeCloseTo(0.24);
+    });
+});
+
+describe('getLiveRebirthPercent', () => {
+    test('0 for a user who has never rebirthed', () => {
+        expect(getLiveRebirthPercent(maxedUser({ rebirthCount: 0 }))).toBe(0);
+    });
+
+    test('matches getRebirthBonusPercent for the user\'s current rebirthCount when no companion is active', () => {
+        const user = maxedUser({ rebirthCount: 3 });
+        expect(getLiveRebirthPercent(user)).toBeCloseTo(getRebirthBonusPercent(3));
+    });
+
+    test('an unequipped user (no companions field) does not throw', () => {
+        const user = maxedUser({ rebirthCount: 2 });
+        delete user.companions;
+        expect(() => getLiveRebirthPercent(user)).not.toThrow();
+        expect(getLiveRebirthPercent(user)).toBeCloseTo(getRebirthBonusPercent(2));
+    });
+
+    test('Mochi active amplifies the live percent by +20%, recomputed fresh (not tied to a "moment of rebirth")', () => {
+        const user = maxedUser({
+            rebirthCount: 1,
+            companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 }
+        });
+        expect(getLiveRebirthPercent(user)).toBeCloseTo(0.05 * 1.20);
+    });
 });
 
 describe('previewRebirthBonus', () => {
-    test('rebirth #1 grants 5% of the current total on each track (605 / 660,010,000 / 104,000,100,000)', () => {
-        const preview = previewRebirthBonus(maxedUser());
+    test('a fresh account previews current 0% going to 5% at rebirth #1', () => {
+        const preview = previewRebirthBonus(maxedUser({ rebirthCount: 0 }));
         expect(preview.rebirthNumber).toBe(1);
-        expect(preview.effectivePercent).toBeCloseTo(0.05);
-        expect(preview.workMultiplierGain).toBeCloseTo(30.25);
-        expect(preview.passiveGain).toBe(33000500);
-        expect(preview.bankCapacityGain).toBe(5200005000);
+        expect(preview.currentPercent).toBe(0);
+        expect(preview.nextPercent).toBeCloseTo(0.05);
     });
 
-    test('a later rebirth applies a bigger percent to a bigger total than rebirth #1', () => {
-        const first = previewRebirthBonus(maxedUser({ rebirthCount: 0 }));
-        const fifth = previewRebirthBonus(maxedUser({
-            rebirthCount: 4,
-            sweetPotatoBuffs: { workMultiplierAmount: 500, passiveAmount: 500000000, bankCapacity: 50000000000 }
-        }));
-        expect(fifth.basePercent).toBeGreaterThan(first.basePercent);
-        expect(fifth.workMultiplierGain).toBeGreaterThan(first.workMultiplierGain);
-    });
-
-    test('an unequipped user (no companions field) gets the plain percent, no throw', () => {
-        const user = maxedUser();
-        delete user.companions;
-        expect(() => previewRebirthBonus(user)).not.toThrow();
-        expect(previewRebirthBonus(user).effectivePercent).toBeCloseTo(0.05);
-    });
-
-    test('Mochi active amplifies this rebirth\'s percent by +20%', () => {
-        const user = maxedUser({
-            companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 }
-        });
-        const preview = previewRebirthBonus(user);
-        expect(preview.effectivePercent).toBeCloseTo(0.06);
-        expect(preview.workMultiplierGain).toBeCloseTo(36.3);
-        expect(preview.passiveGain).toBe(39600600);
-        expect(preview.bankCapacityGain).toBe(6240006000);
+    test('a returning rebirther previews their current live percent going up to the next step', () => {
+        const preview = previewRebirthBonus(maxedUser({ rebirthCount: 1 }));
+        expect(preview.rebirthNumber).toBe(2);
+        expect(preview.currentPercent).toBeCloseTo(0.05);
+        expect(preview.nextPercent).toBeCloseTo(0.145);
     });
 });
 
@@ -145,34 +160,20 @@ describe('computeRebirthState', () => {
         });
     });
 
-    test('resets each grindable stat to its base default plus the (bonus-augmented) sweetPotatoBuffs — not to zero, and not left at its pre-rebirth value', () => {
+    test('resets each grindable stat to its base default plus sweetPotatoBuffs UNCHANGED — no rebirth bonus baked in anymore', () => {
         const user = maxedUser();
         const result = computeRebirthState(user);
 
-        // base default 1 (work) / 0 (passive) / 0 (bank), plus old buff plus this
-        // rebirth's percent-of-current-total gain — never the old maxed total, never zero.
-        expect(result.workMultiplierAmount).toBeCloseTo(1 + 5 + 30.25);
-        expect(result.passiveAmount).toBe(0 + 10000 + 33000500);
-        expect(result.bankCapacity).toBe(0 + 100000 + 5200005000);
+        expect(result.workMultiplierAmount).toBe(1 + 5);
+        expect(result.passiveAmount).toBe(0 + 10000);
+        expect(result.bankCapacity).toBe(0 + 100000);
         expect(result.maxStarches).toBe(25000);
     });
 
-    test('sweetPotatoBuffs carries forward and gains the percent-of-current-total bonus, rather than resetting', () => {
+    test('sweetPotatoBuffs carries forward exactly as-is — rebirth no longer writes into it', () => {
         const user = maxedUser();
         const result = computeRebirthState(user);
-        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(5 + 30.25);
-        expect(result.sweetPotatoBuffs.passiveAmount).toBe(10000 + 33000500);
-        expect(result.sweetPotatoBuffs.bankCapacity).toBe(100000 + 5200005000);
-    });
-
-    test('agrees exactly with previewRebirthBonus\'s prediction for the same input', () => {
-        const user = maxedUser({ rebirthCount: 3 });
-        const preview = previewRebirthBonus(user);
-        const result = computeRebirthState(user);
-        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(user.sweetPotatoBuffs.workMultiplierAmount + preview.workMultiplierGain);
-        expect(result.sweetPotatoBuffs.passiveAmount).toBe(user.sweetPotatoBuffs.passiveAmount + preview.passiveGain);
-        expect(result.sweetPotatoBuffs.bankCapacity).toBe(user.sweetPotatoBuffs.bankCapacity + preview.bankCapacityGain);
-        expect(result.rebirthCount).toBe(preview.rebirthNumber);
+        expect(result.sweetPotatoBuffs).toEqual(user.sweetPotatoBuffs);
     });
 
     test('increments rebirthCount from whatever it already was, defaulting a missing/undefined count to 0 first', () => {
@@ -180,35 +181,11 @@ describe('computeRebirthState', () => {
         expect(computeRebirthState(maxedUser({ rebirthCount: undefined })).rebirthCount).toBe(1);
     });
 
-    test('two consecutive rebirths grow both the percent AND the absolute gain — not a repeat of the same value', () => {
-        const afterFirst = computeRebirthState(maxedUser());
-        const secondInput = maxedUser({
-            sweetPotatoBuffs: afterFirst.sweetPotatoBuffs,
-            rebirthCount: afterFirst.rebirthCount,
-        });
-        const secondPreview = previewRebirthBonus(secondInput);
-        const afterSecond = computeRebirthState(secondInput);
-
-        expect(secondPreview.effectivePercent).toBeCloseTo(0.145); // rebirth #2
-        expect(afterSecond.sweetPotatoBuffs.workMultiplierAmount).toBeGreaterThan(afterFirst.sweetPotatoBuffs.workMultiplierAmount);
-        expect(afterSecond.sweetPotatoBuffs.workMultiplierAmount - afterFirst.sweetPotatoBuffs.workMultiplierAmount)
-            .not.toBeCloseTo(afterFirst.sweetPotatoBuffs.workMultiplierAmount - 5); // second gain != first gain
-        expect(afterSecond.rebirthCount).toBe(2);
-    });
-
-    test('Mochi active at rebirth amplifies the computed bonus by +20%', () => {
-        const user = maxedUser({
-            companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 }
-        });
-        const result = computeRebirthState(user);
-        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(5 + 36.3);
-        expect(result.sweetPotatoBuffs.passiveAmount).toBe(10000 + 39600600);
-        expect(result.sweetPotatoBuffs.bankCapacity).toBe(100000 + 6240006000);
-    });
-
-    test('no companion equipped applies the plain, unamplified bonus', () => {
-        const user = maxedUser({ companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 } });
-        const result = computeRebirthState(user);
-        expect(result.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(5 + 30.25);
+    test('the reward is purely rebirthCount going up — the live percentage for the new count is bigger than the old one', () => {
+        const before = maxedUser({ rebirthCount: 1 });
+        const after = computeRebirthState(before);
+        expect(getLiveRebirthPercent(before)).toBeCloseTo(getRebirthBonusPercent(1));
+        expect(getLiveRebirthPercent({ ...before, rebirthCount: after.rebirthCount })).toBeCloseTo(getRebirthBonusPercent(2));
+        expect(getRebirthBonusPercent(2)).toBeGreaterThan(getRebirthBonusPercent(1));
     });
 });

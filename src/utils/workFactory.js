@@ -2,6 +2,7 @@ const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
 const { Work, awsConfigurations, CompanionDuplicateReward } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
+const rebirthFactory = require("../utils/rebirthFactory");
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -15,7 +16,8 @@ class WorkFactory {
         let rawBankRewardAmount, actualBankRewardAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -132,7 +134,8 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
         const maxGain = CompanionDuplicateReward[companion.rarity];
         const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
@@ -157,7 +160,8 @@ class WorkFactory {
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -184,8 +188,9 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
 
-        let potatoesLost = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier + companionMultiplier);
+        let potatoesLost = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier);
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost
@@ -212,7 +217,8 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -240,7 +246,8 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -268,7 +275,8 @@ class WorkFactory {
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained

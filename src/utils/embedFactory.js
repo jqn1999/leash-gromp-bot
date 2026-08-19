@@ -3,6 +3,7 @@ const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, Gu
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
+const rebirthFactory = require("../utils/rebirthFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const eventFactory = new EventFactory();
@@ -91,26 +92,43 @@ class EmbedFactory {
                 value: `${userDetails.starches.toLocaleString()} starches`,
                 inline: false,
             });
-            let workMultiLabel = ``;
+            // Every live modifier (guild buff, companion perk, rebirth's live %) gets
+            // folded into these three display lines the same way — otherwise the number
+            // shown would understate what /work, the passive tick, and /bank actually use.
+            const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+
             const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
-            if (additionalWorkMulti) {
-                workMultiLabel += `${(userDetails.workMultiplierAmount + additionalWorkMulti).toFixed(2)}x (+${(additionalWorkMulti).toFixed(2)}x)`
-            } else {
-                workMultiLabel += `${(userDetails.workMultiplierAmount).toFixed(2)}x`
-            }
+            const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
+            const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
+            const totalWorkBonus = additionalWorkMulti + companionWorkMulti + rebirthWorkMulti;
+            const workMultiLabel = totalWorkBonus > 0
+                ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (+${totalWorkBonus.toFixed(2)}x)`
+                : `${(userDetails.workMultiplierAmount).toFixed(2)}x`;
             fields.push({
                 name: "Current Work Multiplier:",
                 value: workMultiLabel,
                 inline: false,
             });
+
+            const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent;
+            const passiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
+            const passiveLabel = passiveBonus > 0
+                ? `${(userDetails.passiveAmount + passiveBonus).toLocaleString()} potatoes per day (+${passiveBonus.toLocaleString()})`
+                : `${userDetails.passiveAmount.toLocaleString()} potatoes per day`;
             fields.push({
                 name: "Current Passive Income:",
-                value: `${userDetails.passiveAmount.toLocaleString()} potatoes per day`,
+                value: passiveLabel,
                 inline: false,
             });
+
+            const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
+            const bankBonus = Math.round(userDetails.bankCapacity * totalBankPercent);
+            const bankLabel = bankBonus > 0
+                ? `${(userDetails.bankCapacity + bankBonus).toLocaleString()} potatoes (+${bankBonus.toLocaleString()})`
+                : `${userDetails.bankCapacity.toLocaleString()} potatoes`;
             fields.push({
                 name: "Current Bank Capacity:",
-                value: `${userDetails.bankCapacity.toLocaleString()} potatoes`,
+                value: bankLabel,
                 inline: false,
             });
             fields.push({
@@ -1128,10 +1146,11 @@ class EmbedFactory {
     }
 
     // preview: previewRebirthBonus(userDetails)'s output — computed by the caller so the
-    // exact same numbers this embed shows are what computeRebirthState will actually grant.
+    // exact same numbers this embed shows are what committing will actually change.
     createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, preview) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const percentText = `${(preview.effectivePercent * 100).toFixed(1)}%`;
+        const currentText = `${(preview.currentPercent * 100).toFixed(1)}%`;
+        const nextText = `${(preview.nextPercent * 100).toFixed(1)}%`;
         const fields = [
             {
                 name: `Resets to zero:`,
@@ -1144,8 +1163,8 @@ class EmbedFactory {
                 inline: false,
             },
             {
-                name: `Permanent gain (${percentText} of your current totals):`,
-                value: `+${preview.workMultiplierGain.toFixed(2)}x Work Multiplier, +${preview.passiveGain.toLocaleString()} Passive Income, +${preview.bankCapacityGain.toLocaleString()} Bank Capacity — folded into your permanent buffs, stacks with every future rebirth. The % itself grows with each rebirth you complete.`,
+                name: `Permanent gain:`,
+                value: `Your live rebirth bonus goes from ${currentText} to ${nextText} of your current Work Multiplier / Passive Income / Bank Capacity, always — this isn't a one-time amount, it keeps applying to whatever those stats grow to afterward, forever, until your next rebirth raises it again.`,
                 inline: false,
             },
             {
@@ -1178,34 +1197,47 @@ class EmbedFactory {
         return embed;
     }
 
-    createRebirthCompleteEmbed(userDisplayName, userId, userAvatar, newState) {
+    // userDetails: the merged post-rebirth record (needs both rebirthCount and
+    // companions to compute the live bonus) — shows the true effective stat, not just
+    // the raw base+sweetPotatoBuffs computeRebirthState wrote, since the rebirth bonus
+    // no longer gets baked into those fields at all.
+    createRebirthCompleteEmbed(userDisplayName, userId, userAvatar, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
+        const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveWorkMulti = userDetails.workMultiplierAmount * (1 + rebirthPercent);
+        const effectivePassive = Math.round(userDetails.passiveAmount * (1 + rebirthPercent));
+        const effectiveBank = Math.round(userDetails.bankCapacity * (1 + rebirthPercent));
         const fields = [
             {
                 name: `Rebirth #:`,
-                value: `${newState.rebirthCount}`,
+                value: `${userDetails.rebirthCount}`,
+                inline: true,
+            },
+            {
+                name: `Live rebirth bonus:`,
+                value: `+${(rebirthPercent * 100).toFixed(1)}%`,
                 inline: true,
             },
             {
                 name: `New Work Multiplier:`,
-                value: `${newState.workMultiplierAmount.toFixed(2)}x`,
+                value: `${effectiveWorkMulti.toFixed(2)}x`,
                 inline: true,
             },
             {
                 name: `New Passive Income:`,
-                value: `${newState.passiveAmount.toLocaleString()} potatoes/day`,
+                value: `${effectivePassive.toLocaleString()} potatoes/day`,
                 inline: true,
             },
             {
                 name: `New Bank Capacity:`,
-                value: `${newState.bankCapacity.toLocaleString()} potatoes`,
+                value: `${effectiveBank.toLocaleString()} potatoes`,
                 inline: true,
             },
         ];
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} has been reborn!`)
-            .setDescription(`Potatoes, bank, shops, and regrades are back to zero — but your permanent buffs, achievements, records, and starches came with you, plus this rebirth's boost.`)
+            .setDescription(`Potatoes, bank, shops, and regrades are back to zero — but your permanent buffs, achievements, records, and starches came with you, plus a bigger live rebirth bonus applying to everything you rebuild from here.`)
             .setColor("Purple")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })

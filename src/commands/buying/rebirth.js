@@ -76,10 +76,13 @@ module.exports = {
         const newState = computeRebirthState(freshUserDetails);
         await dynamoHandler.updateUserFields(userId, newState);
 
-        const completeEmbed = embedFactory.createRebirthCompleteEmbed(userDisplayName, userId, userAvatar, newState);
-        interaction.followUp({ embeds: [completeEmbed] });
-
+        // Passed as the merged object (not bare newState) so the complete embed can read
+        // rebirthCount + companions together — the live rebirth bonus and any companion
+        // perk both need to be folded in to show the true effective stat, not just the
+        // raw base+sweetPotatoBuffs newState carries.
         const updatedUserDetails = { ...freshUserDetails, ...newState };
+        const completeEmbed = embedFactory.createRebirthCompleteEmbed(userDisplayName, userId, userAvatar, updatedUserDetails);
+        interaction.followUp({ embeds: [completeEmbed] });
         const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
         if (newlyUnlocked.length > 0) {
             const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);

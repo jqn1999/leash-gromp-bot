@@ -108,6 +108,22 @@ describe('getGuildWorkMulti (via handleRegularWork)', () => {
     });
 });
 
+describe('live rebirth bonus (via handleRegularWork)', () => {
+    test('a higher rebirthCount increases the gain for an otherwise identical user', async () => {
+        const neverRebirthed = baseUser({ userId: 'a', workMultiplierAmount: 10, rebirthCount: 0 });
+        const rebirthed = baseUser({ userId: 'b', workMultiplierAmount: 10, rebirthCount: 1 });
+        const plainGain = await workFactory.handleRegularWork(neverRebirthed, 1000, 1, 0);
+        const boostedGain = await workFactory.handleRegularWork(rebirthed, 1000, 1, 0);
+        expect(boostedGain).toBeGreaterThan(plainGain);
+    });
+
+    test('an unequipped user with no companions field does not throw', async () => {
+        const userDetails = baseUser({ workMultiplierAmount: 10, rebirthCount: 2 });
+        delete userDetails.companions;
+        await expect(workFactory.handleRegularWork(userDetails, 1000, 1, 0)).resolves.not.toThrow();
+    });
+});
+
 describe('handleTaroTrader', () => {
     test('grants starches, not potatoes', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 2 });
