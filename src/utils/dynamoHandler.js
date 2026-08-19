@@ -1,4 +1,5 @@
 const { awsConfigurations, Work, CatchUp, Bank } = require("../utils/constants.js");
+const companionFactory = require("../utils/companionFactory");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
 
@@ -200,8 +201,10 @@ const updateIfNewRecord = async function (userId, fieldName, newValue) {
         });
 }
 
-// Computes the work-timer expiry (including the guild workTimer-buff discount) without
-// writing it, so callers can fold the result into a combined updateUserFields call.
+// Computes the work-timer expiry (including the guild workTimer-buff discount and any
+// active companion's workCooldownPercent perk — Fieldmouse/Spudsprite, stacks with the
+// guild buff same as every other companion perk stacks with its guild counterpart)
+// without writing it, so callers can fold the result into a combined updateUserFields call.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     let time = cooldownTime == Work.POISON_POTATO_TIMER_INCREASE_SECONDS ? Date.now() + cooldownTime * 1000 : Date.now() + Work.WORK_TIMER_SECONDS * 1000
 
@@ -215,6 +218,12 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
             }
         }
     }
+
+    const companionCooldownPercent = companionFactory.getActivePerkValue(userDetails, "workCooldownPercent");
+    if (companionCooldownPercent > 0) {
+        time -= cooldownTime * 1000 * companionCooldownPercent;
+    }
+
     return time;
 }
 
@@ -437,7 +446,11 @@ const passivePotatoHandler = async function (timesInADay) {
     const activeTotalEarnings = [];
 
     await Promise.all(allUsers.map(async user => {
-        const passiveGain = Math.round(toNumber(user.passiveAmount) / timesInADay);
+        // Ladybug (+5%) / Mochi (+8%) — computed fresh here, never folded into
+        // passiveAmount itself, same "one active modifier at the usage site" pattern
+        // the guild buff system and every other companion perk already follow.
+        const passiveIncomePercent = companionFactory.getActivePerkValue(user, "passiveIncomePercent");
+        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent) / timesInADay);
         const userBankStored = toNumber(user.bankStored) + passiveGain;
         const userTotalEarnings = toNumber(user.totalEarnings) + passiveGain;
         await updateBankStoredPotatoesAndTotalEarnings(user.userId, userBankStored, userTotalEarnings);

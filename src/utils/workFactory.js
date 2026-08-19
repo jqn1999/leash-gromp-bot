@@ -14,7 +14,8 @@ class WorkFactory {
         let rawPassiveRewardAmount, actualPassiveRewardAmount;
         let rawBankRewardAmount, actualBankRewardAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -130,7 +131,8 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
 
         const maxGain = CompanionDuplicateReward[companion.rarity];
         const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
@@ -154,7 +156,8 @@ class WorkFactory {
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -180,8 +183,9 @@ class WorkFactory {
         let userTotalLosses = userDetails.totalLosses;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
 
-        let potatoesLost = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier);
+        let potatoesLost = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier + companionMultiplier);
         potatoesLost *= -1
         userPotatoes += potatoesLost
         userTotalLosses += potatoesLost
@@ -207,7 +211,8 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -234,7 +239,8 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -261,7 +267,8 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
         userPotatoes += potatoesGained
@@ -318,6 +325,12 @@ async function getGuildWorkMulti(userDetails, userMultiplier) {
         }
     }
     return 0
+}
+
+// Sprout's perk — same "percentage of current userMultiplier, added alongside the
+// guild buff" shape as getGuildWorkMulti, stacking with it rather than replacing it.
+function getCompanionWorkMulti(userDetails, userMultiplier) {
+    return userMultiplier * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
 }
 
 const metalPotatoRewards = {

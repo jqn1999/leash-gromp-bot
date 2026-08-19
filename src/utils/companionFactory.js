@@ -30,12 +30,17 @@ function getCompanionById(id) {
     return Companions.find(c => c.id === id) || null;
 }
 
+// Guards against userDetails.companions being absent — every real account gets it
+// backfilled by findUser's self-healing pattern, but plenty of call sites (unit test
+// fixtures, code paths that build a userDetails object by hand) don't carry it, and
+// "no companions field" should behave exactly like "no companion active" rather than
+// throwing.
 function ownsCompanion(userDetails, companionId) {
-    return userDetails.companions.owned.some(c => c.id === companionId);
+    return (userDetails.companions?.owned ?? []).some(c => c.id === companionId);
 }
 
 function getActiveCompanion(userDetails) {
-    const activeId = userDetails.companions.active;
+    const activeId = userDetails.companions?.active;
     if (!activeId) {
         return null;
     }
