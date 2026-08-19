@@ -874,6 +874,38 @@ const updateGuildFieldsWithLock = async function (guildId, expectedVersion, setA
     }
 }
 
+// Same optimistic-concurrency shape as updateGuildFieldsWithLock, for stats-table docs
+// that get read-modify-written by more than one command at once — the companion market's
+// shared `listings` array (list/buy/cancel could all race on the same doc) is the first
+// user of this. Conditions the write on a `version` field the caller read, so a
+// concurrent write loses instead of silently clobbering; attribute_not_exists covers a
+// doc created before this field existed, healing it to version 0 on its first guarded write.
+const updateStatFieldsWithLock = async function (trackingId, expectedVersion, setAttributes) {
+    const version = expectedVersion || 0;
+    const { expression, names, values } = buildUpdateExpression({ ...setAttributes, version: version + 1 });
+
+    const params = {
+        TableName: awsConfigurations.aws_stats_table_name,
+        Key: {
+            trackingId: trackingId,
+        },
+        UpdateExpression: expression,
+        ConditionExpression: "attribute_not_exists(version) OR version = :expectedVersion",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: { ...values, ":expectedVersion": version },
+    };
+
+    try {
+        await docClient.update(params).promise();
+        return true;
+    } catch (err) {
+        if (err.code !== 'ConditionalCheckFailedException') {
+            console.debug(`updateStatFieldsWithLock error: ${JSON.stringify(err)}`);
+        }
+        return false;
+    }
+}
+
 const getGuilds = async function () {
     const params = {
         TableName: awsConfigurations.aws_guilds_table_name
@@ -1272,6 +1304,7 @@ module.exports = {
 
     updateStatDatabase,
     updateStatFields,
+    updateStatFieldsWithLock,
     getStatDatabase,
 
     updateGuildDatabase,
