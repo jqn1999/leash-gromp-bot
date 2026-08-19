@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth, CompanionRarity } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth, CompanionRarity, Companions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
@@ -939,6 +939,28 @@ class EmbedFactory {
             .setColor(COMPANION_RARITY_COLOR[companion.rarity])
             .setThumbnail(companion.thumbnailUrl)
             .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // pageItems: full companion objects (owned ids already resolved to roster entries)
+    // for this page. Paginated exactly like createAchievementsPageEmbed/createQuestsPageEmbed.
+    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned) {
+        const fields = pageItems.length > 0 ? pageItems.map(companion => {
+            const status = companion.id === activeId ? '✅ Active' : companion.id;
+            return {
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]})`,
+                value: `${formatCompanionPerks(companion)}\n${status}`,
+                inline: false,
+            };
+        }) : [{ name: 'No companions yet', value: 'Keep working — Wandering Companion encounters can happen on any /work!', inline: false }];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Companions`)
+            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}\n\nUse \`/companion equip\` to change your active companion.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;
