@@ -230,21 +230,31 @@ and needs its own balance pass.
   Touches: one new command, wager/house-edge logic mirroring `coinflip.js`'s existing pattern, a new
   embed for the round-by-round reveal.
 
-- [ ] **10. Companions** — M/L
+- [ ] **10. Companions** — L (grew from M/L once trading was added — see below)
   What: a second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck
   rather than pure grinding — same encounter-roll shape Sweet/Golden/Metal Potato already use. A new
   `/work` scenario ("Wandering Companion," ~1.5% chance, between Sweet Potato and Taro Trader in the
-  roll table) grants a random companion on a rarity roll (Common 70% / Rare 25% / Legendary 5%). One
-  **active** companion slot at a time — `/companion equip <id>` switches between owned ones — rather
-  than every owned companion stacking simultaneously, so which one to run is an actual choice, not
-  just another number that goes up. Duplicate pulls (already own that companion) grant a modest
-  consolation potato payout instead of nothing.
+  roll table) grants a random companion on a rarity roll. One **active** companion slot at a time —
+  `/companion equip <id>` switches between owned ones — rather than every owned companion stacking
+  simultaneously, so which one to run is an actual choice, not just another number that goes up.
+  Duplicate pulls (already own that companion) grant a modest consolation potato payout instead of
+  nothing.
   Why a single active slot, not a stack: `sweetPotatoBuffs` already owns "permanent stat that
   compounds forever" — a companion that just added another flat bonus to the same three stats would
   be a redundant reskin of a system that already exists. Making companions a *choice* (which one is
   active) instead of another additive stack gives them their own identity, and keeps the total power
-  ceiling from silently doubling every existing progression track's cap.
-  Starting roster (8, thematically matching the existing mob/encounter cast — small helpful
+  ceiling from silently doubling every existing progression track's cap. This is also why Mythic
+  tier (below) deliberately does **not** become "every perk at once, bigger" — a single strictly-best
+  companion collapses the whole choice into "always equip the Mythic one," the same failure mode a
+  stacking system would have.
+
+  **Rarity tiers and drop rates**: Common 65% / Rare 25% / Legendary 8% / Mythic 2%. Mythic perks are
+  deliberately aimed at what only matters *late*-game — regrade odds and rebirth payoff — rather than
+  bigger versions of the early-game levers (work multiplier, cooldown), since those two already lose
+  relative value once someone's deep into their build (see the earlier daily-gain EV analysis: a
+  maxed player's `/work` grinding is a small fraction of their income next to passive alone).
+
+  Starting roster (10, thematically matching the existing mob/encounter cast — small helpful
   creatures, distinct from the world-boss/raid-mob cast which are challenges, not companions):
 
   | Companion | Rarity | Perk |
@@ -255,43 +265,66 @@ and needs its own balance pass.
   | Barn Owl | Rare | +10% personal `/rob` success chance (stacks with the guild `robChance` buff) |
   | Mole | Rare | +10% Starch max capacity |
   | Firefly | Rare | +5% guild raid success chance while active |
-  | Mochi, the Undying Stray | Legendary | +5% Work Multiplier and +5% Passive Income |
   | Spudsprite | Legendary | -15% `/work` cooldown |
+  | Rootcarver, the Cellar Keeper | Legendary | +10% Bank Capacity |
+  | Elder Rootbeard | Mythic | +3% flat regrade success chance, all 3 tracks — roughly triples-to-quadruples the odds at the hardest tiers (0.5-1% base) |
+  | Mochi, the Undying Stray | Mythic | +20% rebirth bonus magnitude — boosts `Rebirth.WORK_MULTI_BONUS`/`PASSIVE_BONUS`/`BANK_CAPACITY_BONUS` while active at the moment a rebirth commits |
 
   Mochi was moved here from the world boss roster (previously in `worldFactory.js`, difficulty
   1500) rather than being a new character — its established flavor (a small zombie cat that just
   wants headpats and doesn't understand its claws are undead) fits "joins you as a companion" far
-  better than "fight it as a raid target," and reusing it means the character carries over instead
-  of just being deleted. Its perk/rarity above are a first pass, not settled — reasonable to swap
-  for something more distinctly on-theme (e.g. a Bank Capacity lean, playing on "loyal to the
-  hoard") once this actually gets scoped.
+  better than "fight it as a raid target," and its undead/"always comes back" theme is a near-literal
+  match for a rebirth-boosting perk specifically.
+  Percentage-of-current-stat perks deliberately, not flat additions (except the two Mythics, which
+  are percentage-of-a-rate/percentage-of-a-bonus, the same reasoning applied one level up) — avoids
+  the exact compounding risk flagged in the weekly-quest-reward design earlier (see
+  [systems/quests.md](systems/quests.md)): a flat bonus sized right for an early player becomes
+  negligible for a maxed one, but a % scales itself automatically without needing a ramp formula the
+  way the quest reward did.
 
-  Percentage-of-current-stat perks deliberately, not flat additions — avoids the exact compounding
-  risk flagged in the weekly-quest-reward design earlier (see systems/quests.md): a flat bonus sized
-  right for an early player becomes negligible for a maxed one, but a % scales itself automatically
-  without needing a ramp formula the way the quest reward did.
-  Persistence: companions live in a new `userDetails.companions: { owned: [...], active: id|null }`
-  field, untouched by `/rebirth`'s reset — same "survives a prestige reset" precedent Idle Miner
-  sets for pets, and consistent with `sweetPotatoBuffs`/achievements/records already being on that
-  keep-list.
+  **Trading — decided: yes, via a real marketplace**, not a `/give`-style direct transfer (this bot
+  has no player-to-player trading of *anything* today; a companion market would be the first, so it
+  gets real listing/escrow infrastructure rather than a shortcut):
+  - `/companion sell <companion-id> <price>` — must currently own it (auto-unequips if it was
+    active); moves it out of `owned` into escrow so it can't be used, re-listed, or duplicated while
+    for sale. Rejected if `price` is below that companion's tier floor.
+  - **Tier floors** (sellers can ask any amount at or above; no ceiling): Common 5,000,000 / Rare
+    25,000,000 / Legendary 100,000,000 / Mythic 500,000,000 — roughly in line with existing
+    reference points at each scale (guild bank-capacity tiers top out around 800M, a single regrade
+    attempt costs 500M-5B).
+  - `/companion-market` — paginated embed (5/page, same Previous/Next pattern every other list uses)
+    of active listings: companion, tier, asking price, seller.
+  - `/companion buy <listing-id>` — deducts the asking price from the buyer (rejected if they can't
+    afford it), credits the seller minus a market fee (proposing `Bank.GUILD_TAX_PERCENT`'s shape,
+    ~5% — a real sink without being punitive enough to kill trading), moves the companion into the
+    buyer's `owned`, removes the listing.
+  - `/companion cancel <listing-id>` — seller pulls their own listing back, no fee, companion returns
+    to `owned`.
+  - Escrow (not a live balance check at purchase time) is what makes this safe — a listed companion
+    physically isn't in the seller's `owned` array anymore, so there's no window where the same
+    companion could be equipped, re-listed, or duplicated while a sale is pending.
+
+  **Leveling — decided: static for v1**, with room to add it later without a schema change: each
+  owned companion instance is stored with `level: 1` from day one even though nothing reads it yet,
+  so a future leveling system is additive rather than a migration.
+
+  Persistence: companions live in a new `userDetails.companions: { owned: [{id, level}, ...],
+  active: id|null }` field, untouched by `/rebirth`'s reset — same "survives a prestige reset"
+  precedent Idle Miner sets for pets, and consistent with `sweetPotatoBuffs`/achievements/records
+  already being on that keep-list.
   Touches: a new `companionFactory.js` (rarity roll, perk lookup, equip logic — testable, mirrors
-  every other `src/utils/*Factory.js`), a new `/companion` command (view owned + equip), one new
-  `/work` scenario slot, `getDefaultUserFields` schema addition, wiring the active companion's perk
-  into whichever existing calculation it modifies (work cooldown into
-  `dynamoHandler.calculateWorkTimerValue`, rob chance into `rob.js`, etc. — same shape the guild buff
-  system already uses for "one active modifier changes several existing formulas").
-  Open questions before this gets scoped for real (flagging rather than deciding unilaterally, since
-  each is a real design fork, not an implementation detail):
-  - Should companions eventually be tradeable between players? The research pass that surfaced this
-    idea also flagged that this bot has no player-to-player trading of *anything* today (starch
-    trading is bot-priced, not peer-to-peer) — a tradeable companion would be the first instance of
-    that and probably deserves to be scoped together with real trading infrastructure, not smuggled
-    in as a companion-only side mechanic.
-  - Should a companion be able to level up or evolve (Idle Miner/Bconomy both do this), or stay
-    static once obtained? Recommend static for v1 — leveling adds real scope (a second progression
-    curve nested inside this one) for something that hasn't shipped in any form yet.
-  - Is 8 the right starting roster size, and are these 8 perks the right set? Easy to add more once
-    the roll/equip infrastructure exists — the roster itself is just data, same as Achievements.
+  every other `src/utils/*Factory.js`), a new `companionMarketFactory.js` (listing/escrow/purchase,
+  same atomic-write care `guildContractFactory.js`'s completion race and `updateGuildFieldsWithLock`
+  already model in this codebase), new `/companion` (view/equip) and `/companion-market`
+  (list/browse/buy/cancel) commands, one new `/work` scenario slot, `getDefaultUserFields` schema
+  addition, wiring the active companion's perk into whichever existing calculation it modifies (work
+  cooldown into `dynamoHandler.calculateWorkTimerValue`, rob chance into `rob.js`, regrade chance
+  into `regrade.js`'s `chanceOfSuccess` calc, rebirth bonus into `rebirthFactory.js`'s
+  `computeRebirthState`, etc. — same shape the guild buff system already uses for "one active
+  modifier changes several existing formulas").
+  Remaining open question: is 10 the right roster size and is this exact perk set balanced? Easy to
+  add more once the roll/equip/market infrastructure exists — the roster itself is just data, same
+  as Achievements.
 
 ## Needs more design discussion before it can be scoped
 
