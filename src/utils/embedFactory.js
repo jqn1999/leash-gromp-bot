@@ -2,6 +2,7 @@ const { EmbedBuilder } = require("discord.js");
 const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth, CompanionRarity, Companions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
+const companionFactory = require("../utils/companionFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const eventFactory = new EventFactory();
@@ -115,6 +116,12 @@ class EmbedFactory {
             fields.push({
                 name: "Current Starch Capacity:",
                 value: `${userDetails.maxStarches.toLocaleString()} starches`,
+                inline: false,
+            });
+            const activeCompanion = companionFactory.getActiveCompanion(userDetails);
+            fields.push({
+                name: "Active Companion:",
+                value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion)})` : "None equipped",
                 inline: false,
             });
         } else {
