@@ -20,7 +20,7 @@ function buildProgressBar(current, max, length = 10) {
 }
 
 class EmbedFactory {
-    // Paginated 2 pages — Overview (economy/work stats) and Streaks & Records — same
+    // Paginated 2 pages — Overview (economy stats) and Activity & Records — same
     // Previous/Next button mechanics as /quests, just over a fixed field set instead of
     // a variable-length list, since streaks + personal records made the single-embed
     // version too tall to read comfortably. pageIndex defaults to 0 so every existing
@@ -86,13 +86,13 @@ class EmbedFactory {
                 value: `${userDetails.maxStarches.toLocaleString()} starches`,
                 inline: false,
             });
+        } else {
+            description = `Activity & Records\nPage 2 / ${totalPages}`;
             fields.push({
                 name: "Work Count:",
                 value: `${userDetails.workCount.toLocaleString()} works`,
                 inline: false,
             });
-        } else {
-            description = `Streaks & Records\nPage 2 / ${totalPages}`;
             fields.push({
                 name: "Daily Login Streak:",
                 value: `${(userDetails.loginStreak || 0).toLocaleString()} days`,
