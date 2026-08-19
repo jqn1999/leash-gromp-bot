@@ -286,6 +286,12 @@ function getDefaultUserFields(userId, username) {
             highestTowerFloor: 0,
             biggestWorkPayout: 0,
             largestRaidContribution: 0
+        },
+        companions: {                // see systems/companions.md
+            owned: [],               // array of companion ids owned
+            active: null,            // companion id currently equipped, or null
+            ownedCount: 0,
+            mythicOwnedCount: 0
         }
     };
 }
