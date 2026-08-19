@@ -44,6 +44,23 @@ The dropped 5% (`gainAmount/.95*.05`) is paid to the hardcoded house account
 | Taro | .081–.101 | `handleTaroTrader` | No potatoes — grants **starches** instead |
 | Regular | remainder | `handleRegularWork` | Formula uncapped multiplier, capped `Work.MAX_BASE_WORK_GAIN(1000)`; flavor mob from `regularWorkMobs` is cosmetic only |
 
+**Reward-text convention** (player feedback — see below): every potato-paying encounter's flavor text
+ends on a "bag of potatoes" phrase whose *size word* scales with that encounter's actual reward tier,
+not with whichever adjective a given mob's writer happened to pick. Previously each of the 9
+`regularWorkMobs` entries used a different intensity word ("bountiful harvest," "considerable
+reward," "fair share," etc.) despite paying the exact identical formula — worse, "bountiful harvest"
+was independently reused by both a Regular-tier mob (1x) and by Large Potato itself (10x), so the
+words carried no real signal about magnitude at all. Standardized ladder, low to high:
+- Regular (all 9 `regularWorkMobs`): "a bag of potatoes"
+- Large: "a hearty bag of potatoes"
+- Metal (success): "a bountiful bag of potatoes" (plus the stat-buff callout, see below)
+- Golden: "an overflowing bag of potatoes"
+
+Sweet Potato/Taro Trader are exempt — they don't pay potatoes at all (a stat buff and starches,
+respectively), so forcing "bag of potatoes" language onto them would be actively misleading. Poison
+Potato is also exempt — it's a loss, not a reward, and already has its own distinct "something bad
+happened" voice that was never part of this inconsistency.
+
 ### Metal Potato (success, 10% of Metal rolls)
 
 Potato gain: formula ×20, capped `Work.MAX_METAL_POTATO(100000)`. Plus **permanent** stat buffs
