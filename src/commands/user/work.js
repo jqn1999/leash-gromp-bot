@@ -125,12 +125,22 @@ var workScenarios = [
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+            const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus);
+            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult);
+            await safeEditReply(interaction, embed);
+            return companionResult.potatoesGained;
+        },
+        chance: .096,
+        type: WORK_SCENARIO_INDICES.COMPANION
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader);
             await safeEditReply(interaction, embed);
             return starchesGained;
         },
-        chance: .101,
+        chance: .116,
         type: WORK_SCENARIO_INDICES.TARO
     },
     {

@@ -256,7 +256,8 @@ function getDefaultUserFields(userId, username) {
             poison: 0,
             metalSuccess: 0,
             metalFailure: 0,
-            golden: 0
+            golden: 0,
+            companion: 0
         },
         regrades: {
             workMulti: {
@@ -288,7 +289,7 @@ function getDefaultUserFields(userId, username) {
             largestRaidContribution: 0
         },
         companions: {                // see systems/companions.md
-            owned: [],               // array of companion ids owned
+            owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null
             ownedCount: 0,
             mythicOwnedCount: 0

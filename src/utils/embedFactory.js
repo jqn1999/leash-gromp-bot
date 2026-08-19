@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, Rebirth, CompanionRarity } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const { EventFactory } = require("../utils/eventFactory");
@@ -18,6 +18,36 @@ function buildProgressBar(current, max, length = 10) {
     const ratio = max > 0 ? Math.min(Math.max(current / max, 0), 1) : 0;
     const filled = Math.round(ratio * length);
     return '█'.repeat(filled) + '░'.repeat(length - filled);
+}
+
+// Shared across every companion embed so rarity reads the same way everywhere.
+const COMPANION_RARITY_COLOR = {
+    [CompanionRarity.COMMON]: 'Grey',
+    [CompanionRarity.RARE]: 'Blue',
+    [CompanionRarity.LEGENDARY]: 'Orange',
+    [CompanionRarity.MYTHIC]: 'Gold'
+};
+const COMPANION_RARITY_LABEL = {
+    [CompanionRarity.COMMON]: 'Common',
+    [CompanionRarity.RARE]: 'Rare',
+    [CompanionRarity.LEGENDARY]: 'Legendary',
+    [CompanionRarity.MYTHIC]: 'Mythic'
+};
+
+const PERK_LABELS = {
+    workMultiplierPercent: value => `+${(value * 100).toFixed(0)}% Work Multiplier`,
+    workCooldownPercent: value => `-${(value * 100).toFixed(0)}% Work Cooldown`,
+    passiveIncomePercent: value => `+${(value * 100).toFixed(0)}% Passive Income`,
+    robChanceFlat: value => `+${(value * 100).toFixed(0)}% Rob Success Chance`,
+    starchCapacityPercent: value => `+${(value * 100).toFixed(0)}% Starch Capacity`,
+    guildRaidMultiplierPercent: value => `+${(value * 100).toFixed(0)}% Guild Raid Success Chance`,
+    bankCapacityPercent: value => `+${(value * 100).toFixed(0)}% Bank Capacity`,
+    regradeChanceFlat: value => `+${(value * 100).toFixed(0)}% Regrade Success Chance`,
+    rebirthBonusPercent: value => `+${(value * 100).toFixed(0)}% Rebirth Bonus`
+};
+
+function formatCompanionPerks(companion) {
+    return companion.perks.map(perk => PERK_LABELS[perk.type](perk.value)).join(', ');
 }
 
 class EmbedFactory {
@@ -862,6 +892,52 @@ class EmbedFactory {
             .setDescription(`${mobDescription}${sweetPotatoReward}`)
             .setColor(color)
             .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // result: { isNew, companion, potatoesGained } from workFactory.handleCompanionEncounter.
+    // A brand-new companion shows its perk and a reminder to /companion equip it (won,
+    // not auto-equipped — equipping stays a deliberate choice); a duplicate pull shows
+    // the consolation potato payout instead, same "Gained" framing as every other
+    // potato-reward encounter.
+    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result) {
+        const { isNew, companion, potatoesGained } = result;
+        let fields = [{
+            name: `Work Count:`,
+            value: `${newWorkCount.toLocaleString()}`,
+            inline: true,
+        }];
+
+        let description, footerText = "Made by Beggar";
+        if (isNew) {
+            fields.push({
+                name: `Perk:`,
+                value: formatCompanionPerks(companion),
+                inline: true,
+            });
+            description = `${companion.description}\n\nUse \`/companion equip\` to make ${companion.name} your active companion!`;
+        } else {
+            fields.push({
+                name: `Potatoes Gained:`,
+                value: `${potatoesGained.toLocaleString()} potatoes`,
+                inline: true,
+            });
+            description = `${companion.description}\n\nYou already have a ${companion.name} — it hands over a consolation bag of potatoes instead.`;
+        }
+
+        const activeEvent = eventFactory.getCurrentEvent();
+        if (activeEvent) {
+            footerText += ` • 🎉 ${activeEvent}`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} encountered a wandering companion: ${companion.name}! (${COMPANION_RARITY_LABEL[companion.rarity]})`)
+            .setDescription(description)
+            .setColor(COMPANION_RARITY_COLOR[companion.rarity])
+            .setThumbnail(companion.thumbnailUrl)
             .setFooter({ text: footerText })
             .setTimestamp(Date.now())
             .setFields(fields)

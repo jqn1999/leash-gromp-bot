@@ -11,6 +11,7 @@ class EventFactory {
             .04,
             .01,
             .02,
+            .015,
             .02
         ];
         this.workChances = [
@@ -19,7 +20,8 @@ class EventFactory {
             .051,
             .061,
             .081,
-            .101
+            .096,
+            .116
         ];
         this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "TAROX2", "GOLDENX5", "METALX5", "POISONX5"];
         this.eventWeights = [3, 3, 3, 3, 3, 1, 1 ,1];
@@ -100,7 +102,8 @@ class EventFactory {
             .051,
             .061,
             .081,
-            .101
+            .096,
+            .116
         ];
     }
 
@@ -111,6 +114,7 @@ class EventFactory {
             .04,
             .01,
             .02,
+            .015,
             .02
         ];
     }
@@ -141,7 +145,8 @@ const WORK_SCENARIO_INDICES = {
     LARGE: 2,
     METAL: 3,
     SWEET: 4,
-    TARO: 5,
+    COMPANION: 5,
+    TARO: 6,
     REGULAR: -1
 };
 

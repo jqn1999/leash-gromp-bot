@@ -1,6 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, awsConfigurations } = require("../utils/constants")
+const { Work, awsConfigurations, CompanionDuplicateReward } = require("../utils/constants")
+const companionFactory = require("../utils/companionFactory");
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -99,6 +100,53 @@ class WorkFactory {
         }, { workCount: 1 });
 
         return random;
+    }
+
+    // Wandering Companion encounter — rolls a companion by rarity (see
+    // companionFactory.js). A new companion is added to owned (not auto-equipped,
+    // equipping stays a deliberate /companion equip choice); a duplicate pays out a
+    // modest potato consolation instead, scaled the same server-wealth-aware way every
+    // other /work reward is (see calculateGainAmount below).
+    async handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
+        const userId = userDetails.userId;
+        const companion = companionFactory.rollCompanion();
+        const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.companion += 1;
+
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        if (isNew) {
+            await dynamoHandler.updateUserFields(userId, {
+                companions: companions,
+                workScenarioCounts: workScenarioCounts,
+                workTimer: workTimer
+            }, { workCount: 1 });
+            return { isNew: true, companion, potatoesGained: 0 };
+        }
+
+        let userPotatoes = userDetails.potatoes;
+        let userTotalEarnings = userDetails.totalEarnings;
+        let userMultiplier = userDetails.workMultiplierAmount;
+        let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier, catchUpBonus);
+
+        const maxGain = CompanionDuplicateReward[companion.rarity];
+        const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
+        const potatoesGained = await calculateGainAmount(workGainAmount * tierRatio, maxGain, multiplier, effectiveMultiplier);
+        userPotatoes += potatoesGained;
+        userTotalEarnings += potatoesGained;
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            companions: companions,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
+        return { isNew: false, companion, potatoesGained };
     }
 
     async handleTaroTrader(userDetails, catchUpBonus = 0) {
