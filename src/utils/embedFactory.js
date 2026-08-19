@@ -20,8 +20,12 @@ function buildProgressBar(current, max, length = 10) {
 }
 
 class EmbedFactory {
-    async createUserEmbed(userId, currentName, userAvatarHash, userDetails) {
-        const potatoes = userDetails.potatoes;
+    // Paginated 2 pages — Overview (economy/work stats) and Streaks & Records — same
+    // Previous/Next button mechanics as /quests, just over a fixed field set instead of
+    // a variable-length list, since streaks + personal records made the single-embed
+    // version too tall to read comfortably. pageIndex defaults to 0 so every existing
+    // non-paginating caller (if any) still gets the overview page unchanged.
+    async createUserEmbed(userId, currentName, userAvatarHash, userDetails, pageIndex = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
         let title = `${currentName}`;
         // Loose `!= 0` treats a genuinely unset guildId (undefined) as "has a guild" —
@@ -33,74 +37,83 @@ class EmbedFactory {
             if (guild) title += ` (${guild.guildName})`
         }
 
+        const totalPages = 2;
         let fields = [];
-        fields.push({
-            name: "Current Potatoes:",
-            value: `${potatoes.toLocaleString()} potatoes`,
-            inline: false,
-        });
-        fields.push({
-            name: "Banked Potatoes:",
-            value: `${userDetails.bankStored.toLocaleString()} potatoes`,
-            inline: false,
-        });
-        fields.push({
-            name: "Starches:",
-            value: `${userDetails.starches.toLocaleString()} starches`,
-            inline: false,
-        });
-        let workMultiLabel = ``;
-        const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
-        if (additionalWorkMulti) {
-            workMultiLabel += `${(userDetails.workMultiplierAmount + additionalWorkMulti).toFixed(2)}x (+${(additionalWorkMulti).toFixed(2)}x)`
+        let description;
+
+        if (pageIndex === 0) {
+            description = `This is your profile where\nyou can view your potatoes\nPage 1 / ${totalPages}`;
+            const potatoes = userDetails.potatoes;
+            fields.push({
+                name: "Current Potatoes:",
+                value: `${potatoes.toLocaleString()} potatoes`,
+                inline: false,
+            });
+            fields.push({
+                name: "Banked Potatoes:",
+                value: `${userDetails.bankStored.toLocaleString()} potatoes`,
+                inline: false,
+            });
+            fields.push({
+                name: "Starches:",
+                value: `${userDetails.starches.toLocaleString()} starches`,
+                inline: false,
+            });
+            let workMultiLabel = ``;
+            const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            if (additionalWorkMulti) {
+                workMultiLabel += `${(userDetails.workMultiplierAmount + additionalWorkMulti).toFixed(2)}x (+${(additionalWorkMulti).toFixed(2)}x)`
+            } else {
+                workMultiLabel += `${(userDetails.workMultiplierAmount).toFixed(2)}x`
+            }
+            fields.push({
+                name: "Current Work Multiplier:",
+                value: workMultiLabel,
+                inline: false,
+            });
+            fields.push({
+                name: "Current Passive Income:",
+                value: `${userDetails.passiveAmount.toLocaleString()} potatoes per day`,
+                inline: false,
+            });
+            fields.push({
+                name: "Current Bank Capacity:",
+                value: `${userDetails.bankCapacity.toLocaleString()} potatoes`,
+                inline: false,
+            });
+            fields.push({
+                name: "Current Starch Capacity:",
+                value: `${userDetails.maxStarches.toLocaleString()} starches`,
+                inline: false,
+            });
+            fields.push({
+                name: "Work Count:",
+                value: `${userDetails.workCount.toLocaleString()} works`,
+                inline: false,
+            });
         } else {
-            workMultiLabel += `${(userDetails.workMultiplierAmount).toFixed(2)}x`
+            description = `Streaks & Records\nPage 2 / ${totalPages}`;
+            fields.push({
+                name: "Daily Login Streak:",
+                value: `${(userDetails.loginStreak || 0).toLocaleString()} days`,
+                inline: false,
+            });
+            // records is backfilled by findUser's self-healing for any account that
+            // existed before this field was added, but guard with `|| {}`/`|| 0` anyway
+            // rather than assume every caller of createUserEmbed went through findUser.
+            const records = userDetails.records || {};
+            fields.push({
+                name: "Personal Records:",
+                value: `Highest Tower floor: ${(records.highestTowerFloor || 0).toLocaleString()}\n`
+                    + `Biggest /work payout: ${(records.biggestWorkPayout || 0).toLocaleString()} potatoes\n`
+                    + `Largest raid contribution: ${(records.largestRaidContribution || 0).toLocaleString()} potatoes`,
+                inline: false,
+            });
         }
-        fields.push({
-            name: "Current Work Multiplier:",
-            value: workMultiLabel,
-            inline: false,
-        });
-        fields.push({
-            name: "Current Passive Income:",
-            value: `${userDetails.passiveAmount.toLocaleString()} potatoes per day`,
-            inline: false,
-        });
-        fields.push({
-            name: "Current Bank Capacity:",
-            value: `${userDetails.bankCapacity.toLocaleString()} potatoes`,
-            inline: false,
-        });
-        fields.push({
-            name: "Current Starch Capacity:",
-            value: `${userDetails.maxStarches.toLocaleString()} starches`,
-            inline: false,
-        });
-        fields.push({
-            name: "Work Count:",
-            value: `${userDetails.workCount.toLocaleString()} works`,
-            inline: false,
-        });
-        fields.push({
-            name: "Daily Login Streak:",
-            value: `${(userDetails.loginStreak || 0).toLocaleString()} days`,
-            inline: false,
-        });
-        // records is backfilled by findUser's self-healing for any account that
-        // existed before this field was added, but guard with `|| {}`/`|| 0` anyway
-        // rather than assume every caller of createUserEmbed went through findUser.
-        const records = userDetails.records || {};
-        fields.push({
-            name: "Personal Records:",
-            value: `Highest Tower floor: ${(records.highestTowerFloor || 0).toLocaleString()}\n`
-                + `Biggest /work payout: ${(records.biggestWorkPayout || 0).toLocaleString()} potatoes\n`
-                + `Largest raid contribution: ${(records.largestRaidContribution || 0).toLocaleString()} potatoes`,
-            inline: false,
-        });
 
         const embed = new EmbedBuilder()
             .setTitle(title)
-            .setDescription("This is your profile where\nyou can view your potatoes")
+            .setDescription(description)
             .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })

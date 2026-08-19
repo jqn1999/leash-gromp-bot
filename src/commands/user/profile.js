@@ -1,8 +1,24 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+
+const TOTAL_PAGES = 2;
+
+function buildPaginationRow(pageIndex) {
+    const prevButton = new ButtonBuilder()
+        .setCustomId('profile_prev')
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === 0);
+    const nextButton = new ButtonBuilder()
+        .setCustomId('profile_next')
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === TOTAL_PAGES - 1);
+    return new ActionRowBuilder().addComponents(prevButton, nextButton);
+}
 
 module.exports = {
     name: "profile",
@@ -42,12 +58,21 @@ module.exports = {
             return;
         };
 
-        const embed = await embedFactory.createUserEmbed(
-            userId,
-            userDisplayName,
-            userAvatar,
-            userDetails
-        );
-        interaction.editReply({ embeds: [embed] });
+        let pageIndex = 0;
+        const embed = await embedFactory.createUserEmbed(userId, userDisplayName, userAvatar, userDetails, pageIndex);
+        const reply = await interaction.editReply({ embeds: [embed], components: [buildPaginationRow(pageIndex)] });
+
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        while (true) {
+            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
+            if (!confirmation) {
+                await reply.edit({ components: [] }).catch(() => {});
+                break;
+            }
+
+            pageIndex = confirmation.customId === 'profile_next' ? pageIndex + 1 : pageIndex - 1;
+            const pageEmbed = await embedFactory.createUserEmbed(userId, userDisplayName, userAvatar, userDetails, pageIndex);
+            await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(pageIndex)] });
+        }
     }
 }
