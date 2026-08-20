@@ -129,9 +129,16 @@ class GuildContractFactory {
         if (progress >= template.threshold) {
             const currentBankCapacity = Number.isFinite(guild.bankCapacity) ? guild.bankCapacity : 0;
             const newBankCapacity = currentBankCapacity + GuildContract.BANK_CAPACITY_REWARD;
+            // bankCapacityBonus tracks this reward separately from the base guildShops
+            // ladder value folded into bankCapacity (see getDefaultGuildFields) — so
+            // guildBuy.js's tier lookup can tell "shop-purchased base" apart from
+            // "contract bonus" and the bonus survives the guild's next shop purchase
+            // instead of being overwritten by it.
+            const currentBankCapacityBonus = Number.isFinite(guild.bankCapacityBonus) ? guild.bankCapacityBonus : 0;
+            const newBankCapacityBonus = currentBankCapacityBonus + GuildContract.BANK_CAPACITY_REWARD;
             const updatedContractState = { ...contractState, completed: true };
 
-            const won = await dynamoHandler.completeGuildContract(guild.guildId, newBankCapacity, updatedContractState);
+            const won = await dynamoHandler.completeGuildContract(guild.guildId, newBankCapacity, newBankCapacityBonus, updatedContractState);
             if (won) {
                 // Only the single winner of the completion race reaches here, so this
                 // append can't double-write — no lock needed, unlike the memberList

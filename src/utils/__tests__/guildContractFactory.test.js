@@ -60,6 +60,65 @@ describe('getMemberBreakdown', () => {
     });
 });
 
+describe('checkAndClaimContract — bankCapacityBonus reward', () => {
+    // Regression: completing a contract used to add BANK_CAPACITY_REWARD straight onto
+    // guild.bankCapacity with no separate bookkeeping, so the very next /guild-buy
+    // bank-capacity purchase (which sets bankCapacity to a flat shop-tier value) would
+    // silently erase the reward. bankCapacityBonus tracks it separately so guildBuy.js
+    // can preserve it across purchases (see guildBuy.js/dynamoHandler.js).
+    test('bumps bankCapacityBonus by the same reward amount as bankCapacity, atomically', async () => {
+        const template = GuildContracts[0];
+        const guild = baseGuild({
+            bankCapacity: 5000000,
+            bankCapacityBonus: 1000000,
+            guildContract: {
+                templateId: template.id,
+                rotationDate: activeContract.rotationDate,
+                memberBaselines: { u1: 0, u2: 0 },
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+        dynamoHandler.findUser.mockImplementation(async (id) => ({ userId: id, [template.statPath]: template.threshold }));
+        dynamoHandler.completeGuildContract.mockResolvedValue(true);
+
+        await guildContractFactory.checkAndClaimContract(guild);
+
+        expect(dynamoHandler.completeGuildContract).toHaveBeenCalledWith(
+            'g1',
+            5000000 + GuildContract.BANK_CAPACITY_REWARD,
+            1000000 + GuildContract.BANK_CAPACITY_REWARD,
+            expect.objectContaining({ completed: true })
+        );
+    });
+
+    test('treats a missing bankCapacityBonus (guild record predating this field) as 0', async () => {
+        const template = GuildContracts[0];
+        const guild = baseGuild({
+            bankCapacity: 5000000,
+            guildContract: {
+                templateId: template.id,
+                rotationDate: activeContract.rotationDate,
+                memberBaselines: { u1: 0, u2: 0 },
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+        delete guild.bankCapacityBonus;
+        dynamoHandler.findUser.mockImplementation(async (id) => ({ userId: id, [template.statPath]: template.threshold }));
+        dynamoHandler.completeGuildContract.mockResolvedValue(true);
+
+        await guildContractFactory.checkAndClaimContract(guild);
+
+        expect(dynamoHandler.completeGuildContract).toHaveBeenCalledWith(
+            'g1',
+            expect.any(Number),
+            GuildContract.BANK_CAPACITY_REWARD,
+            expect.objectContaining({ completed: true })
+        );
+    });
+});
+
 describe('checkAndClaimContract — history on completion', () => {
     test('appends a contractHistory entry only for the call that actually wins the completion race', async () => {
         const template = GuildContracts[0];

@@ -183,12 +183,21 @@ module.exports = {
 
         let guildBankStored = guild.bankStored;
         let guildBankCapacity = guild.bankCapacity;
+        // bankCapacityBonus is Guild Contract's (see guildContractFactory.js) additive
+        // reward, tracked separately so the shop's tier lookup runs against the
+        // shop-purchased BASE value, not the reward-inflated total — same
+        // base = total - bonus pattern buy.js/rebirthFactory.js use for the user shop
+        // (userDetails.bankCapacity - sweetPotatoBuffs.bankCapacity - regradeAmount).
+        // Without this, a contract reward knocks bankCapacity off the tier ladder's
+        // exact-match values and every future purchase reports "already maxed out!".
+        const guildBankCapacityBonus = Number.isFinite(guild.bankCapacityBonus) ? guild.bankCapacityBonus : 0;
+        let guildBaseBankCapacity = guildBankCapacity - guildBankCapacityBonus;
 
         let chosenItem, guildHasEnough;
         switch (shopSelect) {
             case 'bank-capacity':
                 const bankShop = guildShops.find((currentShop) => currentShop.shopId == 'bankCapacity');
-                chosenItem = getNextItemFromShop(bankShop, guildBankCapacity);
+                chosenItem = getNextItemFromShop(bankShop, guildBaseBankCapacity);
                 if (chosenItem == -1) {
                     interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
                     return;
@@ -196,7 +205,9 @@ module.exports = {
                 guildHasEnough = doesGuildHaveEnoughToPurchase(guildBankStored, chosenItem.cost, interaction, userDisplayName);
                 if (guildHasEnough) {
                     guildBankStored -= chosenItem.cost;
-                    const newBankCapacity = chosenItem.amount;
+                    // Bonus re-added on top of the shop's flat tier value so it survives
+                    // this purchase instead of being overwritten by it.
+                    const newBankCapacity = chosenItem.amount + guildBankCapacityBonus;
                     await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
                     await dynamoHandler.updateGuildDatabase(userGuildId, "bankCapacity", newBankCapacity);
                     interaction.editReply(`${userDisplayName} your guild bank upgrade has completed and you now have a max guild bank capacity of ${newBankCapacity.toLocaleString()}`);

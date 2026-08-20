@@ -1051,6 +1051,16 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
             }
         ],
         bankCapacity: 1000000,
+        // Mirrors sweetPotatoBuffs.bankCapacity on the user table: an additive bonus
+        // layered on top of guildShops' bankCapacity ladder, tracked separately so it
+        // survives shop purchases instead of being overwritten by them. Starts equal to
+        // the starting bankCapacity above so a fresh guild's BASE (bankCapacity -
+        // bankCapacityBonus) is exactly 0 — guildShops' bankCapacity tier 0's
+        // currentAmount — which is what guildBuy.js's exact-match getNextItemFromShop
+        // lookup requires to find a tier at all. Without this, a brand-new guild's
+        // bankCapacity (1,000,000) never matched any tier boundary and /guild-buy
+        // bank-capacity always reported "already maxed out!".
+        bankCapacityBonus: 1000000,
         bankStored: 0,
         // No stored level/raidRewardMultiplier field — both are computed live from
         // raidCount by raidFactory.js's getRaidLevelInfo (see constants.js's RaidLevel).
@@ -1278,23 +1288,26 @@ const setActiveGuildContract = async function (activeContract) {
     await updateStatFields("active_guild_contract", activeContract);
 }
 
-// Persists a Guild Contract's completion — the bankCapacity reward and the
-// guildContract map itself (marked completed: true) — in one atomic conditional write,
-// so two guild members finishing the objective via near-simultaneous /work calls can't
-// both grant the reward. Same race-safety shape as claimDailyStreak/updateIfNewRecord.
+// Persists a Guild Contract's completion — the bankCapacity reward, its matching
+// bankCapacityBonus bump (see getDefaultGuildFields — keeps the reward layered on top of
+// guildShops' ladder instead of getting silently absorbed by the next shop purchase),
+// and the guildContract map itself (marked completed: true) — in one atomic conditional
+// write, so two guild members finishing the objective via near-simultaneous /work calls
+// can't both grant the reward. Same race-safety shape as claimDailyStreak/updateIfNewRecord.
 // Returns true if this call won the completion, false if it lost the race (or hit any
 // other error) — a lost race isn't a bug, it just means another concurrent call already
 // applied the reward first.
-const completeGuildContract = async function (guildId, newBankCapacity, updatedGuildContract) {
+const completeGuildContract = async function (guildId, newBankCapacity, newBankCapacityBonus, updatedGuildContract) {
     const params = {
         TableName: awsConfigurations.aws_guilds_table_name,
         Key: {
             guildId: guildId,
         },
-        UpdateExpression: "set bankCapacity = :bankCapacity, guildContract = :guildContract",
+        UpdateExpression: "set bankCapacity = :bankCapacity, bankCapacityBonus = :bankCapacityBonus, guildContract = :guildContract",
         ConditionExpression: "attribute_not_exists(guildContract.completed) OR guildContract.completed = :false",
         ExpressionAttributeValues: {
             ":bankCapacity": newBankCapacity,
+            ":bankCapacityBonus": newBankCapacityBonus,
             ":guildContract": updatedGuildContract,
             ":false": false,
         },

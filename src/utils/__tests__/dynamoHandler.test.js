@@ -194,6 +194,23 @@ describe('updateGuildFieldsWithLock', () => {
     });
 });
 
+// Regression coverage for guild bank capacity's tier-alignment bug: a fresh guild's
+// starting bankCapacity (1,000,000) doesn't match any guildShops bankCapacity tier's
+// currentAmount, and guildBuy.js's getNextItemFromShop is an exact-match lookup — so
+// every brand-new guild's first /guild-buy bank-capacity reported "already maxed out!"
+// with zero purchases made. bankCapacityBonus (mirroring sweetPotatoBuffs.bankCapacity
+// on the user table) exists so guildBuy.js can back out a BASE value (bankCapacity -
+// bankCapacityBonus) that lands exactly on tier 0's currentAmount (0) instead.
+describe('getDefaultGuildFields (via createGuild)', () => {
+    test('starting bankCapacity and bankCapacityBonus are equal, so BASE bankCapacity is exactly 0', async () => {
+        docClient.put.mockReturnValue(resolved({}));
+        await dynamoHandler.createGuild('g1', 'Test Guild', 'leader1', 'leaderName', 'thumb.png');
+        const putItem = docClient.put.mock.calls[0][0].Item;
+        expect(putItem.bankCapacity).toBe(putItem.bankCapacityBonus);
+        expect(putItem.bankCapacity - putItem.bankCapacityBonus).toBe(0);
+    });
+});
+
 // Guild treasury interest: a daily % of bankStored, scaled by member count, applied
 // fractionally every 5-minute tick (see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER).
 describe('applyGuildTreasuryInterest', () => {
