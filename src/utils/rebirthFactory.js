@@ -115,5 +115,7 @@ module.exports = {
     getRebirthBonusPercent,
     getLiveRebirthPercent,
     previewRebirthBonus,
-    computeRebirthState
+    computeRebirthState,
+    getShopMax,
+    getBaseValue
 }

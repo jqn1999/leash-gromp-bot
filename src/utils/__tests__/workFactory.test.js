@@ -139,6 +139,11 @@ describe('handleTaroTrader', () => {
 // systems/economy-and-work.md): resets the guild's raid cooldown to ready-now, and
 // separately grants the roller a free regrade step on whichever track isn't maxed —
 // or, once every track IS maxed, a big-but-sub-Golden potato payout instead.
+// Real shop maxes (see shops[] in constants.js) — a track can't regrade until its base
+// (shop-purchased) value already equals these, matching regrade.js's own
+// hasRequiredBaseAmount gate.
+const SHOP_MAX = { workMulti: 100, passiveAmount: 60000000, bankCapacity: 1000000000 };
+
 function maxedRegrades() {
     return {
         workMulti: { regradeAmount: REGRADE_CAPS.workMulti, failStack: 0 },
@@ -147,12 +152,24 @@ function maxedRegrades() {
     };
 }
 
+// Shop AND regrade both fully maxed on every track — the only state where Ancient
+// Potato's potato-payout branch should trigger.
+function fullyMaxedUser(overrides = {}) {
+    return baseUser({
+        workMultiplierAmount: SHOP_MAX.workMulti + REGRADE_CAPS.workMulti,
+        passiveAmount: SHOP_MAX.passiveAmount + REGRADE_CAPS.passiveAmount,
+        bankCapacity: SHOP_MAX.bankCapacity + REGRADE_CAPS.bankCapacity,
+        regrades: maxedRegrades(),
+        ...overrides,
+    });
+}
+
 describe('handleAncientPotato', () => {
-    test('grants a free regrade step on the one under-capped track, using its real current tier', async () => {
+    test('grants a free regrade step on a shop-maxed, not-yet-regrade-capped track', async () => {
         const userDetails = baseUser({
-            workMultiplierAmount: 1,
+            workMultiplierAmount: SHOP_MAX.workMulti, // shop-maxed — eligible for regrade
             regrades: {
-                workMulti: { regradeAmount: 0, failStack: 0 }, // only under-capped track — deterministic pick
+                workMulti: { regradeAmount: 0, failStack: 0 }, // only regrade-eligible track — deterministic pick
                 passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
                 bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
             },
@@ -162,36 +179,90 @@ describe('handleAncientPotato', () => {
 
         expect(result.regradedStatName).toBe('Work Multiplier');
         expect(result.regradeIncrease).toBe(10); // tier 0's increase
+        expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBe(0);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.workMultiplierAmount).toBe(1 + 10);
+        expect(setFields.workMultiplierAmount).toBe(SHOP_MAX.workMulti + 10);
         expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
         // Untouched tracks must survive exactly as they were, not get reset.
         expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
     });
 
-    test('grants a big but sub-Golden potato payout once every regrade track is maxed', async () => {
+    // Regression: a track with regradeAmount < REGRADE_CAPS used to be treated as
+    // regrade-eligible regardless of whether its shop was actually maxed — but
+    // regrade.js's hasRequiredBaseAmount requires the shop to be maxed FIRST, so a
+    // player who hasn't finished the shop yet could never normally regrade that track
+    // at all. Ancient Potato has to respect the same precondition.
+    test('grants a free shop upgrade instead, if the roller has not maxed any shop track yet', async () => {
+        const userDetails = baseUser({
+            workMultiplierAmount: 1, // fresh account, base shop tier 0 — not shop-maxed
+            passiveAmount: 0,
+            bankCapacity: 0,
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 },
+            },
+        });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.regradedStatName).toBeNull();
+        expect(result.shopUpgradedStatName).not.toBeNull();
+        expect(result.shopUpgradeIncrease).toBeGreaterThan(0);
+        expect(result.potatoesGained).toBe(0);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        // No regrade write at all — this branch never touches userDetails.regrades'
+        // contents even though the (unchanged) regrades object is still part of the
+        // write payload.
+        expect(setFields.regrades).toEqual(userDetails.regrades);
+    });
+
+    test('a mid-shop track (base value not on any tier boundary) is still correctly excluded from regrade', async () => {
+        // 50 sits between workShop tier boundaries (never an exact regrade tier's
+        // currentRegradeAmount either) — confirms eligibility is driven by the real
+        // shop-max comparison, not an assumption about which values are "valid."
+        const userDetails = baseUser({
+            workMultiplierAmount: 50,
+            passiveAmount: SHOP_MAX.passiveAmount + REGRADE_CAPS.passiveAmount,
+            bankCapacity: SHOP_MAX.bankCapacity + REGRADE_CAPS.bankCapacity,
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
+                bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
+            },
+        });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.regradedStatName).toBeNull();
+        expect(result.shopUpgradedStatName).toBe('Work Multiplier');
+    });
+
+    test('grants a big but sub-Golden potato payout once shop AND regrade are both maxed on every track', async () => {
         // calculateGainAmount caps the BASE amount (workGainAmount * factor) before the
         // player's own multiplier scales it up — so the payout itself isn't bounded by
         // MAX_ANCIENT_POTATO in absolute terms, same as Golden/Metal. "Not as much as
         // golden" holds through the base-factor ratio (60 vs Golden's 100) instead,
         // which scales identically for both under the same multiplier — so compare
         // directly against what Golden pays an identical user.
-        const ancientUser = baseUser({ workMultiplierAmount: 500, regrades: maxedRegrades() });
-        const goldenUser = baseUser({ workMultiplierAmount: 500 });
+        const ancientUser = fullyMaxedUser();
+        const goldenUser = baseUser({ workMultiplierAmount: ancientUser.workMultiplierAmount });
 
         const result = await workFactory.handleAncientPotato(ancientUser, 1000, 1, 0);
         const goldenGained = await workFactory.handleGoldenPotato(goldenUser, 1000, 1, 0);
 
         expect(result.regradedStatName).toBeNull();
+        expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBeGreaterThan(0);
         expect(result.potatoesGained).toBeLessThan(goldenGained);
         expect(Work.MAX_ANCIENT_POTATO).toBeLessThan(Work.MAX_GOLDEN_POTATO);
     });
 
     test('resets the guild raid cooldown to ready-now when the roller is in a guild', async () => {
-        const userDetails = baseUser({ guildId: 'g1', regrades: maxedRegrades() });
+        const userDetails = fullyMaxedUser({ guildId: 'g1' });
         const before = Date.now();
 
         const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
@@ -203,7 +274,7 @@ describe('handleAncientPotato', () => {
     });
 
     test('does not touch any guild when the roller has no guild', async () => {
-        const userDetails = baseUser({ guildId: 0, regrades: maxedRegrades() });
+        const userDetails = fullyMaxedUser({ guildId: 0 });
 
         const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
 
@@ -212,7 +283,7 @@ describe('handleAncientPotato', () => {
     });
 
     test('increments workScenarioCounts.ancient', async () => {
-        const userDetails = baseUser({ regrades: maxedRegrades(), workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, ancient: 4 } });
+        const userDetails = fullyMaxedUser({ workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, ancient: 4 } });
 
         await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
 

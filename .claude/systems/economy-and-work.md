@@ -79,16 +79,22 @@ Metal Potato failure: 0 potatoes, just resets the timer.
 The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
 guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
 regardless of how much was left on it (a no-op if solo, or if nothing was on cooldown). Separately,
-the roller gets a personal reward:
-- **Free regrade** if any of their three regrade tracks (`workMulti`/`passiveAmount`/`bankCapacity`)
-  isn't at `REGRADE_CAPS` yet — one under-capped track is picked at random, and its **current tier's
-  real `increase`** is granted for free (no cost, guaranteed, no roll), mirroring exactly what a
-  successful `/regrade` purchase at that tier would do (`regrades.X.regradeAmount += increase`,
-  `failStack` reset to 0, and the raw stat bumped by the same amount).
-- **Potato payout** if every track is already maxed — formula ×60 (between Metal's ×20 and Golden's
-  ×100), capped `Work.MAX_ANCIENT_POTATO(300000)`. Like every `*_MAX_*_POTATO` constant, this caps
-  the base amount before the player's own multiplier scales it up, not the final payout — "less than
-  Golden" holds through the base-factor ratio (60 vs 100), not an absolute ceiling on the result.
+the roller gets exactly one of three personal rewards, checked in this order:
+1. **Free regrade** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants that
+   track's **current tier's real `increase`** for free (no cost, guaranteed, no roll), mirroring
+   exactly what a successful `/regrade` purchase at that tier would do
+   (`regrades.X.regradeAmount += increase`, `failStack` reset to 0, raw stat bumped by the same
+   amount). A track only qualifies here if its base (shop-purchased) value already equals that
+   shop's max — matching `regrade.js`'s own `hasRequiredBaseAmount` gate exactly, since `/regrade`
+   itself refuses to touch a track that isn't shop-maxed yet regardless of `REGRADE_CAPS`.
+2. **Free shop upgrade**, if no track qualifies for (1) — i.e. nothing is shop-maxed yet. Grants the
+   next shop tier on a random not-yet-maxed track for free, mirroring `buy.js`'s own success-write
+   shape (`newBase + sweetPotatoBuffs + regradeAmount`, not just the tier's raw amount).
+3. **Potato payout**, if every track is fully maxed on *both* shop and regrade — formula ×60
+   (between Metal's ×20 and Golden's ×100), capped `Work.MAX_ANCIENT_POTATO(300000)`. Like every
+   `*_MAX_*_POTATO` constant, this caps the base amount before the player's own multiplier scales it
+   up, not the final payout — "less than Golden" holds through the base-factor ratio (60 vs 100),
+   not an absolute ceiling on the result.
 
 `workRegradeTiers`/`passiveRegradeTiers`/`bankRegradeTiers` and `REGRADE_CAPS` live in
 `constants.js` (moved there from being private to `regrade.js`, mirroring how `shops` already

@@ -1,20 +1,31 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, awsConfigurations, CompanionDuplicateReward, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers } = require("../utils/constants")
+const { Work, awsConfigurations, CompanionDuplicateReward, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 
-// Used by handleAncientPotato to pick a random under-capped regrade track and look up
-// its real current tier — regradeKey matches userDetails.regrades' keys, statField
-// matches the raw stat each track's increase gets added to, mirroring regrade.js's own
+// Used by handleAncientPotato to pick a random eligible track and look up its real
+// current tier — regradeKey matches userDetails.regrades' keys, statField matches the
+// raw stat each track's increase gets added to, mirroring regrade.js's own
 // success-write shape exactly (see that file's workMulti/passiveAmount/bankCapacity
-// branches).
+// branches). shopId is the matching shops[] entry — regrade.js requires a track's base
+// (shop-purchased) value to already be at the shop's max before that track can regrade
+// at all (hasRequiredBaseAmount), so handleAncientPotato has to check the same
+// precondition rather than only checking REGRADE_CAPS.
 const REGRADE_TRACKS = [
-    { regradeKey: 'workMulti', statField: 'workMultiplierAmount', label: 'Work Multiplier', tiers: workRegradeTiers },
-    { regradeKey: 'passiveAmount', statField: 'passiveAmount', label: 'Passive Income', tiers: passiveRegradeTiers },
-    { regradeKey: 'bankCapacity', statField: 'bankCapacity', label: 'Bank Capacity', tiers: bankRegradeTiers }
+    { regradeKey: 'workMulti', statField: 'workMultiplierAmount', shopId: 'workShop', label: 'Work Multiplier', tiers: workRegradeTiers },
+    { regradeKey: 'passiveAmount', statField: 'passiveAmount', shopId: 'passiveIncomeShop', label: 'Passive Income', tiers: passiveRegradeTiers },
+    { regradeKey: 'bankCapacity', statField: 'bankCapacity', shopId: 'bankShop', label: 'Bank Capacity', tiers: bankRegradeTiers }
 ];
+
+// Same exact-match lookup buy.js/guildBuy.js each keep their own local copy of —
+// mirrored here rather than shared since it's a 3-line pure function, same convention
+// those two files already follow with each other.
+function getNextShopTier(shopId, currentBaseAmount) {
+    const shop = shops.find(s => s.shopId === shopId);
+    return shop.items.find(item => item.currentAmount === currentBaseAmount);
+}
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -244,15 +255,32 @@ class WorkFactory {
             await dynamoHandler.updateGuildDatabase(userDetails.guildId, 'raidTimer', Date.now());
         }
 
-        const eligibleTracks = REGRADE_TRACKS.filter(track => regrades[track.regradeKey].regradeAmount < REGRADE_CAPS[track.regradeKey]);
+        // regrade.js's hasRequiredBaseAmount requires a track's BASE (shop-purchased)
+        // value to already equal that shop's max before /regrade will even attempt that
+        // track — a free regrade step has to respect the same precondition, or a player
+        // who hasn't finished the shop yet would get regrade progress they couldn't
+        // normally earn at all.
+        const trackBaseValues = {};
+        for (const track of REGRADE_TRACKS) {
+            trackBaseValues[track.regradeKey] = rebirthFactory.getBaseValue(userDetails, track.statField);
+        }
+        const regradeEligibleTracks = REGRADE_TRACKS.filter(track =>
+            trackBaseValues[track.regradeKey] >= rebirthFactory.getShopMax(track.shopId)
+            && regrades[track.regradeKey].regradeAmount < REGRADE_CAPS[track.regradeKey]
+        );
+        const shopEligibleTracks = REGRADE_TRACKS.filter(track =>
+            trackBaseValues[track.regradeKey] < rebirthFactory.getShopMax(track.shopId)
+        );
 
         let potatoesGained = 0;
         let regradedStatName = null;
         let regradeIncrease = 0;
+        let shopUpgradedStatName = null;
+        let shopUpgradeIncrease = 0;
         const updateFields = {};
 
-        if (eligibleTracks.length > 0) {
-            const track = eligibleTracks[Math.floor(Math.random() * eligibleTracks.length)];
+        if (regradeEligibleTracks.length > 0) {
+            const track = regradeEligibleTracks[Math.floor(Math.random() * regradeEligibleTracks.length)];
             const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
             regradeIncrease = currentTier.increase;
             regradedStatName = track.label;
@@ -260,6 +288,19 @@ class WorkFactory {
             regrades[track.regradeKey].regradeAmount += regradeIncrease;
             regrades[track.regradeKey].failStack = 0;
             updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
+        } else if (shopEligibleTracks.length > 0) {
+            // Not shop-maxed on anything yet — grant the next shop tier for free instead
+            // of a regrade step nothing here is actually eligible for. Mirrors buy.js's
+            // exact write shape (new base + sweetPotatoBuffs + regradeAmount), not just
+            // the tier's raw amount, since regrade progress (if any exists below the
+            // shop's max — it never should, but this stays correct either way) has to
+            // survive a shop purchase the same way it does in buy.js.
+            const track = shopEligibleTracks[Math.floor(Math.random() * shopEligibleTracks.length)];
+            const nextTier = getNextShopTier(track.shopId, trackBaseValues[track.regradeKey]);
+            shopUpgradeIncrease = nextTier.amount - trackBaseValues[track.regradeKey];
+            shopUpgradedStatName = track.label;
+
+            updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
         } else {
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
@@ -284,7 +325,14 @@ class WorkFactory {
             ...updateFields
         }, { workCount: 1 });
 
-        return { potatoesGained, regradedStatName, regradeIncrease, guildRaidReady: Boolean(userDetails.guildId) };
+        return {
+            potatoesGained,
+            regradedStatName,
+            regradeIncrease,
+            shopUpgradedStatName,
+            shopUpgradeIncrease,
+            guildRaidReady: Boolean(userDetails.guildId)
+        };
     }
 
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {

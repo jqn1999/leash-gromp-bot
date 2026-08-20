@@ -1000,10 +1000,11 @@ class EmbedFactory {
     // on regrade-vs-potato-reward instead — doesn't fit createWorkEmbed's single
     // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own
     // function rather than shoehorned in there. result: { potatoesGained,
-    // regradedStatName, regradeIncrease, guildRaidReady } from workFactory.js's
-    // handleAncientPotato.
+    // regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease,
+    // guildRaidReady } from workFactory.js's handleAncientPotato — exactly one of
+    // regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
     createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato) {
-        const { potatoesGained, regradedStatName, regradeIncrease, guildRaidReady } = result;
+        const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady } = result;
         let fields = [{
             name: `Work Count:`,
             value: `${newWorkCount.toLocaleString()}`,
@@ -1014,6 +1015,12 @@ class EmbedFactory {
             fields.push({
                 name: `Free Regrade:`,
                 value: `+${regradeIncrease.toLocaleString()} ${regradedStatName}`,
+                inline: true,
+            });
+        } else if (shopUpgradedStatName) {
+            fields.push({
+                name: `Free Shop Upgrade:`,
+                value: `+${shopUpgradeIncrease.toLocaleString()} ${shopUpgradedStatName}`,
                 inline: true,
             });
         } else {
