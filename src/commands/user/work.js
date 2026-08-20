@@ -60,7 +60,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },
@@ -71,7 +71,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
             potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },
@@ -81,7 +81,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },
@@ -95,7 +95,7 @@ var workScenarios = [
             let potatoesGained;
             if (metalPotatoRoll < .1) {
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, Boolean(userDetails._cooldownSkipped));
             } else {
                 potatoesGained = 0;
 
@@ -105,7 +105,7 @@ var workScenarios = [
                 const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
                 await dynamoHandler.updateUserFields(userId, { workScenarioCounts, workTimer });
 
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, Boolean(userDetails._cooldownSkipped));
             }
             await safeEditReply(interaction, embed);
             return potatoesGained;
@@ -116,7 +116,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },
@@ -129,7 +129,7 @@ var workScenarios = [
         // the normal roll inside handleCompanionEncounter.
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId) => {
             const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus, forcedCompanionId);
-            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult);
+            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return companionResult.potatoesGained;
         },
@@ -139,7 +139,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return starchesGained;
         },
@@ -149,7 +149,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato);
+            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return ancientResult.potatoesGained;
         },
@@ -159,7 +159,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleMimicPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },
@@ -169,7 +169,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return starchesGained;
         },
@@ -180,7 +180,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus);
             const regularMob = chooseMobFromList(regularWorkMobs);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, Boolean(userDetails._cooldownSkipped));
             await safeEditReply(interaction, embed);
             return potatoesGained;
         },

@@ -266,7 +266,7 @@ and needs its own balance pass.
   | Companion | Rarity | Perk |
   |---|---|---|
   | Sprout | Common | +2% Work Multiplier |
-  | Fieldmouse | Common | -5% `/work` cooldown |
+  | Fieldmouse | Common | 5% chance to skip the `/work` cooldown entirely |
   | Ladybug | Common | +5% Passive Income |
   | Barn Owl | Rare | +10% personal `/rob` success chance (stacks with the guild `robChance` buff) |
   | Mole | Rare | +10% Starch max capacity |

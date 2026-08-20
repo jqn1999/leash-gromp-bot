@@ -373,8 +373,14 @@ const Companions = [
         name: "Fieldmouse",
         rarity: CompanionRarity.COMMON,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A quick little fieldmouse that scouts ahead between work sessions, shaving a little time off every cooldown.",
-        perks: [{ type: "workCooldownPercent", value: 0.05 }]
+        description: "A quick little fieldmouse that scouts ahead between work sessions — every so often it comes back so fast your cooldown never even starts.",
+        // A flat % reduction off a 300-second base cooldown reads as basically nothing
+        // to a player (5% of 300s = 15s), and only Legendary+/guild investment can push
+        // it further from there. A chance to skip the cooldown ENTIRELY reads as a real,
+        // noticeable moment instead — same average value at low equip rates, but it's
+        // an event a player actually sees happen, not a silent shave. See
+        // dynamoHandler.js's calculateWorkTimerValue for the roll.
+        perks: [{ type: "workCooldownSkipChance", value: 0.05 }]
     },
     {
         id: "ladybug",

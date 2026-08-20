@@ -210,10 +210,23 @@ const updateIfNewRecord = async function (userId, fieldName, newValue) {
 }
 
 // Computes the work-timer expiry (including the guild workTimer-buff discount and any
-// active companion's workCooldownPercent perk — Fieldmouse/Spudsprite, stacks with the
-// guild buff same as every other companion perk stacks with its guild counterpart)
-// without writing it, so callers can fold the result into a combined updateUserFields call.
+// active companion's workCooldownPercent perk — Spudsprite/Mochi, stacks with the guild
+// buff same as every other companion perk stacks with its guild counterpart) without
+// writing it, so callers can fold the result into a combined updateUserFields call.
+// Fieldmouse's workCooldownSkipChance is checked first and, on a hit, short-circuits
+// straight to "ready now" — a genuine skip, not a bigger percentage off the same timer,
+// so it's rolled separately rather than folded into the reduction math below. Mutates a
+// transient, never-persisted `_cooldownSkipped` flag onto the same userDetails object
+// reference the caller already holds, so work.js can show specific text for the roll
+// without every /work scenario's handler needing its return shape changed to carry an
+// extra flag through.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
+    const skipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
+    if (skipChance > 0 && Math.random() < skipChance) {
+        userDetails._cooldownSkipped = true;
+        return Date.now();
+    }
+
     let time = cooldownTime == Work.POISON_POTATO_TIMER_INCREASE_SECONDS ? Date.now() + cooldownTime * 1000 : Date.now() + Work.WORK_TIMER_SECONDS * 1000
 
     const userGuildId = userDetails.guildId;

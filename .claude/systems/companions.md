@@ -45,7 +45,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Companion | Rarity | Perks |
 |---|---|---|
 | Sprout | Common | `workMultiplierPercent` +2% |
-| Fieldmouse | Common | `workCooldownPercent` -5% |
+| Fieldmouse | Common | `workCooldownSkipChance` 5% (chance to skip the `/work` cooldown entirely, rather than reduce it) |
 | Ladybug | Common | `bankCapacityPercent` +5% |
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchCapacityPercent` +10% |
@@ -60,7 +60,8 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Perk | Common | Rare | Legendary | Mythic |
 |---|---|---|---|---|
 | Work Multiplier | 2% (Sprout) | 5% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
-| Work Cooldown | -5% (Fieldmouse) | — | -15% (Spudsprite) | -20% (Mochi) |
+| Work Cooldown Reduction | — | — | -15% (Spudsprite) | -20% (Mochi) |
+| Work Cooldown Skip Chance | 5% (Fieldmouse) | — | — | — |
 | Bank Capacity | 5% (Ladybug) | — | 10% (Rootcarver) | 15% (Elder Rootbeard) |
 | Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
 | Starch Capacity | — | 10% (Mole) | — | 15% (Elder Rootbeard) |
