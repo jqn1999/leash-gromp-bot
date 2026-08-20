@@ -47,6 +47,18 @@ const regularRaidMobs = [
             failureDescription: 'The potato adventurers\' infiltration mission takes an unfortunate turn when they\'re discovered and captured by Garlicore\'s underlings. The boss himself emerges from his lair, saturating the air with his unmistakable scent. The party\'s consciousness begins to fade, and it\'s only after they awaken that they realize their belongings have been pilfered by their putrid foe.',
             credit: 'Made by Beggar'
         }
+    ],
+    // Tier 4 — the ultra-late-game bracket, index [3]. thumbnailUrl is a placeholder
+    // (the bot's own generic avatar, same fallback already used for Brassica/Yamsalot
+    // in worldFactory.js) until real commissioned artwork exists.
+    [
+        {
+            name: "Marrowveil, the Sovereign Squash",
+            thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+            description: `Deep within a walled royal garden long thought abandoned, a butternut squash swollen with stolen magic has crowned itself sovereign: Marrowveil, the Sovereign Squash. Once an ordinary crop tended by the Kingdom's gardeners, it gorged itself on runoff from a buried ley line until its rind hardened into gilded armor and its vines grew long enough to strangle a throne room. It now holds court over a small army of loyal root vegetables, demanding tribute from every farmer who passes its garden walls. The adventurers who've handled every other troublemaker in the Kingdom are the only ones bold — or foolish — enough to challenge a squash that thinks it's a king.`,
+            successDescription: 'Marrowveil\'s loyal root-vegetable court scatters the moment its gilded rind finally cracks open, the stolen ley-line magic hissing out in a burst of golden light. Stripped of its borrowed power, the Sovereign Squash rolls pathetically back into its garden bed, muttering about an eventual return to the throne. The adventurers, still faintly sticky with squash pulp, call it a win.',
+            failureDescription: 'Marrowveil\'s vines prove sturdier than anyone expected, snaring the party one by one as its root-vegetable court jeers from the garden walls. Humbled and thoroughly out-squashed, the adventurers retreat to lick their wounds, while Marrowveil settles back onto its throne of stolen dirt, more insufferably regal than ever.'
+        }
     ]
 ]
 
@@ -79,6 +91,16 @@ const eliteRaidMobs = [
             successDescription: 'Tracking him by his wake of corruption, the party comes face-to-face with Evertart, the Bitterblade. The heroes cut past his accursed blade and deliver a seemingly-fatal stab through his sordid figure, only for it to vanish into the air. Though he was surely vanquished, faint whispers persist of the wraithlike Bitterblade\'s supposed return…',
             failureDescription: 'Tracking him by his wake of corruption, the party comes face-to-face with Evertart, the Bitterblade. They\'re stunned by the malicious enchantments echoing from his blade, and are brutally beaten by an onslaught of steel and spellcraft. As the heroes lie broken in his wake, Evertart continues to wreak blight and havoc throughout the realm.',
             credit: 'Made by Beggar'
+        }
+    ],
+    // Tier 4 — placeholder thumbnail, same reasoning as regularRaidMobs' T4 entry above.
+    [
+        {
+            name: "Solara, the Sunpeach Sovereign",
+            thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+            description: `In the highest boughs of an orchard no living gardener ever planted, Solara, the Sunpeach Sovereign, has ripened into something far beyond an ordinary peach tree spirit. Elder to Scarlet, Basilbane, and Evertart alike — some whisper she raised each of them from seedlings — Solara radiates a warmth potent enough to wilt steel and a fragrance that lulls even hardened adventurers into false security. She does not attack so much as overwhelm, her orchard blooming and withering in the same breath as she tests whether a party is truly ready to stand among the Kingdom's elite.`,
+            successDescription: 'The party pushes through Solara\'s disorienting fragrance and lands a coordinated strike at the heart of her orchard, severing the roots that anchor her power. The Sunpeach Sovereign\'s radiant bloom dims to a gentle glow, and she withdraws into dormancy, murmuring that few have ever earned the right to call themselves elite — but they have.',
+            failureDescription: 'Solara\'s fragrance proves too much, and the party stumbles through her blooming orchard in a daze, easy prey for her thorned branches. She doesn\'t gloat — she simply lets her orchard fold back around her, unbothered, as the humbled adventurers retreat to reconsider whether "elite" was ever the right word for them.'
         }
     ]
 ]
@@ -120,6 +142,20 @@ const legendaryRaidMobs = [
             successDescription: 'As the Root Reaper\'s ghostly visage materializes before the potato adventurers, they steel their resolve for the ultimate showdown. Valiantly safeguarding their beloved kingdom, the party casts Radishrend away with their strongest weapons and most potent magic. Though momentarily vanquished, the reaper subsides into the beyond in preparation for yet another harvest of souls.',
             failureDescription: 'As the Root Reaper\'s ghostly visage materializes before the potato adventurers, they steel their resolve for the ultimate showdown. His hordes of undead vegetables overwhelm the heroes, and not even their finest fighters can find an opening in Radishrend\'s front. With his opposition occupied, the reaper continues unimpeded, harvesting soul after soul from the once peaceful kingdom.',
             credit: 'Made by Beggar'
+        }
+    ],
+    // Tier 4 — the true capstone of the Legendary track, ties directly into the "Spud
+    // Entity" lore Radishrend's own description already seeds ("likely fueled by the
+    // Spud Entity"). Deliberately a herald/vessel rather than the Entity fully unveiled,
+    // leaving room for a future standalone raid to be the actual reveal. Placeholder
+    // thumbnail, same reasoning as the other two T4 entries above.
+    [
+        {
+            name: "Umbrathorn, the Withered Vessel",
+            thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+            description: `Where Gourdor was reanimated, Netherfig emerged from a fissure, and Radishrend called itself death's own hand, none of them were ever the true source — only fragments cast off by something far older. Umbrathorn, the Withered Vessel, is the closest anyone has come to standing before the Spud Entity itself: a hollowed potato husk, ancient beyond record, animated by a sliver of the Entity's own essence and wreathed in the same dark energy that spawned every horror the Kingdom's heroes have ever faced. It does not challenge adventurers so much as judge them, deciding in an instant whether they're worth destroying personally or leaving for lesser threats. Few parties who answer its summons return unchanged.`,
+            successDescription: 'Against impossible odds, the party lands blow after blow against Umbrathorn\'s withered husk, each strike peeling back another layer of the Spud Entity\'s borrowed essence. With a final, kingdom-shaking shriek, the Vessel collapses into inert ash — but the sliver of dark energy it carried doesn\'t disperse so much as retreat, back toward whatever depths spawned it in the first place. The adventurers have won, but the unmistakable sense lingers that they\'ve only delayed the inevitable.',
+            failureDescription: 'Umbrathorn\'s judgment is swift and merciless. The party\'s strongest blows pass through the Withered Vessel as though striking smoke, and the dark energy within answers with a wave of raw, ancient malice that leaves the heroes broken and scattered. The Vessel doesn\'t pursue — it doesn\'t need to. It simply returns to its slumber, patient in a way nothing mortal could ever be, certain the Kingdom\'s heroes will come again.'
         }
     ]
 ]
@@ -211,13 +247,12 @@ const regularRaidScenarios = [
         chance: .01
     },
     {
-        // Ultra-late-game bracket — see Raid.T4_RAID_DIFFICULTY's comment. Reuses T3's
-        // mob pool rather than introducing new flavor text; the fight is meant to read
-        // as "the same dangerous foe, now attempted at a much higher difficulty."
+        // Ultra-late-game bracket — see Raid.T4_RAID_DIFFICULTY's comment. Its own
+        // dedicated boss lives at regularRaidMobs[3].
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const ultimateRaidMob = chooseMobFromList(regularRaidMobs[2]);
+            const ultimateRaidMob = chooseMobFromList(regularRaidMobs[3]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T4_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -361,7 +396,7 @@ const eliteRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 2;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[2]);
+            const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[3]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T4_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
@@ -505,7 +540,7 @@ const legendaryRaidScenarios = [
             let raidSplit, totalRaidSplit, raidResultDescription;
             const DIFFICULTY_MULTIPLIER = 4;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
+            const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[3]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T4_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {

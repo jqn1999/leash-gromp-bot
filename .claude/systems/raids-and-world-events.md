@@ -136,9 +136,12 @@ to its reward, all three permanent stat bonuses, *and* its difficulty. Previousl
 same flat reward at the exact same difficulty regardless of tier, which made Elite/Legendary
 strictly worse than Regular for the identical 1% shot (lower success-rate cap, nothing gained for
 it). Its failure penalty stays 0 at every tier — it's the one bracket that costs nothing to attempt,
-win or lose. T4 reuses each raid-select tier's own T3 mob pool rather than introducing new flavor
-text — the fight reads as "the same dangerous foe, attempted at much higher difficulty," not a new
-named boss.
+win or lose. T4 has its own dedicated boss per raid-select tier (mob pool index `[3]`) — Marrowveil,
+the Sovereign Squash (regular); Solara, the Sunpeach Sovereign (elite); Umbrathorn, the Withered
+Vessel (legendary), the closest thing to a true final boss and the first raid content to directly
+name-drop the "Spud Entity" Radishrend's own flavor text already hints is behind every Legendary
+threat. All three currently use the bot's generic avatar as a placeholder `thumbnailUrl`, same
+pattern as Brassica/Yamsalot in the world raid pool — they need real commissioned artwork.
 
 Reward amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and, on the winning side only,
 scaled by the guild's raid reward multiplier — computed live from `raidCount` via
