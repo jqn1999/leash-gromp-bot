@@ -11,15 +11,6 @@ function calculateTax(amount){
     return Bank.TAX_BASE + Math.floor(amount*Bank.TAX_PERCENT)
 }
 
-// Strips thousands-separator commas before parsing — the bank embeds this command itself
-// renders display every amount via .toLocaleString() (e.g. "50,000"), and a player
-// copy-pasting that back into the amount field otherwise gets Number("50,000") => NaN,
-// silently failing with "something went wrong with your amount" for a value the bot
-// showed them seconds earlier.
-function parseAmount(raw) {
-    return Math.floor(Number(String(raw).replace(/,/g, '').trim()));
-}
-
 function buildAmountPickerRow(action) {
     const actionLabel = action === 'deposit' ? 'Deposit' : 'Withdraw';
     const buttons = [25, 50, 100].map(pct => new ButtonBuilder()
@@ -134,14 +125,14 @@ module.exports = {
                     totalAmount = netAmount + calculateTax(netAmount);
                 }
             } else {
-                netAmount = parseAmount(netAmount);
-                if (isNaN(netAmount)) {
-                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to store. Try again!`);
-                    return;
-                }
+                netAmount = Math.floor(Number(netAmount));
                 totalAmount = netAmount + calculateTax(netAmount);
                 if (netAmount > remainingBankSpace) {
                     interaction.editReply(`${userDisplayName}, you do not have enough bank space to deposit ${netAmount.toLocaleString()}. You have ${remainingBankSpace.toLocaleString()} remaining.`);
+                    return;
+                }
+                if (isNaN(netAmount)) {
+                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to store. Try again!`);
                     return;
                 }
             }
@@ -173,13 +164,13 @@ module.exports = {
             } else if (netAmount.toLowerCase() == 'all') {
                 netAmount = userBankStored;
             } else {
-                netAmount = parseAmount(netAmount);
-                if (isNaN(netAmount)) {
-                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to withdraw. Try again!`);
-                    return;
-                }
+                netAmount = Math.floor(Number(netAmount));
                 if (netAmount > userBankStored) {
                     interaction.editReply(`${userDisplayName}, you do not have ${netAmount.toLocaleString()} potatoes to withdraw. You have ${userBankStored.toLocaleString()} potatoes stored. Withdraw 'all' or give a valid amount.`);
+                    return;
+                }
+                if (isNaN(netAmount)) {
+                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to withdraw. Try again!`);
                     return;
                 }
             }
