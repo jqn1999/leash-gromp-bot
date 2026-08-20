@@ -464,6 +464,73 @@ const Companions = [
     }
 ]
 
+// Static content for /help. Kept data-driven the same way Companions is, so the slash
+// command's `topic` choices and the embed content it renders both stay in sync from one
+// place. "companions" and "commands" only need id/label/description here — their embed
+// content is generated live off the Companions array and the actual command list instead
+// of duplicated as static text (see embedFactory.js's createHelpCompanionsEmbed and
+// createHelpCommandsEmbed) so those two never drift from what's actually shipped.
+const HelpTopics = [
+    {
+        id: "overview",
+        label: "Overview",
+        description: "What Leash Gromp is and how the core loop works",
+        content: "Leash Gromp is a potato economy game. Run `/work` on a cooldown to earn potatoes, spend them in the `/shop` (via `/buy`) to grow your stats, and stash them in `/bank` so they're safe from `/rob`. Once a stat is maxed in the shop, `/regrade` pushes it further; once everything's shop-maxed and regrade-capped, `/rebirth` resets your progress for a permanent boost that makes the next climb faster. Join a guild to team up on raids and shared Guild Contracts. Use `/help topic:<name>` for details on any of these, or `/help topic:commands` for the full command list."
+    },
+    {
+        id: "work",
+        label: "Work",
+        description: "The core /work loop and its bonus encounters",
+        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (extends your next cooldown but pays out well), **Large/Metal Potato** (bigger risk/reward tiers), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a free regrade or shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it."
+    },
+    {
+        id: "companions",
+        label: "Companions",
+        description: "The full companion roster and what each one does"
+    },
+    {
+        id: "progression",
+        label: "Shops, Regrade & Rebirth",
+        description: "How to permanently grow your stats over time",
+        content: "`/shop` lists every stat track (work multiplier, cooldown, bank/starch capacity, and more) and its purchasable tiers — buy the next tier with `/buy`. Once a track is fully maxed out in the shop, `/regrade` lets you keep pushing that specific stat further using potatoes, up to a cap per track. Once every track is both shop-maxed and regrade-capped, `/rebirth` resets your shop tiers, regrades, and potatoes in exchange for a permanent multiplier that makes the next climb faster — the long-term endgame loop."
+    },
+    {
+        id: "guilds",
+        label: "Guilds",
+        description: "Creating, joining, and growing a guild",
+        content: "`/create-new-guild` starts a guild, `/join-guild` joins an existing one — you can only be in one guild at a time, so leave (`/leave`) before switching. Guilds level up by winning raids, and each level unlocks a stronger guild buff, chosen with `/set-buff`. `/guild-upgrade` spends the guild's shared bank (`/guild-bank`) on upgrades like extra bank capacity. Guild Contracts (`/guild-contract`) are rotating objectives the whole guild works toward together for a shared reward, and `/guild-members`/`/guild-history` show the roster and past activity."
+    },
+    {
+        id: "raids",
+        label: "Raids",
+        description: "How guild raids and their tiers work",
+        content: "`/create-raid` starts a raid, `/join-raid` toggles whether you automatically join your guild's raids from now on (no need to re-join by hand every time), and `/start-raid` runs it once enough members are in — `/current-raid` shows the live roster and status. Raids come in four tiers (T1 through T4), each steeper in both difficulty and reward. The higher tiers aren't just about personal stats — they're gated behind your guild's level too, so a guild has to actually level up (not just stack individual work multipliers) before it can safely attempt them, with T4 needing the guild fully invested and most members deep into regrade or rebirth territory."
+    },
+    {
+        id: "economy",
+        label: "Economy",
+        description: "Potatoes, starches, banking, and giving",
+        content: "Potatoes are the main currency; starches are a secondary one bought and sold at a price that shifts daily (`/starch`, `/buy-starch`, `/sell-starch`). `/bank` stores potatoes safely out of `/rob`'s reach and can passively grow over time; `/guild-bank` does the same at the guild level. `/give` lets you gift potatoes or starches to another player, minus a small tax taken out of what you send."
+    },
+    {
+        id: "rob-betting",
+        label: "Rob, Betting & Games",
+        description: "Risk-your-potatoes side activities",
+        content: "`/rob` lets you try to steal potatoes from another player, with a real chance of getting caught and fined instead — keeping potatoes in `/bank` protects them from this. `/coinflip` and `/rps` are quick solo/1v1 gambling games. `/create-new-bet`, `/bet`, `/current-bet`, `/lock-bets`, and `/bet-end` run community-wide bets on anything the bet's creator sets up. `/enter-tower` is a once-a-day climb with its own leaderboard (`/tower-leaderboard`)."
+    },
+    {
+        id: "quests-achievements",
+        label: "Quests & Achievements",
+        description: "Rotating objectives and permanent milestones",
+        content: "`/quests` shows your active daily and weekly quests — a rotating set of objectives for bonus rewards. `/achievements` shows the permanent milestones you've unlocked as you play. Both track progress automatically across most commands, not just `/work`."
+    },
+    {
+        id: "commands",
+        label: "Full Command List",
+        description: "Every command, grouped by category"
+    }
+]
+
 // Unlike Bank's tax (added on top of a chosen net amount), Give tax is taken out of the
 // amount the sender specifies — what they type is what leaves their balance, and the
 // recipient gets less. Starches get the lower rate deliberately: since starches can be
@@ -1189,6 +1256,7 @@ module.exports = {
     CompanionMarket,
     CompanionDuplicateReward,
     Companions,
+    HelpTopics,
     Give,
     GuildRoles,
     Raid,

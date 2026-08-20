@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -1075,6 +1075,82 @@ class EmbedFactory {
             .setColor("Gold")
             .setThumbnail(ancientPotato.thumbnailUrl)
             .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Landing page for /help — lists every topic (pulled from HelpTopics so it can never
+    // drift from the choices the slash command itself offers).
+    createHelpOverviewEmbed() {
+        const overview = HelpTopics.find(topic => topic.id === "overview");
+        const topicList = HelpTopics
+            .filter(topic => topic.id !== "overview")
+            .map(topic => `**${topic.label}** (\`${topic.id}\`) — ${topic.description}`)
+            .join('\n');
+
+        const embed = new EmbedBuilder()
+            .setTitle("Leash Gromp — Help")
+            .setDescription(`${overview.content}\n\n**Topics:**\n${topicList}`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Renders any HelpTopics entry that carries static `content` — i.e. every topic
+    // except "companions" and "commands", which are generated live instead (see
+    // createHelpCompanionsEmbed/createHelpCommandsEmbed) so they can't drift from what's
+    // actually shipped.
+    createHelpTopicEmbed(topicId) {
+        const topic = HelpTopics.find(t => t.id === topicId);
+        const embed = new EmbedBuilder()
+            .setTitle(`Leash Gromp — ${topic.label}`)
+            .setDescription(topic.content)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Full companion roster grouped by rarity, generated straight off the Companions
+    // array so it can never fall out of sync with what /companion actually offers.
+    createHelpCompanionsEmbed() {
+        const rarityOrder = [CompanionRarity.COMMON, CompanionRarity.RARE, CompanionRarity.LEGENDARY, CompanionRarity.MYTHIC];
+        const fields = rarityOrder.map(rarity => {
+            const companionsOfRarity = Companions.filter(c => c.rarity === rarity);
+            return {
+                name: `${COMPANION_RARITY_LABEL[rarity]} (${companionsOfRarity.length})`,
+                value: companionsOfRarity.map(c => `**${c.name}** — ${formatCompanionPerks(c)}`).join('\n'),
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle("Leash Gromp — Companions")
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — equip with \`/companion equip\`, view your own with \`/companion\`.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // categorizedCommands: { categoryLabel: [commandName, ...] }, gathered live by help.js
+    // off the actual command files (skipping deleted/devOnly ones) so this can't list a
+    // command that's been removed or hide one that's been added.
+    createHelpCommandsEmbed(categorizedCommands) {
+        const fields = Object.entries(categorizedCommands).map(([category, commandNames]) => ({
+            name: category,
+            value: commandNames.map(name => `\`/${name}\``).join(', '),
+            inline: false,
+        }));
+
+        const embed = new EmbedBuilder()
+            .setTitle("Leash Gromp — Command List")
+            .setDescription("Every available command, grouped by category. Discord's own slash command menu shows a short description for each — start typing `/` to browse.")
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;

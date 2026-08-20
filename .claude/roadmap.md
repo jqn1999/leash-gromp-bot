@@ -372,6 +372,14 @@ and needs its own balance pass.
   add more once the roll/equip/market infrastructure exists — the roster itself is just data, same
   as Achievements.
 
+- [x] **11. Help Command** — S — **Done**
+  What: `/help` with an optional `topic` choice — see [systems/help.md](systems/help.md). Landing
+  page (no topic) lists every topic; picking one shows a static write-up (Work, Progression,
+  Guilds, Raids, Economy, Rob/Betting/Games, Quests & Achievements) or a generated one
+  (Companions off the live roster, Full Command List off the actual command files). All topic
+  content is data-driven off a new `HelpTopics` array in `constants.js`, same pattern as
+  `Companions`, so the slash command's choices and the embed content can't drift apart.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
