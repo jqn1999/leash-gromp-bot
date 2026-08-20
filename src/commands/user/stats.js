@@ -44,7 +44,7 @@ module.exports = {
             return;
         };
 
-        const embed = embedFactory.createUserStatsEmbed(
+        const embed = await embedFactory.createUserStatsEmbed(
             userId,
             userDisplayName,
             userAvatar,

@@ -511,9 +511,15 @@ const Raid = {
     RAID_HEADCOUNT_BONUS_PER_MEMBER: 0.03,
     RAID_HEADCOUNT_BONUS_CAP: 0.50,
 
+    // A deliberate alternate path to T3/T4-caliber effective power: pay a flat upfront
+    // potato cost (win or lose) instead of grinding toward the shop/regrade currency
+    // directly, in exchange for permanent stat gains at a real, capped success rate.
+    // Difficulty sits between T2 (85) and T3 (600) on purpose — the tradeoff is meant to
+    // help a guild bridge toward being ready for T3/T4 raids, not to trivialize reaching
+    // them, so it's deliberately never as easy as T2 nor as hard as T3.
     REGULAR_STAT_RAID_REWARD: 0.2,
     REGULAR_STAT_RAID_COST: -300000,
-    REGULAR_STAT_RAID_DIFFICULTY: 250
+    REGULAR_STAT_RAID_DIFFICULTY: 350
 }
 
 const GuildRoles = {

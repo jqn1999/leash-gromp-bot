@@ -155,9 +155,13 @@ increments on success (drives both the guild leaderboard sort and the level curv
 next raid automatically (see `join-raid`/`getLiveRaidRoster` above).
 
 **Stat raid** (`raid-select: stat`): costs `Raid.REGULAR_STAT_RAID_COST(-300,000)` potatoes per
-member upfront, difficulty `250`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for
+member upfront, difficulty `350`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for
 `+0.2` work multiplier for all participants, or a 1% chance to roll Metal King instead for double
-stat rewards.
+stat rewards. Difficulty is deliberately positioned between T2 (85) and T3 (600) — this is meant as
+a real alternate path to T3/T4-caliber `effectiveRaidPower` (pay a flat potato cost instead of
+grinding shop/regrade directly), not a shortcut that trivializes reaching them, so it's kept harder
+than T2 and easier than T3 on purpose rather than left at whatever difficulty happened to be
+convenient.
 
 ## World raids
 

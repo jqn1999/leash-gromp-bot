@@ -184,7 +184,13 @@ class EmbedFactory {
         return embed;
     }
 
-    createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
+    // Async as of the live-data update — matches createUserEmbed's shape exactly (same
+    // three live modifiers: guild buff, active companion perk, rebirth's live %) so
+    // /user-stats and /profile can no longer show two different "current" numbers for
+    // the same account. The base+buff+regrade breakdown stays (useful on its own — it's
+    // the only place that shows where the stored number actually comes from), with the
+    // live effective total appended alongside it rather than replacing it.
+    async createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
         const userBaseWorkMultiplier = userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount;
@@ -196,6 +202,18 @@ class EmbedFactory {
         let bankName = findShopItemName(userBaseBankCapacity, shops[2].items);
         let starchName = findShopItemName(userBaseMaxStarches, shops[3].items);
 
+        const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+        const guildWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+        const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
+        const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
+        const liveWorkBonus = guildWorkMulti + companionWorkMulti + rebirthWorkMulti;
+
+        const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent;
+        const livePassiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
+
+        const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
+        const liveBankBonus = Math.round(userDetails.bankCapacity * totalBankPercent);
+
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
@@ -206,17 +224,20 @@ class EmbedFactory {
             .addFields(
                 {
                     name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
-                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x`,
+                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
+                        + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth)` : ''),
                     inline: false,
                 },
                 {
                     name: "Current Passive Income Upgrade:",
-                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()} + ${userDetails.regrades.passiveAmount.regradeAmount.toLocaleString()}) potatoes`,
+                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()} + ${userDetails.regrades.passiveAmount.regradeAmount.toLocaleString()}) potatoes = ${userDetails.passiveAmount.toLocaleString()}`
+                        + (livePassiveBonus > 0 ? `\nLive: ${(userDetails.passiveAmount + livePassiveBonus).toLocaleString()} potatoes per day (+${livePassiveBonus.toLocaleString()})` : ''),
                     inline: false,
                 },
                 {
                     name: "Current Bank Capacity Upgrade:",
-                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes`,
+                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes = ${userDetails.bankCapacity.toLocaleString()}`
+                        + (liveBankBonus > 0 ? `\nLive: ${(userDetails.bankCapacity + liveBankBonus).toLocaleString()} potatoes (+${liveBankBonus.toLocaleString()})` : ''),
                     inline: false,
                 },
                 {

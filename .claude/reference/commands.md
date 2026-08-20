@@ -13,7 +13,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `rob.js` | `/rob` | Attempt to steal potatoes from another user, 1hr cooldown, risk of penalty |
 | `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch leaderboard, highlights requester's rank |
 | `profile.js` | `/profile` | Full profile embed (stats, buffs, guild) for self or a mentioned user |
-| `stats.js` | `/user-stats` | Raw lifetime stat counters for self or a target user |
+| `stats.js` | `/user-stats` | Base+buff+regrade breakdown plus live effective totals (guild buff/companion/rebirth folded in, same modifiers `/profile` uses) for self or a target user |
 | `achievements.js` | `/achievements` | Full achievement list (unlocked + locked-with-progress) for self or a target user — see [systems/achievements.md](../systems/achievements.md) |
 | `quests.js` | `/quests` | Active daily/weekly quest list with progress, self or a target user (read-only, doesn't snapshot/claim) — see [systems/quests.md](../systems/quests.md) |
 | `companion.js` | `/companion` | Paginated list of owned companions, or equip one as active — see [systems/companions.md](../systems/companions.md) |
