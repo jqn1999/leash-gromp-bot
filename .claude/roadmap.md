@@ -379,6 +379,14 @@ and needs its own balance pass.
   might just *be* the Achievements & Titles system above rather than a separate system), a Discord
   role? Worth revisiting once item 1 exists, since there's likely a lot of overlap.
 
+- [ ] **Multi-Server Support** — L — prompted by players in other Discords asking for the bot. Key
+  decisions already locked: each server gets its own economy (leaderboard/work-scaling/starch
+  totals), filtered live against Discord membership rather than partitioning user storage; the
+  in-game Guild system stays global (one Guild per user, prevents double-dipping benefits across
+  servers); global singleton game state (World Boss, Guild Contract/Quest rotations, the hourly
+  special-odds event) and scheduled announcements both need to become per-server. Full design,
+  build order, and open questions in [multi-server-support.md](multi-server-support.md).
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
