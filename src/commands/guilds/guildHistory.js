@@ -46,7 +46,7 @@ module.exports = {
         }
     ],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const type = interaction.options.get('type')?.value || 'raid';
 

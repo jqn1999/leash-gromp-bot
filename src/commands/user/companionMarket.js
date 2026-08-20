@@ -35,7 +35,7 @@ module.exports = {
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const { listings } = await companionMarketFactory.getMarketState();

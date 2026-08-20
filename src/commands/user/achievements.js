@@ -44,7 +44,7 @@ module.exports = {
         },
     ],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         let userId, userDisplayName, username;
 
         const targetUserId = await interaction.options.get('target-user')?.value;

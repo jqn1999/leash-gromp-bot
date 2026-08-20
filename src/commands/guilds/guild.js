@@ -17,7 +17,7 @@ module.exports = {
     ],
     deleted: false,
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         let guild;
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         let guildName = interaction.options.get('guild-name')?.value;

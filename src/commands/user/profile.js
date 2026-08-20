@@ -33,7 +33,7 @@ module.exports = {
     ],
     deleted: false,
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         let userId, userDisplayName, userAvatar, username;
 
         const targetUserId = await interaction.options.get('target-user')?.value;
