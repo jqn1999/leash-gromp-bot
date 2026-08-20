@@ -5,7 +5,10 @@ module.exports = {
     name: "leave-raid",
     description: "Remove yourself from your guild's raid roster",
     devOnly: false,
-    deleted: false,
+    // Superseded by /join-raid's toggle (see joinRaid.js) — running /join-raid again
+    // now does what this command used to do, so this is kept registered as deleted
+    // rather than removed outright, matching createRaid.js's precedent.
+    deleted: true,
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);

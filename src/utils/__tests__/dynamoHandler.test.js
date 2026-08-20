@@ -67,6 +67,16 @@ describe('addUser', () => {
         const bankShop = shops.find(s => s.shopId === 'bankShop');
         expect(bankShop.items[0].currentAmount).toBe(Bank.STARTING_CAPACITY);
     });
+
+    // Regression: a brand-new account must default to opted OUT of auto-joining guild
+    // raids (matching the old /join-raid's "you must explicitly join" behavior) — an
+    // accidental default of true would silently commit every new member's future
+    // stats/potatoes to raids they never agreed to participate in.
+    test('defaults autoJoinRaids to false', async () => {
+        docClient.put.mockReturnValue(resolved({}));
+        const user = await dynamoHandler.addUser('u1', 'name');
+        expect(user.autoJoinRaids).toBe(false);
+    });
 });
 
 describe('findUser', () => {

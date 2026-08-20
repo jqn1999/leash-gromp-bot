@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -746,7 +746,7 @@ module.exports = {
             }
         }
 
-        let raidList = guild.raidList;
+        let raidList = await getLiveRaidRoster(guild);
         let raidCount = guild.raidCount;
         const raidCountBeforeThisRaid = raidCount;
         let guildTotalEarnings = guild.totalEarnings;
@@ -879,6 +879,8 @@ module.exports = {
             ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel)))
             : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
 
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);
+        // No raidList to clear anymore — the roster is computed live from each member's
+        // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so
+        // whoever's still opted in stays opted in for the next raid automatically.
     }
 }

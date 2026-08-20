@@ -35,6 +35,21 @@ function getMinGuildLevelForTier(penaltyMult, maxSuccessRate) {
     return firstViableTier ? firstViableTier.level : RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level;
 }
 
+// The live raid roster: every current guild member whose persistent autoJoinRaids
+// toggle (/join-raid) is on, fetched fresh on every call instead of read from a stored
+// guild.raidList. Replaces the old push-on-join/splice-on-leave array, which needed
+// leave.js/kick.js to explicitly prune a departing member and neither ever did — a
+// departed member could linger in a raid indefinitely under the old model. Under this
+// one, a member who leaves/gets kicked simply drops out of guild.memberList and stops
+// being queried at all, no separate cleanup needed. Returns the same {id, username}[]
+// shape guild.raidList used to, so every downstream consumer (embedFactory,
+// handleStatSplit/incrementCounter/handlePotatoSplit, startRaid.js's reward math) is
+// unchanged — only where the roster comes from is different.
+async function getLiveRaidRoster(guild) {
+    const memberDetails = await Promise.all(guild.memberList.map(m => dynamoHandler.findUser(m.id, m.username)));
+    return guild.memberList.filter((member, index) => memberDetails[index]?.autoJoinRaids === true);
+}
+
 class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
         const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
@@ -126,5 +141,6 @@ async function calculateRaidSplit(raidList, totalRaidSplit) {
 module.exports = {
     RaidFactory,
     getRaidLevelInfo,
-    getMinGuildLevelForTier
+    getMinGuildLevelForTier,
+    getLiveRaidRoster
 }

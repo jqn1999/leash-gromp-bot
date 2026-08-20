@@ -1,6 +1,7 @@
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
+const { getLiveRaidRoster } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -30,7 +31,7 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
-        const raidList = guild.raidList;
+        const raidList = await getLiveRaidRoster(guild);
 
         const timeUntilRaidAvailableInSeconds = Math.floor((guild.raidTimer - Date.now())/1000);
 

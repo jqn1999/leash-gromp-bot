@@ -3,7 +3,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 
 module.exports = {
     name: "join-raid",
-    description: "Add yourself to your guild's raid roster, ready for an Elder+ to start with /start-raid",
+    description: "Toggle whether you automatically join your guild's raids from now on",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -18,32 +18,15 @@ module.exports = {
 
         const userGuildId = userDetails.guildId;
         if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to join the raid of!`);
+            interaction.editReply(`${userDisplayName} you have no guild to join raids for!`);
             return;
         }
 
-        let guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
-        let memberList = guild.memberList;
-        let raidList = guild.raidList;
+        const newState = !userDetails.autoJoinRaids;
+        await dynamoHandler.updateUserDatabase(userId, "autoJoinRaids", newState);
 
-
-        const member = memberList.find((currentMember) => currentMember.id == userId)
-        if (!member) {
-            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
-            return;
-        }
-
-        if (raidList.filter(currentMember => currentMember.id == userId).length > 0) {
-            interaction.editReply(`${userDisplayName} you have already joined this raid. Check the current raid status using /current-raid!`);
-            return;
-        }
-        raidList.push(member);
-        
-        await dynamoHandler.updateGuildDatabase(userGuildId, 'raidList', raidList);
-        interaction.editReply(`${userDisplayName} you have joined the raid for the guild, '${guild.guildName}'!`);
+        interaction.editReply(newState
+            ? `${userDisplayName}, you will now automatically join your guild's raids. Run /join-raid again anytime to opt back out.`
+            : `${userDisplayName}, you will no longer automatically join your guild's raids. Run /join-raid again anytime to opt back in.`);
     }
 }

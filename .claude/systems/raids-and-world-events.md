@@ -26,19 +26,40 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
 - `create-raid` is marked `deleted: true` in its command module — **retired/disabled**, don't
   reference it as a live entry point. It set `guild.activeRaid = true` as a gate before anyone
   could join, refusing to run again while `activeRaid` was already `true` — but nothing anywhere
-  (including `start-raid`, which only clears `raidList`) ever set `activeRaid` back to `false`, so
-  the first use permanently locked a guild out of ever calling it again. Neither `join-raid` nor
-  `start-raid` actually check `activeRaid`, so it wasn't load-bearing outside its own broken
-  self-check — the raid flow works fine without it (see `join-raid`/`start-raid` below).
-- `join-raid`: any guild member adds themselves to `guild.raidList` (deduped by ID), at any time —
-  no "raid must exist" precondition.
-- `current-raid`: shows the roster, the summed `workMultiplierAmount` of joined members, and time
-  left on `guild.raidTimer`. (The guild buff that used to boost this total directly — `raidMulti` —
-  was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
-- `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty `raidList` and an elapsed
+  ever set `activeRaid` back to `false`, so the first use permanently locked a guild out of ever
+  calling it again. Neither `join-raid` nor `start-raid` actually check `activeRaid`, so it wasn't
+  load-bearing outside its own broken self-check — the raid flow works fine without it (see
+  `join-raid`/`start-raid` below). It also still pushes onto a `raidList` variable that no longer
+  reflects how rosters work post-toggle-rework; being dead code, this was left as-is rather than
+  updated.
+- `join-raid`: a **persistent toggle**, not a per-raid action — flips the user's own
+  `autoJoinRaids` boolean (defaults `false` on a new account) and reports the resulting state.
+  There is no longer a `guild.raidList` to push onto; `leave-raid` is retired (`deleted: true`,
+  same convention as `create-raid`) since running `join-raid` again does what it used to do.
+- The raid roster is computed **live**, not stored: `raidFactory.js`'s `getLiveRaidRoster(guild)`
+  fetches every `guild.memberList` entry's user record and filters to whoever currently has
+  `autoJoinRaids: true`, returning the same `{id, username}[]` shape the old stored `raidList` did
+  so every downstream consumer (reward-splitting helpers, embeds) is unchanged. This closes a real
+  gap the old model had: `leave.js`/`kick.js` never pruned a departing member from `raidList`, so
+  they could linger in a guild's raid roster indefinitely after leaving. Under the live model a
+  departed member simply isn't in `memberList` anymore, so they drop out automatically.
+- `current-raid`: shows the live roster, the summed `workMultiplierAmount` of opted-in members, and
+  time left on `guild.raidTimer`. (The guild buff that used to boost this total directly —
+  `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
+- `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
   value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
   `raid-select` ∈ `regular` / `elite` / `legendary` / `stat`.
+- **Elite/Legendary are gated by guild level**, not by roster strength: `raidFactory.js`'s
+  `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` derives the guild level at which a tier's
+  success-rate cap first sits at or above that tier's mathematical breakeven success chance
+  (`penaltyMult / (raidRewardMultiplier + penaltyMult)` — every bracket has equal-magnitude base
+  reward/penalty and the tier's own difficulty multiplier cancels out of the ratio). Below that
+  level, a tier is negative-EV no matter how large `totalMultiplier` gets, since the cap itself sits
+  under breakeven — no amount of individual stat investment can compensate. Elite resolves to guild
+  level 1 (already viable, thin margin); Legendary to level 4. `start-raid` rejects a locked
+  selection with the reason instead of letting a guild discover the trap by losing potatoes over
+  several raids.
 
 ### Success chance & tiers
 
@@ -77,8 +98,9 @@ for the full level curve (1.00x at level 1 up to 10.00x at level 10/12,000 wins)
 never scaled by it. On success, the reward goes to the guild bank if it fits, else it's split
 directly to members' liquid balances. On failure, the penalty is deducted from the guild bank if it
 covers the full amount, else it's split as a loss across members' liquid balances. `guild.raidCount`
-increments on success (drives both the guild leaderboard sort and the level curve). `raidList` is
-cleared after every `start-raid` call regardless of outcome.
+increments on success (drives both the guild leaderboard sort and the level curve). There's no
+`raidList` to clear anymore — whoever's still opted in via `autoJoinRaids` stays opted in for the
+next raid automatically (see `join-raid`/`getLiveRaidRoster` above).
 
 **Stat raid** (`raid-select: stat`): costs `Raid.REGULAR_STAT_RAID_COST(-300,000)` potatoes per
 member upfront, difficulty `250`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for

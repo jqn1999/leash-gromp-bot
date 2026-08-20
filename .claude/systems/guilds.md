@@ -160,7 +160,7 @@ highest-first (`GuildContractFactory.getMemberBreakdown`, read-only, same per-me
 `/quests`. Two append-and-cap lists on the guild record, both capped at `GuildHistory.MAX_ENTRIES`
 (25, dropping the oldest), displayed most-recent-first:
 - `guild.raidHistory` — appended once per `/start-raid` resolution, in `startRaid.js` right before
-  the existing `raidTimer`/`raidList` reset. Win/loss is derived by **re-fetching the guild and
+  the `raidTimer` reset. Win/loss is derived by **re-fetching the guild and
   comparing `raidCount` against the value read before this raid started**, rather than threading a
   result object through all 14 scenario closures in that file (regular/elite/legendary × Metal
   King/T3/T2/T1, plus 2 stat-raid variants) — every winning closure already increments and persists

@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -13,6 +13,57 @@ function user(id, overrides = {}) {
 beforeEach(() => {
     jest.clearAllMocks();
     dynamoHandler.updateUserFields.mockResolvedValue({});
+});
+
+// Regression coverage for the join-raid rework: the raid roster used to be a stored
+// guild.raidList array (push on /join-raid, splice on /leave-raid) that leave.js/kick.js
+// never pruned, so a departed member could linger in a raid indefinitely. It's now
+// computed live from guild.memberList filtered by each member's persistent
+// autoJoinRaids toggle — a member who leaves the guild simply isn't in memberList
+// anymore, so they drop out automatically with no separate cleanup needed.
+describe('getLiveRaidRoster', () => {
+    function guild(memberList) {
+        return { memberList };
+    }
+
+    test('includes only members whose autoJoinRaids toggle is on', async () => {
+        dynamoHandler.findUser.mockImplementation(async id => ({
+            userId: id,
+            autoJoinRaids: id === 'a' || id === 'c',
+        }));
+        const members = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }, { id: 'c', username: 'c' }];
+
+        const roster = await getLiveRaidRoster(guild(members));
+
+        expect(roster.map(m => m.id)).toEqual(['a', 'c']);
+    });
+
+    test('a member missing entirely (lookup failure) is excluded, not a throw', async () => {
+        dynamoHandler.findUser.mockImplementation(async id => id === 'a' ? { userId: 'a', autoJoinRaids: true } : undefined);
+        const members = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }];
+
+        const roster = await getLiveRaidRoster(guild(members));
+
+        expect(roster.map(m => m.id)).toEqual(['a']);
+    });
+
+    test('returns an empty roster when nobody has opted in', async () => {
+        dynamoHandler.findUser.mockImplementation(async id => ({ userId: id, autoJoinRaids: false }));
+        const members = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }];
+
+        const roster = await getLiveRaidRoster(guild(members));
+
+        expect(roster).toEqual([]);
+    });
+
+    test('preserves the original {id, username} shape guild.raidList used to have', async () => {
+        dynamoHandler.findUser.mockImplementation(async id => ({ userId: id, autoJoinRaids: true }));
+        const members = [{ id: 'a', username: 'alice', role: 'Leader' }];
+
+        const roster = await getLiveRaidRoster(guild(members));
+
+        expect(roster).toEqual([{ id: 'a', username: 'alice', role: 'Leader' }]);
+    });
 });
 
 describe('handlePotatoSplit', () => {

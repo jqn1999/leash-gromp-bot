@@ -300,6 +300,12 @@ function getDefaultUserFields(userId, username) {
         quests: {},
         guildRaidWinCount: 0,
         worldBossWinCount: 0,
+        // Persistent opt-in toggled by /join-raid — replaces the old per-raid
+        // guild.raidList (push on /join-raid, splice on /leave-raid, and never cleaned
+        // up when a member left/was kicked). The live raid roster is now just
+        // guild.memberList filtered to whoever currently has this on — see
+        // raidFactory.js's getLiveRaidRoster.
+        autoJoinRaids: false,
         rebirthCount: 0,
         records: {                  // all-time personal bests, see architecture/data-model.md
             highestTowerFloor: 0,
@@ -1072,7 +1078,12 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         thumbnailUrl: guildThumbnailUrl,
         raidTimer: 0,
         inviteList: [],
-        raidList: [],
+        // No stored raidList — the live raid roster is computed on demand from
+        // memberList + each member's autoJoinRaids toggle (see raidFactory.js's
+        // getLiveRaidRoster), same "compute live, never let a second write path drift
+        // out of sync" reasoning as raidCount/raidRewardMultiplier above. The old
+        // stored array needed leave.js/kick.js to explicitly prune a departing member
+        // and neither did, so a departed member could linger in a raid indefinitely.
         guildBuff: "workMulti",
         guildVersion: 0,
         guildContract: {                  // see systems/guild-contracts.md
