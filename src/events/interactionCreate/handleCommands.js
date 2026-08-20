@@ -29,7 +29,22 @@ async function notifyDailyStreak(interaction, streakResult, userDisplayName) {
     try {
         const streakEmbed = embedFactory.createDailyStreakEmbed(userDisplayName, streakResult.streak, streakResult.reward);
         await interaction.followUp({ embeds: [streakEmbed] });
+    } catch (e) {
+        console.log(`notifyDailyStreak error: ${e}`);
+    }
+}
 
+// Runs after every command, not just the first of the day — previously this check only
+// ever ran as a side effect of notifyDailyStreak, which bails out unless streakResult is
+// truthy (a user's first command each day). That meant any achievement earned through a
+// command other than /work, /rebirth, or /admin-work (which each call checkAndUnlock
+// directly themselves) wasn't detected until the next day's first command instead of
+// immediately. checkAndUnlock is idempotent (re-checking an already-unlocked achievement
+// is a no-op), so this is safe to run alongside those commands' own direct calls too —
+// whichever runs first wins, the other just finds nothing new.
+async function notifyAchievements(interaction, userDisplayName) {
+    if (!(interaction.replied || interaction.deferred)) return;
+    try {
         const [userId, username] = getUserInteractionDetails(interaction);
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);
         if (!updatedUserDetails) return;
@@ -39,7 +54,7 @@ async function notifyDailyStreak(interaction, streakResult, userDisplayName) {
             await interaction.followUp({ embeds: achievementEmbeds });
         }
     } catch (e) {
-        console.log(`notifyDailyStreak error: ${e}`);
+        console.log(`notifyAchievements error: ${e}`);
     }
 }
 
@@ -117,6 +132,7 @@ module.exports = async (client, interaction) => {
 
         const [, , userDisplayName] = getUserInteractionDetails(interaction);
         await notifyDailyStreak(interaction, await streakResultPromise, userDisplayName);
+        await notifyAchievements(interaction, userDisplayName);
     } catch (e) {
         console.log(`There was an error running this command ${e}`)
     }
