@@ -207,6 +207,21 @@ after the reset commits, same as any other action-triggered unlock.
 space. Withdraw is untaxed. `bankStored` potatoes are protected from `/rob` (only liquid `potatoes`
 balance is robbable — see below).
 
+**`bankCapacity` starts at `Bank.STARTING_CAPACITY` (50,000), not 0.** It used to default to 0,
+meaning `/bank`'s deposit check (`remainingBankSpace > 0`) made depositing impossible until a
+brand-new account's first Bank Shop purchase landed — a real EV analysis put that at ~44 `/work`
+calls on average (hours of grinding, realistically days of casual play), with the account's entire
+balance liquid and rob-able the whole time. Rob's own formula makes this worse than it sounds:
+`robChance` favors a *poorer* attacker against a richer target, which is exactly the matchup between
+two new players — early-game odds land around 20-25% for that matchup, stealing 25-50% of the
+victim's balance in one hit. The starting value is deliberately kept below Bank Shop tier 1's
+100,000 result so that purchase still feels like a real upgrade (a 2x jump) rather than a
+formality — and tier 1's `currentAmount` (in `shops`) is kept in sync with `Bank.STARTING_CAPACITY`
+exactly, since `buy.js`'s `getNextItemFromShop` is an exact-match lookup that would report "already
+maxed out!" for a fresh account otherwise. `rebirthFactory.js`'s `computeRebirthState` resets to the
+same `Bank.STARTING_CAPACITY` floor, not 0, so a rebirth never leaves an account with less
+protection than a brand-new one gets.
+
 [give.js](../../src/commands/user/give.js) — transfer to another user, supports `all`/`half`/exact
 amount, optional `currency` (`potatoes` default, or `starches`). Taxed **on the amount specified**
 — unlike Bank's tax (added on top of a chosen net amount), what the sender types is what leaves

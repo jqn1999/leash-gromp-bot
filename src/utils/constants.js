@@ -201,7 +201,19 @@ const Bank = {
     // fuller roster earns a faster-growing shared bank, tying nicely into the new
     // memberCap upgrade. Applied fractionally on the same 5-minute tick
     // passivePotatoHandler already uses (288x/day), never past bankCapacity.
-    GUILD_TREASURY_DAILY_RATE_PER_MEMBER: .001
+    GUILD_TREASURY_DAILY_RATE_PER_MEMBER: .001,
+    // bankCapacity used to default to 0 — /bank's deposit check is `remainingBankSpace >
+    // 0`, so a brand-new account could not protect a single potato from /rob until their
+    // first Bank Shop purchase landed (~44 /work calls on average, hours of grinding).
+    // Rob's own formula makes this worse, not just slow: robChance favors a POORER
+    // attacker against a richer target, which is exactly the matchup between two new
+    // players — a real EV analysis put early-game success odds around 20-25% for that
+    // matchup, stealing 25-50% of the victim's liquid balance in one hit. A non-zero
+    // starting capacity closes the "zero protection" gap outright rather than just
+    // shrinking the window. Kept below Bank Shop tier 1's 100,000 result so that
+    // purchase still feels like a real upgrade (a 2x jump), not a formality — see
+    // shops[bankShop].items[0].currentAmount, which must stay in sync with this value.
+    STARTING_CAPACITY: 50000
 }
 
 // Shared cap for guild.raidHistory/guild.contractHistory — both are append-and-trim
@@ -817,7 +829,11 @@ const shops = [
         description: "This is where you upgrade your bank to protect your potatoes from would-be robbers",
         items: [
             {
-                currentAmount: 0,
+                // currentAmount matches Bank.STARTING_CAPACITY — every account now starts
+                // with that much bank capacity already, not 0, so this tier's currentAmount
+                // has to start from there too or getNextItemFromShop (buy.js) would never
+                // find a matching tier for a fresh account and report "already maxed out!"
+                currentAmount: 50000,
                 amount: 100000,
                 cost: 50000,
                 description: "A basic pouch fit for holding spuds safely",

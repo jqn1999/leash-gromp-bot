@@ -1,5 +1,5 @@
 const { checkRebirthEligibility, getRebirthBonusPercent, getLiveRebirthPercent, previewRebirthBonus, computeRebirthState } = require('../rebirthFactory');
-const { Rebirth } = require('../constants');
+const { Rebirth, Bank } = require('../constants');
 
 function maxedUser(overrides = {}) {
     return {
@@ -166,7 +166,7 @@ describe('computeRebirthState', () => {
 
         expect(result.workMultiplierAmount).toBe(1 + 5);
         expect(result.passiveAmount).toBe(0 + 10000);
-        expect(result.bankCapacity).toBe(0 + 100000);
+        expect(result.bankCapacity).toBe(Bank.STARTING_CAPACITY + 100000);
         expect(result.maxStarches).toBe(25000);
     });
 

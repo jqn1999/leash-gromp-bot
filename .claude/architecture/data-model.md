@@ -124,7 +124,7 @@ Created by `addUser` in `dynamoHandler.js`:
   workTimer: 0,              // epoch ms — /work cooldown expiry
   robTimer: 0,                // epoch ms — /rob cooldown expiry
   bankStored: 0,              // banked (protected) balance
-  bankCapacity: 0,
+  bankCapacity: 50000,        // Bank.STARTING_CAPACITY — non-zero so a fresh account can /bank immediately, see systems/economy-and-work.md#bank
   workMultiplierAmount: 1,    // base work-gain multiplier (shop-upgradeable)
   passiveAmount: 0,           // daily passive income (shop-upgradeable)
   guildId: 0,                 // 0 = not in a guild

@@ -254,7 +254,7 @@ function getDefaultUserFields(userId, username) {
         workTimer: 0,
         robTimer: 0,
         bankStored: 0,
-        bankCapacity: 0,
+        bankCapacity: Bank.STARTING_CAPACITY, // see Bank.STARTING_CAPACITY's comment — closes the early-game "zero rob protection" gap
         workMultiplierAmount: 1,
         passiveAmount: 0,
         guildId: 0,

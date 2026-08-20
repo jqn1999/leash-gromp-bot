@@ -23,6 +23,7 @@ jest.mock('aws-sdk', () => {
 const AWS = require('aws-sdk');
 const docClient = new AWS.DynamoDB.DocumentClient();
 const dynamoHandler = require('../dynamoHandler');
+const { Bank, shops } = require('../constants');
 
 const resolved = (value) => ({ promise: () => Promise.resolve(value) });
 const rejected = (err) => ({ promise: () => Promise.reject(err) });
@@ -49,6 +50,22 @@ describe('addUser', () => {
         docClient.put.mockReturnValue(rejected(new Error('ValidationException')));
         const user = await dynamoHandler.addUser('u1', 'name');
         expect(user).toBeUndefined();
+    });
+
+    // Regression: bankCapacity used to default to 0, meaning a brand-new account could not
+    // protect a single potato from /rob until their first Bank Shop purchase landed (~44
+    // /work calls on average). Bank.STARTING_CAPACITY closes that gap — a fresh account can
+    // /bank deposit immediately. bankShop's tier 1 currentAmount MUST equal
+    // Bank.STARTING_CAPACITY exactly, or buy.js's getNextItemFromShop (an exact-match
+    // lookup) would never find a tier for a fresh account and report "already maxed out!"
+    test('grants a non-zero starting bankCapacity that exactly matches bankShop tier 1\'s currentAmount', async () => {
+        docClient.put.mockReturnValue(resolved({}));
+        const user = await dynamoHandler.addUser('u1', 'name');
+        expect(user.bankCapacity).toBe(Bank.STARTING_CAPACITY);
+        expect(user.bankCapacity).toBeGreaterThan(0);
+
+        const bankShop = shops.find(s => s.shopId === 'bankShop');
+        expect(bankShop.items[0].currentAmount).toBe(Bank.STARTING_CAPACITY);
     });
 });
 

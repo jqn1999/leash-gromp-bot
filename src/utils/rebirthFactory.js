@@ -1,4 +1,4 @@
-const { shops, Rebirth } = require("../utils/constants");
+const { shops, Rebirth, Bank } = require("../utils/constants");
 const companionFactory = require("../utils/companionFactory");
 
 // Regrade caps aren't exported as a single lookup elsewhere (regrade.js hardcodes its
@@ -108,7 +108,7 @@ function computeRebirthState(userDetails) {
         bankStored: 0,
         workMultiplierAmount: 1 + userDetails.sweetPotatoBuffs.workMultiplierAmount,   // base default 1
         passiveAmount: 0 + userDetails.sweetPotatoBuffs.passiveAmount,                 // base default 0
-        bankCapacity: 0 + userDetails.sweetPotatoBuffs.bankCapacity,                   // base default 0
+        bankCapacity: Bank.STARTING_CAPACITY + userDetails.sweetPotatoBuffs.bankCapacity, // base default Bank.STARTING_CAPACITY — a rebirth shouldn't leave you with less rob protection than a fresh account gets
         maxStarches: 25000,                                                            // base default, no buff component
         sweetPotatoBuffs: userDetails.sweetPotatoBuffs,
         regrades: {
