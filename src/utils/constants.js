@@ -162,7 +162,21 @@ const Quests = [
 // threshold is used directly; the array shape still leaves room to grow the pool later
 // without a factory rewrite.
 const GuildContracts = [
-    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 500 combined /work actions across the guild this week", statPath: "workCount", threshold: 500 }
+    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 500 combined /work actions across the guild this week", statPath: "workCount", threshold: 500 },
+    // guildRaidWinCount increments for EVERY member in a raid's raidList on a single win
+    // (see raidFactory.js's incrementCounter), not once per raid — so, like workCount
+    // above, this threshold is naturally scaled by guild size already, without needing a
+    // separate per-raid formula.
+    { id: "guild_weekly_raids_20", name: "Guild Raid Rally", description: "Win 20 combined guild raids across the guild this week (each win counts once per participating member)", statPath: "guildRaidWinCount", threshold: 20 },
+    // ~2% chance per /work call (see eventFactory.js's workChances) — sized against
+    // Combined Harvest's implied ~500 works/week for an active guild, landing this in
+    // the same weekly-stretch-goal range instead of being trivial or unreachable.
+    { id: "guild_weekly_sweet_10", name: "Sweet Tooth", description: "Find 10 combined Sweet Potatoes across the guild this week", statPath: "workScenarioCounts.sweet", threshold: 10 },
+    // ~1% chance per /work call — same sizing logic as Sweet Tooth, just against
+    // Poison's roughly half-as-common roll. Turns Poison Potato (a pure loss for
+    // whoever hits it, see workFactory.js) into guild-wide progress too, so a rough week
+    // of poison RNG isn't a total wash for the guild.
+    { id: "guild_weekly_poison_8", name: "Toxin Tally", description: "Survive 8 combined Poison Potatoes across the guild this week", statPath: "workScenarioCounts.poison", threshold: 8 },
 ]
 
 // Reward for completing the active Guild Contract: a flat, permanent, uncapped bump to

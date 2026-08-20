@@ -12,20 +12,35 @@ A Guild Contract is the same delta-from-baseline-snapshot pattern
 shared weekly objective, the same for every guild, but each guild tracks its own progress toward it
 independently and earns its own copy of the reward on completion.
 
-## Pool, rotation, and the template
+## Pool, rotation, and the templates
 
-v1 ships a single fixed template in the `GuildContracts` array — the roadmap's own example, used
-directly rather than building out a full pool the way Quests has:
+`rotateContract()` picks uniformly at random from the `GuildContracts` array each Monday. Four
+templates exist today:
 
 ```js
 { id: "guild_weekly_work_500", name: "Combined Harvest", statPath: "workCount", threshold: 500,
   description: "Complete 500 combined /work actions across the guild this week" }
+{ id: "guild_weekly_raids_20", name: "Guild Raid Rally", statPath: "guildRaidWinCount", threshold: 20,
+  description: "Win 20 combined guild raids across the guild this week (each win counts once per participating member)" }
+{ id: "guild_weekly_sweet_10", name: "Sweet Tooth", statPath: "workScenarioCounts.sweet", threshold: 10,
+  description: "Find 10 combined Sweet Potatoes across the guild this week" }
+{ id: "guild_weekly_poison_8", name: "Toxin Tally", statPath: "workScenarioCounts.poison", threshold: 8,
+  description: "Survive 8 combined Poison Potatoes across the guild this week" }
 ```
 
 `statPath` resolves against each tracked member's own user record via `getStatValue` (the same
 dot-notation helper Achievements/Quests use). **Count delta, not a potato-amount delta** — same
 reasoning Quests already landed on: a fixed potato threshold is wildly different difficulty for a
-guild of fresh accounts vs. a guild of developed ones, but "do this many `/work` actions" isn't.
+guild of fresh accounts vs. a guild of developed ones, but "do this many `/work` actions" (or "find
+this many Sweet Potatoes," etc.) isn't.
+
+`guildRaidWinCount` needs one extra bit of care versus the other three `statPath`s: `raidFactory.js`'s
+`incrementCounter` bumps it for **every** member in the raid's `raidList` on a single win, not once
+per raid — so `Guild Raid Rally`'s per-member-sum aggregation already scales with guild size the same
+way `workCount` does, without a separate per-raid formula. `Sweet Tooth`/`Toxin Tally`'s thresholds
+(10 and 8) are sized against Sweet/Poison's real per-`/work` odds (~2%/~1%, see `eventFactory.js`'s
+`workChances`) relative to Combined Harvest's implied ~500 works/week for an active guild, so
+completing any of the four lands in roughly the same weekly-stretch-goal range.
 
 Rotation only happens on Mondays (`isMondayEST`, a private copy in `guildContractFactory.js` —
 matches `dailyStreakFactory.js`'s own precedent of each factory keeping its own EST-boundary helpers
@@ -142,6 +157,19 @@ game already works (Metal Potato, Sweet Potato, weekly quest stat rewards are al
 never scaled). Roughly sized as a free jump from `guildShops.bankCapacity` tier 3 to tier 4 (see
 `guildBuy.js` — going from 25M to 50M costs 25M banked potatoes there) without requiring the guild to
 have banked anything at all.
+
+**`guild.bankCapacityBonus` tracks the same reward amount separately**, mirroring
+`sweetPotatoBuffs.bankCapacity` on the user table. `guildBuy.js`'s `/guild-buy bank-capacity` uses an
+exact-match lookup (`getNextItemFromShop`) against `guildShops.bankCapacity`'s fixed tier ladder
+(0 → 10M → 25M → 50M → 100M → …), so it needs to run against the shop-purchased **base** value
+(`bankCapacity - bankCapacityBonus`), not the reward-inflated total — otherwise a completed contract
+knocks the guild's `bankCapacity` off the tier ladder's exact values, and every future shop purchase
+falsely reports "already maxed out!" (the same failure mode `Bank.STARTING_CAPACITY` was introduced to
+fix on the user table). On purchase, the bonus is re-added on top of the shop's flat tier value
+(`chosenItem.amount + bankCapacityBonus`), so it survives future purchases instead of being
+overwritten by them. `getDefaultGuildFields` seeds both fields to the same starting value
+(1,000,000) so a fresh guild's base is exactly 0 — `guildShops.bankCapacity` tier 0's
+`currentAmount` — instead of a number that matched no tier at all.
 
 **Why bank capacity over a second `guildBuff` slot** (the roadmap's other suggested option): a
 second simultaneous buff would mean every existing `guild.guildBuff == "x"` single-value check
