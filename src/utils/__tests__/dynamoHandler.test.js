@@ -146,7 +146,7 @@ describe('findUser', () => {
         );
         expect(workScenarioCountsWrite).toBeDefined();
         const writtenValue = Object.values(workScenarioCountsWrite[0].ExpressionAttributeValues)[0];
-        expect(writtenValue).toEqual({ regular: 3, large: 1, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 0, ancient: 0 });
+        expect(writtenValue).toEqual({ regular: 3, large: 1, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 0, ancient: 0, mimic: 0, goldenYam: 0 });
     });
 
     test('does not touch a nested object that already has every sub-key', async () => {
@@ -154,7 +154,7 @@ describe('findUser', () => {
             Count: 1,
             Items: [{
                 userId: 'u6', username: 'name6',
-                workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 5, ancient: 0 },
+                workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 5, ancient: 0, mimic: 0, goldenYam: 0 },
             }],
         }));
         docClient.update.mockReturnValue(resolved({}));

@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -895,7 +895,7 @@ class EmbedFactory {
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
-        const gainPotatoesOrStarches = mob.name == taroTrader.name ? 'Starches' : 'Potatoes';
+        const gainPotatoesOrStarches = (mob.name == taroTrader.name || mob.name == goldenYam.name) ? 'Starches' : 'Potatoes';
         const isFailedMetal = potatoesGained == 0 && mob.name != sweetPotato.name;
         let color = potatoesGained >= 0 && !isFailedMetal  ? 'Green' : 'Red';
         fields.push({

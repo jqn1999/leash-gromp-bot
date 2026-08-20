@@ -220,3 +220,75 @@ describe('handleAncientPotato', () => {
         expect(setFields.workScenarioCounts.ancient).toBe(5);
     });
 });
+
+// Regression coverage for Mimic Potato — a second flavor of loss alongside Poison, but
+// it raids bankStored instead of liquid potatoes (the bank protects from /rob, not this).
+describe('handleMimicPotato', () => {
+    test('deducts a percentage of bankStored, not potatoes', async () => {
+        const userDetails = baseUser({ potatoes: 5000, bankStored: 1000000 });
+
+        const lost = await workFactory.handleMimicPotato(userDetails);
+
+        expect(lost).toBeLessThan(0);
+        expect(lost).toBe(-Math.round(1000000 * Work.MIMIC_POTATO_BANK_PERCENT));
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.bankStored).toBe(1000000 + lost);
+        expect(setFields).not.toHaveProperty('potatoes');
+    });
+
+    test('caps the loss at MAX_MIMIC_POTATO_LOSS for a very large bank', async () => {
+        const userDetails = baseUser({ bankStored: 100000000000 });
+
+        const lost = await workFactory.handleMimicPotato(userDetails);
+
+        expect(lost).toBe(-Work.MAX_MIMIC_POTATO_LOSS);
+    });
+
+    test('a player with nothing banked loses nothing', async () => {
+        const userDetails = baseUser({ bankStored: 0 });
+
+        const lost = await workFactory.handleMimicPotato(userDetails);
+
+        // Math.abs sidesteps -0 vs 0 (Object.is treats them as distinct, but they're
+        // behaviorally identical here) — 3% of 0 rounds to -0 via -Math.min(0, cap).
+        expect(Math.abs(lost)).toBe(0);
+    });
+
+    test('records the loss in totalLosses and increments workScenarioCounts.mimic', async () => {
+        const userDetails = baseUser({ bankStored: 1000000, totalLosses: 0, workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, mimic: 2 } });
+
+        const lost = await workFactory.handleMimicPotato(userDetails);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.totalLosses).toBe(lost);
+        expect(setFields.workScenarioCounts.mimic).toBe(3);
+    });
+});
+
+// Regression coverage for Golden Yam — Taro Trader's rare jackpot counterpart.
+describe('handleGoldenYam', () => {
+    test('grants starches, not potatoes, in a bigger range than Taro Trader', async () => {
+        const goldenYamUser = baseUser({ workMultiplierAmount: 10 });
+        const taroUser = baseUser({ workMultiplierAmount: 10 });
+
+        const goldenYamGained = await workFactory.handleGoldenYam(goldenYamUser, 0);
+        const taroGained = await workFactory.handleTaroTrader(taroUser, 0);
+
+        expect(goldenYamGained).toBeGreaterThan(0);
+        // Golden Yam's minimum multiplier (8x) exceeds Taro's maximum (1.5x), so even
+        // the worst-case Golden Yam roll beats the best-case Taro roll for the same user.
+        expect(goldenYamGained).toBeGreaterThan(taroGained);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields).toHaveProperty('starches');
+        expect(setFields).not.toHaveProperty('potatoes');
+    });
+
+    test('increments workScenarioCounts.goldenYam', async () => {
+        const userDetails = baseUser({ workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, goldenYam: 1 } });
+
+        await workFactory.handleGoldenYam(userDetails, 0);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workScenarioCounts.goldenYam).toBe(2);
+    });
+});

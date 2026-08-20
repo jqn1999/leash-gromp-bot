@@ -276,7 +276,9 @@ function getDefaultUserFields(userId, username) {
             metalFailure: 0,
             golden: 0,
             companion: 0,
-            ancient: 0
+            ancient: 0,
+            mimic: 0,
+            goldenYam: 0
         },
         regrades: {
             workMulti: {

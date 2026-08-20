@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato } = require("../../utils/constants");
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
@@ -155,6 +155,26 @@ var workScenarios = [
         },
         chance: .119,
         type: WORK_SCENARIO_INDICES.ANCIENT
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+            potatoesGained = await workFactory.handleMimicPotato(userDetails);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato);
+            await safeEditReply(interaction, embed);
+            return potatoesGained;
+        },
+        chance: .129,
+        type: WORK_SCENARIO_INDICES.MIMIC
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+            starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam);
+            await safeEditReply(interaction, embed);
+            return starchesGained;
+        },
+        chance: .130,
+        type: WORK_SCENARIO_INDICES.GOLDEN_YAM
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {

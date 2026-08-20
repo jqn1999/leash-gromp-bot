@@ -14,7 +14,8 @@ Core loop: [src/commands/user/work.js](../../src/commands/user/work.js) +
 - Encounter selection: `workScenarios` (array of `{chance, ...}`, cumulative thresholds) is walked
   in order; first threshold `Math.random()` doesn't exceed wins, falling back to `regular` at
   `chance: 1`. Base cumulative chances: Golden `.001`, Poison `.011`, Large `.051`, Metal `.061`,
-  Sweet `.081`, Companion `.096`, Taro `.116`, Ancient `.119`, Regular = remainder (~88.1%).
+  Sweet `.081`, Companion `.096`, Taro `.116`, Ancient `.119`, Mimic `.129`, Golden Yam `.130`,
+  Regular = remainder (~87%).
 - These chances can be temporarily overridden by [eventFactory.js](../../src/utils/eventFactory.js)'s
   hourly special events — see [systems/raids-and-world-events.md](raids-and-world-events.md).
 - Guild `workMulti` buff adds `userMultiplier * .10` to the effective multiplier for that call
@@ -93,6 +94,22 @@ the roller gets a personal reward:
 `constants.js` (moved there from being private to `regrade.js`, mirroring how `shops` already
 worked) specifically so this scenario can look up a player's real current tier without duplicating
 regrade.js's tier data.
+
+### Mimic Potato (1% roll — `workFactory.js`'s `handleMimicPotato`)
+
+A second flavor of loss alongside Poison Potato, but it raids `bankStored` instead of liquid
+`potatoes` — the bank protects from `/rob`, not from this. Loss is `bankStored *
+Work.MIMIC_POTATO_BANK_PERCENT(.03)`, capped at `Work.MAX_MIMIC_POTATO_LOSS(5000000)` so one unlucky
+roll can't gut a well-off player's entire bank in a single hit. A player with nothing banked simply
+loses nothing — no special-casing, the math resolves to 0 on its own. Catch-up intentionally doesn't
+apply, same reasoning as Poison. Recorded in `totalLosses` like every other loss.
+
+### Golden Yam (0.1% roll — `workFactory.js`'s `handleGoldenYam`)
+
+Taro Trader's rare jackpot counterpart — same random-range-scaled-by-`effectiveMultiplier` shape as
+Taro, just `Work.GOLDEN_YAM_MULTIPLIER_MIN(8)`–`MAX(12)` instead of Taro's implicit 1–1.5x, so even
+a worst-case Golden Yam roll beats a best-case Taro roll for the same player. Grants starches, not
+potatoes.
 
 ### Sweet Potato
 

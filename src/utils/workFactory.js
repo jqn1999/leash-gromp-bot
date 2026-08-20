@@ -198,6 +198,33 @@ class WorkFactory {
         return starchAmount;
     }
 
+    // Taro Trader's rare jackpot counterpart — same random-range shape, just an
+    // ~8-10x bigger haul (GOLDEN_YAM_MULTIPLIER_MIN/MAX vs Taro's implicit 1-1.5x).
+    async handleGoldenYam(userDetails, catchUpBonus = 0) {
+        const userId = userDetails.userId;
+        const userMultiplier = userDetails.workMultiplierAmount;
+        let userStarches = userDetails.starches;
+        let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const starchAmount = Math.round(getRandomFromInterval(Work.GOLDEN_YAM_MULTIPLIER_MIN * effectiveMultiplier, Work.GOLDEN_YAM_MULTIPLIER_MAX * effectiveMultiplier));
+        userStarches += starchAmount;
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.goldenYam += 1;
+
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            starches: userStarches,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
+        return starchAmount;
+    }
+
     // Rare guild-facing encounter: resets the guild's raid cooldown to ready-now (a
     // no-op if solo, or if no cooldown is currently pending — the personal reward below
     // still lands either way), then rewards the player personally with a free regrade
@@ -283,6 +310,37 @@ class WorkFactory {
 
         await dynamoHandler.updateUserFields(userId, {
             potatoes: userPotatoes,
+            totalLosses: userTotalLosses,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer
+        }, { workCount: 1 });
+
+        return potatoesLost;
+    }
+
+    // A second flavor of loss alongside Poison Potato, but it raids the BANK instead of
+    // liquid potatoes — catch-up intentionally does not apply here either, same
+    // reasoning as Poison. Percent-of-bankStored so it scales with wealth rather than
+    // being a flat number that's meaningless late-game, capped so one unlucky roll
+    // can't gut a whale's entire bank in a single hit. A player with nothing banked
+    // naturally loses nothing — no special-casing needed, the math just resolves to 0.
+    async handleMimicPotato(userDetails) {
+        const userId = userDetails.userId;
+        let userBankStored = userDetails.bankStored;
+        let userTotalLosses = userDetails.totalLosses;
+
+        const rawLoss = Math.round(userBankStored * Work.MIMIC_POTATO_BANK_PERCENT);
+        const potatoesLost = -Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
+        userBankStored += potatoesLost;
+        userTotalLosses += potatoesLost;
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.mimic += 1;
+
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            bankStored: userBankStored,
             totalLosses: userTotalLosses,
             workScenarioCounts: workScenarioCounts,
             workTimer: workTimer

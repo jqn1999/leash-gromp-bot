@@ -13,7 +13,17 @@ const Work = {
     // use (factor 60 here vs Metal's 20 and Golden's 100).
     MAX_ANCIENT_POTATO: 300000,
     MAX_GOLDEN_POTATO: 500000,
-    POISON_POTATO_TIMER_INCREASE_SECONDS: 3600
+    POISON_POTATO_TIMER_INCREASE_SECONDS: 3600,
+    // Poison-tier rarity, but steals from bankStored instead of liquid potatoes — the
+    // bank protects from /rob, not from this. Percent-of-banked rather than flat so it
+    // scales with wealth like every other late-game number, capped so one unlucky roll
+    // can't gut a whale's entire bank in a single hit.
+    MIMIC_POTATO_BANK_PERCENT: .03,
+    MAX_MIMIC_POTATO_LOSS: 5000000,
+    // Taro Trader's rare jackpot counterpart — same random-range shape (getRandomFromInterval
+    // scaled by effectiveMultiplier), just an ~8-10x bigger haul instead of Taro's 1-1.5x.
+    GOLDEN_YAM_MULTIPLIER_MIN: 8,
+    GOLDEN_YAM_MULTIPLIER_MAX: 12
 }
 
 // Each entry's statPath is looked up on the user record via dot notation (e.g.
@@ -696,6 +706,24 @@ const ancientPotato = {
     description: `Buried beneath the Kingdom's oldest battlefield, you unearth a potato far older than the Kingdom itself — dust-caked, faintly warm, and humming with a strange residual energy. Word of the find spreads fast: half the guild is already talking about the next raid.`
 }
 
+// See workFactory.js's handleMimicPotato — a second flavor of loss alongside Poison
+// Potato, but it raids your BANK instead of your liquid potatoes. thumbnailUrl is a
+// placeholder pending real commissioned art (same fallback as Ancient Potato/Brassica).
+const mimicPotato = {
+    name: "Mimic Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+    description: `You spot what looks like an enormous, glistening potato just off the road — clearly the find of a lifetime. The moment you reach for it, rows of jagged teeth snap open where the eyes should be. The Mimic Potato doesn't chase; it doesn't need to. By the time you scramble away, it's already pried open your bank and helped itself.`
+}
+
+// See workFactory.js's handleGoldenYam — Taro Trader's rare jackpot counterpart, same
+// starch-instead-of-potatoes flavor but a much bigger haul. thumbnailUrl is a
+// placeholder pending real commissioned art (same fallback as Ancient/Mimic Potato).
+const goldenYam = {
+    name: "Golden Yam",
+    thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+    description: `The wandering Taro Trader flags you down again — this time practically vibrating with excitement. Wrapped in cloth and cradled like a newborn is a Golden Yam, the rarest item in his entire cart. He doesn't even try to haggle; he just hands it over, muttering something about a story he'll be telling for years.`
+}
+
 const shops = [
     {
         shopId: "workShop",
@@ -1169,4 +1197,6 @@ module.exports = {
     poisonPotato,
     goldenPotato,
     ancientPotato,
+    mimicPotato,
+    goldenYam,
 }
