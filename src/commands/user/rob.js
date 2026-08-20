@@ -3,6 +3,7 @@ const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterva
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
+const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -133,13 +134,14 @@ module.exports = {
 
         let robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
 
-        // CHECK GUILD BUFF ADD 10% IF ROB
+        // CHECK GUILD BUFF, ADD ITS LEVEL-SCALED ROB CHANCE BONUS
         const userGuildId = userDetails.guildId;
         if (userGuildId){
             let guild = await dynamoHandler.findGuildById(userDetails.guildId);
             if(guild){
                 if(guild.guildBuff == "robChance"){
-                    robChance += .1
+                    const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+                    robChance += guildBuffFactory.getGuildBuffValue("robChance", level);
                 }
             }
         }

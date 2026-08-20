@@ -81,13 +81,30 @@ guild-wide buff, stored as the single string field `guild.guildBuff`. Because it
 (not a set), only one buff can be active at a time even though some in-command copy hints at
 stacking multiple.
 
-| Buff value | Effect | Applied in |
-|---|---|---|
-| `robChance` | +10% `/rob` success chance for guild members | [rob.js](../../src/commands/user/rob.js) |
-| `raidTimer` | -10% guild raid cooldown | `start-raid` |
-| `workTimer` | -10% `/work` cooldown | `dynamoHandler.updateWorkTimer` |
-| `workMulti` | +10% effective work multiplier | `/work` (`getGuildWorkMulti` in `workFactory.js`) |
-| `raidMulti` | +15% total raid success multiplier | `start-raid`, `current-raid`, world-raid join/status |
+**Magnitude scales with guild level** ([guildBuffFactory.js](../../src/utils/guildBuffFactory.js),
+`constants.js`'s `GuildBuffScaling`) — the same 10-level curve raid rewards already use (see
+[Guild level](#guild-level) below), looked up live from `guild.raidCount`, never stored. Level 1 is
+deliberately weaker than the old flat 10% every buff used to be; by level 4-5 they're back around
+the old flat value, and level 10 clears it meaningfully. `getGuildBuffValue(buffType, level)` reads
+the scaled value, `getGuildBuffLabel(buffType, level)` builds the human-readable string shown in
+`/guild` and `/set-buff`'s confirmation.
+
+| Buff value | Level 1 | Level 5 | Level 10 | Applied in |
+|---|---|---|---|---|
+| `robChance` | +6% | +10% | +20% | [rob.js](../../src/commands/user/rob.js) |
+| `raidTimer` | -6% | -11% | -25% | `start-raid`'s post-raid cooldown write |
+| `workTimer` | -6% | -11% | -25% | `dynamoHandler.calculateWorkTimerValue` |
+| `workMulti` | +6% | +10% | +15% (cap) | `/work` (`getGuildWorkMulti` in `workFactory.js`, and again in `embedFactory.js` for `/profile`'s display) |
+
+`workMulti` deliberately uses a plain linear curve (+1%/level) capped at 15%, tamer than the other
+three's accelerating shape, so it can't outscale them.
+
+`raidMulti` (used to directly boost a guild's raid *success chance* — "+15% total raid success
+multiplier", applied in `start-raid`/`current-raid`) was **retired entirely**, not left dormant —
+guild buffs can no longer make raids easier, only reward/cooldown/utility stats. `getGuildBuffValue`
+returns `0` and `getGuildBuffLabel` returns `null` for any buff type without a `GuildBuffScaling`
+entry, so an old `raidMulti` value sitting on a guild record from before this change degrades
+gracefully rather than crashing anything that reads it.
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
 

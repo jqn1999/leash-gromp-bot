@@ -32,10 +32,12 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   self-check — the raid flow works fine without it (see `join-raid`/`start-raid` below).
 - `join-raid`: any guild member adds themselves to `guild.raidList` (deduped by ID), at any time —
   no "raid must exist" precondition.
-- `current-raid`: shows the roster, the summed `workMultiplierAmount` of joined members
-  (×1.15 if the guild has the `raidMulti` buff), and time left on `guild.raidTimer`.
+- `current-raid`: shows the roster, the summed `workMultiplierAmount` of joined members, and time
+  left on `guild.raidTimer`. (The guild buff that used to boost this total directly — `raidMulti` —
+  was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty `raidList` and an elapsed
-  `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, -10% with the `raidTimer` buff). Takes
+  `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
+  value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
   `raid-select` ∈ `regular` / `elite` / `legendary` / `stat`.
 
 ### Success chance & tiers

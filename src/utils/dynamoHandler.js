@@ -1,6 +1,7 @@
 const { awsConfigurations, Work, CatchUp, Bank } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
+const guildBuffFactory = require("../utils/guildBuffFactory");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
 
@@ -220,8 +221,9 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
         let guild = await findGuildById(userDetails.guildId);
         if (guild) {
             if (guild.guildBuff == "workTimer") {
-                const timeReduced = cooldownTime * 1000 * .10; // 10% reduction
-                time -= timeReduced;
+                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+                const reduction = guildBuffFactory.getGuildBuffValue("workTimer", level);
+                time -= cooldownTime * 1000 * reduction;
             }
         }
     }

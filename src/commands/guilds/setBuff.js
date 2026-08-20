@@ -1,7 +1,8 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, GuildBuffLabels } = require("../../utils/constants");
+const { GuildRoles } = require("../../utils/constants");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const guildBuffFactory = require("../../utils/guildBuffFactory");
 
 module.exports = {
     name: "set-buff",
@@ -28,10 +29,6 @@ module.exports = {
                 {
                     name: 'work-multi',
                     value: 'workMulti'
-                },
-                {
-                    name: "raid-multi",
-                    value: "raidMulti"
                 }
             ]
         }
@@ -76,6 +73,7 @@ module.exports = {
 
         // store buff into guild db
         await dynamoHandler.updateGuildDatabase(guildId, 'guildBuff', buffSelect);
-        interaction.editReply(`Guild buff for ${guild.guildName} has been set to **${buffSelect}**: ${GuildBuffLabels[buffSelect]}`)
+        const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+        interaction.editReply(`Guild buff for ${guild.guildName} has been set to **${buffSelect}**: ${guildBuffFactory.getGuildBuffLabel(buffSelect, level)}`)
     }
 }

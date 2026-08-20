@@ -3,6 +3,7 @@ const { getRandomFromInterval } = require("../utils/helperCommands")
 const { Work, awsConfigurations, CompanionDuplicateReward } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
+const guildBuffFactory = require("../utils/guildBuffFactory");
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -335,7 +336,8 @@ async function getGuildWorkMulti(userDetails, userMultiplier) {
         let guild = await dynamoHandler.findGuildById(userDetails.guildId);
         if (guild) {
             if (guild.guildBuff == "workMulti") {
-                return userMultiplier * .10
+                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+                return userMultiplier * guildBuffFactory.getGuildBuffValue("workMulti", level);
             }
         }
     }

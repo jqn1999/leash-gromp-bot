@@ -1,9 +1,10 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, GuildBuffLabels, CompanionRarity, Companions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
+const guildBuffFactory = require("../utils/guildBuffFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const eventFactory = new EventFactory();
@@ -529,7 +530,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Guild Buff:`,
-            value: GuildBuffLabels[guild.guildBuff] || `${guild.guildBuff}`,
+            value: guildBuffFactory.getGuildBuffLabel(guild.guildBuff, raidLevelInfo.level) || `${guild.guildBuff}`,
             inline: false
         })
 
@@ -2009,7 +2010,8 @@ async function getGuildWorkMulti(userDetails, userMultiplier){
         let guild = await dynamoHandler.findGuildById(userDetails.guildId);
         if(guild){
             if(guild.guildBuff == "workMulti"){
-                return userMultiplier * .10
+                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+                return userMultiplier * guildBuffFactory.getGuildBuffValue("workMulti", level);
             }
         }
     }

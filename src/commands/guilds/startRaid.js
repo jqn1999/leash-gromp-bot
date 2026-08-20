@@ -4,6 +4,7 @@ const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory }
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
+const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -768,11 +769,6 @@ module.exports = {
             totalMultiplier += Number.isFinite(memberDetails?.workMultiplierAmount) ? memberDetails.workMultiplierAmount : 0;
         }
 
-        // check for guild buff - multi
-        if (guild.guildBuff == "raidMulti") {
-            totalMultiplier *= 1.15;
-        }
-
         // Firefly — whichever participant has the best guildRaidMultiplierPercent perk
         // active lifts the whole raid, same multiplicative shape as the guild raidMulti
         // buff. Takes the best rather than summing everyone's, so multiple members
@@ -863,7 +859,7 @@ module.exports = {
         await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
 
         guild.guildBuff == "raidTimer"
-            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * .10))
+            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel)))
             : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
 
         await dynamoHandler.updateGuildDatabase(guildId, 'raidList', []);

@@ -466,16 +466,31 @@ const GuildRoles = {
     MEMBER: "Member"
 }
 
-// Human-readable effect text for each guild.guildBuff value — see systems/guilds.md's
-// buff table. Shared between /guild's embed and /set-buff's confirmation so neither one
-// shows the raw internal key (e.g. "workMulti") on its own, which reads as meaningless
-// to a player who hasn't read the source.
-const GuildBuffLabels = {
-    robChance: "+10% /rob success chance for guild members",
-    raidTimer: "-10% guild raid cooldown",
-    workTimer: "-10% /work cooldown",
-    workMulti: "+10% effective work multiplier",
-    raidMulti: "+15% total raid success multiplier"
+// Guild buff magnitudes now scale with guild level (see RaidLevel.THRESHOLDS — the same
+// 10-level curve raid rewards already use, looked up live from guild.raidCount, never
+// stored). Index 0 = level 1. Level 1 is deliberately weaker than the old flat values
+// (workMulti/workTimer/robChance/raidTimer all used to be a flat 10%) so a fresh guild's
+// buff feels like a starting point, not the whole payoff — by level 4-5 buffs are back
+// around the old flat values, and level 10 clears them meaningfully. workMulti is
+// intentionally the tamest curve (linear, capped at 15%) so it doesn't outscale the
+// other three. raidMulti (used to directly boost raid success — "+15% total raid success
+// multiplier") was retired entirely rather than left dormant, so guild buffs can no
+// longer make raids easier — see systems/guilds.md#guild-buffs.
+const GuildBuffScaling = {
+    workMulti: [0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15],
+    workTimer: [0.06, 0.07, 0.08, 0.09, 0.11, 0.13, 0.15, 0.18, 0.21, 0.25],
+    robChance: [0.06, 0.07, 0.08, 0.09, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20],
+    raidTimer: [0.06, 0.07, 0.08, 0.09, 0.11, 0.13, 0.15, 0.18, 0.21, 0.25],
+}
+
+// The descriptive half of each buff's label — paired with GuildBuffScaling's level-looked-up
+// value by guildBuffFactory.getGuildBuffLabel to build the full "+X% ..." string shown in
+// /guild and /set-buff, so neither shows the raw internal key (e.g. "workMulti") on its own.
+const GuildBuffDescriptions = {
+    robChance: { sign: "+", text: "/rob success chance for guild members" },
+    raidTimer: { sign: "-", text: "guild raid cooldown" },
+    workTimer: { sign: "-", text: "/work cooldown" },
+    workMulti: { sign: "+", text: "effective work multiplier" },
 }
 
 const metalKingRaidBoss = {
@@ -984,7 +999,8 @@ module.exports = {
     Bet,
     Bank,
     GuildHistory,
-    GuildBuffLabels,
+    GuildBuffScaling,
+    GuildBuffDescriptions,
     RaidLevel,
     Rob,
     Rebirth,
