@@ -9,6 +9,15 @@ function calculateTax(amount) {
     return Bank.GUILD_TAX_BASE + Math.floor(amount * Bank.GUILD_TAX_PERCENT)
 }
 
+// Strips thousands-separator commas before parsing — the bank embeds this command itself
+// renders display every amount via .toLocaleString() (e.g. "50,000"), and a player
+// copy-pasting that back into the amount field otherwise gets Number("50,000") => NaN,
+// silently failing with "something went wrong with your amount" for a value the bot
+// showed them seconds earlier.
+function parseAmount(raw) {
+    return Math.floor(Number(String(raw).replace(/,/g, '').trim()));
+}
+
 module.exports = {
     name: "guild-bank",
     description: "Allows a user to deposit or withdraw potatoes to/from their guild bank",
@@ -94,14 +103,14 @@ module.exports = {
                     totalAmount = netAmount + calculateTax(netAmount);
                 }
             } else {
-                netAmount = Math.floor(Number(netAmount));
+                netAmount = parseAmount(netAmount);
+                if (isNaN(netAmount)) {
+                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to store. Try again!`);
+                    return;
+                }
                 totalAmount = netAmount + calculateTax(netAmount);
                 if (netAmount > remainingBankSpace) {
                     interaction.editReply(`${userDisplayName}, you do not have enough guild bank space to deposit ${netAmount.toLocaleString()}. You have ${remainingBankSpace.toLocaleString()} remaining.`);
-                    return;
-                }
-                if (isNaN(netAmount)) {
-                    interaction.editReply(`${userDisplayName}, something went wrong with your amount to store. Try again!`);
                     return;
                 }
             }
@@ -139,13 +148,13 @@ module.exports = {
             } else if (netAmount.toLowerCase() == 'all') {
                 netAmount = guildBankStored;
             } else {
-                netAmount = Math.floor(Number(netAmount));
-                if (netAmount > guildBankStored) {
-                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount.toLocaleString()} potatoes to withdraw. You have ${guildBankStored.toLocaleString()} potatoes stored. Withdraw 'all' or give a valid amount.`);
-                    return;
-                }
+                netAmount = parseAmount(netAmount);
                 if (isNaN(netAmount)) {
                     interaction.editReply(`${userDisplayName}, something went wrong with your amount to withdraw. Try again!`);
+                    return;
+                }
+                if (netAmount > guildBankStored) {
+                    interaction.editReply(`${userDisplayName}, you do not have ${netAmount.toLocaleString()} potatoes to withdraw. You have ${guildBankStored.toLocaleString()} potatoes stored. Withdraw 'all' or give a valid amount.`);
                     return;
                 }
             }
