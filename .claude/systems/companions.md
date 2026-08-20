@@ -50,18 +50,17 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchCapacityPercent` +10% |
 | Firefly | Rare | `workMultiplierPercent` +5% |
-| Spudsprite | Legendary | `workCooldownPercent` -15% + `workMultiplierPercent` +8% |
+| Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +10% + `passiveIncomePercent` +5% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +15% + `robChanceFlat` +15% + `starchCapacityPercent` +15% |
-| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +10% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownPercent` -20% |
+| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +10% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
 | Perk | Common | Rare | Legendary | Mythic |
 |---|---|---|---|---|
 | Work Multiplier | 2% (Sprout) | 5% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
-| Work Cooldown Reduction | — | — | -15% (Spudsprite) | -20% (Mochi) |
-| Work Cooldown Skip Chance | 5% (Fieldmouse) | — | — | — |
+| Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
 | Bank Capacity | 5% (Ladybug) | — | 10% (Rootcarver) | 15% (Elder Rootbeard) |
 | Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
 | Starch Capacity | — | 10% (Mole) | — | 15% (Elder Rootbeard) |
@@ -94,7 +93,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | Perk type | Applied in |
 |---|---|
 | `workMultiplierPercent` | `workFactory.js`'s `getCompanionWorkMulti`, alongside `getGuildWorkMulti` in every `/work` handler |
-| `workCooldownPercent` | `dynamoHandler.calculateWorkTimerValue`, alongside the guild `workTimer` buff |
+| `workCooldownSkipChance` | `dynamoHandler.calculateWorkTimerValue` — rolled first, short-circuits to "ready now" on a hit (stacks with, doesn't fold into, the guild `workTimer` buff) |
 | `passiveIncomePercent` | `dynamoHandler.passivePotatoHandler`'s per-user passive tick |
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
 | `regradeChanceFlat` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks |

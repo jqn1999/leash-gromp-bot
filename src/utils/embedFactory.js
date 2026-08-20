@@ -39,7 +39,6 @@ const COMPANION_RARITY_LABEL = {
 
 const PERK_LABELS = {
     workMultiplierPercent: value => `+${(value * 100).toFixed(0)}% Work Multiplier`,
-    workCooldownPercent: value => `-${(value * 100).toFixed(0)}% Work Cooldown`,
     workCooldownSkipChance: value => `${(value * 100).toFixed(0)}% chance to skip /work cooldown entirely`,
     passiveIncomePercent: value => `+${(value * 100).toFixed(0)}% Passive Income`,
     robChanceFlat: value => `+${(value * 100).toFixed(0)}% Rob Success Chance`,

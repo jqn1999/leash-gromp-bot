@@ -271,7 +271,7 @@ and needs its own balance pass.
   | Barn Owl | Rare | +10% personal `/rob` success chance (stacks with the guild `robChance` buff) |
   | Mole | Rare | +10% Starch max capacity |
   | Firefly | Rare | +5% guild raid success chance while active |
-  | Spudsprite | Legendary | -15% `/work` cooldown |
+  | Spudsprite | Legendary | 15% chance to skip the `/work` cooldown entirely |
   | Rootcarver, the Cellar Keeper | Legendary | +10% Bank Capacity |
   | Elder Rootbeard | Mythic | +3% flat regrade success chance, all 3 tracks — roughly triples-to-quadruples the odds at the hardest tiers (0.5-1% base) |
   | Mochi, the Undying Stray | Mythic | +8% Passive Income (always-on) **and** +20% rebirth bonus magnitude at the moment a rebirth commits |

@@ -419,9 +419,9 @@ const Companions = [
         name: "Spudsprite",
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A small potato spirit that bends time itself around your work cooldown, and sharpens your focus while it's at it.",
+        description: "A small potato spirit that bends time itself around your work cooldown — often enough it just skips the wait outright — and sharpens your focus while it's at it.",
         perks: [
-            { type: "workCooldownPercent", value: 0.15 },
+            { type: "workCooldownSkipChance", value: 0.15 },
             { type: "workMultiplierPercent", value: 0.08 }
         ]
     },
@@ -454,12 +454,12 @@ const Companions = [
         name: "Mochi, the Undying Stray",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
-        description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — keeping pace with you at work, stretching your patience through every cooldown — and somehow, it always finds its way back after a rebirth, more devoted each time.",
+        description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — keeping pace with you at work, and often enough just skipping you past the wait entirely — and somehow, it always finds its way back after a rebirth, more devoted each time.",
         perks: [
             { type: "passiveIncomePercent", value: 0.10 },
             { type: "rebirthBonusPercent", value: 0.20 },
             { type: "workMultiplierPercent", value: 0.12 },
-            { type: "workCooldownPercent", value: 0.20 }
+            { type: "workCooldownSkipChance", value: 0.20 }
         ]
     }
 ]
