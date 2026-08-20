@@ -454,6 +454,15 @@ const Give = {
     STARCH_TAX_PERCENT: .10
 }
 
+// Difficulty anchors (see systems/raids-and-world-events.md): each landmark is the
+// per-member effectiveRaidPower (workMultiplierAmount * (1 + liveRebirthPercent)) a
+// tier is meant to represent, and each *_RAID_DIFFICULTY is set so that landmark lands
+// around 65% of the tier's own success-rate cap — not 100% — so reaching the milestone
+// stat level still leaves real room to push further via roster size/rebirth rather than
+// instantly maxing out. T1 ~6 (a couple early shop tiers), T2 ~50 (late but unmaxed
+// shop), T3 ~350 (shop maxed + regrade halfway), T4 ~600 (shop AND regrade fully
+// maxed — rebirth is what pushes a rebuilt-post-rebirth roster past this baseline
+// toward T4's real ceiling, since rebirth wipes shop+regrade back down first).
 const Raid = {
     REGULAR_MAXIMUM_RAID_SUCCESS_RATE: .9,
     ELITE_MAXIMUM_RAID_SUCCESS_RATE: .75,
@@ -463,22 +472,44 @@ const Raid = {
 
     T1_RAID_REWARD: 100000,
     T1_RAID_PENALTY: -100000,
-    T1_RAID_DIFFICULTY: 25,
+    T1_RAID_DIFFICULTY: 10,
 
     T2_RAID_REWARD: 500000,
     T2_RAID_PENALTY: -500000,
-    T2_RAID_DIFFICULTY: 60,
+    T2_RAID_DIFFICULTY: 85,
 
     T3_RAID_REWARD: 5000000,
     T3_RAID_PENALTY: -5000000,
-    T3_RAID_DIFFICULTY: 150,
+    T3_RAID_DIFFICULTY: 600,
+
+    // Ultra-late-game bracket — shop AND regrade fully maxed, meaningfully pushed past
+    // by rebirth stacking. Gated separately behind guild level (see
+    // RAID_T4_MIN_LEVEL_TARGET_WINS below) on top of its own steep difficulty, since
+    // guild-level progression and individual stat power are only loosely correlated.
+    T4_RAID_REWARD: 15000000,
+    T4_RAID_PENALTY: -15000000,
+    T4_RAID_DIFFICULTY: 1000,
+
+    // T4 unlocks at whichever guild level's winsRequired is closest to this target —
+    // see raidFactory.js's getGuildLevelClosestToWins. 3,000 lands exactly on
+    // RaidLevel.THRESHOLDS level 8.
+    RAID_T4_MIN_LEVEL_TARGET_WINS: 3000,
 
     METAL_KING_REWARD: 10000000,
     METAL_KING_MULTIPLIER_REWARD: 2.0,
     METAL_KING_PASSIVE_REWARD: 1000000,
     METAL_KING_CAPACITY_REWARD: 10000000,
     METAL_KING_PENALTY: 0,
-    METAL_KING_DIFFICULTY: 500,
+    METAL_KING_DIFFICULTY: 2000,
+
+    // Headcount bonus on top of the roster's AVERAGE effectiveRaidPower — a straight
+    // average alone gives zero incentive to recruit more raiders (bigger roster, same
+    // per-capita difficulty), and a straight SUM lets any guild trivialize difficulty by
+    // just fielding more bodies regardless of their individual strength. This splits the
+    // difference: same shape as Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (flat % per
+    // member), capped so a max-roster guild doesn't spiral.
+    RAID_HEADCOUNT_BONUS_PER_MEMBER: 0.03,
+    RAID_HEADCOUNT_BONUS_CAP: 0.50,
 
     REGULAR_STAT_RAID_REWARD: 0.2,
     REGULAR_STAT_RAID_COST: -300000,

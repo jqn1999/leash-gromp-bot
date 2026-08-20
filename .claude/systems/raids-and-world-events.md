@@ -43,9 +43,11 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   gap the old model had: `leave.js`/`kick.js` never pruned a departing member from `raidList`, so
   they could linger in a guild's raid roster indefinitely after leaving. Under the live model a
   departed member simply isn't in `memberList` anymore, so they drop out automatically.
-- `current-raid`: shows the live roster, the summed `workMultiplierAmount` of opted-in members, and
-  time left on `guild.raidTimer`. (The guild buff that used to boost this total directly —
-  `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
+- `current-raid`: shows the live roster's per-member raid power and the roster's effective raid
+  power (see "Effective raid power" below), plus time left on `guild.raidTimer`. Uses the exact same
+  `raidFactory.js` helpers `start-raid` rolls against, so the number shown here never drifts out of
+  sync with what a real raid attempt would use. (The guild buff that used to boost this total
+  directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
   value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
@@ -61,35 +63,82 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   selection with the reason instead of letting a guild discover the trap by losing potatoes over
   several raids.
 
+### Effective raid power
+
+`totalMultiplier` (the value success chance is actually computed against) is no longer a raw sum of
+raider stats — `raidFactory.js`'s `getEffectiveRaidPower`:
+
+```
+memberPower = workMultiplierAmount * (1 + liveRebirthPercent)   // getMemberRaidPower
+averagePower = mean(memberPower across the roster)
+headcountBonus = min(RAID_HEADCOUNT_BONUS_CAP, RAID_HEADCOUNT_BONUS_PER_MEMBER * (rosterSize - 1))
+effectiveRaidPower = averagePower * (1 + headcountBonus)
+```
+
+Two changes from the old flat sum:
+- **Rebirth is folded in.** Previously only raw `workMultiplierAmount` counted, silently ignoring a
+  rebirther's live rebirth bonus (up to +100%, +140% with Mochi — see `rebirthFactory.js`'s
+  `getLiveRebirthPercent`) even though it applies everywhere else.
+- **Average + capped per-member headcount bonus, not a straight sum.** A straight sum let any guild
+  trivialize difficulty by fielding more raiders regardless of their individual strength (difficulty
+  numbers are flat, never divided by roster size) — a straight average alone removes that but then
+  gives zero incentive to recruit more raiders at all. `RAID_HEADCOUNT_BONUS_PER_MEMBER` (3%) per
+  raider beyond the first, capped at `RAID_HEADCOUNT_BONUS_CAP` (50%, reached around a 17-person
+  roster — the same shape `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` already uses elsewhere),
+  splits the difference: bigger roster still helps, but can't substitute for actual member strength.
+
+Firefly's `guildRaidMultiplierPercent` companion perk (best among the roster, not summed) is applied
+multiplicatively on top of `effectiveRaidPower`, same as before.
+
 ### Success chance & tiers
 
-`successChance = min(totalMultiplier / difficulty, maximumSuccessRate)`. Max rates:
+`successChance = min(effectiveRaidPower / difficulty, maximumSuccessRate)`. Max rates:
 `REGULAR_MAXIMUM_RAID_SUCCESS_RATE=.9`, `ELITE_MAXIMUM_RAID_SUCCESS_RATE=.75`,
 `LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE=.6`, `MAXIMUM_STAT_RAID_SUCCESS_RATE=.5`.
 
-Each tier rolls one `Math.random()` against a cumulative weighted table:
+Each tier rolls one `Math.random()` against a cumulative weighted table. Every bracket difficulty is
+sized to a real progression landmark (per-member `effectiveRaidPower`, see `constants.js`'s comment
+on the `Raid` object): T1 ~6 (a couple early shop tiers), T2 ~50 (late but unmaxed shop), T3 ~350
+(shop maxed + regrade halfway), T4 ~600 (shop AND regrade fully maxed — rebirth is what pushes a
+rebuilt-post-rebirth roster past this baseline, since rebirth wipes shop+regrade back down first).
+Each `*_RAID_DIFFICULTY` is set so its landmark lands around 65% of that tier's success-rate cap, not
+100%, so reaching the milestone still leaves room to push further via roster size/rebirth.
 
-| Tier | Metal King | T3 | T2 | T1 (remainder) | Notes |
-|---|---|---|---|---|---|
-| Regular | 1% | 6% | 26% | ~67% | base difficulty/reward |
-| Elite | 1% | 11% (T3×3 difficulty) | 51% (T2×4.5) | ~49% (T1×6) | difficulty & reward ×`DIFFICULTY_MULTIPLIER`; **failure penalty ×2** |
-| Legendary | 1% | 21% (T3×6) | 71% (T2×8) | ~29% (T1×10) | **failure penalty ×3** |
+| Tier | Metal King | T4 | T3 | T2 | T1 (remainder) | Notes |
+|---|---|---|---|---|---|---|
+| Regular | 1% | 2% | 5% | 20% | 72% | base difficulty/reward |
+| Elite | 1% | 4% (T4×2) | 12% (T3×3) | 38% (T2×4.5) | 45% (T1×6) | difficulty & reward ×`DIFFICULTY_MULTIPLIER`; **failure penalty ×2** |
+| Legendary | 1% | 8% (T4×4) | 22% (T3×6) | 45% (T2×8) | 24% (T1×10) | **failure penalty ×3** |
+
+**T4 is additionally gated behind guild level**, on top of its own steep difficulty — guild-level
+progression and individual stat power are only loosely correlated, so a small guild of a few very
+heavily-invested members could otherwise reach T4-caliber `effectiveRaidPower` well before the guild
+has any real raiding track record. `raidFactory.js`'s `getGuildLevelClosestToWins(3000)` resolves to
+whichever `RaidLevel.THRESHOLDS` level's `winsRequired` is closest to 3,000 (level 8, exactly, today)
+— derived rather than hardcoded so it tracks the curve if it ever changes. Below that level, T4 isn't
+in the roll table at all: `getEligibleScenarios` strips it out and proportionally redistributes its
+probability mass across whatever brackets *are* unlocked (not dumped onto whichever bracket happens
+to be next), so the remaining odds still sum to 100% and nothing is silently unreachable. The preview
+embed only shows T4 once it's actually rollable.
 
 Base reward/penalty/difficulty (from `constants.js` `Raid`):
 
 | Mob | Reward | Penalty | Difficulty |
 |---|---|---|---|
-| T1 | 100,000 | -100,000 | 25 |
-| T2 | 500,000 | -500,000 | 60 |
-| T3 | 5,000,000 | -5,000,000 | 150 |
-| Metal King | 10,000,000 (+2.0× work multi, +1,000,000 passive, +10,000,000 bank capacity, split across raiders) | none | 500 |
+| T1 | 100,000 | -100,000 | 10 |
+| T2 | 500,000 | -500,000 | 85 |
+| T3 | 5,000,000 | -5,000,000 | 600 |
+| T4 | 15,000,000 | -15,000,000 | 1,000 |
+| Metal King | 10,000,000 (+2.0× work multi, +1,000,000 passive, +10,000,000 bank capacity, split across raiders) | none | 2,000 |
 
 Metal King now scales with the tier's T3 multiplier (regular ×1, elite ×3, legendary ×6) — applied
 to its reward, all three permanent stat bonuses, *and* its difficulty. Previously it paid the exact
 same flat reward at the exact same difficulty regardless of tier, which made Elite/Legendary
 strictly worse than Regular for the identical 1% shot (lower success-rate cap, nothing gained for
 it). Its failure penalty stays 0 at every tier — it's the one bracket that costs nothing to attempt,
-win or lose.
+win or lose. T4 reuses each raid-select tier's own T3 mob pool rather than introducing new flavor
+text — the fight reads as "the same dangerous foe, attempted at much higher difficulty," not a new
+named boss.
 
 Reward amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and, on the winning side only,
 scaled by the guild's raid reward multiplier — computed live from `raidCount` via

@@ -657,7 +657,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}, start a ${raidSelection} raid?`)
-            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x combined work multiplier.${levelNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
+            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x effective raid power (average work multiplier + rebirth bonus across raiders, boosted by roster size).${levelNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
             .setColor("Yellow")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

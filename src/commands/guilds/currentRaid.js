@@ -1,7 +1,7 @@
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
-const { getLiveRaidRoster } = require("../../utils/raidFactory");
+const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPower } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -40,7 +40,6 @@ module.exports = {
             return;
         }
 
-        let totalMultiplier = 0;
         let raidMemberList = [];
         const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
         for (const [index, element] of raidList.entries()) {
@@ -52,12 +51,15 @@ module.exports = {
 
             const user = {
                 name: `${index + 1}) ${element.username}`,
-                value: `${userDetails.workMultiplierAmount.toFixed(2)}x Multiplier`,
+                value: `${getMemberRaidPower(userDetails).toFixed(2)}x Raid Power (Work Multiplier + rebirth bonus)`,
                 inline: false,
             };
             raidMemberList.push(user);
-            totalMultiplier += userDetails.workMultiplierAmount;
         }
+        // Same average-plus-headcount-bonus formula /start-raid actually rolls against
+        // (see raidFactory.js's getEffectiveRaidPower) — kept in sync so this preview
+        // never shows a different number than what a real raid attempt would use.
+        const totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
 
         embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
         interaction.editReply({ embeds: [embed] });

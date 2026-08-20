@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -63,6 +63,120 @@ describe('getLiveRaidRoster', () => {
         const roster = await getLiveRaidRoster(guild(members));
 
         expect(roster).toEqual([{ id: 'a', username: 'alice', role: 'Leader' }]);
+    });
+});
+
+// Regression coverage for T4's level gate: 3,000 raid wins lands exactly on
+// RaidLevel.THRESHOLDS level 8, so this derives it rather than hardcoding "8" — stays
+// correct if the curve ever changes.
+describe('getGuildLevelClosestToWins', () => {
+    test('resolves an exact threshold match to that level', () => {
+        expect(getGuildLevelClosestToWins(3000)).toBe(8);
+    });
+
+    test('resolves a value between two thresholds to whichever is numerically closest', () => {
+        // Between level 7 (1500) and level 8 (3000); 2000 is closer to 1500.
+        expect(getGuildLevelClosestToWins(2000)).toBe(7);
+        // 2800 is closer to 3000.
+        expect(getGuildLevelClosestToWins(2800)).toBe(8);
+    });
+
+    test('clamps to the top level for a target beyond the curve', () => {
+        const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
+        expect(getGuildLevelClosestToWins(maxTier.winsRequired + 999999)).toBe(maxTier.level);
+    });
+});
+
+// Regression coverage for T4's roll-table gating: a bracket the guild hasn't unlocked
+// yet must not be rollable (and must not silently shrink everyone else's odds by
+// leaving a gap) — its probability mass redistributes proportionally across whatever
+// IS unlocked instead.
+describe('getEligibleScenarios', () => {
+    function scenario(tag, chance, minGuildLevel) {
+        return { tag, chance, ...(minGuildLevel ? { minGuildLevel } : {}) };
+    }
+
+    test('returns the original array unchanged once every bracket is unlocked', () => {
+        const scenarios = [scenario('MK', .01), scenario('T4', .03, 8), scenario('T3', .08), scenario('T1', 1)];
+        expect(getEligibleScenarios(scenarios, 8)).toBe(scenarios);
+    });
+
+    test('excludes a locked bracket and rescales the remaining cumulative chances to still end at 1', () => {
+        const scenarios = [scenario('MK', .01), scenario('T4', .03, 8), scenario('T3', .08), scenario('T2', .28), scenario('T1', 1)];
+        const result = getEligibleScenarios(scenarios, 1);
+        expect(result.map(s => s.tag)).toEqual(['MK', 'T3', 'T2', 'T1']);
+        expect(result[result.length - 1].chance).toBeCloseTo(1);
+    });
+
+    test('redistributes the locked bracket\'s odds proportionally, not by dumping it on the next bracket', () => {
+        // T4 (2%) removed from [MK 1%, T4 2%, T3 5%, T2 20%, T1 72%] should scale every
+        // remaining bracket up by the same factor (1 / 0.98), not just inflate T3.
+        const scenarios = [scenario('MK', .01), scenario('T4', .03, 8), scenario('T3', .08), scenario('T2', .28), scenario('T1', 1)];
+        const result = getEligibleScenarios(scenarios, 1);
+        const odds = {};
+        let previous = 0;
+        result.forEach(s => { odds[s.tag] = s.chance - previous; previous = s.chance; });
+        expect(odds.MK).toBeCloseTo(.01 / .98);
+        expect(odds.T3).toBeCloseTo(.05 / .98);
+        expect(odds.T2).toBeCloseTo(.20 / .98);
+        expect(odds.T1).toBeCloseTo(.72 / .98);
+    });
+
+    test('a guild right at the unlock level sees the bracket included', () => {
+        const scenarios = [scenario('MK', .01), scenario('T4', .03, 8), scenario('T1', 1)];
+        expect(getEligibleScenarios(scenarios, 8).map(s => s.tag)).toEqual(['MK', 'T4', 'T1']);
+    });
+});
+
+// Regression coverage for the raid power rework: previously totalMultiplier was a raw
+// SUM of workMultiplierAmount, silently ignoring live rebirth bonus and letting any
+// guild trivialize difficulty by fielding more bodies regardless of individual
+// strength. getMemberRaidPower/getEffectiveRaidPower fold in rebirth and replace the
+// sum with an average + capped per-member headcount bonus (mirroring
+// Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER's shape) instead.
+describe('getMemberRaidPower', () => {
+    test('a never-rebirthed member is just their raw workMultiplierAmount', () => {
+        expect(getMemberRaidPower({ workMultiplierAmount: 50, rebirthCount: 0 })).toBeCloseTo(50);
+    });
+
+    test('folds in the live rebirth bonus multiplicatively', () => {
+        // rebirthCount 1 -> Rebirth.BASE_BONUS_PERCENT (5%), see rebirthFactory.test.js
+        expect(getMemberRaidPower({ workMultiplierAmount: 100, rebirthCount: 1 })).toBeCloseTo(105);
+    });
+
+    test('a missing or malformed record contributes 0, not NaN', () => {
+        expect(getMemberRaidPower(undefined)).toBe(0);
+        expect(getMemberRaidPower({ workMultiplierAmount: undefined })).toBe(0);
+    });
+});
+
+describe('getEffectiveRaidPower', () => {
+    test('a solo raider (headcount bonus 0) is just their own power', () => {
+        expect(getEffectiveRaidPower([{ workMultiplierAmount: 40, rebirthCount: 0 }])).toBeCloseTo(40);
+    });
+
+    test('averages across the roster rather than summing', () => {
+        const roster = [
+            { workMultiplierAmount: 100, rebirthCount: 0 },
+            { workMultiplierAmount: 0, rebirthCount: 0 },
+        ];
+        // Average is 50, headcount bonus for 2 members is +3% (RAID_HEADCOUNT_BONUS_PER_MEMBER * 1)
+        expect(getEffectiveRaidPower(roster)).toBeCloseTo(50 * 1.03);
+    });
+
+    test('more raiders of the same average strength still raises effective power via the headcount bonus', () => {
+        const twoMembers = [{ workMultiplierAmount: 50, rebirthCount: 0 }, { workMultiplierAmount: 50, rebirthCount: 0 }];
+        const fiveMembers = Array.from({ length: 5 }, () => ({ workMultiplierAmount: 50, rebirthCount: 0 }));
+        expect(getEffectiveRaidPower(fiveMembers)).toBeGreaterThan(getEffectiveRaidPower(twoMembers));
+    });
+
+    test('the headcount bonus caps rather than growing without bound for a huge roster', () => {
+        const hugeRoster = Array.from({ length: 100 }, () => ({ workMultiplierAmount: 50, rebirthCount: 0 }));
+        expect(getEffectiveRaidPower(hugeRoster)).toBeCloseTo(50 * (1 + Raid.RAID_HEADCOUNT_BONUS_CAP));
+    });
+
+    test('an empty roster is 0, not NaN from a division by zero', () => {
+        expect(getEffectiveRaidPower([])).toBe(0);
     });
 });
 

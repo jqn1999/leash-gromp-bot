@@ -1,5 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
-const { RaidLevel } = require("../utils/constants");
+const { RaidLevel, Raid } = require("../utils/constants");
+const rebirthFactory = require("../utils/rebirthFactory");
 
 // Guild level + raid reward multiplier, computed live from raidCount (wins only) rather
 // than read from a stored field — see constants.js's RaidLevel for the curve and why
@@ -48,6 +49,74 @@ function getMinGuildLevelForTier(penaltyMult, maxSuccessRate) {
 async function getLiveRaidRoster(guild) {
     const memberDetails = await Promise.all(guild.memberList.map(m => dynamoHandler.findUser(m.id, m.username)));
     return guild.memberList.filter((member, index) => memberDetails[index]?.autoJoinRaids === true);
+}
+
+// A member's raid power: raw workMultiplierAmount with their live rebirth bonus folded
+// in (up to +100%, +140% with Mochi — see rebirthFactory.js's getLiveRebirthPercent).
+// Previously raids only counted the raw stat, silently ignoring a rebirther's real
+// strength even though it applies everywhere else. 0 for a missing/malformed record
+// rather than NaN, so one bad lookup can't poison a whole roster's average.
+function getMemberRaidPower(userDetails) {
+    if (!userDetails || !Number.isFinite(userDetails.workMultiplierAmount)) return 0;
+    return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails));
+}
+
+// The effective raid power a roster rolls against: average per-member power (see
+// getMemberRaidPower) plus a headcount bonus for bringing more raiders — same per-member
+// % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER already uses, capped so a max-size
+// roster doesn't spiral. A straight average alone gives zero incentive to recruit more
+// raiders; a straight sum lets any guild trivialize difficulty by fielding more bodies
+// regardless of their individual strength — this splits the difference. Shared by
+// startRaid.js's actual roll and currentRaid.js's preview display so the two numbers
+// never drift out of sync. Excludes the Firefly companion boost, which startRaid.js
+// applies separately since it depends on which specific perk is active among raiders,
+// not just their power.
+function getEffectiveRaidPower(memberDetailsList) {
+    if (memberDetailsList.length === 0) return 0;
+    const averagePower = memberDetailsList.reduce((sum, m) => sum + getMemberRaidPower(m), 0) / memberDetailsList.length;
+    const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
+    return averagePower * (1 + headcountBonus);
+}
+
+// The guild level whose winsRequired is closest to targetWins — used to gate T4 raids
+// behind a concrete raid-experience milestone (Raid.RAID_T4_MIN_LEVEL_TARGET_WINS) rather
+// than hardcoding a level number that'd silently drift out of sync if RaidLevel.THRESHOLDS
+// ever changes. Ties broken toward the lower level (a tie only happens exactly halfway
+// between two thresholds, and erring toward "not quite unlocked yet" matches T4 being a
+// deliberately hard-earned bracket).
+function getGuildLevelClosestToWins(targetWins) {
+    return RaidLevel.THRESHOLDS.reduce((closest, tier) =>
+        Math.abs(tier.winsRequired - targetWins) < Math.abs(closest.winsRequired - targetWins) ? tier : closest
+    ).level;
+}
+
+// Rebuilds a scenario table's cumulative `chance` thresholds with any bracket the guild
+// hasn't unlocked yet (tagged minGuildLevel, e.g. T4) excluded, its probability mass
+// redistributed proportionally across the remaining brackets — rather than leaving a
+// silently-unreachable gap in the roll, or (worse) showing/rolling a bracket the guild
+// can't actually attempt. A no-op (returns the original array as-is) once every bracket
+// is unlocked. bracketOdds converts cumulative chance -> raw per-bracket probability;
+// this is that operation run in reverse after filtering.
+function getEligibleScenarios(scenarios, guildLevel) {
+    const isUnlocked = s => !s.minGuildLevel || guildLevel >= s.minGuildLevel;
+    if (scenarios.every(isUnlocked)) return scenarios;
+
+    let previous = 0;
+    const rawOdds = scenarios.map(s => {
+        const odds = s.chance - previous;
+        previous = s.chance;
+        return odds;
+    });
+
+    const eligible = scenarios.filter(isUnlocked);
+    const eligibleOdds = scenarios.map((s, i) => rawOdds[i]).filter((_, i) => isUnlocked(scenarios[i]));
+    const totalOdds = eligibleOdds.reduce((sum, o) => sum + o, 0);
+
+    let cumulative = 0;
+    return eligible.map((s, i) => {
+        cumulative += eligibleOdds[i] / totalOdds;
+        return { ...s, chance: cumulative };
+    });
 }
 
 class RaidFactory {
@@ -142,5 +211,9 @@ module.exports = {
     RaidFactory,
     getRaidLevelInfo,
     getMinGuildLevelForTier,
-    getLiveRaidRoster
+    getLiveRaidRoster,
+    getGuildLevelClosestToWins,
+    getEligibleScenarios,
+    getMemberRaidPower,
+    getEffectiveRaidPower
 }
