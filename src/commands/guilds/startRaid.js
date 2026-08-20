@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { RaidFactory, getRaidLevelInfo } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -729,6 +729,23 @@ module.exports = {
         const guildName = guild.guildName;
         const memberList = guild.memberList;
         const { level: guildLevel, multiplier: raidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
+
+        // Elite/Legendary gated by guild level, not by how much totalMultiplier the
+        // roster brings — below the derived level, the tier's success-rate cap sits
+        // under its mathematical breakeven point (see getMinGuildLevelForTier), so no
+        // amount of individual stat investment can make it profitable. Checked before
+        // any raid-list/member work so a guild that can't unlock a tier finds out
+        // immediately instead of after paying for member lookups.
+        if (raidSelection === 'elite' || raidSelection === 'legendary') {
+            const penaltyMult = raidSelection === 'elite' ? ELITE_PENALTY_INCREASE : LEGENDARY_PENALTY_INCREASE;
+            const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
+            const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+            if (guildLevel < requiredLevel) {
+                interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
+                return;
+            }
+        }
+
         let raidList = guild.raidList;
         let raidCount = guild.raidCount;
         const raidCountBeforeThisRaid = raidCount;

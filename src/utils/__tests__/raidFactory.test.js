@@ -1,8 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo } = require('../raidFactory');
-const { RaidLevel } = require('../constants');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier } = require('../raidFactory');
+const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
 
@@ -123,5 +123,50 @@ describe('getRaidLevelInfo', () => {
     test('reports how many wins remain until the next level while not maxed', () => {
         const result = getRaidLevelInfo(10); // level 1, next threshold at 25
         expect(result.winsToNextLevel).toBe(15);
+    });
+});
+
+// Regression coverage for the "Legendary raids are a guaranteed-loss trap at low guild
+// level" finding: every raid bracket has equal-magnitude base reward/penalty and the
+// tier's own difficulty multiplier cancels out, so a tier's breakeven success chance
+// reduces to penaltyMult / (raidRewardMultiplier + penaltyMult). Below the level this
+// resolves to, the tier's OWN success-rate cap sits under that breakeven point, so no
+// amount of totalMultiplier can turn it profitable — startRaid.js gates tier selection
+// on this instead of letting a guild discover the trap by losing potatoes.
+describe('getMinGuildLevelForTier', () => {
+    // Mirrors startRaid.js's own (unexported) ELITE_PENALTY_INCREASE/
+    // LEGENDARY_PENALTY_INCREASE = 2/3 and Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE/
+    // Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE exactly, so this test tracks the real
+    // in-game thresholds rather than arbitrary numbers.
+    test('Elite (2x penalty, 75% cap) is viable from guild level 1 — thin margin, not a trap', () => {
+        expect(getMinGuildLevelForTier(2, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
+    });
+
+    test('Legendary (3x penalty, 60% cap) is not viable until guild level 4', () => {
+        expect(getMinGuildLevelForTier(3, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(4);
+    });
+
+    test('Regular (1x penalty, 90% cap) is viable from guild level 1', () => {
+        expect(getMinGuildLevelForTier(1, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
+    });
+
+    test('at the returned level, the cap is truly at or above breakeven — never a false unlock', () => {
+        RaidLevel.THRESHOLDS.forEach(tier => {
+            [1, 2, 3].forEach(penaltyMult => {
+                [.9, .75, .6].forEach(maxRate => {
+                    const minLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+                    if (tier.level === minLevel) {
+                        const breakeven = penaltyMult / (tier.multiplier + penaltyMult);
+                        expect(maxRate).toBeGreaterThanOrEqual(breakeven);
+                    }
+                });
+            });
+        });
+    });
+
+    test('an unreachable breakeven point clamps to the top level rather than returning undefined', () => {
+        // A penalty multiplier so large no guild level's raidRewardMultiplier could ever
+        // clear it before the cap.
+        expect(getMinGuildLevelForTier(1000, 0.5)).toBe(RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level);
     });
 });

@@ -20,6 +20,21 @@ function getRaidLevelInfo(raidCount) {
     };
 }
 
+// The guild level at which a raid tier's success-rate cap first sits AT or ABOVE that
+// tier's mathematical breakeven success chance — see systems/raids-and-world-events.md.
+// Every raid bracket has equal-magnitude base reward/penalty, and the tier's own
+// difficulty multiplier cancels out of the ratio, so breakeven reduces to a clean
+// closed form: penaltyMult / (raidRewardMultiplier + penaltyMult). Below the returned
+// level, a tier's expected value is negative no matter how large totalMultiplier gets —
+// the success-rate cap itself sits under breakeven, so no amount of individual stat
+// investment can compensate. startRaid.js uses this to gate Elite/Legendary outright
+// instead of letting a guild discover the trap by losing potatoes over several raids.
+function getMinGuildLevelForTier(penaltyMult, maxSuccessRate) {
+    const breakevenMultiplier = penaltyMult * (1 / maxSuccessRate - 1);
+    const firstViableTier = RaidLevel.THRESHOLDS.find(t => t.multiplier > breakevenMultiplier);
+    return firstViableTier ? firstViableTier.level : RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level;
+}
+
 class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
         const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
@@ -110,5 +125,6 @@ async function calculateRaidSplit(raidList, totalRaidSplit) {
 
 module.exports = {
     RaidFactory,
-    getRaidLevelInfo
+    getRaidLevelInfo,
+    getMinGuildLevelForTier
 }
