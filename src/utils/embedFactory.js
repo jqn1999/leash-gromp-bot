@@ -996,6 +996,59 @@ class EmbedFactory {
         return embed;
     }
 
+    // Ancient Potato's outcome branches like Metal Potato's success/failure split, but
+    // on regrade-vs-potato-reward instead — doesn't fit createWorkEmbed's single
+    // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own
+    // function rather than shoehorned in there. result: { potatoesGained,
+    // regradedStatName, regradeIncrease, guildRaidReady } from workFactory.js's
+    // handleAncientPotato.
+    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato) {
+        const { potatoesGained, regradedStatName, regradeIncrease, guildRaidReady } = result;
+        let fields = [{
+            name: `Work Count:`,
+            value: `${newWorkCount.toLocaleString()}`,
+            inline: true,
+        }];
+
+        if (regradedStatName) {
+            fields.push({
+                name: `Free Regrade:`,
+                value: `+${regradeIncrease.toLocaleString()} ${regradedStatName}`,
+                inline: true,
+            });
+        } else {
+            fields.push({
+                name: `Potatoes Gained:`,
+                value: `${potatoesGained.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        }
+
+        if (guildRaidReady) {
+            fields.push({
+                name: `Guild Raid Cooldown:`,
+                value: `Ready now!`,
+                inline: true,
+            });
+        }
+
+        let footerText = "Made by Beggar";
+        const activeEvent = eventFactory.getCurrentEvent();
+        if (activeEvent) {
+            footerText += ` • 🎉 ${activeEvent}`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} unearthed an Ancient Potato!`)
+            .setDescription(ancientPotato.description)
+            .setColor("Gold")
+            .setThumbnail(ancientPotato.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // pageItems: full companion objects (owned ids already resolved to roster entries)
     // for this page. Paginated exactly like createAchievementsPageEmbed/createQuestsPageEmbed.
     createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned) {

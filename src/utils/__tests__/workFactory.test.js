@@ -2,7 +2,7 @@ jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
 const { WorkFactory } = require('../workFactory');
-const { Work } = require('../constants');
+const { Work, REGRADE_CAPS } = require('../constants');
 
 const workFactory = new WorkFactory();
 
@@ -132,5 +132,91 @@ describe('handleTaroTrader', () => {
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields).toHaveProperty('starches');
         expect(setFields).not.toHaveProperty('potatoes');
+    });
+});
+
+// Regression coverage for the guild-facing Ancient Potato scenario (see
+// systems/economy-and-work.md): resets the guild's raid cooldown to ready-now, and
+// separately grants the roller a free regrade step on whichever track isn't maxed —
+// or, once every track IS maxed, a big-but-sub-Golden potato payout instead.
+function maxedRegrades() {
+    return {
+        workMulti: { regradeAmount: REGRADE_CAPS.workMulti, failStack: 0 },
+        passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
+        bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
+    };
+}
+
+describe('handleAncientPotato', () => {
+    test('grants a free regrade step on the one under-capped track, using its real current tier', async () => {
+        const userDetails = baseUser({
+            workMultiplierAmount: 1,
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 }, // only under-capped track — deterministic pick
+                passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
+                bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
+            },
+        });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.regradedStatName).toBe('Work Multiplier');
+        expect(result.regradeIncrease).toBe(10); // tier 0's increase
+        expect(result.potatoesGained).toBe(0);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workMultiplierAmount).toBe(1 + 10);
+        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
+        // Untouched tracks must survive exactly as they were, not get reset.
+        expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
+    });
+
+    test('grants a big but sub-Golden potato payout once every regrade track is maxed', async () => {
+        // calculateGainAmount caps the BASE amount (workGainAmount * factor) before the
+        // player's own multiplier scales it up — so the payout itself isn't bounded by
+        // MAX_ANCIENT_POTATO in absolute terms, same as Golden/Metal. "Not as much as
+        // golden" holds through the base-factor ratio (60 vs Golden's 100) instead,
+        // which scales identically for both under the same multiplier — so compare
+        // directly against what Golden pays an identical user.
+        const ancientUser = baseUser({ workMultiplierAmount: 500, regrades: maxedRegrades() });
+        const goldenUser = baseUser({ workMultiplierAmount: 500 });
+
+        const result = await workFactory.handleAncientPotato(ancientUser, 1000, 1, 0);
+        const goldenGained = await workFactory.handleGoldenPotato(goldenUser, 1000, 1, 0);
+
+        expect(result.regradedStatName).toBeNull();
+        expect(result.potatoesGained).toBeGreaterThan(0);
+        expect(result.potatoesGained).toBeLessThan(goldenGained);
+        expect(Work.MAX_ANCIENT_POTATO).toBeLessThan(Work.MAX_GOLDEN_POTATO);
+    });
+
+    test('resets the guild raid cooldown to ready-now when the roller is in a guild', async () => {
+        const userDetails = baseUser({ guildId: 'g1', regrades: maxedRegrades() });
+        const before = Date.now();
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.guildRaidReady).toBe(true);
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith('g1', 'raidTimer', expect.any(Number));
+        const [, , newRaidTimer] = dynamoHandler.updateGuildDatabase.mock.calls[0];
+        expect(newRaidTimer).toBeGreaterThanOrEqual(before);
+    });
+
+    test('does not touch any guild when the roller has no guild', async () => {
+        const userDetails = baseUser({ guildId: 0, regrades: maxedRegrades() });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.guildRaidReady).toBe(false);
+        expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalled();
+    });
+
+    test('increments workScenarioCounts.ancient', async () => {
+        const userDetails = baseUser({ regrades: maxedRegrades(), workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, ancient: 4 } });
+
+        await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workScenarioCounts.ancient).toBe(5);
     });
 });

@@ -14,7 +14,7 @@ Core loop: [src/commands/user/work.js](../../src/commands/user/work.js) +
 - Encounter selection: `workScenarios` (array of `{chance, ...}`, cumulative thresholds) is walked
   in order; first threshold `Math.random()` doesn't exceed wins, falling back to `regular` at
   `chance: 1`. Base cumulative chances: Golden `.001`, Poison `.011`, Large `.051`, Metal `.061`,
-  Sweet `.081`, Taro `.101`, Regular = remainder (~89.9%).
+  Sweet `.081`, Companion `.096`, Taro `.116`, Ancient `.119`, Regular = remainder (~88.1%).
 - These chances can be temporarily overridden by [eventFactory.js](../../src/utils/eventFactory.js)'s
   hourly special events — see [systems/raids-and-world-events.md](raids-and-world-events.md).
 - Guild `workMulti` buff adds `userMultiplier * .10` to the effective multiplier for that call
@@ -72,6 +72,27 @@ added to `sweetPotatoBuffs`:
   +5,000,000 total gain
 
 Metal Potato failure: 0 potatoes, just resets the timer.
+
+### Ancient Potato (0.3% roll — `workFactory.js`'s `handleAncientPotato`)
+
+The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
+guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
+regardless of how much was left on it (a no-op if solo, or if nothing was on cooldown). Separately,
+the roller gets a personal reward:
+- **Free regrade** if any of their three regrade tracks (`workMulti`/`passiveAmount`/`bankCapacity`)
+  isn't at `REGRADE_CAPS` yet — one under-capped track is picked at random, and its **current tier's
+  real `increase`** is granted for free (no cost, guaranteed, no roll), mirroring exactly what a
+  successful `/regrade` purchase at that tier would do (`regrades.X.regradeAmount += increase`,
+  `failStack` reset to 0, and the raw stat bumped by the same amount).
+- **Potato payout** if every track is already maxed — formula ×60 (between Metal's ×20 and Golden's
+  ×100), capped `Work.MAX_ANCIENT_POTATO(300000)`. Like every `*_MAX_*_POTATO` constant, this caps
+  the base amount before the player's own multiplier scales it up, not the final payout — "less than
+  Golden" holds through the base-factor ratio (60 vs 100), not an absolute ceiling on the result.
+
+`workRegradeTiers`/`passiveRegradeTiers`/`bankRegradeTiers` and `REGRADE_CAPS` live in
+`constants.js` (moved there from being private to `regrade.js`, mirroring how `shops` already
+worked) specifically so this scenario can look up a player's real current tier without duplicating
+regrade.js's tier data.
 
 ### Sweet Potato
 

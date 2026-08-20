@@ -18,6 +18,7 @@ const SCENARIO_TYPES = {
     metal: WORK_SCENARIO_INDICES.METAL,
     golden: WORK_SCENARIO_INDICES.GOLDEN,
     companion: WORK_SCENARIO_INDICES.COMPANION,
+    ancient: WORK_SCENARIO_INDICES.ANCIENT,
 };
 
 module.exports = {

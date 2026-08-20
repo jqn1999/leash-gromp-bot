@@ -1,9 +1,20 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, awsConfigurations, CompanionDuplicateReward } = require("../utils/constants")
+const { Work, awsConfigurations, CompanionDuplicateReward, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+
+// Used by handleAncientPotato to pick a random under-capped regrade track and look up
+// its real current tier — regradeKey matches userDetails.regrades' keys, statField
+// matches the raw stat each track's increase gets added to, mirroring regrade.js's own
+// success-write shape exactly (see that file's workMulti/passiveAmount/bankCapacity
+// branches).
+const REGRADE_TRACKS = [
+    { regradeKey: 'workMulti', statField: 'workMultiplierAmount', label: 'Work Multiplier', tiers: workRegradeTiers },
+    { regradeKey: 'passiveAmount', statField: 'passiveAmount', label: 'Passive Income', tiers: passiveRegradeTiers },
+    { regradeKey: 'bankCapacity', statField: 'bankCapacity', label: 'Bank Capacity', tiers: bankRegradeTiers }
+];
 
 class WorkFactory {
     async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -185,6 +196,68 @@ class WorkFactory {
         }, { workCount: 1 });
 
         return starchAmount;
+    }
+
+    // Rare guild-facing encounter: resets the guild's raid cooldown to ready-now (a
+    // no-op if solo, or if no cooldown is currently pending — the personal reward below
+    // still lands either way), then rewards the player personally with a free regrade
+    // step — guaranteed, no cost, using their real CURRENT tier's increase so it matches
+    // exactly what a successful /regrade purchase at that tier would grant (see
+    // regrade.js's own success-write shape, which this mirrors). One of the three
+    // regrade tracks is picked at random among whichever aren't already at
+    // REGRADE_CAPS. A player already fully regraded on all three has nothing left to
+    // grant, so they get a big (but sub-Golden) potato payout instead.
+    async handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
+        const userId = userDetails.userId;
+        let userPotatoes = userDetails.potatoes;
+        let userTotalEarnings = userDetails.totalEarnings;
+        const regrades = userDetails.regrades;
+
+        if (userDetails.guildId) {
+            await dynamoHandler.updateGuildDatabase(userDetails.guildId, 'raidTimer', Date.now());
+        }
+
+        const eligibleTracks = REGRADE_TRACKS.filter(track => regrades[track.regradeKey].regradeAmount < REGRADE_CAPS[track.regradeKey]);
+
+        let potatoesGained = 0;
+        let regradedStatName = null;
+        let regradeIncrease = 0;
+        const updateFields = {};
+
+        if (eligibleTracks.length > 0) {
+            const track = eligibleTracks[Math.floor(Math.random() * eligibleTracks.length)];
+            const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
+            regradeIncrease = currentTier.increase;
+            regradedStatName = track.label;
+
+            regrades[track.regradeKey].regradeAmount += regradeIncrease;
+            regrades[track.regradeKey].failStack = 0;
+            updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
+        } else {
+            let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);
+            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+            potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier);
+            userPotatoes += potatoesGained;
+            userTotalEarnings += potatoesGained;
+        }
+
+        let workScenarioCounts = userDetails.workScenarioCounts;
+        workScenarioCounts.ancient += 1;
+
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalEarnings: userTotalEarnings,
+            regrades: regrades,
+            workScenarioCounts: workScenarioCounts,
+            workTimer: workTimer,
+            ...updateFields
+        }, { workCount: 1 });
+
+        return { potatoesGained, regradedStatName, regradeIncrease, guildRaidReady: Boolean(userDetails.guildId) };
     }
 
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {

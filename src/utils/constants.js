@@ -7,6 +7,11 @@ const Work = {
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
+    // Only paid out to a fully-regraded player (nothing left to grant a free regrade
+    // step on) — see workFactory.js's handleAncientPotato. Sized between Metal (100,000)
+    // and Golden (500,000) on the same ~5,000-per-base-factor scale those two already
+    // use (factor 60 here vs Metal's 20 and Golden's 100).
+    MAX_ANCIENT_POTATO: 300000,
     MAX_GOLDEN_POTATO: 500000,
     POISON_POTATO_TIMER_INCREASE_SECONDS: 3600
 }
@@ -680,6 +685,17 @@ const metalPotatoFailure = {
     credit: `Inspired by Rednaxeia`
 }
 
+// See workFactory.js's handleAncientPotato and embedFactory.js's
+// createAncientPotatoEmbed — the one work scenario whose main payoff is guild-facing
+// (resets the guild's raid cooldown to ready-now) rather than purely personal.
+// thumbnailUrl is a placeholder (the bot's own generic avatar, same fallback already
+// used for Brassica/Yamsalot in worldFactory.js) pending real commissioned art.
+const ancientPotato = {
+    name: "Ancient Potato",
+    thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+    description: `Buried beneath the Kingdom's oldest battlefield, you unearth a potato far older than the Kingdom itself — dust-caked, faintly warm, and humming with a strange residual energy. Word of the find spreads fast: half the guild is already talking about the next raid.`
+}
+
 const shops = [
     {
         shopId: "workShop",
@@ -1030,6 +1046,65 @@ const shops = [
     }
 ]
 
+// Regrade tier tables — moved here from regrade.js (which still owns all the actual
+// purchase/roll logic) so other files can reuse the same data instead of duplicating it.
+// Mirrors shops' own "tier data lives in constants.js" precedent. First introduced so
+// workFactory.js's Ancient Potato scenario (see systems/economy-and-work.md) could grant
+// a free regrade step using the player's real current tier, not an invented flat amount.
+const workRegradeTiers = [
+    { currentRegradeAmount: 0, cost: 500000000, increase: 10, chance: .5, failStackIncrease: .05 },
+    { currentRegradeAmount: 10, cost: 500000000, increase: 10, chance: .45, failStackIncrease: .05 },
+    { currentRegradeAmount: 20, cost: 1000000000, increase: 10, chance: .40, failStackIncrease: .05 },
+    { currentRegradeAmount: 30, cost: 1000000000, increase: 10, chance: .35, failStackIncrease: .05 },
+    { currentRegradeAmount: 40, cost: 1500000000, increase: 20, chance: .30, failStackIncrease: .04 },
+    { currentRegradeAmount: 60, cost: 1500000000, increase: 20, chance: .10, failStackIncrease: .04 },
+    { currentRegradeAmount: 80, cost: 2000000000, increase: 30, chance: .08, failStackIncrease: .03 },
+    { currentRegradeAmount: 110, cost: 2500000000, increase: 40, chance: .03, failStackIncrease: .02 },
+    { currentRegradeAmount: 150, cost: 3000000000, increase: 50, chance: .02, failStackIncrease: .01 },
+    { currentRegradeAmount: 200, cost: 3000000000, increase: 50, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 250, cost: 4000000000, increase: 50, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 300, cost: 4000000000, increase: 50, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 350, cost: 4500000000, increase: 50, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 400, cost: 5000000000, increase: 100, chance: .005, failStackIncrease: .0025 }
+]
+
+const passiveRegradeTiers = [
+    { currentRegradeAmount: 0, cost: 500000000, increase: 12000000, chance: .5, failStackIncrease: .05 },
+    { currentRegradeAmount: 12000000, cost: 500000000, increase: 12000000, chance: .45, failStackIncrease: .05 },
+    { currentRegradeAmount: 24000000, cost: 1000000000, increase: 12000000, chance: .40, failStackIncrease: .05 },
+    { currentRegradeAmount: 36000000, cost: 1000000000, increase: 12000000, chance: .35, failStackIncrease: .05 },
+    { currentRegradeAmount: 48000000, cost: 1500000000, increase: 24000000, chance: .30, failStackIncrease: .04 },
+    { currentRegradeAmount: 72000000, cost: 1500000000, increase: 24000000, chance: .10, failStackIncrease: .04 },
+    { currentRegradeAmount: 96000000, cost: 2000000000, increase: 36000000, chance: .08, failStackIncrease: .03 },
+    { currentRegradeAmount: 132000000, cost: 2500000000, increase: 48000000, chance: .03, failStackIncrease: .02 },
+    { currentRegradeAmount: 180000000, cost: 3000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
+    { currentRegradeAmount: 240000000, cost: 4000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
+    { currentRegradeAmount: 300000000, cost: 4000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
+    { currentRegradeAmount: 360000000, cost: 4500000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
+    { currentRegradeAmount: 420000000, cost: 5000000000, increase: 180000000, chance: .01, failStackIncrease: .005 }
+]
+
+const bankRegradeTiers = [
+    { currentRegradeAmount: 0, cost: 500000000, increase: 200000000, chance: .5, failStackIncrease: .05 },
+    { currentRegradeAmount: 200000000, cost: 500000000, increase: 200000000, chance: .45, failStackIncrease: .05 },
+    { currentRegradeAmount: 400000000, cost: 1000000000, increase: 200000000, chance: .40, failStackIncrease: .05 },
+    { currentRegradeAmount: 600000000, cost: 1000000000, increase: 200000000, chance: .35, failStackIncrease: .05 },
+    { currentRegradeAmount: 800000000, cost: 1500000000, increase: 400000000, chance: .30, failStackIncrease: .04 },
+    { currentRegradeAmount: 1200000000, cost: 1500000000, increase: 400000000, chance: .10, failStackIncrease: .04 },
+    { currentRegradeAmount: 1600000000, cost: 2000000000, increase: 600000000, chance: .08, failStackIncrease: .03 },
+    { currentRegradeAmount: 2200000000, cost: 2500000000, increase: 800000000, chance: .03, failStackIncrease: .02 },
+    { currentRegradeAmount: 3000000000, cost: 3000000000, increase: 100000000000, chance: .02, failStackIncrease: .01 }
+]
+
+// Absolute completion caps for each regrade track — every *RegradeTiers array's last
+// currentRegradeAmount + increase. rebirthFactory.js used to keep a private duplicate of
+// this (it predates the tier tables moving here); it now imports this instead.
+const REGRADE_CAPS = {
+    workMulti: 500,
+    passiveAmount: 600000000,
+    bankCapacity: 103000000000
+}
+
 const awsConfigurations = {
     aws_table_name: 'leash-gromp-bot-restored',
     aws_birthday_table_name: 'leash-gromp-bot-birthdays',
@@ -1052,6 +1127,10 @@ const awsConfigurations = {
 
 module.exports = {
     shops,
+    workRegradeTiers,
+    passiveRegradeTiers,
+    bankRegradeTiers,
+    REGRADE_CAPS,
     awsConfigurations,
     Work,
     Achievements,
@@ -1089,4 +1168,5 @@ module.exports = {
     taroTrader,
     poisonPotato,
     goldenPotato,
+    ancientPotato,
 }

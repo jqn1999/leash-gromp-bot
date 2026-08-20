@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure } = require("../../utils/constants");
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
@@ -145,6 +145,16 @@ var workScenarios = [
         },
         chance: .116,
         type: WORK_SCENARIO_INDICES.TARO
+    },
+    {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+            const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
+            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato);
+            await safeEditReply(interaction, embed);
+            return ancientResult.potatoesGained;
+        },
+        chance: .119,
+        type: WORK_SCENARIO_INDICES.ANCIENT
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {

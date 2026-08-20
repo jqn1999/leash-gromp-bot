@@ -1,15 +1,5 @@
-const { shops, Rebirth, Bank } = require("../utils/constants");
+const { shops, Rebirth, Bank, REGRADE_CAPS } = require("../utils/constants");
 const companionFactory = require("../utils/companionFactory");
-
-// Regrade caps aren't exported as a single lookup elsewhere (regrade.js hardcodes its
-// three tier arrays inline) — mirror the same absolute caps questFactory.js already
-// relies on (WEEKLY_REWARD_REGRADE_INFO) rather than duplicating regrade.js's full tier
-// tables just to read their final currentRegradeAmount + increase.
-const REGRADE_CAPS = {
-    workMulti: 500,
-    passiveAmount: 600000000,
-    bankCapacity: 103000000000
-};
 
 function getShopMax(shopId) {
     const shop = shops.find(s => s.shopId === shopId);
