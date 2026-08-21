@@ -73,6 +73,9 @@ balance pass already tuned (see the table above).
 unscaled) — `/help topic:companions` and the roster table above always show the level-1 base value
 (a reference, not a specific owned instance), while `/companion`'s list and `/companion-market`'s
 listings pass the real level so the shown value matches what the perk actually resolves to in play.
+`/companion`'s list also shows progress toward the next level (`companionFactory.getNextLevelThreshold`
+— the first `THRESHOLDS` entry not yet met, or `null` once already at max) as
+`current / required /work calls to Lv. N`, or a "max level" line once there's no next threshold.
 
 ## Starting roster (12)
 

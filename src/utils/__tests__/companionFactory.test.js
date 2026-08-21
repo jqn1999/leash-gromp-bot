@@ -7,6 +7,7 @@ const {
     getActiveCompanion,
     getOwnedEntry,
     getCompanionLevel,
+    getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
     applyCompanionAward
@@ -195,6 +196,18 @@ describe('companion leveling', () => {
     test('getCompanionLevel: clamps to the max defined level well past the last threshold', () => {
         const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
         expect(getCompanionLevel(999999)).toBe(maxLevel);
+    });
+
+    test('getNextLevelThreshold: returns the next unmet threshold', () => {
+        const [, second] = CompanionLeveling.THRESHOLDS;
+        expect(getNextLevelThreshold(0)).toEqual(second);
+        expect(getNextLevelThreshold(second.workCountRequired - 1)).toEqual(second);
+    });
+
+    test('getNextLevelThreshold: null once already at max level', () => {
+        const lastThreshold = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1];
+        expect(getNextLevelThreshold(lastThreshold.workCountRequired)).toBeNull();
+        expect(getNextLevelThreshold(999999)).toBeNull();
     });
 
     test('getLevelMultiplier: 1x at level 1, scales by PERK_BONUS_PER_LEVEL per level after', () => {

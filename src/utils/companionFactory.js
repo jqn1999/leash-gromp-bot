@@ -65,6 +65,15 @@ function getCompanionLevel(workCount) {
     return [...sorted].reverse().find(t => count >= t.workCountRequired).level;
 }
 
+// The next threshold a companion hasn't reached yet — { level, workCountRequired } — or
+// null once workCount already clears the last one (max level). THRESHOLDS is stored in
+// ascending order, so the first entry still above the current count is the next one.
+// Powers "X more /work calls to level up" displays (see /companion's list embed).
+function getNextLevelThreshold(workCount) {
+    const count = Number.isFinite(workCount) ? workCount : 0;
+    return CompanionLeveling.THRESHOLDS.find(t => count < t.workCountRequired) || null;
+}
+
 function getLevelMultiplier(level) {
     return 1 + (level - 1) * CompanionLeveling.PERK_BONUS_PER_LEVEL;
 }
@@ -150,6 +159,7 @@ module.exports = {
     getActiveCompanion,
     getOwnedEntry,
     getCompanionLevel,
+    getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
     applyCompanionAward

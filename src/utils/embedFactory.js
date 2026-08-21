@@ -1199,10 +1199,15 @@ class EmbedFactory {
     createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
             const status = companion.id === activeId ? '✅ Active' : companion.id;
-            const level = companionFactory.getCompanionLevel(companion.workCount);
+            const workCount = companion.workCount || 0;
+            const level = companionFactory.getCompanionLevel(workCount);
+            const nextThreshold = companionFactory.getNextLevelThreshold(workCount);
+            const progress = nextThreshold
+                ? `${workCount.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
+                : `${workCount.toLocaleString()} /work calls — max level`;
             return {
                 name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}`,
-                value: `${formatCompanionPerks(companion, level)}\n${status}`,
+                value: `${formatCompanionPerks(companion, level)}\n${progress}\n${status}`,
                 inline: false,
             };
         }) : [{ name: 'No companions yet', value: 'Keep working — Wandering Companion encounters can happen on any /work!', inline: false }];
