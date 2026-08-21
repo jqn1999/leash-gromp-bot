@@ -29,13 +29,27 @@ function chooseMobFromList(mobList) {
     return reward
 }
 
-// Every scenario's editReply used to be fire-and-forget (no await, no catch) — if it
-// ever threw (rate limit, network blip, stale interaction token), the DB write for that
+// Every scenario's reply used to be fire-and-forget (no await, no catch) — if it ever
+// threw (rate limit, network blip, stale interaction token), the DB write for that
 // /work call (potatoes gained, cooldown consumed) still happened, but nothing downstream
 // depends on this call succeeding, so the failure was silently swallowed and the player
 // saw no result at all despite the action having gone through. Falls back to a followUp
 // with the same embed so a failed edit still reaches the player instead of vanishing.
-async function safeEditReply(interaction, embed) {
+//
+// isChainedReply distinguishes the original /work invocation (still edits the deferred
+// reply, same as always) from an auto-chained extra work triggered by a companion's
+// workCooldownSkipChance (see performWork below) — a chained result is always a brand
+// new message via followUp, since editReply would just overwrite the previous link in
+// the chain instead of appending another one.
+async function sendWorkResult(interaction, embed, isChainedReply = false) {
+    if (isChainedReply) {
+        try {
+            await interaction.followUp({ embeds: [embed] });
+        } catch (e) {
+            console.log(`work.js chained followUp failed: ${e}`);
+        }
+        return;
+    }
     try {
         await interaction.editReply({ embeds: [embed] });
     } catch (e) {
@@ -58,38 +72,38 @@ function setWorkScenarios(workChances) {
 
 var workScenarios = [
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .001,
         type: WORK_SCENARIO_INDICES.GOLDEN
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
             potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .011,
         type: WORK_SCENARIO_INDICES.POISON
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .051,
         type: WORK_SCENARIO_INDICES.LARGE
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const userId = userDetails.userId;
             const metalPotatoRoll = Math.random();
             let potatoesGained;
@@ -107,87 +121,195 @@ var workScenarios = [
 
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, userDetails._cooldownSkippedByCompanion);
             }
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .061,
         type: WORK_SCENARIO_INDICES.METAL
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .081,
         type: WORK_SCENARIO_INDICES.SWEET
     },
     {
-        // forcedCompanionId is a trailing optional arg only /admin-work ever passes —
-        // every real /work call omits it, leaving it undefined and falling through to
-        // the normal roll inside handleCompanionEncounter.
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId) => {
+        // Every scenario shares this exact signature (even though only this one reads
+        // forcedCompanionId) so performWork's single dispatch call site can pass the same
+        // positional args to whichever scenario the roll matched. forcedCompanionId is a
+        // trailing optional arg only /admin-work ever passes — every real /work call
+        // (chained or not) omits it, leaving it undefined and falling through to the
+        // normal roll inside handleCompanionEncounter.
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus, forcedCompanionId);
             embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return companionResult.potatoesGained;
         },
         chance: .096,
         type: WORK_SCENARIO_INDICES.COMPANION
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return starchesGained;
         },
         chance: .116,
         type: WORK_SCENARIO_INDICES.TARO
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return ancientResult.potatoesGained;
         },
         chance: .119,
         type: WORK_SCENARIO_INDICES.ANCIENT
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleMimicPotato(userDetails);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: .129,
         type: WORK_SCENARIO_INDICES.MIMIC
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return starchesGained;
         },
         chance: .130,
         type: WORK_SCENARIO_INDICES.GOLDEN_YAM
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus);
             const regularMob = chooseMobFromList(regularWorkMobs);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, userDetails._cooldownSkippedByCompanion);
-            await safeEditReply(interaction, embed);
+            await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
         chance: 1,
         type: WORK_SCENARIO_INDICES.REGULAR
     }
 ]
+
+// One full /work resolution: cooldown check, scenario roll, stat writes, and the
+// achievement/quest/contract follow-ups. Recurses when the roll that just ran skipped
+// the cooldown (a companion's workCooldownSkipChance) — the player would just manually
+// run /work again immediately anyway for the exact same odds, so this only automates
+// that, capped at Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH purely as a safety valve (see its
+// comment in constants.js). isChainedReply=false only on the very first, user-invoked
+// call, which alone is allowed to edit the original deferred reply — every chained link
+// is always a new followUp message, and any failure mid-chain (a DB hiccup on the
+// re-fetch below, or the near-impossible case of the cooldown somehow not being ready)
+// just quietly ends the chain there instead of surfacing an error after what already
+// looked like a normal, complete result to the player.
+async function performWork(interaction, userId, username, userDisplayName, workGainAmount, isChainedReply, chainDepth) {
+    const userDetails = await dynamoHandler.findUser(userId, username);
+    if (!userDetails) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
+        } else {
+            console.log(`work.js chain link ${chainDepth} aborted: findUser returned null for ${userId}`);
+        }
+        return;
+    }
+
+    const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
+    if (timeUntilWorkAvailableInMS > 0) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
+        } else {
+            console.log(`work.js chain link ${chainDepth} aborted: cooldown unexpectedly not ready for ${userId}`);
+        }
+        return;
+    };
+
+    const work = await dynamoHandler.getStatDatabase('work');
+    const newWorkCount = work.workCount + 1;
+    const workScenarioRoll = Math.random();
+    let potatoesGained;
+    let matchedScenarioType;
+    let multiplier = getRandomFromInterval(.8, 1.2);
+    const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+    for (const scenario of workScenarios) {
+        if (workScenarioRoll < scenario.chance) {
+            potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
+            matchedScenarioType = scenario.type;
+            break;
+        }
+    }
+    await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
+    await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
+
+    // Personal-best "biggest single /work payout" only tracks scenarios whose
+    // return value is actually a potato amount: Golden/Large/Metal(success)/Regular.
+    // Poison is excluded (a loss, always <= 0 anyway). Taro's gain is starches, a
+    // different currency, so it's out of scope for this potato-denominated record
+    // rather than folded in as if it were comparable. Sweet Potato is excluded for
+    // a sharper reason — its handler's return value isn't a gain amount at all,
+    // it's the array index (0-2) of which stat buff was rolled, so treating it as
+    // a potato figure would corrupt the record with a stray 0/1/2.
+    if (POTATO_PAYOUT_SCENARIO_TYPES.includes(matchedScenarioType) && potatoesGained > 0) {
+        await dynamoHandler.updateIfNewRecord(userId, 'biggestWorkPayout', potatoesGained);
+    }
+
+    // Re-fetch since the scenario handlers wrote stat updates straight to the DB
+    // without mutating this in-memory userDetails object.
+    const updatedUserDetails = await dynamoHandler.findUser(userId, username);
+    if (updatedUserDetails) {
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
+        if (newlyUnlocked.length > 0) {
+            const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
+            interaction.followUp({ embeds: achievementEmbeds });
+
+            // checkAndUnlock persists the new achievement list straight to the DB
+            // without mutating updatedUserDetails — mirror that here so a quest
+            // keyed on achievements.length (e.g. "Weekly Milestone") sees the
+            // unlock immediately instead of needing a second /work call to notice.
+            updatedUserDetails.achievements = [
+                ...(updatedUserDetails.achievements || []),
+                ...newlyUnlocked.map(achievement => achievement.id)
+            ];
+        }
+
+        const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
+        if (questResult.completedQuests.length > 0) {
+            const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
+            interaction.followUp({ embeds: [questEmbed] });
+        }
+
+        // Guild Contract is a guild-wide aggregate, not a per-user check — only
+        // relevant if this member is actually in a guild right now.
+        if (updatedUserDetails.guildId) {
+            const guild = await dynamoHandler.findGuildById(updatedUserDetails.guildId);
+            if (guild) {
+                const contractResult = await guildContractFactory.checkAndClaimContract(guild, updatedUserDetails, userDetails);
+                if (contractResult.completedNow) {
+                    const contractEmbed = embedFactory.createGuildContractCompleteEmbed(guild.guildName, contractResult.template, contractResult.bankCapacityReward);
+                    interaction.followUp({ embeds: [contractEmbed] });
+                }
+            }
+        }
+    }
+
+    if (userDetails._cooldownSkippedByCompanion && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+        await performWork(interaction, userId, username, userDisplayName, workGainAmount, true, chainDepth + 1);
+    }
+}
 
 module.exports = {
     name: "work",
@@ -204,85 +326,6 @@ module.exports = {
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
-
-        const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
-        if (timeUntilWorkAvailableInMS > 0) {
-            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
-            return;
-        };
-
-        const work = await dynamoHandler.getStatDatabase('work');
-        const newWorkCount = work.workCount + 1;
-        const workScenarioRoll = Math.random();
-        let potatoesGained;
-        let matchedScenarioType;
-        let multiplier = getRandomFromInterval(.8, 1.2);
-        const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
-        for (const scenario of workScenarios) {
-            if (workScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus);
-                matchedScenarioType = scenario.type;
-                break;
-            }
-        }
-        await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
-        await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
-
-        // Personal-best "biggest single /work payout" only tracks scenarios whose
-        // return value is actually a potato amount: Golden/Large/Metal(success)/Regular.
-        // Poison is excluded (a loss, always <= 0 anyway). Taro's gain is starches, a
-        // different currency, so it's out of scope for this potato-denominated record
-        // rather than folded in as if it were comparable. Sweet Potato is excluded for
-        // a sharper reason — its handler's return value isn't a gain amount at all,
-        // it's the array index (0-2) of which stat buff was rolled, so treating it as
-        // a potato figure would corrupt the record with a stray 0/1/2.
-        if (POTATO_PAYOUT_SCENARIO_TYPES.includes(matchedScenarioType) && potatoesGained > 0) {
-            await dynamoHandler.updateIfNewRecord(userId, 'biggestWorkPayout', potatoesGained);
-        }
-
-        // Re-fetch since the scenario handlers wrote stat updates straight to the DB
-        // without mutating this in-memory userDetails object.
-        const updatedUserDetails = await dynamoHandler.findUser(userId, username);
-        if (updatedUserDetails) {
-            const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
-            if (newlyUnlocked.length > 0) {
-                const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
-                interaction.followUp({ embeds: achievementEmbeds });
-
-                // checkAndUnlock persists the new achievement list straight to the DB
-                // without mutating updatedUserDetails — mirror that here so a quest
-                // keyed on achievements.length (e.g. "Weekly Milestone") sees the
-                // unlock immediately instead of needing a second /work call to notice.
-                updatedUserDetails.achievements = [
-                    ...(updatedUserDetails.achievements || []),
-                    ...newlyUnlocked.map(achievement => achievement.id)
-                ];
-            }
-
-            const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
-            if (questResult.completedQuests.length > 0) {
-                const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
-                interaction.followUp({ embeds: [questEmbed] });
-            }
-
-            // Guild Contract is a guild-wide aggregate, not a per-user check — only
-            // relevant if this member is actually in a guild right now.
-            if (updatedUserDetails.guildId) {
-                const guild = await dynamoHandler.findGuildById(updatedUserDetails.guildId);
-                if (guild) {
-                    const contractResult = await guildContractFactory.checkAndClaimContract(guild, updatedUserDetails, userDetails);
-                    if (contractResult.completedNow) {
-                        const contractEmbed = embedFactory.createGuildContractCompleteEmbed(guild.guildName, contractResult.template, contractResult.bankCapacityReward);
-                        interaction.followUp({ embeds: [contractEmbed] });
-                    }
-                }
-            }
-        }
-        return;
+        await performWork(interaction, userId, username, userDisplayName, workGainAmount, false, 0);
     }
 }

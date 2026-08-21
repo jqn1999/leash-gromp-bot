@@ -4,6 +4,13 @@ const Work = {
     PERCENT_OF_TOTAL: .002,
     WORK_TIMER_SECONDS: 300,
     MAX_BASE_WORK_GAIN: 1000,
+    // Purely a safety valve, not a balance lever — a companion's workCooldownSkipChance
+    // auto-chains another /work (see work.js's performWork) instead of making the player
+    // manually re-run the command, since they'd get the exact same outcome either way at
+    // zero extra cost. A run of N skips in a row has probability chance^N, astronomically
+    // unlikely to ever approach this cap even at Mochi's 20% — this just bounds the
+    // pathological tail so a freak streak can't spam the channel or chew through rate limits.
+    MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 15,
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
