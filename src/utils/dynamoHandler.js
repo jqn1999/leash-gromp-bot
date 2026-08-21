@@ -214,14 +214,14 @@ const updateIfNewRecord = async function (userId, fieldName, newValue) {
 // Every companion that touches the work cooldown now does it through
 // workCooldownSkipChance (Fieldmouse/Spudsprite/Mochi) rather than a percentage
 // reduction — checked first and, on a hit, short-circuits straight to "ready now".
-// Mutates a transient, never-persisted `_cooldownSkipped` flag onto the same
-// userDetails object reference the caller already holds, so work.js can show specific
-// text for the roll without every /work scenario's handler needing its return shape
-// changed to carry an extra flag through.
+// Mutates a transient, never-persisted `_cooldownSkippedByCompanion` id onto the same
+// userDetails object reference the caller already holds, so work.js can show which
+// companion actually did it without every /work scenario's handler needing its return
+// shape changed to carry an extra flag through.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     const skipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
     if (skipChance > 0 && Math.random() < skipChance) {
-        userDetails._cooldownSkipped = true;
+        userDetails._cooldownSkippedByCompanion = companionFactory.getActiveCompanion(userDetails).id;
         return Date.now();
     }
 

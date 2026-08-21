@@ -53,6 +53,28 @@ function formatCompanionPerks(companion) {
     return companion.perks.map(perk => PERK_LABELS[perk.type](perk.value)).join(', ');
 }
 
+// Every companion carrying workCooldownSkipChance (Fieldmouse/Spudsprite/Mochi) gets its
+// own emoji + in-character line here instead of one shared "Fieldmouse" field regardless
+// of which one actually triggered — see dynamoHandler.calculateWorkTimerValue, which
+// stashes the id of whichever companion rolled the skip.
+const COOLDOWN_SKIP_FLAVOR = {
+    fieldmouse: { emoji: '🐭', text: 'Scouted ahead — your /work cooldown never started, go again right away!' },
+    spudsprite: { emoji: '✨', text: 'Bent time around your cooldown — it never even started, go again right away!' },
+    mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' }
+};
+
+// companionId: the active companion's id that rolled the skip, or a falsy value if it
+// didn't happen this call — callers just do `if (cooldownSkippedByCompanion) fields.push(...)`.
+function buildCooldownSkipField(companionId) {
+    const companion = Companions.find(c => c.id === companionId);
+    const flavor = COOLDOWN_SKIP_FLAVOR[companionId];
+    return {
+        name: `${flavor.emoji} ${companion.name}:`,
+        value: flavor.text,
+        inline: false,
+    };
+}
+
 class EmbedFactory {
     // Paginated 2 pages — Overview (economy stats) and Activity & Records — same
     // Previous/Next button mechanics as /quests, just over a fixed field set instead of
@@ -886,7 +908,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkipped = false) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -904,12 +926,8 @@ class EmbedFactory {
             inline: true,
         })
 
-        if (cooldownSkipped) {
-            fields.push({
-                name: `🐭 Fieldmouse:`,
-                value: `Scouted ahead — your /work cooldown never started, go again right away!`,
-                inline: false,
-            });
+        if (cooldownSkippedByCompanion) {
+            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
         }
 
         if (mob.credit) {
@@ -963,7 +981,7 @@ class EmbedFactory {
     // not auto-equipped — equipping stays a deliberate choice); a duplicate pull shows
     // the consolation potato payout instead, same "Gained" framing as every other
     // potato-reward encounter.
-    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkipped = false) {
+    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null) {
         const { isNew, companion, potatoesGained } = result;
         let fields = [{
             name: `Work Count:`,
@@ -988,12 +1006,8 @@ class EmbedFactory {
             description = `${companion.description}\n\nYou already have a ${companion.name} — it hands over a consolation bag of potatoes instead.`;
         }
 
-        if (cooldownSkipped) {
-            fields.push({
-                name: `🐭 Fieldmouse:`,
-                value: `Scouted ahead — your /work cooldown never started, go again right away!`,
-                inline: false,
-            });
+        if (cooldownSkippedByCompanion) {
+            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
         }
 
         const activeEvent = eventFactory.getCurrentEvent();
@@ -1019,7 +1033,7 @@ class EmbedFactory {
     // regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease,
     // guildRaidReady } from workFactory.js's handleAncientPotato — exactly one of
     // regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
-    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkipped = false) {
+    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null) {
         const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady } = result;
         let fields = [{
             name: `Work Count:`,
@@ -1055,12 +1069,8 @@ class EmbedFactory {
             });
         }
 
-        if (cooldownSkipped) {
-            fields.push({
-                name: `🐭 Fieldmouse:`,
-                value: `Scouted ahead — your /work cooldown never started, go again right away!`,
-                inline: false,
-            });
+        if (cooldownSkippedByCompanion) {
+            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
         }
 
         let footerText = "Made by Beggar";
