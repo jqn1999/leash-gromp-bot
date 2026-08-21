@@ -449,6 +449,32 @@ and needs its own balance pass.
   listings both show the real level and level-scaled perk value; `/help topic:companions` and the
   roster reference always show the level-1 base.
 
+- [x] **14. Admin Event Trigger** — S — **Done**
+  What: `/admin-trigger-event` (devOnly) lets an admin force any of the 8 hourly `/work` special
+  events (Large/Sweet/Metal/Poison/Taro x2, Golden/Metal/Poison x5) on demand, or `CLEAR` back to
+  base odds, instead of waiting on the natural `backgroundEvents.js` hourly 20% roll. An `announce`
+  boolean (default true) controls whether it also posts the same public ping to the same event
+  channel/role the natural roll uses, for testing without alerting the server.
+  Why: requested directly to let an admin trigger events like "5x metal, higher chance for golden"
+  on demand rather than waiting on/hoping for the hourly roll.
+  Touches: split `eventFactory.js`'s `setSpecialEvent()` into a new `applyEvent(eventName)` (the
+  actual per-event switch/apply logic) called by both the original random-pick path and the new
+  admin command, so triggering a specific event by name is "skip the random pick," not a
+  parallel/divergent implementation; new `src/commands/moderation/adminTriggerEvent.js`, mirroring
+  `adminTriggerWorldBoss.js`'s existing devOnly/no-`permissionsRequired` convention and reusing the
+  exact same hardcoded `EVENT_CHANNEL_ID`/`EVENT_ROLE_ID` `backgroundEvents.js` posts to.
+  Notable design points: `EventFactory` is a singleton (`backgroundEvents.js` and this command hold
+  the same instance), so triggering here is exactly as real as the scheduled hourly roll, not a
+  preview/test copy. Duration is **not** fixed-length — an admin-triggered event holds until the
+  next hourly cron tick (`'0 * * * *'`), identical in character to a natural event's duration, and
+  the command's own reply says so explicitly rather than leaving it implicit. No conflict with the
+  natural roll: the callback calls `setBaseWorkChances()`/`setBaseWorkProbability()` immediately
+  after applying and pushing the boosted odds live, exactly mirroring what the natural hourly job
+  itself does after its own roll, so the singleton's internal tracking state is already clean by the
+  time the next hourly tick (natural or another admin trigger) runs. Verified via a manual smoke
+  test: `applyEvent('METALX5')` produced a true 5x widening of Metal Potato's odds window, then
+  `setBaseWorkChances()`/`setBaseWorkProbability()` correctly restored base afterward.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

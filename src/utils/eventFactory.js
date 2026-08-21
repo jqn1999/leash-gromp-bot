@@ -39,7 +39,13 @@ class EventFactory {
     }
 
     setSpecialEvent() {
-        let event = this.getRandomEvent(this.events, this.eventWeights);
+        this.applyEvent(this.getRandomEvent(this.events, this.eventWeights));
+    }
+
+    // Split out of setSpecialEvent so admin-trigger-event.js can force a specific event
+    // by name instead of only ever getting whatever the weighted random pick lands on —
+    // same effect either way, just skipping the roll. eventName must be one of `this.events`.
+    applyEvent(event) {
         switch (event) {
             case "LARGEX2":
                 this.workProbability[WORK_SCENARIO_INDICES.LARGE] *= 2;
