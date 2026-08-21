@@ -71,11 +71,45 @@ function computeSaleSplit(price) {
     return { fee, sellerReceives: price - fee };
 }
 
+// The [min, max] an instant NPC sale could roll for a given companion at a given level —
+// shown to the player up front (see companionSellNpc.js) so confirming isn't a blind roll.
+// No fee/tax on top: the deliberately-below-market price is the sink already.
+function getNpcSaleRange(companion, level) {
+    const floor = CompanionMarket.MINIMUM_PRICE[companion.rarity];
+    const levelMultiplier = companionFactory.getLevelMultiplier(level);
+    return {
+        min: Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MIN * levelMultiplier),
+        max: Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MAX * levelMultiplier)
+    };
+}
+
+// Rolls the actual sale price within that range, inclusive of both ends.
+function rollNpcSalePrice(companion, level) {
+    const { min, max } = getNpcSaleRange(companion, level);
+    return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function validateNpcSaleRequest(userDetails, companionId) {
+    const companion = companionFactory.getCompanionById(companionId);
+    if (!companion) {
+        return { valid: false, error: "That's not a real companion." };
+    }
+    if (!companionFactory.ownsCompanion(userDetails, companionId)) {
+        return { valid: false, error: "You don't own that companion." };
+    }
+    const ownedEntry = companionFactory.getOwnedEntry(userDetails, companionId);
+    const level = companionFactory.getCompanionLevel(ownedEntry?.workCount);
+    return { valid: true, companion, level };
+}
+
 module.exports = {
     MARKET_TRACKING_ID,
     getMarketState,
     validateListingRequest,
     buildListing,
     removeFromOwned,
-    computeSaleSplit
+    computeSaleSplit,
+    getNpcSaleRange,
+    rollNpcSalePrice,
+    validateNpcSaleRequest
 }

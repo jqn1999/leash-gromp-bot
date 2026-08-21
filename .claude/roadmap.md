@@ -475,6 +475,32 @@ and needs its own balance pass.
   test: `applyEvent('METALX5')` produced a true 5x widening of Metal Potato's odds window, then
   `setBaseWorkChances()`/`setBaseWorkProbability()` correctly restored base afterward.
 
+- [x] **15. NPC Companion Sale** — S — **Done**
+  What: `/companion-sell-npc <companion>` — an instant, no-buyer-needed sale to an NPC, for
+  companions nobody's listing (or nobody's buying) on the real market. See
+  [systems/companions.md](systems/companions.md#marketplace).
+  Why: the market can leave a listing sitting forever if no player wants that specific companion —
+  requested to give a guaranteed-liquidity fallback, while keeping it deliberately worse than a real
+  sale so `/companion-sell` stays the better move (even just to help another player) whenever a
+  buyer might exist.
+  Price: random 30-50% (`CompanionMarket.NPC_SELL_RATIO_MIN`/`MAX`) of that rarity's own
+  `MINIMUM_PRICE`, scaled by the companion's own level multiplier only — explicitly excludes the
+  seller's `effectiveMultiplier`/server wealth (unlike every other work-scaled reward in this bot),
+  per direct request, so it stays unprofitable at every stage rather than becoming a good deal again
+  once someone's developed. Tying it to `MINIMUM_PRICE` instead of a separate table also means it
+  can never reach the market floor by construction, and moves with future floor re-tunes for free.
+  Notable design points: confirm/cancel flow shows the exact `[min, max]` range up front (explicit
+  ask — "make sure it's clear to users what the range of sale will be") rather than a black-box roll;
+  the actual price is only rolled after confirmation, using a freshly re-derived level in case more
+  `/work` happened during the prompt. No fee on top — the below-market price is already the sink, so
+  a further tax would just make the "unprofitable" framing redundant. Reuses
+  `companionMarketFactory.removeFromOwned` (achievement counters untouched, same as market listing).
+
+  Shipped right alongside another 10x cut to `CompanionMarket.MINIMUM_PRICE` itself (100x below the
+  original launch floors): Common 50,000 / Rare 250,000 / Legendary 1,000,000 / Mythic 5,000,000.
+  Even the prior 1/10th-reduced floors were still ~500 `/work` calls (~40+ hours) for a fresh account
+  to afford a single Common — the tier they're most likely to already own for free (65% roll chance).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

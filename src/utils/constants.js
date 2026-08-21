@@ -353,7 +353,16 @@ const CompanionMarket = {
         [CompanionRarity.RARE]: 250000,
         [CompanionRarity.LEGENDARY]: 1000000,
         [CompanionRarity.MYTHIC]: 5000000
-    }
+    },
+    // Instant NPC sale (/companion-sell-npc): a random 30-50% of that rarity's own
+    // MINIMUM_PRICE, further scaled by the companion's own level multiplier — but
+    // deliberately NOT by the seller's effectiveMultiplier or server wealth the way every
+    // other work-scaled reward in this bot is, so it stays a flat-feeling, consistently
+    // worse deal at every stage of the game. The floor tie-in means it can never reach
+    // (let alone beat) a real market listing, keeping /companion-sell the better move
+    // whenever a buyer might exist — even just to help another player land that companion.
+    NPC_SELL_RATIO_MIN: 0.30,
+    NPC_SELL_RATIO_MAX: 0.50
 }
 
 // Rolling a companion you already own pays out potatoes instead of nothing — these are

@@ -2,8 +2,12 @@ const {
     validateListingRequest,
     buildListing,
     removeFromOwned,
-    computeSaleSplit
+    computeSaleSplit,
+    getNpcSaleRange,
+    rollNpcSalePrice,
+    validateNpcSaleRequest
 } = require('../companionMarketFactory');
+const { getCompanionById } = require('../companionFactory');
 const { CompanionMarket } = require('../constants');
 
 function userWith(companionsOverrides = {}) {
@@ -100,5 +104,75 @@ describe('computeSaleSplit', () => {
         expect(fee).toBe(Math.floor(10000000 * CompanionMarket.TAX_PERCENT));
         expect(sellerReceives).toBe(10000000 - fee);
         expect(fee + sellerReceives).toBe(10000000);
+    });
+});
+
+describe('getNpcSaleRange / rollNpcSalePrice', () => {
+    test('level 1 range is 30-50% of the rarity floor, unscaled', () => {
+        const sprout = getCompanionById('sprout');
+        const floor = CompanionMarket.MINIMUM_PRICE[sprout.rarity];
+        const { min, max } = getNpcSaleRange(sprout, 1);
+        expect(min).toBe(Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MIN));
+        expect(max).toBe(Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MAX));
+    });
+
+    test('a higher level scales the range up by the same level multiplier leveling uses everywhere else', () => {
+        const sprout = getCompanionById('sprout');
+        const floor = CompanionMarket.MINIMUM_PRICE[sprout.rarity];
+        const { min, max } = getNpcSaleRange(sprout, 10);
+        // level 10 = 1 + 9*0.05 = 1.45x
+        expect(min).toBe(Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MIN * 1.45));
+        expect(max).toBe(Math.floor(floor * CompanionMarket.NPC_SELL_RATIO_MAX * 1.45));
+    });
+
+    test('the range never reaches the rarity floor itself, even at max level', () => {
+        for (const rarity of Object.keys(CompanionMarket.MINIMUM_PRICE)) {
+            const companion = getCompanionById('sprout'); // any companion works, only rarity's floor matters below
+            const floor = CompanionMarket.MINIMUM_PRICE[rarity];
+            const { max } = getNpcSaleRange({ ...companion, rarity }, 10);
+            expect(max).toBeLessThan(floor);
+        }
+    });
+
+    test('rollNpcSalePrice always lands within the range, inclusive of both ends, and actually varies across rolls', () => {
+        const mole = getCompanionById('mole');
+        const { min, max } = getNpcSaleRange(mole, 5);
+        const seen = new Set();
+        for (let i = 0; i < 500; i++) {
+            const price = rollNpcSalePrice(mole, 5);
+            expect(price).toBeGreaterThanOrEqual(min);
+            expect(price).toBeLessThanOrEqual(max);
+            seen.add(price);
+        }
+        expect(seen.size).toBeGreaterThan(1); // sanity: the roll isn't silently collapsed to one value
+    });
+});
+
+describe('validateNpcSaleRequest', () => {
+    test('rejects an unknown companion id', () => {
+        const result = validateNpcSaleRequest(userWith(), 'not-real');
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/not a real companion/);
+    });
+
+    test('rejects a companion the seller does not own', () => {
+        const result = validateNpcSaleRequest(userWith(), 'sprout');
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/don't own/);
+    });
+
+    test('accepts an owned companion and reports its current level', () => {
+        const maxWorkCount = 999999;
+        const user = userWith({ owned: [{ id: 'sprout', workCount: maxWorkCount }] });
+        const result = validateNpcSaleRequest(user, 'sprout');
+        expect(result.valid).toBe(true);
+        expect(result.companion.id).toBe('sprout');
+        expect(result.level).toBe(10);
+    });
+
+    test('treats a missing workCount as level 1', () => {
+        const user = userWith({ owned: [{ id: 'sprout' }] });
+        const result = validateNpcSaleRequest(user, 'sprout');
+        expect(result.level).toBe(1);
     });
 });

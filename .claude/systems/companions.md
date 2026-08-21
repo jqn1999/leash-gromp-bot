@@ -261,6 +261,19 @@ on the same `listings` array.
   `ownedCount`/`mythicOwnedCount` for a "new" acquisition and escrow removal never decremented them
   in the first place (achievements never regress); a normal cancel restoring the same companion must
   never touch those counters, or they'd double-count one acquisition.
+- **`/companion-sell-npc <companion>`** — instant, no listing/escrow/buyer needed: sells straight to
+  an NPC for a random `CompanionMarket.NPC_SELL_RATIO_MIN`-`NPC_SELL_RATIO_MAX` (30-50%) of that
+  rarity's own `MINIMUM_PRICE`, scaled by the companion's own level multiplier — but deliberately
+  **not** by the seller's `effectiveMultiplier` or server wealth the way every other work-scaled
+  reward in this bot is (`calculateGainAmount`), so it stays a consistently bad deal at every stage
+  of the game rather than becoming attractive again once a player is well-developed. Tied directly to
+  the (already-tuned) market floor instead of a separate constant table, which also guarantees by
+  construction that the roll can never reach, let alone beat, a real market listing — the point is to
+  keep `/companion-sell` the better move whenever a buyer might exist, even just to help another
+  player land that companion, while still giving a guaranteed-liquidity option when no buyer does.
+  Confirm/cancel button flow shows the exact `[min, max]` range before the player commits — the
+  actual sale price isn't rolled (`companionMarketFactory.rollNpcSalePrice`) until they confirm, so
+  nobody agrees to a blind number. No fee — the below-market price is already the sink.
 
 ## Achievements
 
