@@ -14,6 +14,7 @@ touch `src/`, only `developer` can).
 | [product-owner](product-owner.md) | Decides *what's* worth building and why — player-value, scope, open questions | `Read, Grep, Glob, Edit, WebSearch` | Whole `.claude/` knowledge base in full (deliberately not scoped to one feature) | `roadmap.md` only |
 | [architect](architect.md) | Turns an agreed concept into a concrete technical design — data model, files touched, formulas | `Read, Grep, Glob, Edit` | Docs relevant to the feature at hand, spot-checked against `constants.js`/`dynamoHandler.js` | `.claude/` docs only, never `src/` |
 | [developer](developer.md) | Implements a design the user has explicitly confirmed | `Read, Edit, Write, Grep, Glob, Bash` | Design + whichever `.claude/systems/*.md` and source files it extends | `src/`, then `.claude/` docs + `roadmap.md` to match |
+| [release-reviewer](release-reviewer.md) | The merge gate — verifies the actual diff matches the original ask (nothing missing, nothing scope-creeped) and that tests/checks/docs actually got done | `Read, Grep, Glob, Bash` | The original ask (roadmap entry/design/plain request) + the diff being reviewed; runs the test suite itself rather than trusting a claim | Nothing — read-only, reports a verdict, never edits code |
 
 ### The intended pipeline
 
@@ -22,17 +23,22 @@ idea → product-owner (scopes it, flags open questions)
      → architect (designs it — data model, formulas, files touched)
      → [ user confirms ]
      → developer (implements, tests, updates docs)
+     → release-reviewer (verifies the diff matches the ask + checks actually ran)
+     → [ only release-reviewer's approval authorizes merging to main ]
 ```
 
 Each stage is a strict read/write fence: `product-owner` and `architect` can never write to `src/`
-even by accident, and `developer` won't start until a design has been explicitly confirmed by the
-user — not just handed off by the other two agents. None of them "decide to build" on their own
-initiative; a human says go.
+even by accident, `developer` won't start until a design has been explicitly confirmed by the user —
+not just handed off by the other two agents — and `release-reviewer` can't touch code at all, only
+verify it. None of them "decide to build" on their own initiative; a human says go. The separation
+between `developer` (built it) and `release-reviewer` (verified it) is deliberate — the agent that
+wrote a change is the worst-positioned to catch its own scope creep or a check it forgot to run.
 
-Note: nothing in this session actually invoked these three as subagents — every feature this session
-(NPC companion sale, market floor cuts, Poison Potato mitigation, the admin event trigger) was done
-inline, with one continuous session playing all three roles itself. The roster above documents what
-*exists* in `.claude/agents/`, not what got used.
+Note: nothing in this session actually invoked these agents as subagents — every feature this
+session (NPC companion sale, market floor cuts, Poison Potato mitigation, the admin event trigger)
+was done inline, with one continuous session playing every role itself, including the merge decision
+`release-reviewer` is meant to own. The roster above documents what *exists* in `.claude/agents/`,
+not what got used.
 
 ## Generic agents (not project-specific)
 
@@ -47,11 +53,11 @@ Worth knowing about since they're available in the same `Agent` tool:
 
 ## Suggested additions, based on this project's actual history
 
-The three-agent pipeline above covers *building new things*. Looking back at what's actually been
-asked for in this repo, two recurring kinds of work don't fit cleanly into any of the three roles —
-both surfaced real bugs when done ad hoc that a dedicated pass might have caught sooner:
+The pipeline above covers *building* new things and *verifying a specific diff* against its ask.
+One recurring kind of work still doesn't fit either — proactively re-checking things that already
+shipped, with no specific diff or ask driving it:
 
-### 1. `balance-auditor` (proposed)
+### `balance-auditor` (proposed)
 
 A read-only agent whose job is periodically re-checking *already-shipped* numeric systems for drift
 or inconsistency — distinct from `architect`, which grounds numbers only at the moment a *new*
@@ -71,22 +77,10 @@ needed exactly this kind of pass:
 
 Would read `constants.js` + `.claude/systems/*.md` and report inversions, stale comments, or
 numbers that no longer hold their intended relationship — output a punch list for `product-owner`/
-`architect` to act on, not fix anything itself.
-
-### 2. `release-checker` (proposed)
-
-A read-only, fast pre-ship gate — not a design reviewer, just a mechanical constraints check before
-a new/changed command goes live. Directly motivated by today's incident: `/companion-sell-npc`
-shipped with a 123-character description against Discord's hard 100-character cap, which crashed
-command registration at bot startup (`DiscordAPIError[50035]`). That's exactly the kind of thing a
-five-second automated check catches every time, instead of relying on remembering to check it by
-hand after the fact (which is what happened here — audited retroactively, not proactively).
-
-Would check every command/option/choice against Discord's actual API limits (name/description
-length, option count, choice count, etc.) and anything else mechanical worth gating on (e.g. `node
---check` across changed files) before a `developer` hand-off is considered done.
+`architect` to act on, not fix anything itself. Unlike `release-reviewer`, it isn't triggered by a
+diff or an ask — it's a standing "is everything still healthy" pass over the whole economy.
 
 ---
 
-Want me to actually create `balance-auditor.md` and/or `release-checker.md` (same frontmatter/prompt
-format as the three above), or hold this as a proposal for now?
+Want me to actually create `balance-auditor.md` (same frontmatter/prompt format as the others), or
+hold this as a proposal for now?
