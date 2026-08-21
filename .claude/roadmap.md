@@ -501,6 +501,33 @@ and needs its own balance pass.
   Even the prior 1/10th-reduced floors were still ~500 `/work` calls (~40+ hours) for a fresh account
   to afford a single Common — the tier they're most likely to already own for free (65% roll chance).
 
+- [x] **16. Poison Potato Mitigation** — S/M — **Done**
+  What: player feedback said Poison Potato was too punishing — mainly the lockout (a full hour,
+  *replacing* rather than stacking on the normal 300s cooldown, a 12x penalty on top of the loss).
+  See [systems/economy-and-work.md](systems/economy-and-work.md#poison-potato-mitigation-bad-luck-protection).
+  Two changes: cut the base lockout 1hr → 30min, and added weekly bad-luck protection —
+  `PoisonMitigation` reduces both the loss and lockout progressively the more times poison hits the
+  *same player* in the *same week* (15% per hit, capped 60% from the 5th-9th hit), resetting every
+  Monday.
+  Extra tier added mid-design at your request: a player unlucky enough to get hit **10 times in one
+  week** gets a much bigger break (-90%) for the rest of that week, plus a new one-time
+  `toxic_tolerance` achievement.
+  Notable design points: the current week is computed lazily (`workFactory.getCurrentWeekTag`, most
+  recent Monday in EST) on every poison hit rather than depending on a cron to roll it over — the
+  same tag-compare staleness pattern Quests already uses for its own per-user baselines, just
+  self-contained rather than borrowed from the Quests doc, since poison mitigation is purely personal
+  and there's no shared pool to reset. The achievement needed its own *lifetime*
+  `totalPoisonMilestonesReached` counter, separate from the weekly-resetting `weeklyHitCount`, since
+  achievements need a monotonic stat and increments exactly once per qualifying week (the moment the
+  count first reaches 10, not on every hit past it). Surfaced a latent bug while wiring this up:
+  `dynamoHandler.calculateWorkTimerValue` computed the actual cooldown off an equality check against
+  the poison constant instead of using whatever `cooldownTime` was actually passed in — harmless
+  while every caller only ever passed one of two exact constants, but it would have silently
+  discarded a reduced/variable poison lockout. Fixed to just use the passed value directly;
+  behavior-preserving for every other caller. Guinea Pig's full immunity is unaffected — an immune
+  hit doesn't touch `poisonMitigation` at all, so it can't build weekly-hit progress or reach the
+  milestone.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

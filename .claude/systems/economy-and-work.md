@@ -38,12 +38,57 @@ The dropped 5% (`gainAmount/.95*.05`) is paid to the hardcoded house account
 | Encounter | Slice | Handler | Effect |
 |---|---|---|---|
 | Golden | 0–.001 | `handleGoldenPotato` | `calculateGainAmount(workGainAmount*100, Work.MAX_GOLDEN_POTATO(500000), ...)` — pure potato reward |
-| Poison | .001–.011 | `handlePoisonPotato` | Same formula ×10, capped `Work.MAX_POISON_POTATO(10000)`, **negated** (a loss). Also sets cooldown to `Work.POISON_POTATO_TIMER_INCREASE_SECONDS(3600)` instead of the normal 300s |
+| Poison | .001–.011 | `handlePoisonPotato` | Same formula ×10, capped `Work.MAX_POISON_POTATO(10000)`, **negated** (a loss). Also sets cooldown to `Work.POISON_POTATO_TIMER_INCREASE_SECONDS(1800)` instead of the normal 300s — both the loss and the lockout are further reduced by `PoisonMitigation` based on how many times poison has already hit the same player this week (see below) |
 | Large | .011–.051 | `handleLargePotato` | Formula ×10, capped `Work.MAX_LARGE_POTATO(10000)` |
 | Metal | .051–.061 | `handleMetalPotato` | Internal 10% roll for success vs. failure — see below |
 | Sweet | .061–.081 | `handleSweetPotato` | No potatoes — grants a permanent stat buff instead |
 | Taro | .081–.101 | `handleTaroTrader` | No potatoes — grants **starches** instead |
 | Regular | remainder | `handleRegularWork` | Formula uncapped multiplier, capped `Work.MAX_BASE_WORK_GAIN(1000)`; flavor mob from `regularWorkMobs` is cosmetic only |
+
+### Poison Potato mitigation (bad-luck protection)
+
+Player feedback: Poison Potato felt too punishing — mainly the lockout (a full **hour**, replacing
+rather than stacking on the normal 300s cooldown, so a hit was really a 12x cooldown penalty on top
+of the loss). Two changes, both in `workFactory.js`:
+
+1. Base lockout cut 1hr → 30min (`Work.POISON_POTATO_TIMER_INCREASE_SECONDS`, now `1800`) — still 6x
+   the normal cooldown, no longer a full hour of lost momentum.
+2. **`PoisonMitigation`** (`constants.js`): both the loss and the (already-cut) lockout get
+   progressively less painful the more times poison has already hit the *same player* in the current
+   week, resetting fully every Monday:
+
+   | Hit # this week | Reduction |
+   |---|---|
+   | 1st | 0% |
+   | 2nd | -15% |
+   | 3rd | -30% |
+   | 4th | -45% |
+   | 5th–9th | -60% (capped) |
+   | 10th+ | -90% (milestone — see below) |
+
+   `workFactory.getCurrentWeekTag()` computes the current week lazily (most recent Monday, EST) on
+   every poison hit rather than depending on a cron to roll it over — self-contained from Quests'/
+   Guild Contracts' own shared weekly rotation, since poison mitigation is purely personal and there's
+   no shared pool to reset. `workFactory.computePoisonMitigation(poisonMitigation, now)` is the pure
+   function that reads the user's `poisonMitigation: { weekTag, weeklyHitCount }` field, treats a
+   `weekTag` mismatch as a fresh week (same tag-compare staleness pattern Quests uses for its own
+   per-user baselines), and returns the reduction to apply plus the object to persist.
+
+   Reaching the 10th hit in one week (a real stretch of bad luck) unlocks the `toxic_tolerance`
+   achievement — a **lifetime** `totalPoisonMilestonesReached` counter (distinct from the
+   weekly-resetting `weeklyHitCount`, since achievements need a monotonic stat) increments exactly
+   once per qualifying week, the moment `weeklyHitCount` first reaches 10, not on every hit past it.
+
+   Fixed a latent bug in `dynamoHandler.calculateWorkTimerValue` while wiring this up: it computed the
+   actual cooldown from an equality check (`cooldownTime === Work.POISON_POTATO_TIMER_INCREASE_SECONDS`
+   ? use it : fall back to the default `WORK_TIMER_SECONDS`) instead of just using whatever
+   `cooldownTime` was passed in — harmless while every caller only ever passed one of those two exact
+   constants, but it would have silently discarded any reduced/variable poison lockout. Now just uses
+   `cooldownTime` directly; behavior-preserving for every other existing caller.
+
+   Guinea Pig's full poison immunity is unaffected and unchanged — an immune hit doesn't touch
+   `poisonMitigation` at all (there's no loss/lockout to mitigate), so it doesn't build weekly-hit
+   progress or count toward the milestone either.
 
 **Reward-text convention** (player feedback — see below): every potato-paying encounter's flavor text
 ends on a "bag of potatoes" phrase whose *size word* scales with that encounter's actual reward tier,

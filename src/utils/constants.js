@@ -25,7 +25,11 @@ const Work = {
     // use (factor 60 here vs Metal's 20 and Golden's 100).
     MAX_ANCIENT_POTATO: 300000,
     MAX_GOLDEN_POTATO: 500000,
-    POISON_POTATO_TIMER_INCREASE_SECONDS: 3600,
+    // Cut from 1hr -> 30min: replaces (not stacks on top of) the normal 300s cooldown, so
+    // this was a full 12x hit before — still clearly worse than normal at 6x, without
+    // eating a full hour of momentum. See PoisonMitigation below for the further
+    // per-hit-this-week reduction on top of this base.
+    POISON_POTATO_TIMER_INCREASE_SECONDS: 1800,
     // Poison-tier rarity, but steals from bankStored instead of liquid potatoes — the
     // bank protects from /rob, not from this. Percent-of-banked rather than flat so it
     // scales with wealth like every other late-game number, capped so one unlucky roll
@@ -55,6 +59,7 @@ const Achievements = [
     { id: "sweet_tooth", name: "Sweet Tooth", description: "Befriend 10 Sweet Potatoes", statPath: "workScenarioCounts.sweet", threshold: 10 },
     { id: "taro_regular", name: "Taro's Favorite Customer", description: "Trade with the Taro Trader 10 times", statPath: "workScenarioCounts.taro", threshold: 10 },
     { id: "iron_stomach", name: "Spud-Proof Stomach", description: "Survive 10 Poison Potato encounters", statPath: "workScenarioCounts.poison", threshold: 10 },
+    { id: "toxic_tolerance", name: "Toxic Tolerance", description: "Get hit by Poison Potato 10 times in a single week", statPath: "totalPoisonMilestonesReached", threshold: 1 },
 
     { id: "first_million", name: "Spud Millionaire", description: "Earn 1,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 1000000 },
     { id: "potato_mogul", name: "Potato Mogul", description: "Earn 100,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 100000000 },
@@ -71,7 +76,9 @@ const Achievements = [
     // encounter odds (see systems/economy-and-work.md) and the regrade tier ladders in
     // regrade.js, not arbitrary round numbers:
     // - Golden/Metal-success each land at ~0.1% per /work, so 25/50 hits average ~25,000/50,000 works.
-    // - Poison also carries the 1hr cooldown penalty on every hit, so 100 hits costs real calendar time too.
+    // - Poison also carries a cooldown lockout on every hit (30min base, reduced further
+    //   the more times it's already landed on the same player that week — see
+    //   PoisonMitigation), so repeated hits cost real calendar time too.
     // - The regrade thresholds below are read directly off workRegradeTiers/passiveRegradeTiers/
     //   bankRegradeTiers in regrade.js; the max value for each is that stat's absolute completion cap.
     { id: "grizzled_farmer", name: "Grizzled Spud Farmer", description: "Complete 5,000 /work sessions", statPath: "workCount", threshold: 5000 },
@@ -365,6 +372,20 @@ const CompanionMarket = {
     NPC_SELL_RATIO_MAX: 0.50
 }
 
+// Bad-luck protection for repeated Poison Potato hits within the same week (see
+// workFactory.js's getCurrentWeekTag/computePoisonMitigation) — both the loss and the
+// (already-cut) lockout get progressively less painful the more times poison lands on the
+// same player in one week, resetting fully every Monday. Reduction applies to both the
+// potato loss and the lockout duration identically.
+const PoisonMitigation = {
+    REDUCTION_PER_HIT: 0.15, // 2nd hit -15%, 3rd -30%, 4th -45%...
+    MAX_REDUCTION: 0.60,     // ...capped here from the 5th hit through the 9th
+    // A player unlucky enough to get hit 10 times in one week gets a much bigger break
+    // for the rest of that week, plus a one-time achievement — see totalPoisonMilestonesReached.
+    MILESTONE_HIT_THRESHOLD: 10,
+    MILESTONE_REDUCTION: 0.90
+}
+
 // Rolling a companion you already own pays out potatoes instead of nothing — these are
 // maxGain caps fed into workFactory's existing calculateGainAmount, same shape as
 // Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO, so the payout scales with
@@ -468,8 +489,8 @@ const Companions = [
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A guinea pig that insists on taking the first bite of every potato you find, just in case — a little wasteful, but it's never once let a bad one through.",
         // The first perk in the roster with a real cost, not pure upside — trades a
-        // small always-on tax for fully negating Poison Potato's loss AND its 1-hour
-        // cooldown lockout (see workFactory.js's handlePoisonPotato), replacing it with
+        // small always-on tax for fully negating Poison Potato's loss AND its cooldown
+        // lockout (see workFactory.js's handlePoisonPotato), replacing it with
         // a small guaranteed gain instead (Work.GUINEA_PIG_PAYOUT_FACTOR). Common tier
         // and single-perk by design — the lockout disproportionately hurts newer
         // players (an entire session lost), so the safety net that matters most stays
@@ -599,7 +620,7 @@ const HelpTopics = [
         id: "work",
         label: "Work",
         description: "The core /work loop and its bonus encounters",
-        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 1-hour cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a free regrade or shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
+        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 30-minute cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely, and both the loss and lockout get progressively less painful the more times poison hits you in the same week, resetting every Monday — get hit 10 times in one week and you'll get a much bigger break plus an achievement), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a free regrade or shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
     },
     {
         id: "companions",
@@ -1372,6 +1393,7 @@ module.exports = {
     CompanionRarity,
     CompanionRarityOdds,
     CompanionMarket,
+    PoisonMitigation,
     CompanionDuplicateReward,
     CompanionLeveling,
     Companions,

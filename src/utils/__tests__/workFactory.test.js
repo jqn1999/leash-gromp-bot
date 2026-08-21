@@ -1,8 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory } = require('../workFactory');
-const { Work, REGRADE_CAPS, Bank } = require('../constants');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation } = require('../workFactory');
+const { Work, REGRADE_CAPS, Bank, PoisonMitigation } = require('../constants');
 
 const workFactory = new WorkFactory();
 
@@ -29,6 +29,68 @@ beforeEach(() => {
     dynamoHandler.findGuildById.mockResolvedValue(null);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     dynamoHandler.addUserDatabase.mockResolvedValue({});
+});
+
+describe('getCurrentWeekTag', () => {
+    test('every day in the same EST calendar week resolves to the same tag', () => {
+        // A known Monday (Jan 5, 2026) through the following Sunday.
+        const monday = new Date('2026-01-05T12:00:00-05:00');
+        const tags = [0, 1, 2, 3, 4, 5, 6].map(offset =>
+            getCurrentWeekTag(new Date(monday.getTime() + offset * 24 * 60 * 60 * 1000))
+        );
+        expect(new Set(tags).size).toBe(1);
+    });
+
+    test('the following Monday resolves to a different tag', () => {
+        const monday = getCurrentWeekTag(new Date('2026-01-05T12:00:00-05:00'));
+        const nextMonday = getCurrentWeekTag(new Date('2026-01-12T12:00:00-05:00'));
+        expect(nextMonday).not.toBe(monday);
+    });
+});
+
+describe('computePoisonMitigation', () => {
+    const now = new Date('2026-01-07T12:00:00-05:00'); // some Wednesday
+
+    test('a fresh (null) poisonMitigation is treated as the first hit of the week, no reduction', () => {
+        const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(null, now);
+        expect(reduction).toBe(0);
+        expect(nextPoisonMitigation.weeklyHitCount).toBe(1);
+        expect(nextPoisonMitigation.weekTag).toBe(getCurrentWeekTag(now));
+        expect(milestoneJustReached).toBe(false);
+    });
+
+    test('reduction climbs by REDUCTION_PER_HIT for each prior hit, capped at MAX_REDUCTION', () => {
+        const expected = [0, 0.15, 0.30, 0.45, 0.60, 0.60, 0.60, 0.60, 0.60];
+        expected.forEach((expectedReduction, priorHits) => {
+            const { reduction } = computePoisonMitigation({ weekTag: getCurrentWeekTag(now), weeklyHitCount: priorHits }, now);
+            expect(reduction).toBeCloseTo(expectedReduction);
+        });
+    });
+
+    test('the 10th hit this week jumps to MILESTONE_REDUCTION and flags milestoneJustReached', () => {
+        const { reduction, milestoneJustReached, nextPoisonMitigation } = computePoisonMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now
+        );
+        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(true);
+        expect(nextPoisonMitigation.weeklyHitCount).toBe(10);
+    });
+
+    test('hits past the 10th stay at the milestone reduction without re-flagging milestoneJustReached', () => {
+        const { reduction, milestoneJustReached } = computePoisonMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 15 }, now
+        );
+        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(false);
+    });
+
+    test('a weekTag from a different week resets the count to 0 regardless of its stored weeklyHitCount', () => {
+        const { reduction, nextPoisonMitigation } = computePoisonMitigation(
+            { weekTag: 'some-other-week', weeklyHitCount: 9 }, now
+        );
+        expect(reduction).toBe(0);
+        expect(nextPoisonMitigation.weeklyHitCount).toBe(1);
+    });
 });
 
 describe('handleRegularWork', () => {
@@ -90,10 +152,70 @@ describe('handlePoisonPotato', () => {
         expect(setFields).not.toHaveProperty('totalEarnings');
     });
 
-    test('uses the 1-hour poison cooldown, not the normal one', async () => {
+    test('uses the poison cooldown, not the normal one, on a fresh (no prior hits this week) user', async () => {
         const userDetails = baseUser();
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+    });
+
+    test('persists poisonMitigation with weeklyHitCount 1 on a fresh user\'s first hit', async () => {
+        const userDetails = baseUser();
+        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
+    });
+
+    test('a second hit in the same week reduces both the loss and the lockout', async () => {
+        const userDetails = baseUser({ poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 1 } });
+        const lost = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(2);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
+            userDetails,
+            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.REDUCTION_PER_HIT))
+        );
+
+        // Compare against a fresh (first-hit) user under the identical, non-random inputs
+        // (multiplier is passed in explicitly, not rolled inside handlePoisonPotato) — the
+        // reduced hit should be a smaller loss in magnitude.
+        const freshUser = baseUser({ userId: 'fresh' });
+        const freshLoss = await workFactory.handlePoisonPotato(freshUser, 1000, 1);
+        expect(Math.abs(lost)).toBeLessThan(Math.abs(freshLoss));
+    });
+
+    test('a stale poisonMitigation from a prior week is treated as a fresh week', async () => {
+        const userDetails = baseUser({ poisonMitigation: { weekTag: 'not-a-real-week', weeklyHitCount: 9 } });
+        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+    });
+
+    test('the 10th hit this week applies the milestone reduction and bumps totalPoisonMilestonesReached', async () => {
+        const userDetails = baseUser({
+            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
+            totalPoisonMilestonesReached: 0
+        });
+        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(10);
+        expect(setFields.totalPoisonMilestonesReached).toBe(1);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
+            userDetails,
+            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MILESTONE_REDUCTION))
+        );
+    });
+
+    test('an 11th hit the same week stays at the milestone reduction but does not bump the counter again', async () => {
+        const userDetails = baseUser({
+            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 10 },
+            totalPoisonMilestonesReached: 1
+        });
+        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(11);
+        expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
     });
 
     describe('with Guinea Pig equipped', () => {

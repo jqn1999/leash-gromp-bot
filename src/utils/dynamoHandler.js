@@ -225,7 +225,13 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
         return Date.now();
     }
 
-    let time = cooldownTime == Work.POISON_POTATO_TIMER_INCREASE_SECONDS ? Date.now() + cooldownTime * 1000 : Date.now() + Work.WORK_TIMER_SECONDS * 1000
+    // Was previously gated on cooldownTime === Work.POISON_POTATO_TIMER_INCREASE_SECONDS
+    // (falling back to the default WORK_TIMER_SECONDS for anything else) — harmless while
+    // every caller only ever passed one of those two exact constants, but it silently
+    // discarded any other value passed in. Poison's per-week-hit-count reduction (see
+    // workFactory.js's computePoisonMitigation) now passes a variable lockout, so this
+    // just uses whatever cooldownTime the caller actually asked for.
+    let time = Date.now() + cooldownTime * 1000
 
     const userGuildId = userDetails.guildId;
     if (userGuildId) {
@@ -326,7 +332,20 @@ function getDefaultUserFields(userId, username) {
             active: null,            // companion id currently equipped, or null
             ownedCount: 0,
             mythicOwnedCount: 0
-        }
+        },
+        // Bad-luck protection for repeated Poison Potato hits in the same week — see
+        // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh
+        // on each poison hit, not cron-driven) so this is self-contained from Quests'/Guild
+        // Contracts' own weekly rotation.
+        poisonMitigation: {
+            weekTag: null,
+            weeklyHitCount: 0
+        },
+        // Lifetime, never resets — increments the one time per qualifying week a player's
+        // weeklyHitCount first reaches PoisonMitigation.MILESTONE_HIT_THRESHOLD, powering
+        // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,
+        // which resets every Monday and can't be used for a lifetime achievement threshold.
+        totalPoisonMilestonesReached: 0
     };
 }
 

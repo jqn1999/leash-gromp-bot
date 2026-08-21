@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, awsConfigurations, CompanionDuplicateReward, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops } = require("../utils/constants")
+const { Work, awsConfigurations, CompanionDuplicateReward, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -25,6 +25,51 @@ const REGRADE_TRACKS = [
 function getNextShopTier(shopId, currentBaseAmount) {
     const shop = shops.find(s => s.shopId === shopId);
     return shop.items.find(item => item.currentAmount === currentBaseAmount);
+}
+
+// True if `date` falls on a Monday in US Eastern time — same locale-based check
+// questFactory.js's own isMondayEST uses, duplicated here rather than shared since it's a
+// 1-line pure function (same "mirrored, not shared" convention getNextShopTier's own
+// comment above already documents for this file).
+function isMondayEST(date) {
+    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Monday';
+}
+
+// The most recent Monday's EST calendar date as a locale string — a stable "which week is
+// this" tag, computed fresh every time rather than depending on a cron to roll it over.
+// Poison mitigation is purely personal (unlike Quests'/Guild Contracts' shared weekly
+// rotation), so there's no shared pool that needs a scheduled reset — a lazy tag compare
+// is enough, same staleness-detection idea Quests uses, just self-contained here instead.
+function getCurrentWeekTag(now = new Date()) {
+    let cursor = now;
+    while (!isMondayEST(cursor)) {
+        cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000);
+    }
+    return cursor.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+}
+
+// How much a Poison Potato hit's loss/lockout should be reduced this time, based on how
+// many times the same player has already been hit THIS week — a weekTag mismatch is
+// treated as a fresh week with 0 prior hits, the same tag-compare staleness pattern Quests
+// uses for its own baselines. Returns the reduction to apply, the poisonMitigation object
+// to persist, and whether this exact hit just crossed the milestone threshold for the
+// first time this week (so the lifetime achievement counter only increments once per
+// qualifying week, not on every hit past the threshold).
+function computePoisonMitigation(poisonMitigation, now = new Date()) {
+    const weekTag = getCurrentWeekTag(now);
+    const isFreshWeek = !poisonMitigation || poisonMitigation.weekTag !== weekTag;
+    const priorHitsThisWeek = isFreshWeek ? 0 : (poisonMitigation.weeklyHitCount || 0);
+    const hitNumberThisWeek = priorHitsThisWeek + 1;
+
+    const reduction = hitNumberThisWeek >= PoisonMitigation.MILESTONE_HIT_THRESHOLD
+        ? PoisonMitigation.MILESTONE_REDUCTION
+        : Math.min(PoisonMitigation.MAX_REDUCTION, priorHitsThisWeek * PoisonMitigation.REDUCTION_PER_HIT);
+
+    return {
+        reduction,
+        nextPoisonMitigation: { weekTag, weeklyHitCount: hitNumberThisWeek },
+        milestoneJustReached: hitNumberThisWeek === PoisonMitigation.MILESTONE_HIT_THRESHOLD
+    };
 }
 
 class WorkFactory {
@@ -366,12 +411,21 @@ class WorkFactory {
             updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings };
         } else {
             let userTotalLosses = userDetails.totalLosses;
+            // Bad-luck protection — the more times poison has already hit this same
+            // player THIS week, the less painful this hit is, resetting every Monday. See
+            // computePoisonMitigation above.
+            const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(userDetails.poisonMitigation);
             potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
+            potatoesGained = Math.floor(potatoesGained * (1 - reduction));
             potatoesGained *= -1
             userPotatoes += potatoesGained
             userTotalLosses += potatoesGained
-            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
-            updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses };
+            const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
+            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds);
+            updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses, poisonMitigation: nextPoisonMitigation };
+            if (milestoneJustReached) {
+                updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
+            }
         }
 
         let workScenarioCounts = userDetails.workScenarioCounts;
@@ -597,5 +651,7 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
 }
 
 module.exports = {
-    WorkFactory
+    WorkFactory,
+    getCurrentWeekTag,
+    computePoisonMitigation
 }
