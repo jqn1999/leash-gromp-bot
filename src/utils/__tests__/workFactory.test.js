@@ -2,7 +2,7 @@ jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
 const { WorkFactory } = require('../workFactory');
-const { Work, REGRADE_CAPS } = require('../constants');
+const { Work, REGRADE_CAPS, Bank } = require('../constants');
 
 const workFactory = new WorkFactory();
 
@@ -198,7 +198,13 @@ describe('handleAncientPotato', () => {
         const userDetails = baseUser({
             workMultiplierAmount: 1, // fresh account, base shop tier 0 — not shop-maxed
             passiveAmount: 0,
-            bankCapacity: 0,
+            // Every real account starts at Bank.STARTING_CAPACITY (50,000), never 0 — the
+            // bankShop's own first tier's currentAmount matches that for exactly this
+            // reason (see its comment in constants.js). A literal 0 here doesn't match any
+            // bankShop tier boundary, so getNextShopTier would throw if the random track
+            // pick (below) ever landed on bankCapacity — this fixture has to stay a
+            // reachable real state, not just "falsy."
+            bankCapacity: Bank.STARTING_CAPACITY,
             regrades: {
                 workMulti: { regradeAmount: 0, failStack: 0 },
                 passiveAmount: { regradeAmount: 0, failStack: 0 },

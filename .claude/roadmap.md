@@ -304,10 +304,11 @@ and needs its own balance pass.
   - `/companion sell <companion-id> <price>` — must currently own it (auto-unequips if it was
     active); moves it out of `owned` into escrow so it can't be used, re-listed, or duplicated while
     for sale. Rejected if `price` is below that companion's tier floor.
-  - **Tier floors** (sellers can ask any amount at or above; no ceiling): Common 5,000,000 / Rare
-    25,000,000 / Legendary 100,000,000 / Mythic 500,000,000 — roughly in line with existing
-    reference points at each scale (guild bank-capacity tiers top out around 800M, a single regrade
-    attempt costs 500M-5B).
+  - **Tier floors** (sellers can ask any amount at or above; no ceiling): Common 500,000 / Rare
+    2,500,000 / Legendary 10,000,000 / Mythic 50,000,000. Originally 10x these values, but Common's
+    launch floor landed on workShop tier 4 of 10 — a mid-game price for the tier a brand-new player
+    is most likely to pull first (65% roll chance, weakest perk) — so all four were cut to 1/10th
+    together, keeping the 4-5x step between tiers unchanged.
   - `/companion-market` — paginated embed (5/page, same Previous/Next pattern every other list uses)
     of active listings: companion, tier, asking price, seller.
   - `/companion buy <listing-id>` — deducts the asking price from the buyer (rejected if they can't

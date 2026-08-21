@@ -330,11 +330,15 @@ const CompanionRarityOdds = {
 
 const CompanionMarket = {
     TAX_PERCENT: 0.05, // same shape as Bank.GUILD_TAX_PERCENT — a real sink, not punitive
+    // Cut to 1/10th the original floors — Common's original 5,000,000 landed on workShop
+    // tier 4 of 10 (the 5x->10x multiplier purchase), a mid-game price for the single most
+    // common (65% roll chance), weakest-perk tier a brand-new player is most likely to pull
+    // first. The 4-5x step between tiers is kept as-is, just scaled down together.
     MINIMUM_PRICE: {
-        [CompanionRarity.COMMON]: 5000000,
-        [CompanionRarity.RARE]: 25000000,
-        [CompanionRarity.LEGENDARY]: 100000000,
-        [CompanionRarity.MYTHIC]: 500000000
+        [CompanionRarity.COMMON]: 500000,
+        [CompanionRarity.RARE]: 2500000,
+        [CompanionRarity.LEGENDARY]: 10000000,
+        [CompanionRarity.MYTHIC]: 50000000
     }
 }
 
