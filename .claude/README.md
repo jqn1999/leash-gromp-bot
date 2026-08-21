@@ -40,6 +40,8 @@ those AWS services.
   with pointers to where each is used.
 - [roadmap.md](roadmap.md) — prioritized backlog of planned features, not yet started. Check here
   before assuming a feature doesn't exist yet — it may already be queued.
+- [agents/README.md](agents/README.md) — the product-owner/architect/developer subagent pipeline for
+  building new features, plus proposed additions based on this project's actual history.
 
 ## Orientation for future changes
 
