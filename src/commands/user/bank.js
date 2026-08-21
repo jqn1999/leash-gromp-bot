@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bank } = require("../../utils/constants");
+const { Bank, REGRADE_CAPS } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const rebirthFactory = require("../../utils/rebirthFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -64,11 +64,22 @@ module.exports = {
         };
         let userPotatoes = userDetails.potatoes;
         let userBankStored = userDetails.bankStored;
+        // The whole point of fully regrading bank capacity is "never have to worry
+        // about overflow again" — any finite number eventually gets bumped into by a
+        // dedicated-enough player in an economy where rebirth stacking has no ceiling
+        // (see Rebirth's own comment in constants.js), so once a player has actually
+        // earned that milestone, capacity becomes genuinely unlimited rather than just
+        // a very large number. REGRADE_CAPS.bankCapacity stays a real finite threshold
+        // for bookkeeping purposes (rebirth eligibility, the fort_knox achievement) —
+        // this only changes what happens once a player has cleared it.
+        const isBankCapacityMaxed = userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
         // Rootcarver and the live rebirth bonus — computed fresh here, never folded
-        // into the stored bankCapacity.
+        // into the stored bankCapacity. Moot once maxed, but cheap enough to just always compute.
         const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
         const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
-        let userBankCapacity = Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
+        let userBankCapacity = isBankCapacityMaxed
+            ? Infinity
+            : Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
 
         let remainingBankSpace = userBankCapacity - userBankStored;
         const bankHasCapacity = remainingBankSpace > 0;

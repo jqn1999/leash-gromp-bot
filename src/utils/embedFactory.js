@@ -23,6 +23,19 @@ function buildProgressBar(current, max, length = 10) {
     return '█'.repeat(filled) + '░'.repeat(length - filled);
 }
 
+// bank.js passes Infinity for a fully bankCapacity-regrade-maxed player — the whole
+// point of that milestone is "never worry about bank space again," so a 0%-filled
+// progress bar (current / Infinity = 0) or a literal ∞ in the raw number would both
+// undersell it. Shown as a full bar and "Unlimited" instead.
+function formatBankCapacityField(current, capacity) {
+    if (capacity === Infinity) {
+        return `${'█'.repeat(10)} Unlimited\n${current.toLocaleString()} / Unlimited potatoes`;
+    }
+    const bar = buildProgressBar(current, capacity);
+    const fillPercent = capacity > 0 ? (current / capacity * 100) : 0;
+    return `${bar} ${fillPercent.toFixed(1)}%\n${current.toLocaleString()} / ${capacity.toLocaleString()} potatoes`;
+}
+
 // Shared across every companion embed so rarity reads the same way everywhere.
 const COMPANION_RARITY_COLOR = {
     [CompanionRarity.COMMON]: 'Grey',
@@ -1534,8 +1547,6 @@ class EmbedFactory {
     // of requiring a typed number.
     createBankAmountPickerEmbed(userDisplayName, userId, userAvatar, action, userPotatoes, userBankStored, userBankCapacity) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const bar = buildProgressBar(userBankStored, userBankCapacity);
-        const fillPercent = userBankCapacity > 0 ? (userBankStored / userBankCapacity * 100) : 0;
         const available = action === 'deposit' ? userPotatoes : userBankStored;
         const availableLabel = action === 'deposit' ? 'Liquid Potatoes' : 'Banked Potatoes';
 
@@ -1547,7 +1558,7 @@ class EmbedFactory {
             },
             {
                 name: `Bank Capacity:`,
-                value: `${bar} ${fillPercent.toFixed(1)}%\n${userBankStored.toLocaleString()} / ${userBankCapacity.toLocaleString()} potatoes`,
+                value: formatBankCapacityField(userBankStored, userBankCapacity),
                 inline: false,
             },
         ];
@@ -1567,8 +1578,6 @@ class EmbedFactory {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const actionLabel = action === 'deposit' ? 'Deposited' : 'Withdrew';
         const color = action === 'deposit' ? 'Green' : 'Blue';
-        const bar = buildProgressBar(userBankStored, userBankCapacity);
-        const fillPercent = userBankCapacity > 0 ? (userBankStored / userBankCapacity * 100) : 0;
 
         const fields = [
             {
@@ -1585,7 +1594,7 @@ class EmbedFactory {
             },
             {
                 name: `Bank Capacity:`,
-                value: `${bar} ${fillPercent.toFixed(1)}%\n${userBankStored.toLocaleString()} / ${userBankCapacity.toLocaleString()} potatoes`,
+                value: formatBankCapacityField(userBankStored, userBankCapacity),
                 inline: false,
             },
         ];

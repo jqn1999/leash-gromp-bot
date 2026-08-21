@@ -266,6 +266,21 @@ maxed out!" for a fresh account otherwise. `rebirthFactory.js`'s `computeRebirth
 same `Bank.STARTING_CAPACITY` floor, not 0, so a rebirth never leaves an account with less
 protection than a brand-new one gets.
 
+**Capacity becomes genuinely unlimited once `bankCapacity`'s regrade track is fully maxed**
+(`regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity`) — `bank.js` computes
+`userBankCapacity` as `Infinity` instead of the usual `bankCapacity * (1 + bankCapacityPercent +
+rebirthPercent)` formula for a player who's cleared that milestone, which propagates cleanly
+through every downstream check (`remainingBankSpace`, the deposit-blocked guard, the deposit-all
+clamp) without any of them needing special-casing. The point of this stat's whole regrade track is
+"never have to worry about bank overflow again" — in an economy where rebirth stacking has no
+ceiling (`Rebirth.MAX_BONUS_PERCENT` caps the *rate*, not lifetime wealth), any finite number
+eventually gets bumped into by a dedicated-enough player, which would quietly defeat that purpose.
+`REGRADE_CAPS.bankCapacity` itself stays a real finite value — it's still what gates rebirth
+eligibility and the `fort_knox` achievement, only what a *maxed* player's practical capacity
+becomes changed. `embedFactory.js`'s `formatBankCapacityField` renders this as a full bar and
+"Unlimited" rather than a 0%-filled bar (`current / Infinity` computes to 0) or a raw `∞` dropped
+into a potato count.
+
 [give.js](../../src/commands/user/give.js) — transfer to another user, supports `all`/`half`/exact
 amount, optional `currency` (`potatoes` default, or `starches`). Taxed **on the amount specified**
 — unlike Bank's tax (added on top of a chosen net amount), what the sender types is what leaves
