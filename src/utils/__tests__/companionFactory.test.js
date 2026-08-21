@@ -157,6 +157,24 @@ describe('applyCompanionAward', () => {
         const result = applyCompanionAward(user, firefly, 42);
         expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 42 }]);
     });
+
+    test('buying a companion you already own combines workCount instead of being blocked or discarded', () => {
+        const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 100 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
+        const firefly = getCompanionById('firefly');
+        // companionBuy.js passes the listing's workCount for BOTH params — whichever
+        // branch fires should credit the same amount either way.
+        const result = applyCompanionAward(user, firefly, 275, 275);
+        expect(result.isNew).toBe(false);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 100 + 275 }]);
+        expect(result.companions.ownedCount).toBe(1);
+    });
+
+    test('duplicateWorkCountBonus overrides the default DUPLICATE_WORK_COUNT_BONUS', () => {
+        const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 0 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
+        const firefly = getCompanionById('firefly');
+        const result = applyCompanionAward(user, firefly, 0, 999);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 999 }]);
+    });
 });
 
 describe('companion leveling', () => {

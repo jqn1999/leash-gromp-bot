@@ -97,25 +97,34 @@ function getActivePerkValue(userDetails, perkType) {
 // Does not auto-equip a newly-won companion — equipping stays a deliberate choice via
 // /companion equip, same as every other "pick one" mechanic in this bot.
 //
-// initialWorkCount: only ever passed by companionBuy.js, carrying a purchased
-// companion's workCount over from its market listing so buying a leveled companion
-// doesn't reset it to level 1 — every other caller (a genuine /work pull) omits it,
-// defaulting a brand-new companion to workCount 0 (level 1).
+// Two independent amounts, since "new" and "already owned" are genuinely different
+// situations that call for different numbers:
+// - initialWorkCount: the starting workCount IF this turns out to be a brand-new
+//   acquisition. Defaults to 0 (a genuine /work pull starts fresh) — companionBuy.js
+//   passes the listing's workCount instead, so buying a leveled companion doesn't reset
+//   it to level 1, and companionCancel.js does the same when a cancelled listing is
+//   being returned to an owner who doesn't currently hold it.
+// - duplicateWorkCountBonus: how much to ADD to the existing entry if this companion is
+//   already owned, rather than creating a second owned entry for the same id (which the
+//   rest of this codebase assumes never happens — getOwnedEntry, market listing/sale,
+//   etc. all expect at most one). Defaults to CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS
+//   (a genuine /work duplicate pull is real, if modest, luck). companionBuy.js and
+//   companionCancel.js both pass the same workCount value for both params, since either
+//   branch firing should credit that specific amount of training either way — buying (or
+//   getting back) a companion you already own combines the levels rather than being
+//   blocked or silently discarding the leveled one.
 //
-// A duplicate pull (already owned) doesn't add a new entry — it bumps the EXISTING
-// entry's workCount by CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS instead, regardless
-// of whether that companion is currently equipped or benched, since the pull is
-// inherently about that specific companion. workFactory.js's handleCompanionEncounter
-// already writes back whatever `companions` this returns unconditionally, so this needed
-// no changes on the caller side to start taking effect.
-function applyCompanionAward(userDetails, companion, initialWorkCount = 0) {
+// workFactory.js's handleCompanionEncounter already writes back whatever `companions`
+// this returns unconditionally, so the duplicate branch needed no caller-side changes to
+// start taking effect when leveling first shipped.
+function applyCompanionAward(userDetails, companion, initialWorkCount = 0, duplicateWorkCountBonus = CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS) {
     const companions = userDetails.companions;
     const isNew = !ownsCompanion(userDetails, companion.id);
 
     if (!isNew) {
         const owned = companions.owned.map(c =>
             c.id === companion.id
-                ? { ...c, workCount: (c.workCount || 0) + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS }
+                ? { ...c, workCount: (c.workCount || 0) + duplicateWorkCountBonus }
                 : c
         );
         return { isNew, companions: { ...companions, owned } };

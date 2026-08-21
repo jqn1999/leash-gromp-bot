@@ -37,9 +37,10 @@ integer-key reordering trap; `Object.keys` already preserves ascending threshold
 Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,
 since `applyCompanionAward` is the single code path both routes go through. Buying a companion you
-*already* own is blocked outright (`companionBuy.js`) rather than silently falling into the
-duplicate-bonus path, which would otherwise waste the buyer's full purchase price on a flat
-workCount bump instead of the leveled companion they were actually paying for.
+*already* own doesn't waste the purchase or get blocked — it combines the levels: `companionBuy.js`
+passes the listing's `workCount` as both of `applyCompanionAward`'s amount params (`initialWorkCount`
+if this turns out new, `duplicateWorkCountBonus` — added to the existing entry — if it doesn't), so
+either branch credits the buyer the same amount of training either way.
 
 ## Leveling
 
@@ -240,17 +241,22 @@ on the same `listings` array.
   afford it), credits the seller minus `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s
   deposit tax — a real sink without being punitive), the fee goes to the house account, and adds the
   companion to the buyer's `owned` via the same `applyCompanionAward` path a `/work` win uses,
-  passing `listing.workCount` as `applyCompanionAward`'s `initialWorkCount` override so a leveled
+  passing `listing.workCount` for *both* of `applyCompanionAward`'s amount params so a leveled
   companion doesn't reset to level 1 on sale — deliberate, since sellers can price a leveled
-  companion above `MINIMUM_PRICE` accordingly (the floor itself doesn't scale with level). Blocked
-  outright if the buyer already owns that companion, rather than silently falling into
-  `applyCompanionAward`'s duplicate branch (which would waste their full purchase price on a flat
-  workCount bump instead of the leveled companion they thought they were buying). The listing is
-  removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a contested
-  listing fails cleanly with no partial state.
+  companion above `MINIMUM_PRICE` accordingly (the floor itself doesn't scale with level). Buying a
+  companion the buyer already owns isn't blocked — it combines the levels (the existing entry's
+  `workCount` plus the listing's) rather than adding a second owned entry for the same id. The
+  listing is removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a
+  contested listing fails cleanly with no partial state.
 - **`/companion-cancel <listing-id>`** — seller-only, no fee, companion returns to `owned` at the
   exact `workCount` captured when it was listed (`companionMarketFactory.buildListing`) — cancelling
-  gives back the same companion, not a fresh level-1 one.
+  gives back the same companion, not a fresh level-1 one. If the seller re-acquired the exact same
+  companion while the listing was up (another `/work` pull, or buying it off someone else's
+  listing), the restored `workCount` is added to that existing entry instead of creating a second
+  one — deliberately *not* routed through `applyCompanionAward` here, since that function bumps
+  `ownedCount`/`mythicOwnedCount` for a "new" acquisition and escrow removal never decremented them
+  in the first place (achievements never regress); a normal cancel restoring the same companion must
+  never touch those counters, or they'd double-count one acquisition.
 
 ## Achievements
 

@@ -435,10 +435,19 @@ and needs its own balance pass.
 
   Levels are threaded through the companion market rather than reset on sale — a leveled companion
   is worth more, and sellers can price it accordingly (the listing floor itself is unchanged).
-  `companionBuy.js` gained a guard blocking a buyer who already owns the companion, since that path
-  would otherwise silently discard the listing's level in favor of the flat duplicate-pull bonus.
-  `/companion`'s list and `/companion-market`'s listings both show the real level and level-scaled
-  perk value; `/help topic:companions` and the roster reference always show the level-1 base.
+  Buying a companion the buyer already owns combines the levels instead of being blocked or
+  silently discarding the leveled one: `applyCompanionAward` took a second amount param
+  (`duplicateWorkCountBonus`, defaulting to `DUPLICATE_WORK_COUNT_BONUS` for a genuine `/work` dupe
+  pull) alongside the existing `initialWorkCount`, and `companionBuy.js` passes the listing's
+  `workCount` for both — so whichever branch fires (new vs. already-owned) credits the buyer the
+  same amount of training either way. The same edge case exists on `/companion-cancel` (the seller
+  could have re-acquired the exact same companion elsewhere while their listing was up) and is
+  handled with a dedicated merge rather than `applyCompanionAward`, since that function bumps
+  `ownedCount`/`mythicOwnedCount` for a "new" acquisition and a normal cancel-restore must never
+  touch those counters (escrow removal never decremented them, so incrementing them back on
+  cancel would double-count the same acquisition). `/companion`'s list and `/companion-market`'s
+  listings both show the real level and level-scaled perk value; `/help topic:companions` and the
+  roster reference always show the level-1 base.
 
 ## Needs more design discussion before it can be scoped
 
