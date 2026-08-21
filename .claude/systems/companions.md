@@ -44,29 +44,59 @@ a Legendary-or-better find rather than something you can roll on your very first
 
 | Companion | Rarity | Perks |
 |---|---|---|
-| Sprout | Common | `workMultiplierPercent` +2% |
+| Sprout | Common | `workMultiplierPercent` +5% |
 | Fieldmouse | Common | `workCooldownSkipChance` 5% (chance to skip the `/work` cooldown entirely, rather than reduce it) |
-| Ladybug | Common | `bankCapacityPercent` +5% |
+| Ladybug | Common | `bankCapacityPercent` +12% |
 | Barn Owl | Rare | `robChanceFlat` +10% |
-| Mole | Rare | `starchCapacityPercent` +10% |
-| Firefly | Rare | `workMultiplierPercent` +5% |
+| Mole | Rare | `starchSellBonusPercent` +9% |
+| Firefly | Rare | `workMultiplierPercent` +9% |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
-| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +10% + `passiveIncomePercent` +5% |
-| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +15% + `robChanceFlat` +15% + `starchCapacityPercent` +15% |
+| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +18% + `passiveIncomePercent` +8% |
+| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +20% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +10% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
 | Perk | Common | Rare | Legendary | Mythic |
 |---|---|---|---|---|
-| Work Multiplier | 2% (Sprout) | 5% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
+| Work Multiplier | 5% (Sprout) | 9% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
-| Bank Capacity | 5% (Ladybug) | — | 10% (Rootcarver) | 15% (Elder Rootbeard) |
+| Bank Capacity | 12% (Ladybug) | — | 18% (Rootcarver) | 20% (Elder Rootbeard) |
 | Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
-| Starch Capacity | — | 10% (Mole) | — | 15% (Elder Rootbeard) |
-| Passive Income | *(none by design)* | — | 5% (Rootcarver) | 10% (Mochi) |
+| Starch Sell Bonus | — | 9% (Mole) | — | 15% (Elder Rootbeard) |
+| Passive Income | *(none by design)* | — | 8% (Rootcarver) | 10% (Mochi) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
+
+### Balance pass: "Income Power" and why capacity perks got redesigned
+
+Two findings drove a full rebalance (all numbers above are current, post-pass):
+
+1. **`workMultiplierPercent` and `workCooldownSkipChance` are fungible.** A skip chance `p`
+   turns into an expected `1/(1-p)` multiplier on total `/work` throughput (each skip has a `p`
+   chance of chaining into another attempt — see `work.js`'s `performWork` — which can chain
+   again, a geometric series). At the original values this exposed a real tier inversion:
+   Fieldmouse's 5% skip (≈+5.3% effective income) already beat same-tier Sprout's flat +2%, and
+   tied-or-beat Rare-tier Firefly's +5% despite being a cheaper Common pull. Sprout and Firefly
+   were both raised so every companion on this axis is priced on the same real "Income Power"
+   scale (workMultiplierPercent stacked with the skip chance's real throughput value, not its
+   face percentage) rather than some being a hidden downgrade of others at the same rarity.
+2. **Capacity-ceiling perks (`bankCapacityPercent`, the old `starchCapacityPercent`) are
+   structurally weaker than rate perks, not just under-numbered.** `workMultiplierPercent`/
+   `workCooldownSkipChance`/`passiveIncomePercent` all pay out on *every* relevant action,
+   unconditionally. `bankCapacityPercent` only pays off when a player is both near their cap
+   and getting robbed. `starchCapacityPercent` was worse still — it only gated `/buy-starch`'s
+   purchase cap; `workFactory.js`'s `handleTaroTrader`/`handleGoldenYam` write straight to
+   `userStarches` with no cap check at all, so it did nothing for starches earned through
+   `/work`. Ladybug/Rootcarver/Elder Rootbeard's `bankCapacityPercent` values were raised to
+   compensate (Rootcarver's raise also being the "combine with more" case — it already pairs
+   bank capacity with `passiveIncomePercent`, unlike Common-tier Ladybug, which stays
+   single-perk by design and can only lean on a bigger number). Mole and Elder Rootbeard's
+   `starchCapacityPercent` was replaced outright with `starchSellBonusPercent` — an
+   unconditional bonus on every `/sell-starch`, applied to starches from any source, wired in
+   `sellStarch.js`. `starchCapacityPercent` itself stays wired (this file's `PERK_LABELS`,
+   `buyStarch.js`'s lookup) for a future companion, same as the already-dormant
+   `guildRaidMultiplierPercent` below.
 
 Both Mythics are now 4-perk generalists rather than one specialist/one generalist — Elder Rootbeard
 covers regrade + bank + rob + starch, Mochi covers passive + rebirth + work multi + work cooldown.
@@ -98,7 +128,8 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
 | `regradeChanceFlat` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks |
 | `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple companions with this perk couldn't stack into an unintended snowball. Currently dormant: Firefly (the original holder) was reassigned to `workMultiplierPercent`, so no companion grants this perk right now — the wiring stays in place for a future one |
-| `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion) |
+| `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion). Currently dormant, same as `guildRaidMultiplierPercent` above: Mole and Elder Rootbeard (its only two holders) were both reassigned to `starchSellBonusPercent` in a balance pass — the wiring stays in place for a future companion |
+| `starchSellBonusPercent` | `sellStarch.js` — folded directly into the per-unit `starch_sell` price before computing payout, so the displayed price and the actual credit never disagree |
 | `bankCapacityPercent` | `bank.js`'s deposit cap |
 | `rebirthBonusPercent` | `rebirthFactory.getLiveRebirthPercent` — multiplies the live rebirth bonus (see [economy-and-work.md](economy-and-work.md#rebirth-prestige-reset)) by +20%, recomputed fresh every time it's read same as every other companion perk; equip/unequip Mochi and your effective rebirth bonus changes immediately, there's no "moment of rebirth" tied to it anymore |
 

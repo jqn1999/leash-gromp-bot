@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { isStarchBuyingWindow } = require("../../utils/starchFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -68,10 +69,13 @@ module.exports = {
         // sell
         const details = await dynamoHandler.getStatDatabase("starch")
         const buyPrice = details.starch_buy
-        const sellPrice = details.starch_sell
+        // Mole/Elder Rootbeard — folded straight into the per-unit price so the embed's
+        // displayed sellPrice and the actual payout never disagree.
+        const starchSellBonusPercent = companionFactory.getActivePerkValue(userDetails, "starchSellBonusPercent");
+        const sellPrice = details.starch_sell * (1 + starchSellBonusPercent)
 
         const buyValue = buyPrice * starches
-        const sellValue = sellPrice * starches
+        const sellValue = Math.round(sellPrice * starches)
         const profitOrLoss = sellValue - buyValue
 
         userPotatoes += sellValue

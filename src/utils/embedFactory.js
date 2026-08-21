@@ -42,7 +42,13 @@ const PERK_LABELS = {
     workCooldownSkipChance: value => `${(value * 100).toFixed(0)}% chance to skip /work cooldown entirely`,
     passiveIncomePercent: value => `+${(value * 100).toFixed(0)}% Passive Income`,
     robChanceFlat: value => `+${(value * 100).toFixed(0)}% Rob Success Chance`,
+    // No companion currently grants this — Mole and Elder Rootbeard both moved to
+    // starchSellBonusPercent in a balance pass (it only gated /buy-starch, not the free
+    // starches Taro Trader/Golden Yam hand out). Wiring (this label, buyStarch.js's
+    // lookup) stays in place for a future companion, same as guildRaidMultiplierPercent
+    // below.
     starchCapacityPercent: value => `+${(value * 100).toFixed(0)}% Starch Capacity`,
+    starchSellBonusPercent: value => `+${(value * 100).toFixed(0)}% Starch Sell Value`,
     guildRaidMultiplierPercent: value => `+${(value * 100).toFixed(0)}% Guild Raid Success Chance`,
     bankCapacityPercent: value => `+${(value * 100).toFixed(0)}% Bank Capacity`,
     regradeChanceFlat: value => `+${(value * 100).toFixed(0)}% Regrade Success Chance`,

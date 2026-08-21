@@ -377,7 +377,13 @@ const Companions = [
         rarity: CompanionRarity.COMMON,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A tiny potato sprout that took a liking to you after one too many /work sessions nearby. It doesn't do much, but it tries.",
-        perks: [{ type: "workMultiplierPercent", value: 0.02 }]
+        // Bumped from 2% during a balance pass — workCooldownSkipChance (Fieldmouse's
+        // own Common-tier perk) turned out to be worth ~5.3% effective /work throughput
+        // (1/(1-p) on the skip chance, not the flat % it looks like), which quietly made
+        // a same-tier flat workMultiplierPercent pick strictly worse. Both are now
+        // fungible on real economic value — same "Income Power" a player actually gets —
+        // rather than one being a hidden downgrade.
+        perks: [{ type: "workMultiplierPercent", value: 0.05 }]
     },
     {
         id: "fieldmouse",
@@ -399,7 +405,13 @@ const Companions = [
         rarity: CompanionRarity.COMMON,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A ladybug that's taken a shine to your bank vault, tucking a little extra room into the corners whenever no one's looking.",
-        perks: [{ type: "bankCapacityPercent", value: 0.05 }]
+        // Bumped from 5% — bankCapacityPercent only pays off when a player is both near
+        // their cap AND getting robbed, so it needs a bigger number than an always-on
+        // perk to feel comparably worthwhile on the occasions it does matter. Common
+        // stays single-perk by design (see the rarity note above this array), so this
+        // can't be paired with a second perk the way Rootcarver pairs it at Legendary —
+        // raising the number is the only lever available at this tier.
+        perks: [{ type: "bankCapacityPercent", value: 0.12 }]
     },
     {
         id: "barn_owl",
@@ -414,8 +426,17 @@ const Companions = [
         name: "Mole",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A mole that's dug you a little extra room in your starch vault — nobody's quite sure how it did that.",
-        perks: [{ type: "starchCapacityPercent", value: 0.10 }]
+        description: "A mole that knows a guy — somehow gets you a better rate every time you cash out your starches.",
+        // Redesigned from starchCapacityPercent (10%) during a balance pass — that perk
+        // only gated /buy-starch's purchase cap, not the starches Taro Trader/Golden Yam
+        // hand out for free (see workFactory.js's handleTaroTrader/handleGoldenYam,
+        // neither checks maxStarches at all), so it was value-locked behind actively
+        // arbitrage-trading starches specifically, narrower even than bankCapacityPercent's
+        // "near your cap and getting robbed" condition. A sell bonus is unconditional —
+        // realized on every /sell-starch regardless of how the starches were obtained —
+        // and priced to match Firefly's workMultiplierPercent as the other single-perk
+        // Rare (see sellStarch.js for where this applies).
+        perks: [{ type: "starchSellBonusPercent", value: 0.09 }]
     },
     {
         id: "firefly",
@@ -423,7 +444,10 @@ const Companions = [
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A firefly that lights the way while you work, somehow making every session a little more productive.",
-        perks: [{ type: "workMultiplierPercent", value: 0.05 }]
+        // Bumped from 5% during the same balance pass as Sprout — 5% no longer read as a
+        // real Rare-tier step up once workCooldownSkipChance's true throughput value
+        // (Fieldmouse's Common-tier 5% skip = ~5.3% effective) was accounted for.
+        perks: [{ type: "workMultiplierPercent", value: 0.09 }]
     },
     {
         id: "spudsprite",
@@ -442,9 +466,12 @@ const Companions = [
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should, and quietly turns a profit besides.",
+        // Both bumped during a balance pass — 10%/5% combined was well below Spudsprite's
+        // effective 27% Income Power (workMultiplierPercent + the real throughput value
+        // of workCooldownSkipChance), the other Legendary dual-perk pick.
         perks: [
-            { type: "bankCapacityPercent", value: 0.10 },
-            { type: "passiveIncomePercent", value: 0.05 }
+            { type: "bankCapacityPercent", value: 0.18 },
+            { type: "passiveIncomePercent", value: 0.08 }
         ]
     },
     {
@@ -452,12 +479,17 @@ const Companions = [
         name: "Elder Rootbeard",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, guards your bank, and always finds room for one more starch.",
+        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, guards your bank, and always finds room to get a better rate cashing out starches.",
+        // bankCapacityPercent bumped 15%->20% to stay above Rootcarver's post-rebalance
+        // 18% — a rarer Mythic pull shouldn't lose to a Legendary on the exact stat both
+        // grant. starchCapacityPercent -> starchSellBonusPercent for the same reason as
+        // Mole's redesign (see Mole's own comment) — kept the same 15% figure as
+        // robChanceFlat, its fellow "one of four" diversified perk on this companion.
         perks: [
             { type: "regradeChanceFlat", value: 0.03 },
-            { type: "bankCapacityPercent", value: 0.15 },
+            { type: "bankCapacityPercent", value: 0.20 },
             { type: "robChanceFlat", value: 0.15 },
-            { type: "starchCapacityPercent", value: 0.15 }
+            { type: "starchSellBonusPercent", value: 0.15 }
         ]
     },
     {

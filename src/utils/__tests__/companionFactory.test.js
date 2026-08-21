@@ -83,7 +83,7 @@ describe('getActiveCompanion / getActivePerkValue', () => {
     test('resolves the equipped companion and reads its perk value', () => {
         const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         expect(getActiveCompanion(user).id).toBe('sprout');
-        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(0.02);
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(0.05);
     });
 
     test('0 when the equipped companion does not carry the requested perk type', () => {
