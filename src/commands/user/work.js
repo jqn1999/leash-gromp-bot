@@ -85,10 +85,10 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
-            potatoesGained = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, poisonPotato, userDetails._cooldownSkippedByCompanion);
+            const poisonResult = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
+            embed = embedFactory.createPoisonPotatoEmbed(userDisplayName, newWorkCount, poisonResult, poisonPotato, userDetails._cooldownSkippedByCompanion);
             await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
+            return poisonResult.potatoesGained;
         },
         chance: .011,
         type: WORK_SCENARIO_INDICES.POISON

@@ -400,6 +400,11 @@ class WorkFactory {
         const poisonImmunity = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
         let potatoesGained, workTimer;
         let updateFields;
+        // Mitigation details surfaced on the embed (see embedFactory.createPoisonPotatoEmbed)
+        // so the reduction is actually visible to the player, not just felt indirectly via
+        // a shorter wait. Stay null for the Guinea Pig branch — there's no loss/lockout to
+        // mitigate, so nothing to show.
+        let mitigationInfo = null;
 
         if (poisonImmunity > 0) {
             let userTotalEarnings = userDetails.totalEarnings;
@@ -423,6 +428,7 @@ class WorkFactory {
             const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
             workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds);
             updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses, poisonMitigation: nextPoisonMitigation };
+            mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached };
             if (milestoneJustReached) {
                 updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
             }
@@ -437,7 +443,7 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return potatoesGained;
+        return { potatoesGained, immune: poisonImmunity > 0, mitigationInfo };
     }
 
     // A second flavor of loss alongside Poison Potato, but it raids the BANK instead of

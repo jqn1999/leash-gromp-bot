@@ -528,6 +528,14 @@ and needs its own balance pass.
   hit doesn't touch `poisonMitigation` at all, so it can't build weekly-hit progress or reach the
   milestone.
 
+  Follow-up (same request thread): the reduction wasn't visible anywhere, so it just read as a
+  quieter cooldown nobody would notice. `handlePoisonPotato` now returns `{ potatoesGained, immune,
+  mitigationInfo }` instead of a plain number (same shape `handleAncientPotato`/
+  `handleCompanionEncounter` already use for the identical reason), and a new
+  `embedFactory.createPoisonPotatoEmbed` shows the actual lockout length, which hit number this week
+  it was, the %-softer figure, and a one-time 🏅 callout on the exact hit that crosses the 10-hit
+  milestone.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

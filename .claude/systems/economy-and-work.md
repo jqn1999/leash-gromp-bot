@@ -90,6 +90,18 @@ of the loss). Two changes, both in `workFactory.js`:
    `poisonMitigation` at all (there's no loss/lockout to mitigate), so it doesn't build weekly-hit
    progress or count toward the milestone either.
 
+   **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
+   cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,
+   mitigationInfo }` instead of a plain number (same "return an object, not just the number" shape
+   `handleAncientPotato`/`handleCompanionEncounter` already use for the same reason) — the non-immune
+   branch's `mitigationInfo` carries `{ reduction, lockoutSeconds, hitNumberThisWeek,
+   milestoneJustReached }`. A new `embedFactory.createPoisonPotatoEmbed` (separate from the generic
+   `createWorkEmbed`, mirroring why Ancient/Companion encounters already needed their own) adds a
+   **Cooldown:** field showing the actual lockout length, which hit number this week it was, and the
+   %-softer figure, plus a one-time 🏅 callout field the exact hit that crosses the 10-hit milestone.
+   `mitigationInfo` is `null` on the Guinea Pig branch, so the embed just shows the plain gain with no
+   mitigation fields — nothing to report.
+
 **Reward-text convention** (player feedback — see below): every potato-paying encounter's flavor text
 ends on a "bag of potatoes" phrase whose *size word* scales with that encounter's actual reward tier,
 not with whichever adjective a given mob's writer happened to pick. Previously each of the 9

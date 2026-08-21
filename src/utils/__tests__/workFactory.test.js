@@ -140,8 +140,9 @@ describe('handleRegularWork', () => {
 describe('handlePoisonPotato', () => {
     test('always returns a loss (negative), and ignores catch-up entirely (it takes no bonus argument)', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 1 });
-        const lost = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        expect(lost).toBeLessThan(0);
+        const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        expect(result.potatoesGained).toBeLessThan(0);
+        expect(result.immune).toBe(false);
     });
 
     test('writes to totalLosses, not totalEarnings', async () => {
@@ -167,7 +168,7 @@ describe('handlePoisonPotato', () => {
 
     test('a second hit in the same week reduces both the loss and the lockout', async () => {
         const userDetails = baseUser({ poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 1 } });
-        const lost = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(2);
@@ -175,13 +176,16 @@ describe('handlePoisonPotato', () => {
             userDetails,
             Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.REDUCTION_PER_HIT))
         );
+        expect(result.mitigationInfo.reduction).toBeCloseTo(PoisonMitigation.REDUCTION_PER_HIT);
+        expect(result.mitigationInfo.hitNumberThisWeek).toBe(2);
+        expect(result.mitigationInfo.milestoneJustReached).toBe(false);
 
         // Compare against a fresh (first-hit) user under the identical, non-random inputs
         // (multiplier is passed in explicitly, not rolled inside handlePoisonPotato) — the
         // reduced hit should be a smaller loss in magnitude.
         const freshUser = baseUser({ userId: 'fresh' });
-        const freshLoss = await workFactory.handlePoisonPotato(freshUser, 1000, 1);
-        expect(Math.abs(lost)).toBeLessThan(Math.abs(freshLoss));
+        const freshResult = await workFactory.handlePoisonPotato(freshUser, 1000, 1);
+        expect(Math.abs(result.potatoesGained)).toBeLessThan(Math.abs(freshResult.potatoesGained));
     });
 
     test('a stale poisonMitigation from a prior week is treated as a fresh week', async () => {
@@ -197,7 +201,7 @@ describe('handlePoisonPotato', () => {
             poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
             totalPoisonMilestonesReached: 0
         });
-        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(10);
         expect(setFields.totalPoisonMilestonesReached).toBe(1);
@@ -205,6 +209,7 @@ describe('handlePoisonPotato', () => {
             userDetails,
             Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MILESTONE_REDUCTION))
         );
+        expect(result.mitigationInfo.milestoneJustReached).toBe(true);
     });
 
     test('an 11th hit the same week stays at the milestone reduction but does not bump the counter again', async () => {
@@ -226,18 +231,20 @@ describe('handlePoisonPotato', () => {
             });
         }
 
-        test('grants a small gain instead of a loss', async () => {
+        test('grants a small gain instead of a loss, and reports immune with no mitigationInfo', async () => {
             const userDetails = guineaPigUser({ workMultiplierAmount: 50 });
             const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-            expect(result).toBeGreaterThan(0);
+            expect(result.potatoesGained).toBeGreaterThan(0);
+            expect(result.immune).toBe(true);
+            expect(result.mitigationInfo).toBeNull();
         });
 
         test('the gain is exactly GUINEA_PIG_PAYOUT_FACTOR of what a normal regular-work payout would be', async () => {
             const gpUser = guineaPigUser({ userId: 'gp', workMultiplierAmount: 50 });
             const plainUser = baseUser({ userId: 'plain', workMultiplierAmount: 50 });
-            const gained = await workFactory.handlePoisonPotato(gpUser, 1000, 1);
+            const result = await workFactory.handlePoisonPotato(gpUser, 1000, 1);
             const normalPayout = await workFactory.handleRegularWork(plainUser, 1000, 1, 0);
-            expect(gained).toBe(Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR));
+            expect(result.potatoesGained).toBe(Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR));
         });
 
         test('uses the normal cooldown instead of the 1-hour poison lockout', async () => {

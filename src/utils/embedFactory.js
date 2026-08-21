@@ -1003,6 +1003,72 @@ class EmbedFactory {
         return embed;
     }
 
+    // Poison Potato doesn't fit createWorkEmbed's single "potatoes gained/lost" field —
+    // the whole point of PoisonMitigation (see workFactory.js) is that repeat hits get
+    // progressively less painful, and that needs to actually be visible on the embed or
+    // it's just a quieter cooldown nobody notices. result: { potatoesGained, immune,
+    // mitigationInfo } from workFactory.handlePoisonPotato — mitigationInfo is null on the
+    // Guinea Pig immune branch (nothing to mitigate), otherwise
+    // { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached }.
+    createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null) {
+        const { potatoesGained, immune, mitigationInfo } = result;
+        let fields = [{
+            name: `Work Count:`,
+            value: `${newWorkCount.toLocaleString()}`,
+            inline: true,
+        }];
+
+        const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost';
+        fields.push({
+            name: `Potatoes ${gainOrLoss}:`,
+            value: `${potatoesGained.toLocaleString()} potatoes`,
+            inline: true,
+        });
+
+        if (!immune && mitigationInfo) {
+            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached } = mitigationInfo;
+            let lockoutValue = `${convertSecondstoMinutes(lockoutSeconds)} lockout`;
+            if (reduction > 0) {
+                lockoutValue += ` (${Math.round(reduction * 100)}% softer — hit #${hitNumberThisWeek} this week)`;
+            } else {
+                lockoutValue += ` (1st Poison hit this week)`;
+            }
+            fields.push({
+                name: `Cooldown:`,
+                value: lockoutValue,
+                inline: true,
+            });
+
+            if (milestoneJustReached) {
+                fields.push({
+                    name: `🏅 Toxic Tolerance:`,
+                    value: `10 Poison hits in one week — the loss and lockout are cut way down for the rest of this week!`,
+                    inline: false,
+                });
+            }
+        }
+
+        if (cooldownSkippedByCompanion) {
+            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        }
+
+        let footerText = "Made by Beggar";
+        const activeEvent = eventFactory.getCurrentEvent();
+        if (activeEvent) {
+            footerText += ` • 🎉 ${activeEvent}`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
+            .setDescription(mob.description)
+            .setColor(potatoesGained >= 0 ? 'Green' : 'Red')
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // result: { isNew, companion, potatoesGained } from workFactory.handleCompanionEncounter.
     // A brand-new companion shows its perk and a reminder to /companion equip it (won,
     // not auto-equipped — equipping stays a deliberate choice); a duplicate pull shows
