@@ -392,6 +392,54 @@ and needs its own balance pass.
   there — was deferred: the `/work` scenario odds are a single shared table for the whole bot, not
   per-user, so it needs a new "reroll on a REGULAR result" mechanic this pass didn't need to build.
 
+- [x] **13. Companion Leveling** — M — **Done**
+  What: every owned companion levels up (1-10) purely from usage — see
+  [systems/companions.md](systems/companions.md#leveling). Reused the `level` field that had sat on
+  every owned companion since the companion system shipped, always written as 1 and never once
+  read anywhere — repurposed to `workCount`, a cumulative counter of `/work` resolutions performed
+  while that specific companion was active (`work.js`'s `performWork`, once per resolution,
+  including auto-chained ones). No spend-to-level command exists on purpose — this is a real time
+  investment, explicitly requested as "a real time sink" rather than another potato sink.
+  Threshold table (`CompanionLeveling.THRESHOLDS` in constants.js), identical for all 12
+  companions regardless of rarity — one shared table, no per-rarity tuning:
+
+  | Level | Cumulative workCount |
+  |---|---|
+  | 1 | 0 |
+  | 2 | 15 |
+  | 3 | 50 |
+  | 4 | 125 |
+  | 5 | 275 |
+  | 6 | 525 |
+  | 7 | 925 |
+  | 8 | 1,525 |
+  | 9 | 2,425 |
+  | 10 (max) | 3,725 |
+
+  Each level scales that companion's own perk value(s) by `1 + (level-1) * 0.05` — level 10 =
+  1.45x. Deliberately modest and relative to each companion's own rarity-tier base, so a maxed
+  Common can never out-level a fresh higher-rarity pull (e.g. maxed Sprout's `workMultiplierPercent`
+  5% -> 7.25%, still under fresh Firefly's 9%) — leveling rewards commitment to whichever companion
+  luck gave you, it doesn't replace the rarity axis the balance pass tuned. Applied at
+  `companionFactory.getActivePerkValue`, the single choke-point every consuming file already reads
+  through, so leveling reached every existing perk application (work cooldown, rob/regrade chance,
+  bank/starch, passive income, rebirth bonus, Prospector's Metal Potato roll, Guinea Pig's tax) for
+  free with zero changes needed at any of those call sites.
+
+  A duplicate `/work` pull of an already-owned companion now also bumps that companion's workCount
+  by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (10 — a real pull of luck, worth meaningfully
+  more than one more `/work` call, without being anywhere close to instantly maxing a companion) —
+  on top of the existing potato consolation, and regardless of whether that companion is currently
+  equipped. `applyCompanionAward`'s existing unconditional `companions` write (already there for
+  the achievement-counter case) picked this up with no caller-side changes needed.
+
+  Levels are threaded through the companion market rather than reset on sale — a leveled companion
+  is worth more, and sellers can price it accordingly (the listing floor itself is unchanged).
+  `companionBuy.js` gained a guard blocking a buyer who already owns the companion, since that path
+  would otherwise silently discard the listing's level in favor of the flat duplicate-pull bonus.
+  `/companion`'s list and `/companion-market`'s listings both show the real level and level-scaled
+  perk value; `/help topic:companions` and the roster reference always show the level-1 base.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

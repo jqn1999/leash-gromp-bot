@@ -30,12 +30,19 @@ function validateListingRequest(userDetails, companionId, price) {
     return { valid: true, companion };
 }
 
+// Captures the seller's own owned-entry workCount at listing time — leveling
+// investment is a real, tradeable part of the companion's worth (a maxed-level
+// companion is worth more than a fresh one, and sellers can price accordingly; no
+// change needed to CompanionMarket.MINIMUM_PRICE itself since it's just a floor), so
+// selling was deliberately NOT made to reset a companion back to level 1.
 function buildListing(userDetails, companion, price) {
+    const ownedEntry = companionFactory.getOwnedEntry(userDetails, companion.id);
     return {
         listingId: `${userDetails.userId}-${companion.id}-${Date.now()}`,
         sellerId: userDetails.userId,
         sellerUsername: userDetails.username,
         companionId: companion.id,
+        workCount: ownedEntry?.workCount || 0,
         price,
         listedAt: Date.now()
     };

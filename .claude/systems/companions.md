@@ -1,7 +1,7 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionDuplicateReward`, `Companions`) +
+`CompanionMarket`, `CompanionDuplicateReward`, `CompanionLeveling`, `Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
 [src/commands/user/{companion,companionMarket,companionSell,companionBuy,companionCancel}.js](../../src/commands/user/).
@@ -25,15 +25,53 @@ Common 65% / Rare 25% / Legendary 8% / Mythic 2%) and then uniformly among that 
 integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't subject to JS's
 integer-key reordering trap; `Object.keys` already preserves ascending threshold order here.
 
-- **New companion**: added to `owned`, not auto-equipped (equipping stays a deliberate choice).
-  Bumps `companions.ownedCount` (and `mythicOwnedCount` for a Mythic) — the achievement counters.
-- **Duplicate** (already owned): pays a modest potato consolation instead of nothing, scaled the
-  same server-wealth-aware way every other `/work` reward is (`CompanionDuplicateReward[rarity]` as
-  the `maxGain` cap fed into `workFactory`'s existing `calculateGainAmount`).
+- **New companion**: added to `owned` at `workCount: 0` (level 1), not auto-equipped (equipping
+  stays a deliberate choice). Bumps `companions.ownedCount` (and `mythicOwnedCount` for a Mythic) —
+  the achievement counters.
+- **Duplicate** (already owned): pays a modest potato consolation, scaled the same
+  server-wealth-aware way every other `/work` reward is (`CompanionDuplicateReward[rarity]` as the
+  `maxGain` cap fed into `workFactory`'s existing `calculateGainAmount`) — *and* bumps that specific
+  companion's `workCount` by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`, regardless of whether
+  it's currently equipped or benched (see Leveling below).
 
 Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,
-since `applyCompanionAward` is the single code path both routes go through.
+since `applyCompanionAward` is the single code path both routes go through. Buying a companion you
+*already* own is blocked outright (`companionBuy.js`) rather than silently falling into the
+duplicate-bonus path, which would otherwise waste the buyer's full purchase price on a flat
+workCount bump instead of the leveled companion they were actually paying for.
+
+## Leveling
+
+Every owned companion tracks its own `workCount` (`companions.owned[].workCount`) — cumulative
+`/work` resolutions performed while that *specific* companion was the active one, including
+auto-chained resolutions from a `workCooldownSkipChance` hit. `work.js`'s `performWork` increments
+it once per resolution, reading off the freshly re-fetched `updatedUserDetails` (not the
+pre-scenario `userDetails`) specifically so it can't clobber a duplicate-pull bonus the scenario
+that just ran may have already written to the same field.
+
+This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
+spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a
+level (1-10) via `CompanionLeveling.THRESHOLDS`, the exact same shape/lookup pattern
+`guildBuffFactory.getGuildLevel` already uses off `RaidLevel.THRESHOLDS`. Levels climb slowly on
+purpose — full details and the actual threshold table are on the roadmap entry (see
+[roadmap.md](../roadmap.md)).
+
+**What a level grants**: `companionFactory.getLevelMultiplier(level)` = `1 + (level-1) *
+CompanionLeveling.PERK_BONUS_PER_LEVEL` (5% per level, so level 10 = 1.45x). `getActivePerkValue` —
+the single choke-point every consuming file already reads through (work cooldown, rob chance,
+regrade chance, starch/bank capacity, passive income, rebirth bonus, Metal Potato's success roll,
+poisonImmunity's tax) — applies this multiplier to whatever base perk value it returns, so leveling
+reaches every existing perk application automatically with zero changes needed at any of those call
+sites. The multiplier is deliberately modest and applies relative to each companion's own
+rarity-tier base, so a maxed-level Common can never out-level a fresh higher-rarity pull — leveling
+rewards commitment to whichever companion you got, it doesn't replace the rarity/luck axis the
+balance pass already tuned (see the table above).
+
+**Display**: `formatCompanionPerks(companion, level)` takes an optional `level` (defaults to 1,
+unscaled) — `/help topic:companions` and the roster table above always show the level-1 base value
+(a reference, not a specific owned instance), while `/companion`'s list and `/companion-market`'s
+listings pass the real level so the shown value matches what the perk actually resolves to in play.
 
 ## Starting roster (12)
 
@@ -196,15 +234,23 @@ on the same `listings` array.
   or duplicated while for sale. Escrow removal deliberately does **not** decrement
   `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a companion
   you already earned credit for shouldn't claw the achievement back.
-- **`/companion-market`** — paginated (5/page) browser of active listings: companion, tier, price,
-  seller, listing id.
+- **`/companion-market`** — paginated (5/page) browser of active listings: companion, level, tier,
+  price, seller, listing id.
 - **`/companion-buy <listing-id>`** — deducts the price from the buyer (rejected if they can't
   afford it), credits the seller minus `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s
   deposit tax — a real sink without being punitive), the fee goes to the house account, and adds the
-  companion to the buyer's `owned` via the same `applyCompanionAward` path a `/work` win uses. The
-  listing is removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a
-  contested listing fails cleanly with no partial state.
-- **`/companion-cancel <listing-id>`** — seller-only, no fee, companion returns to `owned`.
+  companion to the buyer's `owned` via the same `applyCompanionAward` path a `/work` win uses,
+  passing `listing.workCount` as `applyCompanionAward`'s `initialWorkCount` override so a leveled
+  companion doesn't reset to level 1 on sale — deliberate, since sellers can price a leveled
+  companion above `MINIMUM_PRICE` accordingly (the floor itself doesn't scale with level). Blocked
+  outright if the buyer already owns that companion, rather than silently falling into
+  `applyCompanionAward`'s duplicate branch (which would waste their full purchase price on a flat
+  workCount bump instead of the leveled companion they thought they were buying). The listing is
+  removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a contested
+  listing fails cleanly with no partial state.
+- **`/companion-cancel <listing-id>`** — seller-only, no fee, companion returns to `owned` at the
+  exact `workCount` captured when it was listed (`companionMarketFactory.buildListing`) — cancelling
+  gives back the same companion, not a fresh level-1 one.
 
 ## Achievements
 

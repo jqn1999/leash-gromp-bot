@@ -44,6 +44,17 @@ module.exports = {
         }
         const companion = companionFactory.getCompanionById(listing.companionId);
 
+        // Blocked outright rather than silently falling through applyCompanionAward's
+        // duplicate branch — that path exists for /work's Wandering Companion roll
+        // (where a small consolation payout makes sense for bad luck) and would
+        // otherwise quietly discard the listing's workCount here, wasting the buyer's
+        // full purchase price for a flat +10 workCount bump to their existing copy
+        // instead of the leveled companion they were actually paying for.
+        if (companionFactory.ownsCompanion(userDetails, listing.companionId)) {
+            interaction.editReply(`${userDisplayName}, you already own ${companion.name} — no need to buy a second one.`);
+            return;
+        }
+
         // Remove the listing first (escrow release, lock-guarded against another buyer
         // racing the same listing) — only once that lands do the potatoes/companion move.
         const remainingListings = listings.filter(l => l.listingId !== listingId);
@@ -56,7 +67,9 @@ module.exports = {
         }
 
         const { fee, sellerReceives } = companionMarketFactory.computeSaleSplit(listing.price);
-        const { companions: buyerCompanions } = companionFactory.applyCompanionAward(userDetails, companion);
+        // Carries the seller's workCount over — buying a leveled companion shouldn't
+        // reset its level to 1 (see companionMarketFactory.buildListing).
+        const { companions: buyerCompanions } = companionFactory.applyCompanionAward(userDetails, companion, listing.workCount || 0);
 
         await Promise.all([
             dynamoHandler.updateUserFields(userId, {

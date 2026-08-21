@@ -28,14 +28,14 @@ describe('validateListingRequest', () => {
     });
 
     test('rejects a price below the rarity tier floor', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }] });
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }] });
         const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common - 1);
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/at least/);
     });
 
     test('accepts a price at or above the rarity tier floor', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }] });
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }] });
         const atFloor = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
         expect(atFloor.valid).toBe(true);
         expect(atFloor.companion.id).toBe('sprout');
@@ -46,40 +46,48 @@ describe('validateListingRequest', () => {
 });
 
 describe('buildListing', () => {
-    test('captures seller, companion, and price', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }] });
+    test('captures seller, companion, price, and the seller\'s own workCount', () => {
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 275 }] });
         const companion = { id: 'sprout', name: 'Sprout' };
         const listing = buildListing(user, companion, 6000000);
         expect(listing.sellerId).toBe('seller-1');
         expect(listing.sellerUsername).toBe('Seller');
         expect(listing.companionId).toBe('sprout');
         expect(listing.price).toBe(6000000);
+        expect(listing.workCount).toBe(275);
         expect(listing.listingId).toContain('seller-1');
         expect(listing.listingId).toContain('sprout');
+    });
+
+    test('defaults to 0 workCount if the owned entry somehow has none', () => {
+        const user = userWith({ owned: [{ id: 'sprout' }] });
+        const companion = { id: 'sprout', name: 'Sprout' };
+        const listing = buildListing(user, companion, 6000000);
+        expect(listing.workCount).toBe(0);
     });
 });
 
 describe('removeFromOwned', () => {
     test('pulls the companion out of owned', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }, { id: 'mole', level: 1 }], ownedCount: 2 });
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }], ownedCount: 2 });
         const result = removeFromOwned(user, 'sprout');
-        expect(result.owned).toEqual([{ id: 'mole', level: 1 }]);
+        expect(result.owned).toEqual([{ id: 'mole', workCount: 0 }]);
     });
 
     test('unequips the companion if it was active', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1 });
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1 });
         const result = removeFromOwned(user, 'sprout');
         expect(result.active).toBeNull();
     });
 
     test('leaves the active slot alone if a different companion is active', () => {
-        const user = userWith({ owned: [{ id: 'sprout', level: 1 }, { id: 'mole', level: 1 }], active: 'mole', ownedCount: 2 });
+        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }], active: 'mole', ownedCount: 2 });
         const result = removeFromOwned(user, 'sprout');
         expect(result.active).toBe('mole');
     });
 
     test('does not decrement ownedCount/mythicOwnedCount — achievements never regress', () => {
-        const user = userWith({ owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 });
+        const user = userWith({ owned: [{ id: 'mochi', workCount: 0 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 });
         const result = removeFromOwned(user, 'mochi');
         expect(result.ownedCount).toBe(1);
         expect(result.mythicOwnedCount).toBe(1);

@@ -51,7 +51,9 @@ module.exports = {
         await dynamoHandler.updateUserFields(userId, {
             companions: {
                 ...freshUserDetails.companions,
-                owned: [...freshUserDetails.companions.owned, { id: listing.companionId, level: 1 }]
+                // Restores the exact workCount captured at listing time — cancelling
+                // gives back the same companion, not a fresh level-1 one.
+                owned: [...freshUserDetails.companions.owned, { id: listing.companionId, workCount: listing.workCount || 0 }]
             }
         });
 

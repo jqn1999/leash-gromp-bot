@@ -142,8 +142,13 @@ const ONBOARDING_PAGES = [
                 inline: false,
             },
             {
+                name: "Leveling",
+                value: "Every `/work` you run with a companion equipped counts toward its level (up to 10), scaling its perk up over time — a real time investment, not something you buy. A duplicate pull of a companion you already own also gives it a boost.",
+                inline: false,
+            },
+            {
                 name: "Trade",
-                value: "List a companion you don't need on `/companion-market`, or buy one another player's selling with `/companion-buy`.",
+                value: "List a companion you don't need on `/companion-market`, or buy one another player's selling with `/companion-buy` — leveling carries over with a sale, so a leveled-up companion is worth more.",
                 inline: false,
             },
         ]

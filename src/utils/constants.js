@@ -368,6 +368,38 @@ const CompanionDuplicateReward = {
     [CompanionRarity.MYTHIC]: 250000
 }
 
+// Each owned companion tracks its own `workCount` — cumulative /work resolutions while
+// that specific companion was the ACTIVE one (see companionFactory.getCompanionLevel and
+// work.js's performWork) — a genuine time investment, not a currency sink. Level climbs
+// slowly on purpose: it's meant to reward long-term loyalty to one companion over weeks,
+// not be clearable in an afternoon. Mirrors RaidLevel.THRESHOLDS's exact shape/lookup
+// pattern (guildBuffFactory.getGuildLevel).
+const CompanionLeveling = {
+    // Each level scales that companion's perk value(s) by this much more than the last —
+    // e.g. level 3 = 1 + 2*0.05 = 1.10x its base value, level 10 (max) = 1.45x. Deliberately
+    // modest per level so a maxed low-rarity companion can never out-level a fresh
+    // higher-rarity one — leveling rewards commitment to whichever companion you got, it
+    // doesn't replace the rarity/luck axis the balance pass already tuned (see
+    // systems/companions.md).
+    PERK_BONUS_PER_LEVEL: 0.05,
+    // A duplicate pull is real, rare luck (rolling a companion you already own) — worth
+    // meaningfully more than one more /work call would have, but nowhere close to
+    // instantly maxing a companion out.
+    DUPLICATE_WORK_COUNT_BONUS: 10,
+    THRESHOLDS: [
+        { level: 1, workCountRequired: 0 },
+        { level: 2, workCountRequired: 15 },
+        { level: 3, workCountRequired: 50 },
+        { level: 4, workCountRequired: 125 },
+        { level: 5, workCountRequired: 275 },
+        { level: 6, workCountRequired: 525 },
+        { level: 7, workCountRequired: 925 },
+        { level: 8, workCountRequired: 1525 },
+        { level: 9, workCountRequired: 2425 },
+        { level: 10, workCountRequired: 3725 },
+    ]
+}
+
 // perks: an array so a companion can carry more than one — Legendary tier introduces
 // dual perks, Mythic tier goes further still (both Elder Rootbeard and Mochi are 4-perk
 // generalists at that tier, see systems/companions.md). Common tier deliberately excludes
@@ -1330,6 +1362,7 @@ module.exports = {
     CompanionRarityOdds,
     CompanionMarket,
     CompanionDuplicateReward,
+    CompanionLeveling,
     Companions,
     HelpTopics,
     Give,

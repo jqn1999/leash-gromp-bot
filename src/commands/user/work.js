@@ -275,6 +275,24 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     // without mutating this in-memory userDetails object.
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);
     if (updatedUserDetails) {
+        // Companion leveling — every real /work resolution (including auto-chained ones
+        // from a workCooldownSkipChance hit) counts toward the ACTIVE companion's
+        // workCount, a genuine time investment rather than a currency sink (see
+        // companionFactory.getCompanionLevel). Reads off updatedUserDetails, not the
+        // pre-scenario userDetails above, since the scenario that just ran may have
+        // already written a new workCount itself (a Wandering Companion duplicate pull
+        // bumps it directly, see companionFactory.applyCompanionAward) — incrementing
+        // off stale data here would silently overwrite that bonus instead of adding to it.
+        const activeCompanionId = updatedUserDetails.companions?.active;
+        if (activeCompanionId) {
+            const leveledOwned = updatedUserDetails.companions.owned.map(o =>
+                o.id === activeCompanionId ? { ...o, workCount: (o.workCount || 0) + 1 } : o
+            );
+            await dynamoHandler.updateUserFields(userId, {
+                companions: { ...updatedUserDetails.companions, owned: leveledOwned }
+            });
+        }
+
         const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
         if (newlyUnlocked.length > 0) {
             const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);

@@ -69,7 +69,10 @@ module.exports = {
         }
 
         const ownedCompanions = (userDetails.companions?.owned ?? [])
-            .map(o => companionFactory.getCompanionById(o.id))
+            .map(o => {
+                const companion = companionFactory.getCompanionById(o.id);
+                return companion ? { ...companion, workCount: o.workCount || 0 } : null;
+            })
             .filter(Boolean);
         const pages = chunkArray(ownedCompanions, PAGE_SIZE);
         let pageIndex = 0;

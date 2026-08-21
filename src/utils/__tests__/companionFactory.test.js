@@ -5,10 +5,13 @@ const {
     getCompanionById,
     ownsCompanion,
     getActiveCompanion,
+    getOwnedEntry,
+    getCompanionLevel,
+    getLevelMultiplier,
     getActivePerkValue,
     applyCompanionAward
 } = require('../companionFactory');
-const { CompanionRarity, CompanionRarityOdds, Companions } = require('../constants');
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -68,7 +71,7 @@ describe('ownsCompanion', () => {
     });
 
     test('true once owned', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
         expect(ownsCompanion(user, 'sprout')).toBe(true);
     });
 });
@@ -81,18 +84,18 @@ describe('getActiveCompanion / getActivePerkValue', () => {
     });
 
     test('resolves the equipped companion and reads its perk value', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         expect(getActiveCompanion(user).id).toBe('sprout');
         expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(0.05);
     });
 
     test('0 when the equipped companion does not carry the requested perk type', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0);
     });
 
     test('reads both of Mochi\'s dual perks', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 } });
+        const user = freshUser({ companions: { owned: [{ id: 'mochi', workCount: 0 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 } });
         expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0.10);
         expect(getActivePerkValue(user, 'rebirthBonusPercent')).toBe(0.20);
     });
@@ -104,7 +107,7 @@ describe('applyCompanionAward', () => {
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(true);
-        expect(result.companions.owned).toEqual([{ id: 'sprout', level: 1 }]);
+        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 0 }]);
         expect(result.companions.ownedCount).toBe(1);
         expect(result.companions.mythicOwnedCount).toBe(0);
     });
@@ -117,18 +120,87 @@ describe('applyCompanionAward', () => {
         expect(result.companions.mythicOwnedCount).toBe(1);
     });
 
-    test('a duplicate pull leaves owned/counts untouched', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+    test('a duplicate pull bumps the existing entry\'s workCount instead of adding a new owned entry', () => {
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 20 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(false);
-        expect(result.companions).toBe(user.companions);
+        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 20 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS }]);
+        expect(result.companions.ownedCount).toBe(1);
+    });
+
+    test('a duplicate pull on a companion that is not the active one still bumps its workCount', () => {
+        const user = freshUser({
+            companions: {
+                owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 5 }],
+                active: 'mole', ownedCount: 2, mythicOwnedCount: 0
+            }
+        });
+        const sprout = getCompanionById('sprout');
+        const result = applyCompanionAward(user, sprout);
+        expect(result.companions.owned).toEqual([
+            { id: 'sprout', workCount: CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS },
+            { id: 'mole', workCount: 5 },
+        ]);
     });
 
     test('does not mutate the active slot when a new companion is won', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', level: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         const mole = getCompanionById('mole');
         const result = applyCompanionAward(user, mole);
         expect(result.companions.active).toBe('sprout');
+    });
+
+    test('a market purchase carries the listing workCount over instead of starting at 0', () => {
+        const user = freshUser();
+        const firefly = getCompanionById('firefly');
+        const result = applyCompanionAward(user, firefly, 42);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 42 }]);
+    });
+});
+
+describe('companion leveling', () => {
+    test('getCompanionLevel: a fresh (0 workCount) companion is level 1', () => {
+        expect(getCompanionLevel(0)).toBe(1);
+        expect(getCompanionLevel(undefined)).toBe(1);
+    });
+
+    test('getCompanionLevel: climbs at each threshold exactly, not before', () => {
+        for (const { level, workCountRequired } of CompanionLeveling.THRESHOLDS) {
+            expect(getCompanionLevel(workCountRequired)).toBe(level);
+            if (workCountRequired > 0) {
+                expect(getCompanionLevel(workCountRequired - 1)).toBeLessThan(level);
+            }
+        }
+    });
+
+    test('getCompanionLevel: clamps to the max defined level well past the last threshold', () => {
+        const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
+        expect(getCompanionLevel(999999)).toBe(maxLevel);
+    });
+
+    test('getLevelMultiplier: 1x at level 1, scales by PERK_BONUS_PER_LEVEL per level after', () => {
+        expect(getLevelMultiplier(1)).toBe(1);
+        expect(getLevelMultiplier(3)).toBeCloseTo(1 + 2 * CompanionLeveling.PERK_BONUS_PER_LEVEL);
+    });
+
+    test('getActivePerkValue scales the base perk value by the active companion\'s own level', () => {
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const user = freshUser({
+            companions: { owned: [{ id: 'sprout', workCount: maxWorkCount }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        });
+        const sprout = getCompanionById('sprout');
+        const baseValue = sprout.perks.find(p => p.type === 'workMultiplierPercent').value;
+        const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBeCloseTo(baseValue * getLevelMultiplier(maxLevel));
+    });
+
+    test('getActivePerkValue treats a missing workCount as 0 (level 1, unscaled)', () => {
+        const user = freshUser({
+            companions: { owned: [{ id: 'sprout' }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        });
+        const sprout = getCompanionById('sprout');
+        const baseValue = sprout.perks.find(p => p.type === 'workMultiplierPercent').value;
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(baseValue);
     });
 });

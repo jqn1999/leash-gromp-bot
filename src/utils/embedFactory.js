@@ -70,8 +70,14 @@ const PERK_LABELS = {
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(0)}% chance to beat Metal Potato`
 };
 
-function formatCompanionPerks(companion) {
-    return companion.perks.map(perk => PERK_LABELS[perk.type](perk.value)).join(', ');
+// level defaults to 1 (unscaled) for roster-reference displays (createHelpCompanionsEmbed)
+// that aren't showing a specific owned instance. Callers that ARE showing one (the
+// companion list, market listings) pass the real level so the value shown matches what
+// the perk actually resolves to in play — companionFactory.getActivePerkValue applies
+// the exact same scaling at the real usage site, so this never overstates it.
+function formatCompanionPerks(companion, level = 1) {
+    const multiplier = companionFactory.getLevelMultiplier(level);
+    return companion.perks.map(perk => PERK_LABELS[perk.type](perk.value * multiplier)).join(', ');
 }
 
 // Every companion carrying workCooldownSkipChance (Fieldmouse/Spudsprite/Mochi) gets its
@@ -1159,7 +1165,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("Leash Gromp — Companions")
-            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — equip with \`/companion equip\`, view your own with \`/companion\`.`)
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — equip with \`/companion equip\`, view your own with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -1187,14 +1193,16 @@ class EmbedFactory {
         return embed;
     }
 
-    // pageItems: full companion objects (owned ids already resolved to roster entries)
-    // for this page. Paginated exactly like createAchievementsPageEmbed/createQuestsPageEmbed.
+    // pageItems: full companion objects (owned ids already resolved to roster entries),
+    // each carrying its own workCount (see companion.js) for the level shown here. Paginated
+    // exactly like createAchievementsPageEmbed/createQuestsPageEmbed.
     createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
             const status = companion.id === activeId ? '✅ Active' : companion.id;
+            const level = companionFactory.getCompanionLevel(companion.workCount);
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]})`,
-                value: `${formatCompanionPerks(companion)}\n${status}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}`,
+                value: `${formatCompanionPerks(companion, level)}\n${status}`,
                 inline: false,
             };
         }) : [{ name: 'No companions yet', value: 'Keep working — Wandering Companion encounters can happen on any /work!', inline: false }];
@@ -1210,14 +1218,19 @@ class EmbedFactory {
     }
 
     // pageItems: { listing, companion } pairs for this page (listing from the shared
-    // companion_market doc, companion resolved from the roster). Paginated exactly like
-    // createCompanionListEmbed.
+    // companion_market doc, companion resolved from the roster). listing.workCount is
+    // the seller's level at listing time (companionMarketFactory.buildListing) — shown
+    // here since a leveled companion is worth more than a fresh one. Paginated exactly
+    // like createCompanionListEmbed.
     createCompanionMarketEmbed(pageItems, pageIndex, totalPages, totalListings) {
-        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }) => ({
-            name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — ${listing.price.toLocaleString()} potatoes`,
-            value: `${formatCompanionPerks(companion)}\nSeller: ${listing.sellerUsername}\nListing ID: \`${listing.listingId}\``,
-            inline: false,
-        })) : [{ name: 'No active listings', value: 'Nobody has listed a companion for sale right now.', inline: false }];
+        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }) => {
+            const level = companionFactory.getCompanionLevel(listing.workCount);
+            return {
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level} — ${listing.price.toLocaleString()} potatoes`,
+                value: `${formatCompanionPerks(companion, level)}\nSeller: ${listing.sellerUsername}\nListing ID: \`${listing.listingId}\``,
+                inline: false,
+            };
+        }) : [{ name: 'No active listings', value: 'Nobody has listed a companion for sale right now.', inline: false }];
 
         const embed = new EmbedBuilder()
             .setTitle(`Companion Market`)
