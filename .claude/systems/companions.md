@@ -231,8 +231,9 @@ guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-con
 on the same `listings` array.
 
 - **`/companion-sell <companion> <price>`** — must currently own it; rejected if `price` is below
-  that rarity's floor (`CompanionMarket.MINIMUM_PRICE`: Common 500,000 / Rare 2,500,000 /
-  Legendary 10,000,000 / Mythic 50,000,000). Confirm/cancel button flow, then **escrow removal**:
+  that rarity's floor (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 /
+  Legendary 1,000,000 / Mythic 5,000,000 — cut another 10x from the original post-launch floors,
+  since even the reduced Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then **escrow removal**:
   the companion is pulled out of `owned` entirely (unequipped first if it was active) rather than
   just balance-checked at purchase time — there's no window where it could be equipped, re-listed,
   or duplicated while for sale. Escrow removal deliberately does **not** decrement

@@ -342,15 +342,17 @@ const CompanionRarityOdds = {
 
 const CompanionMarket = {
     TAX_PERCENT: 0.05, // same shape as Bank.GUILD_TAX_PERCENT — a real sink, not punitive
-    // Cut to 1/10th the original floors — Common's original 5,000,000 landed on workShop
-    // tier 4 of 10 (the 5x->10x multiplier purchase), a mid-game price for the single most
-    // common (65% roll chance), weakest-perk tier a brand-new player is most likely to pull
-    // first. The 4-5x step between tiers is kept as-is, just scaled down together.
+    // Cut another 1/10th on top of the original 1/10th cut (100x below the original launch
+    // floors overall). A fresh account nets ~950 potatoes per Regular Work (calculateGainAmount
+    // caps the base at Work.MAX_BASE_WORK_GAIN=1000, times ~1x multiplier, times .95) on a 5-min
+    // cooldown — the prior 500,000 Common floor was still ~500 work calls (~40+ hours) just to
+    // afford the single most common (65% roll chance), weakest-perk tier. The 4-5x step between
+    // tiers is kept as-is, just scaled down together again.
     MINIMUM_PRICE: {
-        [CompanionRarity.COMMON]: 500000,
-        [CompanionRarity.RARE]: 2500000,
-        [CompanionRarity.LEGENDARY]: 10000000,
-        [CompanionRarity.MYTHIC]: 50000000
+        [CompanionRarity.COMMON]: 50000,
+        [CompanionRarity.RARE]: 250000,
+        [CompanionRarity.LEGENDARY]: 1000000,
+        [CompanionRarity.MYTHIC]: 5000000
     }
 }
 
