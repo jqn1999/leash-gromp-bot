@@ -65,7 +65,9 @@ const PERK_LABELS = {
     guildRaidMultiplierPercent: value => `+${(value * 100).toFixed(0)}% Guild Raid Success Chance`,
     bankCapacityPercent: value => `+${(value * 100).toFixed(0)}% Bank Capacity`,
     regradeChanceFlat: value => `+${(value * 100).toFixed(0)}% Regrade Success Chance`,
-    rebirthBonusPercent: value => `+${(value * 100).toFixed(0)}% Rebirth Bonus`
+    rebirthBonusPercent: value => `+${(value * 100).toFixed(0)}% Rebirth Bonus`,
+    poisonImmunity: value => `Immune to Poison Potato (-${(value * 100).toFixed(0)}% yield on every other gain)`,
+    metalSuccessChanceFlat: value => `+${(value * 100).toFixed(0)}% chance to beat Metal Potato`
 };
 
 function formatCompanionPerks(companion) {

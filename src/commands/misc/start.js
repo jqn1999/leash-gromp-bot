@@ -133,7 +133,7 @@ const ONBOARDING_PAGES = [
         fields: [
             {
                 name: "Getting one",
-                value: "Keep working — a Wandering Companion encounter can happen on any `/work` call. 10 companions across 4 rarities, each with its own perk.",
+                value: "Keep working — a Wandering Companion encounter can happen on any `/work` call. 12 companions across 4 rarities, each with its own perk.",
                 inline: false,
             },
             {

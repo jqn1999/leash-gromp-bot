@@ -42,7 +42,7 @@ class WorkFactory {
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -169,7 +169,7 @@ class WorkFactory {
 
         const maxGain = CompanionDuplicateReward[companion.rarity];
         const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
-        const potatoesGained = await calculateGainAmount(workGainAmount * tierRatio, maxGain, multiplier, effectiveMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * tierRatio, maxGain, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained;
         userTotalEarnings += potatoesGained;
 
@@ -306,7 +306,7 @@ class WorkFactory {
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);
             const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
-            potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier);
+            potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
         }
@@ -340,30 +340,50 @@ class WorkFactory {
         // and boosting a struggling player's penalty would undermine the whole point.
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
-        let userTotalLosses = userDetails.totalLosses;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const effectiveMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier;
 
-        let potatoesLost = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier);
-        potatoesLost *= -1
-        userPotatoes += potatoesLost
-        userTotalLosses += potatoesLost
+        // Guinea Pig — negates the loss AND the 1-hour lockout entirely, replacing both
+        // with a small guaranteed gain instead (a plain regular-sized payout scaled down
+        // by GUINEA_PIG_PAYOUT_FACTOR, intentionally NOT run through calculateGainAmount's
+        // own yield-tax path — that tax already comes out of every OTHER gain this
+        // companion touches, taxing this reduced "safety" payout too would be a double
+        // penalty on the one thing the perk exists to protect).
+        const poisonImmunity = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
+        let potatoesGained, workTimer;
+        let updateFields;
+
+        if (poisonImmunity > 0) {
+            let userTotalEarnings = userDetails.totalEarnings;
+            const normalPayout = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
+            potatoesGained = Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR);
+            userPotatoes += potatoesGained;
+            userTotalEarnings += potatoesGained;
+            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings };
+        } else {
+            let userTotalLosses = userDetails.totalLosses;
+            potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
+            potatoesGained *= -1
+            userPotatoes += potatoesGained
+            userTotalLosses += potatoesGained
+            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+            updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses };
+        }
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.poison += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
-
         await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalLosses: userTotalLosses,
+            ...updateFields,
             workScenarioCounts: workScenarioCounts,
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return potatoesLost;
+        return potatoesGained;
     }
 
     // A second flavor of loss alongside Poison Potato, but it raids the BANK instead of
@@ -407,7 +427,7 @@ class WorkFactory {
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -436,7 +456,7 @@ class WorkFactory {
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -465,7 +485,7 @@ class WorkFactory {
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
+        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -554,11 +574,25 @@ const sweetPotatoRewards = [
     }
 ]
 
-async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier) {
+// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax —
+// applied AFTER adminUserShare is computed so the house's cut is always based on the
+// gross gain, unaffected by a player's own companion; the tax comes purely out of the
+// player's own take. Every gain-scenario handler except handlePoisonPotato itself
+// passes userDetails through (Poison Potato's own immune-branch payout is a plain
+// regular-sized gain that intentionally skips this tax — see its own comment).
+async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
     adminUserShare = Math.floor(gainAmount / .95 * .05);
     await dynamoHandler.addUserDatabase('103243257240121344', 'potatoes', adminUserShare);
+
+    if (userDetails) {
+        const yieldTaxPercent = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
+        if (yieldTaxPercent > 0) {
+            gainAmount = Math.floor(gainAmount * (1 - yieldTaxPercent));
+        }
+    }
+
     return gainAmount
 }
 

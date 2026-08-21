@@ -11,6 +11,11 @@ const Work = {
     // unlikely to ever approach this cap even at Mochi's 20% — this just bounds the
     // pathological tail so a freak streak can't spam the channel or chew through rate limits.
     MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 15,
+    // Guinea Pig's poison-immune payout, as a fraction of what a normal regular /work
+    // gain would have been for the same roll — computed from the real regular payout
+    // rather than a separate maxGain constant so it scales identically to Regular work
+    // at any server wealth level instead of hitting its own cap at a different point.
+    GUINEA_PIG_PAYOUT_FACTOR: 0.20,
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
@@ -103,7 +108,7 @@ const Achievements = [
 
     { id: "first_companion", name: "New Best Friend", description: "Win your first companion", statPath: "companions.ownedCount", threshold: 1 },
     { id: "companion_collector", name: "Menagerie Keeper", description: "Collect 5 different companions", statPath: "companions.ownedCount", threshold: 5 },
-    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 10 companions", statPath: "companions.ownedCount", threshold: 10 },
+    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 12 companions", statPath: "companions.ownedCount", threshold: 12 },
     { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 }
 ]
 
@@ -414,6 +419,21 @@ const Companions = [
         perks: [{ type: "bankCapacityPercent", value: 0.12 }]
     },
     {
+        id: "guinea_pig",
+        name: "Guinea Pig",
+        rarity: CompanionRarity.COMMON,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A guinea pig that insists on taking the first bite of every potato you find, just in case — a little wasteful, but it's never once let a bad one through.",
+        // The first perk in the roster with a real cost, not pure upside — trades a
+        // small always-on tax for fully negating Poison Potato's loss AND its 1-hour
+        // cooldown lockout (see workFactory.js's handlePoisonPotato), replacing it with
+        // a small guaranteed gain instead (Work.GUINEA_PIG_PAYOUT_FACTOR). Common tier
+        // and single-perk by design — the lockout disproportionately hurts newer
+        // players (an entire session lost), so the safety net that matters most stays
+        // easy to find rather than gated behind luck.
+        perks: [{ type: "poisonImmunity", value: 0.03 }]
+    },
+    {
         id: "barn_owl",
         name: "Barn Owl",
         rarity: CompanionRarity.RARE,
@@ -437,6 +457,18 @@ const Companions = [
         // and priced to match Firefly's workMultiplierPercent as the other single-perk
         // Rare (see sellStarch.js for where this applies).
         perks: [{ type: "starchSellBonusPercent", value: 0.09 }]
+    },
+    {
+        id: "prospector",
+        name: "Prospector",
+        rarity: CompanionRarity.RARE,
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "A grizzled prospector who's spent a lifetime learning exactly where the ore is soft — Metal Potato doesn't stand a chance against them.",
+        // Metal Potato's own success roll (work.js's workScenarios) is a flat 10% for
+        // everyone, independent of any stat — this is the first perk that touches it.
+        // +20% (10%->30%, a 3x improvement) since Metal Potato is already rare to roll
+        // into in the first place; a smaller bump wouldn't feel worth chasing.
+        perks: [{ type: "metalSuccessChanceFlat", value: 0.20 }]
     },
     {
         id: "firefly",

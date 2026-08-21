@@ -381,6 +381,17 @@ and needs its own balance pass.
   content is data-driven off a new `HelpTopics` array in `constants.js`, same pattern as
   `Companions`, so the slash command's choices and the embed content can't drift apart.
 
+- [x] **12. Guinea Pig & Prospector companions** — S — **Done**
+  What: two community-suggested companions — see [systems/companions.md](systems/companions.md#guinea-pig-the-rosters-first-tradeoff-perk).
+  **Guinea Pig** (Common) is the roster's first perk with a real cost: fully negates Poison
+  Potato's loss and 1-hour lockout, replacing it with a small guaranteed gain instead, at a flat
+  -3% tax on every other gain. **Prospector** (Rare) adds +20% straight onto Metal Potato's
+  previously-untouched flat 10% success roll (10%->30%), sized up from a typical Rare bump since
+  landing on Metal Potato in the first place is already rare. A third idea from the same
+  brainstorm — boosting the *odds of rolling into* Sweet/Metal Potato, not just succeeding once
+  there — was deferred: the `/work` scenario odds are a single shared table for the whole bot, not
+  per-user, so it needs a new "reroll on a REGULAR result" mechanic this pass didn't need to build.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

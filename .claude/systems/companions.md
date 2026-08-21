@@ -35,7 +35,7 @@ Companions can also be acquired directly via the marketplace (see below) — a m
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,
 since `applyCompanionAward` is the single code path both routes go through.
 
-## Starting roster (10)
+## Starting roster (12)
 
 Perk count and magnitude both scale with rarity — Common is always single-perk, Legendary is
 dual-perk, Mythic is quad-perk — and every shared perk type increases monotonically tier over tier
@@ -47,9 +47,11 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Sprout | Common | `workMultiplierPercent` +5% |
 | Fieldmouse | Common | `workCooldownSkipChance` 5% (chance to skip the `/work` cooldown entirely, rather than reduce it) |
 | Ladybug | Common | `bankCapacityPercent` +12% |
+| Guinea Pig | Common | `poisonImmunity` (negates Poison Potato's loss + 1-hour lockout, replaced with a small guaranteed gain instead) at the cost of a flat -3% tax on every other gain |
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
+| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +18% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +20% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -67,6 +69,45 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 10% (Mochi) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
+| Poison Immunity | Guinea Pig only | — | — | — |
+| Metal Success Chance | — | 20% (Prospector) | — | — |
+
+### Guinea Pig: the roster's first tradeoff perk
+
+Every other perk is pure upside — Guinea Pig is the first with a real, always-on cost. The whole
+point is a genuine "power vs. safety" choice rather than just "which flavor of power," so it's
+Common on purpose: Poison Potato's 1-hour lockout (`Work.POISON_POTATO_TIMER_INCREASE_SECONDS`)
+disproportionately hurts newer players (an entire session lost), so the safety net that matters
+most stays easy to find rather than gated behind luck.
+
+Implementation lives almost entirely in `workFactory.js`. `calculateGainAmount` (the shared
+choke-point every potato-denominated gain scenario funnels through — Regular/Large/Metal/Golden/
+Ancient/the companion-duplicate consolation) takes an optional `userDetails` param and, if the
+active companion carries `poisonImmunity`, shaves that value off the gain **after** the house's
+`adminUserShare` is computed — the tax comes out of the player's own take only, never the house
+cut. `handlePoisonPotato` branches on the same perk: immune, it computes a plain regular-sized
+payout (deliberately *not* run through the tax-aware path — taxing the "safety" payout too would
+double-penalize the one thing this perk exists to protect) scaled down by
+`Work.GUINEA_PIG_PAYOUT_FACTOR` (20%) and uses the normal cooldown; not immune, the original
+loss + 1-hour-lockout behavior is untouched.
+
+### Prospector: Metal Potato's success roll gets its first modifier
+
+Landing on the `METAL` scenario slot doesn't guarantee the reward — `work.js`'s dispatch closure
+rolls a separate, flat 10% chance to actually succeed (`metalPotatoRoll < .1`); missing it burns
+the cooldown for nothing. That roll was previously untouched by any stat in the game. Prospector
+adds `metalSuccessChanceFlat` straight onto the threshold (`.1 +
+companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat")`) — 20% takes it to
+30%, a 3x improvement, sized up from the usual Rare-tier bump specifically because Metal Potato is
+already rare to roll into in the first place; a smaller number wouldn't feel worth chasing.
+
+**Considered and deferred**: boosting the odds of *landing on* Sweet/Metal Potato in the first
+place, rather than just the success roll once you're there. The `/work` scenario odds
+(`eventFactory.js`'s `workChances`) are a single shared table mutated once for the whole bot
+(`setWorkScenarios`), not computed per-user — there's no way to give one player better odds of
+rolling into a specific scenario without either a new "reroll" mechanic (check, only on a REGULAR
+result, whether an equipped companion gets a small chance to upgrade that call into Sweet/Metal
+instead) or making the odds table per-user, both bigger changes than this pass needed.
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 

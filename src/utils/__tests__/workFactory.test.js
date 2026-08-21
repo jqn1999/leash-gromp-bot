@@ -62,6 +62,17 @@ describe('handleRegularWork', () => {
         const gainedWithBonus = await workFactory.handleRegularWork(withBonus, 1000, 1, 0.5);
         expect(gainedWithBonus).toBeGreaterThan(gainedNoBonus);
     });
+
+    test('Guinea Pig shaves its yield tax off every gain, not just Poison Potato', async () => {
+        const noCompanion = baseUser({ userId: 'a', workMultiplierAmount: 50 });
+        const withGuineaPig = baseUser({
+            userId: 'b', workMultiplierAmount: 50,
+            companions: { owned: [{ id: 'guinea_pig', level: 1 }], active: 'guinea_pig' },
+        });
+        const gainedNoCompanion = await workFactory.handleRegularWork(noCompanion, 1000, 1, 0);
+        const gainedWithGuineaPig = await workFactory.handleRegularWork(withGuineaPig, 1000, 1, 0);
+        expect(gainedWithGuineaPig).toBe(Math.floor(gainedNoCompanion * 0.97));
+    });
 });
 
 describe('handlePoisonPotato', () => {
@@ -77,6 +88,49 @@ describe('handlePoisonPotato', () => {
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields).toHaveProperty('totalLosses');
         expect(setFields).not.toHaveProperty('totalEarnings');
+    });
+
+    test('uses the 1-hour poison cooldown, not the normal one', async () => {
+        const userDetails = baseUser();
+        await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+    });
+
+    describe('with Guinea Pig equipped', () => {
+        function guineaPigUser(overrides = {}) {
+            return baseUser({
+                companions: { owned: [{ id: 'guinea_pig', level: 1 }], active: 'guinea_pig' },
+                ...overrides,
+            });
+        }
+
+        test('grants a small gain instead of a loss', async () => {
+            const userDetails = guineaPigUser({ workMultiplierAmount: 50 });
+            const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(result).toBeGreaterThan(0);
+        });
+
+        test('the gain is exactly GUINEA_PIG_PAYOUT_FACTOR of what a normal regular-work payout would be', async () => {
+            const gpUser = guineaPigUser({ userId: 'gp', workMultiplierAmount: 50 });
+            const plainUser = baseUser({ userId: 'plain', workMultiplierAmount: 50 });
+            const gained = await workFactory.handlePoisonPotato(gpUser, 1000, 1);
+            const normalPayout = await workFactory.handleRegularWork(plainUser, 1000, 1, 0);
+            expect(gained).toBe(Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR));
+        });
+
+        test('uses the normal cooldown instead of the 1-hour poison lockout', async () => {
+            const userDetails = guineaPigUser();
+            await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS);
+        });
+
+        test('writes to totalEarnings, not totalLosses', async () => {
+            const userDetails = guineaPigUser();
+            await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setFields).toHaveProperty('totalEarnings');
+            expect(setFields).not.toHaveProperty('totalLosses');
+        });
     });
 });
 

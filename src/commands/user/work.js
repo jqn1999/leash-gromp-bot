@@ -2,6 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { WorkFactory } = require("../../utils/workFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
 const { GuildContractFactory } = require("../../utils/guildContractFactory");
@@ -106,8 +107,11 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const userId = userDetails.userId;
             const metalPotatoRoll = Math.random();
+            // Prospector — a flat bonus on top of the base 10% success chance, the
+            // only stat that touches this roll.
+            const metalSuccessChance = .1 + companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat");
             let potatoesGained;
-            if (metalPotatoRoll < .1) {
+            if (metalPotatoRoll < metalSuccessChance) {
                 potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion);
             } else {
