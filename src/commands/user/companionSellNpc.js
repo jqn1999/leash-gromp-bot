@@ -18,7 +18,7 @@ function buildConfirmRow() {
 
 module.exports = {
     name: "companion-sell-npc",
-    description: "Instantly sell a companion to an NPC for well under market value (use /companion-sell to list it for other players instead)",
+    description: "Instantly sell a companion to an NPC for well under market value",
     devOnly: false,
     deleted: false,
     options: [
