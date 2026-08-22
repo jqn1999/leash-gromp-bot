@@ -248,11 +248,6 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     return time;
 }
 
-const updateWorkTimer = async function (userDetails, cooldownTime) {
-    const time = await calculateWorkTimerValue(userDetails, cooldownTime);
-    return updateUserFields(userDetails.userId, { workTimer: time });
-}
-
 // The full default user shape. Extracted so both addUser (brand-new records) and
 // findUser (healing partial records — see below) stay in sync with exactly one schema
 // definition instead of two copies drifting apart over time.
@@ -1143,35 +1138,6 @@ const createGuild = async function (guildId, guildName, guildLeaderId, guildLead
         });
 }
 
-// Misc
-const addNewUserAttribute = async function () {
-    let userList = await getUsers();
-
-    userList.forEach(async user => {
-        const params = {
-            TableName: awsConfigurations.aws_table_name,
-            Key: {
-                userId: user.userId,
-            },
-            UpdateExpression: "set maxStarches = :maxStarches",
-            ExpressionAttributeValues: {
-                ":maxStarches": 25000,
-            },
-            ReturnValues: "ALL_NEW",
-        };
-
-        const response = await docClient.update(params).promise()
-            .then(async function (data) {
-                console.log(`addNewUserAttribute: ${JSON.stringify(data)}`)
-            })
-            .catch(function (err) {
-                console.log(`addNewUserAttribute error: ${JSON.stringify(err)}`)
-            });
-    })
-    console.log('updated all users')
-    // return response;
-}
-
 const getServerTotal = async function () {
     let total = 0;
     let allUsers = await getUsers();
@@ -1229,7 +1195,12 @@ const getSortedGuildsById = async function () {
     return sortedUsers
 }
 
-const removeStarches = async function () {
+// Shared shape for a fire-and-forget "set one field to a fixed value across every user"
+// bulk update — removeStarches/resetAllTowerEntries each repeated this inline (a third,
+// unused copy — addNewUserAttribute — has been removed entirely). Not awaited per-user
+// (matches both originals' existing fire-and-forget behavior — neither ever awaited
+// individual completions, only that the loop kicked off).
+async function bulkUpdateAllUsers(fieldName, value, label) {
     let userList = await getUsers();
 
     userList.forEach(async user => {
@@ -1238,49 +1209,32 @@ const removeStarches = async function () {
             Key: {
                 userId: user.userId,
             },
-            UpdateExpression: "set starches = :starches",
+            UpdateExpression: `set ${fieldName} = :${fieldName}`,
             ExpressionAttributeValues: {
-                ":starches": 0,
+                [`:${fieldName}`]: value,
             },
             ReturnValues: "ALL_NEW",
         };
 
-        const response = await docClient.update(params).promise()
+        await docClient.update(params).promise()
             .then(async function (data) {
-                console.log(`addNewUserAttribute: ${JSON.stringify(data)}`)
+                console.log(`${label}: ${JSON.stringify(data)}`)
             })
             .catch(function (err) {
-                console.log(`addNewUserAttribute error: ${JSON.stringify(err)}`)
+                console.log(`${label} error: ${JSON.stringify(err)}`)
             });
     })
     console.log('updated all users')
-    // return response;
+}
+
+// Was previously mislabeling its own log output "addNewUserAttribute" (a leftover from
+// being copy-pasted from that now-removed function) — now labeled correctly.
+const removeStarches = async function () {
+    return bulkUpdateAllUsers('starches', 0, 'removeStarches');
 }
 
 const resetAllTowerEntries = async function () {
-    let userList = await getUsers();
-
-    userList.forEach(async user => {
-        const params = {
-            TableName: awsConfigurations.aws_table_name,
-            Key: {
-                userId: user.userId,
-            },
-            UpdateExpression: "set canEnterTower = :canEnterTower",
-            ExpressionAttributeValues: {
-                ":canEnterTower": true,
-            },
-            ReturnValues: "ALL_NEW",
-        };
-
-        const response = await docClient.update(params).promise()
-            .then(async function (data) {
-                console.log(`resetAllTowerEntries: ${JSON.stringify(data)}`)
-            })
-            .catch(function (err) {
-                console.log(`resetAllTowerEntries error: ${JSON.stringify(err)}`)
-            });
-    })
+    return bulkUpdateAllUsers('canEnterTower', true, 'resetAllTowerEntries');
 }
 
 // Daily Tater Tower leaderboard — a small array living in the stats table's
@@ -1365,7 +1319,6 @@ const completeGuildContract = async function (guildId, newBankCapacity, newBankC
 
 module.exports = {
     addUserDatabase,
-    updateWorkTimer,
     calculateWorkTimerValue,
     updateUserDatabase,
     updateUserFields,
@@ -1399,7 +1352,6 @@ module.exports = {
     findGuildByName,
     createGuild,
 
-    addNewUserAttribute,
     getServerTotal,
     getCachedServerTotal,
     getServerTotalStarches,

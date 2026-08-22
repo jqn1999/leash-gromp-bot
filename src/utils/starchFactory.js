@@ -1,4 +1,3 @@
-const { EmbedBuilder } = require("discord.js");
 const dynamoHandler = require("../utils/dynamoHandler");
 
 function getESTWeekdayAndHour(date) {
