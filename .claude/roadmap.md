@@ -682,8 +682,10 @@ and needs its own balance pass.
   orphaned by it, so it's the same low/no-stakes race `/companion equip` already tolerates, not worth
   a new conditional-write helper for.
 
-  **3. Concrete numbers — `CompanionScavenging` in `constants.js`** (new block, same
-  rarity-keyed-object shape as `CompanionDuplicateReward`/`CompanionMarket.MINIMUM_PRICE`):
+  **3. Concrete numbers — `CompanionScavenging` in `constants.js`** (new block, rarity-keyed like
+  `CompanionDuplicateReward`/`CompanionMarket.MINIMUM_PRICE`, but each rarity's starch entry is now a
+  `{ min, max }` pair rather than a flat number — see the randomization note below — while duration
+  and `workCount` stay flat single values per rarity):
 
   | Rarity | Duration | Reasoning |
   |---|---|---|
@@ -705,47 +707,60 @@ and needs its own balance pass.
   does (a hit that stays flat while `effectiveMultiplier`-scaled sources keep growing shrinks in
   relative value on its own, no separate decay curve needed):
 
-  | Rarity | Starches | Reasoning |
-  |---|---|---|
-  | Common | 5 | ~3-5x a fresh player's single Taro Trader roll — meaningfully more than one active hit, appropriate for a multi-hour unattended wait, still clearly "small" |
-  | Rare | 15 | 3x Common |
-  | Legendary | 40 | ~2.7x Rare — a bit under a fresh player's single Golden Yam roll, deliberately: scavenging should never beat the game's actual rare-jackpot encounter even at its own best-of-tier |
-  | Mythic | 100 | 2.5x Legendary — roughly 8-10x a fresh player's Golden Yam roll, but for a full day of zero engagement vs. one `/work` call, and already trivial next to what an actually-developed player's *scaled* Golden Yam nets in a single 5-minute-cooldown hit |
+  **Randomized 2026-08-22, per direct request** ("some variation" instead of a flat guaranteed
+  number) — each rarity is now a `[min, max]` range, rolled inclusive the same way
+  `companionMarketFactory.rollNpcSalePrice` already rolls its own range
+  (`min + Math.floor(Math.random() * (max - min + 1))`), centered on the original flat values so the
+  Taro Trader/Golden Yam grounding above still holds on average:
 
-  **4. `workCount` reward formula.** Flat per-rarity amount (not scaled by duration formula, not
-  scaled by the scavenging companion's own current level — level-scaling the very counter that
-  *determines* level would be a self-reinforcing compounding formula, a pattern this codebase
-  deliberately avoids everywhere else, see the percentage-of-current-stat reasoning in
+  | Rarity | Starch range | Average | Reasoning |
+  |---|---|---|---|
+  | Common | 3–7 | 5 | Same center as the original flat value, ±40% spread |
+  | Rare | 10–20 | 15 | Same center, ±33% spread |
+  | Legendary | 28–52 | 40 | Same center, ±30% spread |
+  | Mythic | 70–130 | 100 | Same center, ±30% spread — the roll still can't reach a fresh player's single Golden Yam roll's low end, keeping the "never beats the game's actual jackpot encounter" property from the original reasoning |
+
+  **4. `workCount` reward formula.** Flat per-rarity amount (not scaled by the scavenging
+  companion's own current level — level-scaling the very counter that *determines* level would be a
+  self-reinforcing compounding formula, a pattern this codebase deliberately avoids everywhere else,
+  see the percentage-of-current-stat reasoning in
   [systems/companions.md](systems/companions.md#balance-pass-income-power-and-why-capacity-perks-got-redesigned)).
-  Sized against `CompanionLeveling.THRESHOLDS` (level 2 = 15, level 10 = 3,725) and against
-  `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (10, for a genuine luck-based duplicate `/work`
-  pull) as the closest existing "non-active-play workCount source" anchor:
+
+  **Tightened 2026-08-22, per direct request** — the original table (Common 8 / Rare 20 / Legendary
+  45 / Mythic 100) gave Mythic a *super-linear* bonus on top of its already-longer duration: per hour
+  of commitment it paid out more than twice what Common did (4.17/h vs. 2.67/h), which read as "100
+  workCount for letting a Mythic sit for a day" — more reward than the time commitment alone
+  justified. Replaced with a **strictly linear-in-duration** rate — the same 8-per-3h rate Common
+  already had, applied uniformly to every tier's own duration, so a higher rarity's only advantage is
+  the (optional) convenience of a longer single dispatch, never a better *rate*:
 
   | Rarity | workCount | Reasoning |
   |---|---|---|
-  | Common | 8 | Just under a duplicate pull's 10 — this requires zero luck but real elapsed time (3h), so pricing it slightly below a genuine luck event feels right; two Commons back-to-back (16, ~6h) already clears level 2 (15) |
-  | Rare | 20 | 2.5x Common |
-  | Legendary | 45 | 2.25x Rare |
-  | Mythic | 100 | 2.2x Legendary |
+  | Common | 8 | Unchanged — anchors the rate at 8 / 3h ≈ 2.67/h |
+  | Rare | 16 | 2.67/h × 6h — down from 20 (-20%) |
+  | Legendary | 32 | 2.67/h × 12h — down from 45 (-29%) |
+  | Mythic | 64 | 2.67/h × 24h — down from 100 (-36%), directly addressing "100 workCount for free for letting a Mythic sit for a day" |
 
-  Sanity check against the threshold table: reaching max level (3,725) via nothing but back-to-back
-  Mythic scavenges (100 each, 24h each, requiring a player to manually re-dispatch every single day
-  without fail) takes **~38 days** of daily attention — squarely "weeks-to-months," matching the
-  Leveling doc's own "meant to reward long-term loyalty... not clearable in an afternoon" framing,
-  while via nothing but Commons (8 each, 3h each) it takes **~466 cycles / ~58 days of continuous
-  back-to-back dispatching** — appropriately the slowest tier. Both are slower, in realistic terms,
-  than actively grinding an *equipped* companion through ordinary daily `/work` play (each `/work`
-  resolution while equipped grants 1 workCount on its own 300s cooldown — an engaged player doing a
-  few dozen `/work` calls across a day easily outpaces even best-case Mythic scavenging), so
-  scavenging stays strictly the *slower*, background-only path — it never becomes a reason to
-  under-equip your best companion in favor of a leveling exploit. This does mean, as the
-  balance-audit interaction note above already flags, that a dedicated player can now get *several*
-  companions to max level in parallel over a period of months by keeping one benched companion
-  perpetually scavenging alongside their equipped one — accepted as an intentional consequence of
-  giving the bench something to do, not a design gap, but it does make
-  [balance-audit.md](balance-audit.md)'s finding #2 (leveling's 1.45x cap can invert rarity ordering
-  on some perk axes once a low-rarity companion is maxed) worth resolving before or alongside this
-  ships, per that note.
+  Sanity check against the threshold table (level 10 = 3,725): because the rate is now identical
+  across tiers, reaching max level via nothing but back-to-back scavenges of a single rarity takes
+  the same **~58 days of continuous back-to-back dispatching regardless of which rarity** — a clean,
+  easy-to-explain invariant (no rarity is ever the "fast" leveling path via scavenging; rarity only
+  changes how often you have to come back and redispatch), and noticeably harder than the original
+  design's Mythic-favoring ~38 days. Still strictly slower, in realistic terms, than actively
+  grinding an *equipped* companion through ordinary daily `/work` play (each `/work` resolution while
+  equipped grants 1 workCount on its own 300s cooldown — an engaged player doing a few dozen `/work`
+  calls across a day easily outpaces even best-case Mythic scavenging), so scavenging stays strictly
+  the *slower*, background-only path — it never becomes a reason to under-equip your best companion
+  in favor of a leveling exploit. This does mean, as the balance-audit interaction note above already
+  flags, that a dedicated player can now get *several* companions to max level in parallel over a
+  period of months by keeping one benched companion perpetually scavenging alongside their equipped
+  one — accepted as an intentional consequence of giving the bench something to do, not a design gap,
+  but it does make [balance-audit.md](balance-audit.md)'s finding #2 (leveling's 1.45x cap can invert
+  rarity ordering on some perk axes once a low-rarity companion is maxed) worth resolving before or
+  alongside this ships, per that note — the ~58-day-regardless-of-rarity property actually makes that
+  finding slightly *more* likely to surface in practice (rarity no longer discourages parallel
+  leveling the way the original super-linear Mythic bonus implicitly did by making Mythic the
+  obviously-best rarity to focus scavenging on).
 
   **5. Escrow/locking mechanics.** Deliberately **not** the market's escrow shape (physical removal
   from `owned`) — that would break `/companion`'s owned-list display and orphan the mid-flight
