@@ -97,8 +97,7 @@ describe('handleRegularWork', () => {
     test('gain is capped at MAX_BASE_WORK_GAIN even with a huge base amount and multiplier', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 100 });
         const gained = await workFactory.handleRegularWork(userDetails, 999999999, 1, 0);
-        // .95 factor applies on top of the cap (5% skims to the house account)
-        expect(gained).toBeLessThanOrEqual(Math.floor(Work.MAX_BASE_WORK_GAIN * 1 * 100 * 0.95));
+        expect(gained).toBeLessThanOrEqual(Math.floor(Work.MAX_BASE_WORK_GAIN * 1 * 100));
         expect(gained).toBeGreaterThan(0);
     });
 
@@ -107,14 +106,6 @@ describe('handleRegularWork', () => {
         await workFactory.handleRegularWork(userDetails, 1000, 1, 0);
         const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(addAttributes).toEqual({ workCount: 1 });
-    });
-
-    test('skims 5% of the gain to the house account', async () => {
-        const userDetails = baseUser({ workMultiplierAmount: 1 });
-        await workFactory.handleRegularWork(userDetails, 1000, 1, 0);
-        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('103243257240121344', 'potatoes', expect.any(Number));
-        const [, , houseShare] = dynamoHandler.addUserDatabase.mock.calls[0];
-        expect(houseShare).toBeGreaterThan(0);
     });
 
     test('a higher catch-up bonus increases the gain for an otherwise identical user', async () => {

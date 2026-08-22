@@ -634,17 +634,13 @@ const sweetPotatoRewards = [
     }
 ]
 
-// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax —
-// applied AFTER adminUserShare is computed so the house's cut is always based on the
-// gross gain, unaffected by a player's own companion; the tax comes purely out of the
-// player's own take. Every gain-scenario handler except handlePoisonPotato itself
-// passes userDetails through (Poison Potato's own immune-branch payout is a plain
-// regular-sized gain that intentionally skips this tax — see its own comment).
+// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax. Every
+// gain-scenario handler except handlePoisonPotato itself passes userDetails through
+// (Poison Potato's own immune-branch payout is a plain regular-sized gain that
+// intentionally skips this tax — see its own comment).
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
-    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
-    adminUserShare = Math.floor(gainAmount / .95 * .05);
-    await dynamoHandler.addUserDatabase('103243257240121344', 'potatoes', adminUserShare);
+    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier);
 
     if (userDetails) {
         const yieldTaxPercent = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");

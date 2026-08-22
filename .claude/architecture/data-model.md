@@ -288,14 +288,17 @@ same `trackingId` + flat-fields pattern via `updateStatDatabase`/`getStatDatabas
 
 ## The "house" account
 
-Two different accounts collect skims, and they are **not** interchangeable — check which one a
-given code path actually uses:
-
-- `103243257240121344` — the hardcoded dev ID (same as the sole entry in `awsConfigurations.devs`)
-  — receives the 5% skim from every `/work` gain via `calculateGainAmount` in `workFactory.js`. See
-  [systems/economy-and-work.md](../systems/economy-and-work.md).
 - `client.user.id` — the **bot's own Discord account** (`1187560268172116029`, matching
-  `awsConfigurations.clientId`) — receives `/bank` deposit tax and `/give` tax.
+  `awsConfigurations.clientId`) — receives `/bank`/`/guild-bank` deposit tax, `/rob` fines, `/give`
+  tax, and the companion market's sale fee. This is the one legitimate house account — every skim
+  it collects is shown directly in that command's own reply embed, not hidden from players.
+- `103243257240121344` (the hardcoded dev ID, same as the sole entry in `awsConfigurations.devs`)
+  **used to** also receive an undocumented 5% skim from every `/work` gain via
+  `calculateGainAmount` in `workFactory.js`, on top of `.95`-ing the player's own payout to fund it
+  — removed 2026-08-22 at that account holder's own request. See
+  [systems/economy-and-work.md](../systems/economy-and-work.md#core-gain-formula). That id still
+  appears elsewhere in the codebase purely as the `awsConfigurations.devs` entry gating `devOnly`
+  commands — it no longer receives any payout.
 
 Both are funded purely through `addUserDatabase`'s `ADD` operation, which auto-vivifies a bare
 `{userId, potatoes}` record with none of the rest of the schema if the account was never looked up
