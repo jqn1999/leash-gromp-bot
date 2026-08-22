@@ -15,9 +15,37 @@ module.exports = {
             description: 'Which companion to send scavenging (must not be your active companion)',
             required: true,
             type: ApplicationCommandOptionType.String,
-            choices: Companions.map(companion => ({ name: companion.name, value: companion.id }))
+            autocomplete: true
         }
     ],
+    // Same reasoning as companionSell.js/companionSellNpc.js's autocomplete — a static
+    // `choices` list showed every companion in the roster to every player regardless of
+    // ownership. Filtered to what the invoking user owns and isn't currently equipping
+    // (the callback below rejects the active companion too — this just keeps it off the
+    // suggestion list in the first place). Not filtered on "already scavenging", since
+    // that's a global one-slot check independent of which companion is picked, not a
+    // per-companion eligibility check the way owning/equipping is.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const userId = interaction.user.id;
+        const username = interaction.user.username;
+
+        const userDetails = await dynamoHandler.findUser(userId, username);
+        if (!userDetails) {
+            await interaction.respond([]);
+            return;
+        }
+
+        const activeId = userDetails.companions?.active ?? null;
+        const choices = Companions
+            .filter(c => companionFactory.ownsCompanion(userDetails, c.id))
+            .filter(c => c.id !== activeId)
+            .filter(c => c.name.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(c => ({ name: c.name, value: c.id }));
+
+        await interaction.respond(choices);
+    },
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);

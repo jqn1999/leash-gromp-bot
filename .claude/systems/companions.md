@@ -279,10 +279,16 @@ on the same `listings` array.
   equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
   decrement `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a
   companion you already earned credit for shouldn't claw the achievement back.
-- **`/companion-market`** — paginated (5/page) browser of active listings: companion, level, tier,
-  price, seller. Each page also renders up to 5 numbered buy buttons (1-5, no price/name on the
-  button label itself — just the number, matching the embed's own "1) ...", "2) ..." field
-  prefixes), disabled for a listing the viewer themselves posted. `/companion-buy <listing-id>` is
+- **`/companion-market`** — **not ephemeral**, deliberately, since it's a shared marketplace: paginated
+  (5/page) browser of active listings (companion, level, tier, price, seller) visible to and buyable
+  by anyone who can see the message, not just whoever ran the command. Each page also renders up to 5
+  numbered buy buttons (1-5, no price/name on the button label itself — just the number, matching the
+  embed's own "1) ...", "2) ..." field prefixes). Nothing is disabled for the poster's own listing at
+  render time (there's no single "viewer" a shared, non-ephemeral message can key that off of) —
+  buying your own listing is instead rejected at click time by `attemptBuy`'s own `sellerId` check,
+  same as any other rejection. Every click is attributed to whoever actually clicked
+  (`clicked.user`), never the original invoker — a click from a different user buys on *their*
+  account, never silently spends the invoker's potatoes. `/companion-buy <listing-id>` is
   **retired** (`deleted: true`) now that buying is button-driven — no more listing id to copy/type.
 - **Buying (button click, `companionMarket.js`'s `attemptBuy`)** — re-fetches both the buyer's own
   userDetails and the market state fresh at click time rather than trusting whatever was on-page
@@ -345,7 +351,10 @@ roles (one equipped, one scavenging) regardless of roster size, the same "one ac
 discipline the rest of this system already enforces, rather than letting every idle companion farm
 value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
 
-- **`/companion-scavenge <companion>`** — dispatch. No confirm prompt (nothing is lost by starting
+- **`/companion-scavenge <companion>`** — dispatch. `companion` is an autocomplete option, same
+  reasoning as `/companion-sell`'s: filtered per-invoking-user to what they own and excluding
+  whichever companion is currently active (can't be sent scavenging), rather than a static
+  `choices` list showing all 12 companions to everyone. No confirm prompt (nothing is lost by starting
   one, same immediacy as `/companion`'s equip buttons). Rejects if: not owned; currently the equipped/active
   companion; or another companion is already scavenging (states which one and, if it's already
   return-ready, tells the player to `/companion-scavenge-collect` it first — dispatch deliberately

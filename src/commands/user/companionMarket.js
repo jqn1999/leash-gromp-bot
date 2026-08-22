@@ -86,25 +86,27 @@ async function attemptBuy(client, userId, username, listingId) {
 
 // Up to 5 numbered buy buttons per page — no price/name on the label itself (the embed
 // above already numbers each listing "1) ...", "2) ..." to match), just "1"-"5", per the
-// exact spec this was built to. Disabled for a listing the viewer already owns (their own
-// sale), so it's visibly not purchasable rather than silently rejecting the click.
-function buildBuyRow(pageItems, userId) {
+// exact spec this was built to. Not ephemeral, so this message can be seen (and bought
+// from) by anyone in the channel, not just the invoker — which means there's no single
+// "viewer" to disable a button for. A click on your own listing is instead rejected at
+// click time by attemptBuy's own sellerId check, with a clear message, same as any other
+// rejection (can't afford it, listing gone, etc).
+function buildBuyRow(pageItems) {
     if (!pageItems.length) return null;
     const buttons = pageItems.map(({ listing }, index) => new ButtonBuilder()
         .setCustomId(`${BUY_PREFIX}${listing.listingId}`)
         .setLabel(`${index + 1}`)
         .setStyle(ButtonStyle.Success)
-        .setDisabled(listing.sellerId === userId)
     );
     return new ActionRowBuilder().addComponents(buttons);
 }
 
-function buildRows(pages, pageIndex, userId) {
+function buildRows(pages, pageIndex) {
     const rows = [];
     if (pages.length > 1) {
         rows.push(buildPaginationRow(PAGE_PREFIX, pageIndex, pages.length));
     }
-    const buyRow = buildBuyRow(pages[pageIndex], userId);
+    const buyRow = buildBuyRow(pages[pageIndex]);
     if (buyRow) {
         rows.push(buyRow);
     }
@@ -117,13 +119,11 @@ module.exports = {
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
-        await interaction.deferReply({ ephemeral: true });
+        // Not ephemeral — this is a shared marketplace, so anyone in the channel should be
+        // able to see current listings and buy from them, not just whoever ran the command.
+        await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        // Only used as the registered-user gate here — attemptBuy re-fetches its own copy
-        // fresh at click time, and the buy row only needs userId (to disable your own
-        // listings), not the full record. Kept for the same "ensure the caller exists
-        // before doing anything" consistency every other companion command starts with.
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
@@ -134,19 +134,24 @@ module.exports = {
         const renderPage = (idx) => embedFactory.createCompanionMarketEmbed(pages[idx], idx, pages.length, enrichedListings.length);
 
         const embed = renderPage(0);
-        const components = buildRows(pages, 0, userId);
+        const components = buildRows(pages, 0);
         const reply = await interaction.editReply({ embeds: [embed], components });
 
-        if (pages.length <= 1 && !buildBuyRow(pages[0], userId)) return;
+        if (pages.length <= 1 && !buildBuyRow(pages[0])) return;
 
         // Custom collector loop, not runPaginatedReply/buildPaginationRow's generic
         // prev/next-only loop — this page also needs to react to buy-button clicks
         // (rebuilding listings/pages and re-rendering in place), which that shared helper
         // has no concept of. buildPaginationRow itself is still reused for the prev/next
         // row so this doesn't duplicate that half.
-        const collectorFilter = i => i.user.id === interaction.user.id;
+        //
+        // No user filter on the collector — since the message isn't ephemeral, anyone in
+        // the channel can page through or buy from it, not just the original invoker. Every
+        // click is attributed to whoever actually clicked (clicked.user), never the
+        // invoker's own userId/username/userDisplayName — a click from a different user
+        // must buy on THEIR account, never silently spend the original invoker's potatoes.
         while (true) {
-            const clicked = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
+            const clicked = await reply.awaitMessageComponent({ time: 60_000 }).catch(() => null);
             if (!clicked) {
                 await reply.edit({ components: [] }).catch(() => {});
                 break;
@@ -154,15 +159,16 @@ module.exports = {
 
             if (clicked.customId === `${PAGE_PREFIX}_prev` || clicked.customId === `${PAGE_PREFIX}_next`) {
                 pageIndex = clicked.customId === `${PAGE_PREFIX}_next` ? pageIndex + 1 : pageIndex - 1;
-                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex, userId) });
+                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex) });
                 continue;
             }
 
             if (clicked.customId.startsWith(BUY_PREFIX)) {
                 const listingId = clicked.customId.slice(BUY_PREFIX.length);
+                const [clickerId, clickerUsername, clickerDisplayName] = getUserInteractionDetails(clicked);
                 await clicked.deferUpdate();
 
-                const result = await attemptBuy(client, userId, username, listingId);
+                const result = await attemptBuy(client, clickerId, clickerUsername, listingId);
 
                 enrichedListings = await loadListings();
                 pages = chunkArray(enrichedListings, PAGE_SIZE);
@@ -171,9 +177,9 @@ module.exports = {
                 }
 
                 await interaction.editReply({
-                    content: `${userDisplayName}, ${result.message}`,
+                    content: `${clickerDisplayName}, ${result.message}`,
                     embeds: [renderPage(pageIndex)],
-                    components: buildRows(pages, pageIndex, userId)
+                    components: buildRows(pages, pageIndex)
                 });
                 continue;
             }
