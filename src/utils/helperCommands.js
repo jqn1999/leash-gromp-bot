@@ -42,6 +42,25 @@ async function requireUserDetails(interaction, userId, username, userDisplayName
     return userDetails;
 }
 
+// The "does this user belong to a guild, and does that guild still exist" check almost
+// every guild-related command repeats before doing anything else. The "you have no guild"
+// wording legitimately varies per command (what the player was trying to do), so it stays a
+// parameter rather than being homogenized; the guild-lookup-failure message is identical
+// verbatim across every call site, so that one stays baked in here.
+async function requireUserGuild(interaction, userDetails, userDisplayName, noGuildMessage) {
+    const userGuildId = userDetails.guildId;
+    if (!userGuildId) {
+        interaction.editReply(`${userDisplayName} ${noGuildMessage}`);
+        return null;
+    }
+    const guild = await dynamoHandler.findGuildById(userGuildId);
+    if (!guild) {
+        interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
+        return null;
+    }
+    return guild;
+}
+
 async function getSortedBirthdays() {
     const arr = await dynamoHandler.getAllBirthdays();
 
@@ -90,6 +109,7 @@ module.exports = {
     convertSecondstoMinutes,
     getUserInteractionDetails,
     requireUserDetails,
+    requireUserGuild,
     getSortedBirthdays,
     getRandomFromInterval
 }

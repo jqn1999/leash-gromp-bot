@@ -1,7 +1,7 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
-const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getEffectiveRaidPower } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
@@ -838,17 +838,8 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to start the raid of!`);
-            return;
-        }
-
-        let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to start the raid of!");
+        if (!guild) return;
         const guildId = guild.guildId;
         const guildName = guild.guildName;
         const memberList = guild.memberList;

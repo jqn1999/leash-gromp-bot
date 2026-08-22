@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles } = require("../../utils/constants");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { GuildContractFactory } = require("../../utils/guildContractFactory");
 const guildContractFactory = new GuildContractFactory();
@@ -26,16 +26,8 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild!`);
-            return;
-        }
-        let guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild!");
+        if (!guild) return;
         let memberList = guild.memberList;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)

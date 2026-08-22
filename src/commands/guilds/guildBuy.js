@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { GuildRoles } = require("../../utils/constants");
 
@@ -156,16 +156,8 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild!`);
-            return;
-        }
-        let guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild!");
+        if (!guild) return;
         const member = guild.memberList.find((currentMember) => currentMember.id == userId);
         if (!member) {
             interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);

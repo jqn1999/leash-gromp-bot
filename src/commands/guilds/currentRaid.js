@@ -1,4 +1,4 @@
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
 const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPower } = require("../../utils/raidFactory");
@@ -17,17 +17,8 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to view the raid of!`);
-            return;
-        }
-
-        let guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to view the raid of!");
+        if (!guild) return;
         const raidList = await getLiveRaidRoster(guild);
 
         const timeUntilRaidAvailableInSeconds = Math.floor((guild.raidTimer - Date.now())/1000);

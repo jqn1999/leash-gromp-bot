@@ -1,4 +1,4 @@
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { GuildContractFactory } = require("../../utils/guildContractFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -17,17 +17,8 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to view a contract for!`);
-            return;
-        }
-
-        const guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to view a contract for!");
+        if (!guild) return;
 
         // Read-only — never establishes a baseline or claims anything, same as /quests.
         const progressResult = await guildContractFactory.getProgress(guild);

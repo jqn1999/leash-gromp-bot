@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Bank, GuildRoles } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -49,16 +49,8 @@ module.exports = {
         if (!userDetails) return;
         let userPotatoes = userDetails.potatoes;
 
-        const userGuildId = userDetails.guildId;
-        if (!userGuildId) {
-            interaction.editReply(`${userDisplayName} you have no guild to deposit or withdraw from!`);
-            return;
-        }
-        let guild = await dynamoHandler.findGuildById(userGuildId);
-        if (!guild) {
-            interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
-            return;
-        }
+        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to deposit or withdraw from!");
+        if (!guild) return;
         const memberList = guild.memberList;
         let guildBankStored = guild.bankStored;
         let guildBankCapacity = guild.bankCapacity;
