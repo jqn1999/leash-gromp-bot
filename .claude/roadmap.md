@@ -912,6 +912,126 @@ and needs its own balance pass.
   might just *be* the Achievements & Titles system above rather than a separate system), a Discord
   role? Worth revisiting once item 1 exists, since there's likely a lot of overlap.
 
+- [ ] **Companion Max-Level & Full-Roster Capstone Rewards** — S/M once a direction is picked — two
+  related but separable asks: (1) a moment/benefit for a companion actually reaching level 10 (today
+  leveling just silently stops scaling — `getLevelMultiplier` caps at 1.45x with no distinct payoff
+  for crossing the line), and (2) a benefit for owning the full 12-companion roster at once (today
+  `ownedCount`/`mythicOwnedCount` only back the existing achievements). Roster is 4 Common / 4 Rare /
+  2 Legendary / 2 Mythic = 12 (not "3 per rarity" — worth correcting if that framing shows up
+  elsewhere). `full_roster`'s live threshold in `constants.js` is already correctly `12`
+  ("Collect all 12 companions") — the `>= 10` shown in [systems/companions.md](systems/companions.md)'s
+  own achievement table and in this file's item 10 original-pitch table is stale documentation from
+  when the roster was smaller, not a live bug; worth a one-line doc fix regardless of which capstone
+  idea below gets picked.
+
+  **Central constraint both ideas must respect**: every companion mechanic shipped this session
+  (equip, Scavenging, the market) was deliberately kept to a bounded, one-role-at-a-time value
+  surface specifically so owning/leveling more companions is never *strictly* better in a stacking
+  sense, only better in *optionality* — see
+  [systems/companions.md](systems/companions.md#scavenging)'s explicit "exactly two roles ... regardless
+  of roster size" framing. Any idea that gives a maxed companion or a complete collection a second
+  *simultaneous* source of ongoing value needs to be weighed against that discipline explicitly, not
+  proposed in isolation. Also relevant: [balance-audit.md](balance-audit.md)'s open finding #2 —
+  leveling's 1.45x cap can already invert rarity ordering on some perk axes once a low-rarity
+  companion is maxed — is still unresolved; a max-level reward should not add more raw perk-scaling
+  on top of an already-flagged-too-strong lever. Confirmed directly in `companionFactory.js`:
+  Scavenging's own reward (`resolveScavengeReward`) is deliberately **not** scaled by the scavenging
+  companion's level, for exactly this "don't let the counter that determines level also inflate
+  itself" reason — the only lever a "reward a maxed scavenger" idea has available is duration/
+  frequency, not reward-per-trip size.
+
+  **Evaluated: the scavenging-cap-exemption idea for #1** (let a maxed companion scavenge without
+  occupying the single scavenging slot). As literally proposed this is a genuine second concurrent
+  value stream, not a one-time exception — "maxed" isn't a rare state a few players briefly pass
+  through, it's the natural endpoint of ~58 days of scavenging-only investment (faster via active
+  `/work` play) that a committed player reaches on companion after companion. Once one companion
+  hits max, this becomes the new normal for that player going forward, not an exceptional capstone
+  moment — at which point they're permanently banking Scavenging's workCount+starch reward from two
+  companions at once instead of one, the exact "letting every idle companion farm value in parallel"
+  shape Scavenging's own design doc says the single-slot cap exists to prevent. It also compounds
+  balance-audit finding #2 by making parallel leveling faster and more common than it already is
+  (Scavenging already lets a dedicated player level several companions in parallel over months — this
+  would accelerate that further). **Recommend not building it in this exact shape.** Option B below
+  offers a bounded alternative that rewards a maxed companion's scavenging without opening a second
+  slot.
+
+  **Option groups, safest to riskiest:**
+
+  A. Cosmetic-only (zero mechanical change, reuses existing tracked state):
+     - Max-level companions get a permanent visual tag (e.g. "⭐ Bonded") and a unique flavor line in
+       `/companion`'s list, the equip confirmation, and the scavenge-return embed —
+       `getCompanionLevel(workCount) === 10` is already computed at every one of those display sites,
+       this is formatting-only.
+     - New achievement(s) off a new `companions.maxLevelCount` counter (bumped the first time any
+       specific owned companion instance crosses level 10) — e.g. "first companion maxed," and, as a
+       genuine long-run chase, "a Mythic reaches max level" (meaningfully harder given only one
+       companion can be equipped at a time). Same `statPath`-threshold shape every other achievement
+       already uses, no new checking code.
+     - Full roster gets the equivalent: a "Menagerie Complete" flourish on `/profile`/`/companion`
+       once `ownedCount === 12`. Worth folding into the existing undecided **Cosmetic Loot** item
+       above rather than building a bespoke title mechanism just for this — real overlap, a
+       collection-complete badge is a natural title candidate.
+
+  B. Bounded, single-slot-respecting (a real reward, but never opens a second simultaneous role):
+     - **The compromise version of the scavenging idea**: a maxed companion's own
+       `CompanionScavenging.DURATION_SECONDS` gets a flat cut (e.g. -20%) *for that one companion*,
+       so it comes home faster and can be redispatched sooner — same reward-per-trip, higher trip
+       frequency over a long horizon, but it never occupies a second slot; the "exactly two roles"
+       invariant holds at every instant. Flag explicitly that this is still a real (if bounded)
+       throughput increase, not neutral — don't sell it as "free."
+     - **A one-time "graduation" payout** the exact moment a companion crosses into level 10,
+       mirroring the achievement-unlock/scavenge-return celebratory-embed convention — a flat,
+       rarity-scaled amount (bigger for a maxed Mythic than a maxed Common, since keeping a
+       rarer/scarcer companion equipped or scavenging that long is the harder feat), paid once, never
+       recurring. Structurally identical to an achievement reward, not a new ongoing modifier — can't
+       touch the balance-audit leveling-inversion concern at all, since it's a lump sum, not more
+       perk %.
+     - **Full-roster equivalent**: a one-time flat permanent stat bonus into `sweetPotatoBuffs` (same
+       shape Metal Potato/weekly quests already use) the moment `ownedCount` first reaches 12 — paid
+       once, kept even if the player later sells a companion back down below 12 (mirrors the existing
+       "achievements never regress" precedent from market escrow/cancel, and avoids needing a live
+       "do you currently own all 12" check at any perk-application call site, which is what would
+       actually reopen the stacking question). This would be the first *achievement-adjacent*
+       milestone to also carry a mechanical reward — every existing achievement today is
+       checkbox-only, no payout — worth flagging as a real precedent question, not a rubber-stamp: is
+       that worth starting now, or should full-roster stay purely a bragging-rights achievement like
+       every other one? Tower's daily-leaderboard bonus + `tower_champion` achievement already model
+       "a real reward alongside a separate checkbox achievement" for the same milestone, so there's a
+       precedent to point to if the answer is yes.
+     - **Minor QoL unlock**: full-roster owners get a small, permanent discount on
+       `CompanionMarket.TAX_PERCENT` for future sales — optional, low-stakes, only matters on an
+       occasional voluntary action (listing something for sale), not a standing income tap.
+
+  C. Adds a genuine second value stream (flagged for contrast, not recommended without a much
+     stronger case):
+     - The scavenging-cap-exemption idea, taken literally (see evaluation above).
+     - A maxed-but-benched companion contributing even a small fraction of its perk while not
+       equipped — the clearest version of "stacking forever," structurally recreating what
+       `sweetPotatoBuffs` already is. Not recommended.
+     - A recurring (e.g. daily) "full roster check-in" bonus, purely for owning all 12 — smaller in
+       shape than "send the whole bench scavenging at once" but philosophically the same: a standing
+       passive tap that exists purely because of ownership count, contradicting the system's own
+       stated goal that more companions should only ever unlock *optionality*, not *more standing
+       value*. Listed for completeness, not recommended.
+
+  **Open questions, with a recommendation on each:**
+  - Does "full roster" require all 12 owned regardless of level, or all 12 at max level? Recommend
+    **ownership only** (matches the existing `full_roster` achievement's own definition) for the base
+    reward; an "all 12 maxed" tier is a fine, much-later stretch goal but not needed for v1.
+  - Does a full-roster reward regress if the player later sells a companion below 12? Recommend
+    **no** — one-time grant, never revoked, mirroring the "achievements never regress" precedent
+    already set by market escrow/cancel.
+  - Should a full-roster reward be a new achievement field, a separate mechanical bonus, or both?
+    Recommend **both, as two separate things** (checkbox achievement + a distinct mechanical payout),
+    mirroring how Tower's daily-leaderboard bonus and the `tower_champion` achievement already
+    coexist for the same milestone rather than being folded into one.
+
+  Touches (once a direction is picked): `constants.js` (new `companions.maxLevelCount` counter if
+  Option A's per-companion achievement is taken; new one-time reward constants if Option B is taken),
+  `companionFactory.js`/`work.js` (wherever the graduation/full-roster moment gets detected and
+  granted), `embedFactory.js` (a new celebratory embed or an extension of an existing one),
+  `systems/companions.md`'s `full_roster` threshold doc fix regardless of outcome.
+
 - [ ] **Multi-Server Support** — L — prompted by players in other Discords asking for the bot. Key
   decisions already locked: each server gets its own economy (leaderboard/work-scaling/starch
   totals), filtered live against Discord membership rather than partitioning user storage; the

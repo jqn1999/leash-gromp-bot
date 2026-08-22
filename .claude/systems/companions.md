@@ -460,7 +460,7 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 |---|---|---|
 | `first_companion` | New Best Friend | `companions.ownedCount >= 1` |
 | `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
-| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 10` |
+| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 12` (all of them — corrected from a stale `>= 10` doc value; the roster grew to 12 after Guinea Pig/Prospector shipped, and `constants.js` already reads `12` live) |
 | `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
 
 ## Persistence
