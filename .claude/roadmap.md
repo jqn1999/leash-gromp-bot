@@ -536,6 +536,80 @@ and needs its own balance pass.
   it was, the %-softer figure, and a one-time 🏅 callout on the exact hit that crosses the 10-hit
   milestone.
 
+- [ ] **17. Companion Scavenging** — M
+  What: `/companion-scavenge <companion>` sends a currently **unequipped** owned companion out for a
+  rarity-scaled duration; on return it grants (a) a chunk of that companion's own `workCount` — the
+  same counter Companion Leveling (#13) already tracks, letting a benched companion inch toward its
+  next level even while it isn't the active one — and (b) a small, rarity-scaled starch payout,
+  deliberately **not** scaled by the player's own `effectiveMultiplier`/server wealth (same
+  "stays modest at every stage of the game" precedent `/companion-sell-npc` set — see
+  [systems/companions.md](systems/companions.md#marketplace)), so it can never become a real
+  income-optimization play. Only **one** companion can be scavenging at a time, and it must be a
+  different companion than whichever one is currently equipped.
+  Why: direct player ask — once someone pulls or buys a stronger companion, every other owned
+  companion becomes pure dead weight with nothing to do except sell it (`/companion-sell`/
+  `/companion-sell-npc`, both shipped this session). This gives the *rest of the roster* something to
+  do without touching the single-active-slot choice that's core to how companions work
+  ([systems/companions.md](systems/companions.md)) — it's not a second stacking buff track, it's a
+  bounded, one-at-a-time action for whichever companion isn't currently earning you its perk.
+  Why `workCount` + starches, not potatoes: a benched companion's `workCount` is currently frozen
+  forever unless it gets re-equipped — the exact "usage-based, real time investment" framing
+  Companion Leveling was built on already accepts a non-active-play `workCount` source (a duplicate
+  `/work` pull bumps it too, via `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`), so this isn't a new
+  precedent, just a second modest tap into the same one. Potatoes were considered and rejected — this
+  game already pays potatoes through 8+ separate `/work` outcomes plus streak/quests/tower/raids/
+  records/NPC-sell/duplicate-consolation; starches stay a comparatively underused resource and tie
+  the reward back into an existing subsystem ([systems/starch-trading.md](systems/starch-trading.md))
+  instead of adding a second parallel potato tap.
+  Why single-slot, not "send your whole bench at once": letting every owned-but-idle companion
+  scavenge simultaneously would make owning more companions worth strictly more passive value all the
+  time — structurally the same "stacks forever" shape `sweetPotatoBuffs` already owns, and the exact
+  failure mode the single-active-slot design was built to avoid in the first place (see item 10
+  below). Capping scavenging to one companion at a time, and requiring it be a *different* companion
+  than the active one, keeps the total simultaneous value surface at exactly two roles (one equipped,
+  one scavenging) regardless of roster size — deepening the "which one is doing what for me right
+  now" choice instead of undermining it.
+  Balance-audit interaction: this doesn't add a new power axis, but it does make
+  [balance-audit.md](balance-audit.md)'s open finding #2 (leveling's 1.45x cap can invert rarity
+  ordering on some perk axes once a low-rarity companion is maxed) show up *more often* — today only
+  whichever companion a player keeps equipped can ever reach max level, so most players only have one
+  leveled companion at a time; scavenging lets several reach max level in parallel over a longer
+  horizon. Recommend resolving or explicitly accepting finding #2 before or alongside shipping this,
+  since it's the same lever, just turned more often — not something this feature needs to resolve
+  itself, but it shouldn't ship blind to it either.
+  Open questions (recommendations attached, none blocking a scoping conversation):
+  - **Duration** — recommend rarity-scaled, same direction every other rarity-scaled number in this
+    system already goes (bigger for higher tier): something in the shape of a few hours (Common) up
+    to roughly a day (Mythic), clearly longer than `/work`'s 300s cooldown and the 1hr raid timer so
+    it reads as a between-sessions mechanic, not a rapid-fire one. Exact hours are a tuning call.
+  - **Collect step** — recommend an explicit return/notify moment (mirrors the daily streak's
+    fire-and-notify follow-up, and the celebratory-embed convention achievements/quests/streak all
+    already use) rather than a silently-absorbed value, so "my companion is back" is a real moment,
+    not just a number that quietly changed.
+  - **Early recall** — recommend allowing a cancel with no reward (mirrors `/companion-cancel`
+    pulling a market listing back, and leaving a Tower run early banking only what's already accrued)
+    rather than a hard lockup — open whether this needs its own command or folds into the dispatch
+    command's own flow.
+  - **Escrow while scavenging** — recommend a scavenging companion becomes temporarily unlistable/
+    unsellable/unequippable until it returns, mirroring the market's existing escrow pattern —
+    otherwise a companion could be sold out from under an in-progress scavenge, or double-dip as both
+    "for sale" and "scavenging" at once.
+  Touches: a new dispatch/collect command (or a `/companion` subcommand — namespace is an architect
+  call, mirrors the `/companion equip` vs. a separate command decision already made once for this
+  system), a new `companions.scavenging: { companionId, returnsAt } | null` field on the user record
+  (backfilled the same self-healing way every other user field is), a small `CompanionScavenging`
+  constants block (duration + starch payout per rarity, same shape `CompanionDuplicateReward`/
+  `CompanionMarket.MINIMUM_PRICE` already use), and a `companionFactory.js` extension for the
+  dispatch/collect logic — no changes needed at any existing perk-application call site, since
+  scavenging never touches `getActivePerkValue`.
+
+  **Doc discrepancy found while scoping this**: [systems/companions.md](systems/companions.md)'s own
+  "Persistence" section still documents the schema as `owned: [{ id, level }]` — stale since Companion
+  Leveling (#13) shipped and repurposed that same `level` field into `workCount` (confirmed directly
+  against `companionFactory.js`, which reads/writes `owned[].workCount`, not `.level`). The doc's own
+  "Leveling" section correctly describes `workCount`; only the "Persistence" section at the bottom
+  never got updated to match. Worth a one-line fix next time that doc is touched.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
