@@ -221,6 +221,23 @@ constant — treat the ~2x gap as the load-bearing number, not the absolute EV f
 
 ## 2026-08-22 (follow-up) — Mochi vs. Elder Rootbeard Mythic parity
 
+**FIXED 2026-08-22.** `bankCapacityPercent` (the one perk that could hit literal zero realized
+value, per the finding below) replaced with `passiveIncomePercent` on Elder Rootbeard, split so
+Elder Rootbeard becomes the passive-income specialist (`+10%`, above Mochi's own) while Mochi
+keeps its active-work generalist identity (work multiplier + cooldown skip + rebirth bonus) with a
+smaller passive share (`+6%`, cut from `+10%`). Elder Rootbeard's other three perks (regrade/rob/
+starch) intentionally left unchanged — this fix addressed the one perk that could go to zero and
+rebalanced the passive split; scaling up the situational perks' magnitudes themselves (the
+"1/12th as often, needs a bigger per-event payout" option from the finding below) was considered
+and deferred, left for a future pass if the gap still feels off after this one. See
+`systems/companions.md`'s new "Second balance pass" subsection for full detail, including the
+deliberate exception this creates to the "rarer pull never loses to a lower rarity on the same
+stat" rule (Mochi's `+6%` now sits below Rootcarver's Legendary `+8%` on this one sub-perk —
+accepted since it's one of four perks, not Mochi's primary stat). Verified: full jest suite (275
+tests, one pre-existing hardcoded-value test updated to match) green.
+
+Original finding, kept for the record:
+
 Focused re-check, prompted by a product-owner complaint that Mochi, the Undying Stray feels
 meaningfully stronger than Elder Rootbeard despite both being Mythic quad-perk generalists
 meant to be roughly equal (`systems/companions.md`'s "Balance pass" section, roadmap item

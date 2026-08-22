@@ -615,15 +615,21 @@ const Companions = [
         name: "Elder Rootbeard",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, guards your bank, and always finds room to get a better rate cashing out starches.",
-        // bankCapacityPercent bumped 15%->20% to stay above Rootcarver's post-rebalance
-        // 18% — a rarer Mythic pull shouldn't lose to a Legendary on the exact stat both
-        // grant. starchCapacityPercent -> starchSellBonusPercent for the same reason as
-        // Mole's redesign (see Mole's own comment) — kept the same 15% figure as
-        // robChanceFlat, its fellow "one of four" diversified perk on this companion.
+        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, quietly tends a slow-growing harvest in the background, and always finds room to get a better rate cashing out starches.",
+        // Rebalanced 2026-08-22: bankCapacityPercent replaced with passiveIncomePercent
+        // (per balance-audit.md's Mochi-vs-Rootbeard finding — bankCapacityPercent could
+        // hit literal zero realized value once bank regrade caps, right before every
+        // rebirth, while its other three perks are all situational/gated). Rootbeard now
+        // reads as the passive-income specialist (bigger passive gain, niche
+        // regrade/rob/starch utility) alongside Mochi's active-work generalist identity
+        // (work multiplier + cooldown skip + rebirth bonus, with a smaller passive
+        // kicker) — see Mochi's own perks below for the split. starchCapacityPercent ->
+        // starchSellBonusPercent for the same reason as Mole's redesign (see Mole's own
+        // comment) — kept the same 15% figure as robChanceFlat, its fellow "one of four"
+        // diversified perk on this companion.
         perks: [
             { type: "regradeChanceFlat", value: 0.03 },
-            { type: "bankCapacityPercent", value: 0.20 },
+            { type: "passiveIncomePercent", value: 0.10 },
             { type: "robChanceFlat", value: 0.15 },
             { type: "starchSellBonusPercent", value: 0.15 }
         ]
@@ -634,8 +640,16 @@ const Companions = [
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
         description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — keeping pace with you at work, and often enough just skipping you past the wait entirely — and somehow, it always finds its way back after a rebirth, more devoted each time.",
+        // passiveIncomePercent cut 10%->6% as the other half of the 2026-08-22 rebalance —
+        // Mochi keeps the bigger active-work kit (workMultiplierPercent, workCooldownSkipChance,
+        // rebirthBonusPercent) and gets a smaller passive kicker than Rootbeard's now-10%,
+        // rather than leading on both axes at once. Deliberately dips below Rootcarver's
+        // (Legendary) 8% passiveIncomePercent on this one sub-perk — an intentional exception
+        // to the "a rarer pull never loses to a lower rarity on the same stat" rule, since
+        // passive income is one of four perks here, not Mochi's primary stat, and its overall
+        // kit stays clearly ahead of Rootcarver's own two-perk total.
         perks: [
-            { type: "passiveIncomePercent", value: 0.10 },
+            { type: "passiveIncomePercent", value: 0.06 },
             { type: "rebirthBonusPercent", value: 0.20 },
             { type: "workMultiplierPercent", value: 0.12 },
             { type: "workCooldownSkipChance", value: 0.20 }

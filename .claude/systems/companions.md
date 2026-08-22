@@ -97,8 +97,8 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +18% + `passiveIncomePercent` +8% |
-| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `bankCapacityPercent` +20% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
-| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +10% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
+| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
+| Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
@@ -106,14 +106,17 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 |---|---|---|---|---|
 | Work Multiplier | 5% (Sprout) | 9% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
-| Bank Capacity | 12% (Ladybug) | — | 18% (Rootcarver) | 20% (Elder Rootbeard) |
+| Bank Capacity | 12% (Ladybug) | — | 18% (Rootcarver) | — |
 | Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
 | Starch Sell Bonus | — | 9% (Mole) | — | 15% (Elder Rootbeard) |
-| Passive Income | *(none by design)* | — | 8% (Rootcarver) | 10% (Mochi) |
+| Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
 | Metal Success Chance | — | 20% (Prospector) | — | — |
+
+Passive Income is the one perk type two companions share *within the same rarity tier* (both
+Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why.
 
 ### Guinea Pig: the roster's first tradeoff perk
 
@@ -182,8 +185,9 @@ Two findings drove a full rebalance (all numbers above are current, post-pass):
    `buyStarch.js`'s lookup) for a future companion, same as the already-dormant
    `guildRaidMultiplierPercent` below.
 
-Both Mythics are now 4-perk generalists rather than one specialist/one generalist — Elder Rootbeard
-covers regrade + bank + rob + starch, Mochi covers passive + rebirth + work multi + work cooldown.
+Both Mythics were 4-perk generalists at this point — Elder Rootbeard covered regrade + bank + rob +
+starch, Mochi covered passive + rebirth + work multi + work cooldown. (Elder Rootbeard's `bank`
+perk was later replaced; see the second balance pass below.)
 Firefly's original perk was `guildRaidMultiplierPercent` (+5%, applied to `startRaid.js`'s
 `totalMultiplier`); no companion currently grants that perk type, so that consumption code sits
 dormant rather than being removed — ready for a future companion, harmless as dead code since
@@ -194,6 +198,36 @@ Every perk except the `*Flat` ones (Barn Owl, Elder Rootbeard's rob/regrade — 
 existing guild `robChance` buff's flat-add shape) is percentage-of-current-stat, the same
 compounding-avoidance reasoning applied to rebirth: a flat bonus sized right for an early player
 becomes negligible for a maxed one, but a % scales itself automatically.
+
+### Second balance pass (2026-08-22): Mochi vs. Elder Rootbeard parity
+
+The "both Mythics are 4-perk generalists" framing above held on paper (comparable nominal perk
+totals) but not in practice — `balance-audit.md` quantified the gap: every one of Mochi's four
+perks resolves onto two continuous, unconditional channels (`/work` gain and the passive tick, via
+the Income Power framework above), while every one of Elder Rootbeard's four perks only paid off on
+a rare/gated/optional action (a regrade attempt, an hourly-capped `/rob`, a starch-supply-bottlenecked
+sell bonus). Worse, `bankCapacityPercent` — a ceiling, not a rate — hit **literal zero realized
+value** once bank regrade caps out, which happens right before every rebirth, exactly the moment
+liquid holdings and rob exposure peak.
+
+Fix: `bankCapacityPercent` replaced outright with `passiveIncomePercent` on Elder Rootbeard, split
+so the two Mythics read as genuinely different identities rather than one strictly ahead of the
+other — **Elder Rootbeard is now the passive-income specialist** (bigger passive gain, `+10%`,
+paired with its existing niche regrade/rob/starch utility) while **Mochi stays the active-work
+generalist** (work multiplier + cooldown skip + rebirth bonus carry it, so its own passive share
+drops to `+6%` rather than leading on every axis at once). Elder Rootbeard's other three perks
+(regrade/rob/starch) are unchanged — this pass fixed the one perk that could go to zero and
+rebalanced the passive split, it didn't rescale the situational perks themselves (a further option,
+considered and deferred: scale up regrade/rob/starch magnitudes to compensate for firing roughly
+1/12th as often as Mochi's always-on perks — left for a future pass if the gap still feels off after
+this one).
+
+Deliberate exception to the "a rarer pull never loses to a lower rarity on the same stat" rule
+(`bankCapacityPercent`'s own comment above documents the rule; it's what bumped Elder Rootbeard's
+old bank-capacity value in the first place): Mochi's new `+6%` `passiveIncomePercent` sits *below*
+Rootcarver's Legendary `+8%` on that one specific sub-perk. Accepted because passive income is one
+of four perks here, not Mochi's primary stat, and Mochi's overall kit stays clearly ahead of
+Rootcarver's two-perk total regardless.
 
 ## Perk application sites
 

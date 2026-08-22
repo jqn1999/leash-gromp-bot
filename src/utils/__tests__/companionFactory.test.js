@@ -100,7 +100,7 @@ describe('getActiveCompanion / getActivePerkValue', () => {
 
     test('reads both of Mochi\'s dual perks', () => {
         const user = freshUser({ companions: { owned: [{ id: 'mochi', workCount: 0 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 } });
-        expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0.10);
+        expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0.06);
         expect(getActivePerkValue(user, 'rebirthBonusPercent')).toBe(0.20);
     });
 });
