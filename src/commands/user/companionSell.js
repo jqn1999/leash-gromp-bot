@@ -1,20 +1,8 @@
-const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 const { Companions } = require("../../utils/constants");
-
-function buildConfirmRow() {
-    const confirmButton = new ButtonBuilder()
-        .setCustomId('companion_sell_confirm')
-        .setLabel('List it')
-        .setStyle(ButtonStyle.Danger);
-    const cancelButton = new ButtonBuilder()
-        .setCustomId('companion_sell_cancel')
-        .setLabel('Back out')
-        .setStyle(ButtonStyle.Secondary);
-    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-}
 
 module.exports = {
     name: "companion-sell",
@@ -54,7 +42,7 @@ module.exports = {
 
         const reply = await interaction.editReply({
             content: `${userDisplayName}, list ${companion.name} for ${price.toLocaleString()} potatoes? It will leave your owned companions (and be unequipped if active) until it sells or you cancel the listing.`,
-            components: [buildConfirmRow()]
+            components: [buildConfirmCancelRow('companion_sell', 'List it')]
         });
 
         const collectorFilter = i => i.user.id === interaction.user.id;

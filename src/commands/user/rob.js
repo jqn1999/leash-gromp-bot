@@ -1,5 +1,5 @@
-const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands")
+const { ApplicationCommandOptionType } = require("discord.js");
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
@@ -58,17 +58,6 @@ function determineRobOutcome(robChance) {
     return false
 }
 
-function buildConfirmRow() {
-    const confirmButton = new ButtonBuilder()
-        .setCustomId('rob_confirm')
-        .setLabel('Rob them')
-        .setStyle(ButtonStyle.Danger);
-    const cancelButton = new ButtonBuilder()
-        .setCustomId('rob_cancel')
-        .setLabel('Back out')
-        .setStyle(ButtonStyle.Secondary);
-    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-}
 
 module.exports = {
     name: "rob",
@@ -150,7 +139,7 @@ module.exports = {
         const [minGain, maxGain] = calculateRobAmountRange(targetUserPotatoes);
         const [minFine, maxFine] = calculateFailedRobPenaltyRange(userPotatoes);
         const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine);
-        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmRow()] });
+        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('rob', 'Rob them')] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);

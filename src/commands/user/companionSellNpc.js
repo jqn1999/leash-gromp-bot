@@ -1,20 +1,8 @@
-const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 const { Companions } = require("../../utils/constants");
-
-function buildConfirmRow() {
-    const confirmButton = new ButtonBuilder()
-        .setCustomId('companion_sell_npc_confirm')
-        .setLabel('Sell it')
-        .setStyle(ButtonStyle.Danger);
-    const cancelButton = new ButtonBuilder()
-        .setCustomId('companion_sell_npc_cancel')
-        .setLabel('Back out')
-        .setStyle(ButtonStyle.Secondary);
-    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-}
 
 module.exports = {
     name: "companion-sell-npc",
@@ -48,7 +36,7 @@ module.exports = {
 
         const reply = await interaction.editReply({
             content: `${userDisplayName}, sell ${companion.name} (level ${level}) to an NPC for somewhere between **${min.toLocaleString()}** and **${max.toLocaleString()}** potatoes (rolled when you confirm)? This is well under what it could fetch on /companion-sell — only do this if you don't want to wait for a buyer. It will leave your owned companions immediately, no refunds.`,
-            components: [buildConfirmRow()]
+            components: [buildConfirmCancelRow('companion_sell_npc', 'Sell it')]
         });
 
         const collectorFilter = i => i.user.id === interaction.user.id;

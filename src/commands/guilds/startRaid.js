@@ -1,7 +1,7 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
-const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getEffectiveRaidPower } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
@@ -788,18 +788,6 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, 
     return brackets;
 }
 
-function buildRaidConfirmRow() {
-    const confirmButton = new ButtonBuilder()
-        .setCustomId('raid_confirm')
-        .setLabel('Start the raid')
-        .setStyle(ButtonStyle.Danger);
-    const cancelButton = new ButtonBuilder()
-        .setCustomId('raid_cancel')
-        .setLabel('Not yet')
-        .setStyle(ButtonStyle.Secondary);
-    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-}
-
 module.exports = {
     name: "start-raid",
     description: "Starts a raid",
@@ -913,7 +901,7 @@ module.exports = {
         // meant. T4 is only shown once the guild's level has unlocked it.
         const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, guildLevel);
         const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier);
-        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildRaidConfirmRow()] });
+        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('raid', 'Start the raid', 'Not yet')] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);

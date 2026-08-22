@@ -1,23 +1,10 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
+const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { checkRebirthEligibility, previewRebirthBonus, computeRebirthState } = require("../../utils/rebirthFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
-
-function buildConfirmRow() {
-    const confirmButton = new ButtonBuilder()
-        .setCustomId('rebirth_confirm')
-        .setLabel('Rebirth')
-        .setStyle(ButtonStyle.Danger);
-    const cancelButton = new ButtonBuilder()
-        .setCustomId('rebirth_cancel')
-        .setLabel('Back out')
-        .setStyle(ButtonStyle.Secondary);
-    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-}
 
 module.exports = {
     name: "rebirth",
@@ -41,7 +28,7 @@ module.exports = {
 
         const preview = previewRebirthBonus(userDetails);
         const previewEmbed = embedFactory.createRebirthPreviewEmbed(userDisplayName, userId, userAvatar, preview);
-        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmRow()] });
+        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('rebirth', 'Rebirth')] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);

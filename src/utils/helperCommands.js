@@ -1,4 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 
 function convertSecondstoMinutes(seconds) {
     let timeText = '';
@@ -61,6 +62,25 @@ async function requireUserGuild(interaction, userDetails, userDisplayName, noGui
     return guild;
 }
 
+// The confirm/cancel button pair every confirmation-flow command builds before an
+// awaitMessageComponent prompt — Danger-styled confirm + Secondary-styled cancel, both
+// keyed off the same idPrefix (e.g. 'rebirth' -> customIds 'rebirth_confirm'/
+// 'rebirth_cancel'). Only the button-BUILDING is shared here; each command's own
+// await/collector/timeout handling stays where it is, since what happens after a click (or
+// a timeout — some commands show the same "cancelled" message either way, others
+// distinguish an explicit cancel from a timeout) genuinely differs per command.
+function buildConfirmCancelRow(idPrefix, confirmLabel, cancelLabel = 'Back out') {
+    const confirmButton = new ButtonBuilder()
+        .setCustomId(`${idPrefix}_confirm`)
+        .setLabel(confirmLabel)
+        .setStyle(ButtonStyle.Danger);
+    const cancelButton = new ButtonBuilder()
+        .setCustomId(`${idPrefix}_cancel`)
+        .setLabel(cancelLabel)
+        .setStyle(ButtonStyle.Secondary);
+    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
+}
+
 async function getSortedBirthdays() {
     const arr = await dynamoHandler.getAllBirthdays();
 
@@ -110,6 +130,7 @@ module.exports = {
     getUserInteractionDetails,
     requireUserDetails,
     requireUserGuild,
+    buildConfirmCancelRow,
     getSortedBirthdays,
     getRandomFromInterval
 }
