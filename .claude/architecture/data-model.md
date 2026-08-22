@@ -288,17 +288,19 @@ same `trackingId` + flat-fields pattern via `updateStatDatabase`/`getStatDatabas
 
 ## The "house" account
 
-- `client.user.id` — the **bot's own Discord account** (`1187560268172116029`, matching
-  `awsConfigurations.clientId`) — receives `/bank`/`/guild-bank` deposit tax, `/rob` fines, `/give`
-  tax, and the companion market's sale fee. This is the one legitimate house account — every skim
-  it collects is shown directly in that command's own reply embed, not hidden from players.
-- `103243257240121344` (the hardcoded dev ID, same as the sole entry in `awsConfigurations.devs`)
-  **used to** also receive an undocumented 5% skim from every `/work` gain via
-  `calculateGainAmount` in `workFactory.js`, on top of `.95`-ing the player's own payout to fund it
-  — removed 2026-08-22 at that account holder's own request. See
-  [systems/economy-and-work.md](../systems/economy-and-work.md#core-gain-formula). That id still
-  appears elsewhere in the codebase purely as the `awsConfigurations.devs` entry gating `devOnly`
-  commands — it no longer receives any payout.
+`client.user.id` (`1187560268172116029`, matching `awsConfigurations.clientId`) — the **bot's own
+Discord account** — is the single house account. It receives `/bank`/`/guild-bank` deposit tax,
+`/rob` fines, `/give` tax, the companion market's sale fee, and (via `calculateGainAmount` in
+`workFactory.js`) a 5% skim off the top of every `/work` gain — the same cut shown directly in
+those other commands' own reply embeds, except this one has nothing to show it in since
+`calculateGainAmount` just returns a number to whichever `/work` handler called it.
+
+Briefly (2026-08-22) the `/work` skim instead paid out to `103243257240121344` (the hardcoded dev
+ID, same as the sole entry in `awsConfigurations.devs`) — removed for being undocumented/hidden
+from players, then re-added the same day pointed at `awsConfigurations.clientId` per direct
+instruction to restore the 5% but redirect it to the bot's own account. That dev ID still appears
+elsewhere in the codebase purely as the `awsConfigurations.devs` entry gating `devOnly` commands —
+it receives no payout of any kind.
 
 Both are funded purely through `addUserDatabase`'s `ADD` operation, which auto-vivifies a bare
 `{userId, potatoes}` record with none of the rest of the schema if the account was never looked up

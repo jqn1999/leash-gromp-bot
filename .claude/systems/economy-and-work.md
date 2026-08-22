@@ -26,14 +26,16 @@ Core loop: [src/commands/user/work.js](../../src/commands/user/work.js) +
 `calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier)`:
 
 ```
-gain = floor(min(currentGain, maxGain) * multiplier * userMultiplier)
+gain = floor(min(currentGain, maxGain) * multiplier * userMultiplier * 0.95)
 ```
 
-**Removed 2026-08-22**: this used to skim an extra 5% off the top (`* 0.95`) straight to a
-hardcoded personal account (`103243257240121344`) on **every** gain — undocumented anywhere
-players could see it, unlike the real house taxes on bank deposits and guild bank deposits (below),
-which go to the bot's own account and are shown directly in those commands' reply embeds. Removed at
-that account holder's own request; players now keep the full calculated gain.
+The dropped 5% (`gainAmount/.95*.05`) is paid to the bot's own account (`awsConfigurations.clientId`)
+on **every** gain — the same 5%-cut pattern shows up again on bank deposits (below) and guild bank
+deposits, except this one has no reply embed of its own to surface it in (`calculateGainAmount`
+just returns a number to whichever `/work` handler called it). Briefly (2026-08-22, same day) this
+paid out to a hardcoded personal account instead of the bot's — removed, then re-added pointed at
+the bot's account per direct instruction: "make it so 5% goes to the bot account from works... what
+was there before but with the bot id instead."
 
 ## Encounter types
 

@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, CompanionDuplicateReward, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops } = require("../utils/constants")
+const { Work, CompanionDuplicateReward, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -634,13 +634,20 @@ const sweetPotatoRewards = [
     }
 ]
 
-// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax. Every
-// gain-scenario handler except handlePoisonPotato itself passes userDetails through
-// (Poison Potato's own immune-branch payout is a plain regular-sized gain that
-// intentionally skips this tax — see its own comment).
+// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax —
+// applied AFTER the house's share is computed so the house's cut is always based on the
+// gross gain, unaffected by a player's own companion; the tax comes purely out of the
+// player's own take. Every gain-scenario handler except handlePoisonPotato itself passes
+// userDetails through (Poison Potato's own immune-branch payout is a plain regular-sized
+// gain that intentionally skips this tax — see its own comment).
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
-    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier);
+    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
+    // Same 5%-cut pattern as /bank, /guild-bank, and /rob's fine — but unlike those, this
+    // one has no reply embed of its own to show it in (calculateGainAmount just returns a
+    // number to whichever /work handler called it), so there's nothing to display it in.
+    const houseShare = Math.floor(gainAmount / .95 * .05);
+    await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
 
     if (userDetails) {
         const yieldTaxPercent = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
