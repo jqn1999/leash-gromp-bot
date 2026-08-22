@@ -402,3 +402,141 @@ two designs to build.
   `regrade.js`, `rob.js`, `sellStarch.js`, `bank.js`, `workFactory.js`, or
   `rebirthFactory.js`'s respective perk reads; this is a pure numbers/design-shape issue,
   not a bug.
+
+---
+
+## 2026-08-22 (follow-up) — Guinea Pig `poisonImmunity` vs. Poison Mitigation
+
+Focused re-check, prompted by a user question: is Guinea Pig's `poisonImmunity` perk
+(`constants.js:538`, Common, single-perk, `value: 0.03`) still worth taking now that
+`PoisonMitigation` (`constants.js:380-387`) gives every player free bad-luck protection on
+Poison Potato, and would an "opportunist" rework (benefit from hitting poison instead of
+avoiding it) make more sense? Went in already knowing one confirmed fact: the perk does double
+duty in `workFactory.js` — a boolean immunity gate (`handlePoisonPotato:409`, any nonzero value
+grants full immunity) plus a yield tax subtracted from every *other* `/work` gain
+(`calculateGainAmount:653-656`) — so leveling this companion up (5%/level, 1.45x cap at level
+10, `CompanionLeveling:409-433`) grows the tax from 3% to 4.35% while `Work.GUINEA_PIG_PAYOUT_
+FACTOR = 0.20` (the guaranteed poison-hit payout, `constants.js:18`) never moves.
+
+Built a Monte-Carlo model (not eyeballed) in units of `B` = one uncapped Regular `/work`
+payout, using the real formulas: Poison's raw loss uses the identical `workGainAmount*10`/
+`MAX_POISON_POTATO=10000` shape as Large Potato's `workGainAmount*10`/`MAX_LARGE_POTATO=10000`
+(`workFactory.js:423` vs. `:519`) so a pre-mitigation poison hit costs the same magnitude as a
+Large win (`10B`); Guinea Pig's immune-branch payout is `0.20 * (uncapped Regular payout)`
+(`workFactory.js:411-412`), explicitly *not* run through the yield-tax path. Base Poison Potato
+odds are `eventFactory.js`'s `workProbability[WORK_SCENARIO_INDICES.POISON] = .01`
+(`eventFactory.js:10`, `WORK_SCENARIO_INDICES.POISON = 1` at `:162`) — 1%, becoming 2%/5% during
+`POISONX2`/`POISONX5` events (`:66`, `:81`). Simulated a full week per trial, replaying
+`computePoisonMitigation`'s exact reduction schedule (`workFactory.js:58-73`:
+`REDUCTION_PER_HIT=.15` per prior hit that week, `MAX_REDUCTION=.60` cap, `MILESTONE_
+REDUCTION=.90` from the 10th hit on) against Guinea Pig's flat tax, across playtime levels.
+
+### Findings
+
+**1. [LOW-MEDIUM, live] Poison Mitigation has genuinely cut into Guinea Pig's edge, but has
+not flipped it negative at the real base encounter rate for a typical player.** Stage: all,
+strongest effect late/heavy-play. At `p=.01` (real base rate), 4 active hrs/day, level-1 tax:
+Guinea-Pig-equipped weekly EV beats mitigated-baseline by **+6.08%** (`29.47B` edge on `~485B`
+baseline); at max level (4.35% tax) the edge shrinks to **+4.13%**. Comparing against a
+hypothetical world with `PoisonMitigation` deleted entirely (reduction forced to 0), Guinea
+Pig's edge at the same `p=.01` would have been **+8.44%** — mitigation has cut its real-world
+edge by roughly a third to a half, but a solidly-positive margin remains for a moderate-playtime
+player. Analytical breakeven (swept `p` from .0005 to .01): Guinea Pig stops paying for itself
+below **p≈0.0029** (level 1) / **p≈0.0043** (level 10) — the real base rate of `.01` clears
+both thresholds by ~2.3-3.4x, so under default (non-event) conditions this is not currently a
+dominated pick for a typical player.
+
+**2. [MEDIUM, live] The edge collapses to roughly zero — and goes slightly negative at the
+extreme — for exactly the heaviest-playtime, most-leveled players, which is the opposite of
+where a companion's value should trend.** Stage: late game. Swept hours/day at the real `p=.01`
+base rate: edge is **+8.54%** at 1hr/day (level-1 tax) but falls monotonically to **+1.16%**
+at 16hrs/day; at level-10 (max) tax the same sweep goes **+6.35% → -0.19%**, i.e. actually
+negative for the most active, fully-leveled player — the exact archetype who has both invested
+the most `/work` calls into maxing this companion's level *and* racks up enough weekly poison
+hits to ride `PoisonMitigation`'s 60%/90% reduction caps most of the time anyway. The two axes
+that grow with player investment (companion level → bigger tax; play volume → more mitigated,
+cheaper-to-eat-raw poison hits) both push the same direction, against Guinea Pig. This is the
+same "dead content outpaced by other systems' growth" shape flagged elsewhere in this log,
+here caused by two systems (companion leveling + a newer safety net) each independently eating
+into one perk's value without anyone checking the combination.
+
+**3. [LOW, live but narrow] Poison Mitigation compresses Guinea Pig's edge hardest during the
+exact moments (`POISONX2`/`POISONX5` events) the "insurance" framing is supposed to shine.**
+At `p=.02` (`POISONX2`), mitigation-world edge is **+10.86%** vs. a would-be **+22.80%** with
+no mitigation — roughly halved. At `p=.05` (`POISONX5`), mitigation-world edge is **+14.66%**
+vs. a would-be **+80.82%** — over 5x compression. Mechanically: a poison-rate event packs many
+hits into the same ISO week, so a mitigated player rides down to the 60%/90% reduction caps
+fast, while Guinea Pig's flat tax keeps draining at the same rate regardless of event state.
+Guinea Pig remains net-positive even during these events, just far less dramatically than the
+"never once let a bad one through" framing (`constants.js:530`) implies relative to the
+alternative.
+
+**4. [CONFIRMED, independent of the above] The leveling-makes-it-worse issue holds and needs
+fixing regardless of whether a rework happens.** Directly demonstrated in the same simulation:
+holding `p=.01`/4hrs-day fixed, edge drops from `29.47B` (level 1, 3% tax) to `20.13B` (level
+10, 4.35% tax) — a ~32% cut to the companion's entire value proposition purely from a player
+grinding out the exact `workCount` (3725 calls, `CompanionLeveling.THRESHOLDS[9]`) the game
+asks them to invest to max it out. No other companion in the roster has a perk that gets worse
+with level (`getLevelMultiplier` scales every other perk's *benefit*; here it scales a *cost*).
+This is a correctness issue independent of the mitigation question — worth fixing (e.g.
+decouple the tax from level scaling, or scale `GUINEA_PIG_PAYOUT_FACTOR` up with level to
+match) whether or not `product-owner` also pursues a full rework.
+
+**5. [Design note, not a bug] `poisonImmunity` and `PoisonMitigation` are mutually exclusive
+branches, not sequential/stacked.** `workFactory.js:409` checks `poisonImmunity > 0` first;
+`computePoisonMitigation` is only ever invoked inside the `else` branch (`:422`) — a Guinea-Pig-
+equipped player's `userDetails.poisonMitigation` weekly-hit-counter never updates at all while
+equipped (only the `else` branch writes `nextPoisonMitigation`). Confirms the premise in the
+user's question was inverted: mitigation doesn't run "before" the companion perk on the same
+hit — the two systems currently have *zero* interaction surface. Relevant for any rework that
+wants Guinea Pig to complement (not replace) mitigation: that requires new logic, since today's
+code never runs both on the same event.
+
+### Rework directions (flagged for `product-owner`/`architect`, not applied)
+
+The user's "opportunist" instinct (benefit from hitting poison rather than avoiding it) is
+reasonable given Finding 5 — an insurance-style perk that fully bypasses a system-wide safety
+net will always have a shrinking ceiling as that net improves, whereas a perk that reads and
+adds onto the *post-mitigation* result scales together with future mitigation tuning instead of
+racing against it. Three directions, ranked by how cleanly they avoid double-dipping into
+`PoisonMitigation`'s own `MAX_REDUCTION`/`MILESTONE_REDUCTION` caps:
+
+1. **Post-mitigation rebate (safest, complements rather than doubles-dips)** — let poison
+   resolve normally for everyone including Guinea Pig owners (mitigation applies as-is, loss
+   and lockout both), then refund a companion-level-scaled percentage of *whatever loss
+   remains after mitigation* as a bonus gain on the same hit. Operates strictly on mitigation's
+   output rather than its reduction math, so it can never push a combined reduction past
+   `PoisonMitigation`'s own caps by construction. Removes the always-on tax entirely (repriced
+   against a smaller, rarer per-hit benefit instead of a permanent-immunity one), and keeps
+   leveling meaningful without Finding 4's inversion (more rebate% at higher level = strictly
+   better, matching every other perk's leveling shape).
+2. **Mitigation-rate booster** — Guinea Pig doubles its own `REDUCTION_PER_HIT` and/or halves
+   `MILESTONE_HIT_THRESHOLD` for the equipped player only, i.e. reaches the existing 60%/90%
+   caps faster than a baseline player rather than introducing a new reward axis. Directly
+   mitigation-aware (needs `computePoisonMitigation` to accept a per-player override, real
+   logic change, not just a constants tweak) and avoids inventing new value, but does still
+   require deciding whether the *caps themselves* (`MAX_REDUCTION`/`MILESTONE_REDUCTION`) stay
+   shared or also get a companion-specific ceiling — worth an explicit call since uncapped
+   stacking here is the one direction that could legitimately double-dip.
+3. **Full opportunist flip** — replace `poisonImmunity` with a perk that pays out *more* than a
+   normal roll specifically when Poison Potato is hit (e.g. a payout multiplier on top of the
+   already-mitigated result, no tax, no immunity, normal lockout applies mitigated as usual).
+   Closest to the user's literal framing and the simplest to reason about in isolation, but
+   removes the "protects newer players from losing a whole session to lockout" role the current
+   perk's design comment (`constants.js:535-537`) explicitly calls out as its purpose — would
+   need `product-owner` to confirm that protection role is no longer needed now that
+   `PoisonMitigation` exists system-wide, or should be preserved in whatever replaces Guinea
+   Pig at Common tier.
+
+Direction 1 is the recommended starting point if a rework proceeds — it's the only one of the
+three that structurally can't conflict with `PoisonMitigation`'s own caps, and it fixes Finding
+4 as a side effect rather than needing a separate patch.
+
+### Checked, no issues found (this pass)
+
+- **`calculateGainAmount`'s house-share/tax ordering** (`workFactory.js:643-660`) — house's 5%
+  cut is computed before Guinea Pig's yield tax is applied (`:645-656`), so the house's take is
+  unaffected by any player's companion, matching the inline comment's stated intent. No bug.
+- **`Work.MAX_POISON_POTATO` / `MAX_LARGE_POTATO` cap parity** (`constants.js:19-21`) — both
+  `10000`, confirmed intentional (same `workGainAmount*10` formula shape), not a copy-paste
+  divergence to flag.
