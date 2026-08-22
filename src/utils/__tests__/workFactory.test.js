@@ -231,26 +231,64 @@ describe('handlePoisonPotato', () => {
             });
         }
 
-        test('grants a small gain instead of a loss, and reports immune with no mitigationInfo', async () => {
+        test('grants a small gain instead of a loss, and reports immune with mitigationInfo populated', async () => {
             const userDetails = guineaPigUser({ workMultiplierAmount: 50 });
             const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             expect(result.potatoesGained).toBeGreaterThan(0);
             expect(result.immune).toBe(true);
-            expect(result.mitigationInfo).toBeNull();
+            // Guinea Pig now goes through the same weekly mitigation as everyone else
+            // (previously the immune branch skipped it and never updated the weekly
+            // counter at all) before converting the remainder into a rebate.
+            expect(result.mitigationInfo).not.toBeNull();
+            expect(result.mitigationInfo.rebatePercent).toBe(Work.GUINEA_PIG_POISON_REBATE_PERCENT);
         });
 
-        test('the gain is exactly GUINEA_PIG_PAYOUT_FACTOR of what a normal regular-work payout would be', async () => {
+        test('the gain equals GUINEA_PIG_POISON_REBATE_PERCENT of what a same-multiplier player would have lost after mitigation', async () => {
             const gpUser = guineaPigUser({ userId: 'gp', workMultiplierAmount: 50 });
             const plainUser = baseUser({ userId: 'plain', workMultiplierAmount: 50 });
-            const result = await workFactory.handlePoisonPotato(gpUser, 1000, 1);
-            const normalPayout = await workFactory.handleRegularWork(plainUser, 1000, 1, 0);
-            expect(result.potatoesGained).toBe(Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR));
+            const gpResult = await workFactory.handlePoisonPotato(gpUser, 1000, 1);
+            const plainResult = await workFactory.handlePoisonPotato(plainUser, 1000, 1);
+            // Both are a first-this-week hit (reduction 0) with identical inputs, so the
+            // mitigated loss calculateGainAmount computes is deterministic and identical
+            // between them — only what each companion does with it differs.
+            const mitigatedLoss = -plainResult.potatoesGained;
+            expect(gpResult.potatoesGained).toBe(Math.floor(mitigatedLoss * Work.GUINEA_PIG_POISON_REBATE_PERCENT));
+        });
+
+        test('writes poisonMitigation so repeated Guinea Pig hits still build weekly history', async () => {
+            const userDetails = guineaPigUser();
+            await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setFields).toHaveProperty('poisonMitigation');
+            expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
         });
 
         test('uses the normal cooldown instead of the 1-hour poison lockout', async () => {
             const userDetails = guineaPigUser();
             await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS);
+        });
+
+        // Locks in the asymmetric scaling this rework introduced: leveling Guinea Pig now
+        // makes BOTH halves of its perk better (bigger rebate, cheaper tax), unlike every
+        // other perk where a single value just scales the same direction.
+        test('a maxed-level Guinea Pig gets a bigger rebate and a smaller yield tax than level 1', async () => {
+            const level1User = guineaPigUser({ userId: 'lvl1', workMultiplierAmount: 50 });
+            const maxLevelUser = guineaPigUser({
+                userId: 'lvl10', workMultiplierAmount: 50,
+                companions: { owned: [{ id: 'guinea_pig', workCount: 3725 }], active: 'guinea_pig' },
+            });
+
+            const level1Poison = await workFactory.handlePoisonPotato(level1User, 1000, 1);
+            const maxLevelPoison = await workFactory.handlePoisonPotato(maxLevelUser, 1000, 1);
+            expect(maxLevelPoison.mitigationInfo.rebatePercent).toBeGreaterThan(level1Poison.mitigationInfo.rebatePercent);
+            expect(maxLevelPoison.mitigationInfo.rebatePercent).toBeCloseTo(Work.GUINEA_PIG_POISON_REBATE_PERCENT * 1.45);
+
+            const level1Regular = await workFactory.handleRegularWork(level1User, 1000, 1, 0);
+            const maxLevelRegular = await workFactory.handleRegularWork(maxLevelUser, 1000, 1, 0);
+            // Same effectiveMultiplier for both (workMultiplierAmount is equal), so a
+            // smaller tax on the max-level user shows up directly as a bigger regular gain.
+            expect(maxLevelRegular).toBeGreaterThan(level1Regular);
         });
 
         test('writes to totalEarnings, not totalLosses', async () => {

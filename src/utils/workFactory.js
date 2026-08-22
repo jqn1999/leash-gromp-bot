@@ -391,47 +391,51 @@ class WorkFactory {
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const effectiveMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier;
 
-        // Guinea Pig — negates the loss AND the 1-hour lockout entirely, replacing both
-        // with a small guaranteed gain instead (a plain regular-sized payout scaled down
-        // by GUINEA_PIG_PAYOUT_FACTOR, intentionally NOT run through calculateGainAmount's
-        // own yield-tax path — that tax already comes out of every OTHER gain this
-        // companion touches, taxing this reduced "safety" payout too would be a double
-        // penalty on the one thing the perk exists to protect).
-        const poisonImmunity = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
-        let potatoesGained, workTimer;
-        let updateFields;
-        // Mitigation details surfaced on the embed (see embedFactory.createPoisonPotatoEmbed)
-        // so the reduction is actually visible to the player, not just felt indirectly via
-        // a shorter wait. Stay null for the Guinea Pig branch — there's no loss/lockout to
-        // mitigate, so nothing to show.
-        let mitigationInfo = null;
+        // Guinea Pig — everyone (Guinea Pig included) goes through the exact same weekly
+        // bad-luck mitigation first now; previously the immune branch skipped
+        // computePoisonMitigation entirely and never updated the weekly counter, so a
+        // Guinea Pig player's own hit history silently never counted toward anything
+        // (including the 10-hits-in-a-week milestone achievement). Guinea Pig then
+        // converts a level-scaled fraction of whatever loss remains AFTER mitigation into
+        // a gain instead of taking it, and always skips the lockout (this is a hit that
+        // pays out, not one to be locked out from following up on) — see
+        // companionFactory.getGuineaPigTaxAndRebate for why the rebate scales UP with
+        // level while the perk's own tax cost (in calculateGainAmount, below) scales DOWN.
+        const guineaPig = companionFactory.getGuineaPigTaxAndRebate(userDetails, Work.GUINEA_PIG_POISON_REBATE_PERCENT);
+        const immune = guineaPig !== null;
 
-        if (poisonImmunity > 0) {
-            let userTotalEarnings = userDetails.totalEarnings;
-            const normalPayout = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier);
-            potatoesGained = Math.floor(normalPayout * Work.GUINEA_PIG_PAYOUT_FACTOR);
+        let userTotalLosses = userDetails.totalLosses;
+        let userTotalEarnings = userDetails.totalEarnings;
+        // Bad-luck protection — the more times poison has already hit this same player
+        // THIS week, the less painful this hit is, resetting every Monday. See
+        // computePoisonMitigation above.
+        const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(userDetails.poisonMitigation);
+        let mitigatedLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
+        mitigatedLoss = Math.floor(mitigatedLoss * (1 - reduction));
+        const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
+
+        let potatoesGained, workTimer, updateFields;
+
+        if (immune) {
+            potatoesGained = Math.floor(mitigatedLoss * guineaPig.rebatePercent);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
             workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
-            updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings };
+            updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings, poisonMitigation: nextPoisonMitigation };
         } else {
-            let userTotalLosses = userDetails.totalLosses;
-            // Bad-luck protection — the more times poison has already hit this same
-            // player THIS week, the less painful this hit is, resetting every Monday. See
-            // computePoisonMitigation above.
-            const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(userDetails.poisonMitigation);
-            potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
-            potatoesGained = Math.floor(potatoesGained * (1 - reduction));
-            potatoesGained *= -1
-            userPotatoes += potatoesGained
-            userTotalLosses += potatoesGained
-            const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
+            potatoesGained = -mitigatedLoss;
+            userPotatoes += potatoesGained;
+            userTotalLosses += potatoesGained;
             workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds);
             updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses, poisonMitigation: nextPoisonMitigation };
-            mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached };
-            if (milestoneJustReached) {
-                updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
-            }
+        }
+
+        // Surfaced on the embed (see embedFactory.createPoisonPotatoEmbed) so the
+        // reduction — and, for Guinea Pig, the rebate — are actually visible to the
+        // player, not just felt indirectly.
+        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, rebatePercent: immune ? guineaPig.rebatePercent : null };
+        if (milestoneJustReached) {
+            updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
         }
 
         let workScenarioCounts = userDetails.workScenarioCounts;
@@ -443,7 +447,7 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return { potatoesGained, immune: poisonImmunity > 0, mitigationInfo };
+        return { potatoesGained, immune, mitigationInfo };
     }
 
     // A second flavor of loss alongside Poison Potato, but it raids the BANK instead of
@@ -634,12 +638,13 @@ const sweetPotatoRewards = [
     }
 ]
 
-// userDetails is optional and only used for Guinea Pig's poisonImmunity yield tax —
-// applied AFTER the house's share is computed so the house's cut is always based on the
-// gross gain, unaffected by a player's own companion; the tax comes purely out of the
-// player's own take. Every gain-scenario handler except handlePoisonPotato itself passes
-// userDetails through (Poison Potato's own immune-branch payout is a plain regular-sized
-// gain that intentionally skips this tax — see its own comment).
+// userDetails is optional and only used for Guinea Pig's own yield tax — applied AFTER
+// the house's share is computed so the house's cut is always based on the gross gain,
+// unaffected by a player's own companion; the tax comes purely out of the player's own
+// take. handlePoisonPotato itself deliberately never passes userDetails through when
+// computing the poison loss/rebate — that number already goes through Guinea Pig's own
+// rebate math there, taxing it here too would double-charge the one thing this
+// companion's perk exists to pay out on.
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
@@ -650,9 +655,12 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
     await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
 
     if (userDetails) {
-        const yieldTaxPercent = companionFactory.getActivePerkValue(userDetails, "poisonImmunity");
-        if (yieldTaxPercent > 0) {
-            gainAmount = Math.floor(gainAmount * (1 - yieldTaxPercent));
+        // Guinea Pig's own tax — see companionFactory.getGuineaPigTaxAndRebate for why
+        // this scales DOWN with level (opposite direction from the rebate this same
+        // companion grants in handlePoisonPotato, above).
+        const guineaPig = companionFactory.getGuineaPigTaxAndRebate(userDetails, Work.GUINEA_PIG_POISON_REBATE_PERCENT);
+        if (guineaPig) {
+            gainAmount = Math.floor(gainAmount * (1 - guineaPig.taxPercent));
         }
     }
 

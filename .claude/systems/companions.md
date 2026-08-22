@@ -103,7 +103,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Sprout | Common | `workMultiplierPercent` +5% |
 | Fieldmouse | Common | `workCooldownSkipChance` 5% (chance to skip the `/work` cooldown entirely, rather than reduce it) |
 | Ladybug | Common | `bankCapacityPercent` +12% |
-| Guinea Pig | Common | `poisonImmunity` (negates Poison Potato's loss + 1-hour lockout, replaced with a small guaranteed gain instead) at the cost of a flat -3% tax on every other gain |
+| Guinea Pig | Common | `poisonImmunity` (converts a level-scaled fraction of a weekly-mitigated Poison Potato loss into a gain instead, always skips the lockout) at the cost of a level-scaled tax on every other gain — see below, both halves scale with level in the direction that rewards it |
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
@@ -136,19 +136,37 @@ Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for
 Every other perk is pure upside — Guinea Pig is the first with a real, always-on cost. The whole
 point is a genuine "power vs. safety" choice rather than just "which flavor of power," so it's
 Common on purpose: Poison Potato's 1-hour lockout (`Work.POISON_POTATO_TIMER_INCREASE_SECONDS`)
-disproportionately hurts newer players (an entire session lost), so the safety net that matters
-most stays easy to find rather than gated behind luck.
+disproportionately hurts newer players (an entire session lost), so that protection stays easy to
+find rather than gated behind luck.
 
-Implementation lives almost entirely in `workFactory.js`. `calculateGainAmount` (the shared
-choke-point every potato-denominated gain scenario funnels through — Regular/Large/Metal/Golden/
-Ancient/the companion-duplicate consolation) takes an optional `userDetails` param and, if the
-active companion carries `poisonImmunity`, shaves that value off the gain **after** the house's
-`adminUserShare` is computed — the tax comes out of the player's own take only, never the house
-cut. `handlePoisonPotato` branches on the same perk: immune, it computes a plain regular-sized
-payout (deliberately *not* run through the tax-aware path — taxing the "safety" payout too would
-double-penalize the one thing this perk exists to protect) scaled down by
-`Work.GUINEA_PIG_PAYOUT_FACTOR` (20%) and uses the normal cooldown; not immune, the original
-loss + 1-hour-lockout behavior is untouched.
+**Reworked 2026-08-22** from a flat "avoid the loss entirely" immunity to a poison-hit rebate,
+per direct instruction, with balance grounding from `balance-audit.md`'s same-day entry: the
+standing Poison Mitigation system (weekly bad-luck protection everyone gets, see
+[economy-and-work.md](economy-and-work.md)) had already eroded most of immunity's edge over just
+eating a mitigated hit raw, especially for max-level companions and heavy players — and the old
+design's leveling made the tax *worse* with no offsetting benefit, since both the tax and the
+(flat, unleveled) payout used the same uniformly-scaled perk value.
+
+The rework makes leveling help both halves instead of just one hurting:
+
+- **The rebate** (`handlePoisonPotato` in `workFactory.js`): every hit — Guinea Pig included —
+  runs through the exact same weekly `computePoisonMitigation` reduction everyone else gets first
+  (previously the immune branch skipped this entirely, so a Guinea Pig owner's own hit history
+  never counted toward anything, including the 10-hits-in-a-week milestone). Guinea Pig then
+  converts a level-scaled fraction of whatever loss remains *after* mitigation into a gain instead
+  of taking it — `Work.GUINEA_PIG_POISON_REBATE_PERCENT` (50%) at level 1, up to 72.5% at level
+  10 — and always skips the lockout, using the normal cooldown regardless.
+- **The tax** (`calculateGainAmount`, the shared choke-point every potato-denominated gain
+  scenario funnels through): the same `poisonImmunity: 0.03` base value as before, applied
+  **after** the house's cut so the tax comes out of the player's own take only — but now scales
+  **down** with level instead of up, landing at 2.07% at level 10 instead of climbing to 4.35%.
+
+Both derive from one function, `companionFactory.getGuineaPigTaxAndRebate(userDetails,
+rebateBasePercent)` — the one companion whose perk doesn't fit `getActivePerkValue`'s ordinary
+"single value, multiplied up" shape, since leveling needs to push its two halves in opposite
+directions. Rebate multiplies UP by the level multiplier like every other perk in the roster; tax
+divides DOWN by it instead. See `.claude/roadmap.md` for the exact numbers by level and the
+before/after comparison chart shared with the account holder.
 
 ### Prospector: Metal Potato's success roll gets its first modifier
 

@@ -11,11 +11,12 @@ const Work = {
     // unlikely to ever approach this cap even at Mochi's 20% — this just bounds the
     // pathological tail so a freak streak can't spam the channel or chew through rate limits.
     MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 15,
-    // Guinea Pig's poison-immune payout, as a fraction of what a normal regular /work
-    // gain would have been for the same roll — computed from the real regular payout
-    // rather than a separate maxGain constant so it scales identically to Regular work
-    // at any server wealth level instead of hitting its own cap at a different point.
-    GUINEA_PIG_PAYOUT_FACTOR: 0.20,
+    // Guinea Pig's poison rebate base — the fraction of a hit's already-mitigated loss
+    // it converts into a gain instead, at level 1. Scales UP with level via
+    // companionFactory.getGuineaPigTaxAndRebate (level 10 = this * 1.45 = 72.5%), the
+    // opposite direction from the perk's own yield-tax cost (see the poisonImmunity perk
+    // value below, and that function's own comment for why the two scale oppositely).
+    GUINEA_PIG_POISON_REBATE_PERCENT: 0.50,
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
@@ -529,12 +530,20 @@ const Companions = [
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A guinea pig that insists on taking the first bite of every potato you find, just in case — a little wasteful, but it's never once let a bad one through.",
         // The first perk in the roster with a real cost, not pure upside — trades a
-        // small always-on tax for fully negating Poison Potato's loss AND its cooldown
-        // lockout (see workFactory.js's handlePoisonPotato), replacing it with
-        // a small guaranteed gain instead (Work.GUINEA_PIG_PAYOUT_FACTOR). Common tier
-        // and single-perk by design — the lockout disproportionately hurts newer
-        // players (an entire session lost), so the safety net that matters most stays
-        // easy to find rather than gated behind luck.
+        // small always-on tax (this perk's own `value`, below) for turning every Poison
+        // Potato hit into a gain instead of a loss: the same weekly bad-luck mitigation
+        // everyone else gets applies first, then Guinea Pig converts a level-scaled
+        // fraction of whatever loss remains into a positive payout, and skips the
+        // cooldown lockout entirely (see workFactory.js's handlePoisonPotato and
+        // companionFactory.getGuineaPigTaxAndRebate). Reworked 2026-08-22 from a flat
+        // "avoid the loss entirely" immunity — the earlier version's leveling actually
+        // made the tax cost worse with no offsetting benefit (both halves used the same
+        // uniformly-scaled value), and the standing Poison Mitigation system had already
+        // eroded most of immunity's edge over just eating a mitigated hit raw (see
+        // balance-audit.md's 2026-08-22 entry). Now leveling helps both sides: the tax
+        // shrinks and the rebate grows. Common tier and single-perk by design — the
+        // lockout disproportionately hurts newer players (an entire session lost), so
+        // that protection stays easy to find rather than gated behind luck.
         perks: [{ type: "poisonImmunity", value: 0.03 }]
     },
     {

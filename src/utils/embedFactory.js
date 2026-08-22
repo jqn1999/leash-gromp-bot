@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -66,7 +66,10 @@ const PERK_LABELS = {
     bankCapacityPercent: value => `+${(value * 100).toFixed(1)}% Bank Capacity`,
     regradeChanceFlat: value => `+${(value * 100).toFixed(1)}% Regrade Success Chance`,
     rebirthBonusPercent: value => `+${(value * 100).toFixed(1)}% Rebirth Bonus`,
-    poisonImmunity: value => `Immune to Poison Potato (-${(value * 100).toFixed(1)}% yield on every other gain)`,
+    // The one perk that doesn't scale as a single multiplied-up value (see
+    // companionFactory.getGuineaPigTaxAndRebate) — takes { taxPercent, rebatePercent }
+    // instead of a plain number, computed by formatCompanionPerks below.
+    poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`
 };
 
@@ -77,7 +80,17 @@ const PERK_LABELS = {
 // the exact same scaling at the real usage site, so this never overstates it.
 function formatCompanionPerks(companion, level = 1) {
     const multiplier = companionFactory.getLevelMultiplier(level);
-    return companion.perks.map(perk => PERK_LABELS[perk.type](perk.value * multiplier)).join(', ');
+    return companion.perks.map(perk => {
+        // poisonImmunity doesn't fit the "one value multiplied up" shape every other perk
+        // uses — see companionFactory.getGuineaPigTaxAndRebate.
+        if (perk.type === 'poisonImmunity') {
+            return PERK_LABELS.poisonImmunity({
+                taxPercent: perk.value / multiplier,
+                rebatePercent: Work.GUINEA_PIG_POISON_REBATE_PERCENT * multiplier
+            });
+        }
+        return PERK_LABELS[perk.type](perk.value * multiplier);
+    }).join(', ');
 }
 
 // Every companion carrying workCooldownSkipChance (Fieldmouse/Spudsprite/Mochi) gets its
@@ -1014,9 +1027,11 @@ class EmbedFactory {
     // the whole point of PoisonMitigation (see workFactory.js) is that repeat hits get
     // progressively less painful, and that needs to actually be visible on the embed or
     // it's just a quieter cooldown nobody notices. result: { potatoesGained, immune,
-    // mitigationInfo } from workFactory.handlePoisonPotato — mitigationInfo is null on the
-    // Guinea Pig immune branch (nothing to mitigate), otherwise
-    // { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached }.
+    // mitigationInfo } from workFactory.handlePoisonPotato — mitigationInfo is always
+    // populated now (Guinea Pig goes through the same weekly mitigation as everyone else
+    // before converting the remainder into a rebate): { reduction, lockoutSeconds,
+    // hitNumberThisWeek, milestoneJustReached, rebatePercent }, rebatePercent only
+    // non-null when immune.
     createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null) {
         const { potatoesGained, immune, mitigationInfo } = result;
         let fields = [{
@@ -1032,19 +1047,25 @@ class EmbedFactory {
             inline: true,
         });
 
-        if (!immune && mitigationInfo) {
-            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached } = mitigationInfo;
-            let lockoutValue = `${convertSecondstoMinutes(lockoutSeconds)} lockout`;
-            if (reduction > 0) {
-                lockoutValue += ` (${Math.round(reduction * 100)}% softer — hit #${hitNumberThisWeek} this week)`;
+        if (mitigationInfo) {
+            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, rebatePercent } = mitigationInfo;
+            const hitContext = reduction > 0
+                ? `${Math.round(reduction * 100)}% softer — hit #${hitNumberThisWeek} this week`
+                : `1st Poison hit this week`;
+
+            if (immune) {
+                fields.push({
+                    name: `Guinea Pig:`,
+                    value: `Turned ${(rebatePercent * 100).toFixed(1)}% of the (${hitContext}) loss into a gain instead — no cooldown lockout.`,
+                    inline: true,
+                });
             } else {
-                lockoutValue += ` (1st Poison hit this week)`;
+                fields.push({
+                    name: `Cooldown:`,
+                    value: `${convertSecondstoMinutes(lockoutSeconds)} lockout (${hitContext})`,
+                    inline: true,
+                });
             }
-            fields.push({
-                name: `Cooldown:`,
-                value: lockoutValue,
-                inline: true,
-            });
 
             if (milestoneJustReached) {
                 fields.push({

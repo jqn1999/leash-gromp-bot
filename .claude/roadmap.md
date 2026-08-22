@@ -905,6 +905,37 @@ and needs its own balance pass.
   - No new persisted fields, no balance/formula changes — this is UI/interaction-shape only;
     `getDefaultUserFields`/`findUser` healing doesn't apply here.
 
+- [x] **19. Guinea Pig Poison Rebate Rework** — S — **Done**
+  What: Replaced Guinea Pig's flat "avoid Poison Potato entirely" immunity with a level-scaled
+  rebate on the same weekly-mitigated loss everyone else takes, and flipped the direction its
+  always-on yield tax scales with level:
+  - **Rebate**: every hit — Guinea Pig included — now runs through the same
+    `computePoisonMitigation` weekly reduction as an unprotected player first (previously the
+    immune branch skipped this entirely and never updated the weekly hit counter at all).
+    Guinea Pig then converts a level-scaled fraction of whatever loss remains into a gain instead
+    — `Work.GUINEA_PIG_POISON_REBATE_PERCENT` (50%) at level 1, up to 72.5% at level 10 — and
+    still always skips the cooldown lockout.
+  - **Tax**: same `poisonImmunity: 0.03` base value, but now divides DOWN by the level multiplier
+    instead of multiplying UP — 3.00% at level 1, falling to 2.07% at level 10 (was climbing to
+    4.35%).
+  - Both computed by one new function, `companionFactory.getGuineaPigTaxAndRebate(userDetails,
+    rebateBasePercent)` — the one companion whose perk doesn't fit `getActivePerkValue`'s "single
+    value multiplied up" shape, since its two halves now need to scale in opposite directions.
+  Why: direct instruction from the account holder, grounded in the same-day `balance-audit.md`
+  entry on this exact question — Poison Mitigation (item 16) had already eroded most of
+  immunity's edge over just eating a mitigated hit raw (edge shrinking toward, and for max-level
+  companions on heavy players, past zero), and the old design's leveling made the tax *worse*
+  with no offsetting benefit, since the tax and the flat unleveled payout both read the same
+  uniformly-scaled perk value. The rework fixes both: leveling now helps on both sides instead of
+  hurting on one.
+  Exact numbers by level, and a before/after chart, were computed directly off
+  `companionFactory.getLevelMultiplier` and shared with the account holder as a published
+  artifact.
+  Notable: this is the roster's first companion whose perk formula is asymmetric by design — code
+  comments on `getGuineaPigTaxAndRebate` and both call sites in `workFactory.js`
+  (`handlePoisonPotato`, `calculateGainAmount`) spell out why the two directions differ, so a
+  future reader doesn't assume it's a bug and "fix" it back to uniform scaling.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

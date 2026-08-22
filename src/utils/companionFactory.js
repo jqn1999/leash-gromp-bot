@@ -78,6 +78,36 @@ function getLevelMultiplier(level) {
     return 1 + (level - 1) * CompanionLeveling.PERK_BONUS_PER_LEVEL;
 }
 
+// Guinea Pig is the one companion whose perk doesn't scale the ordinary
+// getActivePerkValue way — leveling it makes BOTH halves of its dual-sided perk better
+// (cheaper tax AND a bigger poison rebate), rather than one plain value multiplied
+// uniformly. rebateBasePercent is passed in rather than imported here so this stays a
+// pure function of its own base perk value (companionFactory has no existing dependency
+// on the Work constants bucket the rebate base lives in — see workFactory.js's
+// handlePoisonPotato/calculateGainAmount, the only two callers). Returns null unless
+// Guinea Pig is the active companion, so callers can `if (guineaPig) {...}` directly.
+function getGuineaPigTaxAndRebate(userDetails, rebateBasePercent) {
+    const active = getActiveCompanion(userDetails);
+    if (!active || active.id !== 'guinea_pig') {
+        return null;
+    }
+    const perk = active.perks.find(p => p.type === 'poisonImmunity');
+    const baseTax = perk ? perk.value : 0;
+    const owned = getOwnedEntry(userDetails, active.id);
+    const level = getCompanionLevel(owned?.workCount);
+    const multiplier = getLevelMultiplier(level);
+    return {
+        level,
+        // Divides DOWN by the level multiplier instead of multiplying up — the tax is the
+        // perk's cost, so leveling should make it cheaper, not more expensive. At max
+        // level (1.45x) the base 3% tax lands at 3/1.45 ≈ 2.07%.
+        taxPercent: baseTax / multiplier,
+        // Multiplies UP as usual — this half is the perk's benefit, same direction every
+        // other perk in the roster scales.
+        rebatePercent: rebateBasePercent * multiplier
+    };
+}
+
 // The single call every consuming file makes (work cooldown, rob chance, regrade
 // chance, guild raid multiplier, starch/bank capacity, passive income, rebirth bonus) —
 // mirrors getGuildWorkMulti's "one active modifier computed fresh at the usage site"
@@ -212,6 +242,7 @@ module.exports = {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
+    getGuineaPigTaxAndRebate,
     applyCompanionAward,
     isScavenging,
     buildScavengeDispatch,
