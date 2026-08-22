@@ -279,17 +279,17 @@ on the same `listings` array.
   equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
   decrement `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a
   companion you already earned credit for shouldn't claw the achievement back.
-- **`/companion-market`** — **not ephemeral**, deliberately, since it's a shared marketplace: paginated
-  (5/page) browser of active listings (companion, level, tier, price, seller) visible to and buyable
-  by anyone who can see the message, not just whoever ran the command. Each page also renders up to 5
-  numbered buy buttons (1-5, no price/name on the button label itself — just the number, matching the
-  embed's own "1) ...", "2) ..." field prefixes). Nothing is disabled for the poster's own listing at
-  render time (there's no single "viewer" a shared, non-ephemeral message can key that off of) —
-  buying your own listing is instead rejected at click time by `attemptBuy`'s own `sellerId` check,
-  same as any other rejection. Every click is attributed to whoever actually clicked
-  (`clicked.user`), never the original invoker — a click from a different user buys on *their*
-  account, never silently spends the invoker's potatoes. `/companion-buy <listing-id>` is
-  **retired** (`deleted: true`) now that buying is button-driven — no more listing id to copy/type.
+- **`/companion-market`** — **not ephemeral**, so other players in the channel can see current
+  listings without running the command themselves, but the buttons stay **invoker-only**: paginated
+  (5/page) browser of active listings (companion, level, tier, price, seller). Each page also renders
+  up to 5 numbered buy buttons (1-5, no price/name on the button label itself — just the number,
+  matching the embed's own "1) ...", "2) ..." field prefixes), disabled for a listing the invoker
+  themselves posted. The collector loop checks every click against the original invoker's id; a
+  click from anyone else gets an ephemeral "this is \<name\>'s market browse, run it yourself" reply
+  and is otherwise ignored — visible-to-others is purely a look-but-don't-touch convenience, not an
+  invitation for someone else to snipe a buy off a listing the invoker was already looking at.
+  `/companion-buy <listing-id>` is **retired** (`deleted: true`) now that buying is button-driven —
+  no more listing id to copy/type.
 - **Buying (button click, `companionMarket.js`'s `attemptBuy`)** — re-fetches both the buyer's own
   userDetails and the market state fresh at click time rather than trusting whatever was on-page
   when the embed was first rendered (it can sit open for a while before a button is pressed).

@@ -86,27 +86,28 @@ async function attemptBuy(client, userId, username, listingId) {
 
 // Up to 5 numbered buy buttons per page — no price/name on the label itself (the embed
 // above already numbers each listing "1) ...", "2) ..." to match), just "1"-"5", per the
-// exact spec this was built to. Not ephemeral, so this message can be seen (and bought
-// from) by anyone in the channel, not just the invoker — which means there's no single
-// "viewer" to disable a button for. A click on your own listing is instead rejected at
-// click time by attemptBuy's own sellerId check, with a clear message, same as any other
-// rejection (can't afford it, listing gone, etc).
-function buildBuyRow(pageItems) {
+// exact spec this was built to. The message itself is visible to anyone in the channel
+// (not ephemeral — see the callback), but only the original invoker can actually click
+// (enforced in the collector loop below), so a listing they posted themselves is still a
+// single well-defined "viewer" to disable it for — same as before this was made visible
+// to onlookers.
+function buildBuyRow(pageItems, userId) {
     if (!pageItems.length) return null;
     const buttons = pageItems.map(({ listing }, index) => new ButtonBuilder()
         .setCustomId(`${BUY_PREFIX}${listing.listingId}`)
         .setLabel(`${index + 1}`)
         .setStyle(ButtonStyle.Success)
+        .setDisabled(listing.sellerId === userId)
     );
     return new ActionRowBuilder().addComponents(buttons);
 }
 
-function buildRows(pages, pageIndex) {
+function buildRows(pages, pageIndex, userId) {
     const rows = [];
     if (pages.length > 1) {
         rows.push(buildPaginationRow(PAGE_PREFIX, pageIndex, pages.length));
     }
-    const buyRow = buildBuyRow(pages[pageIndex]);
+    const buyRow = buildBuyRow(pages[pageIndex], userId);
     if (buyRow) {
         rows.push(buyRow);
     }
@@ -119,8 +120,12 @@ module.exports = {
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
-        // Not ephemeral — this is a shared marketplace, so anyone in the channel should be
-        // able to see current listings and buy from them, not just whoever ran the command.
+        // Not ephemeral — other players in the channel should be able to see what's
+        // currently on the market without running the command themselves. The buttons
+        // stay invoker-only regardless (see the collector filter below): a shared visible
+        // listing is a nice-to-have, but letting anyone snipe a buy off someone else's
+        // open browse session is not — the person who ran the command is the only one
+        // whose click should do anything.
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
@@ -134,10 +139,10 @@ module.exports = {
         const renderPage = (idx) => embedFactory.createCompanionMarketEmbed(pages[idx], idx, pages.length, enrichedListings.length);
 
         const embed = renderPage(0);
-        const components = buildRows(pages, 0);
+        const components = buildRows(pages, 0, userId);
         const reply = await interaction.editReply({ embeds: [embed], components });
 
-        if (pages.length <= 1 && !buildBuyRow(pages[0])) return;
+        if (pages.length <= 1 && !buildBuyRow(pages[0], userId)) return;
 
         // Custom collector loop, not runPaginatedReply/buildPaginationRow's generic
         // prev/next-only loop — this page also needs to react to buy-button clicks
@@ -145,11 +150,13 @@ module.exports = {
         // has no concept of. buildPaginationRow itself is still reused for the prev/next
         // row so this doesn't duplicate that half.
         //
-        // No user filter on the collector — since the message isn't ephemeral, anyone in
-        // the channel can page through or buy from it, not just the original invoker. Every
-        // click is attributed to whoever actually clicked (clicked.user), never the
-        // invoker's own userId/username/userDisplayName — a click from a different user
-        // must buy on THEIR account, never silently spend the original invoker's potatoes.
+        // The collector filter itself only checks for a truthy return, so a click from
+        // anyone else must still be explicitly answered inside — otherwise Discord shows
+        // that clicker a plain "This interaction failed" with no explanation. Answering it
+        // with a clear ephemeral note (visible only to them) and then looping back to
+        // keep waiting is friendlier than either silently eating the click or ending the
+        // whole session over someone else poking a button that was never theirs to press.
+        const collectorFilter = i => i.user.id === interaction.user.id;
         while (true) {
             const clicked = await reply.awaitMessageComponent({ time: 60_000 }).catch(() => null);
             if (!clicked) {
@@ -157,18 +164,22 @@ module.exports = {
                 break;
             }
 
+            if (!collectorFilter(clicked)) {
+                await clicked.reply({ content: `This is ${userDisplayName}'s market browse — run \`/companion-market\` yourself to buy.`, ephemeral: true }).catch(() => {});
+                continue;
+            }
+
             if (clicked.customId === `${PAGE_PREFIX}_prev` || clicked.customId === `${PAGE_PREFIX}_next`) {
                 pageIndex = clicked.customId === `${PAGE_PREFIX}_next` ? pageIndex + 1 : pageIndex - 1;
-                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex) });
+                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex, userId) });
                 continue;
             }
 
             if (clicked.customId.startsWith(BUY_PREFIX)) {
                 const listingId = clicked.customId.slice(BUY_PREFIX.length);
-                const [clickerId, clickerUsername, clickerDisplayName] = getUserInteractionDetails(clicked);
                 await clicked.deferUpdate();
 
-                const result = await attemptBuy(client, clickerId, clickerUsername, listingId);
+                const result = await attemptBuy(client, userId, username, listingId);
 
                 enrichedListings = await loadListings();
                 pages = chunkArray(enrichedListings, PAGE_SIZE);
@@ -177,9 +188,9 @@ module.exports = {
                 }
 
                 await interaction.editReply({
-                    content: `${clickerDisplayName}, ${result.message}`,
+                    content: `${userDisplayName}, ${result.message}`,
                     embeds: [renderPage(pageIndex)],
-                    components: buildRows(pages, pageIndex)
+                    components: buildRows(pages, pageIndex, userId)
                 });
                 continue;
             }
