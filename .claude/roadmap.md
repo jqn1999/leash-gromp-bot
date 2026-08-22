@@ -577,7 +577,8 @@ and needs its own balance pass.
   horizon. Recommend resolving or explicitly accepting finding #2 before or alongside shipping this,
   since it's the same lever, just turned more often — not something this feature needs to resolve
   itself, but it shouldn't ship blind to it either.
-  Open questions (recommendations attached, none blocking a scoping conversation):
+  Open questions (resolved below, in "Architect's technical design" — product-owner's original
+  recommendations are kept here since the resolutions all follow them):
   - **Duration** — recommend rarity-scaled, same direction every other rarity-scaled number in this
     system already goes (bigger for higher tier): something in the shape of a few hours (Common) up
     to roughly a day (Mythic), clearly longer than `/work`'s 300s cooldown and the 1hr raid timer so
@@ -594,21 +595,225 @@ and needs its own balance pass.
     unsellable/unequippable until it returns, mirroring the market's existing escrow pattern —
     otherwise a companion could be sold out from under an in-progress scavenge, or double-dip as both
     "for sale" and "scavenging" at once.
-  Touches: a new dispatch/collect command (or a `/companion` subcommand — namespace is an architect
-  call, mirrors the `/companion equip` vs. a separate command decision already made once for this
-  system), a new `companions.scavenging: { companionId, returnsAt } | null` field on the user record
-  (backfilled the same self-healing way every other user field is), a small `CompanionScavenging`
-  constants block (duration + starch payout per rarity, same shape `CompanionDuplicateReward`/
-  `CompanionMarket.MINIMUM_PRICE` already use), and a `companionFactory.js` extension for the
-  dispatch/collect logic — no changes needed at any existing perk-application call site, since
-  scavenging never touches `getActivePerkValue`.
 
-  **Doc discrepancy found while scoping this**: [systems/companions.md](systems/companions.md)'s own
-  "Persistence" section still documents the schema as `owned: [{ id, level }]` — stale since Companion
-  Leveling (#13) shipped and repurposed that same `level` field into `workCount` (confirmed directly
-  against `companionFactory.js`, which reads/writes `owned[].workCount`, not `.level`). The doc's own
-  "Leveling" section correctly describes `workCount`; only the "Persistence" section at the bottom
-  never got updated to match. Worth a one-line fix next time that doc is touched.
+  **Doc discrepancy found while scoping this — fixed**: [systems/companions.md](systems/companions.md)'s
+  "Persistence" section documented the schema as `owned: [{ id, level }]`, stale since Companion
+  Leveling (#13) shipped and repurposed that same field into `owned[].workCount` (confirmed directly
+  against `companionFactory.js`, which reads/writes `.workCount`, not `.level`). Corrected in place;
+  the doc's "Leveling" section already had it right.
+
+  ### Architect's technical design
+
+  **1. Data model.** Roadmap's suggested shape is right as-is, added as a new key alongside the
+  existing four on `companions` (not a new top-level field) so it heals through `findUser`'s existing
+  one-level-deep nested-object healing — the exact mechanism that already backfilled
+  `workScenarioCounts.companion` onto pre-existing accounts, so this needs zero new healing code:
+
+  ```js
+  companions: {
+      owned: [],
+      active: null,
+      ownedCount: 0,
+      mythicOwnedCount: 0,
+      scavenging: null   // { companionId, rarity, returnsAt } | null — NEW
+  }
+  ```
+
+  `getDefaultUserFields`'s `companions.scavenging` default is `null`; on an existing account missing
+  the key, `findUser`'s healing loop sees `companions` as a plain object on both sides, diffs
+  `Object.keys(defaults.companions)` against the stored one, finds `scavenging` undefined, and heals
+  it via a single `updateUserFields(userId, { companions: { ...user.companions, scavenging: null } })`
+  call — same path, same guarantee, as every other post-launch companion sub-field. `rarity` is
+  denormalized onto the scavenging record itself (not re-derived from `companionId` at collect/cancel
+  time) purely so collect/cancel don't need a second `getCompanionById` lookup to know which
+  `CompanionScavenging` row applies — cheap and harmless since the roster is static.
+
+  The companion itself **stays in `owned`** for the whole scavenge — unlike the market's escrow,
+  which physically removes a listed companion from `owned` (see below for why that shape doesn't fit
+  here).
+
+  **2. Command shape.** Three new dedicated top-level commands, `companion-scavenge`,
+  `companion-scavenge-collect`, `companion-scavenge-cancel` — extending the market's own precedent
+  (`companion-sell`/`companion-sell-npc`/`companion-buy`/`companion-cancel` are each their own
+  command, not subcommands of `/companion`) rather than `/companion equip`'s precedent (a bare
+  option on the view command). The deciding difference: `/companion equip`'s "equip" is a single
+  cheap toggle with no confirm flow and no failure state worth a dedicated reply shape, the same
+  category as a settings flip; each scavenging action has its own distinct validation, its own
+  failure messages, and (dispatch/cancel) its own confirm-or-not shape — exactly the same category of
+  "verb with real state to check" the market commands already split out individually. Folding all
+  three into `/companion scavenge <action> <companion>` would also mean re-deriving three different
+  option-requirement shapes (dispatch needs a companion choice, collect/cancel need none) inside one
+  callback — more branching in one file than three thin ones.
+  - **`/companion-scavenge <companion>`** — dispatch. Rejects (no confirm needed, mirrors
+    `/companion equip`'s immediacy — nothing is lost by starting one) if: not owned; currently the
+    equipped/active companion; or `companions.scavenging` is already non-null (message states which
+    companion is out and, if `returnsAt` has already passed, tells them to run
+    `/companion-scavenge-collect` first — dispatch deliberately does **not** auto-collect a
+    ready-and-waiting scavenge on the caller's behalf, keeping collection a distinct, explicit
+    moment). On success: `companions.scavenging = { companionId, rarity, returnsAt: Date.now() +
+    CompanionScavenging.DURATION_SECONDS[rarity] * 1000 }`, written via a plain
+    `dynamoHandler.updateUserFields` (unconditional whole-object overwrite of `companions` — same
+    pattern `/companion equip` already uses with no race guard; see the escrow section below for why
+    that's an acceptable risk here).
+  - **`/companion-scavenge-collect`** (no args — only one slot exists, nothing to disambiguate).
+    Rejects if `scavenging` is null ("nothing is out scavenging") or `returnsAt` is still in the
+    future (states the remaining time). On success: applies the reward (below), clears `scavenging`
+    to `null`, and replies with a new `embedFactory.createScavengeReturnEmbed` — the explicit
+    "welcome back" moment, same celebratory-embed family as `createPoisonPotatoEmbed`/achievement
+    unlocks, showing the companion, workCount gained (with before/after progress-to-next-level, same
+    numbers `/companion`'s list already surfaces), and starches gained.
+  - **`/companion-scavenge-cancel`** (no args). Unlike `/companion-cancel` (market — recovers a
+    listing with literally nothing lost, so it skips a confirm step), an early recall forfeits a
+    real, already-accruing reward, so this **does** get a confirm/cancel button prompt — same
+    `buildConfirmCancelRow` flow `/companion-sell`/`/companion-sell-npc` already use, showing time
+    remaining and what would be forfeited. On confirm: clears `scavenging` to `null`, no reward, no
+    fee (the forfeited reward is already the cost — an explicit fee on top would be redundant, same
+    reasoning `/companion-sell-npc`'s no-fee decision already uses). The companion is immediately
+    equippable/listable again since it never left `owned`.
+
+  Both collect and cancel are guarded against a double-fire race with a new
+  `dynamoHandler.resolveScavenge(userId, companionId, setAttributes)` — same
+  `ConditionExpression`-on-the-write shape as `claimDailyStreak`/`updateIfNewRecord`
+  (`ConditionExpression: "companions.scavenging.companionId = :companionId"`), so two
+  near-simultaneous collect-collect or collect-cancel calls can't both fire (the loser's write is
+  rejected, not silently reapplied). Dispatch itself is left as a plain unconditional write,
+  deliberately not given the same treatment: a raced double-dispatch just means whichever write lands
+  last is the one that persists — no reward can be double-granted or a companion permanently
+  orphaned by it, so it's the same low/no-stakes race `/companion equip` already tolerates, not worth
+  a new conditional-write helper for.
+
+  **3. Concrete numbers — `CompanionScavenging` in `constants.js`** (new block, same
+  rarity-keyed-object shape as `CompanionDuplicateReward`/`CompanionMarket.MINIMUM_PRICE`):
+
+  | Rarity | Duration | Reasoning |
+  |---|---|---|
+  | Common | 3h (10,800s) | Clean doubling per tier lands Common at "a few hours" per the brief, and at 36x `/work`'s 300s cooldown / 3x the 1hr raid timer, unambiguously a between-sessions action, not a same-session one |
+  | Rare | 6h (21,600s) | 2x Common |
+  | Legendary | 12h (43,200s) | 2x Rare — half a day |
+  | Mythic | 24h (86,400s) | 2x Legendary — exactly "roughly a day" per the brief, and the natural ceiling: a genuine once-a-day check-in cadence, same rhythm as `/enter-tower`'s daily reset |
+
+  Starch payout — deliberately **not** derived from `CompanionMarket.MINIMUM_PRICE`/
+  `CompanionDuplicateReward` the way NPC-sale pricing is, because those are potato-denominated and
+  starches trade at a wildly different unit scale (`starch_buy` prices a single starch around
+  9,500–10,999 potatoes — see [starch-trading.md](systems/starch-trading.md) — and a fresh player's
+  *Taro Trader* `/work` hit, the primary starch source, nets only ~1–1.5 starches per roll since it's
+  `effectiveMultiplier`-scaled starting from a multiplier of 1; *Golden Yam*, the rare jackpot
+  version, nets ~8–12 for that same fresh player). Grounded against that baseline instead — a
+  multi-hour, zero-effort, *unscaled* payout should read as "a nice bonus for basically no active
+  play," comparable to a handful of a fresh player's own Taro Trader hits, while decaying toward
+  irrelevance for a developed player exactly the way `/companion-sell-npc`'s unscaled pricing already
+  does (a hit that stays flat while `effectiveMultiplier`-scaled sources keep growing shrinks in
+  relative value on its own, no separate decay curve needed):
+
+  | Rarity | Starches | Reasoning |
+  |---|---|---|
+  | Common | 5 | ~3-5x a fresh player's single Taro Trader roll — meaningfully more than one active hit, appropriate for a multi-hour unattended wait, still clearly "small" |
+  | Rare | 15 | 3x Common |
+  | Legendary | 40 | ~2.7x Rare — a bit under a fresh player's single Golden Yam roll, deliberately: scavenging should never beat the game's actual rare-jackpot encounter even at its own best-of-tier |
+  | Mythic | 100 | 2.5x Legendary — roughly 8-10x a fresh player's Golden Yam roll, but for a full day of zero engagement vs. one `/work` call, and already trivial next to what an actually-developed player's *scaled* Golden Yam nets in a single 5-minute-cooldown hit |
+
+  **4. `workCount` reward formula.** Flat per-rarity amount (not scaled by duration formula, not
+  scaled by the scavenging companion's own current level — level-scaling the very counter that
+  *determines* level would be a self-reinforcing compounding formula, a pattern this codebase
+  deliberately avoids everywhere else, see the percentage-of-current-stat reasoning in
+  [systems/companions.md](systems/companions.md#balance-pass-income-power-and-why-capacity-perks-got-redesigned)).
+  Sized against `CompanionLeveling.THRESHOLDS` (level 2 = 15, level 10 = 3,725) and against
+  `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (10, for a genuine luck-based duplicate `/work`
+  pull) as the closest existing "non-active-play workCount source" anchor:
+
+  | Rarity | workCount | Reasoning |
+  |---|---|---|
+  | Common | 8 | Just under a duplicate pull's 10 — this requires zero luck but real elapsed time (3h), so pricing it slightly below a genuine luck event feels right; two Commons back-to-back (16, ~6h) already clears level 2 (15) |
+  | Rare | 20 | 2.5x Common |
+  | Legendary | 45 | 2.25x Rare |
+  | Mythic | 100 | 2.2x Legendary |
+
+  Sanity check against the threshold table: reaching max level (3,725) via nothing but back-to-back
+  Mythic scavenges (100 each, 24h each, requiring a player to manually re-dispatch every single day
+  without fail) takes **~38 days** of daily attention — squarely "weeks-to-months," matching the
+  Leveling doc's own "meant to reward long-term loyalty... not clearable in an afternoon" framing,
+  while via nothing but Commons (8 each, 3h each) it takes **~466 cycles / ~58 days of continuous
+  back-to-back dispatching** — appropriately the slowest tier. Both are slower, in realistic terms,
+  than actively grinding an *equipped* companion through ordinary daily `/work` play (each `/work`
+  resolution while equipped grants 1 workCount on its own 300s cooldown — an engaged player doing a
+  few dozen `/work` calls across a day easily outpaces even best-case Mythic scavenging), so
+  scavenging stays strictly the *slower*, background-only path — it never becomes a reason to
+  under-equip your best companion in favor of a leveling exploit. This does mean, as the
+  balance-audit interaction note above already flags, that a dedicated player can now get *several*
+  companions to max level in parallel over a period of months by keeping one benched companion
+  perpetually scavenging alongside their equipped one — accepted as an intentional consequence of
+  giving the bench something to do, not a design gap, but it does make
+  [balance-audit.md](balance-audit.md)'s finding #2 (leveling's 1.45x cap can invert rarity ordering
+  on some perk axes once a low-rarity companion is maxed) worth resolving before or alongside this
+  ships, per that note.
+
+  **5. Escrow/locking mechanics.** Deliberately **not** the market's escrow shape (physical removal
+  from `owned`) — that would break `/companion`'s owned-list display and orphan the mid-flight
+  `workCount` tracking (nothing would be there to show "scavenging, returns in Xh" against). Instead,
+  a status-flag guard: `companionFactory.isScavenging(userDetails, companionId)` — returns
+  `userDetails.companions?.scavenging?.companionId === companionId` — is the one new guard function,
+  called at exactly the three risk sites the brief calls out, plus dispatch's own self-check:
+  - **`companion.js`**'s `equip` branch — reject with "that companion is out scavenging" if
+    `isScavenging` is true, alongside the existing `ownsCompanion` check.
+  - **`companionMarketFactory.validateListingRequest`** (used by `/companion-sell`) — add the same
+    check next to the existing `ownsCompanion` check, so a scavenging companion can't be listed out
+    from under the scavenge.
+  - **`companionMarketFactory.validateNpcSaleRequest`** (used by `/companion-sell-npc`) — same
+    addition.
+  - **`companion-scavenge.js`** itself — a companion already `isScavenging` (itself, trivially true)
+    or a *different* companion mid-scavenge both block a new dispatch, per the one-slot cap.
+
+  `companionFactory.ownsCompanion`/`getOwnedEntry`/`getActivePerkValue` are deliberately left
+  untouched — a scavenging companion is still validly "owned" (it can't be the *active* one, since
+  dispatch already requires it not be equipped, so `getActivePerkValue` never has a reason to look at
+  it while it's away) and still needs `getOwnedEntry` to resolve for `/companion`'s list display and
+  for the collect/cancel handlers to read/write its `workCount`. This is the one genuinely new
+  pattern this feature introduces to the companion system: a *third* companion state
+  (owned-and-idle / owned-and-equipped / owned-and-scavenging) enforced by a guard check at each risk
+  site rather than by removal from a collection, where the market's two states (owned / escrowed) only
+  ever needed the removal-based shape because a listed companion truly has nothing left to track
+  while it's gone.
+
+  `/companion`'s list embed (`embedFactory.createCompanionListEmbed`) gains a third status branch
+  alongside `'✅ Active'` — `'🧭 Scavenging — returns <relative time>'` — reusing the same status-line
+  slot the active/inactive check already writes into, so no new field is added to the embed, just a
+  third case for the one that's already there.
+
+  **6. Files touched:**
+  - `src/utils/constants.js` — new `CompanionScavenging` block (`DURATION_SECONDS`,
+    `WORK_COUNT_REWARD`, `STARCH_REWARD`, each keyed by `CompanionRarity`), exported alongside the
+    other `Companion*` constants.
+  - `src/utils/dynamoHandler.js` — `getDefaultUserFields`'s `companions` gains `scavenging: null`;
+    new `resolveScavenge(userId, companionId, setAttributes)` conditional-write helper (mirrors
+    `claimDailyStreak`'s shape) for collect/cancel's race guard.
+  - `src/utils/companionFactory.js` — new `isScavenging(userDetails, companionId)`; new
+    `buildScavengeDispatch(companion)` (returns the `{ companionId, rarity, returnsAt }` record to
+    write) and `resolveScavengeReward(userDetails)` (reads the active `scavenging` record, returns
+    `{ owned: <updated array with that companion's workCount bumped>, starchesGained,
+    workCountGained }` for the collect path) — pure computation, no DB calls, matching every other
+    function in this file.
+  - `src/utils/companionMarketFactory.js` — `validateListingRequest`/`validateNpcSaleRequest` each
+    gain one `companionFactory.isScavenging` check.
+  - `src/commands/user/companion.js` — `equip` branch gains the `isScavenging` guard.
+  - `src/commands/user/companionScavenge.js` (new) — dispatch.
+  - `src/commands/user/companionScavengeCollect.js` (new) — collect.
+  - `src/commands/user/companionScavengeCancel.js` (new) — early recall, confirm/cancel flow.
+  - `src/utils/embedFactory.js` — new `createScavengeReturnEmbed(userDisplayName, companion,
+    workCountGained, starchesGained, level, nextThreshold)` (return-moment embed);
+    `createCompanionListEmbed` gains the third status-line branch described above.
+  - No changes needed at any perk-application call site (`getActivePerkValue`'s own consumers) —
+    scavenging never touches perk resolution, exactly as the original brief already anticipated.
+
+  **7. Open-question resolutions** (see inline call-outs above for full reasoning; summarized here):
+  Duration is rarity-scaled 3h/6h/12h/24h (clean doubling per tier). Collect is its own explicit
+  command with a celebratory embed, never silent, never auto-fired by dispatch. Early recall is its
+  own dedicated command (`/companion-scavenge-cancel`, not folded into dispatch) specifically because
+  it needs its own confirm-prompt copy (time remaining, what's being forfeited) that dispatch has no
+  reason to carry. Escrow is a guard-check pattern (`isScavenging`, checked at equip/sell/sell-npc and
+  dispatch), not the market's physical-removal escrow — a deliberate, explicitly-flagged deviation
+  from that precedent because this feature needs the companion to stay visibly "owned" (for
+  `/companion`'s list and for `workCount` bookkeeping) while it's gone, which physical removal would
+  break.
 
 ## Needs more design discussion before it can be scoped
 

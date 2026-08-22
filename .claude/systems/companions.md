@@ -290,9 +290,10 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 
 ## Persistence
 
-`userDetails.companions: { owned: [{ id, level }], active: id|null, ownedCount, mythicOwnedCount }`,
+`userDetails.companions: { owned: [{ id, workCount }], active: id|null, ownedCount, mythicOwnedCount }`,
 backfilled onto existing accounts by `findUser`'s self-healing pattern like every other field.
 Untouched by `/rebirth`'s reset, same "survives a prestige reset" precedent `sweetPotatoBuffs`/
-achievements/records/starches already set. `level` is stored as `1` from day one even though
-nothing reads it yet — static leveling for v1, so a future leveling system is additive rather than a
-migration.
+achievements/records/starches already set. `workCount` (originally shipped as a static `level: 1`
+field nothing read) was repurposed by Companion Leveling (#13 on the roadmap) into a cumulative
+`/work`-resolution counter that drives each companion's level — see the Leveling section above for
+the full mechanic.
