@@ -1308,6 +1308,20 @@ const workRegradeTiers = [
     { currentRegradeAmount: 400, cost: 5000000000, increase: 100, chance: .005, failStackIncrease: .0025 }
 ]
 
+// Mirrors workRegradeTiers exactly in cost/chance/failStackIncrease at every index — only
+// `increase` differs, scaled by the tracks' established 1,200,000x factor (matches every
+// other tier: e.g. index 0's 12,000,000/10). Tiers 9-13 used to silently keep tier 8's
+// easier .02/.01 chance/failStack instead of dropping in step with work's, while still
+// charging work's higher costs, and the whole track was missing a tier (13 vs work's 14,
+// with the dropped tier's increase folded into an oversized final tier) — found by
+// balance-auditor's first run (see .claude/balance-audit.md), fixed per explicit direction
+// to match work's difficulty exactly rather than keep passive as an easier track.
+// REGRADE_CAPS.passiveAmount (600,000,000) is unchanged — this only restores the schedule
+// leading up to it, it doesn't move the cap. Every currentRegradeAmount threshold through
+// 420,000,000 is numerically identical to the previous array, so no existing player's
+// stored progress becomes a non-matching value; the only new threshold is 480,000,000,
+// which nobody could have been sitting at under the old (single oversized final tier)
+// schedule anyway.
 const passiveRegradeTiers = [
     { currentRegradeAmount: 0, cost: 500000000, increase: 12000000, chance: .5, failStackIncrease: .05 },
     { currentRegradeAmount: 12000000, cost: 500000000, increase: 12000000, chance: .45, failStackIncrease: .05 },
@@ -1318,10 +1332,11 @@ const passiveRegradeTiers = [
     { currentRegradeAmount: 96000000, cost: 2000000000, increase: 36000000, chance: .08, failStackIncrease: .03 },
     { currentRegradeAmount: 132000000, cost: 2500000000, increase: 48000000, chance: .03, failStackIncrease: .02 },
     { currentRegradeAmount: 180000000, cost: 3000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
-    { currentRegradeAmount: 240000000, cost: 4000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
-    { currentRegradeAmount: 300000000, cost: 4000000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
-    { currentRegradeAmount: 360000000, cost: 4500000000, increase: 60000000, chance: .02, failStackIncrease: .01 },
-    { currentRegradeAmount: 420000000, cost: 5000000000, increase: 180000000, chance: .01, failStackIncrease: .005 }
+    { currentRegradeAmount: 240000000, cost: 3000000000, increase: 60000000, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 300000000, cost: 4000000000, increase: 60000000, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 360000000, cost: 4000000000, increase: 60000000, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 420000000, cost: 4500000000, increase: 60000000, chance: .01, failStackIncrease: .005 },
+    { currentRegradeAmount: 480000000, cost: 5000000000, increase: 120000000, chance: .005, failStackIncrease: .0025 }
 ]
 
 const bankRegradeTiers = [

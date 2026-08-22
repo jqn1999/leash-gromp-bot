@@ -24,7 +24,22 @@ session — **not** re-flagged below. Findings below are all new.
 
 ### Findings
 
-**1. [HIGH] `passiveRegradeTiers` diverges from `workRegradeTiers`' cost/chance/failStack
+**1. [HIGH] — FIXED 2026-08-22.** Direction from product owner: passive should match work's
+difficulty exactly, not stay an easier track. `passiveRegradeTiers` now mirrors
+`workRegradeTiers` exactly in `cost`/`chance`/`failStackIncrease` at all 14 indices, with
+`increase` scaled by the established 1,200,000x factor throughout (was previously
+inconsistent from index 9 on). `REGRADE_CAPS.passiveAmount` (600,000,000) is unchanged — every
+`currentRegradeAmount` threshold through 420,000,000 is numerically identical to the pre-fix
+array, so no existing player's stored progress becomes a non-matching value; the only new
+threshold is 480,000,000, which nobody could have reached under the old single-oversized-
+final-tier schedule anyway. Verified via `node -e`: cost/chance/failStack now match work at
+every index, computed cap still resolves to 600,000,000, and every pre-fix threshold is still
+present in the new array. Full jest suite (254 tests) still green — no test depended on the
+old values. See `constants.js`'s `passiveRegradeTiers` comment for the same detail inline.
+
+Original finding, kept for the record:
+
+`passiveRegradeTiers` diverges from `workRegradeTiers`' cost/chance/failStack
 schedule from tier 9 onward — a new parallel-track divergence, same bug shape as the
 already-known/accepted `bankRegradeTiers` issue, but unrelated to it and not yet reviewed.**
 Stage: mid/late game (regrade tiers 9+ are reached only once shop-maxed and well into the
