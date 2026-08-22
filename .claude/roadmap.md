@@ -990,6 +990,33 @@ and needs its own balance pass.
   toward its own death, so the audit's own cost/benefit call was that fixing them wasn't worth the
   complexity of a shared "reroute if maxed" mechanism touching four separate reward paths.
 
+- [x] **21. Ancient Potato Free-Regrade Nerf** — S — **Done**
+  What: Ancient Potato's free-regrade branch (`handleAncientPotato` branch 1, fires when a track is
+  shop-maxed but not yet regrade-capped) now grants `Work.ANCIENT_REGRADE_GRANT_PERCENT` (10%) of
+  that tier's `increase` instead of the full amount — as a flat, permanent `sweetPotatoBuffs`-style
+  bonus that does **not** touch the player's real `regrades.X.regradeAmount`/`failStack` at all.
+  Ancient's own roll odds (0.3%) and its other two branches (free shop tier, terminal potato
+  payout) are untouched.
+  Why: direct instruction, following `balance-audit.md`'s same-day EV comparison against Golden
+  Potato — the full-tier version was worth 97x-475x a same-roll Golden Potato once converted to
+  the real `/regrade` potato-equivalent cost, since it bypassed both the cost and the fail chance
+  entirely while still rolling 3x more often than Golden. User explicitly wanted the nerf scoped
+  to the regrade grant specifically (not the odds, not the other two branches) — this is a
+  deliberate flat percentage cut (~90% reduction), not a full curve-flattening fix: the ratio still
+  widens deeper into the 14-tier regrade ladder the same way it did before (a tier-6 example goes
+  from ~475x down to ~47.5x, not flattened to match a tier-0 example's ~9.8x), since `/regrade`'s
+  cost-per-attempt stays flat while its success chance decays per tier. Revisit if that still-
+  growing tail turns out to matter in practice.
+  Notable: the literal "grant a fraction of the tier's increase into `regradeAmount`" framing this
+  nerf started from would have broken `regrade.js`'s own tier lookup (`tiers.find(tier =>
+  tier.currentRegradeAmount === regradeAmount)`, an exact-match lookup) the first time a partial
+  amount landed `regradeAmount` on a value with no matching tier boundary — crashing every later
+  `/regrade` attempt on that track. Routing the reduced grant through `sweetPotatoBuffs` instead
+  (same write shape `handleSweetPotato` already uses) sidesteps that entirely: the player's real
+  regrade progress stays exactly where it was, and this is a bonus layered alongside it, not fake
+  progress toward it. The embed's "Free Regrade:" field was relabeled "Permanent Bonus:" since it
+  no longer describes what actually happens.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

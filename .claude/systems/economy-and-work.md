@@ -141,13 +141,23 @@ The one scenario whose main payoff is guild-facing rather than personal: if the 
 guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
 regardless of how much was left on it (a no-op if solo, or if nothing was on cooldown). Separately,
 the roller gets exactly one of three personal rewards, checked in this order:
-1. **Free regrade** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants that
-   track's **current tier's real `increase`** for free (no cost, guaranteed, no roll), mirroring
-   exactly what a successful `/regrade` purchase at that tier would do
-   (`regrades.X.regradeAmount += increase`, `failStack` reset to 0, raw stat bumped by the same
-   amount). A track only qualifies here if its base (shop-purchased) value already equals that
-   shop's max — matching `regrade.js`'s own `hasRequiredBaseAmount` gate exactly, since `/regrade`
-   itself refuses to touch a track that isn't shop-maxed yet regardless of `REGRADE_CAPS`.
+1. **Permanent bonus** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. **Nerfed
+   2026-08-22** (`balance-audit.md`'s same-day entry, direct instruction): used to grant that
+   track's current tier's real `increase` in full, for free — mirroring exactly what a successful
+   `/regrade` purchase at that tier would do. Once converted to potato-equivalent terms (what that
+   tier actually costs to buy, pity-adjusted), that was worth **97x-475x** a same-roll Golden
+   Potato, since Ancient bypassed `/regrade`'s cost and fail chance entirely while still rolling 3x
+   more often than Golden. Now grants only `Work.ANCIENT_REGRADE_GRANT_PERCENT` (10%) of that
+   tier's `increase`, credited as a flat `sweetPotatoBuffs`-style bonus — deliberately **not**
+   written into `regrades.X.regradeAmount`/`failStack` at all, since a partial amount can't land on
+   a tier's exact `currentRegradeAmount` checkpoint the way `regrade.js`'s own tier lookup (an exact
+   match) requires; writing one in would silently break every later `/regrade` attempt on that
+   track. The player's real regrade progress is completely untouched by this roll — it's a bonus
+   alongside it, not progress toward it. A track only qualifies here if its base (shop-purchased)
+   value already equals that shop's max — matching `regrade.js`'s own `hasRequiredBaseAmount` gate
+   exactly, since `/regrade` itself refuses to touch a track that isn't shop-maxed yet regardless of
+   `REGRADE_CAPS`. Ancient's own roll odds (0.3%) were deliberately left untouched by this pass —
+   see the audit entry for why a flat odds cut can't fix a curve this steep on its own.
 2. **Free shop upgrade**, if no track qualifies for (1) — i.e. nothing is shop-maxed yet. Grants the
    next shop tier on a random not-yet-maxed track for free, mirroring `buy.js`'s own success-write
    shape (`newBase + sweetPotatoBuffs + regradeAmount`, not just the tier's raw amount).

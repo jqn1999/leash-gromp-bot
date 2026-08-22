@@ -870,3 +870,32 @@ player who rebirths more than once.
   agrees). `GOLDENX5` (`eventFactory.js:75-79`) is real but low-impact: hourly 20% event-trigger
   chance × 1/18 event-weight ≈ 1.1% of hours, blending Golden's average roll probability up only
   ~4.4% — negligible next to the 58x-1500x mid-game gap above, not a meaningful mitigating factor.
+
+### Resolution (same day): branch 1 nerfed, odds and branches 2/3 left untouched
+
+Direct instruction: nerf Ancient's benefit while keeping its roll rarity (0.3%) exactly as-is, with
+the free-regrade branch specifically flagged as the likely main offender — matching option 2 above
+("cap branches 1/2 to a fraction of a full tier/success"), scoped to branch 1 only (branch 2's free
+shop tier was not touched, since the user's own framing named regrade specifically).
+
+Implementation ended up different from the literal "grant a fraction of the tier's increase into
+`regradeAmount`" framing option 2 originally proposed — that would have broken `regrade.js`'s own
+tier lookup (`tiers.find(tier => tier.currentRegradeAmount === regradeAmount)`, an exact match) the
+first time a partial amount landed regradeAmount on a value with no matching tier boundary, crashing
+every later `/regrade` attempt on that track. Instead, `Work.ANCIENT_REGRADE_GRANT_PERCENT` (10%) of
+the tier's `increase` is granted as a flat `sweetPotatoBuffs`-style permanent bonus (same write shape
+`handleSweetPotato` already uses) — the player's real `regrades.X.regradeAmount`/`failStack` are left
+completely untouched, so this is a bonus alongside their regrade progress, not fake progress toward
+it. At the tier-0/tier-1 examples earlier in this entry, this cuts the full-grant ratio from
+97x-98x down to roughly **9.7x-9.8x** a same-roll Golden Potato — a deliberate flat percentage cut,
+not a full curve-flattening fix: the ratio still widens deeper into the regrade ladder the same way
+it did before (tier 6's 475x becomes ~47.5x, not flattened to match tier 0's ~9.8x), since regrade
+cost-per-attempt stays flat while success chance decays per tier. Accepted as "nerfed a bit," per the
+literal ask, rather than pursuing option 1 (odds ramp) or option 3 (structural rewrite) — either of
+which would be needed to flatten the curve itself rather than just scale it down. Revisit if the
+still-growing tail (deep into the 14-tier ladder) turns out to matter in practice.
+
+Files touched: `constants.js` (`Work.ANCIENT_REGRADE_GRANT_PERCENT`), `workFactory.js`
+(`handleAncientPotato`'s branch 1), `embedFactory.js` (`createAncientPotatoEmbed`'s field relabeled
+"Permanent Bonus" — "Free Regrade" was no longer accurate), `systems/economy-and-work.md`,
+`roadmap.md`.

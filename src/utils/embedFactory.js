@@ -1232,7 +1232,7 @@ class EmbedFactory {
 
         if (regradedStatName) {
             fields.push({
-                name: `Free Regrade:`,
+                name: `Permanent Bonus:`,
                 value: `+${regradeIncrease.toLocaleString()} ${regradedStatName}`,
                 inline: true,
             });

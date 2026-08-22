@@ -426,7 +426,13 @@ function fullyMaxedUser(overrides = {}) {
 }
 
 describe('handleAncientPotato', () => {
-    test('grants a free regrade step on a shop-maxed, not-yet-regrade-capped track', async () => {
+    // Nerfed 2026-08-22 (balance-audit.md): used to grant the FULL tier step directly
+    // into regrades.workMulti.regradeAmount, matching a real /regrade success exactly.
+    // Now grants only a Work.ANCIENT_REGRADE_GRANT_PERCENT slice of that tier's increase,
+    // as a permanent sweetPotatoBuffs-style bonus that does NOT touch the player's real
+    // regrade progress at all — a partial amount can't land on a tier's exact
+    // currentRegradeAmount checkpoint, which regrade.js's own tier lookup requires.
+    test('grants a percent-of-tier bonus (not the full step) on a shop-maxed, not-yet-regrade-capped track, without touching real regrade progress', async () => {
         const userDetails = baseUser({
             workMultiplierAmount: SHOP_MAX.workMulti, // shop-maxed — eligible for regrade
             regrades: {
@@ -438,14 +444,19 @@ describe('handleAncientPotato', () => {
 
         const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
 
+        const expectedGrant = Math.max(1, Math.round(10 * Work.ANCIENT_REGRADE_GRANT_PERCENT)); // tier 0's increase (10) * the nerf percent
         expect(result.regradedStatName).toBe('Work Multiplier');
-        expect(result.regradeIncrease).toBe(10); // tier 0's increase
+        expect(result.regradeIncrease).toBe(expectedGrant);
+        expect(result.regradeIncrease).toBeLessThan(10); // strictly smaller than the full tier step
         expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBe(0);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.workMultiplierAmount).toBe(SHOP_MAX.workMulti + 10);
-        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
+        expect(setFields.workMultiplierAmount).toBe(SHOP_MAX.workMulti + expectedGrant);
+        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBe(expectedGrant);
+        // The player's real regrade progress and failStack must be completely untouched —
+        // this is a bonus layered alongside it, not progress toward it.
+        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 0, failStack: 0 });
         // Untouched tracks must survive exactly as they were, not get reset.
         expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
     });

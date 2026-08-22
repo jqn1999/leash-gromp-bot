@@ -27,6 +27,14 @@ const Work = {
     // rather than compounding forever, the same weekly ceiling everyone else's own
     // mitigation caps at.
     GUINEA_PIG_ESCALATION_PER_HIT: 0.15,
+    // Ancient Potato's free-regrade branch (workFactory.js's handleAncientPotato) grants
+    // this fraction of a regrade tier's own `increase` instead of the full tier — see
+    // that function's own comment for why. balance-audit.md's 2026-08-22 entry found the
+    // full-tier version worth 97x-475x a same-roll Golden Potato once converted to real
+    // /regrade potato-equivalent cost, since it bypassed both the cost and the risk
+    // entirely. Nerfed at direct instruction, deliberately leaving Ancient's own roll
+    // odds (eventFactory.js) untouched.
+    ANCIENT_REGRADE_GRANT_PERCENT: 0.10,
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
@@ -719,7 +727,7 @@ const HelpTopics = [
         id: "work",
         label: "Work",
         description: "The core /work loop and its bonus encounters",
-        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 30-minute cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely, and both the loss and lockout get progressively less painful the more times poison hits you in the same week, resetting every Monday — get hit 10 times in one week and you'll get a much bigger break plus an achievement), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a free regrade or shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
+        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 30-minute cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely, and both the loss and lockout get progressively less painful the more times poison hits you in the same week, resetting every Monday — get hit 10 times in one week and you'll get a much bigger break plus an achievement), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a permanent stat bonus or free shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
     },
     {
         id: "companions",
