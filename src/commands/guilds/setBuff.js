@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles } = require("../../utils/constants");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 
@@ -38,11 +38,8 @@ module.exports = {
         await interaction.deferReply()
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
 
         const userGuildId = userDetails.guildId;
         if (!userGuildId) {

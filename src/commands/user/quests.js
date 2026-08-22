@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { QuestFactory } = require("../../utils/questFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -61,11 +61,8 @@ module.exports = {
             [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         }
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
 
         const activeQuests = await dynamoHandler.getActiveQuests();
         if (!activeQuests) {

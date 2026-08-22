@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
+const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
@@ -89,11 +89,8 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userAvatar = interaction.user.avatar;
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        };
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userTotalLosses = userDetails.totalLosses;
@@ -124,11 +121,8 @@ module.exports = {
             targetUserDisplayName = targetUser.displayName;
             targetUsername = targetUser.user.username;
         }
-        const targetUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
-        if (!targetUserDetails) {
-            interaction.editReply(`${targetUserDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        };
+        const targetUserDetails = await requireUserDetails(interaction, targetUserId, targetUsername, targetUserDisplayName);
+        if (!targetUserDetails) return;
         let targetUserPotatoes = targetUserDetails.potatoes;
         let targetUserTotalLosses = targetUserDetails.totalLosses;
 

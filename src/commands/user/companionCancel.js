@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
@@ -22,11 +22,8 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const listingId = interaction.options.get('listing-id')?.value;
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
 
         const { listings, version } = await companionMarketFactory.getMarketState();
         const listing = listings.find(l => l.listingId === listingId);

@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js"); //types?
-const { getUserInteractionDetails } = require("../../utils/helperCommands"); // getting info about user?
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands"); // getting info about user?
 const dynamoHandler = require("../../utils/dynamoHandler"); // helpers for accessing db
 const { isStarchBuyingWindow } = require("../../utils/starchFactory");
 const companionFactory = require("../../utils/companionFactory");
@@ -22,11 +22,8 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userAvatar = interaction.user.avatar;
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
 
         //check if they are allowed to buy
         if (!isStarchBuyingWindow()) {

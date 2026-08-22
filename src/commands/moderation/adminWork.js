@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands");
+const { getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands");
 const { Work, Companions } = require("../../utils/constants");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
@@ -50,11 +50,8 @@ module.exports = {
         const scenarioName = interaction.options.get('scenario')?.value;
         const forcedCompanionId = interaction.options.get('companion')?.value;
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
 
         const scenario = work.workScenarios.find(s => s.type === SCENARIO_TYPES[scenarioName]);
         if (!scenario) {

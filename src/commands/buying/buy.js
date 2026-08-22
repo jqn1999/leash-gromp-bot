@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const { shops } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 
@@ -59,11 +59,8 @@ module.exports = {
         let shopSelect = interaction.options.get('shop-select')?.value;
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
         
         let userPotatoes = userDetails.potatoes;
         let userBaseWorkMultiplier = (userDetails.workMultiplierAmount - userDetails.sweetPotatoBuffs.workMultiplierAmount - userDetails.regrades.workMulti.regradeAmount).toFixed(1);

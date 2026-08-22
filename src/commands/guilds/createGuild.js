@@ -1,5 +1,5 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 GUILD_COST = 1000000
@@ -40,11 +40,8 @@ module.exports = {
         if (!thumbnailUrl) thumbnailUrl = "";
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
         let userPotatoes = userDetails.potatoes;
         const userGuildId = userDetails.guildId;
 

@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 var {towerFactory} = require("../../utils/towerFactory");
-const { getUserInteractionDetails } = require("../../utils/helperCommands");
+const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 
@@ -69,11 +69,8 @@ module.exports = {
         await interaction.deferReply();
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const userDetails = await dynamoHandler.findUser(userId, username);
-        if (!userDetails) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-            return;
-        }
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
         let userMultiplier = userDetails.workMultiplierAmount;
 
         if (userMultiplier < 20) {

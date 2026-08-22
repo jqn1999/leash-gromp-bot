@@ -27,6 +27,21 @@ function getUserInteractionDetails(interaction) {
     return [userId, username, userDisplayName];
 }
 
+// The "look up a user, bail with a database-error reply if they're missing" block every
+// command repeats verbatim before doing anything else — centralizes the message text so a
+// future wording change only needs to happen once. Returns the userDetails on success, or
+// null after already sending the error reply (caller just needs `if (!userDetails) return;`).
+// Assumes the interaction has already been deferred (interaction.editReply) — this is the
+// shape every existing call site already used before this helper existed.
+async function requireUserDetails(interaction, userId, username, userDisplayName) {
+    const userDetails = await dynamoHandler.findUser(userId, username);
+    if (!userDetails) {
+        interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
+        return null;
+    }
+    return userDetails;
+}
+
 async function getSortedBirthdays() {
     const arr = await dynamoHandler.getAllBirthdays();
 
@@ -74,6 +89,7 @@ function getRandomFromInterval(min, max) {
 module.exports = {
     convertSecondstoMinutes,
     getUserInteractionDetails,
+    requireUserDetails,
     getSortedBirthdays,
     getRandomFromInterval
 }
