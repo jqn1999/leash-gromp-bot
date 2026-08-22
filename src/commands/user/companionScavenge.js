@@ -53,7 +53,7 @@ module.exports = {
         }
 
         // Plain unconditional write, deliberately not race-guarded — same low/no-stakes
-        // race /companion equip already tolerates. A raced double-dispatch just means
+        // race /companion's equip button already tolerates. A raced double-dispatch just means
         // whichever write lands last persists; no reward can be double-granted and no
         // companion is ever orphaned by it. See dynamoHandler.resolveScavenge's own
         // comment for the guarded collect/cancel writes this deliberately does NOT need.

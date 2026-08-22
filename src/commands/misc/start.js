@@ -147,7 +147,7 @@ const ONBOARDING_PAGES = [
             },
             {
                 name: "Trade",
-                value: "List a companion you don't need on `/companion-market`, or buy one another player's selling with `/companion-buy` — leveling carries over with a sale, so a leveled-up companion is worth more.",
+                value: "List a companion you don't need with `/companion-sell`, or buy one another player's selling right from `/companion-market`'s buy buttons — leveling carries over with a sale, so a leveled-up companion is worth more.",
                 inline: false,
             },
         ]

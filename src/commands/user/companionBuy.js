@@ -4,11 +4,15 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 
+// Retired in favor of /companion-market's own numbered buy buttons (see
+// companionMarket.js's attemptBuy) — no more listing-id to type in by hand. Kept (not
+// deleted) with deleted: true rather than removed outright, matching the
+// leaveRaid.js/createRaid.js precedent for retired commands.
 module.exports = {
     name: "companion-buy",
     description: "Buy a companion listed on the companion market",
     devOnly: false,
-    deleted: false,
+    deleted: true,
     options: [
         {
             name: 'listing-id',
@@ -73,7 +77,7 @@ module.exports = {
 
         const resultMessage = alreadyOwned
             ? `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! You already owned one — its training combined with your existing companion's.`
-            : `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! Use \`/companion equip\` to make it active.`;
+            : `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! Use \`/companion\` to equip it.`;
         interaction.editReply(resultMessage);
     }
 }

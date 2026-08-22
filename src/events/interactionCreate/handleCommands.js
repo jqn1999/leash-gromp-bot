@@ -58,7 +58,34 @@ async function notifyAchievements(interaction, userDisplayName) {
     }
 }
 
+// Autocomplete interactions arrive as their own interaction type (isAutocomplete()),
+// separate from chat input commands — Discord expects a response via
+// interaction.respond([...]) within its own short window, so this is handled as its own
+// branch rather than falling through to the chatInputCommand dispatch below (which calls
+// interaction.deferReply/editReply, neither of which autocomplete interactions support).
+// Looks up the matching local command the same way the chat-input dispatcher does, and
+// calls its exported `autocomplete(client, interaction)` if it has one. Always responds
+// (even with an empty list) so a lookup failure doesn't leave Discord's client hanging.
+async function handleAutocomplete(client, interaction) {
+    try {
+        const localCommands = getLocalCommands();
+        const commandObject = localCommands.find((cmd) => cmd.name === interaction.commandName);
+        if (!commandObject || !commandObject.autocomplete) {
+            await interaction.respond([]).catch(() => {});
+            return;
+        }
+        await commandObject.autocomplete(client, interaction);
+    } catch (e) {
+        console.log(`There was an error running autocomplete for this command ${e}`);
+        await interaction.respond([]).catch(() => {});
+    }
+}
+
 module.exports = async (client, interaction) => {
+    if (interaction.isAutocomplete()) {
+        await handleAutocomplete(client, interaction);
+        return;
+    }
     if (!interaction.isChatInputCommand) return;
     if (!interaction.member) return;
 

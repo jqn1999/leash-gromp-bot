@@ -1070,7 +1070,7 @@ class EmbedFactory {
     }
 
     // result: { isNew, companion, potatoesGained } from workFactory.handleCompanionEncounter.
-    // A brand-new companion shows its perk and a reminder to /companion equip it (won,
+    // A brand-new companion shows its perk and a reminder to equip it via /companion (won,
     // not auto-equipped — equipping stays a deliberate choice); a duplicate pull shows
     // the consolation potato payout instead, same "Gained" framing as every other
     // potato-reward encounter.
@@ -1089,7 +1089,7 @@ class EmbedFactory {
                 value: formatCompanionPerks(companion),
                 inline: true,
             });
-            description = `${companion.description}\n\nUse \`/companion equip\` to make ${companion.name} your active companion!`;
+            description = `${companion.description}\n\nRun \`/companion\` and use its equip button to make ${companion.name} your active companion!`;
         } else {
             fields.push({
                 name: `Potatoes Gained:`,
@@ -1278,7 +1278,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("Leash Gromp — Companions")
-            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — equip with \`/companion equip\`, view your own with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -1339,7 +1339,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Companions`)
-            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}\n\nUse \`/companion equip\` to change your active companion.`)
+            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the buttons below to equip a companion shown on this page.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -1351,20 +1351,48 @@ class EmbedFactory {
     // companion_market doc, companion resolved from the roster). listing.workCount is
     // the seller's level at listing time (companionMarketFactory.buildListing) — shown
     // here since a leveled companion is worth more than a fresh one. Paginated exactly
-    // like createCompanionListEmbed.
+    // like createCompanionListEmbed. Each field name is prefixed with its 1-indexed
+    // position on this page ("1) ...", "2) ...") so the numbered buy buttons below the
+    // embed (companionMarket.js, "1"-"5") line up unambiguously with the listing above
+    // them — buttons carry no price/name of their own, just the number.
     createCompanionMarketEmbed(pageItems, pageIndex, totalPages, totalListings) {
-        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }) => {
+        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }, index) => {
             const level = companionFactory.getCompanionLevel(listing.workCount);
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level} — ${listing.price.toLocaleString()} potatoes`,
-                value: `${formatCompanionPerks(companion, level)}\nSeller: ${listing.sellerUsername}\nListing ID: \`${listing.listingId}\``,
+                name: `${index + 1}) ${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level} — ${listing.price.toLocaleString()} potatoes`,
+                value: `${formatCompanionPerks(companion, level)}\nSeller: ${listing.sellerUsername}`,
                 inline: false,
             };
         }) : [{ name: 'No active listings', value: 'Nobody has listed a companion for sale right now.', inline: false }];
 
         const embed = new EmbedBuilder()
             .setTitle(`Companion Market`)
-            .setDescription(`${totalListings} active listing${totalListings === 1 ? '' : 's'}\nPage ${pageIndex + 1} / ${totalPages}\n\nUse \`/companion-buy\` with a listing id to purchase.`)
+            .setDescription(`${totalListings} active listing${totalListings === 1 ? '' : 's'}\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the numbered buttons below to buy a listing on this page.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // The invoking user's OWN active listings, shown to power /companion-cancel's
+    // button-driven flow — same pageItems shape ({ listing, companion } pairs) and
+    // pagination as createCompanionMarketEmbed, but without the numbered buy-button
+    // prefixing (cancel buttons are labeled with the companion's own name instead, see
+    // companionCancel.js, since there's no separate "buy" numbering scheme to match here).
+    createCompanionCancelEmbed(userDisplayName, pageItems, pageIndex, totalPages, totalListings) {
+        const fields = pageItems.length > 0 ? pageItems.map(({ listing, companion }) => {
+            const level = companionFactory.getCompanionLevel(listing.workCount);
+            return {
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level} — ${listing.price.toLocaleString()} potatoes`,
+                value: `${formatCompanionPerks(companion, level)}\nListed ${new Date(listing.listedAt).toLocaleDateString()}`,
+                inline: false,
+            };
+        }) : [{ name: 'No active listings', value: "You don't have any companions listed for sale right now.", inline: false }];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Market Listings`)
+            .setDescription(`${totalListings} active listing${totalListings === 1 ? '' : 's'}\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the buttons below to cancel a listing on this page.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

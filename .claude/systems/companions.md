@@ -9,8 +9,8 @@
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
-active at a time — equipping is a deliberate choice via `/companion equip`, not another additive
-stack. Perks are computed fresh at the usage site and never folded into a stored stat, the same
+active at a time — equipping is a deliberate choice via `/companion`'s own per-page equip button
+row, not another additive stack. Perks are computed fresh at the usage site and never folded into a stored stat, the same
 "one active modifier" pattern the guild buff system already uses (see
 [economy-and-work.md](economy-and-work.md)) — this matters because `/rebirth` and `/regrade` both
 depend on `effective - sweetPotatoBuffs - regradeAmount` staying a clean base value.
@@ -266,37 +266,57 @@ guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-con
 `version`-field-conditioned shape as `updateGuildFieldsWithLock`) since list/buy/cancel can all race
 on the same `listings` array.
 
-- **`/companion-sell <companion> <price>`** — must currently own it; rejected if `price` is below
-  that rarity's floor (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 /
-  Legendary 1,000,000 / Mythic 5,000,000 — cut another 10x from the original post-launch floors,
-  since even the reduced Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then **escrow removal**:
-  the companion is pulled out of `owned` entirely (unequipped first if it was active) rather than
-  just balance-checked at purchase time — there's no window where it could be equipped, re-listed,
-  or duplicated while for sale. Escrow removal deliberately does **not** decrement
-  `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a companion
-  you already earned credit for shouldn't claw the achievement back.
+- **`/companion-sell <companion> <price>`** — `companion` is an autocomplete option (not a static
+  `choices` list, which would show all 12 companions to everyone regardless of ownership):
+  filtered per-keystroke, per-invoking-user to what they actually own, isn't out scavenging, and
+  isn't already listed on the market. Rejected server-side too (autocomplete only narrows the
+  dropdown, the callback still re-validates) if `price` is below that rarity's floor
+  (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 / Legendary 1,000,000 /
+  Mythic 5,000,000 — cut another 10x from the original post-launch floors, since even the reduced
+  Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then
+  **escrow removal**: the companion is pulled out of `owned` entirely (unequipped first if it was
+  active) rather than just balance-checked at purchase time — there's no window where it could be
+  equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
+  decrement `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a
+  companion you already earned credit for shouldn't claw the achievement back.
 - **`/companion-market`** — paginated (5/page) browser of active listings: companion, level, tier,
-  price, seller, listing id.
-- **`/companion-buy <listing-id>`** — deducts the price from the buyer (rejected if they can't
-  afford it), credits the seller minus `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s
-  deposit tax — a real sink without being punitive), the fee goes to the house account, and adds the
-  companion to the buyer's `owned` via the same `applyCompanionAward` path a `/work` win uses,
-  passing `listing.workCount` for *both* of `applyCompanionAward`'s amount params so a leveled
-  companion doesn't reset to level 1 on sale — deliberate, since sellers can price a leveled
-  companion above `MINIMUM_PRICE` accordingly (the floor itself doesn't scale with level). Buying a
-  companion the buyer already owns isn't blocked — it combines the levels (the existing entry's
-  `workCount` plus the listing's) rather than adding a second owned entry for the same id. The
-  listing is removed (lock-guarded) *before* the potato/companion transfer, so a losing race on a
-  contested listing fails cleanly with no partial state.
-- **`/companion-cancel <listing-id>`** — seller-only, no fee, companion returns to `owned` at the
-  exact `workCount` captured when it was listed (`companionMarketFactory.buildListing`) — cancelling
-  gives back the same companion, not a fresh level-1 one. If the seller re-acquired the exact same
-  companion while the listing was up (another `/work` pull, or buying it off someone else's
-  listing), the restored `workCount` is added to that existing entry instead of creating a second
-  one — deliberately *not* routed through `applyCompanionAward` here, since that function bumps
-  `ownedCount`/`mythicOwnedCount` for a "new" acquisition and escrow removal never decremented them
-  in the first place (achievements never regress); a normal cancel restoring the same companion must
-  never touch those counters, or they'd double-count one acquisition.
+  price, seller. Each page also renders up to 5 numbered buy buttons (1-5, no price/name on the
+  button label itself — just the number, matching the embed's own "1) ...", "2) ..." field
+  prefixes), disabled for a listing the viewer themselves posted. `/companion-buy <listing-id>` is
+  **retired** (`deleted: true`) now that buying is button-driven — no more listing id to copy/type.
+- **Buying (button click, `companionMarket.js`'s `attemptBuy`)** — re-fetches both the buyer's own
+  userDetails and the market state fresh at click time rather than trusting whatever was on-page
+  when the embed was first rendered (it can sit open for a while before a button is pressed).
+  Deducts the price from the buyer (rejected if they can't afford it), credits the seller minus
+  `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s deposit tax — a real sink without being
+  punitive), the fee goes to the house account, and adds the companion to the buyer's `owned` via
+  the same `applyCompanionAward` path a `/work` win uses, passing `listing.workCount` for *both* of
+  `applyCompanionAward`'s amount params so a leveled companion doesn't reset to level 1 on sale —
+  deliberate, since sellers can price a leveled companion above `MINIMUM_PRICE` accordingly (the
+  floor itself doesn't scale with level). Buying a companion the buyer already owns isn't blocked —
+  it combines the levels (the existing entry's `workCount` plus the listing's) rather than adding a
+  second owned entry for the same id. **Race safety**: the listing is removed via
+  `dynamoHandler.updateStatFieldsWithLock` (real DynamoDB `ConditionExpression` on the market doc's
+  `version`) *before* the potato/companion transfer — if two buyers click "buy" on the same listing
+  within the same window, only the write that still matches the last-read version lands; the loser
+  gets `written === false` back and a clear "someone beat you to it" message, never a double sale.
+  Covered by a dedicated race-condition test (`companionMarket.test.js`) that fires two concurrent
+  `attemptBuy` calls against the same listing with the lock mocked true-then-false and asserts
+  exactly one winner.
+- **`/companion-cancel`** — no args; shows the invoking user's own active listings, paginated
+  (5/page), each with a per-page cancel button row (labeled with the companion's own name, one
+  button per listing on that page). Clicking re-fetches the market state fresh at click time before
+  removing the listing, same "don't trust page-render-time data" discipline as the buy button.
+  Seller-only by construction (the page only ever lists the viewer's own listings), no fee,
+  companion returns to `owned` at the exact `workCount` captured when it was listed
+  (`companionMarketFactory.buildListing`) — cancelling gives back the same companion, not a fresh
+  level-1 one. If the seller re-acquired the exact same companion while the listing was up (another
+  `/work` pull, or buying it off someone else's listing), the restored `workCount` is added to that
+  existing entry instead of creating a second one — deliberately *not* routed through
+  `applyCompanionAward` here, since that function bumps `ownedCount`/`mythicOwnedCount` for a "new"
+  acquisition and escrow removal never decremented them in the first place (achievements never
+  regress); a normal cancel restoring the same companion must never touch those counters, or they'd
+  double-count one acquisition.
 - **`/companion-sell-npc <companion>`** — instant, no listing/escrow/buyer needed: sells straight to
   an NPC for a random `CompanionMarket.NPC_SELL_RATIO_MIN`-`NPC_SELL_RATIO_MAX` (30-50%) of that
   rarity's own `MINIMUM_PRICE`, scaled by the companion's own level multiplier — but deliberately
@@ -326,12 +346,12 @@ discipline the rest of this system already enforces, rather than letting every i
 value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
 
 - **`/companion-scavenge <companion>`** — dispatch. No confirm prompt (nothing is lost by starting
-  one, same immediacy as `/companion equip`). Rejects if: not owned; currently the equipped/active
+  one, same immediacy as `/companion`'s equip buttons). Rejects if: not owned; currently the equipped/active
   companion; or another companion is already scavenging (states which one and, if it's already
   return-ready, tells the player to `/companion-scavenge-collect` it first — dispatch deliberately
   never auto-collects a ready-and-waiting scavenge). On success, writes `companions.scavenging = {
   companionId, rarity, returnsAt }` via a plain unconditional `updateUserFields` call — same
-  no-race-guard shape `/companion equip` already uses. A raced double-dispatch just means whichever
+  no-race-guard shape `/companion`'s equip buttons already use. A raced double-dispatch just means whichever
   write lands last persists; no reward can be double-granted and no companion is ever orphaned by
   it, so it wasn't worth a conditional-write helper.
 - **`/companion-scavenge-collect`** (no args — only one slot exists). Rejects if nothing is

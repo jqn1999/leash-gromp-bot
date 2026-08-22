@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 const { Companions } = require("../../utils/constants");
 
@@ -15,9 +16,34 @@ module.exports = {
             description: 'Which companion to sell',
             required: true,
             type: ApplicationCommandOptionType.String,
-            choices: Companions.map(companion => ({ name: companion.name, value: companion.id }))
+            autocomplete: true
         }
     ],
+    // Same reasoning as companionSell.js's autocomplete — filters to what the invoking
+    // user actually owns and isn't scavenging. Unlike /companion-sell, a companion
+    // already listed on the market is NOT excluded here (validateNpcSaleRequest doesn't
+    // check the market either) — this command sells straight to an NPC, so an active
+    // listing isn't a relevant conflict the way it is for creating a second listing.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const userId = interaction.user.id;
+        const username = interaction.user.username;
+
+        const userDetails = await dynamoHandler.findUser(userId, username);
+        if (!userDetails) {
+            await interaction.respond([]);
+            return;
+        }
+
+        const choices = Companions
+            .filter(c => companionFactory.ownsCompanion(userDetails, c.id))
+            .filter(c => !companionFactory.isScavenging(userDetails, c.id))
+            .filter(c => c.name.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(c => ({ name: c.name, value: c.id }));
+
+        await interaction.respond(choices);
+    },
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);

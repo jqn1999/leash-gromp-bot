@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 const { Companions } = require("../../utils/constants");
 
@@ -15,7 +16,7 @@ module.exports = {
             description: 'Which companion to list',
             required: true,
             type: ApplicationCommandOptionType.String,
-            choices: Companions.map(companion => ({ name: companion.name, value: companion.id }))
+            autocomplete: true
         },
         {
             name: 'price',
@@ -24,6 +25,41 @@ module.exports = {
             type: ApplicationCommandOptionType.Number,
         }
     ],
+    // Static `choices` can only ever list the full 12-companion roster (locked in at
+    // registration time), which meant this dropdown showed companions the invoking user
+    // didn't even own. Autocomplete is resolved per-keystroke against the real caller, so
+    // it can filter to what's actually sellable for THEM: owned, not out scavenging (see
+    // companionMarketFactory.validateListingRequest — the same two guards this command's
+    // own callback re-validates below), and — specifically for /companion-sell, unlike
+    // /companion-sell-npc — not already actively listed on the market (no reason to offer
+    // relisting something already up for sale). Matches the partial text typed so far
+    // case-insensitively against each companion's name; capped at Discord's 25-result max.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const userId = interaction.user.id;
+        const username = interaction.user.username;
+
+        const userDetails = await dynamoHandler.findUser(userId, username);
+        if (!userDetails) {
+            await interaction.respond([]);
+            return;
+        }
+
+        const { listings } = await companionMarketFactory.getMarketState();
+        const alreadyListedIds = new Set(
+            listings.filter(l => l.sellerId === userId).map(l => l.companionId)
+        );
+
+        const choices = Companions
+            .filter(c => companionFactory.ownsCompanion(userDetails, c.id))
+            .filter(c => !companionFactory.isScavenging(userDetails, c.id))
+            .filter(c => !alreadyListedIds.has(c.id))
+            .filter(c => c.name.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(c => ({ name: c.name, value: c.id }));
+
+        await interaction.respond(choices);
+    },
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);

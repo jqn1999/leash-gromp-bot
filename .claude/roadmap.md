@@ -850,6 +850,61 @@ and needs its own balance pass.
   previously-missing `companionSellNpc.js` row (a pre-existing gap, unrelated to this feature) to
   [reference/commands.md](reference/commands.md) while touching that file.
 
+- [x] **18. Companion UI Overhaul — Buttons & Autocomplete** — M — **Done**
+  What: Replaced typed/static-choice option flows across four companion commands with
+  autocomplete and button-driven interactions:
+  - `/companion-sell` and `/companion-sell-npc`'s `companion` option switched from a static
+    `choices` list (which showed every one of the 12 roster companions to every player,
+    regardless of ownership) to `autocomplete: true`, resolved per-keystroke against the
+    invoking user's own account — filtered to what they own, isn't out scavenging, and
+    (`/companion-sell` only) isn't already listed on the market.
+  - `/companion` dropped its `equip` option; now shows owned companions paginated (5/page)
+    with a per-page equip button row, one button per companion shown, disabled for the
+    currently active companion and for one that's out scavenging.
+  - `/companion-cancel` dropped its typed `listing-id` option; now shows only the invoking
+    user's own active market listings, paginated, with a per-page cancel button row.
+  - `/companion-market` gained numbered (1-5) buy buttons per page — no price or companion
+    name on the button label itself, just the number, matching the embed's own "1) ...",
+    "2) ..." field prefixes — disabled for a listing the viewer posted themselves.
+    `/companion-buy` is retired (`deleted: true`, matching the `createRaid.js` precedent for
+    retired commands rather than deleting the file outright) now that buying is button-driven.
+  - `src/events/interactionCreate/handleCommands.js` gained a dedicated `isAutocomplete()`
+    dispatch branch — previously only `isChatInputCommand()` was handled, so autocomplete
+    interactions (which arrive as a distinct interaction type and must be answered via
+    `interaction.respond([...])`, not `deferReply`/`editReply`) were silently dropped.
+  Why: direct player ask — `/companion-sell`'s static choices dropdown listed companions the
+  player didn't even own, and typed `listing-id` options for cancel/buy required copying an
+  id out of a separate `/companion-market`/`/companion-cancel` listing first. Buttons remove
+  that copy-paste step entirely for cancel/equip/buy; autocomplete does the equivalent for
+  sell without needing a modal (buttons alone can't carry the free-text `price` option
+  `/companion-sell` still needs, so that command keeps a typed option, just a smarter one).
+  Race safety (explicit player ask: "there should not be 2 bought only first person"): the
+  buy button reuses the pre-existing atomic write `/companion-buy` already had
+  (`dynamoHandler.updateStatFieldsWithLock`, a real DynamoDB `ConditionExpression` on the
+  market doc's `version`) — that mechanism was never the gap. The actual risk specific to a
+  button-driven flow is a page sitting open for a while before a click, so `companionMarket.js`'s
+  `attemptBuy` (and the equivalent `attemptEquip`/`attemptCancelListing` on the other two
+  commands) re-fetches both the market state and the acting user's own account fresh at
+  click time rather than trusting whatever was captured when the embed was first rendered.
+  Covered by a dedicated race-condition test (`companionMarket.test.js`) that fires two
+  concurrent `attemptBuy` calls at the same listing with the lock mocked true-then-false and
+  asserts exactly one caller wins, exactly one `updateUserFields` call lands, and the loser
+  gets an explicit "someone beat you to that listing" message rather than a silent failure.
+  Notable design points:
+  - Each command's custom collector loop (not `runPaginatedReply`/`buildPaginationRow`'s
+    generic prev/next-only helper) — that shared helper has no concept of a non-pagination
+    button click, so all three button-driven commands (`companion.js`, `companionCancel.js`,
+    `companionMarket.js`) layer their own `awaitMessageComponent` loop on top of it instead,
+    still reusing `buildPaginationRow` itself for the prev/next row so the other 9 commands
+    still on the generic helper are untouched.
+  - Each command exports its per-click handler (`attemptEquip`, `attemptCancelListing`,
+    `attemptBuy`) as a standalone function specifically so it's testable without mocking
+    discord.js's component-collector machinery — none of these commands had test coverage
+    before this change (no command file in this codebase did), so this also establishes the
+    pattern for testing a button-driven command going forward.
+  - No new persisted fields, no balance/formula changes — this is UI/interaction-shape only;
+    `getDefaultUserFields`/`findUser` healing doesn't apply here.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
