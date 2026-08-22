@@ -913,7 +913,7 @@ const regularStatRaidMobs = [
 const regularWorkMobs = [
     {
         name: "Baby Broccoli",
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1540713459543707658/NzQwJnE9ODA.png?ex=6a8af4b9&is=6a89a339&hm=3c139cbf3b2bcd1681abec6faaca6277b9fd03fe88d4d562954bb117c6844c50&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/581890711767613450/1540782918815850517/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg?ex=6a8b356a&is=6a89e3ea&hm=152a67dc21e6dd5252bae5687605d82f9c7844e22b6146fc694c5999d8c2de0d&",
         description: `You happen upon a rather cute vegetable and bring yourself to slay it. You claim a bag of potatoes as a reward, but people seem to look at you a bit differently now...`
     },
     {
@@ -988,7 +988,7 @@ const poisonPotato = {
 
 const goldenPotato = {
     name: "Golden Potato",
-    thumbnailUrl: "https://ih0.redbubble.net/image.4402449953.5486/raf,360x360,075,t,fafafa:ca443f4786.jpg",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/581890711767613450/1540782208829096066/Golden_Potato.jpg?ex=6a8b34c0&is=6a89e340&hm=aa67805fedcc1ee8750653f9e9b348a25ea77f0264e4e7966a749da948d2486d&",
     description: `Congratulations! You encountered a Golden Potato, one of a select few mythical tubers who reward keen adventurers with an overflowing bag of potatoes. As you covet the bounty granted by the benevolent tuber, it vanishes, returning to the magical garden it once grew from.`
 }
 
