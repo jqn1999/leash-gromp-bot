@@ -26,7 +26,9 @@ function pickRandomIds(pool, count) {
 const WEEKLY_REWARD_REGRADE_INFO = {
     workMultiplierAmount: { regradePath: 'regrades.workMulti.regradeAmount', cap: 500 },
     passiveAmount: { regradePath: 'regrades.passiveAmount.regradeAmount', cap: 600000000 },
-    bankCapacity: { regradePath: 'regrades.bankCapacity.regradeAmount', cap: 103000000000 },
+    // No bankCapacity entry — see constants.js's 2026-08-22 comment on weekly_work_50/
+    // weekly_poison_5 for why that quest reward type was retired (ramped toward its own
+    // cap-triggered no-op).
 };
 
 // Ramps linearly from reward.min (no regrade progress yet — includes the entire time a

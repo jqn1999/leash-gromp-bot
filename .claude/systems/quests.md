@@ -64,12 +64,12 @@ pre-action value.
   as the daily login streak, so the reward stays meaningful as the economy matures. If multiple
   daily quests complete in the same check (e.g. two conditions cross their threshold in the same
   `/work` call), rewards are summed into one combined write.
-- **Weekly**: a permanent stat bonus (Work Multiplier, Passive Income, or Bank Capacity), baked into
-  each weekly template's `reward: { statType, min, max }`. Unlike every other permanent stat source
-  in the game (Metal Potato +0.6, Sweet Potato +0.2, Tower rewards, Metal King — all flat, all
-  uncapped), the weekly amount **ramps** with the player's own regrade progress *on that specific
-  stat* — `questFactory.js`'s `calculateWeeklyStatReward` reads
-  `regrades.<workMulti|passiveAmount|bankCapacity>.regradeAmount`, computes
+- **Weekly**: a permanent stat bonus (Work Multiplier or Passive Income), baked into each weekly
+  template's `reward: { statType, min, max }`. Unlike every other permanent stat source in the game
+  (Metal Potato +0.6, Sweet Potato +0.2, Tower rewards, Metal King — all flat, all uncapped), the
+  weekly amount **ramps** with the player's own regrade progress *on that specific stat* —
+  `questFactory.js`'s `calculateWeeklyStatReward` reads
+  `regrades.<workMulti|passiveAmount>.regradeAmount`, computes
   `t = min(regradeProgress / absoluteRegradeCap, 1)`, and returns `min + (max - min) * t`. A player
   with zero regrade progress on that stat (including the entire time they're still buying shop
   tiers, since regrade isn't unlockable until the shop's maxed) gets `min`; a player who's fully
@@ -80,8 +80,16 @@ pre-action value.
   gain by mid-game and badly by end-game, and why scaling by *current* stat value (rather than
   regrade progress specifically) was rejected: it would compound a permanent bonus off its own
   size, unlike the one-time potato payouts daily quests/streak scale by workMultiplierAmount.
-  Current min/max pairs: work multiplier 0.2 → 1.0, passive income 30,000 → 150,000, bank capacity
-  200,000 → 1,000,000. Folds into `sweetPotatoBuffs`, same convention as every other permanent stat
+  Current min/max pairs: work multiplier 0.2 → 1.0, passive income 30,000 → 150,000. Bank capacity
+  was retired from this reward pool 2026-08-22 (`weekly_work_50`/`weekly_poison_5` moved to
+  passive income) — the exact same ramping-toward-regrade-progress shape that makes this reward
+  type keep pace with the economy meant a bank-capacity reward specifically ramped its own size
+  toward the precise regrade threshold that makes bank capacity a literal no-op, maxing out right
+  as it stopped mattering; see `balance-audit.md`'s same-day entry and `companions.md`'s third
+  balance pass for the fuller blast-radius accounting (other bank-capacity sources — Sweet Potato,
+  Metal Potato, World Boss, Tower — were left alone as lower-stakes one-off rolls, not a
+  guaranteed reward calibrated to ramp toward its own death). Folds into `sweetPotatoBuffs`, same
+  convention as every other permanent stat
   source. The actual computed amount for a completion is carried on the completed-quest object as
   `grantedRewardAmount` (not a static template value) so `createQuestCompleteEmbed` can display what
   that specific player actually got.

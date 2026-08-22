@@ -936,6 +936,60 @@ and needs its own balance pass.
   (`handlePoisonPotato`, `calculateGainAmount`) spell out why the two directions differ, so a
   future reader doesn't assume it's a bug and "fix" it back to uniform scaling.
 
+  **Follow-up (same day): per-hit escalation.** The rebate above still had a real problem the
+  account holder caught immediately: it was built off the *mitigated* loss (post-
+  `computePoisonMitigation` reduction), which fights itself — mitigation's reduction shrinks every
+  successive weekly hit, so a fixed rebate percent of a shrinking number meant each successive
+  Poison hit was *less* beneficial with Guinea Pig equipped, the opposite of what "gets better the
+  more you're poisoned" should feel like. Fix: the rebate now reads off the **raw, unmitigated**
+  loss instead, multiplied by a new **escalation multiplier** —
+  `Work.GUINEA_PIG_ESCALATION_PER_HIT` (15%, mirroring `PoisonMitigation.REDUCTION_PER_HIT`'s own
+  step in the opposite direction) compounds once per weekly hit already taken, capped at
+  `PoisonMitigation.MILESTONE_HIT_THRESHOLD` (hit 10, ≈3.5×) rather than growing forever — the
+  same weekly ceiling everyone else's own mitigation caps at, chosen specifically so an aggressive
+  week of farming poison hits can't turn this into an unbounded payout. Reading off the raw loss
+  (not the mitigated one) also avoids a nasty side effect an earlier version of this fix had: since
+  the milestone's own reduction jumps to 90% right at hit 10, a mitigated-loss-based rebate would
+  have *crashed* right at the exact hit where escalation maxes out — the one moment this perk
+  should feel best. `computePoisonMitigation` still runs and the weekly counter still updates for
+  Guinea Pig either way (needed for the shared milestone achievement); its `reduction` value is
+  just no longer read by Guinea Pig's own gain calculation. The tax side is unaffected — only the
+  rebate escalates with weekly hit count, still scaling with level exactly as shipped above.
+
+- [x] **20. Bank Capacity Dead-Weight Fixes** — S — **Done**
+  What: Three independent fixes addressing the same root problem `balance-audit.md`'s 2026-08-22
+  entry quantified — `bankCapacity` bonuses go to a literal no-op once bank regrade is maxed
+  (`bank.js` sets the cap to a real `Infinity`), and that window recurs every rebirth cycle,
+  clearing far faster than the work/passive tracks, so it overlaps real ongoing play rather than
+  being a late-game curiosity:
+  1. **Rootcarver's `bankCapacityPercent` retired**, swapped for `starchSellBonusPercent` +12%
+     (not the same `passiveIncomePercent` swap Elder Rootbeard got in item 16's balance pass —
+     Rootcarver already carries a `passiveIncomePercent` perk, and `getActivePerkValue` only reads
+     a companion's first perk entry of a given type, so a second one would silently be ignored).
+     12% is calibrated against `starchSellBonusPercent`'s own existing ladder (Mole 9% Rare solo,
+     Elder Rootbeard 15% Mythic one-of-four) rather than preserving the old bank-capacity-era
+     "combined ≈26%" target — Rootcarver's combined face value drops to 20% as an accepted
+     trade-off. See `companions.md`'s third balance pass for the full reasoning.
+  2. **The weekly quest bank-capacity reward retired.** `weekly_work_50`/`weekly_poison_5` moved
+     from `statType: "bankCapacity"` to `"passiveAmount"` (matching `weekly_sweet_5`/
+     `weekly_achievement`'s existing 30,000 → 150,000 range) — this was the single worst offender
+     of all six bank-capacity sources, since `calculateWeeklyStatReward` *ramps a reward's size up*
+     as the player's own regrade progress on that stat approaches its cap, meaning this reward
+     specifically grew toward its own maximum at the exact moment bank capacity goes to a no-op.
+     `questFactory.js`'s now-unused `bankCapacity` entry in `WEEKLY_REWARD_REGRADE_INFO` was
+     removed alongside it.
+  3. **`/profile` and `/user-stats` display bug fixed independently** — both still computed and
+     showed a "Live: +Y" bank-capacity bonus off the stored `bankCapacity` field even when regrade
+     was fully maxed and the real cap was already `Infinity`. Both now check the same
+     `regradeAmount >= REGRADE_CAPS.bankCapacity` condition `bank.js` itself uses and show
+     "Unlimited" instead, via a new shared `isBankCapacityMaxed` helper in `embedFactory.js`.
+  Why: direct instruction from the account holder following the balance-audit's ranked
+  recommendations. The other three bank-capacity sources the audit found (Sweet Potato, Metal
+  Potato, World Boss, Tower) were deliberately left alone — each is one of several possible
+  outcomes on a roll a player wasn't guaranteed anyway, not a guaranteed reward calibrated to ramp
+  toward its own death, so the audit's own cost/benefit call was that fixing them wasn't worth the
+  complexity of a shared "reroute if maxed" mechanism touching four separate reward paths.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

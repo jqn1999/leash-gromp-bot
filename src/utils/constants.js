@@ -11,12 +11,22 @@ const Work = {
     // unlikely to ever approach this cap even at Mochi's 20% — this just bounds the
     // pathological tail so a freak streak can't spam the channel or chew through rate limits.
     MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 15,
-    // Guinea Pig's poison rebate base — the fraction of a hit's already-mitigated loss
-    // it converts into a gain instead, at level 1. Scales UP with level via
-    // companionFactory.getGuineaPigTaxAndRebate (level 10 = this * 1.45 = 72.5%), the
-    // opposite direction from the perk's own yield-tax cost (see the poisonImmunity perk
-    // value below, and that function's own comment for why the two scale oppositely).
+    // Guinea Pig's poison rebate base — the fraction of a hit's raw (unmitigated) loss
+    // it converts into a gain instead, at level 1 and hit #1 this week. Scales UP with
+    // level via companionFactory.getGuineaPigTaxAndRebate (level 10 = this * 1.45 =
+    // 72.5%), the opposite direction from the perk's own yield-tax cost (see the
+    // poisonImmunity perk value below, and that function's own comment for why the two
+    // scale oppositely).
     GUINEA_PIG_POISON_REBATE_PERCENT: 0.50,
+    // Guinea Pig's per-hit escalation — compounds this rate for every Poison Potato hit
+    // already taken THIS week (workFactory.js's handlePoisonPotato), so repeat hits pay
+    // out MORE instead of less, on top of the level-scaled rebate above. Mirrors
+    // PoisonMitigation.REDUCTION_PER_HIT's own 15% step (same number, opposite
+    // direction — everyone else's loss shrinks 15%/hit, Guinea Pig's gain grows
+    // 15%/hit), and caps at PoisonMitigation.MILESTONE_HIT_THRESHOLD (hit 10, ~3.5x)
+    // rather than compounding forever, the same weekly ceiling everyone else's own
+    // mitigation caps at.
+    GUINEA_PIG_ESCALATION_PER_HIT: 0.15,
     MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
@@ -181,10 +191,21 @@ const Quests = [
     // forever). Min/max values are anchored to that stat's regrade track and its
     // absolute completion cap — see systems/quests.md.
     { id: "weekly_work_25", name: "Weekly Grind", description: "Complete 25 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 25, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
-    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "bankCapacity", min: 200000, max: 1000000 } },
+    // Rebalanced 2026-08-22: was statType "bankCapacity" — calculateWeeklyStatReward
+    // ramps a reward's size UP as the player's own regrade progress on that stat
+    // approaches its cap, which for bankCapacity meant this reward grew toward its own
+    // max value at the exact moment bank capacity goes to a literal no-op (see
+    // balance-audit.md's same-day entry). Actively adversarial to itself, unlike Sweet
+    // Potato/Metal Potato's occasional bankCapacity roll (one of several possible
+    // outcomes, not a guaranteed weekly reward calibrated to ramp toward its own death).
+    // Swapped to passiveAmount, matching weekly_sweet_5/weekly_achievement's existing
+    // range below — passive income has no equivalent "goes unlimited" cap, so this can
+    // never go dead the same way.
+    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
     { id: "weekly_sweet_5", name: "Sweet Streak", description: "Befriend 5 Sweet Potatoes this week", category: "weekly", statPath: "workScenarioCounts.sweet", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
     { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
-    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "bankCapacity", min: 200000, max: 1000000 } },
+    // Rebalanced 2026-08-22 — same reason as weekly_work_50 above.
+    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
     { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } }
 ]
 
@@ -611,11 +632,26 @@ const Companions = [
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should, and quietly turns a profit besides.",
-        // Both bumped during a balance pass — 10%/5% combined was well below Spudsprite's
-        // effective 27% Income Power (workMultiplierPercent + the real throughput value
-        // of workCooldownSkipChance), the other Legendary dual-perk pick.
+        // Rebalanced 2026-08-22: bankCapacityPercent replaced with starchSellBonusPercent
+        // (same underlying problem balance-audit.md's 2026-08-22 entry documents for
+        // bankCapacityPercent generally — it goes to a literal no-op the moment bank
+        // regrade is maxed, and bank regrade clears far faster than the work/passive
+        // tracks, so the dead window overlaps real ongoing play, recurring every rebirth
+        // cycle). Not the same passiveIncomePercent swap Elder Rootbeard got — Rootcarver
+        // already carries a passiveIncomePercent perk, and getActivePerkValue only ever
+        // reads the FIRST perk entry of a given type off a companion, so a second one
+        // would silently be ignored; this needed a genuinely different type instead.
+        // 12% sits balanced against this perk's own established rarity ladder rather than
+        // preserving the old bankCapacityPercent-era combined-value target: Mole's sole
+        // Rare-tier starchSellBonusPercent is 9%, Elder Rootbeard's is 15% (one of its
+        // four Mythic perks) — 12% keeps Rootcarver's Legendary/dual-perk value between
+        // both without matching or exceeding the Mythic figure. This does leave
+        // Rootcarver's combined face value at 20% (12+8) versus the original 26% that was
+        // calibrated against Spudsprite's 27% Income Power — a real, deliberate
+        // trade-off: every remaining point of Rootcarver's value is now something that
+        // can never go dead, instead of a bigger number that goes to zero on a schedule.
         perks: [
-            { type: "bankCapacityPercent", value: 0.18 },
+            { type: "starchSellBonusPercent", value: 0.12 },
             { type: "passiveIncomePercent", value: 0.08 }
         ]
     },

@@ -109,7 +109,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Firefly | Rare | `workMultiplierPercent` +9% |
 | Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
-| Rootcarver, the Cellar Keeper | Legendary | `bankCapacityPercent` +18% + `passiveIncomePercent` +8% |
+| Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
@@ -119,9 +119,9 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 |---|---|---|---|---|
 | Work Multiplier | 5% (Sprout) | 9% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
-| Bank Capacity | 12% (Ladybug) | — | 18% (Rootcarver) | — |
+| Bank Capacity | 12% (Ladybug) | — | — | — |
 | Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
-| Starch Sell Bonus | — | 9% (Mole) | — | 15% (Elder Rootbeard) |
+| Starch Sell Bonus | — | 9% (Mole) | 12% (Rootcarver) | 15% (Elder Rootbeard) |
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
@@ -147,26 +147,46 @@ eating a mitigated hit raw, especially for max-level companions and heavy player
 design's leveling made the tax *worse* with no offsetting benefit, since both the tax and the
 (flat, unleveled) payout used the same uniformly-scaled perk value.
 
-The rework makes leveling help both halves instead of just one hurting:
+The rework makes leveling help both halves instead of just one hurting, across two same-day
+passes:
 
 - **The rebate** (`handlePoisonPotato` in `workFactory.js`): every hit — Guinea Pig included —
-  runs through the exact same weekly `computePoisonMitigation` reduction everyone else gets first
-  (previously the immune branch skipped this entirely, so a Guinea Pig owner's own hit history
-  never counted toward anything, including the 10-hits-in-a-week milestone). Guinea Pig then
-  converts a level-scaled fraction of whatever loss remains *after* mitigation into a gain instead
-  of taking it — `Work.GUINEA_PIG_POISON_REBATE_PERCENT` (50%) at level 1, up to 72.5% at level
-  10 — and always skips the lockout, using the normal cooldown regardless.
+  runs through the exact same weekly `computePoisonMitigation` calculation everyone else gets
+  first (previously the immune branch skipped this entirely, so a Guinea Pig owner's own hit
+  history never counted toward anything, including the 10-hits-in-a-week milestone; it still
+  doesn't skip it, purely so that counter and the milestone achievement keep working). Guinea
+  Pig's own reward is deliberately **not** built off the mitigated (softened) loss the shared
+  reduction produces, though — it's a level-scaled fraction of the **raw, unmitigated** loss
+  instead — `Work.GUINEA_PIG_POISON_REBATE_PERCENT` (50%) at level 1, up to 72.5% at level 10 —
+  multiplied again by a **per-hit escalation** that compounds `Work.GUINEA_PIG_ESCALATION_PER_HIT`
+  (15%, mirroring `PoisonMitigation.REDUCTION_PER_HIT`'s own step — same number, opposite
+  direction) for every hit already taken that week, capped at
+  `PoisonMitigation.MILESTONE_HIT_THRESHOLD` (hit 10, ≈3.5×) rather than compounding forever. The
+  lockout is always skipped regardless, using the normal cooldown.
+  - **Why raw loss, not mitigated loss**: an earlier same-day version of this rework built the
+    rebate off the mitigated loss, which fought itself — mitigation's reduction shrinks every
+    successive hit exactly opposite the direction a "gets better the more you're poisoned" perk
+    needs, and the milestone's own reduction jump to 90% would have caused the payout to suddenly
+    *crash* right at hit 10 even with escalation maxed there, the one moment this perk should feel
+    best. Reading off the raw loss instead keeps the payout growing (at least non-decreasing)
+    through the whole week — this was a direct fix for the account holder's own complaint that
+    the mitigated-loss version made each successive poison *less* beneficial with the pet
+    equipped.
 - **The tax** (`calculateGainAmount`, the shared choke-point every potato-denominated gain
   scenario funnels through): the same `poisonImmunity: 0.03` base value as before, applied
   **after** the house's cut so the tax comes out of the player's own take only — but now scales
   **down** with level instead of up, landing at 2.07% at level 10 instead of climbing to 4.35%.
+  Unaffected by weekly hit count — only the rebate escalates.
 
-Both derive from one function, `companionFactory.getGuineaPigTaxAndRebate(userDetails,
+The rebate and tax derive from one function, `companionFactory.getGuineaPigTaxAndRebate(userDetails,
 rebateBasePercent)` — the one companion whose perk doesn't fit `getActivePerkValue`'s ordinary
 "single value, multiplied up" shape, since leveling needs to push its two halves in opposite
 directions. Rebate multiplies UP by the level multiplier like every other perk in the roster; tax
-divides DOWN by it instead. See `.claude/roadmap.md` for the exact numbers by level and the
-before/after comparison chart shared with the account holder.
+divides DOWN by it instead. The escalation multiplier is computed separately in `workFactory.js`
+(it needs the weekly hit count from `computePoisonMitigation`, state `companionFactory` doesn't
+carry) and multiplied in on top. See `.claude/roadmap.md` for the exact numbers by level and the
+before/after comparison chart shared with the account holder — note that chart predates the
+escalation pass and only shows the level axis, not the weekly-hit-count axis.
 
 ### Prospector: Metal Potato's success roll gets its first modifier
 
@@ -259,6 +279,34 @@ old bank-capacity value in the first place): Mochi's new `+6%` `passiveIncomePer
 Rootcarver's Legendary `+8%` on that one specific sub-perk. Accepted because passive income is one
 of four perks here, not Mochi's primary stat, and Mochi's overall kit stays clearly ahead of
 Rootcarver's two-perk total regardless.
+
+### Third balance pass (2026-08-22): Rootcarver's `bankCapacityPercent` retired
+
+`balance-audit.md`'s same-day entry generalized the exact problem the second pass already fixed
+once for Elder Rootbeard: `bankCapacityPercent` hits **literal zero realized value** the moment
+bank regrade caps out — and unlike a one-time late-game curiosity, that window recurs every
+rebirth cycle (bank regrade resets on rebirth) and clears far faster than the work/passive
+tracks, so it overlaps real ongoing play for anyone who isn't deliberately avoiding it. Rootcarver
+was still carrying `bankCapacityPercent` +18% (the *raised* value the first pass gave it to
+compensate for the perk's structural weakness — see above), which meant the exact companion that
+got a bigger number specifically to make this perk worthwhile was also the one still exposed to it
+going fully dead.
+
+Fix: swapped for `starchSellBonusPercent` +12% — not the same `passiveIncomePercent` swap Elder
+Rootbeard got, since Rootcarver already carries a `passiveIncomePercent` perk and
+`getActivePerkValue` only ever reads a companion's *first* perk entry of a given type, so a second
+one would silently be ignored. 12% is calibrated against this perk type's own existing ladder
+(Mole's sole Rare-tier value is 9%, Elder Rootbeard's is 15% as one of its four Mythic perks) —
+Legendary/dual-perk Rootcarver sits between both without matching or exceeding the Mythic figure,
+rather than preserving the old bank-capacity-era "combined ≈26%, matching Spudsprite's 27% Income
+Power" target the original 18%/8% split was calibrated against. That target is explicitly not
+preserved here: Rootcarver's combined face value drops from 26% to 20% (12+8). Accepted trade-off
+— every remaining point of Rootcarver's value is now something that can never go dead, instead of
+a bigger number that goes to zero on a predictable schedule. Ladybug's Common-tier
+`bankCapacityPercent` (+12%) and the market/`/work`-encounter/quest sources that also grant
+`bankCapacity` are unaffected by this pass — see `balance-audit.md` for the fuller blast-radius
+accounting and which of those were separately addressed (the weekly quest reward, below) versus
+left as-is.
 
 ## Perk application sites
 

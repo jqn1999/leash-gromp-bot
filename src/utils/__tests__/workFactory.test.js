@@ -291,6 +291,46 @@ describe('handlePoisonPotato', () => {
             expect(maxLevelRegular).toBeGreaterThan(level1Regular);
         });
 
+        // Locks in the actual point of this rework — the user's own complaint was that
+        // the weekly loss-mitigation curve made each successive poison hit LESS
+        // beneficial with Guinea Pig equipped (mitigatedLoss shrinks every hit, and the
+        // old rebate was a flat percent of it). Escalation must grow the payout instead.
+        test('a later hit in the same week pays out more than an earlier one, compounding with each hit', async () => {
+            const userDetails = guineaPigUser({ workMultiplierAmount: 50 });
+
+            const hit1 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(hit1.mitigationInfo.escalationMultiplier).toBeCloseTo(1);
+
+            userDetails.poisonMitigation = hit1.mitigationInfo && dynamoHandler.updateUserFields.mock.calls[0][1].poisonMitigation;
+            const hit2 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(hit2.mitigationInfo.hitNumberThisWeek).toBe(2);
+            expect(hit2.mitigationInfo.escalationMultiplier).toBeCloseTo(1 + Work.GUINEA_PIG_ESCALATION_PER_HIT);
+            expect(hit2.potatoesGained).toBeGreaterThan(hit1.potatoesGained);
+
+            userDetails.poisonMitigation = dynamoHandler.updateUserFields.mock.calls[1][1].poisonMitigation;
+            const hit3 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(hit3.mitigationInfo.hitNumberThisWeek).toBe(3);
+            expect(hit3.potatoesGained).toBeGreaterThan(hit2.potatoesGained);
+        });
+
+        test('escalation caps at PoisonMitigation.MILESTONE_HIT_THRESHOLD instead of compounding forever', async () => {
+            const userDetails = guineaPigUser({
+                workMultiplierAmount: 50,
+                poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: PoisonMitigation.MILESTONE_HIT_THRESHOLD },
+            });
+            const atCap = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(atCap.mitigationInfo.hitNumberThisWeek).toBe(PoisonMitigation.MILESTONE_HIT_THRESHOLD + 1);
+            const expectedCapMultiplier = Math.pow(1 + Work.GUINEA_PIG_ESCALATION_PER_HIT, PoisonMitigation.MILESTONE_HIT_THRESHOLD - 1);
+            expect(atCap.mitigationInfo.escalationMultiplier).toBeCloseTo(expectedCapMultiplier);
+
+            userDetails.poisonMitigation = dynamoHandler.updateUserFields.mock.calls[0][1].poisonMitigation;
+            const pastCap = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            // One further hit past the cap must not grow the multiplier (or the payout)
+            // any further.
+            expect(pastCap.mitigationInfo.escalationMultiplier).toBeCloseTo(expectedCapMultiplier);
+            expect(pastCap.potatoesGained).toBe(atCap.potatoesGained);
+        });
+
         test('writes to totalEarnings, not totalLosses', async () => {
             const userDetails = guineaPigUser();
             await workFactory.handlePoisonPotato(userDetails, 1000, 1);

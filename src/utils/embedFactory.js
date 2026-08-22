@@ -1041,13 +1041,14 @@ class EmbedFactory {
 
     // Poison Potato doesn't fit createWorkEmbed's single "potatoes gained/lost" field —
     // the whole point of PoisonMitigation (see workFactory.js) is that repeat hits get
-    // progressively less painful, and that needs to actually be visible on the embed or
-    // it's just a quieter cooldown nobody notices. result: { potatoesGained, immune,
-    // mitigationInfo } from workFactory.handlePoisonPotato — mitigationInfo is always
-    // populated now (Guinea Pig goes through the same weekly mitigation as everyone else
-    // before converting the remainder into a rebate): { reduction, lockoutSeconds,
-    // hitNumberThisWeek, milestoneJustReached, rebatePercent }, rebatePercent only
-    // non-null when immune.
+    // progressively less painful for everyone else, and Guinea Pig's own hits get
+    // progressively MORE lucrative instead — both need to actually be visible on the
+    // embed or they're just a quieter cooldown/bigger number nobody understands. result:
+    // { potatoesGained, immune, mitigationInfo } from workFactory.handlePoisonPotato —
+    // mitigationInfo is always populated now (Guinea Pig's own hits still update the
+    // shared weekly counter): { reduction, lockoutSeconds, hitNumberThisWeek,
+    // milestoneJustReached, rebatePercent, escalationMultiplier }, rebatePercent/
+    // escalationMultiplier only non-null when immune.
     createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null) {
         const { potatoesGained, immune, mitigationInfo } = result;
         let fields = [{
@@ -1064,15 +1065,19 @@ class EmbedFactory {
         });
 
         if (mitigationInfo) {
-            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, rebatePercent } = mitigationInfo;
-            const hitContext = reduction > 0
-                ? `${Math.round(reduction * 100)}% softer — hit #${hitNumberThisWeek} this week`
-                : `1st Poison hit this week`;
+            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
 
             if (immune) {
+                // Guinea Pig's own rebate is deliberately NOT built off the mitigated
+                // (softer) loss — see handlePoisonPotato's own comment — so this shows
+                // the escalation it's actually getting instead of the shared reduction
+                // number, which doesn't apply to this branch at all.
+                const escalationContext = escalationMultiplier > 1
+                    ? ` (${escalationMultiplier.toFixed(2)}× — hit #${hitNumberThisWeek} this week)`
+                    : ` (1st Poison hit this week)`;
                 fields.push({
                     name: `Guinea Pig:`,
-                    value: `Turned ${(rebatePercent * 100).toFixed(1)}% of the (${hitContext}) loss into a gain instead — no cooldown lockout.`,
+                    value: `Turned ${(rebatePercent * 100).toFixed(1)}% of the raw loss into a gain instead${escalationContext} — no cooldown lockout.`,
                     inline: true,
                 });
             } else {

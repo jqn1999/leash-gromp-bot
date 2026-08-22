@@ -408,21 +408,38 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         // Bad-luck protection — the more times poison has already hit this same player
         // THIS week, the less painful this hit is, resetting every Monday. See
-        // computePoisonMitigation above.
+        // computePoisonMitigation above. Still computed (and its weekly counter still
+        // written) even for Guinea Pig — see the comment above on why that matters — but
+        // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see
+        // that branch's own comment for why).
         const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(userDetails.poisonMitigation);
-        let mitigatedLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
-        mitigatedLoss = Math.floor(mitigatedLoss * (1 - reduction));
+        const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
         const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
 
-        let potatoesGained, workTimer, updateFields;
+        let potatoesGained, workTimer, updateFields, escalationMultiplier = null;
 
         if (immune) {
-            potatoesGained = Math.floor(mitigatedLoss * guineaPig.rebatePercent);
+            // Deliberately built on rawLoss, not the same mitigatedLoss the non-immune
+            // branch below uses — Guinea Pig's own reward instead grows with the weekly
+            // hit count via its own escalationMultiplier (compounds
+            // Work.GUINEA_PIG_ESCALATION_PER_HIT per hit, capped at
+            // PoisonMitigation.MILESTONE_HIT_THRESHOLD, the same weekly milestone
+            // everyone else's mitigation caps at). Building this off mitigatedLoss
+            // instead would fight itself: mitigation's reduction shrinks with every hit
+            // exactly opposite the direction a "gets better the more you're poisoned"
+            // perk needs, and the milestone's own reduction jump to 90% would cause a
+            // sudden payout CRASH right at hit 10 even with escalation maxed there —
+            // the one moment this perk should feel best. Reading off rawLoss instead
+            // keeps growth monotonic through the whole week.
+            const hitsForEscalation = Math.min(nextPoisonMitigation.weeklyHitCount, PoisonMitigation.MILESTONE_HIT_THRESHOLD);
+            escalationMultiplier = Math.pow(1 + Work.GUINEA_PIG_ESCALATION_PER_HIT, hitsForEscalation - 1);
+            potatoesGained = Math.floor(rawLoss * guineaPig.rebatePercent * escalationMultiplier);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
             workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
             updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings, poisonMitigation: nextPoisonMitigation };
         } else {
+            const mitigatedLoss = Math.floor(rawLoss * (1 - reduction));
             potatoesGained = -mitigatedLoss;
             userPotatoes += potatoesGained;
             userTotalLosses += potatoesGained;
@@ -431,9 +448,9 @@ class WorkFactory {
         }
 
         // Surfaced on the embed (see embedFactory.createPoisonPotatoEmbed) so the
-        // reduction — and, for Guinea Pig, the rebate — are actually visible to the
-        // player, not just felt indirectly.
-        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, rebatePercent: immune ? guineaPig.rebatePercent : null };
+        // reduction — and, for Guinea Pig, the rebate and escalation — are actually
+        // visible to the player, not just felt indirectly.
+        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, rebatePercent: immune ? guineaPig.rebatePercent : null, escalationMultiplier };
         if (milestoneJustReached) {
             updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
         }
