@@ -540,3 +540,187 @@ three that structurally can't conflict with `PoisonMitigation`'s own caps, and i
 - **`Work.MAX_POISON_POTATO` / `MAX_LARGE_POTATO` cap parity** (`constants.js:19-21`) — both
   `10000`, confirmed intentional (same `workGainAmount*10` formula shape), not a copy-paste
   divergence to flag.
+
+---
+
+## 2026-08-22 (follow-up) — Bank Capacity dead-content sweep (prompted by user question re: Sweet Potato)
+
+Focused re-check, prompted by a user question: since fully maxing the Bank Capacity regrade track
+makes a player's effective bank capacity literally `Infinity` (`bank.js:72-79`), does every OTHER
+source of `bankCapacity` bonus (not just Sweet Potato's) go dead the moment that threshold is
+crossed, and how big a deal is it really? Verified the mechanism, enumerated every source, and
+quantified how much of the game is actually spent in the affected state (not eyeballed).
+
+### Mechanism, confirmed code-enforced (not flavor text)
+
+`bank.js:72-79`:
+```js
+const isBankCapacityMaxed = userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
+const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
+const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+let userBankCapacity = isBankCapacityMaxed
+    ? Infinity
+    : Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
+```
+A literal `Infinity` sentinel, gated on a single boolean derived from `regrades.bankCapacity.
+regradeAmount >= REGRADE_CAPS.bankCapacity` (`REGRADE_CAPS.bankCapacity = 103,000,000,000`,
+`constants.js:1420-1424`). Once true, `bankCapacityPercent` and `rebirthPercent` are computed but
+multiply into a branch that's never taken — real code, not narrative.
+
+**Important nuance not in the original framing: this state is not permanent for an actively-
+progressing player.** `rebirthFactory.js:95-111`'s `computeRebirthState` resets `regrades.
+bankCapacity.regradeAmount` to `0` on every rebirth (along with the work/passive regrade tracks),
+and `checkRebirthEligibility` (`rebirthFactory.js:27-40`) requires **all three** regrade tracks
+maxed before the *next* rebirth is allowed. So "bank capacity is Infinity" is a state a player
+enters and then involuntarily exits every time they rebirth — it recurs each rebirth cycle rather
+than being a one-way late-game switch. It's only truly permanent for a player who reaches full
+completion and then stops rebirthing altogether (a legitimate "retire at the top" playstyle).
+
+### Blast radius — every current source of `bankCapacity` bonus, checked individually
+
+| Source | File:line | Dead once bank-regrade-maxed? |
+|---|---|---|
+| Bank Shop tiers (`buy.js`) | `constants.js` `shops.bankShop` | No — always resolves before regrade is even reachable |
+| Bank regrade track itself | `regrade.js:129-155`, `bankRegradeTiers` | No — it's the mechanism that causes the maxed state |
+| Sweet Potato's `bankCapacity` roll (1 of 3 equal-weight outcomes) | `workFactory.js:128-158`, `sweetPotatoRewards` | **Yes** — `sweetPotatoBuffs.bankCapacity += actualRewardAmount` (`:155-157`) still writes, but the write is inert while maxed |
+| Metal Potato's unconditional `bankCapacity` stat buff (stacks with its potato payout + other two stat buffs, not exclusive) | `workFactory.js:76-126`, esp. `:97,102,107,119` | **Yes**, but lower-stakes than Sweet Potato — nothing is displaced, the payout + other two buffs still land, only this one component goes inert |
+| Weekly quest rewards `weekly_work_50`/`weekly_poison_5` (`statType: "bankCapacity"`, ramps 200,000→1,000,000 with the player's *own* bank-regrade progress, caps at max forever) | `constants.js:184,187`, `questFactory.js:26-45,129-150` | **Yes** — and structurally the worst-designed case: the reward is explicitly designed to ramp *up to* max exactly as a player approaches full bank regrade, then keeps paying that same max flat amount into a stat that's about to go dead the moment they cross the same threshold the reward is scaled by |
+| Companion perk `bankCapacityPercent` — **Ladybug** (Common, single-perk, `+12%`, `constants.js:518-524`) and **Rootcarver** (Legendary, dual-perk with `passiveIncomePercent`, `+18%`/`+8%`, `constants.js:609-621`) | `bank.js:75` (`getActivePerkValue`) | **Yes** — contributes exactly 0 to the formula whenever `isBankCapacityMaxed` |
+| Rebirth's live `rebirthPercent` applied to bank capacity | `bank.js:76,79` | **Yes**, same branch |
+| World Boss raid rewards — all 4 bosses grant a flat guild-wide `bankCapacityReward` (3.5M–15M) split across every participant via `handleStatSplit` | `worldFactory.js:78,81,120,133,152,165`, `raidFactory.js:174,187-189` | **Yes** for any recipient who's already bank-regrade-maxed |
+| Tower daily leaderboard payout — top finishers get `entry.bankCapacity * tierPercent` as a bonus | `towerLeaderboardFactory.js:11-16,55-60` | **Yes**, same mechanism |
+| Guild buffs (`GuildBuffScaling`/`GuildBuffDescriptions`) | `constants.js:832-847` | **No — ruled out.** Only `workMulti`/`workTimer`/`robChance`/`raidTimer` exist; nothing touches personal `bankCapacity` |
+| Guild Contract's `bankCapacityReward` / `guildShops`' bank tier | `guildContractFactory.js:130-156`, `guildBuy.js:174-201` | **No — ruled out.** This is the **guild's own** `guild.bankCapacity` field (a wholly separate stat with its own shop ladder, no regrade track, no Infinity branch anywhere in `guildBank.js`) — unrelated to the player-level mechanic |
+
+So the concern generalizes well beyond Sweet Potato: **six** live sources (Sweet Potato, Metal
+Potato, two weekly quests, two companion perks, World Boss, Tower leaderboard) all feed the same
+dead branch. Guild-side bank capacity is a red herring — genuinely a separate system, not affected.
+
+### How much of the game this actually touches — computed, not assumed
+
+The three regrade tracks are supposed to mirror each other in `cost`/`chance`/`failStackIncrease`
+per prior audit findings, and do (aside from the already-accepted final-tier anomaly). But
+`bankRegradeTiers` only has **9** tiers vs. `workRegradeTiers`/`passiveRegradeTiers`'s **14**
+(`constants.js:1357-1415` — confirmed via `node -e`: `work: 14, passive: 14, bank: 9`). Ran a
+20,000-trial Monte Carlo simulation of the real pity mechanic (`chance + failStack`, resets on
+success, `failStackIncrease` per miss — `regrade.js:138-139,149`) to fully clear each track:
+
+```
+work:     avg 130.9 attempts, avg cost 457,704,500,000 potatoes
+passive:  avg 130.9 attempts, avg cost 457,833,275,000 potatoes
+bank:     avg  41.1 attempts, avg cost  83,350,350,000 potatoes
+```
+
+Bank's track is **~3.2x fewer attempts and ~5.5x cheaper** than either other track. Any player
+who doesn't deliberately sandbag bank regrade until last (there's no reason not to clear the
+cheap/fast track first) will hit "bank capacity = Infinity" **long before** finishing work or
+passive regrade — bank's full cost is only ~8.3% of the three tracks' combined average cost.
+That means the "dead bank bonus" window isn't a brief pre-rebirth instant; it plausibly spans
+**most of the regrade grind** between shop-max and actual rebirth eligibility, every single
+rebirth cycle, for a large fraction of players pursuing rebirths at all (the intended "unlimited
+rebirths" playstyle per `Rebirth`'s own design comment, and per the initial-audit's finding #4
+about rebirth count 11 being a real target).
+
+Net: **not** a late-game curiosity that barely matters because "everything else is maxed too" —
+the whole point is bank finishes *before* everything else, so the dead window overlaps with real,
+ongoing mid/late-game play (the tail of the regrade grind), not just a stopping point.
+
+### Prior art — this exact category already triggered one real fix, but only for one companion
+
+The 2026-08-22 Mochi-vs-Rootbeard follow-up (this file, above) already identified and fixed this
+precise failure mode for **Elder Rootbeard**: `bankCapacityPercent` was swapped for
+`passiveIncomePercent` specifically because it "could hit literal zero realized value once bank
+regrade caps, right before every rebirth" (`constants.js:628-631`). That fix was never generalized
+to the other two companions carrying the same perk shape:
+
+- **Ladybug** (Common, `constants.js:518-524`) is **single-perk**, and that one perk is
+  `bankCapacityPercent`. During the dead window, an equipped Ladybug contributes its *entire*
+  kit's value: zero. In practice a min-maxed late-game player likely isn't running a Common
+  companion by the time they're deep in the regrade grind, so real-world exposure is probably low
+  — but it's the most severe case in principle (100% of a companion's value going to 0, not a
+  fraction of it).
+- **Rootcarver** (Legendary, `constants.js:609-621`, `bankCapacityPercent +18%` /
+  `passiveIncomePercent +8%`) is the more realistic live concern — it's a plausible actively-
+  equipped mid/late-game companion, and its own design comment (`constants.js:614-617`) explicitly
+  calibrated its **combined** face value (`18%+8%=26%`) against Spudsprite's Income Power (`27%`,
+  `(1.08)*(1/(1-0.15))-1` via the established framework) to keep the two Legendary dual-perk picks
+  roughly at parity. During the dead window, Rootcarver's realized value drops to just the `8%`
+  passive half — under a third of Spudsprite's `27%`, turning "roughly equal Legendary picks" into
+  a strictly-dominated choice (Spudsprite unconditionally better) for exactly as long as the
+  equipped player is bank-regrade-maxed but hasn't yet rebirthed. Same failure shape the Rootbeard
+  fix already addressed at Mythic tier, unaddressed here at Legendary.
+
+### Secondary finding: a real (separate, minor) display bug
+
+`embedFactory.js`'s `createUserEmbed` (`:192-196`) and `createUserStatsEmbed` (`:283-309`, the
+`/profile` and `/user-stats` embeds) compute the bank capacity "Live: X (+Y)" preview as
+`userDetails.bankCapacity * (bankCapacityPercent + rebirthPercent)` **without ever checking
+`isBankCapacityMaxed`** — unlike `/bank` itself (`bank.js:72-79`) and `formatBankCapacityField`
+(`embedFactory.js:30`, correctly used at `:1762,1798`), which do. A bank-regrade-maxed player still
+sees a nonzero "Live: ...(+...)" bank capacity line on their profile that implies a bonus is being
+applied, while `/bank` correctly shows "Unlimited" and the bonus does nothing. Cosmetic, not a
+balance bug, but worth a one-line fix alongside anything else touched here.
+
+### Severity
+
+**Live, not hypothetical**, and broader than the user's Sweet-Potato-specific framing — but
+**self-correcting each rebirth cycle** rather than a one-way late-game dead end, which meaningfully
+changes the shape of the problem: this isn't "one stat permanently stops mattering once you're
+deep enough," it's "one stat repeatedly, predictably goes dead for a substantial chunk of every
+regrade-grind cycle because its track is disproportionately short." The Rootcarver-vs-Spudsprite
+comparison is the sharpest concrete instance (a real, reachable trap-option state, not just
+Sweet-Potato-roll inefficiency) and the quest-reward case is the most obviously mis-designed
+(a reward explicitly tuned to ramp toward the exact threshold that kills its own usefulness).
+
+### Recommendations (ranked, for `product-owner`/`architect` — no fix applied here)
+
+1. **Rootcarver's perk composition** (highest-value fix for the least surface area): apply the
+   same swap already validated for Elder Rootbeard — replace `bankCapacityPercent` with a
+   perk type that can't hit structural zero (e.g. a second helping of `passiveIncomePercent`, or
+   a new rate-shaped perk), restoring the intended Spudsprite/Rootcarver parity for the whole
+   window a player is bank-regrade-maxed. This is the one finding here with the most direct
+   precedent and the clearest "don't repeat a bug already fixed once" case.
+2. **Weekly quest reward redesign for the bank-capacity template**: since the ramp is explicitly
+   tied to the same regrade progress that kills the stat, consider capping the ramp's usefulness
+   window differently (e.g. once bank regrade is maxed, redirect that weekly template's payout to
+   a different stat/potatoes rather than continuing to hand out a now-inert max-tier reward
+   forever) — same shape as option (b) in the framing this task was given for Sweet Potato, but
+   this is the source where "reroute the dead outcome" pays off most since it's guaranteed
+   (weekly completion), not a rare roll.
+3. **Sweet Potato / Metal Potato / World Boss / Tower leaderboard — leave as-is is defensible**,
+   per the framing's option (a): Sweet Potato only wastes 1-of-3 equal-weight outcomes (~0.67% of
+   all `/work` calls, `eventFactory.js`'s `workProbability[4] = .02` × 1/3) during a window that
+   isn't even permanent; Metal Potato's case is milder still since nothing is displaced (the
+   payout and other two stat buffs still land); World Boss/Tower's bank payouts are a small
+   fraction of a much larger reward. None of these clear the bar of "worth adding reroute/redirect
+   logic to every payout site" on their own — but if `product-owner` decides the quest case (above)
+   is worth a structural fix, the same reroute primitive could cheaply cover these too rather than
+   leaving them as accepted minor waste.
+4. **Ladybug**: lowest priority — single-perk Common companion realistically isn't the one equipped
+   by a player far enough into the regrade grind to hit this state, so real-world exposure is low
+   even though the *proportional* damage (100% of its kit) is the worst on paper. Worth folding
+   into whatever fix Ladybug and Rootcarver's tier siblings get next, not urgent on its own.
+5. **`embedFactory.js`'s profile "Live" bank preview**: cheap, low-risk fix — gate the `bankBonus`/
+   `liveBankBonus` calculation in `createUserEmbed`/`createUserStatsEmbed` on the same
+   `isBankCapacityMaxed` check `bank.js` already uses, so `/profile`/`/user-stats` stop implying a
+   dead bonus is live. Independent of whichever of 1-4 gets picked.
+6. **Structural option (not recommended over 1/2 above, but noted per the framing's option (c))**:
+   giving bank capacity a "genuinely unbounded value other mechanics can still hook into" would
+   require inventing a new post-Infinity value axis (e.g. a cosmetic vault-size record, or
+   redirecting bank-capacity rewards into a different currency automatically at the source) —
+   meaningfully more design/implementation surface than 1/2 for a problem that's already
+   self-limiting via the rebirth reset cycle. Only worth it if `product-owner` wants bank capacity
+   to keep being a meaningful axis indefinitely rather than accepting "eventually dead-ends, like
+   any other maxed track" as fine.
+
+### Checked, no issues found (this pass)
+
+- **Guild buffs and Guild Contract's bank reward** — confirmed structurally unrelated to the
+  player-level Infinity mechanic (separate `guild.bankCapacity` field, no regrade track, no
+  Infinity branch anywhere in `guildBank.js`/`guildBuy.js`/`guildContractFactory.js`). Not
+  affected, not flagged.
+- **Ancient Potato's free-regrade reward logic** (`workFactory.js`, per `systems/economy-and-
+  work.md`) already correctly excludes any track that's already regrade-capped from its
+  "free regrade" outcome (falls through to shop-upgrade or potato-payout instead) — this is the
+  one bank-capacity-adjacent payout site in the game that already avoids wasting itself on a dead
+  stat. No fix needed here; noted as a good pattern the recommendations above could reuse.
