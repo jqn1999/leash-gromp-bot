@@ -216,3 +216,172 @@ constant — treat the ~2x gap as the load-bearing number, not the absolute EV f
   worse than tier 1's) but this is already covered by an explicit, documented design note
   in `constants.js` (`Bank.STARTING_CAPACITY`'s comment) about tier 0 being deliberately a
   smaller jump than tier 1 — not flagged as a new finding.
+
+---
+
+## 2026-08-22 (follow-up) — Mochi vs. Elder Rootbeard Mythic parity
+
+Focused re-check, prompted by a product-owner complaint that Mochi, the Undying Stray feels
+meaningfully stronger than Elder Rootbeard despite both being Mythic quad-perk generalists
+meant to be roughly equal (`systems/companions.md`'s "Balance pass" section, roadmap item
+10). Confirmed current perks directly against `constants.js:613-643`:
+
+- **Elder Rootbeard** (`constants.js:614-630`): `regradeChanceFlat` +3%, `bankCapacityPercent`
+  +20%, `robChanceFlat` +15%, `starchSellBonusPercent` +15%.
+- **Mochi** (`constants.js:632-643`): `passiveIncomePercent` +10%, `rebirthBonusPercent`
+  +20%, `workMultiplierPercent` +12%, `workCooldownSkipChance` 20%.
+
+### Finding 1 [HIGH — live, not hypothetical] Complaint confirmed: nominal face values are
+close, real usage-weighted value is not, because every Mochi perk fires on one of the game's
+two highest-frequency, always-on actions while every Rootbeard perk only pays off on a rare
+or optional/gated action.
+
+**Income Power math** (per the established `1/(1-p)` framework, `companionFactory.js`'s
+`getActivePerkValue` choke point, verified live at `workFactory.js:85-90` where
+`effectiveMultiplier = userMultiplier + guildMultiplier + companionMultiplier +
+rebirthMultiplier` and `getCompanionWorkMulti` = `userMultiplier *
+getActivePerkValue(..., "workMultiplierPercent")`, `workFactory.js:608-610`):
+
+- Mochi's work-axis combo at level 1: `(1.12) * (1/(1-0.20)) - 1 = 40.0%` effective `/work`
+  throughput — computed via `node -e`, matches the audit's existing Income Power precedent
+  exactly (see the 2026-08-22 initial-audit finding #2's own 40.0% figure for fresh Mochi).
+- Mochi's `passiveIncomePercent` (+10%) and `rebirthBonusPercent` (+20%) are **not** two
+  separate, smaller bonuses stacked on top — `rebirthFactory.js:65-72`'s
+  `getLiveRebirthPercent` is read live at `workFactory.js` (11 call sites, every gain-scenario
+  handler), `dynamoHandler.js:551-552` (the 5-minute `passivePotatoHandler` tick), and
+  `bank.js:75-79` (deposit cap) simultaneously — Mochi's `rebirthBonusPercent` is a
+  continuous multiplicative amplifier on **both** the work and passive channels (and bank
+  capacity) for any rebirthed player, not a one-off "at the moment of rebirth" bonus as the
+  in-game flavor text/roadmap's original framing implies. At rebirth count 11 (the point
+  `Rebirth.MAX_BONUS_PERCENT` caps out, `constants.js:320-324`), the live rebirth percentage
+  is 100%; Mochi's +20% relative amplifier adds a full **+20 percentage points** to
+  `effectiveMultiplier` on every single `/work` call and every 5-minute passive tick, growing
+  in absolute size as a player gets deeper into "late game" rather than shrinking.
+- All four of Mochi's perks resolve into exactly two channels — `/work` gain and the 5-minute
+  passive tick — both of which fire unconditionally, every time, all the time (the passive
+  tick doesn't even require the player to be actively playing).
+
+**Rootbeard's four perks, checked against how often their trigger condition actually occurs:**
+
+- `regradeChanceFlat` (`regrade.js:85/112/139`, added straight into `chanceOfSuccess`) only
+  ever applies during an explicit `/regrade` call, gated behind a fully shop-maxed base stat
+  and costing `workRegradeTiers[0].cost = 500,000,000` potatoes at the *cheapest* tier
+  (`constants.js:1335`), rising toward 5,000,000,000 at the top end (per the initial audit's
+  own citation of `workRegradeTiers`' final tier). A fresh player's Regular Work nets ~950
+  potatoes/call (`constants.js:353-354`'s own comment); even a very developed player's
+  multiplier would need to be enormous to afford one regrade attempt per handful of `/work`
+  calls — realistically this perk is idle for hundreds-to-thousands of `/work`-equivalent
+  actions between each time it actually rolls, and is worth exactly 0% of the time pre-shop-max
+  (all of early game, most of mid game).
+- `bankCapacityPercent` (`bank.js:75-79`) is a ceiling, not a rate — it only changes anything
+  if `bankStored` is actually pushed near the cap. Worse: `bank.js:72-79`'s own
+  `isBankCapacityMaxed` check makes deposit capacity **literally infinite** once
+  `regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity` — at that point
+  Rootbeard's `bankCapacityPercent` perk contributes exactly 0, dead weight, not just
+  "situational." Since full regrade-cap-on-every-track is the precondition for `/rebirth`
+  itself (`rebirthFactory.js:27-40`'s `checkRebirthEligibility`), a player is guaranteed to
+  hit this dead state repeatedly right before every single rebirth — the exact moment their
+  liquid holdings (and thus rob exposure) are highest.
+- `robChanceFlat` (`rob.js:133`) only applies on an explicit, optional `/rob` attempt, hard
+  capped at once per `Rob.ROB_TIMER_SECONDS = 3600` (`constants.js:301`) — 12x less frequent
+  than `/work`'s own 300-second cooldown even at maximum cadence — and further discouraged by
+  a real failure cost: `rob.js:186-188` docks the robber 25-50% of their own liquid potatoes
+  AND adds `Rob.WORK_TIMER_INCREASE_MS` (~57.5 extra minutes, `constants.js:300`) on top of
+  the 1-hour rob lockout on a miss. Realistic usage is well under the 1/12 ceiling for anyone
+  who isn't purely rob-focused.
+- `starchSellBonusPercent` (`sellStarch.js:71-72`, folded into `starch_sell` price) only pays
+  off on `/sell-starch`, gated by starch *supply*: Taro Trader — the primary starch source —
+  only triggers on 2% of `/work` calls (`eventFactory.js:11`, `workProbability[TARO] = .02`,
+  `WORK_SCENARIO_INDICES.TARO = 6`), and nets a small handful of starches per hit even for a
+  developed player. A player would need dozens of `/work` calls just to accumulate one
+  sell-worthy batch — this perk fires on a small fraction of a player's total actions, buy
+  window availability (5 of 7 days, `starch-trading.md`) is not the bottleneck, supply is.
+
+**Net effect**: Mochi's full kit resolves on effectively 100% of a player's `/work` calls and
+100% of passive ticks (the two dominant income channels in the game — the same channels the
+existing `systems/companions.md` "Balance pass" note already identifies as the reason
+capacity perks were flagged as structurally weaker than rate perks). Rootbeard's full kit
+resolves on a small, gated fraction of a player's actions, and one of its four perks
+(`bankCapacityPercent`) is fully worthless at the exact moment (regrade-capped, pre-rebirth)
+this task's own "late game" snapshot describes. This is the same category of mistake the
+Fieldmouse fix corrected (face-value comparison instead of real usage-weighted value), just
+recurring at Mythic tier and across perk *type* (rate vs. gated-event vs. ceiling) rather than
+within a single perk type.
+
+### Finding 2 [MEDIUM, compounding on Finding 1] Leveling doesn't rebalance the gap — it
+widens it in absolute terms.
+
+Both companions share the identical `CompanionLeveling.PERK_BONUS_PER_LEVEL = 0.05`/
+max-1.45x-at-level-10 formula (`constants.js:409-433`), applied uniformly via
+`companionFactory.getActivePerkValue`. Since it's a flat proportional scale-up applied to
+each companion's *own* base kit, and Mochi's base kit is already worth far more per point of
+face value (Finding 1), leveling scales the winner further ahead rather than closing the gap:
+
+- Mochi's work-axis Income Power grows from **40.0%** (level 1) to **65.4%** (level 10,
+  `(1.12*1.45)*(1/(1-0.20*1.45)) - 1`, computed via `node -e`) — a +25.4 percentage-point
+  gain realized on every single `/work` call.
+- Rootbeard's `regradeChanceFlat` grows from 3% to 4.35% flat-add (`0.03*1.45`) — a real
+  improvement, but one only realized on the same rare, gated `/regrade` action as before;
+  `bankCapacityPercent` grows from 20% to 29% of a ceiling that's fully inert once regrade-
+  capped regardless of the percentage; `robChanceFlat`/`starchSellBonusPercent` grow to
+  21.75% each but are still bottlenecked by the same 1-hour-cooldown/starch-supply gates.
+
+Leveling is working exactly as designed (proportional, doesn't invert rarity — this is
+separate from the already-flagged cross-rarity leveling-inversion issue in the initial
+2026-08-22 audit's finding #2, which is about Legendary-vs-Mythic, not this within-Mythic
+comparison). It just isn't the lever that fixes a same-tier value-axis mismatch, since it
+scales both companions' *existing* value shape rather than changing which actions that value
+is realized on.
+
+### Verdict
+
+The product owner's read is correct and it's not primarily a perception/surfacing problem —
+Rootbeard's perks are real, well-designed, and meaningfully strong *in the specific moments
+they apply* (a flat +3% regrade chance is a large relative swing against a <1% late-tier base
+chance; +15% starch sell margin is a genuinely good rate once you're actually selling), but
+those moments are rare and gated, while every one of Mochi's perks lands on the two channels
+that run continuously regardless of what the player is actively doing. This is a real,
+live power gap between two companions the design explicitly intended to be roughly equal
+(generalist/specialist, not strictly-better/worse), and it holds at every game stage checked:
+Rootbeard is Mythic-locked (only obtainable at the 2% Mythic roll or 5,000,000
+`CompanionMarket.MINIMUM_PRICE`, `constants.js:359-363`) so there's no "early game" snapshot
+where it's actually equipped by a fresh player — the comparison only exists at mid/late game,
+and the gap is present (and per Finding 2, growing) at both.
+
+**Recommendation** (flagged for `product-owner`/`architect`, not applied here): the fix this
+data points to is raising Rootbeard's face values, not surfacing/UX — the gap is a genuine EV
+shortfall, not a player-perception issue, since even a player who reads the numbers correctly
+and uses `/regrade`/`/rob`/`/sell-starch` diligently still realizes far less total value per
+unit time than a Mochi-equipped player earns passively without lifting a finger. Two
+directions worth weighing against each other rather than picking blind:
+1. **Swap `bankCapacityPercent` for a rate-shaped perk** — it's the one Rootbeard perk that
+   can hit *zero* realized value at a real, reachable game state (regrade-capped,
+   pre-rebirth), which no amount of raising its face number fixes; a perk type that's never
+   structurally capped at 0 (e.g., a bigger `starchSellBonusPercent`, or a new
+   regrade-cost-reduction perk that also helps regardless of cap state) would close that
+   specific failure mode outright.
+2. **If keeping all four gated/situational perks by design intent** (Rootbeard as the
+   deliberate "specialist for specific rare moments" half of the pair, per the original
+   roadmap framing), the face values likely need a much larger multiplier than a simple bump
+   — on the order of what it'd take for `regradeChanceFlat`/`robChanceFlat`/
+   `starchSellBonusPercent`'s *per-event* value to clear Mochi's *continuous* value once
+   discounted by real trigger frequency (rough anchor: Rootbeard's perks fire roughly
+   1/12th as often as Mochi's at best, per the rob-cooldown ratio alone — closing that with
+   face-value alone would mean per-event values several times larger than today's 3%/15%/15%,
+   not a modest tune).
+Either direction needs an explicit product-owner call on whether Rootbeard should stay a
+narrow specialist (bigger numbers, same rare triggers) or become a second, differently-themed
+generalist (perk *type* swap) — this audit surfaces the gap and its cause, not which of those
+two designs to build.
+
+### Checked, no issues found (this pass)
+
+- **Companion market floor for Mythic** (`CompanionMarket.MINIMUM_PRICE.mythic =
+  5,000,000`, `constants.js:362`) applies identically to both Rootbeard and Mochi — the
+  value gap isn't being compounded by an acquisition-cost asymmetry; both are equally
+  accessible via roll odds (`CompanionRarityOdds`) or market price.
+- **Both companions' perks are correctly wired through the same `getActivePerkValue`
+  choke point** — no implementation bug (missing multiplier, wrong sign, etc.) found in
+  `regrade.js`, `rob.js`, `sellStarch.js`, `bank.js`, `workFactory.js`, or
+  `rebirthFactory.js`'s respective perk reads; this is a pure numbers/design-shape issue,
+  not a bug.
