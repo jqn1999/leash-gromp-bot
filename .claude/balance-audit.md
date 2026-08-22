@@ -724,3 +724,149 @@ Sweet-Potato-roll inefficiency) and the quest-reward case is the most obviously 
   "free regrade" outcome (falls through to shop-upgrade or potato-payout instead) — this is the
   one bank-capacity-adjacent payout site in the game that already avoids wasting itself on a dead
   stat. No fix needed here; noted as a good pattern the recommendations above could reuse.
+
+---
+
+## 2026-08-22 (follow-up) — Ancient Potato vs. Golden Potato EV comparison (prompted by user question)
+
+Focused re-check, prompted by a user question: is Ancient Potato (0.3% roll, `eventFactory.js:16`
+`WORK_SCENARIO_INDICES.ANCIENT`) overtuned relative to Golden Potato (0.1% roll, `eventFactory.js:9`)
+given Ancient rolls 3x as often and its top two branches (free regrade step / free shop tier) bypass
+`/regrade`'s and `/buy`'s real potato cost entirely? Computed exact per-roll EV for both at every
+stage of `handleAncientPotato`'s three mutually-exclusive branches (`workFactory.js:293-357`) against
+`handleGoldenPotato` (`workFactory.js:501-528`), using the real `workShop`/`passiveIncomeShop`/
+`bankShop` costs (`constants.js:1038-1333`) and the real regrade pity mechanic (`regrade.js:80-99`,
+tier tables `constants.js:1393-1450`) rather than treating "free tier/free regrade" as abstractly
+good. All EVs below are per single `/work` call (roll probability × payout), computed via
+`node -e` against the live source, not estimated.
+
+### Mechanism confirmed
+
+Both `handleGoldenPotato` and Ancient's branch-3 payout share the exact same `calculateGainAmount`
+shape (`workFactory.js:665-685`: `floor(min(currentGain, maxGain) * multiplier * effectiveMultiplier
+* .95)`), and — this wasn't obvious without checking — **`Work.MAX_ANCIENT_POTATO` and
+`Work.MAX_GOLDEN_POTATO` sit on the exact same "5,000-per-base-factor" scale** (`constants.js:33-38`,
+the inline comment says this explicitly: `300000/60 = 5000`, `500000/100 = 5000`). Because both the
+base-factor ratio (60/100) and the cap ratio (300000/500000) independently equal exactly **0.6**,
+Ancient's branch-3 payout is **exactly 60% of Golden's payout, for the same player, every time** —
+not "depends which cap hits first," a clean deterministic ratio regardless of `workGainAmount`,
+multiplier roll, guild/companion/rebirth stacking, or catch-up (confirmed algebraically and via
+`node -e` at four different `workGainAmount`/`effMult` combinations, ratio held at exactly `1.8000x`
+— see below for why 1.8, not 0.6, is the number that actually matters).
+
+### EV comparison, stage by stage
+
+**Late game (branch 3 — every track shop-maxed AND regrade-maxed, `workFactory.js:349-357`):**
+Even here, where Ancient is "just a worse Golden," the 3x roll-frequency advantage (`0.003` vs
+`0.001`) outweighs the 0.6x payout disadvantage: `3 × 0.6 = 1.8`. **Ancient's raw potato EV per
+`/work` call is 80% higher than Golden's, always, at this stage, before counting the guild-raid-
+cooldown refresh Golden has no equivalent of.** Confirmed via `node -e`, ratio exactly `1.8000x` at
+`workGainAmount` ∈ {1000, 10000, 1000000, 5000000} × `effMult` ∈ {600, 605, 1200} — stage-invariant
+because any multiplier/rebirth/guild/companion stacking scales both formulas identically, so it
+cancels in the ratio. This means even the design comment's own framing ("sized between Metal and
+Golden," `constants.js:33-38`, i.e. weaker per-roll) is the same face-value-vs-frequency-adjusted-
+value mistake this project's Income Power framework already exists to catch for companion perks —
+comparing 60-vs-100 in isolation instead of frequency-weighting first.
+
+**Early game (branch 2 — nothing shop-maxed yet, `workFactory.js:336-348`, grants the next shop
+tier's `amount` for the `cost` a real `/buy` would charge, free):** computed Golden EV using
+`workMultiplierAmount` at each shop tier boundary (no guild/rebirth/companion, `workGainAmount`
+floored at 1000) against Ancient EV using the average next-tier cost across `workShop`/
+`passiveIncomeShop`/`bankShop` (identical cost schedule for tiers 0-5, `constants.js:1038-1333`):
+
+| Shop tier just before | workMult | Avg next-tier cost | Golden EV/roll | Ancient EV/roll | Ratio (A/G) |
+|---|---|---|---|---|---|
+| 0 (fresh account) | 1 | 50,000 | 95 | 150 | **1.58x** |
+| 1 | 1.5 | 200,000 | 142.5 | 600 | **4.21x** |
+| 2 | 3 | 1,000,000 | 285 | 3,000 | **10.53x** |
+| 3 | 5 | 5,000,000 | 475 | 15,000 | **31.58x** |
+| 5 | 15 | 50,000,000 | 1,425 | 150,000 | **105.26x** |
+| 7 | 25 | 400,000,000 | 2,375 | 1,200,000 | **505.26x** |
+| 9 (about to shop-max) | 50 | 1,333,333,333 | 4,750 | 4,000,000 | **842.11x** |
+
+Even at the absolute earliest possible moment (tier 0, before a single purchase), Ancient already
+beats Golden 1.58x per roll; the gap explodes to 3 orders of magnitude by the time a track is close
+to shop-maxed, because shop *cost* scales ~30,000x from tier 0 to tier 9 while `workMultiplierAmount`
+(what Golden's payout scales off) only scales ~50x over the same span — a free tier grant inherits
+the cost curve's growth, Golden's payout doesn't.
+
+**Mid game (branch 1 — shop-maxed, still regrading, `workFactory.js:327-335`):** computed the exact
+expected potato cost to earn ONE success at a given regrade tier via the real pity mechanic (survival-
+function expectation over `regrade.js:85`'s `chance + failStack` schedule, tier tables
+`constants.js:1393-1450`) as the potato-equivalent value of that free grant, against Golden EV using
+`effMult = 100 (shop-maxed) + regradeAmount-so-far`, `workGainAmount = 1,000,000`:
+
+| Regrade tier | effMult | Real cost of 1 success (pity-adjusted) | Golden EV/roll | Ancient EV/roll | Ratio (A/G) |
+|---|---|---|---|---|---|
+| 0 (first regrade attempt) | 100 | 929,431,658 | 47,500 | 2,788,295 | **58.70x** |
+| 3 | 130 | 2,438,726,181 | 61,750 | 7,316,179 | **118.48x** |
+| 6 | 180 | 11,279,351,768 | 85,500 | 33,838,055 | **395.77x** |
+| 9 | 300 | 49,442,544,288 | 142,500 | 148,327,633 | **1040.90x** |
+| 13 (final tier, work/passive) | 500 | 118,987,960,109 | 237,500 | 356,963,880 | **1503.01x** |
+
+Same shape as early game, worse in absolute terms: regrade cost scales from ~929M to ~119B (128x)
+across the track while `effMult` only grows from 100 to 500 (5x), so the free-grant's potato-
+equivalent value pulls further and further ahead of Golden's linearly-scaling payout the deeper a
+player is into the grind — this is the single most lopsided stage, not a transitional blip.
+
+**Guild raid-cooldown refresh** (unconditional on top of whichever branch fires, `workFactory.js:
+299-301`, resets `guild.raidTimer` to now against a `RAID_TIMER_SECONDS = 3600` (`constants.js:797`)
+cooldown): real, guild-shared value, but small relative to the branch 1/2 findings above — raid
+rewards range `T1_RAID_REWARD: 100,000` to `T4_RAID_REWARD: 15,000,000` (`constants.js:799-829`)
+split across a roster, at 50-90% success chance, at most once/hour normally. Even generously valuing
+a full skipped hour at a whole T4 raid's reward, that's ~15M potatoes shared guild-wide — three to
+five orders of magnitude below the ~929M-119B single-player free-regrade values above. Real, worth
+noting per the task's framing, but a rounding error next to the primary finding, not a co-equal one.
+
+### Verdict
+
+**Yes, Ancient Potato is overtuned relative to its roll frequency — dramatically so at every stage
+except the terminal one, and even there it's unambiguously ahead (1.8x), not "weaker as intended."**
+The magnitude is not uniform: branch 3 (late/terminal) is a modest, arguably-tolerable 80% edge;
+branches 1 and 2 (early and mid game) are 1.5x to 1500x, i.e. the actual live problem. This is not a
+brief transitional state either — `rebirthFactory.js`'s `computeRebirthState` resets both the shop-
+purchased base AND regrade progress on every rebirth (per `systems/economy-and-work.md`'s Rebirth
+section), so a player who rebirths repeatedly (rather than permanently "retiring" once fully maxed)
+cycles back through branch-2-then-branch-1 territory after every single rebirth — the 58x-1500x
+window recurs every cycle, it isn't a one-time early-game artifact a mature account ages out of. Only
+a player who stops rebirthing once fully maxed settles permanently into the tame 1.8x branch-3 state.
+
+### Recommendations (ranked, for `product-owner`/`architect` — no fix applied here)
+
+1. **Ramp Ancient's roll odds down as branches 1/2 stop being the likely outcome, up as branch 3
+   becomes the only outcome** — directly addresses that this is a curve-shaped problem (1.58x →
+   1500x → 1.8x), not a flat one; a single flat odds cut sized to fix mid-game's 1000x+ peak would
+   make branch-3 Ancient nearly worthless relative to Golden, while a cut sized to leave branch-3
+   reasonable would barely touch the mid-game problem. Needs the same kind of stage-aware tuning
+   this file's other entries have flagged (quest rewards scaling with `workMultiplierAmount` instead
+   of flat, catch-up's own maturity-gated ramp) — the mechanism already exists in this codebase,
+   just not wired to this scenario.
+2. **Cap branches 1/2's grant to a fraction of a full tier/success** (e.g. a % of the next tier's
+   cost refunded as potatoes, or half a regrade tier's `increase`, rather than the entire tier
+   outright) — fixes the problem at the source (the payout curve itself) rather than only via the
+   frequency knob, and would keep working correctly even if roll odds are later tuned by other
+   events (`GOLDENX5`-style boosts don't currently exist for Ancient, but nothing structurally
+   prevents one being added later).
+3. **Structural parity fix**: replace branches 1/2 with the same `calculateGainAmount`-shaped potato
+   payout branch 3 already uses (same formula family as every other `/work` reward), sized on its
+   own scale rather than "free skip of a real-money system" — most invasive of the three, but the
+   only option that guarantees the ratio stays bounded at every stage the way branch 3 already
+   demonstrates is possible, without needing an separate odds-ramp mechanism to compensate.
+
+Not recommending "leave as-is" as a defensible option here, unlike some past entries in this file —
+the 58x-1500x mid-game figures aren't a marginal inefficiency, they're an actual dominant-strategy
+scale problem in a random 0.3%-per-roll encounter, and self-recurring (not aged out of) for any
+player who rebirths more than once.
+
+### Checked, no issues found (this pass)
+
+- **`Work.MAX_ANCIENT_POTATO`/`Work.MAX_GOLDEN_POTATO`'s 5,000-per-base-factor scaling**
+  (`constants.js:33-38`) — confirmed exact (not approximate) via `node -e`; the branch-3 payout ratio
+  is deterministically `0.6`, not merely "usually around 0.6." No bug in the formula itself — the
+  problem is entirely in branches 1/2 and the roll-frequency framing, not in this arithmetic.
+- **`workProbability`/`workChances` array indices** (`eventFactory.js:8-31`, `WORK_SCENARIO_INDICES`
+  at `:160-172`) — Golden at index 0 (`.001`), Ancient at index 7 (`.003`), confirmed against the
+  live array, not just the cumulative `workChances` table in `systems/economy-and-work.md` (which
+  agrees). `GOLDENX5` (`eventFactory.js:75-79`) is real but low-impact: hourly 20% event-trigger
+  chance × 1/18 event-weight ≈ 1.1% of hours, blending Golden's average roll probability up only
+  ~4.4% — negligible next to the 58x-1500x mid-game gap above, not a meaningful mitigating factor.
