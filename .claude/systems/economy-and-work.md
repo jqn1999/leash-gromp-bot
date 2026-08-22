@@ -140,7 +140,13 @@ Metal Potato failure: 0 potatoes, just resets the timer.
 The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
 guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
 regardless of how much was left on it (a no-op if solo, or if nothing was on cooldown). Separately,
-the roller gets exactly one of three personal rewards, checked in this order:
+the roller gets exactly one of three personal rewards, checked in this order. **Added 2026-08-22**,
+same day as the regrade-grant nerf below: whenever branch 1 or 2 would otherwise apply,
+`Work.ANCIENT_POTATO_PAYOUT_CHANCE` (25%) is rolled first — a hit pre-empts either stat-bump branch
+uniformly and falls through to branch 3's potato payout instead, so a stat bump isn't the
+guaranteed outcome of every eligible Ancient roll anymore. Never rolled once every track is already
+maxed (branch 3 always applies there regardless). One roll, checked once before either stat-bump
+branch is picked, rather than a separate check duplicated in each:
 1. **Permanent bonus** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. **Nerfed
    2026-08-22** (`balance-audit.md`'s same-day entry, direct instruction): used to grant that
    track's current tier's real `increase` in full, for free — mirroring exactly what a successful

@@ -442,7 +442,18 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        // Forces rollsPotatoInstead false (ANCIENT_POTATO_PAYOUT_CHANCE's roll needs to
+        // land above the threshold) so this test's branch outcome stays deterministic —
+        // real play rolls this randomly, this test is about what the regrade branch
+        // itself grants when it's the one that fires. Restored after so it doesn't leak
+        // into other tests (this file doesn't mock Math.random globally).
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        let result;
+        try {
+            result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
 
         const expectedGrant = Math.max(1, Math.round(10 * Work.ANCIENT_REGRADE_GRANT_PERCENT)); // tier 0's increase (10) * the nerf percent
         expect(result.regradedStatName).toBe('Work Multiplier');
@@ -459,6 +470,43 @@ describe('handleAncientPotato', () => {
         expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 0, failStack: 0 });
         // Untouched tracks must survive exactly as they were, not get reset.
         expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
+    });
+
+    // Direct instruction, same day as the regrade-grant nerf above: a stat-bump branch
+    // shouldn't be the guaranteed outcome of every eligible Ancient roll — some fraction
+    // of rolls should grant straight potatoes instead, even while regrade/shop-eligible
+    // tracks exist.
+    test('rolls a straight potato payout instead of the regrade bonus when ANCIENT_POTATO_PAYOUT_CHANCE hits', async () => {
+        const userDetails = baseUser({
+            workMultiplierAmount: SHOP_MAX.workMulti,
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
+                bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
+            },
+        });
+
+        // Forces rollsPotatoInstead true (below the threshold) — the opposite mock from
+        // the test above, exercising the other side of the same roll.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        let result;
+        try {
+            result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(result.regradedStatName).toBeNull();
+        expect(result.shopUpgradedStatName).toBeNull();
+        expect(result.potatoesGained).toBeGreaterThan(0);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        // The player's real regrade progress must be completely untouched by this roll —
+        // same guarantee the regrade branch itself gives, this just took the other fork.
+        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 0, failStack: 0 });
+        // sweetPotatoBuffs is still part of the write (unconditionally, every branch),
+        // but this fork never adds anything to it — stays at baseUser's own default (0).
+        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBe(0);
     });
 
     // Regression: a track with regradeAmount < REGRADE_CAPS used to be treated as
@@ -484,7 +532,15 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        // Forces rollsPotatoInstead false, same reasoning as the regrade-branch test
+        // above — this test is about what the shop branch grants, not the random fork.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        let result;
+        try {
+            result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
 
         expect(result.regradedStatName).toBeNull();
         expect(result.shopUpgradedStatName).not.toBeNull();
@@ -513,7 +569,13 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        let result;
+        try {
+            result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
 
         expect(result.regradedStatName).toBeNull();
         expect(result.shopUpgradedStatName).toBe('Work Multiplier');

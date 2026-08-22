@@ -330,7 +330,19 @@ class WorkFactory {
         let shopUpgradeIncrease = 0;
         const updateFields = {};
 
-        if (regradeEligibleTracks.length > 0) {
+        // Even when a stat-bump branch (regrade or shop) would normally apply, there's a
+        // flat chance the roll grants straight potatoes instead — same formula/branch the
+        // "everything's already maxed" case below always uses. Rolled once, before
+        // picking a branch, so it can pre-empt EITHER stat-bump branch uniformly rather
+        // than needing its own copy of this check in each one. Added per direct
+        // instruction alongside the regrade-grant nerf above, so a stat bump isn't the
+        // guaranteed outcome of every eligible roll anymore. Never rolled (and never
+        // matters) once every track is already maxed — that state always falls through
+        // to the potato branch below regardless.
+        const rollsPotatoInstead = (regradeEligibleTracks.length > 0 || shopEligibleTracks.length > 0)
+            && Math.random() < Work.ANCIENT_POTATO_PAYOUT_CHANCE;
+
+        if (regradeEligibleTracks.length > 0 && !rollsPotatoInstead) {
             const track = regradeEligibleTracks[Math.floor(Math.random() * regradeEligibleTracks.length)];
             const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
             // Nerfed 2026-08-22: previously granted the FULL tier step directly into
@@ -353,7 +365,7 @@ class WorkFactory {
 
             sweetPotatoBuffs[track.statField] += regradeIncrease;
             updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
-        } else if (shopEligibleTracks.length > 0) {
+        } else if (shopEligibleTracks.length > 0 && !rollsPotatoInstead) {
             // Not shop-maxed on anything yet — grant the next shop tier for free instead
             // of a regrade step nothing here is actually eligible for. Mirrors buy.js's
             // exact write shape (new base + sweetPotatoBuffs + regradeAmount), not just
@@ -367,6 +379,9 @@ class WorkFactory {
 
             updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
         } else {
+            // Reached either because every track is already maxed (nothing left to
+            // stat-bump) or because rollsPotatoInstead pre-empted an eligible stat-bump
+            // branch above — same payout formula either way.
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);

@@ -899,3 +899,10 @@ Files touched: `constants.js` (`Work.ANCIENT_REGRADE_GRANT_PERCENT`), `workFacto
 (`handleAncientPotato`'s branch 1), `embedFactory.js` (`createAncientPotatoEmbed`'s field relabeled
 "Permanent Bonus" — "Free Regrade" was no longer accurate), `systems/economy-and-work.md`,
 `roadmap.md`.
+
+**Follow-up (same day): `Work.ANCIENT_POTATO_PAYOUT_CHANCE`.** Further direct instruction — even
+when a stat-bump branch is eligible, a 25% roll (starting value, easy to retune) now pre-empts it
+in favor of branch 3's potato payout, so a stat bump isn't guaranteed on every eligible roll
+anymore. See `roadmap.md`'s item 21 follow-up note for the implementation and the three existing
+tests that needed `Math.random` pinned to stay deterministic once branch selection itself became
+randomized (this test file doesn't mock `Math.random` globally).

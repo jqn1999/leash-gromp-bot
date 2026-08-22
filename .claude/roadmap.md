@@ -1017,6 +1017,20 @@ and needs its own balance pass.
   progress toward it. The embed's "Free Regrade:" field was relabeled "Permanent Bonus:" since it
   no longer describes what actually happens.
 
+  **Follow-up (same day): random potato-instead chance.** Direct instruction: even when a
+  stat-bump branch (regrade or shop) is eligible, `Work.ANCIENT_POTATO_PAYOUT_CHANCE` (25%, a
+  starting value — not user-specified, easy to retune) is now rolled first; a hit pre-empts either
+  stat-bump branch uniformly and falls through to branch 3's potato-payout formula instead, so a
+  stat bump is no longer the guaranteed outcome of every eligible roll. One roll, checked once
+  before either stat-bump branch is picked, rather than duplicated in each. Never rolled (and
+  never matters) once every track is already maxed — that state always falls through to the
+  potato branch regardless, same as before this change. Required also fixing three existing tests
+  that had implicitly relied on Ancient's branch selection being fully deterministic (no test in
+  this file mocks `Math.random` globally) — they now pin `Math.random` for the duration of the
+  test via `jest.spyOn(...).mockReturnValue(...)`/`mockRestore()` so the *branch-content*
+  assertions they were written for stay meaningful instead of ~25%-flaky; a fourth test was added
+  specifically covering the potato-instead fork.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

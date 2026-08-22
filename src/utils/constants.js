@@ -35,7 +35,14 @@ const Work = {
     // entirely. Nerfed at direct instruction, deliberately leaving Ancient's own roll
     // odds (eventFactory.js) untouched.
     ANCIENT_REGRADE_GRANT_PERCENT: 0.10,
-    MAX_LARGE_POTATO: 10000,
+    // Even when a player is still eligible for one of Ancient Potato's two stat-bump
+    // branches (free regrade slice / free shop tier, above), this is the flat chance the
+    // roll grants a straight potato payout instead — the same formula/branch a fully-
+    // maxed player always gets. Added alongside the regrade-grant nerf so a stat bump
+    // isn't the guaranteed outcome of every eligible Ancient roll anymore, per direct
+    // instruction. Applies uniformly to both stat-bump branches (one roll, checked once,
+    // before either branch is picked — see handleAncientPotato).
+    ANCIENT_POTATO_PAYOUT_CHANCE: 0.25,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
     // Only paid out to a fully-regraded player (nothing left to grant a free regrade
