@@ -192,9 +192,16 @@ class EmbedFactory {
                 inline: false,
             });
             const activeCompanion = companionFactory.getActiveCompanion(userDetails);
+            // Same level lookup getActivePerkValue used just above for the actual Work
+            // Multiplier/Passive Income/Bank Capacity numbers — without it this line would
+            // show the base (level 1) perk text while the bonuses folded in above it are
+            // already the real leveled amount, understating what's actually being applied.
+            const activeCompanionLevel = activeCompanion
+                ? companionFactory.getCompanionLevel(companionFactory.getOwnedEntry(userDetails, activeCompanion.id)?.workCount)
+                : 1;
             fields.push({
                 name: "Active Companion:",
-                value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion)})` : "None equipped",
+                value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion, activeCompanionLevel)})` : "None equipped",
                 inline: false,
             });
         } else {
