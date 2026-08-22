@@ -69,6 +69,47 @@ async function requireUserGuild(interaction, userDetails, userDisplayName, noGui
 // await/collector/timeout handling stays where it is, since what happens after a click (or
 // a timeout — some commands show the same "cancelled" message either way, others
 // distinguish an explicit cancel from a timeout) genuinely differs per command.
+// The prev/next pagination row every paginated list command builds — Primary-styled,
+// disabled at whichever end is already reached. idPrefix keys the customIds (e.g.
+// 'achievements' -> 'achievements_prev'/'achievements_next').
+function buildPaginationRow(idPrefix, pageIndex, totalPages) {
+    const prevButton = new ButtonBuilder()
+        .setCustomId(`${idPrefix}_prev`)
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === 0);
+    const nextButton = new ButtonBuilder()
+        .setCustomId(`${idPrefix}_next`)
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === totalPages - 1);
+    return new ActionRowBuilder().addComponents(prevButton, nextButton);
+}
+
+// Drives the interactive prev/next loop AFTER the first page has already been sent — the
+// caller builds and sends page 0 itself (using buildPaginationRow the same way this loop
+// does), since the reply object has to exist before a collector can attach to it.
+// renderPage(pageIndex) must return the embed for that page; the actual page content
+// varies per command, so it stays a caller-supplied callback rather than something this
+// helper can own. Ends exactly the way every one of these commands already handled a
+// timeout: no message change, just clear the buttons.
+async function runPaginatedReply(reply, interaction, idPrefix, totalPages, renderPage, timeoutMs = 60_000) {
+    if (totalPages <= 1) return;
+    let pageIndex = 0;
+    const collectorFilter = i => i.user.id === interaction.user.id;
+    while (true) {
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: timeoutMs }).catch(() => null);
+        if (!confirmation) {
+            await reply.edit({ components: [] }).catch(() => {});
+            break;
+        }
+
+        pageIndex = confirmation.customId === `${idPrefix}_next` ? pageIndex + 1 : pageIndex - 1;
+        const pageEmbed = await renderPage(pageIndex);
+        await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(idPrefix, pageIndex, totalPages)] });
+    }
+}
+
 function buildConfirmCancelRow(idPrefix, confirmLabel, cancelLabel = 'Back out') {
     const confirmButton = new ButtonBuilder()
         .setCustomId(`${idPrefix}_confirm`)
@@ -131,6 +172,8 @@ module.exports = {
     requireUserDetails,
     requireUserGuild,
     buildConfirmCancelRow,
+    buildPaginationRow,
+    runPaginatedReply,
     getSortedBirthdays,
     getRandomFromInterval
 }

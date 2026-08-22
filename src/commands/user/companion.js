@@ -1,5 +1,5 @@
-const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { ApplicationCommandOptionType } = require("discord.js");
+const { getUserInteractionDetails, requireUserDetails, buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const { Companions } = require("../../utils/constants");
@@ -14,20 +14,6 @@ function chunkArray(array, size) {
         chunks.push(array.slice(i, i + size));
     }
     return chunks.length > 0 ? chunks : [[]];
-}
-
-function buildPaginationRow(pageIndex, totalPages) {
-    const prevButton = new ButtonBuilder()
-        .setCustomId('companion_prev')
-        .setLabel('◀ Previous')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === 0);
-    const nextButton = new ButtonBuilder()
-        .setCustomId('companion_next')
-        .setLabel('Next ▶')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === totalPages - 1);
-    return new ActionRowBuilder().addComponents(prevButton, nextButton);
 }
 
 module.exports = {
@@ -72,26 +58,13 @@ module.exports = {
             })
             .filter(Boolean);
         const pages = chunkArray(ownedCompanions, PAGE_SIZE);
-        let pageIndex = 0;
         const activeId = userDetails.companions?.active ?? null;
+        const renderPage = (pageIndex) => embedFactory.createCompanionListEmbed(userDisplayName, pages[pageIndex], pageIndex, pages.length, activeId, ownedCompanions.length);
 
-        const embed = embedFactory.createCompanionListEmbed(userDisplayName, pages[pageIndex], pageIndex, pages.length, activeId, ownedCompanions.length);
-        const components = pages.length > 1 ? [buildPaginationRow(pageIndex, pages.length)] : [];
+        const embed = renderPage(0);
+        const components = pages.length > 1 ? [buildPaginationRow('companion', 0, pages.length)] : [];
         const reply = await interaction.editReply({ embeds: [embed], components: components });
 
-        if (pages.length <= 1) return;
-
-        const collectorFilter = i => i.user.id === interaction.user.id;
-        while (true) {
-            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
-            if (!confirmation) {
-                await reply.edit({ components: [] }).catch(() => {});
-                break;
-            }
-
-            pageIndex = confirmation.customId === 'companion_next' ? pageIndex + 1 : pageIndex - 1;
-            const pageEmbed = embedFactory.createCompanionListEmbed(userDisplayName, pages[pageIndex], pageIndex, pages.length, activeId, ownedCompanions.length);
-            await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(pageIndex, pages.length)] });
-        }
+        await runPaginatedReply(reply, interaction, 'companion', pages.length, renderPage);
     }
 }

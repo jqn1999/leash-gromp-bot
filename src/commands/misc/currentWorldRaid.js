@@ -1,7 +1,6 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { worldBossMobs } = require("../../utils/worldFactory")
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands")
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -13,20 +12,6 @@ function chunkArray(array, size) {
         chunks.push(array.slice(i, i + size));
     }
     return chunks.length > 0 ? chunks : [[]];
-}
-
-function buildPaginationRow(pageIndex, totalPages) {
-    const prevButton = new ButtonBuilder()
-        .setCustomId('world_raid_prev')
-        .setLabel('◀ Previous')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === 0);
-    const nextButton = new ButtonBuilder()
-        .setCustomId('world_raid_next')
-        .setLabel('Next ▶')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === totalPages - 1);
-    return new ActionRowBuilder().addComponents(prevButton, nextButton);
 }
 
 module.exports = {
@@ -73,26 +58,13 @@ module.exports = {
         const thumbnail = worldBossMobs[worldIndex].thumbnailUrl
 
         const pages = chunkArray(raidList, PAGE_SIZE);
-        let pageIndex = 0;
+        const renderPage = (pageIndex) => embedFactory.createWorldRaidPageEmbed(pages[pageIndex], pageIndex, pages.length, totalMultiplier, bossName, thumbnail);
 
-        const embed = embedFactory.createWorldRaidPageEmbed(pages[pageIndex], pageIndex, pages.length, totalMultiplier, bossName, thumbnail);
-        const components = pages.length > 1 ? [buildPaginationRow(pageIndex, pages.length)] : [];
+        const embed = renderPage(0);
+        const components = pages.length > 1 ? [buildPaginationRow('world_raid', 0, pages.length)] : [];
         const reply = await interaction.editReply({ embeds: [embed], components: components });
 
-        if (pages.length <= 1) return;
-
-        const collectorFilter = i => i.user.id === interaction.user.id;
-        while (true) {
-            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
-            if (!confirmation) {
-                await reply.edit({ components: [] }).catch(() => {});
-                break;
-            }
-
-            pageIndex = confirmation.customId === 'world_raid_next' ? pageIndex + 1 : pageIndex - 1;
-            const pageEmbed = embedFactory.createWorldRaidPageEmbed(pages[pageIndex], pageIndex, pages.length, totalMultiplier, bossName, thumbnail);
-            await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(pageIndex, pages.length)] });
-        }
+        await runPaginatedReply(reply, interaction, 'world_raid', pages.length, renderPage);
     }
 
 }

@@ -1,5 +1,4 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
-const { getUserInteractionDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands")
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -197,20 +196,6 @@ const ONBOARDING_PAGES = [
     },
 ];
 
-function buildPaginationRow(pageIndex, totalPages) {
-    const prevButton = new ButtonBuilder()
-        .setCustomId('start_prev')
-        .setLabel('◀ Previous')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === 0);
-    const nextButton = new ButtonBuilder()
-        .setCustomId('start_next')
-        .setLabel('Next ▶')
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(pageIndex === totalPages - 1);
-    return new ActionRowBuilder().addComponents(prevButton, nextButton);
-}
-
 module.exports = {
     name: "start",
     description: "A guided tour of everything Leash Gromp has to offer",
@@ -220,23 +205,12 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
         const [, , userDisplayName] = getUserInteractionDetails(interaction);
 
-        let pageIndex = 0;
         const totalPages = ONBOARDING_PAGES.length;
+        const renderPage = (pageIndex) => embedFactory.createOnboardingPageEmbed(userDisplayName, ONBOARDING_PAGES[pageIndex], pageIndex, totalPages);
 
-        const embed = embedFactory.createOnboardingPageEmbed(userDisplayName, ONBOARDING_PAGES[pageIndex], pageIndex, totalPages);
-        const reply = await interaction.editReply({ embeds: [embed], components: [buildPaginationRow(pageIndex, totalPages)] });
+        const embed = renderPage(0);
+        const reply = await interaction.editReply({ embeds: [embed], components: [buildPaginationRow('start', 0, totalPages)] });
 
-        const collectorFilter = i => i.user.id === interaction.user.id;
-        while (true) {
-            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 120_000 }).catch(() => null);
-            if (!confirmation) {
-                await reply.edit({ components: [] }).catch(() => {});
-                break;
-            }
-
-            pageIndex = confirmation.customId === 'start_next' ? pageIndex + 1 : pageIndex - 1;
-            const pageEmbed = embedFactory.createOnboardingPageEmbed(userDisplayName, ONBOARDING_PAGES[pageIndex], pageIndex, totalPages);
-            await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(pageIndex, totalPages)] });
-        }
+        await runPaginatedReply(reply, interaction, 'start', totalPages, renderPage, 120_000);
     }
 }
