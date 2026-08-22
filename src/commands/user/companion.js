@@ -43,6 +43,10 @@ module.exports = {
                 interaction.editReply(`${userDisplayName}, you don't own that companion yet!`);
                 return;
             }
+            if (companionFactory.isScavenging(userDetails, equipId)) {
+                interaction.editReply(`${userDisplayName}, that companion is out scavenging — it can't be equipped until it returns (or you cancel the scavenge with /companion-scavenge-cancel).`);
+                return;
+            }
             const companion = companionFactory.getCompanionById(equipId);
             await dynamoHandler.updateUserFields(userId, {
                 companions: { ...userDetails.companions, active: equipId }
@@ -59,7 +63,8 @@ module.exports = {
             .filter(Boolean);
         const pages = chunkArray(ownedCompanions, PAGE_SIZE);
         const activeId = userDetails.companions?.active ?? null;
-        const renderPage = (pageIndex) => embedFactory.createCompanionListEmbed(userDisplayName, pages[pageIndex], pageIndex, pages.length, activeId, ownedCompanions.length);
+        const scavenging = userDetails.companions?.scavenging ?? null;
+        const renderPage = (pageIndex) => embedFactory.createCompanionListEmbed(userDisplayName, pages[pageIndex], pageIndex, pages.length, activeId, ownedCompanions.length, scavenging);
 
         const embed = renderPage(0);
         const components = pages.length > 1 ? [buildPaginationRow('companion', 0, pages.length)] : [];

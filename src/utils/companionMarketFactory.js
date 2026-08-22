@@ -23,6 +23,9 @@ function validateListingRequest(userDetails, companionId, price) {
     if (!companionFactory.ownsCompanion(userDetails, companionId)) {
         return { valid: false, error: "You don't own that companion." };
     }
+    if (companionFactory.isScavenging(userDetails, companionId)) {
+        return { valid: false, error: "That companion is out scavenging — it can't be listed until it returns (or you cancel the scavenge)." };
+    }
     const minimumPrice = CompanionMarket.MINIMUM_PRICE[companion.rarity];
     if (!Number.isFinite(price) || price < minimumPrice) {
         return { valid: false, error: `That companion's tier requires an asking price of at least ${minimumPrice.toLocaleString()} potatoes.` };
@@ -96,6 +99,9 @@ function validateNpcSaleRequest(userDetails, companionId) {
     }
     if (!companionFactory.ownsCompanion(userDetails, companionId)) {
         return { valid: false, error: "You don't own that companion." };
+    }
+    if (companionFactory.isScavenging(userDetails, companionId)) {
+        return { valid: false, error: "That companion is out scavenging — it can't be sold until it returns (or you cancel the scavenge)." };
     }
     const ownedEntry = companionFactory.getOwnedEntry(userDetails, companionId);
     const level = companionFactory.getCompanionLevel(ownedEntry?.workCount);

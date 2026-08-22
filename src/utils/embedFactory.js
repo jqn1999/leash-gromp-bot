@@ -1119,6 +1119,53 @@ class EmbedFactory {
         return embed;
     }
 
+    // The explicit "welcome back" moment on /companion-scavenge-collect — same celebratory-
+    // embed family as createPoisonPotatoEmbed/achievement unlocks, so a scavenge's reward
+    // reads as a real moment rather than a silently-absorbed stat change (see
+    // systems/companions.md#scavenging). workCountBefore/workCountAfter (that companion's
+    // own owned-entry workCount, pre/post this reward) drive the same before/after
+    // progress-to-next-level numbers /companion's list already surfaces via
+    // companionFactory.getNextLevelThreshold, so a level-up crossed by this one reward is
+    // visible right here instead of only showing up the next time /companion is checked.
+    createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountAfter, starchesGained) {
+        const levelBefore = companionFactory.getCompanionLevel(workCountBefore);
+        const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
+        const nextThreshold = companionFactory.getNextLevelThreshold(workCountAfter);
+        const progress = nextThreshold
+            ? `${workCountAfter.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
+            : `${workCountAfter.toLocaleString()} /work calls — max level`;
+
+        const fields = [
+            {
+                name: `Work Count:`,
+                value: `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})`,
+                inline: true,
+            },
+            {
+                name: `Starches Gained:`,
+                value: `${starchesGained.toLocaleString()} starches`,
+                inline: true,
+            },
+            {
+                name: `Level:`,
+                value: levelAfter > levelBefore
+                    ? `Lv. ${levelBefore} → Lv. ${levelAfter}! 🎉\n${progress}`
+                    : `Lv. ${levelAfter}\n${progress}`,
+                inline: false,
+            }
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, ${companion.name} is back from scavenging!`)
+            .setDescription(companion.description)
+            .setColor(COMPANION_RARITY_COLOR[companion.rarity])
+            .setThumbnail(companion.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Ancient Potato's outcome branches like Metal Potato's success/failure split, but
     // on regrade-vs-potato-reward instead — doesn't fit createWorkEmbed's single
     // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own
@@ -1261,10 +1308,22 @@ class EmbedFactory {
 
     // pageItems: full companion objects (owned ids already resolved to roster entries),
     // each carrying its own workCount (see companion.js) for the level shown here. Paginated
-    // exactly like createAchievementsPageEmbed/createQuestsPageEmbed.
-    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned) {
+    // exactly like createAchievementsPageEmbed/createQuestsPageEmbed. scavenging (optional):
+    // the live userDetails.companions.scavenging record ({ companionId, rarity, returnsAt })
+    // or null — powers the third status branch below (see systems/companions.md#scavenging).
+    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned, scavenging = null) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
-            const status = companion.id === activeId ? '✅ Active' : companion.id;
+            let status;
+            if (companion.id === activeId) {
+                status = '✅ Active';
+            } else if (scavenging && companion.id === scavenging.companionId) {
+                const remainingSeconds = Math.max(0, Math.ceil((scavenging.returnsAt - Date.now()) / 1000));
+                status = remainingSeconds > 0
+                    ? `🧭 Scavenging — returns in ${convertSecondstoMinutes(remainingSeconds)}`
+                    : `🧭 Scavenging — ready! Use /companion-scavenge-collect`;
+            } else {
+                status = companion.id;
+            }
             const workCount = companion.workCount || 0;
             const level = companionFactory.getCompanionLevel(workCount);
             const nextThreshold = companionFactory.getNextLevelThreshold(workCount);

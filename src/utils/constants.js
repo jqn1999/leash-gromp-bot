@@ -432,6 +432,46 @@ const CompanionLeveling = {
     ]
 }
 
+// Companion Scavenging (roadmap #17): a benched (owned, unequipped, not already
+// scavenging) companion can be dispatched for a rarity-scaled duration and, on return,
+// grants a chunk of its own workCount (the same counter Leveling tracks) plus a small,
+// unscaled starch payout — see systems/companions.md#scavenging for the full mechanic.
+// DURATION_SECONDS: clean doubling per tier (3h/6h/12h/24h) — long enough to unambiguously
+// read as a between-sessions action, not a rapid-fire one.
+// WORK_COUNT: tuned 2026-08-22 to be STRICTLY LINEAR in duration (8 per 3h ≈ 2.67/h,
+// applied uniformly to every tier's own duration) rather than the original super-linear
+// table (8/20/45/100), which paid Mythic more than 2x Common's real hourly rate for no
+// reason beyond "it's the biggest number" — no rarity is now a "faster" scavenging-leveling
+// path than another, rarity only changes how often a player has to come back and redispatch.
+// STARCH_RANGE: randomized 2026-08-22 (a flat guaranteed number felt too deterministic) —
+// each rarity is a { min, max } range rolled the same inclusive way
+// companionMarketFactory.rollNpcSalePrice already rolls its own range, centered on the
+// original flat per-rarity values (5/15/40/100) so the "comparable to a fresh player's own
+// Taro Trader hits, decaying toward irrelevance for a developed player" grounding still
+// holds on average. Deliberately NOT scaled by the scavenging companion's own level or the
+// player's effectiveMultiplier/server wealth — same "/companion-sell-npc stays a
+// consistently modest deal at every stage of the game" precedent.
+const CompanionScavenging = {
+    DURATION_SECONDS: {
+        [CompanionRarity.COMMON]: 10800,    // 3h
+        [CompanionRarity.RARE]: 21600,      // 6h
+        [CompanionRarity.LEGENDARY]: 43200, // 12h
+        [CompanionRarity.MYTHIC]: 86400     // 24h
+    },
+    WORK_COUNT: {
+        [CompanionRarity.COMMON]: 8,
+        [CompanionRarity.RARE]: 16,
+        [CompanionRarity.LEGENDARY]: 32,
+        [CompanionRarity.MYTHIC]: 64
+    },
+    STARCH_RANGE: {
+        [CompanionRarity.COMMON]: { min: 3, max: 7 },
+        [CompanionRarity.RARE]: { min: 10, max: 20 },
+        [CompanionRarity.LEGENDARY]: { min: 28, max: 52 },
+        [CompanionRarity.MYTHIC]: { min: 70, max: 130 }
+    }
+}
+
 // perks: an array so a companion can carry more than one — Legendary tier introduces
 // dual perks, Mythic tier goes further still (both Elder Rootbeard and Mochi are 4-perk
 // generalists at that tier, see systems/companions.md). Common tier deliberately excludes
@@ -1411,6 +1451,7 @@ module.exports = {
     PoisonMitigation,
     CompanionDuplicateReward,
     CompanionLeveling,
+    CompanionScavenging,
     Companions,
     HelpTopics,
     Give,

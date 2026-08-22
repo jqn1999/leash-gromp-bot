@@ -165,6 +165,99 @@ describe('findUser', () => {
             .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
         expect(healedFieldNames).not.toContain('workScenarioCounts');
     });
+
+    // Regression coverage mirroring the workScenarioCounts.companion case above, for
+    // Companion Scavenging's new companions.scavenging sub-field (roadmap #17) — an
+    // account that predates this feature already has a `companions` object (owned/
+    // active/ownedCount/mythicOwnedCount), so the top-level `user[key] === undefined`
+    // check never fires for it; only the one-level-deep nested-object heal catches the
+    // missing `scavenging` sub-key.
+    test('shallow-heals a pre-existing companions object missing the new scavenging sub-key', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u7', username: 'name7',
+                companions: { owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u7', 'name7');
+
+        expect(user.companions.scavenging).toBeNull();
+        // Existing sub-fields must survive the heal untouched.
+        expect(user.companions.owned).toEqual([{ id: 'sprout', workCount: 3 }]);
+        expect(user.companions.active).toBe('sprout');
+
+        const companionsWrite = docClient.update.mock.calls.find(
+            ([params]) => Object.values(params.ExpressionAttributeNames).includes('companions')
+        );
+        expect(companionsWrite).toBeDefined();
+        const writtenValue = Object.values(companionsWrite[0].ExpressionAttributeValues)[0];
+        expect(writtenValue).toEqual({ owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null });
+    });
+
+    test('does not touch a companions object that already has scavenging', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u8', username: 'name8',
+                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: 123 } },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.findUser('u8', 'name8');
+
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).not.toContain('companions');
+    });
+});
+
+// Companion Scavenging's collect/cancel race guard (roadmap #17) — same
+// ConditionExpression-on-the-write shape as claimDailyStreak/updateIfNewRecord, so two
+// near-simultaneous collect/cancel calls for the same scavenge can't both land.
+describe('resolveScavenge', () => {
+    test('conditions the write on companions.scavenging.companionId matching the caller-supplied id', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        const result = await dynamoHandler.resolveScavenge('u1', 'sprout', { starches: 42 });
+
+        expect(result).toBe(true);
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.ConditionExpression).toBe('companions.scavenging.companionId = :companionId');
+        expect(params.ExpressionAttributeValues[':companionId']).toBe('sprout');
+        expect(params.Key).toEqual({ userId: 'u1' });
+    });
+
+    test('writes every setAttributes field passed in', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.resolveScavenge('u1', 'sprout', {
+            companions: { owned: [{ id: 'sprout', workCount: 18 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
+            starches: 100
+        });
+
+        const params = docClient.update.mock.calls[0][0];
+        const setValues = Object.entries(params.ExpressionAttributeNames)
+            .reduce((acc, [nameKey, fieldName]) => ({ ...acc, [fieldName]: params.ExpressionAttributeValues[nameKey.replace('#', ':')] }), {});
+        expect(setValues.starches).toBe(100);
+        expect(setValues.companions.scavenging).toBeNull();
+    });
+
+    test('returns false (not a throw) when the race was already lost — e.g. a near-simultaneous collect and cancel', async () => {
+        const conditionalFailure = new Error('The conditional request failed');
+        conditionalFailure.code = 'ConditionalCheckFailedException';
+        docClient.update.mockReturnValue(rejected(conditionalFailure));
+
+        const result = await dynamoHandler.resolveScavenge('u1', 'sprout', { starches: 42 });
+        expect(result).toBe(false);
+    });
+
+    test('returns false without writing when setAttributes is empty', async () => {
+        const result = await dynamoHandler.resolveScavenge('u1', 'sprout', {});
+        expect(result).toBe(false);
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
 });
 
 // Regression coverage for the guild memberList/inviteList race: every guild command

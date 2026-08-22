@@ -14,7 +14,7 @@ function userWith(companionsOverrides = {}) {
     return {
         userId: 'seller-1',
         username: 'Seller',
-        companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, ...companionsOverrides }
+        companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: null, ...companionsOverrides }
     };
 }
 
@@ -46,6 +46,25 @@ describe('validateListingRequest', () => {
 
         const aboveFloor = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common * 10);
         expect(aboveFloor.valid).toBe(true);
+    });
+
+    test('rejects listing a companion that is currently out scavenging', () => {
+        const user = userWith({
+            owned: [{ id: 'sprout', workCount: 0 }],
+            scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() + 10000 }
+        });
+        const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/scavenging/);
+    });
+
+    test('does not block listing a DIFFERENT owned companion while another one scavenges', () => {
+        const user = userWith({
+            owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }],
+            scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: Date.now() + 10000 }
+        });
+        const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
+        expect(result.valid).toBe(true);
     });
 });
 
@@ -174,5 +193,15 @@ describe('validateNpcSaleRequest', () => {
         const user = userWith({ owned: [{ id: 'sprout' }] });
         const result = validateNpcSaleRequest(user, 'sprout');
         expect(result.level).toBe(1);
+    });
+
+    test('rejects selling a companion that is currently out scavenging', () => {
+        const user = userWith({
+            owned: [{ id: 'sprout', workCount: 0 }],
+            scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() + 10000 }
+        });
+        const result = validateNpcSaleRequest(user, 'sprout');
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/scavenging/);
     });
 });

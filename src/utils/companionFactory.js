@@ -1,4 +1,4 @@
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling } = require("../utils/constants");
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require("../utils/constants");
 
 // Cumulative — same shape as workScenarios' chance field and starchFactory's
 // PROBABILITY_MATRIX. CompanionRarityOdds is keyed by rarity *strings*
@@ -150,6 +150,56 @@ function applyCompanionAward(userDetails, companion, initialWorkCount = 0, dupli
     };
 }
 
+// Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
+// third owned-companion state (owned-and-idle / owned-and-equipped / owned-and-scavenging)
+// enforced by this guard check at each risk site (companion.js's equip branch,
+// companionMarketFactory's validateListingRequest/validateNpcSaleRequest, and dispatch's own
+// self-check), rather than the market's physical-removal escrow — a scavenging companion
+// still needs to show up in `owned` (for /companion's list display and workCount
+// bookkeeping) the whole time it's away, which removal would break. Guards against
+// userDetails.companions being absent the same way ownsCompanion/getActiveCompanion do.
+function isScavenging(userDetails, companionId) {
+    return userDetails.companions?.scavenging?.companionId === companionId;
+}
+
+// The { companionId, rarity, returnsAt } record /companion-scavenge writes on dispatch.
+// rarity is denormalized straight onto the record (not re-derived from companionId at
+// collect/cancel time) purely so those two commands don't need a second getCompanionById
+// lookup to know which CompanionScavenging row applies.
+function buildScavengeDispatch(companion) {
+    return {
+        companionId: companion.id,
+        rarity: companion.rarity,
+        returnsAt: Date.now() + CompanionScavenging.DURATION_SECONDS[companion.rarity] * 1000
+    };
+}
+
+// Pure computation of the collect-time reward. Assumes userDetails.companions.scavenging is
+// already non-null and return-ready — callers (companion-scavenge-collect.js) are
+// responsible for that check themselves, same division of labor as every other function in
+// this file. workCountGained is a FLAT per-rarity amount (CompanionScavenging.WORK_COUNT),
+// deliberately NOT scaled by the scavenging companion's own current level — level-scaling
+// the very counter that determines level would be a self-reinforcing compounding formula,
+// see systems/companions.md's balance-pass section for why this codebase avoids that
+// pattern everywhere else. starchesGained rolls CompanionScavenging.STARCH_RANGE[rarity]
+// the exact same inclusive way companionMarketFactory.rollNpcSalePrice already rolls its
+// own range. Does not touch `scavenging` itself or userDetails.starches — the caller clears/
+// credits those as part of its own write.
+function resolveScavengeReward(userDetails) {
+    const { companionId, rarity } = userDetails.companions.scavenging;
+    const workCountGained = CompanionScavenging.WORK_COUNT[rarity];
+    const { min, max } = CompanionScavenging.STARCH_RANGE[rarity];
+    const starchesGained = min + Math.floor(Math.random() * (max - min + 1));
+
+    const owned = userDetails.companions.owned.map(c =>
+        c.id === companionId
+            ? { ...c, workCount: (c.workCount || 0) + workCountGained }
+            : c
+    );
+
+    return { owned, starchesGained, workCountGained };
+}
+
 module.exports = {
     rollRarity,
     getCompanionsByRarity,
@@ -162,5 +212,8 @@ module.exports = {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
-    applyCompanionAward
+    applyCompanionAward,
+    isScavenging,
+    buildScavengeDispatch,
+    resolveScavengeReward
 }

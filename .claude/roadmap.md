@@ -536,7 +536,7 @@ and needs its own balance pass.
   it was, the %-softer figure, and a one-time 🏅 callout on the exact hit that crosses the 10-hit
   milestone.
 
-- [ ] **17. Companion Scavenging** — M
+- [x] **17. Companion Scavenging** — M — **Done**
   What: `/companion-scavenge <companion>` sends a currently **unequipped** owned companion out for a
   rarity-scaled duration; on return it grants (a) a chunk of that companion's own `workCount` — the
   same counter Companion Leveling (#13) already tracks, letting a benched companion inch toward its
@@ -829,6 +829,26 @@ and needs its own balance pass.
   from that precedent because this feature needs the companion to stay visibly "owned" (for
   `/companion`'s list and for `workCount` bookkeeping) while it's gone, which physical removal would
   break.
+
+  **Shipped as designed.** Built exactly to the technical design above, including both of the
+  2026-08-22 tuning notes (linear-in-duration `WORK_COUNT` table, randomized `STARCH_RANGE`).
+  Constant field names ended up `CompanionScavenging.WORK_COUNT`/`STARCH_RANGE: { min, max }` rather
+  than the files-touched section's placeholder `WORK_COUNT_REWARD`/`STARCH_REWARD` — a naming-only
+  difference, not a behavior one. `createScavengeReturnEmbed`'s actual signature is
+  `(userDisplayName, companion, workCountBefore, workCountAfter, starchesGained)` rather than the
+  files-touched section's `(..., workCountGained, starchesGained, level, nextThreshold)` — needed to
+  show the "before/after progress-to-next-level" the design's own command-shape section calls for
+  (a level-up crossed by this exact reward has to be visible on the same embed), so `embedFactory`
+  derives level/next-threshold from the before/after workCount itself rather than taking
+  pre-computed values, the same "raw numbers in, formatting computed inside" pattern every other
+  embed in this file already follows (see `createPoisonPotatoEmbed`). Added full test coverage for
+  `isScavenging`/`buildScavengeDispatch`/`resolveScavengeReward` (`companionFactory.test.js`), the
+  new `validateListingRequest`/`validateNpcSaleRequest` scavenging checks
+  (`companionMarketFactory.test.js`), and `dynamoHandler.resolveScavenge`'s race guard plus
+  `findUser`'s healing of the new `companions.scavenging` sub-field (`dynamoHandler.test.js`) — 275
+  tests passing (254 pre-existing + 21 new). Also added the three new commands' rows plus a
+  previously-missing `companionSellNpc.js` row (a pre-existing gap, unrelated to this feature) to
+  [reference/commands.md](reference/commands.md) while touching that file.
 
 ## Needs more design discussion before it can be scoped
 

@@ -10,9 +10,12 @@ const {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
-    applyCompanionAward
+    applyCompanionAward,
+    isScavenging,
+    buildScavengeDispatch,
+    resolveScavengeReward
 } = require('../companionFactory');
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling } = require('../constants');
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -233,5 +236,118 @@ describe('companion leveling', () => {
         const sprout = getCompanionById('sprout');
         const baseValue = sprout.perks.find(p => p.type === 'workMultiplierPercent').value;
         expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(baseValue);
+    });
+});
+
+describe('isScavenging', () => {
+    test('false when nothing is scavenging', () => {
+        const user = freshUser();
+        expect(isScavenging(user, 'sprout')).toBe(false);
+    });
+
+    test('false when a DIFFERENT companion is scavenging', () => {
+        const user = freshUser({
+            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: Date.now() } }
+        });
+        expect(isScavenging(user, 'sprout')).toBe(false);
+    });
+
+    test('true for the exact companion currently scavenging', () => {
+        const user = freshUser({
+            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() } }
+        });
+        expect(isScavenging(user, 'sprout')).toBe(true);
+    });
+
+    test('does not throw when userDetails.companions is entirely absent', () => {
+        expect(isScavenging({}, 'sprout')).toBe(false);
+    });
+});
+
+describe('buildScavengeDispatch', () => {
+    test('carries the companion\'s own id and rarity onto the record', () => {
+        const mole = getCompanionById('mole'); // rare
+        const record = buildScavengeDispatch(mole);
+        expect(record.companionId).toBe('mole');
+        expect(record.rarity).toBe(CompanionRarity.RARE);
+    });
+
+    test('returnsAt is now + that rarity\'s own DURATION_SECONDS', () => {
+        const before = Date.now();
+        const mochi = getCompanionById('mochi'); // mythic
+        const record = buildScavengeDispatch(mochi);
+        const after = Date.now();
+        const expectedMin = before + CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] * 1000;
+        const expectedMax = after + CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] * 1000;
+        expect(record.returnsAt).toBeGreaterThanOrEqual(expectedMin);
+        expect(record.returnsAt).toBeLessThanOrEqual(expectedMax);
+    });
+
+    test('every rarity produces a distinct, longer-than-the-last duration', () => {
+        const durations = Object.values(CompanionRarity).map(rarity => CompanionScavenging.DURATION_SECONDS[rarity]);
+        const sorted = [...durations].sort((a, b) => a - b);
+        expect(durations).toEqual(sorted);
+        expect(new Set(durations).size).toBe(durations.length);
+    });
+});
+
+describe('resolveScavengeReward', () => {
+    function userWithScavenge(companionId, rarity, ownedOverrides = []) {
+        return {
+            companions: {
+                owned: ownedOverrides,
+                active: null,
+                ownedCount: ownedOverrides.length,
+                mythicOwnedCount: 0,
+                scavenging: { companionId, rarity, returnsAt: Date.now() - 1000 }
+            }
+        };
+    }
+
+    test('bumps the scavenging companion\'s own workCount by that rarity\'s flat WORK_COUNT, leaving others untouched', () => {
+        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [
+            { id: 'sprout', workCount: 10 },
+            { id: 'mole', workCount: 5 }
+        ]);
+        const { owned, workCountGained } = resolveScavengeReward(user);
+        expect(workCountGained).toBe(CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON]);
+        expect(owned).toEqual([
+            { id: 'sprout', workCount: 10 + CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] },
+            { id: 'mole', workCount: 5 }
+        ]);
+    });
+
+    test('treats a missing workCount on the owned entry as 0', () => {
+        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout' }]);
+        const { owned } = resolveScavengeReward(user);
+        expect(owned).toEqual([{ id: 'sprout', workCount: CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] }]);
+    });
+
+    test('starchesGained always lands within that rarity\'s own STARCH_RANGE, inclusive, and actually varies', () => {
+        const { min, max } = CompanionScavenging.STARCH_RANGE[CompanionRarity.MYTHIC];
+        const seen = new Set();
+        for (let i = 0; i < 500; i++) {
+            const user = userWithScavenge('mochi', CompanionRarity.MYTHIC, [{ id: 'mochi', workCount: 0 }]);
+            const { starchesGained } = resolveScavengeReward(user);
+            expect(starchesGained).toBeGreaterThanOrEqual(min);
+            expect(starchesGained).toBeLessThanOrEqual(max);
+            seen.add(starchesGained);
+        }
+        expect(seen.size).toBeGreaterThan(1);
+    });
+
+    test('workCountGained is NOT scaled by the scavenging companion\'s own current level', () => {
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: maxWorkCount }]);
+        const { workCountGained } = resolveScavengeReward(user);
+        expect(workCountGained).toBe(CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON]);
+    });
+
+    test('every rarity\'s WORK_COUNT lands on the same linear-in-duration rate (~2.67/h, from Common\'s 8/3h)', () => {
+        const commonRate = CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] / (CompanionScavenging.DURATION_SECONDS[CompanionRarity.COMMON] / 3600);
+        for (const rarity of Object.values(CompanionRarity)) {
+            const rate = CompanionScavenging.WORK_COUNT[rarity] / (CompanionScavenging.DURATION_SECONDS[rarity] / 3600);
+            expect(rate).toBeCloseTo(commonRate, 5);
+        }
     });
 });

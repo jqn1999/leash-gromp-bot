@@ -19,8 +19,12 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `companion.js` | `/companion` | Paginated list of owned companions, or equip one as active — see [systems/companions.md](../systems/companions.md) |
 | `companionMarket.js` | `/companion-market` | Paginated browser of active companion market listings — see [systems/companions.md](../systems/companions.md) |
 | `companionSell.js` | `/companion-sell` | List an owned companion for sale (confirm/cancel flow, escrow) — see [systems/companions.md](../systems/companions.md) |
+| `companionSellNpc.js` | `/companion-sell-npc` | Instantly sell an owned companion to an NPC, well under market value (confirm/cancel flow) — see [systems/companions.md](../systems/companions.md#marketplace) |
 | `companionBuy.js` | `/companion-buy` | Buy a listed companion by listing id — see [systems/companions.md](../systems/companions.md) |
 | `companionCancel.js` | `/companion-cancel` | Pull back your own companion listing, no fee — see [systems/companions.md](../systems/companions.md) |
+| `companionScavenge.js` | `/companion-scavenge` | Send an owned, unequipped, idle companion out scavenging for workCount + starches — see [systems/companions.md](../systems/companions.md#scavenging) |
+| `companionScavengeCollect.js` | `/companion-scavenge-collect` | Collect a returned scavenge's reward — see [systems/companions.md](../systems/companions.md#scavenging) |
+| `companionScavengeCancel.js` | `/companion-scavenge-cancel` | Recall a scavenging companion early, forfeiting the reward (confirm/cancel flow) — see [systems/companions.md](../systems/companions.md#scavenging) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 

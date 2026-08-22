@@ -1,10 +1,11 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionDuplicateReward`, `CompanionLeveling`, `Companions`) +
+`CompanionMarket`, `CompanionDuplicateReward`, `CompanionLeveling`, `CompanionScavenging`,
+`Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
-[src/commands/user/{companion,companionMarket,companionSell,companionBuy,companionCancel}.js](../../src/commands/user/).
+[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel}.js](../../src/commands/user/).
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
@@ -219,8 +220,9 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 ## Viewing and equipping
 
 `/companion` — no args shows a paginated (5/page) list of owned companions, perk text, and which
-one is active. The `equip` option (choices drawn from the full roster) switches the active slot,
-rejected if the caller doesn't own that companion.
+one is active (or, since Scavenging shipped, currently out scavenging — see below). The `equip`
+option (choices drawn from the full roster) switches the active slot, rejected if the caller doesn't
+own that companion or if it's currently out scavenging.
 
 ## Marketplace
 
@@ -275,6 +277,103 @@ on the same `listings` array.
   actual sale price isn't rolled (`companionMarketFactory.rollNpcSalePrice`) until they confirm, so
   nobody agrees to a blind number. No fee — the below-market price is already the sink.
 
+## Scavenging
+
+Gives the *rest of the roster* something to do once a player has settled on a favorite equipped
+companion — every other owned companion used to be pure dead weight with nothing to do except sell
+it. `/companion-scavenge <companion>` sends a currently **owned, unequipped, and not-already-
+scavenging** companion out for a rarity-scaled duration; on return (`/companion-scavenge-collect`)
+it grants a chunk of that companion's own `workCount` — the same counter Leveling tracks, letting a
+benched companion inch toward its next level even while it isn't the active one — plus a small,
+rarity-scaled starch payout. Only **one** companion can be scavenging at a time, and it can't be
+whichever one is currently equipped — this keeps the total simultaneous value surface at exactly two
+roles (one equipped, one scavenging) regardless of roster size, the same "one active modifier"
+discipline the rest of this system already enforces, rather than letting every idle companion farm
+value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
+
+- **`/companion-scavenge <companion>`** — dispatch. No confirm prompt (nothing is lost by starting
+  one, same immediacy as `/companion equip`). Rejects if: not owned; currently the equipped/active
+  companion; or another companion is already scavenging (states which one and, if it's already
+  return-ready, tells the player to `/companion-scavenge-collect` it first — dispatch deliberately
+  never auto-collects a ready-and-waiting scavenge). On success, writes `companions.scavenging = {
+  companionId, rarity, returnsAt }` via a plain unconditional `updateUserFields` call — same
+  no-race-guard shape `/companion equip` already uses. A raced double-dispatch just means whichever
+  write lands last persists; no reward can be double-granted and no companion is ever orphaned by
+  it, so it wasn't worth a conditional-write helper.
+- **`/companion-scavenge-collect`** (no args — only one slot exists). Rejects if nothing is
+  scavenging, or if `returnsAt` is still in the future (states the remaining time). On success:
+  bumps that companion's `workCount` by a flat per-rarity amount
+  (`companionFactory.resolveScavengeReward`), credits the rolled starch payout, clears `scavenging`
+  to `null`, and replies with `embedFactory.createScavengeReturnEmbed` — the explicit "welcome back"
+  moment (same celebratory-embed family as `createPoisonPotatoEmbed`/achievement unlocks), showing
+  the companion, a before/after `workCount` (and the level line it crosses, if any) using the same
+  `getNextLevelThreshold` progress numbers `/companion`'s list already surfaces, and starches gained.
+- **`/companion-scavenge-cancel`** (no args) — early recall. Unlike `/companion-cancel` (market —
+  recovers a listing with nothing lost, so it skips a confirm step), an early recall forfeits a
+  real, already-accruing reward, so this **does** use the same `buildConfirmCancelRow` flow
+  `/companion-sell`/`/companion-sell-npc` use, showing time remaining and what would be forfeited.
+  On confirm: clears `scavenging` to `null`, no reward, no fee (the forfeited reward is already the
+  cost). The companion is immediately equippable/listable again since it never left `owned`.
+
+Both collect and cancel are guarded against a double-fire race by
+`dynamoHandler.resolveScavenge(userId, companionId, setAttributes)` — same
+`ConditionExpression`-on-the-write shape as `claimDailyStreak`/`updateIfNewRecord`
+(`companions.scavenging.companionId = :companionId`), so two near-simultaneous collect-collect or
+collect-cancel calls can't both fire; the loser's write is rejected, not silently reapplied.
+
+**Escrow is a guard-check, not physical removal.** Unlike the marketplace's escrow (which pulls a
+listed companion out of `owned` entirely), a scavenging companion **stays in `owned`** the whole
+time — removing it would break `/companion`'s list display and orphan the mid-flight `workCount`
+tracking (nothing would be there to show "scavenging, returns in Xh" against). Instead,
+`companionFactory.isScavenging(userDetails, companionId)` (`userDetails.companions?.scavenging
+?.companionId === companionId`) is checked at every risk site alongside the existing `ownsCompanion`
+check: `companion.js`'s `equip` branch, `companionMarketFactory.validateListingRequest` (used by
+`/companion-sell`), and `companionMarketFactory.validateNpcSaleRequest` (used by
+`/companion-sell-npc`) — plus dispatch's own self-check for the one-slot cap. This is the one
+genuinely new pattern Scavenging introduces to the companion system: a *third* companion state
+(owned-and-idle / owned-and-equipped / owned-and-scavenging) enforced by a guard at each risk site
+rather than by removal from a collection. `ownsCompanion`/`getOwnedEntry`/`getActivePerkValue` are
+untouched — a scavenging companion is still validly "owned" (it can't be the *active* one, since
+dispatch already requires it not be equipped) and still needs `getOwnedEntry` to resolve for the
+list display and for collect/cancel to read/write its `workCount`.
+
+**Numbers** (`CompanionScavenging` in `constants.js`, rarity-keyed):
+
+| Rarity | Duration | `WORK_COUNT` | `STARCH_RANGE` |
+|---|---|---|---|
+| Common | 3h (10,800s) | 8 | 3–7 |
+| Rare | 6h (21,600s) | 16 | 10–20 |
+| Legendary | 12h (43,200s) | 32 | 28–52 |
+| Mythic | 24h (86,400s) | 64 | 70–130 |
+
+Duration is a clean doubling per tier — Common at 36x `/work`'s 300s cooldown / 3x the 1hr raid
+timer unambiguously reads as a between-sessions action, and Mythic's 24h lands on the same
+once-a-day check-in cadence `/enter-tower` already uses.
+
+`WORK_COUNT` is deliberately **flat per rarity, never scaled by the scavenging companion's own
+current level** — level-scaling the very counter that *determines* level would be a self-
+reinforcing compounding formula, the same trap the percentage-of-current-stat perk design already
+avoids everywhere else (see the balance-pass section above). The table is also **strictly linear in
+duration** (8-per-3h ≈ 2.67/h, applied uniformly to every tier's own duration) rather than favoring
+Mythic with a super-linear bonus — no rarity is a "faster" scavenging-leveling path than another;
+rarity only changes how often a player has to come back and redispatch. Reaching max level
+(`workCount` 3,725) via nothing but back-to-back scavenges of a single rarity takes ~58 days of
+continuous redispatching regardless of rarity — still strictly slower than actively grinding an
+*equipped* companion through ordinary `/work` play, so scavenging stays a background-only path, not
+a reason to under-equip your best companion. A dedicated player *can* now level several companions
+in parallel over months by keeping one benched companion perpetually scavenging alongside their
+equipped one — an accepted, intentional consequence of giving the bench something to do.
+
+`STARCH_RANGE` is a `{ min, max }` pair per rarity, rolled inclusive the same way
+`companionMarketFactory.rollNpcSalePrice` already rolls its own range (`min + Math.floor(Math.random()
+* (max - min + 1))`), deliberately **not** scaled by the scavenging companion's own level or the
+player's `effectiveMultiplier`/server wealth — same "stays modest at every stage of the game"
+precedent `/companion-sell-npc`'s pricing already set. Grounded against a fresh player's own *Taro
+Trader*/*Golden Yam* `/work` hits rather than derived from `CompanionMarket.MINIMUM_PRICE` (those are
+potato-denominated; starches trade at a wildly different unit scale) — a multi-hour, zero-effort,
+unscaled payout reads as "a nice bonus for basically no active play" early on, and decays toward
+irrelevance for a developed player the same way `/companion-sell-npc`'s flat pricing already does.
+
 ## Achievements
 
 New `Achievements` entries (see [achievements.md](achievements.md)) read the same
@@ -290,10 +389,17 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 
 ## Persistence
 
-`userDetails.companions: { owned: [{ id, workCount }], active: id|null, ownedCount, mythicOwnedCount }`,
-backfilled onto existing accounts by `findUser`'s self-healing pattern like every other field.
-Untouched by `/rebirth`'s reset, same "survives a prestige reset" precedent `sweetPotatoBuffs`/
-achievements/records/starches already set. `workCount` (originally shipped as a static `level: 1`
-field nothing read) was repurposed by Companion Leveling (#13 on the roadmap) into a cumulative
-`/work`-resolution counter that drives each companion's level — see the Leveling section above for
-the full mechanic.
+`userDetails.companions: { owned: [{ id, workCount }], active: id|null, ownedCount, mythicOwnedCount,
+scavenging: { companionId, rarity, returnsAt } | null }`, backfilled onto existing accounts by
+`findUser`'s self-healing pattern like every other field. Untouched by `/rebirth`'s reset, same
+"survives a prestige reset" precedent `sweetPotatoBuffs`/achievements/records/starches already set.
+`workCount` (originally shipped as a static `level: 1` field nothing read) was repurposed by
+Companion Leveling (#13 on the roadmap) into a cumulative `/work`-resolution counter that drives
+each companion's level — see the Leveling section above for the full mechanic. `scavenging` was
+added by Companion Scavenging (#17) alongside the other four keys — since `companions` was already
+a plain object on every existing account, `findUser`'s existing one-level-deep nested-object healing
+backfills the new `scavenging: null` sub-key with zero new healing code, the same mechanism that
+already backfilled `workScenarioCounts.companion` onto pre-existing accounts. `rarity` is
+denormalized onto the `scavenging` record itself (not re-derived from `companionId`) purely so
+collect/cancel don't need a second `getCompanionById` lookup to know which `CompanionScavenging` row
+applies — cheap and harmless since the roster is static.

@@ -209,6 +209,41 @@ const updateIfNewRecord = async function (userId, fieldName, newValue) {
         });
 }
 
+// Race guard for /companion-scavenge-collect and /companion-scavenge-cancel — same
+// ConditionExpression-on-the-write shape as claimDailyStreak/updateIfNewRecord, so two
+// near-simultaneous collect/cancel calls for the same scavenge can't both fire (the loser's
+// write is rejected, not silently reapplied). Deliberately generic on setAttributes (unlike
+// claimDailyStreak's fixed field list) since collect and cancel each need to write a
+// different shape (collect also credits starches, cancel doesn't) — both just need "only
+// let this land if that specific companion is still the one out scavenging" as the guard.
+// Dispatch itself is NOT run through this — see companion-scavenge.js's own comment for why
+// that race is low/no-stakes and left unconditional, same as /companion equip.
+const resolveScavenge = async function (userId, companionId, setAttributes = {}) {
+    const { expression, names, values } = buildUpdateExpression(setAttributes);
+    if (!expression) return false;
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: expression,
+        ConditionExpression: "companions.scavenging.companionId = :companionId",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: { ...values, ":companionId": companionId },
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`resolveScavenge error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 // Computes the work-timer expiry (including the guild workTimer-buff discount) without
 // writing it, so callers can fold the result into a combined updateUserFields call.
 // Every companion that touches the work cooldown now does it through
@@ -326,7 +361,8 @@ function getDefaultUserFields(userId, username) {
             owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null
             ownedCount: 0,
-            mythicOwnedCount: 0
+            mythicOwnedCount: 0,
+            scavenging: null         // { companionId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
         // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh
@@ -1324,6 +1360,7 @@ module.exports = {
     updateUserFields,
     claimDailyStreak,
     updateIfNewRecord,
+    resolveScavenge,
     addUser,
     findUser,
     getUsers,
