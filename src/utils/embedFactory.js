@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -21,6 +21,15 @@ function buildProgressBar(current, max, length = 10) {
     const ratio = max > 0 ? Math.min(Math.max(current / max, 0), 1) : 0;
     const filled = Math.round(ratio * length);
     return '█'.repeat(filled) + '░'.repeat(length - filled);
+}
+
+// Same check bank.js itself makes before treating capacity as Infinity — duplicated here
+// (rather than threading a computed Infinity through) since createUserEmbed/
+// createUserStatsEmbed only receive the raw userDetails, not bank.js's own derived value,
+// and both need this same maxed check to stop showing a "Live: +Y%" bank-capacity bonus
+// that's actually a no-op once the real cap is already Infinity.
+function isBankCapacityMaxed(userDetails) {
+    return userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
 }
 
 // bank.js passes Infinity for a fully bankCapacity-regrade-maxed player — the whole
@@ -189,11 +198,16 @@ class EmbedFactory {
                 inline: false,
             });
 
-            const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
-            const bankBonus = Math.round(userDetails.bankCapacity * totalBankPercent);
-            const bankLabel = bankBonus > 0
-                ? `${(userDetails.bankCapacity + bankBonus).toLocaleString()} potatoes (+${bankBonus.toLocaleString()})`
-                : `${userDetails.bankCapacity.toLocaleString()} potatoes`;
+            let bankLabel;
+            if (isBankCapacityMaxed(userDetails)) {
+                bankLabel = `Unlimited (bank capacity regrade fully maxed)`;
+            } else {
+                const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
+                const bankBonus = Math.round(userDetails.bankCapacity * totalBankPercent);
+                bankLabel = bankBonus > 0
+                    ? `${(userDetails.bankCapacity + bankBonus).toLocaleString()} potatoes (+${bankBonus.toLocaleString()})`
+                    : `${userDetails.bankCapacity.toLocaleString()} potatoes`;
+            }
             fields.push({
                 name: "Current Bank Capacity:",
                 value: bankLabel,
@@ -280,8 +294,9 @@ class EmbedFactory {
         const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent;
         const livePassiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
 
+        const bankCapacityMaxed = isBankCapacityMaxed(userDetails);
         const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
-        const liveBankBonus = Math.round(userDetails.bankCapacity * totalBankPercent);
+        const liveBankBonus = bankCapacityMaxed ? 0 : Math.round(userDetails.bankCapacity * totalBankPercent);
 
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
@@ -305,7 +320,8 @@ class EmbedFactory {
                 },
                 {
                     name: "Current Bank Capacity Upgrade:",
-                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes = ${userDetails.bankCapacity.toLocaleString()}`
+                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes = `
+                        + (bankCapacityMaxed ? `Unlimited (regrade maxed)` : `${userDetails.bankCapacity.toLocaleString()}`)
                         + (liveBankBonus > 0 ? `\nLive: ${(userDetails.bankCapacity + liveBankBonus).toLocaleString()} potatoes (+${liveBankBonus.toLocaleString()})` : ''),
                     inline: false,
                 },
