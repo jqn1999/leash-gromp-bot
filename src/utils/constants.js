@@ -868,7 +868,7 @@ const regularStatRaidMobs = [
 const regularWorkMobs = [
     {
         name: "Baby Broccoli",
-        thumbnailUrl: "https://banner2.cleanpng.com/20231112/oze/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1540713459543707658/NzQwJnE9ODA.png?ex=6a8af4b9&is=6a89a339&hm=3c139cbf3b2bcd1681abec6faaca6277b9fd03fe88d4d562954bb117c6844c50&",
         description: `You happen upon a rather cute vegetable and bring yourself to slay it. You claim a bag of potatoes as a reward, but people seem to look at you a bit differently now...`
     },
     {
