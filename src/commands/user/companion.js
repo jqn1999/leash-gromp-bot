@@ -38,6 +38,12 @@ function buildOwnedPages(userDetails) {
 // itself stays the same unconditional, race-tolerant write /companion equip always used
 // (see companionFactory.js's comment on isScavenging) — nothing here is contested the
 // way a market listing is, so no lock is needed.
+//
+// Clicking the already-active companion's own button toggles it off (active: null)
+// instead of re-equipping it — the only other way to reach "nothing active" is owning a
+// second companion to switch to, which stranded a player's only companion permanently
+// equipped: they couldn't send it scavenging (which requires it not be the active one)
+// with no other companion to switch to first.
 async function attemptEquip(userId, username, equipId) {
     const freshUserDetails = await dynamoHandler.findUser(userId, username);
     if (!freshUserDetails) {
@@ -46,6 +52,15 @@ async function attemptEquip(userId, username, equipId) {
     if (!companionFactory.ownsCompanion(freshUserDetails, equipId)) {
         return { ok: false, message: `you don't own that companion yet!`, userDetails: freshUserDetails };
     }
+
+    const companion = companionFactory.getCompanionById(equipId);
+
+    if (freshUserDetails.companions?.active === equipId) {
+        const updatedCompanions = { ...freshUserDetails.companions, active: null };
+        await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
+        return { ok: true, message: `${companion.name} is no longer your active companion.`, userDetails: { ...freshUserDetails, companions: updatedCompanions } };
+    }
+
     if (companionFactory.isScavenging(freshUserDetails, equipId)) {
         return { ok: false, message: `that companion is out scavenging — it can't be equipped until it returns (or you cancel the scavenge with /companion-scavenge-cancel).`, userDetails: freshUserDetails };
     }
@@ -53,16 +68,17 @@ async function attemptEquip(userId, username, equipId) {
     const updatedCompanions = { ...freshUserDetails.companions, active: equipId };
     await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-    const companion = companionFactory.getCompanionById(equipId);
     return { ok: true, message: `${companion.name} is now your active companion!`, userDetails: { ...freshUserDetails, companions: updatedCompanions } };
 }
 
-// Up to 5 equip buttons for whichever companions are shown on this page — disabled (not
-// omitted) for the currently active companion and for one that's out scavenging, so it's
-// always visible why a given companion can't be equipped right now rather than it just
-// silently not being an option. Labeled with the companion's own name (each page has at
-// most 5, matching the 5 fields above it 1:1) rather than a generic "Equip" on every
-// button, since a row of identical labels wouldn't tell you which button does what.
+// Up to 5 equip buttons for whichever companions are shown on this page — the active
+// companion's own button stays enabled (clicking it again unequips, see attemptEquip)
+// and is styled Success to mark which one it is; every other button is disabled only if
+// that companion is out scavenging, so it's always visible why it can't be equipped right
+// now rather than it just silently not being an option. Labeled with the companion's own
+// name (each page has at most 5, matching the 5 fields above it 1:1) rather than a
+// generic "Equip" on every button, since a row of identical labels wouldn't tell you
+// which button does what.
 function buildEquipRow(pageItems, userDetails) {
     if (!pageItems.length) return null;
     const activeId = userDetails.companions?.active ?? null;
@@ -70,7 +86,7 @@ function buildEquipRow(pageItems, userDetails) {
         .setCustomId(`${EQUIP_PREFIX}${companion.id}`)
         .setLabel(companion.name.slice(0, 80))
         .setStyle(companion.id === activeId ? ButtonStyle.Success : ButtonStyle.Primary)
-        .setDisabled(companion.id === activeId || companionFactory.isScavenging(userDetails, companion.id))
+        .setDisabled(companion.id !== activeId && companionFactory.isScavenging(userDetails, companion.id))
     );
     return new ActionRowBuilder().addComponents(buttons);
 }

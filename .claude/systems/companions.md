@@ -9,8 +9,9 @@
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
-active at a time — equipping is a deliberate choice via `/companion`'s own per-page equip button
-row, not another additive stack. Perks are computed fresh at the usage site and never folded into a stored stat, the same
+active at a time (or none — see Unequipping below) — equipping is a deliberate choice via
+`/companion`'s own per-page equip button row, not another additive stack. Perks are computed fresh
+at the usage site and never folded into a stored stat, the same
 "one active modifier" pattern the guild buff system already uses (see
 [economy-and-work.md](economy-and-work.md)) — this matters because `/rebirth` and `/regrade` both
 depend on `effective - sweetPotatoBuffs - regradeAmount` staying a clean base value.
@@ -42,6 +43,18 @@ since `applyCompanionAward` is the single code path both routes go through. Buyi
 passes the listing's `workCount` as both of `applyCompanionAward`'s amount params (`initialWorkCount`
 if this turns out new, `duplicateWorkCountBonus` — added to the existing entry — if it doesn't), so
 either branch credits the buyer the same amount of training either way.
+
+## Unequipping
+
+`/companion`'s equip button row toggles: clicking a companion that isn't active equips it as
+normal, but clicking the *already-active* companion's own button unequips it instead (sets
+`companions.active` to `null`) rather than being a no-op or staying disabled. Before this, the only
+way to reach "nothing active" was owning a second companion to switch to — a player with exactly one
+companion had no way to unequip it, which mattered concretely for Scavenging: dispatch requires the
+target companion not be the active one, so a single-companion player could never scavenge with their
+only companion without first pulling or buying a second one just to switch to. `attemptEquip`
+(`companion.js`) is the single function behind both directions of the toggle — re-fetches fresh state
+at click time either way, same discipline as every other button handler in this system.
 
 ## Leveling
 
