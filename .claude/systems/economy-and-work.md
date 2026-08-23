@@ -135,7 +135,7 @@ added to `sweetPotatoBuffs`:
 
 Metal Potato failure: 0 potatoes, just resets the timer.
 
-### Ancient Potato (0.3% roll — `workFactory.js`'s `handleAncientPotato`)
+### Ancient Potato (0.15% roll — `workFactory.js`'s `handleAncientPotato`)
 
 The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
 guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
@@ -162,8 +162,22 @@ branch is picked, rather than a separate check duplicated in each:
    alongside it, not progress toward it. A track only qualifies here if its base (shop-purchased)
    value already equals that shop's max — matching `regrade.js`'s own `hasRequiredBaseAmount` gate
    exactly, since `/regrade` itself refuses to touch a track that isn't shop-maxed yet regardless of
-   `REGRADE_CAPS`. Ancient's own roll odds (0.3%) were deliberately left untouched by this pass —
-   see the audit entry for why a flat odds cut can't fix a curve this steep on its own.
+   `REGRADE_CAPS`. Ancient's own roll odds were deliberately left untouched by the 2026-08-22 pass —
+   see the audit entry for why a flat odds cut can't fix a curve this steep on its own. **Halved
+   2026-08-23** anyway, by separate direct instruction, unrelated to that curve-steepness reasoning:
+   0.3% → 0.15% (`eventFactory.js`'s `workProbability[WORK_SCENARIO_INDICES.ANCIENT]`, `.003` →
+   `.0015`). This number is duplicated in four places that all had to move together —
+   `eventFactory.js`'s constructor (`workProbability` and the cumulative `workChances`),
+   `setBaseWorkProbability`/`setBaseWorkChances` (the post-special-event reset pair), and `work.js`'s
+   own `workScenarios[].chance` baseline (which those methods overwrite via `setWorkScenarios`
+   whenever an event starts or ends, but which is the *live* value the rest of the time — nothing
+   enforces these four copies staying in sync at runtime, so any future change to Ancient's odds has
+   to touch all four again). Mimic (0.129→0.1275) and Golden Yam (0.130→0.1285) shifted down in the
+   cumulative tables to match,
+   keeping their own slice widths unchanged; Regular (the fixed-at-1 catch-all) absorbs the freed
+   0.15%. Covered by `eventFactory.test.js` (new file — this module had zero prior test coverage),
+   which locks down that `workProbability`/`workChances` stay in sync and that the post-event reset
+   methods return to the same baseline.
 2. **Free shop upgrade**, if no track qualifies for (1) — i.e. nothing is shop-maxed yet. Grants the
    next shop tier on a random not-yet-maxed track for free, mirroring `buy.js`'s own success-write
    shape (`newBase + sweetPotatoBuffs + regradeAmount`, not just the tier's raw amount).

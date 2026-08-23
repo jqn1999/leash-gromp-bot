@@ -1179,6 +1179,32 @@ and needs its own balance pass.
   per-request-computed-chance approach sidesteps that concern entirely rather than requiring the
   bigger rework that was originally assumed necessary.
 
+- [x] **27. Halve Ancient Potato's Encounter Chance (0.3% → 0.15%)** — S — **Done**
+  What: Ancient Potato's own `/work` roll chance halved, `eventFactory.js`'s
+  `workProbability[WORK_SCENARIO_INDICES.ANCIENT]` `.003` → `.0015`. This value is duplicated
+  in four places that all had to move together: `eventFactory.js`'s constructor
+  (`workProbability` and the cumulative `workChances`), `setBaseWorkProbability`/
+  `setBaseWorkChances` (the pair that resets both arrays back to baseline after a special
+  event ends), and `work.js`'s own `workScenarios[].chance` field for `ANCIENT` — which is
+  the *live* value between events (those reset methods only overwrite it via
+  `setWorkScenarios` when an event starts/ends). Mimic and Golden Yam's cumulative chances
+  shifted down to match (0.129→0.1275, 0.130→0.1285) so their own slice widths stay
+  unchanged; Regular (the fixed-at-1 catch-all) absorbs the freed 0.15%. New
+  `eventFactory.test.js` (this module had zero prior tests) locks down that
+  `workProbability`/`workChances` stay in sync and that the post-event reset returns to the
+  same baseline — using `toBeCloseTo` rather than `toEqual`, since the cumulative-sum
+  computation and the hardcoded literals don't match bit-for-bit due to ordinary
+  floating-point drift (functionally irrelevant at this scale, but breaks exact equality).
+  319→323 tests suite-wide.
+  Why: direct instruction. First stated as "1.5% instead of 3" — didn't match the actual
+  current value (0.3%, not 3%), so this went through an `AskUserQuestion` round to resolve
+  before touching anything; confirmed as "halve the real current number," landing on 0.15%.
+  Notable: distinct from the 2026-08-22 Ancient Potato regrade-grant nerf (roadmap #21) — that
+  pass explicitly left Ancient's roll odds untouched, reasoning that a flat odds cut can't fix
+  a reward curve that gets steeper deeper into the regrade ladder on its own. This change
+  doesn't touch that reasoning or the reward math at all — it's a separate, later, independent
+  instruction to reduce how often the whole scenario fires.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
