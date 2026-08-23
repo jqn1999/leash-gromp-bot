@@ -59,9 +59,12 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   reward/penalty and the tier's own difficulty multiplier cancels out of the ratio). Below that
   level, a tier is negative-EV no matter how large `totalMultiplier` gets, since the cap itself sits
   under breakeven — no amount of individual stat investment can compensate. Elite resolves to guild
-  level 1 (already viable, thin margin); Legendary to level 4. `start-raid` rejects a locked
-  selection with the reason instead of letting a guild discover the trap by losing potatoes over
-  several raids.
+  level 1 (already viable, thin margin); Legendary to level 3 (down from level 4 pre-2026-08-23, see
+  the mode-breakeven softening pass below). `start-raid` rejects a locked selection with the reason
+  instead of letting a guild discover the trap by losing potatoes over several raids.
+  **This gate alone doesn't mean a tier is realistically winnable, only that it's not
+  mathematically guaranteed-negative** — see "Mode-level breakeven" below for the gap this leaves
+  open on `regular` mode's own T2/T3, which this gate was never applied to at all.
 
 ### Effective raid power
 
@@ -107,8 +110,18 @@ Each `*_RAID_DIFFICULTY` is set so its landmark lands around 65% of that tier's 
 | Tier | Metal King | T4 | T3 | T2 | T1 (remainder) | Notes |
 |---|---|---|---|---|---|---|
 | Regular | 1% | 2% | 5% | 20% | 72% | base difficulty/reward |
-| Elite | 1% | 4% (T4×2) | 12% (T3×3) | 38% (T2×4.5) | 45% (T1×6) | difficulty & reward ×`DIFFICULTY_MULTIPLIER`; **failure penalty ×2** |
-| Legendary | 1% | 8% (T4×4) | 22% (T3×6) | 45% (T2×8) | 24% (T1×10) | **failure penalty ×3** |
+| Elite | 1% (×3) | 4% (T4×2) | 12% (T3×1.5) | 38% (T2×2.25) | 45% (T1×3) | difficulty & reward ×`DIFFICULTY_MULTIPLIER`; **failure penalty ×1.5** |
+| Legendary | 1% (×6) | 8% (T4×4) | 22% (T3×3) | 45% (T2×4) | 24% (T1×5) | **failure penalty ×2** |
+
+**T1-T3's `DIFFICULTY_MULTIPLIER` halved and both penalty multipliers softened 2026-08-23**
+(Elite `×2`→`×1.5`, Legendary `×3`→`×2`; Metal King and T4 left untouched — T4 is separately
+guild-level-gated already). Direct instruction, following a "mode-level breakeven" audit (see
+below) that found the *previous* tuning created a cliff, not a ramp, between modes: a guild sitting
+at Regular's own end-of-band breakeven needed **~12.8x** more roster power to break even the moment
+Elite unlocked, and **~5.6x** more again for Legendary. Softened to bring both transitions down to
+a consistent **~4.6x** step — Elite/Legendary are still unambiguously harder throughout their whole
+range (that's intentional, not a bug), but the jump is no longer concentrated entirely at the
+unlock moment.
 
 **T4 is additionally gated behind guild level**, on top of its own steep difficulty — guild-level
 progression and individual stat power are only loosely correlated, so a small guild of a few very
@@ -120,6 +133,43 @@ in the roll table at all: `getEligibleScenarios` strips it out and proportionall
 probability mass across whatever brackets *are* unlocked (not dumped onto whichever bracket happens
 to be next), so the remaining odds still sum to 100% and nothing is silently unreachable. The preview
 embed only shows T4 once it's actually rollable.
+
+### Mode-level breakeven
+
+`getMinGuildLevelForTier` only ever answers "is *this specific* tier's success-rate cap
+mathematically above breakeven" — it says nothing about whether a guild's actual roster is anywhere
+near reaching that cap. That's a real, separate gap: T2/T3 under `regular` mode carry **no**
+`minGuildLevel` at all, so a level-1 guild can roll either one on any `/start-raid regular` attempt
+regardless of roster strength — confirmed to be a real trap, not just theoretical (a level-1 guild's
+realistic T3 success chance came out to 0.17%-0.52% against a -5M penalty, an effectively guaranteed
+loss the guild has no way to opt out of).
+
+To reason about this, treat each mode as a single weighted bet across its own T1/T2/T3 (Metal King
+and T4 excluded — T4 already has its own gate, Metal King's structure differs), using each
+bracket's actual roll odds (`bracketOdds`, renormalized to just T1+T2+T3) and solving for the
+`totalMultiplier` where the WEIGHTED AVERAGE ev across all three hits zero — not any one tier's own
+breakeven in isolation. At guild level 1 (`raidRewardMultiplier=1.00`):
+
+| Mode | T1/T2/T3 odds (renormalized) | Aggregate breakeven `totalMultiplier` |
+|---|---|---|
+| Regular | 74.2% / 20.6% / 5.2% | ≈135 |
+| Elite | 47.4% / 40.0% / 12.6% | ≈1,106 (pre-2026-08-23 tuning) |
+| Legendary | 26.4% / 49.5% / 24.2% | never, at guild level 1's reward multiplier (pre-2026-08-23 tuning) |
+
+This is what actually drove the 2026-08-23 softening above — computed the same way at each mode's
+now-proposed guild-level band boundary (Regular Lv1-3, Elite Lv3-7, Legendary Lv7-10, using each
+level's real `RaidLevel.THRESHOLDS` reward multiplier), the old tuning showed steep cliffs exactly
+at the unlock moments (Elite Lv3 needed ~12.8x Regular's own Lv3 breakeven; Legendary Lv7 needed
+~5.6x Elite's own Lv7 breakeven) rather than a gradual ramp. The DIFFICULTY_MULTIPLIER-halving +
+penalty-softening change flattened both transitions to a consistent ~4.6x step.
+
+**Still open, not yet fixed**: Regular's own T2/T3 have no eligibility gate at all — unlike
+Elite/Legendary (mode-level gate) and T4 (per-bracket gate), nothing stops a level-1 guild from
+rolling either one. The recommended fix (from the balance-audit entry this section is grounded in)
+is extending `getEligibleScenarios`'s exclusion mechanism to T2/T3 (and `stat` mode, also
+ungated), keyed on actual roster power rather than guild level — guild level was already shown to
+be a weak proxy for roster strength, which is why T4 needed a *second*, separate gate on top of
+Elite/Legendary's own. See `balance-audit.md`'s 2026-08-23 entries for the full derivation.
 
 Base reward/penalty/difficulty (from `constants.js` `Raid`):
 

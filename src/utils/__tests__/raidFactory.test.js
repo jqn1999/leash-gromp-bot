@@ -300,15 +300,18 @@ describe('getRaidLevelInfo', () => {
 // on this instead of letting a guild discover the trap by losing potatoes.
 describe('getMinGuildLevelForTier', () => {
     // Mirrors startRaid.js's own (unexported) ELITE_PENALTY_INCREASE/
-    // LEGENDARY_PENALTY_INCREASE = 2/3 and Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE/
-    // Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE exactly, so this test tracks the real
-    // in-game thresholds rather than arbitrary numbers.
-    test('Elite (2x penalty, 75% cap) is viable from guild level 1 — thin margin, not a trap', () => {
-        expect(getMinGuildLevelForTier(2, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
+    // LEGENDARY_PENALTY_INCREASE = 1.5/2 (softened 2026-08-23 from 2/3, alongside a T1-T3
+    // DIFFICULTY_MULTIPLIER halving — see balance-audit.md's guild-raid mode-breakeven
+    // pass and startRaid.js's own comment on ELITE_PENALTY_INCREASE) and
+    // Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE/Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE
+    // exactly, so this test tracks the real in-game thresholds rather than arbitrary
+    // numbers.
+    test('Elite (1.5x penalty, 75% cap) is viable from guild level 1 — thin margin, not a trap', () => {
+        expect(getMinGuildLevelForTier(1.5, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
     });
 
-    test('Legendary (3x penalty, 60% cap) is not viable until guild level 4', () => {
-        expect(getMinGuildLevelForTier(3, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(4);
+    test('Legendary (2x penalty, 60% cap) is not viable until guild level 3', () => {
+        expect(getMinGuildLevelForTier(2, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(3);
     });
 
     test('Regular (1x penalty, 90% cap) is viable from guild level 1', () => {

@@ -351,7 +351,15 @@ const regularRaidScenarios = [
     }
 ]
 
-ELITE_PENALTY_INCREASE = 2;
+// Softened 2026-08-23 (2 -> 1.5) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below,
+// per balance-audit.md's guild-raid mode-breakeven pass — see that entry for the full
+// derivation. Direct instruction: "soften penalties... it's ok if elite's starting
+// difficulty is higher than regular's start" — the old 6x/4.5x/3x DIFFICULTY_MULTIPLIER
+// combined with a 2x penalty premium meant a guild unlocking Elite right at Regular's own
+// Lv3 breakeven point needed ~12.8x more roster power to break even on Elite, a cliff
+// rather than a ramp. Halving DIFFICULTY_MULTIPLIER and softening this to 1.5 brings that
+// down to ~4.6x — still clearly a harder mode, no longer a wall.
+ELITE_PENALTY_INCREASE = 1.5;
 const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -421,7 +429,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 3;
+            const DIFFICULTY_MULTIPLIER = 1.5; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -447,7 +455,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 4.5;
+            const DIFFICULTY_MULTIPLIER = 2.25; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -473,7 +481,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 6;
+            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -498,7 +506,20 @@ const eliteRaidScenarios = [
     }
 ]
 
-LEGENDARY_PENALTY_INCREASE = 3;
+// Softened 2026-08-23 (3 -> 2) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below —
+// same pass and reasoning as ELITE_PENALTY_INCREASE's comment above. Doesn't fully remove
+// a structural property the old 3x tuning had, just eases it: breakeven success rate
+// (penaltyMult / (1 + penaltyMult)) was 75% at 3x, above Legendary's own 60% success-rate
+// cap — meaning raw roster power (totalMultiplier) alone could never make it profitable,
+// only the guild-level-driven raidRewardMultiplier could, by boosting the reward side of
+// the equation. At 2x the breakeven rate drops to ~66.7%, still above the 60% cap, so this
+// is still true — Legendary still needs guild level to carry it into profitability, not
+// roster power alone. That's fine: it's exactly what getMinGuildLevelForTier's existing
+// gate already checks and enforces (unaffected by this change), and is arguably correct
+// design for the top mode — the softening here is about how HARSH that requirement is
+// (breakeven totalMultiplier at guild level 7-10, worked out in balance-audit.md), not
+// about removing the "needs guild level, not just stats" property entirely.
+LEGENDARY_PENALTY_INCREASE = 2;
 const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -565,7 +586,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 6;
+            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -591,7 +612,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 8;
+            const DIFFICULTY_MULTIPLIER = 4; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -617,7 +638,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 10;
+            const DIFFICULTY_MULTIPLIER = 5; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);

@@ -1264,7 +1264,55 @@ and needs its own balance pass.
   especially in a large flat constants object with no schema/type checking to catch a
   now-undefined reference at edit time.
 
+- [x] **30. Soften Elite/Legendary Raid Mode Cliffs** — S — **Done**
+  What: halved T1-T3's `DIFFICULTY_MULTIPLIER` in both `eliteRaidScenarios` and
+  `legendaryRaidScenarios` (Elite: 6/4.5/3 → 3/2.25/1.5; Legendary: 10/8/6 → 5/4/3), and
+  softened `ELITE_PENALTY_INCREASE` (2 → 1.5) and `LEGENDARY_PENALTY_INCREASE` (3 → 2).
+  Metal King and T4 entries within both modes left untouched (T4 already has its own
+  separate guild-level gate). Legendary's own `getMinGuildLevelForTier` unlock threshold
+  moved from guild level 4 to level 3 as a direct consequence. `raidFactory.test.js`
+  updated to assert the new live values instead of the stale 2/3 penalty multipliers (332
+  tests suite-wide, unchanged count — same describe block, updated assertions).
+  Why: direct instruction, following a "mode-level breakeven" calculation (weighted across
+  each mode's own T1/T2/T3 roll odds, not any single tier in isolation) done against a
+  proposed guild-level banding for the three modes — Regular Lv1-3, Elite Lv3-7, Legendary
+  Lv7+. That calculation found the old tuning created a cliff, not a ramp, at each mode's
+  unlock boundary: a guild at Regular's own Lv3 breakeven (57.4 `totalMultiplier`) needed
+  ~12.8x more roster power the instant Elite unlocked (737.3 at Lv3), and a guild at
+  Elite's own Lv7 breakeven (188.5) needed ~5.6x more again for Legendary (1056.6 at Lv7).
+  User's framing: soften the penalty side specifically, explicitly fine with Elite's floor
+  sitting above Regular's ("it is meant to push required work multis higher as people
+  go") — the fix reflects that: Elite/Legendary are still unambiguously harder throughout
+  their entire band (nothing here undercuts the intended step-up), just no longer
+  concentrated entirely into the unlock moment. Both transitions now land at a consistent
+  ~4.6x step (Elite Lv3=263.7 vs Regular Lv3=57.4; Legendary Lv7=320.8 vs Elite Lv7=69.9).
+  Notable: this is scoped narrowly to the cliff-softening the user explicitly asked for —
+  it does **not** include the T2/T3/`stat`-mode eligibility-gating fix from the original
+  guild-raid audit (still open, see the "Guild raids full-scope audit" entry in
+  `balance-audit.md` and the still-open item below), and does **not** touch the negative-
+  balance clamp gap that same audit flagged in `raidFactory.js`'s `handlePotatoSplit`. Both
+  were deliberately left for a separate pass per the user's own "for now" framing.
+
 ## Needs more design discussion before it can be scoped
+
+- [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
+  direction is picked. Full derivation in `balance-audit.md`'s 2026-08-23 "Guild raids full-scope
+  audit" entry, still open — item 30 above (raid mode-cliff softening) intentionally did not
+  include this. Two separate findings:
+  1. **`regular` mode's T2/T3 (and `stat` mode entirely) carry no eligibility gate at all** —
+     unlike Elite/Legendary (mode-level `getMinGuildLevelForTier` gate) and T4 (per-bracket
+     `minGuildLevel` tag), a level-1 guild can roll T3 (or run `stat` mode) with no guardrail.
+     Confirmed genuinely dangerous, not just theoretical: a level-1 guild's real T3 success chance
+     computed to 0.17%-0.52% against a -5M penalty. Recommended fix: extend
+     `getEligibleScenarios`'s exclusion mechanism to these, keyed on actual roster power
+     (`totalMultiplier`) rather than guild level — this codebase already learned guild level is a
+     weak proxy for roster strength (why T4 needed a *second* gate on top of Elite/Legendary's).
+     Alternative, bigger UX change: make raid tier a deliberate player choice instead of a random
+     roll, removing the "didn't choose what I got" complaint outright — a call for product-owner.
+  2. **`raidFactory.js`'s `handlePotatoSplit` has no floor at zero** — a big enough loss split can
+     write a negative personal `potatoes` balance (no `Math.max(0, ...)` anywhere in that path,
+     unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
+     regardless of which direction the gating fix above takes.
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
   conversation first: what's actually "cosmetic" here — profile embed color/border, a title (which
