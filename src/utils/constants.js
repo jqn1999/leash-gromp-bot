@@ -152,7 +152,10 @@ const Achievements = [
 
     { id: "first_companion", name: "New Best Friend", description: "Win your first companion", statPath: "companions.ownedCount", threshold: 1 },
     { id: "companion_collector", name: "Menagerie Keeper", description: "Collect 5 different companions", statPath: "companions.ownedCount", threshold: 5 },
-    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 12 companions", statPath: "companions.ownedCount", threshold: 12 },
+    // Bumped 10->12 (Guinea Pig & Prospector) then 12->13 (Yukon, the Highwayman, added
+    // by Mercenary Bounties) — same mechanical bump every roster addition needs, since
+    // ownedCount increments on ANY new companion acquisition regardless of dropSource.
+    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 13 companions", statPath: "companions.ownedCount", threshold: 13 },
     { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 },
 
     // Added 2026-08-23 per the Scavenging cosmetic brainstorm's Option A2 — off a new
@@ -162,7 +165,15 @@ const Achievements = [
     // no Rare-tier achievement, since none was proposed and this codebase avoids tracking
     // state nothing reads.
     { id: "legendary_legwork", name: "Legendary Legwork", description: "Collect 10 Legendary-tier scavenging returns", statPath: "companions.scavengeReturnsByRarity.legendary", threshold: 10 },
-    { id: "mythic_milestones", name: "Mythic Milestones", description: "Collect 10 Mythic-tier scavenging returns", statPath: "companions.scavengeReturnsByRarity.mythic", threshold: 10 }
+    { id: "mythic_milestones", name: "Mythic Milestones", description: "Collect 10 Mythic-tier scavenging returns", statPath: "companions.scavengeReturnsByRarity.mythic", threshold: 10 },
+
+    // Mercenary Bounties — mirrors raid_novice/raid_veteran's exact shape/thresholds,
+    // keyed on mercenaryBountyWinCount instead of guildRaidWinCount. mercenary_legend's
+    // threshold (525) is Rank 6, MercenaryRank.THRESHOLDS' own max — a real long-run
+    // capstone, same category as full_roster/serial_rebirther.
+    { id: "mercenary_recruit", name: "Tater Bounty Hunter", description: "Win your first mercenary bounty", statPath: "mercenaryBountyWinCount", threshold: 1 },
+    { id: "mercenary_veteran", name: "Seasoned Mercenary", description: "Win 25 mercenary bounties", statPath: "mercenaryBountyWinCount", threshold: 25 },
+    { id: "mercenary_legend", name: "The Iron Tuber", description: "Reach max Mercenary Rank (525 bounty wins)", statPath: "mercenaryBountyWinCount", threshold: 525 }
 ]
 
 const CatchUp = {
@@ -787,6 +798,36 @@ const Companions = [
             { type: "workMultiplierPercent", value: 0.12 },
             { type: "workCooldownSkipChance", value: 0.20 }
         ]
+    },
+    {
+        id: "yukon",
+        name: "Yukon, the Highwayman",
+        rarity: CompanionRarity.LEGENDARY,
+        // Every other companion is implicitly dropSource "work" by omission — this is the
+        // one entry that isn't, and it's the ONLY thing gating its acquisition path.
+        // companionFactory.getCompanionsByRarity filters this out of the normal /work
+        // roll; every other consumer (getCompanionById, /companion's list, the
+        // marketplace, getActivePerkValue, /help topic:companions) reads the full
+        // unfiltered array as usual, so once owned it behaves exactly like any other
+        // companion in every other system. See MercenaryCompanionDrop above for the
+        // actual roll, applied on a winning /take-bounty resolution.
+        dropSource: "bounty",
+        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        description: "An outlaw potato who made a name robbing the King's own supply wagons — now rides shotgun for whichever mercenary earned their trust.",
+        scavengeFlavor: "Yukon rode out at dusk, the way it always does, and came back before sunup with a story it swears is true this time.",
+        // Dual-perk, matching every existing Legendary exactly (Spudsprite, Rootcarver) —
+        // no Legendary is single-perk, no reason to break that here. npcRobChanceFlat
+        // sits between Barn Owl's Rare robChanceFlat (10%) and Elder Rootbeard's Mythic
+        // robChanceFlat (15%) on the analogous /rob-npc axis (a deliberately DIFFERENT
+        // perk type from robChanceFlat — this one only ever applies to /rob-npc, never
+        // real /rob). bountyRewardPercent (applied to the already-discounted Bounty
+        // payout, non-compounding) is anchored near Rootcarver's 12% and Prospector's
+        // paired Rare-tier bump, for a dual-perk companion whose two values land in the
+        // same neighborhood as each other.
+        perks: [
+            { type: "npcRobChanceFlat", value: 0.12 },
+            { type: "bountyRewardPercent", value: 0.135 }
+        ]
     }
 ]
 
@@ -837,6 +878,12 @@ const HelpTopics = [
         label: "Economy",
         description: "Potatoes, starches, banking, and giving",
         content: "Potatoes are the main currency; starches are a secondary one bought and sold at a price that shifts daily (`/starch`, `/buy-starch`, `/sell-starch`). `/bank` stores potatoes safely out of `/rob`'s reach — capacity grows through `/shop`/`/regrade` and eventually becomes unlimited once fully invested, so there's no ceiling on how much a dedicated player can protect; `/guild-bank` does the same at the guild level. `/give` lets you gift potatoes or starches to another player, minus a small tax taken out of what you send."
+    },
+    {
+        id: "mercenary",
+        label: "Mercenary Bounties",
+        description: "The solo, guild-independent alternative to Guild Raids",
+        content: "`/become-mercenary` opts you into Mercenary Bounties — you can't be in a guild at the same time, but it's fully reversible with `/retire-mercenary` any time, no progress lost. `/bounty-board` shows your Mercenary Rank, which Bounty tiers (I/II/III) you've unlocked, and a live success-chance preview. `/take-bounty tier:<I|II|III>` resolves immediately against a random wanted-poster scenario for that tier, paying potatoes or (occasionally) starches on a win, with a rare chance at a permanent stat bonus or Yukon, the Highwayman — a Legendary companion found ONLY this way. `/rob-npc` is a lower-stakes, no-Rank-required solo heist against a fictional target on its own 30-minute cooldown, separate from Bounty's own 1-hour one — no real player involved, and a miss costs nothing. Winning bounties is deliberately worth less per attempt than a well-organized guild's own raid split, so this complements guild raiding rather than replacing it."
     },
     {
         id: "rob-betting",
@@ -934,6 +981,241 @@ const Raid = {
     REGULAR_STAT_RAID_REWARD: 0.2,
     REGULAR_STAT_RAID_COST: -300000,
     REGULAR_STAT_RAID_DIFFICULTY: 350
+}
+
+// Mercenary Bounties (roadmap "Mercenary Bounties (Solo Raid-Equivalent Progression)") —
+// a personal, guild-independent alternative to Guild Raids, mutually exclusive with
+// guild membership (see userDetails.isMercenary). See mercenaryFactory.js and
+// systems/mercenary-bounties.md for the full formula and command flow.
+//
+// Reads winsRequired against mercenaryBountyWinCount (wins only, same "computed live,
+// never stored" shape RaidLevel.THRESHOLDS/guild level already use) — reuses
+// CompanionLeveling.THRESHOLDS's early curve shape (0/15/50/125/275/525) since Bounty's
+// win cadence (a real success-chance roll on a 3600s cooldown) is closer to that curve's
+// original design intent than RaidLevel's own curve, which is sized for a GUILD's
+// aggregate win count across many members over a long lifetime (up to 12,000 wins).
+// rewardMultiplier is capped at 1.75x deliberately — see Bounty.SOLO_BOUNTY_REWARD_SHARE's
+// own comment for the EV derivation this cap is load-bearing for.
+const MercenaryRank = {
+    THRESHOLDS: [
+        { rank: 1, winsRequired: 0,   unlocksTier: 1, rewardMultiplier: 1.00 },
+        { rank: 2, winsRequired: 15,  unlocksTier: 2, rewardMultiplier: 1.15 },
+        { rank: 3, winsRequired: 50,  unlocksTier: 3, rewardMultiplier: 1.35 },
+        { rank: 4, winsRequired: 125, unlocksTier: 3, rewardMultiplier: 1.50 },
+        { rank: 5, winsRequired: 275, unlocksTier: 3, rewardMultiplier: 1.65 },
+        { rank: 6, winsRequired: 525, unlocksTier: 3, rewardMultiplier: 1.75 },  // max
+    ]
+}
+
+// Bounty tiers I/II/III map 1:1 onto Regular-mode Guild Raid's T1/T2/T3 — reward,
+// penalty, and difficulty are read straight off Raid.T{1,2,3}_RAID_* (see
+// mercenaryFactory.resolveBountyAttempt) rather than duplicated into a parallel table
+// here. All three tiers share Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.9) as their
+// success-chance cap — Bounty tiers are Regular-mode-equivalent, not Elite/Legendary-
+// equivalent.
+const Bounty = {
+    BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
+    // Central risk-mitigation number, grounded against this roadmap entry's own worked
+    // examples (a guild-level-1/4-person roster nets ~25% of a T1 raid's base reward per
+    // member; a guild-level-3/6-person roster nets ~28.3% of T3's base per member — both
+    // realistic small-to-mid active-guild scenarios). At this value, a Rank 1 mercenary
+    // (1.00x) nets 15% of base — clearly below either guild scenario's per-member share —
+    // and a maxed Rank 6 mercenary (1.75x cap) nets 26.25%, narrowly UNDER the stronger
+    // guild scenario and roughly at the weaker one, so a fully-committed solo mercenary
+    // approaches but never quite beats even a modest, reasonably-organized guild's own
+    // per-member split. The guild side's penalty is also split across its roster on a
+    // loss, while a Bounty's penalty stays fully unscaled on one person — solo bears
+    // strictly more downside per unit of reward at every tier, reinforcing (not needing a
+    // second) discount. No tracked "average guild roster size" stat exists to calibrate
+    // against precisely — this is grounded against the roadmap's own worked examples, not
+    // measured server data; revisit once real Bounty usage exists.
+    SOLO_BOUNTY_REWARD_SHARE: 0.15,
+    // Starch-flavored scenarios reuse Taro Trader's own formula
+    // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
+    // scaled by this per-tier multiplier — NOT discounted by SOLO_BOUNTY_REWARD_SHARE
+    // (that discount exists specifically to stop potato Bounties out-earning guild raids;
+    // guild raids never pay starches, so there's no analogous risk to guard against here).
+    STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 }
+}
+
+// Flavor-text scenario tables, keyed by tier — mirrors regularWorkMobs'/raid mob arrays'
+// "cosmetic flavor, mechanically identical formula" shape. `currency` decides which
+// currency a WIN pays out in (loss always denominates in potatoes — see
+// mercenaryFactory.resolveBountyAttempt); win/loss is decided separately by the success-
+// chance roll, this table only supplies flavor + currency. 10 entries per tier so each
+// tier's potato/starch ratio lands on an exact whole-number split: Tier I 8/2 (80/20),
+// Tier II 7/3 (70/30), Tier III 6/4 (60/40) — widening toward starch at deeper tiers, the
+// same "rarer-and-different, not just rarer-and-bigger" direction Sweet/Ancient/Mimic/
+// Golden Yam already skew.
+const BountyScenarios = {
+    I: [
+        { name: "The Chip Thief", currency: "potato",
+          winFlavor: "You corner the Chip Thief behind the mill — they fold fast and hand over a bag of potatoes to make it disappear.",
+          loseFlavor: "The Chip Thief slips down an alley you didn't know was there. No harm done, but no bounty either." },
+        { name: "Marsh Bandit Malone", currency: "starch",
+          winFlavor: "Malone's hideout turns out to be stuffed with pilfered starch sacks — you help yourself to a fair cut before the guards show up.",
+          loseFlavor: "Malone's lookout spots you first. You beat a retreat before it turns into a real fight." },
+        { name: "Sackbreaker Sal", currency: "potato",
+          winFlavor: "Sal never was much of a fighter — one look at the wanted poster in your hand and they empty their pockets on the spot.",
+          loseFlavor: "Sal's bigger than the poster made them look. You decide today isn't the day and walk it back." },
+        { name: "Old Man Gravy", currency: "potato",
+          winFlavor: "Old Man Gravy puts up a token protest, then hands over the bounty with a wink — you get the feeling he's done this dance before.",
+          loseFlavor: "Old Man Gravy turns out to be surprisingly spry for his age and gives you the slip." },
+        { name: "The Root Cellar Rat", currency: "potato",
+          winFlavor: "You corner the Root Cellar Rat between two barrels — cornered rats, it turns out, pay up fast.",
+          loseFlavor: "The Root Cellar Rat knows every tunnel under this town better than you do. Gone in a blink." },
+        { name: "Whistling Pete", currency: "potato",
+          winFlavor: "Pete's whistling stops the second he sees you — a quiet handoff of potatoes later, you're both pretending this never happened.",
+          loseFlavor: "Pete whistles for backup that never actually shows, but the bluff buys him enough time to vanish anyway." },
+        { name: "Dirt-Road Dinah", currency: "potato",
+          winFlavor: "Dinah's cart isn't nearly as empty as she claims — a quick search turns up more than enough to settle the bounty.",
+          loseFlavor: "Dinah's cart really is that fast on a dirt road. You eat dust the whole way back." },
+        { name: "The Sprout Snatcher", currency: "potato",
+          winFlavor: "The Sprout Snatcher's haul is easier to recover than expected — turns out they weren't planning on a fight either.",
+          loseFlavor: "The Sprout Snatcher ducks into the greenhouse maze and you lose the trail among the rows." },
+        { name: "Barnabus the Skimmer", currency: "starch",
+          winFlavor: "Barnabus keeps a tidy stash of skimmed starch behind the barn — tidy enough that counting out your share only takes a minute.",
+          loseFlavor: "Barnabus skims a little too well and slips out the back before you've finished counting." },
+        { name: "Lantern-Jaw Lou", currency: "potato",
+          winFlavor: "Lou's reputation is scarier than Lou actually is — the bounty changes hands without a single raised voice.",
+          loseFlavor: "Lou's friends turn out to be a lot less bark and a lot more bite than advertised. You bow out." }
+    ],
+    II: [
+        { name: "Blackfurrow Bess", currency: "potato",
+          winFlavor: "Bess fights dirty, but you fight dirtier — she goes down swinging and the bounty goes in your bag.",
+          loseFlavor: "Bess fights dirtier than you bargained for. You retreat to lick your wounds and try again another day." },
+        { name: "The Gravy Smuggler", currency: "starch",
+          winFlavor: "The Gravy Smuggler's wagon is a false bottom away from an actual haul of starch — you help yourself before the constables arrive.",
+          loseFlavor: "The Gravy Smuggler's wagon has a second false bottom you didn't find in time, and neither does the getaway route." },
+        { name: "Two-Sack Tanner", currency: "potato",
+          winFlavor: "Tanner never carries less than two full sacks of potatoes on him — today, neither of them make it home with him.",
+          loseFlavor: "Tanner's two sacks turn out to have a third friend hiding behind the woodpile. You cut your losses." },
+        { name: "The Hollow Road Ripper", currency: "potato",
+          winFlavor: "The Hollow Road's reputation doesn't save the Ripper from a well-placed ambush of your own.",
+          loseFlavor: "The Hollow Road earns its reputation all over again — you barely make it out with your own potatoes intact." },
+        { name: "Mudveil Mercer", currency: "potato",
+          winFlavor: "Mercer's mud-caked hideout doesn't hide the bounty nearly as well as they'd hoped.",
+          loseFlavor: "Mercer's mud-caked hideout swallows your tracks whole, and Mercer along with them." },
+        { name: "Starchvein Sadie", currency: "starch",
+          winFlavor: "Sadie's whole operation runs on siphoned starch — you tap the vein yourself before she can close it off.",
+          loseFlavor: "Sadie closes the vein off a moment before you get there, and takes the whole operation with her." },
+        { name: "The Cellar Door Crew", currency: "potato",
+          winFlavor: "The Cellar Door Crew scatters the moment their ringleader goes down — the bounty's yours before the dust settles.",
+          loseFlavor: "The Cellar Door Crew outnumbers you three to one, and they know it. You make a strategic exit." },
+        { name: "Wraith of the Furrow", currency: "potato",
+          winFlavor: "Whatever's haunting the furrow turns out to be flesh and blood after all, and considerably easier to collect on than the legend suggested.",
+          loseFlavor: "Whatever's haunting the furrow lives up to the legend after all, and you're not eager to find out how." },
+        { name: "Copper-Tooth Cal", currency: "starch",
+          winFlavor: "Cal's famous copper tooth isn't nearly as valuable as the starch stash it was guarding.",
+          loseFlavor: "Cal's copper tooth flashes a grin as they duck out a window you didn't know was there." },
+        { name: "The Wandering Forger", currency: "potato",
+          winFlavor: "The Wandering Forger's latest batch of counterfeit bounty notices doesn't fool you, and it doesn't save them either.",
+          loseFlavor: "The Wandering Forger's latest batch of counterfeit bounty notices very nearly fools even you — enough of a head start to disappear." }
+    ],
+    III: [
+        { name: "The Blight Baron", currency: "potato",
+          winFlavor: "The Blight Baron's hired muscle folds the moment their employer does — the full bounty's yours.",
+          loseFlavor: "The Blight Baron's hired muscle proves the bigger problem, and you're forced to withdraw before things get worse." },
+        { name: "Ironclad Ines", currency: "potato",
+          winFlavor: "Ines's armor is impressive right up until you find the one gap in it — after that, the fight's basically over.",
+          loseFlavor: "Ines's armor doesn't have a gap you can find in time, and the fight ends the way it usually does against her." },
+        { name: "The Starch Cartel's Enforcer", currency: "starch",
+          winFlavor: "The Enforcer goes down hard, and the Cartel's warehouse of starch is yours for the taking.",
+          loseFlavor: "The Enforcer's backup arrives before you can even get near the warehouse door." },
+        { name: "Grimroot the Unbound", currency: "potato",
+          winFlavor: "Whatever Grimroot was bound to once, it isn't strong enough to save them from this bounty.",
+          loseFlavor: "Whatever Grimroot is unbound FROM turns out to still be very much a problem, and you're the one who finds out first." },
+        { name: "The Hollow King's Right Hand", currency: "potato",
+          winFlavor: "The Right Hand falls, and for one afternoon, the Hollow King's reach is a little shorter.",
+          loseFlavor: "The Right Hand lives up to its reputation in full, and you're lucky to walk away at all." },
+        { name: "Vaultbreaker Vex", currency: "potato",
+          winFlavor: "Vex's own tools make quick work of the last vault standing between you and the bounty.",
+          loseFlavor: "Vex's own tools make quick work of the exit before you can close the distance." },
+        { name: "The Midnight Reaper of the Fields", currency: "starch",
+          winFlavor: "The Reaper's midnight harvest of stolen starch changes hands one last time — this time into yours.",
+          loseFlavor: "The Reaper's midnight harvest is already long gone by the time you reach the field." },
+        { name: "Silt-Queen Ophelia", currency: "starch",
+          winFlavor: "Ophelia's riverbed hoard of starch surfaces the moment her guard finally breaks.",
+          loseFlavor: "Ophelia's riverbed swallows your trail whole, hoard and all." },
+        { name: "The Last Word", currency: "potato",
+          winFlavor: "The Last Word doesn't get one, in the end — the bounty's collected before they can finish the sentence.",
+          loseFlavor: "The Last Word, true to the name, gets exactly that — and you're the one left without a comeback." },
+        { name: "Ashcart Annika", currency: "starch",
+          winFlavor: "Annika's ash-cart hides a starch stash better than most, but not quite well enough today.",
+          loseFlavor: "Annika's ash-cart kicks up a cloud thick enough to vanish into, and she takes the stash with her." }
+    ]
+}
+
+// The rare permanent stat-increase branch — checked once per Bounty WIN, before the
+// potato/starch payout, never on a loss. Layered on top of a win (not a flat/moderate
+// chance on every win) specifically so this stays gated behind Bounty's own real
+// cooldown+risk, rather than becoming an easier-to-reach version of /work's own rare
+// Sweet/Metal Potato stat rolls. Tier I/II pick ONE of three tracks uniformly at random
+// (TIER_I_GRANT IS workFactory.js's own sweetPotatoRewards array, reused directly, not
+// duplicated); Tier III grants ALL THREE simultaneously (TIER_III_GRANT matches
+// workFactory.js's metalPotatoRewards exactly) — Tier III is meant to read as
+// "Metal-Potato-scale" in both magnitude AND structure, not just a bigger single-track
+// roll. Tier II's numbers are a straight linear midpoint between Tier I's (Sweet's) and
+// Tier III's (Metal's) values on each axis. All grants apply the same rounding/minimum-
+// gain rules Sweet/Metal Potato's own handlers use and write into sweetPotatoBuffs (never
+// regrades.*/failStack — see Work.ANCIENT_REGRADE_GRANT_PERCENT's own comment for why a
+// partial amount can't land on a regrade tier's exact checkpoint).
+const BountyStatReward = {
+    ROLL_CHANCE: { I: 0.0075, II: 0.02, III: 0.04 },   // 0.75% / 2% / 4% — midpoints of the
+                                                        // originally-proposed ranges
+    TIER_I_GRANT: [
+        { type: "workMultiplierAmount", amount: 0.2 },
+        { type: "passiveAmount", amount: 1.15, maxGainSweetPotato: 100000 },
+        { type: "bankCapacity", amount: 1.15, maxGainSweetPotato: 1000000 }
+    ],
+    TIER_II_GRANT: [
+        { type: "workMultiplierAmount", amount: 0.4 },
+        { type: "passiveAmount", amount: 1.325, maxGainSweetPotato: 300000 },
+        { type: "bankCapacity", amount: 1.325, maxGainSweetPotato: 3000000 }
+    ],
+    TIER_III_GRANT: {
+        workMultiplierAmount: 0.6,
+        passiveMultiplier: 1.5, passiveMaxGain: 500000,
+        bankMultiplier: 1.5, bankMaxGain: 5000000
+    }
+}
+
+// /rob-npc — a solo-only heist against a fictional target (no real player involved, a
+// newly-minted payout, not drawn from anyone's balance). Grounded against real /rob's own
+// numbers (Rob.ROB_TIMER_SECONDS/BASE_ROB_PENALTY, calculateRobChance's ~5-25% range in
+// rob.js): flat base chance (no target to compare wealth against) since there's no
+// target to compare relative wealth against, scaling with Mercenary Rank, capped well
+// below a maxed real-/rob setup (base 25% + guild buff 20% + companion 15% ~= 50%+) so
+// this never out-performs a well-built real-/rob setup on odds alone. Payout is
+// server-wealth-scaled via the same calculateGainAmount shape every /work reward uses,
+// anchored between Regular (x1) and Large (x10). Cooldown is its OWN separate field
+// (npcRobTimer) — distinct from both Rob.ROB_TIMER_SECONDS (real /rob's robTimer, 3600s)
+// and Bounty.BOUNTY_TIMER_SECONDS (also 3600s) — so spamming one action never locks out
+// either of the other two. No Mercenary Rank gate at all (available from Rank 1) — kept
+// modest specifically because it needs none.
+const RobNpc = {
+    NPC_ROB_TIMER_SECONDS: 1800,   // 30 min
+    BASE_CHANCE: 0.20,
+    CHANCE_PER_RANK: 0.02,
+    MAX_CHANCE: 0.30,              // reached at Rank 6 (0.20 + 0.02*5 = 0.30)
+    PAYOUT_MULTIPLIER: 4.5,        // midpoint of the "x4-5" recommendation, between Regular (x1) and Large (x10)
+    MAX_NPC_ROB_PAYOUT: 5000       // half of Work.MAX_LARGE_POTATO(10000), base cap before the player's
+                                    // own multiplier scales it up — same "*_MAX_* caps the base, not the
+                                    // final payout" convention every other cap in this game follows
+}
+
+// Yukon, the Highwayman's drop odds — see the Companions entry below (dropSource:
+// "bounty", filtered out of the normal /work roll entirely by
+// companionFactory.getCompanionsByRarity). Checked once per Bounty WIN, independent of
+// the stat-reward roll above. Sized so the PER-ATTEMPT rate at each tier's own 0.9
+// success-chance cap (the best realistic case) lands close to Legendary's own real
+// per-/work-call rate (0.12% = 1.5% Wandering Companion encounter x 8% conditional
+// Legendary roll) — e.g. Tier I: 0.0015 * 0.9 = 0.135%, close to 0.12%. The remaining gap
+// (real calendar time to obtain is still ~12x longer than a Legendary /work pull) is
+// purely because Bounty attempts are inherently 12x less frequent (3600s vs /work's 300s
+// cooldown) — an accepted, explicit tradeoff, not a modeling error.
+const MercenaryCompanionDrop = {
+    YUKON_CHANCE: { I: 0.0015, II: 0.004, III: 0.01 }   // 0.15% / 0.4% / 1.0% per WINNING resolution
 }
 
 const GuildRoles = {
@@ -1604,6 +1886,12 @@ module.exports = {
     Give,
     GuildRoles,
     Raid,
+    MercenaryRank,
+    Bounty,
+    BountyScenarios,
+    BountyStatReward,
+    RobNpc,
+    MercenaryCompanionDrop,
     metalKingRaidBoss,
     metalPotatoSuccess,
     metalPotatoFailure,

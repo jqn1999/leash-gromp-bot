@@ -120,6 +120,18 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
+**Yukon, the Highwayman** (Legendary, dual-perk) is the roster's 13th companion but
+deliberately **not** obtainable through this table's `/work` roll at all — see
+[mercenary-bounties.md](mercenary-bounties.md#yukon-the-highwayman--the-one-bounty-exclusive-companion)
+for the full mechanism. Its `Companions` entry carries `dropSource: "bounty"`, which
+`companionFactory.getCompanionsByRarity` filters out of `rollCompanion`'s pool — the only
+roster entry that isn't implicitly `dropSource: "work"` by omission. Once owned, it behaves
+exactly like any other companion everywhere else (equip, market, `getActivePerkValue`,
+`/help topic:companions`). Perks: `npcRobChanceFlat` +12% (`/rob-npc`-exclusive, a
+deliberately different perk type from Barn Owl/Elder Rootbeard's real-`/rob`
+`robChanceFlat`) + `bountyRewardPercent` +13.5% (applied to the already-discounted Bounty
+payout).
+
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
 | Perk | Common | Rare | Legendary | Mythic |
@@ -367,7 +379,7 @@ guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-con
 on the same `listings` array.
 
 - **`/companion-sell <companion> <price>`** — `companion` is an autocomplete option (not a static
-  `choices` list, which would show all 12 companions to everyone regardless of ownership):
+  `choices` list, which would show all 13 companions to everyone regardless of ownership):
   filtered per-keystroke, per-invoking-user to what they actually own, isn't out scavenging, and
   isn't already listed on the market. Rejected server-side too (autocomplete only narrows the
   dropdown, the callback still re-validates) if `price` is below that rarity's floor
@@ -454,7 +466,7 @@ value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
 - **`/companion-scavenge <companion>`** — dispatch. `companion` is an autocomplete option, same
   reasoning as `/companion-sell`'s: filtered per-invoking-user to what they own and excluding
   whichever companion is currently active (can't be sent scavenging), rather than a static
-  `choices` list showing all 12 companions to everyone. No confirm prompt (nothing is lost by starting
+  `choices` list showing all 13 companions to everyone. No confirm prompt (nothing is lost by starting
   one, same immediacy as `/companion`'s equip buttons). Rejects if: not owned; currently the equipped/active
   companion; or another companion is already scavenging (states which one and, if it's already
   return-ready, tells the player to `/companion-scavenge-collect` it first — dispatch deliberately
@@ -612,7 +624,7 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 |---|---|---|
 | `first_companion` | New Best Friend | `companions.ownedCount >= 1` |
 | `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
-| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 12` (all of them — corrected from a stale `>= 10` doc value; the roster grew to 12 after Guinea Pig/Prospector shipped, and `constants.js` already reads `12` live) |
+| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 13` (all of them, including Yukon — bumped 10→12 when Guinea Pig/Prospector shipped, then 12→13 when Yukon shipped with Mercenary Bounties; `ownedCount` increments on ANY new companion acquisition regardless of `dropSource`, so this needed the same mechanical bump both times) |
 | `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
 
 ## Persistence

@@ -47,6 +47,13 @@ module.exports = {
             return;
         }
 
+        // Mercenary and guild membership are mutually exclusive — see
+        // systems/mercenary-bounties.md.
+        if (userDetails.isMercenary) {
+            interaction.editReply(`${userDisplayName}, you're a mercenary — run /retire-mercenary before joining a guild.`);
+            return;
+        }
+
         if (!inviteList.includes(userId)) {
             interaction.editReply(`${userDisplayName} you are not invited to this guild. Ask for an invite!`);
             return;

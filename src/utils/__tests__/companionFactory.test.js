@@ -46,16 +46,27 @@ describe('rollRarity', () => {
 });
 
 describe('getCompanionsByRarity / rollCompanion', () => {
-    test('every roster entry is reachable through its own rarity bucket', () => {
-        for (const companion of Companions) {
+    // Yukon, the Highwayman (dropSource "bounty") is the one deliberate exception —
+    // Mercenary Bounties' own drop mechanism, not the normal /work roll (see
+    // MercenaryCompanionDrop in constants.js). Every other roster entry (implicitly
+    // dropSource "work" by omission) must still be reachable here.
+    test('every non-Bounty-exclusive roster entry is reachable through its own rarity bucket', () => {
+        for (const companion of Companions.filter(c => c.dropSource !== 'bounty')) {
             expect(getCompanionsByRarity(companion.rarity)).toContainEqual(companion);
         }
     });
 
-    test('rollCompanion always returns a companion whose rarity matches what it rolled', () => {
+    test('a Bounty-exclusive companion (Yukon) is excluded from the normal roll pool entirely', () => {
+        const yukon = Companions.find(c => c.id === 'yukon');
+        expect(yukon.dropSource).toBe('bounty');
+        expect(getCompanionsByRarity(yukon.rarity)).not.toContainEqual(yukon);
+    });
+
+    test('rollCompanion always returns a companion whose rarity matches what it rolled, and never Yukon', () => {
         for (let i = 0; i < 200; i++) {
             const companion = rollCompanion();
             expect(Companions).toContainEqual(companion);
+            expect(companion.id).not.toBe('yukon');
         }
     });
 });

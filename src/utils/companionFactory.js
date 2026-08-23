@@ -16,8 +16,15 @@ function rollRarity() {
     return CompanionRarity.MYTHIC;
 }
 
+// Excludes any companion whose dropSource is explicitly something other than the normal
+// /work roll (today, only Yukon, the Highwayman: dropSource "bounty" — see
+// MercenaryCompanionDrop in constants.js, rolled separately on a winning /take-bounty
+// resolution). Every other companion is implicitly dropSource "work" by omission and
+// unaffected. rollCompanion()'s own logic (rollRarity() then a uniform pick within this
+// filtered pool) is completely untouched by this — a static roster filter, not new
+// per-user gating logic inside the roll path itself.
 function getCompanionsByRarity(rarity) {
-    return Companions.filter(c => c.rarity === rarity);
+    return Companions.filter(c => c.rarity === rarity && c.dropSource !== "bounty");
 }
 
 function rollCompanion() {

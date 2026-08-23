@@ -25,6 +25,11 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `companionScavenge.js` | `/companion-scavenge` | Send an owned, unequipped, idle companion out scavenging for workCount + starches (autocomplete filtered to owned/not-active companions) — see [systems/companions.md](../systems/companions.md#scavenging) |
 | `companionScavengeCollect.js` | `/companion-scavenge-collect` | Collect a returned scavenge's reward — see [systems/companions.md](../systems/companions.md#scavenging) |
 | `companionScavengeCancel.js` | `/companion-scavenge-cancel` | Recall a scavenging companion early, forfeiting the reward (confirm/cancel flow) — see [systems/companions.md](../systems/companions.md#scavenging) |
+| `becomeMercenary.js` | `/become-mercenary` | Opt into Mercenary Bounties — rejects if currently in a guild; no cost, no confirm, reversible — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `retireMercenary.js` | `/retire-mercenary` | Opt back out — free to join/found a guild again, Mercenary Rank/win count persist — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `bountyBoard.js` | `/bounty-board` | Read-only: current Mercenary Rank, unlocked tiers, live success-chance preview per tier, cooldown remaining — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `takeBounty.js` | `/take-bounty tier:<I\|II\|III>` | Resolves a bounty attempt immediately (no confirm) against a random flavor scenario for that tier — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `robNpc.js` | `/rob-npc` | Solo heist against a fictional target, 30 min cooldown, whiff-only failure — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 

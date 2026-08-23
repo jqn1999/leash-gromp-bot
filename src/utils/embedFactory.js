@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -7,6 +7,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
+const mercenaryFactory = require("../utils/mercenaryFactory");
 const shopFactory = require("../utils/shopFactory");
 const eventFactory = new EventFactory();
 
@@ -81,7 +82,25 @@ const PERK_LABELS = {
     // instead of a plain number, computed by formatCompanionPerks below.
     poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
-    metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`
+    metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
+    // Yukon, the Highwayman only — deliberately separate perk types from real /rob's own
+    // robChanceFlat (Barn Owl/Elder Rootbeard) and Bounty's own reward math, so neither
+    // action's benefit compounds into the other. See mercenaryFactory.js.
+    npcRobChanceFlat: value => `+${(value * 100).toFixed(1)}% /rob-npc Success Chance`,
+    bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`
+};
+
+// Mercenary Rank titles — potato-punned, same non-load-bearing flavor status
+// Achievements' names already have (naming exercise, not mechanically meaningful). Rank 1
+// and Rank 6 are pinned by the design doc ("Spud Recruit" -> ... -> "The Iron Tuber");
+// the middle four fill in the same escalating-outlaw theme.
+const MERCENARY_RANK_TITLES = {
+    1: "Spud Recruit",
+    2: "Tater Tracker",
+    3: "Root Ranger",
+    4: "Tuber Marauder",
+    5: "Tater Highwayman",
+    6: "The Iron Tuber"
 };
 
 // level defaults to 1 (unscaled) for roster-reference displays (createHelpCompanionsEmbed)
@@ -233,6 +252,21 @@ class EmbedFactory {
                 value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion, activeCompanionLevel)})` : "None equipped",
                 inline: false,
             });
+
+            // Mercenary Bounties — mutually exclusive with guild membership, so this only
+            // ever shows for a non-guilded mercenary. Rank is computed live off
+            // mercenaryBountyWinCount, same "never stored" precedent Guild Level already
+            // sets — see mercenaryFactory.getMercenaryRankInfo.
+            if (userDetails.isMercenary) {
+                const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+                const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+                const highestTier = ['I', 'II', 'III'][rankInfo.unlocksTier - 1];
+                fields.push({
+                    name: "Mercenary Rank:",
+                    value: `Rank ${rankInfo.rank} — ${title} (Tier ${highestTier} unlocked, ${(userDetails.mercenaryBountyWinCount || 0).toLocaleString()} wins)`,
+                    inline: false,
+                });
+            }
         } else {
             description = `Activity & Records\nPage 2 / ${totalPages}`;
             fields.push({
@@ -1335,6 +1369,139 @@ class EmbedFactory {
         return embed;
     }
 
+    // Read-only preview, mirrors /current-raid's own shape — current Mercenary Rank +
+    // wins-to-next-rank, which tiers are unlocked, a live success-chance preview per
+    // unlocked tier, and bountyTimer remaining. `tiers` is precomputed by bounty-board.js
+    // (each { tier, unlocked, successChance, unlocksAtRank }).
+    createBountyBoardEmbed(userDisplayName, rankInfo, tiers, cooldownRemainingSeconds) {
+        const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+        const rankLine = rankInfo.winsToNextRank !== null
+            ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
+            : `Rank ${rankInfo.rank} — ${title} (max rank)`;
+
+        const fields = tiers.map(t => ({
+            name: `Tier ${t.tier}${t.unlocked ? '' : ' 🔒'}`,
+            value: t.unlocked
+                ? `${(t.successChance * 100).toFixed(1)}% success chance`
+                : `Unlocks at Rank ${t.unlocksAtRank}`,
+            inline: true,
+        }));
+
+        fields.push({
+            name: 'Bounty Cooldown:',
+            value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
+            inline: false,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Bounty Board`)
+            .setDescription(rankLine)
+            .setColor("Yellow")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Win/loss + stat-reward + Yukon callouts, same "own dedicated embed for a
+    // multi-outcome resolution" precedent createPoisonPotatoEmbed/
+    // createCompanionEncounterEmbed already set. `result` is
+    // mercenaryFactory.resolveBountyAttempt's own return shape; `yukonAward` is
+    // mercenaryFactory.resolveYukonAward's return shape, or null if Yukon didn't hit.
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null) {
+        const { tier, won, successChance, scenario, rankInfo, currency, rewardAmount, penaltyAmount, statReward } = result;
+        const color = won ? 'Green' : 'Red';
+        const fields = [];
+
+        fields.push({
+            name: 'Result:',
+            value: won ? scenario.winFlavor : scenario.loseFlavor,
+            inline: false,
+        });
+
+        fields.push({
+            name: 'Success Chance:',
+            value: `${(successChance * 100).toFixed(2)}%`,
+            inline: true,
+        });
+
+        if (won) {
+            const currencyLabel = currency === 'potato' ? 'Potatoes' : 'Starches';
+            fields.push({
+                name: `${currencyLabel} Gained:`,
+                value: `${rewardAmount.toLocaleString()} ${currencyLabel.toLowerCase()}`,
+                inline: true,
+            });
+        } else {
+            fields.push({
+                name: 'Potatoes Lost:',
+                value: `${penaltyAmount.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        }
+
+        if (statReward) {
+            const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
+            fields.push({
+                name: '🏅 Bounty Bonus — Permanent Stat Reward!',
+                value: statText,
+                inline: false,
+            });
+        }
+
+        if (yukonAward) {
+            fields.push({
+                name: yukonAward.isNew ? '🤠 A new companion joins you!' : '🤠 Yukon, the Highwayman (already owned)',
+                value: yukonAward.isNew
+                    ? `You've earned the loyalty of Yukon, the Highwayman — a Legendary companion found only through Mercenary Bounties!`
+                    : `You already have Yukon's loyalty — instead, you find ${yukonAward.potatoesGained.toLocaleString()} potatoes among their haul.`,
+                inline: false,
+            });
+        }
+
+        fields.push({
+            name: 'Mercenary Rank:',
+            value: `Rank ${rankInfo.rank}${won ? ' (win recorded!)' : ''}`,
+            inline: true,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}`)
+            .setDescription(won ? 'Success!' : 'Failed.')
+            .setColor(color)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // /rob-npc's own result embed — whiff-only failure (no loss), so there's no
+    // "Potatoes Lost" branch the way createBountyResultEmbed needs one. `result` is
+    // mercenaryFactory.resolveNpcRob's own return shape.
+    createRobNpcResultEmbed(userDisplayName, result) {
+        const { won, successChance, amount, rankInfo } = result;
+        const color = won ? 'Green' : 'Grey';
+        const fields = [
+            { name: 'Chance:', value: `${(successChance * 100).toFixed(2)}%`, inline: true },
+            { name: 'Mercenary Rank:', value: `Rank ${rankInfo.rank}`, inline: true },
+        ];
+        if (won) {
+            fields.push({ name: 'Potatoes Gained:', value: `${amount.toLocaleString()} potatoes`, inline: false });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(won ? `${userDisplayName} pulls off a heist!` : `${userDisplayName}'s heist falls through`)
+            .setDescription(won
+                ? `You ambush a passing supply wagon and make off clean before anyone's the wiser.`
+                : `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`)
+            .setColor(color)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Landing page for /help — lists every topic (pulled from HelpTopics so it can never
     // drift from the choices the slash command itself offers).
     createHelpOverviewEmbed() {
@@ -1383,7 +1550,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("Leash Gromp — Companions")
-            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market. Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market — except Yukon, the Highwayman, who's found only through a winning \`/take-bounty\` roll (see /help topic:mercenary). Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

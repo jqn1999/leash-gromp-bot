@@ -50,6 +50,13 @@ module.exports = {
             return;
         }
 
+        // Mercenary and guild membership are mutually exclusive — see
+        // systems/mercenary-bounties.md.
+        if (userDetails.isMercenary) {
+            interaction.editReply(`${userDisplayName}, you're a mercenary — run /retire-mercenary before founding a guild.`)
+            return;
+        }
+
         if (userPotatoes < GUILD_COST) {
             interaction.editReply(`${userDisplayName} you do not have enough to purchase a guild! You currently have ${userPotatoes} potatoes and need ${GUILD_COST-userPotatoes} more potatoes!`)
             return;

@@ -355,8 +355,22 @@ function getDefaultUserFields(userId, username) {
         records: {                  // all-time personal bests, see architecture/data-model.md
             highestTowerFloor: 0,
             biggestWorkPayout: 0,
-            largestRaidContribution: 0
+            largestRaidContribution: 0,
+            largestBountyReward: 0  // Mercenary Bounties — potato-flavored wins only, same
+                                     // exclusion biggestWorkPayout applies to Taro Trader
+                                     // (a starch-denominated win isn't a smaller/bigger
+                                     // version of the same thing a potato record tracks)
         },
+        // Mercenary Bounties (systems/mercenary-bounties.md) — a personal, guild-
+        // independent alternative to Guild Raids, mutually exclusive with guild
+        // membership. Reversible via /retire-mercenary; mercenaryBountyWinCount (and
+        // therefore Mercenary Rank) is never reset by retiring, same "lifetime counters
+        // never regress" precedent guildRaidWinCount/ownedCount already set.
+        isMercenary: false,
+        mercenaryBountyWinCount: 0,
+        bountyTimer: 0,   // same shape as workTimer/robTimer — a plain ms-epoch timestamp
+        npcRobTimer: 0,   // SEPARATE from robTimer (real /rob, 3600s) and bountyTimer
+                           // (also 3600s) — see RobNpc.NPC_ROB_TIMER_SECONDS (1800s)
         companions: {                // see systems/companions.md
             owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null

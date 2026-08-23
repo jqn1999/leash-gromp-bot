@@ -214,6 +214,57 @@ describe('findUser', () => {
             .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
         expect(healedFieldNames).not.toContain('companions');
     });
+
+    // Mercenary Bounties — isMercenary/mercenaryBountyWinCount/bountyTimer/npcRobTimer are
+    // plain top-level fields, healed like any other top-level field (not an index key, so
+    // none of guildId/webLinkToken's special-casing applies).
+    test('heals every new Mercenary Bounties top-level field onto a pre-existing account', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{ userId: 'u9', username: 'name9' }], // missing every other field, including the new Mercenary ones
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u9', 'name9');
+
+        expect(user.isMercenary).toBe(false);
+        expect(user.mercenaryBountyWinCount).toBe(0);
+        expect(user.bountyTimer).toBe(0);
+        expect(user.npcRobTimer).toBe(0);
+
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).toEqual(expect.arrayContaining(['isMercenary', 'mercenaryBountyWinCount', 'bountyTimer', 'npcRobTimer']));
+    });
+
+    // records.largestBountyReward nests one level into the already-existing `records`
+    // object — same one-level-deep nested healing that already backfills
+    // workScenarioCounts.companion/companions.scavenging, so an account with a
+    // pre-existing (but now-stale) records object still gets it backfilled without a
+    // special case.
+    test('shallow-heals records.largestBountyReward onto a pre-existing records object', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u10', username: 'name10',
+                records: { highestTowerFloor: 5, biggestWorkPayout: 1000, largestRaidContribution: 2000 },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u10', 'name10');
+
+        expect(user.records.largestBountyReward).toBe(0);
+        // Existing record values must survive the heal untouched.
+        expect(user.records.highestTowerFloor).toBe(5);
+        expect(user.records.biggestWorkPayout).toBe(1000);
+        expect(user.records.largestRaidContribution).toBe(2000);
+
+        const recordsWrite = docClient.update.mock.calls.find(
+            ([params]) => Object.values(params.ExpressionAttributeNames).includes('records')
+        );
+        expect(recordsWrite).toBeDefined();
+    });
 });
 
 // Companion Scavenging's collect/cancel race guard (roadmap #17) — same

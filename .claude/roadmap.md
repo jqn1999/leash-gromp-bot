@@ -1314,13 +1314,43 @@ and needs its own balance pass.
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
 
-- [ ] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — L — needs a real balance pass, same
-  shape Guild Raids' own tuning history needed, before it can be scoped. **Revised 2026-08-23** per
-  direct feedback — six concrete additions layered onto the original direction below (Rank-gated
-  tiers, flavor-text scenario tables, per-scenario currency, a rare stat-reward tier, an NPC-rob
-  command replacing the original `/rob`-buff idea, and a Mercenary-exclusive companion). What still
-  holds from the original pass: the unified-track direction (one system, not three), killing the
-  literal "join a Thieves Guild" idea, and the reward-sharing dominant-strategy finding below.
+- [x] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — L — **Shipped 2026-08-23**, built
+  directly off the architect's technical design at the end of this entry — see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md) for the shipped implementation.
+  What: five new commands (`/become-mercenary`, `/retire-mercenary`, `/bounty-board`, `/take-bounty`,
+  `/rob-npc`), a new `isMercenary` flag mutually exclusive with guild membership (reversible via
+  `/retire-mercenary`, `mercenaryBountyWinCount` never resets), Mercenary Rank computed live off
+  `mercenaryBountyWinCount` (`mercenaryFactory.getMercenaryRankInfo`), Bounty tiers I/II/III reusing
+  `Raid.T1/T2/T3_RAID_*` directly (no duplicated difficulty/reward/penalty table), 30 flavor scenarios
+  across the three tiers, a rare permanent-stat-reward branch on a win, `/rob-npc`'s own separate
+  1800s cooldown, and Yukon, the Highwayman — a Legendary companion obtainable only through a winning
+  Bounty roll (`dropSource: "bounty"`, filtered out of the normal `/work` roll by
+  `companionFactory.getCompanionsByRarity`).
+  Notable design points: `raidFactory.getEffectiveRaidPower` needed zero changes to support a
+  1-person "roster" (already generic over an array of `userDetails`, the headcount bonus is 0 for
+  length 1) — the product-owner pass's own touches list had assumed this needed "a real refactor,"
+  which turned out not to be true once actually checked against `raidFactory.js`'s live code.
+  `workFactory.js`'s `calculateGainAmount`/`applyCatchUp`/`getGuildWorkMulti`/`getCompanionWorkMulti`
+  were widened from private to exported (behavior-preserving) so `/rob-npc` and Yukon's duplicate-pull
+  consolation could reuse the exact same reward-scaling formula every other `/work`-shaped reward
+  uses, instead of duplicating it. One real deviation from this section's own "reuse
+  `raidFactory.handleStatSplit`, no new write logic needed" suggestion: `handleStatSplit` turned out
+  to only ever apply a FLAT additive delta, but `BountyStatReward`'s own Tier I/II/III grant tables are
+  percentage-of-current-stat (mirroring `workFactory.js`'s `sweetPotatoRewards`/`metalPotatoRewards`
+  shape exactly) — `mercenaryFactory.js` computes the correctly-resolved final delta itself (a small,
+  intentionally duplicated mirror of `workFactory.js`'s own private `calculatePassiveAmount`/
+  `calculateBankCapacityAmount`, since those aren't in this feature's export list) and only THEN hands
+  the already-resolved flat amount to `handleStatSplit` for the actual write — same write path, but
+  the number fed into it is now correct. Also bumped `full_roster`'s achievement threshold 12→13 (a
+  new companion joining the roster always needs this, same bump Guinea Pig/Prospector needed at
+  10→12) and added a new `/help topic:mercenary`, both direct, mechanical consequences of the roster
+  and command-list growing, not new scope. Verified via a mocked-DynamoDB simulation
+  (`dynamoHandler.test.js`) that every new top-level field (`isMercenary`/`mercenaryBountyWinCount`/
+  `bountyTimer`/`npcRobTimer`) and the nested `records.largestBountyReward` heal correctly onto a
+  pre-existing account, and via a hand-rolled end-to-end simulation (mocking `dynamoHandler` at the
+  module boundary, not a permanent test) that `/take-bounty`'s combined win + stat-reward + Yukon-hit
+  write sequence lands on the exact right final `potatoes`/`totalEarnings`/`workMultiplierAmount`
+  numbers across its three separate `updateUserFields` calls.
 
   **What**: a personal, guild-independent alternative to Guild Raids — `/bounty-board` (read-only
   preview, mirrors `/current-raid`) shows the caller's own unlocked Bounty tiers (I/II/III, mapped 1:1

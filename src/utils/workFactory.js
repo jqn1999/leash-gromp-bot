@@ -748,5 +748,13 @@ module.exports = {
     WorkFactory,
     getCurrentWeekTag,
     computePoisonMitigation,
-    getEffectiveScenarioChance
+    getEffectiveScenarioChance,
+    // Widened for Mercenary Bounties (mercenaryFactory.js's /rob-npc payout) to reuse the
+    // exact same reward-scaling formula every other /work-shaped reward already uses,
+    // instead of duplicating it — behavior-preserving, these were already the private
+    // module-scoped functions every handler above calls internally.
+    calculateGainAmount,
+    applyCatchUp,
+    getGuildWorkMulti,
+    getCompanionWorkMulti
 }
