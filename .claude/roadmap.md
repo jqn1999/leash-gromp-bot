@@ -1578,6 +1578,449 @@ and needs its own balance pass.
   the stat-reward callout, a `/profile` Mercenary Rank field), 2-4 new `Achievements` entries mirroring
   `raid_novice`/`raid_veteran`'s shape off `mercenaryBountyWinCount`.
 
+  ### Architect's technical design (2026-08-23)
+
+  Full build-ready spec — a developer agent should be able to implement directly from this section
+  with zero other context. Grounded against live `constants.js`/`dynamoHandler.js`/`workFactory.js`/
+  `raidFactory.js`/`companionFactory.js`, not estimated. Where this corrects an assumption the
+  product-owner pass above made, that's called out inline rather than silently overridden.
+
+  **New constraint layered in by direct instruction, on top of everything above: mercenary and guild
+  membership are mutually exclusive.** This *reverses* the "open to everyone, not guild-gated" open
+  question the product-owner pass resolved above — that resolution is superseded, not merely
+  extended. Every Bounty/`/rob-npc`/Mercenary-Rank surface is now gated on a new `isMercenary` flag,
+  not just on not-currently-being-in-a-guild.
+
+  **1. Becoming/leaving a mercenary.** New top-level `isMercenary: false` on `getDefaultUserFields`
+  (healed like any other top-level field — not an index key, so none of `findUser`'s
+  `guildId`/`webLinkToken` special-casing applies).
+  - **`/become-mercenary`** (new, `src/commands/user/becomeMercenary.js`) — rejects if
+    `userDetails.guildId != 0` ("you're in a guild — leave it first with `/leave`, or disband it, before
+    becoming a mercenary") or if already `isMercenary` ("you're already a mercenary"). No cost, no
+    confirm step (mirrors `/join-raid`'s toggle immediacy — reversible, nothing at stake). On success:
+    `updateUserFields(userId, { isMercenary: true })`.
+  - **`/retire-mercenary`** (new) — rejects if not currently `isMercenary`. **Reversible, not a
+    one-way `/rebirth`-style commitment** — this is the one place this design deliberately diverges
+    from the coordinator's own "fits the special-track framing" lean, so the reasoning is spelled out
+    rather than left implicit: guild membership itself is already reversible in this codebase
+    (`/leave` exists, unlike `/rebirth`'s literal one-way reset), and Mercenary is being introduced as
+    the guild system's *alternative*, not a `/rebirth`-style prestige transaction — treating it as
+    permanent would mean a player who tries `/become-mercenary` out of curiosity is locked out of
+    every guild system permanently with no undo, a much harsher failure mode than any other opt-in
+    toggle in this bot. `mercenaryBountyWinCount` (and therefore Mercenary Rank) is **never reset** by
+    retiring — same "achievements/lifetime counters never regress" precedent `ownedCount`/
+    `guildRaidWinCount`/etc. already set — so a player who retires and later re-becomes a mercenary
+    picks back up at their old rank instead of starting over. On success:
+    `updateUserFields(userId, { isMercenary: false })`. No confirm step, same reasoning as `/leave`
+    (nothing forfeited — progress persists).
+  - **`/create-guild` and `/join-guild`** (`src/commands/guilds/createGuild.js`,
+    `src/commands/guilds/joinGuild.js`) each need one new early rejection, symmetric to the existing
+    `userGuildId != 0` check already in both files: `if (userDetails.isMercenary) { reject "you're a
+    mercenary — run /retire-mercenary before joining or founding a guild"; }`.
+  - Every Bounty-family command (`/bounty-board`, `/take-bounty`, `/rob-npc`) opens with `if
+    (!userDetails.isMercenary) { reject "you're not a mercenary — run /become-mercenary first (you
+    can't be in a guild)"; }` — checked *in addition to* whatever tier/cooldown/rank gate that command
+    already needs, not a substitute for it.
+
+  **2. Data model — `getDefaultUserFields` additions** (all top-level except the one `records.*`
+  addition, which nests one level into the already-existing `records` object and is healed by the
+  same one-level-deep nested healing that already backfills `records`/`companions` sub-keys):
+
+  ```js
+  isMercenary: false,
+  mercenaryBountyWinCount: 0,
+  bountyTimer: 0,           // same shape as workTimer/robTimer — a plain ms-epoch timestamp
+  npcRobTimer: 0,           // SEPARATE from robTimer (real /rob) — see ask #2, ROB_TIMER_SECONDS(3600) is
+                             // real /rob's own timer, not shared with this
+  records: {
+      highestTowerFloor: 0,
+      biggestWorkPayout: 0,
+      largestRaidContribution: 0,
+      largestBountyReward: 0   // NEW — mirrors biggestWorkPayout's own scoping rule below
+  }
+  ```
+  `largestBountyReward` only ever records a **potato-flavored** Bounty win, same exclusion
+  `biggestWorkPayout` already applies to Taro Trader — a starch-denominated win isn't a smaller/bigger
+  version of the same thing a potato record should track (see `records.md`'s reasoning under item 7).
+
+  **3. `MercenaryRank` (`constants.js`)** — reusing `CompanionLeveling.THRESHOLDS`'s early shape read
+  against wins, exactly as the product-owner pass above proposed. Finalized (not illustrative) numbers:
+
+  ```js
+  const MercenaryRank = {
+      THRESHOLDS: [
+          { rank: 1, winsRequired: 0,   unlocksTier: 1, rewardMultiplier: 1.00 },
+          { rank: 2, winsRequired: 15,  unlocksTier: 2, rewardMultiplier: 1.15 },
+          { rank: 3, winsRequired: 50,  unlocksTier: 3, rewardMultiplier: 1.35 },
+          { rank: 4, winsRequired: 125, unlocksTier: 3, rewardMultiplier: 1.50 },
+          { rank: 5, winsRequired: 275, unlocksTier: 3, rewardMultiplier: 1.65 },
+          { rank: 6, winsRequired: 525, unlocksTier: 3, rewardMultiplier: 1.75 },  // max
+      ]
+  }
+  ```
+  New `mercenaryFactory.js`, `getMercenaryRankInfo(winCount)` — same `[...THRESHOLDS].reverse().find(...)`
+  lookup shape as `raidFactory.getRaidLevelInfo`, computed live off `mercenaryBountyWinCount`, never
+  stored. `unlocksTier` is redundant with `rank >= 2`/`rank >= 3` but kept explicit on each row so a
+  future re-tuning of the threshold curve can't accidentally desync tier-unlock from the reward curve.
+
+  **4. `Bounty` (`constants.js`) — tiers reuse `Raid.T1/T2/T3_RAID_*` directly, no new difficulty/base
+  reward numbers.** This is the one place this design *simplifies* the product-owner pass's own
+  framing: Bounty tiers were always meant to map 1:1 onto Regular-mode Guild Raid's T1/T2/T3, so there
+  is no reason to duplicate `Raid.T1_RAID_REWARD`/`T1_RAID_PENALTY`/`T1_RAID_DIFFICULTY` (and T2/T3)
+  into a parallel `Bounty` table — Bounty tier I/II/III formulas read `Raid.T{n}_RAID_REWARD`,
+  `Raid.T{n}_RAID_PENALTY`, `Raid.T{n}_RAID_DIFFICULTY` straight from the existing `Raid` object. All
+  three tiers share `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (0.9) as their success-chance cap — Bounty
+  tiers are Regular-mode-equivalent, not Elite/Legendary-equivalent, so this is the correct cap to
+  reuse, not a new one.
+
+  ```js
+  const Bounty = {
+      BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction —
+                                         // resolves the "cooldown length" open question below
+      // Central risk-mitigation number — see the EV derivation below for how this was reached.
+      SOLO_BOUNTY_REWARD_SHARE: 0.15,
+      // Starch-flavored scenarios reuse Taro Trader's own formula
+      // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))), scaled by
+      // this per-tier multiplier — NOT discounted by SOLO_BOUNTY_REWARD_SHARE (that discount exists
+      // specifically to stop potato Bounties out-earning guild raids; guild raids never pay starches,
+      // so there's no analogous risk to guard against on this side).
+      STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 },
+  }
+  ```
+
+  **EV derivation for `SOLO_BOUNTY_REWARD_SHARE` (grounded, not guessed)** — using the roadmap's own
+  worked example above as the anchor: a guild-level-1 guild (1.00x), 4-person roster, winning T1
+  (100,000 base) nets each member 25,000 (25% of base). A guild-level-3 guild (1.70x), 6-person
+  roster, winning T3 (5,000,000 base) nets each member ≈1,416,667 (≈28.3% of base). Both land in a
+  ~25–28% per-member share of the *nominal base reward* for a realistic small-to-mid active guild —
+  and since success chance and the ±20% randomization apply identically to both a guild raid and a
+  solo Bounty attempt at the same `effectiveRaidPower/difficulty` ratio, this nominal-share ratio is a
+  valid proxy for the EV ratio the roadmap asked for (it cancels out of the comparison for "identical
+  per-person stat investment," which is exactly how the product-owner pass framed the comparison).
+  At `SOLO_BOUNTY_REWARD_SHARE = 0.15`: a Rank 1 mercenary (1.00x) nets 15% of base — clearly below
+  even the most efficient small-guild per-member share. A **maxed Rank 6** mercenary (1.75x cap) nets
+  `0.15 * 1.75 = 26.25%` of base — narrowly *under* the level-3/6-person guild's 28.3% and roughly at
+  the level-1/4-person guild's 25%, i.e. a fully-committed solo mercenary approaches but never quite
+  beats even a modest, reasonably-organized guild's own per-member split, closing "some of the gap...
+  without ever fully erasing it" exactly as the finding asked for. Also note the guild side's *penalty*
+  is split across the roster too (`raidFactory.handlePotatoSplit` runs on both the win and loss branch),
+  while a Bounty's penalty stays fully unscaled on one person — solo bears strictly more downside risk
+  per unit of reward at every tier, reinforcing the discount rather than needing a second one. Same
+  caveat the roadmap's own finding flagged: there's no tracked "average guild roster size" stat to
+  calibrate against precisely, so this is grounded against the roadmap's own worked examples, not a
+  measured server distribution — revisit once Bounties are live and real usage data exists.
+
+  **5. Success chance & reward/penalty formula.** `raidFactory.getEffectiveRaidPower(memberDetailsList)`
+  is **already generic over an array of `userDetails`, not guild-shaped** — confirmed directly against
+  `raidFactory.js`: `getMemberRaidPower(userDetails)` only reads `workMultiplierAmount` and
+  `rebirthFactory.getLiveRebirthPercent(userDetails)`, and `getEffectiveRaidPower` just averages that
+  array and applies the headcount bonus (which is 0 for a 1-length array, `rosterSize - 1 = 0`). **This
+  corrects the product-owner pass's own touches list above**, which assumed `raidFactory.js` needs "a
+  real refactor" to decouple this math from a guild/roster object — it doesn't; `getEffectiveRaidPower`
+  can be called directly as `raidFactory.getEffectiveRaidPower([userDetails])` with zero changes to
+  `raidFactory.js` at all. This also means Firefly's `guildRaidMultiplierPercent` perk is *not*
+  accidentally picked up here (it's applied separately in `startRaid.js`, not inside
+  `getEffectiveRaidPower` itself), so a solo Bounty's power is exactly `workMultiplierAmount * (1 +
+  liveRebirthPercent)`, matching the product-owner pass's own stated formula precisely.
+
+  ```
+  effectiveBountyPower = raidFactory.getEffectiveRaidPower([userDetails])
+  difficulty           = Raid.T{n}_RAID_DIFFICULTY          // n = 1/2/3 for tier I/II/III
+  successChance         = min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
+  ```
+
+  On **win**, for a potato-flavored scenario:
+  ```
+  rangeRoll      = getRandomFromInterval(.8, 1.2)          // independent roll, same helper /work uses
+  rankInfo       = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
+  yukonBonus     = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent")   // 0 if not equipped
+  reward = round(Raid.T{n}_RAID_REWARD * rangeRoll * Bounty.SOLO_BOUNTY_REWARD_SHARE * rankInfo.rewardMultiplier * (1 + yukonBonus))
+  ```
+  For a starch-flavored scenario:
+  ```
+  base = round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier)))
+       * Bounty.STARCH_TIER_MULTIPLIER[tier]
+  starchReward = round(base * rankInfo.rewardMultiplier * (1 + yukonBonus))
+  ```
+  (`guildMultiplier` is always 0 in practice here — a mercenary can never have a guild — but the
+  formula still calls the standard `getGuildWorkMulti` helper for consistency with every other
+  Taro-shaped reward rather than special-casing it away.)
+
+  On **loss** (regardless of which scenario currency was drawn — the tier's penalty always denominates
+  in potatoes, representing the physical risk of the attempt itself, not a mirror of whatever the
+  scenario would have paid):
+  ```
+  penalty = round(Raid.T{n}_RAID_PENALTY * getRandomFromInterval(.8, 1.2))   // independent roll from the reward-side one
+  ```
+  No `SOLO_BOUNTY_REWARD_SHARE`, no rank multiplier, no Yukon bonus on the loss side — full, unscaled
+  risk, exactly as the product-owner pass specified.
+
+  Win/loss write is a direct `dynamoHandler.updateUserFields` (not a reuse of
+  `raidFactory.handlePotatoSplit`, despite the tempting 1-person-roster shape — that helper hardcodes
+  the `largestRaidContribution` record field, and a Bounty win should record into the new, semantically
+  distinct `records.largestBountyReward` instead, so the two record fields don't conflate "raided as
+  part of a guild" with "won solo as a mercenary"): sets `potatoes`, `totalEarnings`/`totalLosses`,
+  `starches` (if a starch scenario), `bountyTimer`, and (win only) ADDs `mercenaryBountyWinCount: 1` in
+  the same call via `updateUserFields`'s existing `addAttributes` param. A separate
+  `dynamoHandler.updateIfNewRecord(userId, 'largestBountyReward', reward)` call follows on a
+  potato-flavored win. **Bounty/`/rob-npc` attempts deliberately do NOT bump the active companion's
+  `workCount`** — that counter is scoped to real `/work` resolutions only (`work.js`'s `performWork` is
+  its sole increment site per `systems/companions.md`), and a Bounty attempt is a different action, not
+  a `/work` call — worth flagging explicitly since it'd be an easy, wrong assumption to carry over from
+  how deeply `/work` and companion leveling are already coupled elsewhere.
+
+  **6. `BountyScenarios` (`constants.js`)** — same `{ name, winFlavor, loseFlavor, currency }` shape
+  the roadmap specified, 10 entries per tier (not 5) so each tier's potato/starch ratio lands on an
+  exact whole-number split rather than an approximation: Tier I 8 potato / 2 starch (80/20), Tier II 7
+  potato / 3 starch (70/30), Tier III 6 potato / 4 starch (60/40). A scenario is picked uniformly at
+  random from the resolved tier's 10-entry array on every `/take-bounty` attempt (win/loss is decided
+  separately by the success-chance roll above — the scenario only supplies flavor text and which
+  currency a *win* pays out in). Full prose for all 30 entries is cosmetic, not mechanically
+  load-bearing (same "flavor text, not a gameplay value" status `constants.md`'s reference table
+  already gives `regularWorkMobs`) — two worked examples per tier below to lock down the template;
+  the remaining entries just need wanted-poster-flavored names + matching win/lose prose, no further
+  design decisions:
+
+  ```js
+  const BountyScenarios = {
+      I: [
+          { name: "The Chip Thief", currency: "potato",
+            winFlavor: "You corner the Chip Thief behind the mill — they fold fast and hand over a bag of potatoes to make it disappear.",
+            loseFlavor: "The Chip Thief slips down an alley you didn't know was there. No harm done, but no bounty either." },
+          { name: "Marsh Bandit Malone", currency: "starch",
+            winFlavor: "Malone's hideout turns out to be stuffed with pilfered starch sacks — you help yourself to a fair cut before the guards show up.",
+            loseFlavor: "Malone's lookout spots you first. You beat a retreat before it turns into a real fight." },
+          // ...8 more Tier I entries, 6 more potato-flavored / 1 more starch-flavored, same template
+      ],
+      II: [ /* 7 potato-flavored, 3 starch-flavored, same template, tougher-reading names */ ],
+      III: [ /* 6 potato-flavored, 4 starch-flavored, same template, toughest-reading names */ ]
+  }
+  ```
+
+  **7. `BountyStatReward` (`constants.js`) — the rare permanent-bonus branch, checked once per win,
+  before the potato/starch payout above (never on a loss).**
+
+  ```js
+  const BountyStatReward = {
+      ROLL_CHANCE: { I: 0.0075, II: 0.02, III: 0.04 },   // 0.75% / 2% / 4% — midpoints of the
+                                                          // product-owner pass's own suggested ranges
+      // Tier I & II: pick ONE of these three tracks uniformly at random (identical shape to
+      // workFactory.js's existing `sweetPotatoRewards` array — Tier I's numbers ARE that array,
+      // reused directly, not duplicated).
+      TIER_I_GRANT: [
+          { type: "workMultiplierAmount", amount: 0.2 },
+          { type: "passiveAmount", amount: 1.15, maxGainSweetPotato: 100000 },
+          { type: "bankCapacity", amount: 1.15, maxGainSweetPotato: 1000000 }
+      ],
+      TIER_II_GRANT: [
+          { type: "workMultiplierAmount", amount: 0.4 },
+          { type: "passiveAmount", amount: 1.325, maxGainSweetPotato: 300000 },
+          { type: "bankCapacity", amount: 1.325, maxGainSweetPotato: 3000000 }
+      ],
+      // Tier III: grant ALL THREE simultaneously, identical shape to Metal Potato's existing stat
+      // bump (workFactory.js's handleMetalPotato) — reused directly, not duplicated.
+      TIER_III_GRANT: {
+          workMultiplierAmount: 0.6,
+          passiveMultiplier: 1.5, passiveMaxGain: 500000,
+          bankMultiplier: 1.5, bankMaxGain: 5000000
+      }
+  }
+  ```
+  Architect's judgment call, flagged explicitly since the product-owner pass's own "Grant shape" table
+  didn't fully specify this: Tier I and II use Sweet Potato's *single-random-track* shape (simpler,
+  and Tier III is the one meant to read as "Metal-Potato-scale" in *both* magnitude and structure — all
+  three stats at once, not just a bigger single-track roll). Tier II's numbers are a straight linear
+  midpoint between Tier I's (Sweet's) and Tier III's (Metal's) own values on each axis. All three
+  grants apply the same rounding/minimum-gain rules Sweet/Metal Potato's own handlers already use (see
+  `economy-and-work.md`), write into `sweetPotatoBuffs` (never `regrades.*`/`failStack`, following
+  Ancient Potato's own already-fixed precedent exactly), and are most simply implemented by calling
+  `raidFactory.handleStatSplit([{ id: userId, username }], rewardType, rewardAmount)` once per stat
+  granted (once for Tier I/II's single track, up to three times for Tier III) — that helper already
+  does the correct `sweetPotatoBuffs` + base-stat combined write for any of the three reward types, so
+  no new write logic is needed here at all.
+
+  **8. Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty resolution, NOT the
+  universal `/work` roll.** This directly **reverses** the product-owner pass's own §6 recommendation
+  above ("recommend the normal universal roll... gating the drop... was considered and rejected") per
+  a later, more specific instruction: Yukon must be Bounty-exclusive. The mechanism needed to make that
+  true turns out to be a single small, additive filter — not the "real, precedent-breaking refactor"
+  the product-owner pass worried a drop-gate would require:
+
+  - Yukon's `Companions` array entry gets one new field, `dropSource: "bounty"` (every other companion
+    is implicitly `dropSource: "work"` by omission — no change needed to any existing entry).
+  - `companionFactory.getCompanionsByRarity(rarity)` gets one added `.filter()` clause:
+    `c.rarity === rarity && c.dropSource !== "bounty"`. `rollCompanion()`'s own logic (`rollRarity()`
+    then a uniform pick within the filtered pool) is completely untouched — satisfying the "not a
+    change to `rollCompanion`'s shared logic" instruction literally, since this is a static roster
+    filter, not new per-user gating logic inside the roll path itself.
+  - Every *other* consumer of `Companions` (`getCompanionById`, `/companion`'s owned-list display,
+    the marketplace, `getActivePerkValue`, `/help topic:companions`) reads the full unfiltered array as
+    it already does today, so once a player owns Yukon it behaves exactly like any other companion in
+    every other system — only the *acquisition* path is different.
+
+  **Odds — cross-checked against "on par with a normal Legendary pull" and adjusted, per the explicit
+  instruction to do so.** Legendary's real per-attempt rate is 0.12% per `/work` call (1.5% Wandering
+  Companion encounter × 8% conditional Legendary roll) — an expected ~833 `/work` calls (~69 hours of
+  back-to-back play at the 300s cooldown) to a first Legendary. The originally-suggested starting odds
+  (~0.05% / 0.15% / 0.4% per **win**) don't hold up against that framing once run through the actual
+  math: gated on a win (not every attempt) at Tier I's realistic success chance (well under the 0.9
+  cap for most of a mercenary's early career), the *per-attempt* Yukon rate comes out to roughly
+  0.03–0.05% — 2.5–5x rarer than Legendary's 0.12% per-attempt rate on its own, *compounded* with
+  Bounty attempts already being gated by a 3600s cooldown (12x rarer in real cadence than `/work`'s
+  300s) — together implying something like a 30–60x longer real-calendar-time investment than "a
+  normal Legendary pull," not "on par" with it. Recalibrated so the *per-attempt* rate (at each tier's
+  own 0.9 success-chance cap, i.e. the best realistic case) lands close to Legendary's own 0.12%
+  per-attempt rate, scaled up per tier the same direction every other rarity/tier-scaled roll in this
+  system already goes (bigger for deeper/harder-to-reach content — mirrors `CompanionScavenging`'s
+  1%/3%/6% bonus-find ladder):
+
+  ```js
+  const MercenaryCompanionDrop = {
+      YUKON_CHANCE: { I: 0.0015, II: 0.004, III: 0.01 }   // 0.15% / 0.4% / 1.0% per WINNING resolution
+  }
+  ```
+  At the 0.9 success cap, Tier I's per-attempt rate is `0.0015 * 0.9 = 0.135%` — now genuinely close to
+  Legendary's 0.12% per-`/work`-call rate. The remaining, accepted gap: real calendar time to obtain is
+  still roughly ~12x longer than a Legendary /work pull purely because Bounty attempts are inherently
+  12x less frequent (3600s vs 300s cooldown) — an explicit, honest tradeoff flagged here rather than
+  hidden, not a modeling error, and one a committed mercenary partially closes by mixing in Tier II/III
+  attempts (better odds each) as their rank climbs. On a hit: always call
+  `companionFactory.applyCompanionAward(userDetails, companionFactory.getCompanionById('yukon'))`
+  unconditionally — that function already handles the "already own it" case correctly (a modest
+  potato-equivalent... actually potato, per `CompanionDuplicateReward.legendary`, consolation +
+  `workCount` bump) with zero special-casing needed, so there's no need to check ownership before
+  rolling.
+
+  Yukon's `Companions` entry (Legendary, dual-perk — matches every existing Legendary exactly):
+  ```js
+  {
+      id: "yukon",
+      name: "Yukon, the Highwayman",
+      rarity: CompanionRarity.LEGENDARY,
+      dropSource: "bounty",
+      thumbnailUrl: "<placeholder — needs commissioned art, same as the T4 raid bosses>",
+      description: "An outlaw potato who made a name robbing the King's own supply wagons — now rides shotgun for whichever mercenary earned their trust.",
+      scavengeFlavor: "Yukon rode out at dusk, the way it always does, and came back before sunup with a story it swears is true this time.",
+      perks: [
+          { type: "npcRobChanceFlat", value: 0.12 },   // NEW perk type, /rob-npc-exclusive — see below;
+                                                        // deliberately NOT the same perk type as Barn
+                                                        // Owl/Elder Rootbeard's robChanceFlat (real /rob)
+          { type: "bountyRewardPercent", value: 0.135 } // NEW perk type, applied per the reward formula above
+      ]
+  }
+  ```
+  `getActivePerkValue` needs zero code changes to support either new perk type — it's already fully
+  generic over `perk.type` strings; only the two new *consuming* sites (the Bounty reward formula
+  above, and `/rob-npc`'s success-chance formula below) need to call
+  `companionFactory.getActivePerkValue(userDetails, "npcRobChanceFlat" | "bountyRewardPercent")`.
+
+  **9. `/rob-npc` (`constants.js`'s `RobNpc` block).**
+  ```js
+  const RobNpc = {
+      NPC_ROB_TIMER_SECONDS: 1800,   // 30 min — SEPARATE field (npcRobTimer) from Rob.ROB_TIMER_SECONDS
+                                     // (3600s, real /rob's own timer) AND from Bounty.BOUNTY_TIMER_SECONDS
+                                     // (also 3600s) — direct instruction, overriding the product-owner
+                                     // pass's own "match Rob.ROB_TIMER_SECONDS exactly (3600s)" recommendation
+      BASE_CHANCE: 0.20,
+      CHANCE_PER_RANK: 0.02,
+      MAX_CHANCE: 0.30,              // reached at Rank 6 (0.20 + 0.02*5 = 0.30)
+      PAYOUT_MULTIPLIER: 4.5,        // midpoint of the "×4-5" recommendation, between Regular (×1) and Large (×10)
+      MAX_NPC_ROB_PAYOUT: 5000       // half of Work.MAX_LARGE_POTATO(10000), base cap before the player's
+                                     // own multiplier scales it up — same "*_MAX_* caps the base, not the
+                                     // final payout" convention every other cap in this game follows
+  }
+  ```
+  ```
+  rankInfo      = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
+  successChance = min(RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rankInfo.rank - 1), RobNpc.MAX_CHANCE)
+                  + companionFactory.getActivePerkValue(userDetails, "npcRobChanceFlat")   // Yukon only
+  workGainAmount = max(serverTotal * Work.PERCENT_OF_TOTAL, Work.MAX_BASE_WORK_GAIN)   // same base every /work reward uses
+  ```
+  On success: `calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, RobNpc.MAX_NPC_ROB_PAYOUT,
+  multiplier, effectiveMultiplier, userDetails)` — the exact same helper every `/work` reward already
+  calls, `multiplier` a fresh `getRandomFromInterval(.8, 1.2)` roll, `effectiveMultiplier` built the
+  same way `handleGoldenPotato`/`handleLargePotato` already build it (`workMultiplierAmount +
+  getGuildWorkMulti(...) + getCompanionWorkMulti(...) + rebirth`, catch-up applied — `getGuildWorkMulti`
+  is always 0 here in practice since a mercenary can never be guilded, but the call stays unconditional
+  for consistency rather than special-cased away). **Deliberately NOT scaled by `MercenaryRank`'s
+  reward multiplier or Yukon's `bountyRewardPercent`** — Rank's benefit to `/rob-npc` is entirely on the
+  odds side (the `+2%/rank` term above); Bounty's Rank/Yukon benefit is entirely on the reward-size
+  side. Keeping each lever on one axis only avoids the two actions' benefits compounding into one
+  another. On failure: **whiff only, no loss** — resolves the "fail state" open question as
+  **whiff-only**, per the product-owner pass's own symmetry argument (no real player is on the other
+  end, so there's no fairness reason to fine the attacker) — flagged, not silently decided, since the
+  product-owner pass itself flagged this as genuinely open; a flat `Rob.BASE_ROB_PENALTY`-shaped
+  (5,000) fail fine remains the documented fallback if playtesting finds whiff-only too tame. Either
+  way, `npcRobTimer` resets on both outcomes (win or whiff), same as every other cooldown-gated action
+  in this bot.
+
+  **10. Commands.** All five live in `src/commands/user/` (matches `/work`, `/rob`, `/companion`,
+  `/profile` — no `misc/`/`guilds/` category fits a Mercenary-track command):
+
+  | Command | Flow |
+  |---|---|
+  | `/become-mercenary` | No args, no confirm. Rejects if guilded or already a mercenary. |
+  | `/retire-mercenary` | No args, no confirm. Rejects if not currently a mercenary. Progress persists. |
+  | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests`'s read-only precedent — never snapshots/claims anything just by viewing). Rejects if not a mercenary. Shows: current Mercenary Rank + wins-to-next-rank, which tiers are unlocked, a live success-chance preview per unlocked tier (using the exact formula in §5), and `bountyTimer` remaining. |
+  | `/take-bounty tier:<I\|II\|III>` | Rejects if not a mercenary, if `tier` isn't yet unlocked at the caller's current rank, or if `bountyTimer` hasn't elapsed. **No confirm step** — resolves immediately, same precedent `/start-raid` already sets (the product-owner pass's own stated intent). Replies with a dedicated result embed (win/loss, scenario flavor, amount + currency, stat-reward callout if it hit, Yukon callout if it hit). |
+  | `/rob-npc` | Rejects if not a mercenary or if `npcRobTimer` hasn't elapsed. No confirm step (mirrors `/rob`'s own immediacy, and there's even less at stake here — no real target, whiff-only failure). Dedicated result embed. |
+
+  **11. `embedFactory.js` additions**: `createBountyBoardEmbed` (the preview above), `createBountyResultEmbed`
+  (win/loss + stat-reward + Yukon callouts — same "own dedicated embed, not the generic one" precedent
+  `createPoisonPotatoEmbed`/`createCompanionEncounterEmbed` already set for a multi-outcome resolution),
+  `createRobNpcResultEmbed`. `createUserEmbed` (`/profile`) gains one new page-1 field, next to Active
+  Companion, **shown only if `userDetails.isMercenary`**: `Mercenary Rank: <rank> — <title> (Tier
+  <highest unlocked> unlocked, <wins> wins)` — titles are potato-punned (e.g. "Spud Recruit" →
+  "Tater Highwayman" → ... → "The Iron Tuber" at Rank 6), left as a naming exercise for whoever
+  implements the embed rather than specified number-by-number here, matching how `Achievements`'
+  potato-punned names were never architecturally load-bearing either.
+
+  **12. `workFactory.js` export widening — the one real refactor this design actually needs** (not
+  `raidFactory.js`, correcting the product-owner pass's touches list — see §5 above). `calculateGainAmount`,
+  `applyCatchUp`, `getGuildWorkMulti`, and `getCompanionWorkMulti` are currently private, module-scoped
+  functions inside `workFactory.js` (confirmed directly — `module.exports` today only exposes
+  `WorkFactory`, `getCurrentWeekTag`, `computePoisonMitigation`, `getEffectiveScenarioChance`), so
+  `/take-bounty`/`/rob-npc`/`mercenaryFactory.js` can't reuse the exact same reward-scaling formula
+  every other `/work`-shaped reward uses without this export list being widened. This is a
+  behavior-preserving export addition, not a logic change — add all four to `module.exports`.
+
+  **13. New `mercenaryFactory.js`** (mirrors one-factory-per-system convention): `getMercenaryRankInfo`,
+  `resolveBountyAttempt(userDetails, tier)` (success roll, scenario draw, reward/penalty math, the
+  stat-reward roll, the Yukon roll — one function that returns everything `/take-bounty`'s embed
+  needs), `resolveNpcRob(userDetails)` (the analogous single function for `/rob-npc`).
+
+  **14. Achievements** — 3 new entries, `mercenaryBountyWinCount`-keyed, mirroring `raid_novice`/
+  `raid_veteran`'s exact shape/thresholds:
+
+  | id | Name | Threshold |
+  |---|---|---|
+  | `mercenary_recruit` | Tater Bounty Hunter | `mercenaryBountyWinCount >= 1` |
+  | `mercenary_veteran` | Seasoned Mercenary | `mercenaryBountyWinCount >= 25` |
+  | `mercenary_legend` | The Iron Tuber | `mercenaryBountyWinCount >= 525` (Rank 6, the rank cap — a real long-run capstone, same category as `full_roster`/`serial_rebirther`) |
+
+  **Resolved open questions (final answers, superseding the product-owner pass's own recommendations
+  wherever the two disagree):**
+  - *Guild-gated or open to everyone?* **Guild-gated after all** — mutually exclusive with guild
+    membership, reversible via `/retire-mercenary`. Directly overrides the product-owner pass's "open
+    to everyone" recommendation per later, more specific instruction (see the top of this section).
+  - *Bounty cooldown length* — **3600s, matching `Raid.RAID_TIMER_SECONDS` exactly, no buff-driven
+    reduction** — confirmed as originally recommended, now a concrete `Bounty.BOUNTY_TIMER_SECONDS`.
+  - *`/rob-npc` cooldown* — **1800s (30 min)**, per direct instruction — overrides the product-owner
+    pass's own "match `Rob.ROB_TIMER_SECONDS` exactly (3600s)" recommendation. Stored in its own
+    `npcRobTimer` field, distinct from both `Rob.ROB_TIMER_SECONDS`'s `robTimer` (real `/rob`, 3600s)
+    and `Bounty.BOUNTY_TIMER_SECONDS`'s `bountyTimer` (also 3600s) — see `RobNpc.NPC_ROB_TIMER_SECONDS`
+    above — so spamming any one of the three actions can never lock out either of the other two.
+  - *Dedicated `/mercenary` command vs. a `/profile` field?* **`/profile` field**, as originally
+    recommended — `/bounty-board` already exists as the dedicated read-only surface for the
+    Bounty-specific state (tiers/cooldown/success preview); Rank itself is a single line, the same
+    "doesn't need its own command" reasoning Guild Level's own `/guild`-embedded display already sets.
+  - *`/rob-npc` fail state* — **whiff-only**, as originally recommended, still flagged (not
+    finally locked) as the one number in this whole design most likely to need a follow-up pass once
+    real play data exists.
+  - *Mercenary companion drop-gating* — **reversed to Bounty-exclusive**, per direct instruction — see
+    §8 above for the full mechanism and why it turned out to be a small filter, not the "real,
+    precedent-breaking refactor" the product-owner pass worried about.
+
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
   conversation first: what's actually "cosmetic" here — profile embed color/border, a title (which
   might just *be* the Achievements & Titles system above rather than a separate system), a Discord
