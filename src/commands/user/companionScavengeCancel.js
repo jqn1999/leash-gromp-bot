@@ -26,11 +26,11 @@ module.exports = {
         const companionName = companion?.name ?? 'Your companion';
         const remainingSeconds = Math.max(0, Math.ceil((scavenging.returnsAt - Date.now()) / 1000));
         const remainingText = remainingSeconds > 0 ? `${convertSecondstoMinutes(remainingSeconds)} remaining` : "already ready to collect";
-        const forfeitWorkCount = CompanionScavenging.WORK_COUNT[scavenging.rarity];
+        const { min: workMin, max: workMax } = CompanionScavenging.WORK_COUNT_RANGE[scavenging.rarity];
         const { min, max } = CompanionScavenging.STARCH_RANGE[scavenging.rarity];
 
         const reply = await interaction.editReply({
-            content: `${userDisplayName}, recall ${companionName} early? (${remainingText}) You'll forfeit its scavenging reward — up to ${forfeitWorkCount.toLocaleString()} workCount and ${min.toLocaleString()}-${max.toLocaleString()} starches — but it's immediately equippable/listable again.`,
+            content: `${userDisplayName}, recall ${companionName} early? (${remainingText}) You'll forfeit its scavenging reward — ${workMin.toLocaleString()}-${workMax.toLocaleString()} workCount (possibly more on a lucky roll) and ${min.toLocaleString()}-${max.toLocaleString()} starches — but it's immediately equippable/listable again.`,
             components: [buildConfirmCancelRow('companion_scavenge_cancel', 'Recall it')]
         });
 

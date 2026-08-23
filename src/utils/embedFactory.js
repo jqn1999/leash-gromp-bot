@@ -1224,7 +1224,10 @@ class EmbedFactory {
     // progress-to-next-level numbers /companion's list already surfaces via
     // companionFactory.getNextLevelThreshold, so a level-up crossed by this one reward is
     // visible right here instead of only showing up the next time /companion is checked.
-    createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountAfter, starchesGained) {
+    // multiplierTier ('normal'/'great'/'incredible', from companionFactory.resolveScavengeReward's
+    // WORK_COUNT_MULTIPLIER_TIERS roll) only changes anything visually on the two bonus
+    // tiers — a plain 'normal' result looks exactly like this embed always has.
+    createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountAfter, starchesGained, multiplierTier = 'normal') {
         const levelBefore = companionFactory.getCompanionLevel(workCountBefore);
         const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
         const nextThreshold = companionFactory.getNextLevelThreshold(workCountAfter);
@@ -1252,9 +1255,14 @@ class EmbedFactory {
             }
         ];
 
+        const tierCallouts = {
+            great: '🎉 Great haul! (1.5x) — ',
+            incredible: '💥 Incredible haul! (3x) — ',
+        };
+
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName}, ${companion.name} is back from scavenging!`)
-            .setDescription(companion.description)
+            .setTitle(`${tierCallouts[multiplierTier] || ''}${userDisplayName}, ${companion.name} is back from scavenging!`)
+            .setDescription(companion.scavengeFlavor || companion.description)
             .setColor(COMPANION_RARITY_COLOR[companion.rarity])
             .setThumbnail(companion.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -1427,8 +1435,15 @@ class EmbedFactory {
             const progress = nextThreshold
                 ? `${workCount.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
                 : `${workCount.toLocaleString()} /work calls — max level`;
+            // One-time cosmetic tag (Option A3 of the 2026-08-23 Scavenging brainstorm) —
+            // hasScavenged is set uniformly on any scavenge return (see
+            // companionFactory.resolveScavengeReward), but only ever rendered for
+            // Legendary/Mythic companions, so the rarity-gating lives entirely here rather
+            // than on the write side.
+            const isUpperRarity = companion.rarity === CompanionRarity.LEGENDARY || companion.rarity === CompanionRarity.MYTHIC;
+            const scoutTag = (companion.hasScavenged && isUpperRarity) ? ' 🗺️ Seasoned Scout' : '';
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}`,
                 value: `${formatCompanionPerks(companion, level)}\n${progress}\n${status}`,
                 inline: false,
             };

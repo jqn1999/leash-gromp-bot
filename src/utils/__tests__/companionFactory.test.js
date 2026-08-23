@@ -13,7 +13,8 @@ const {
     applyCompanionAward,
     isScavenging,
     buildScavengeDispatch,
-    resolveScavengeReward
+    resolveScavengeReward,
+    rollWorkCountMultiplierTier
 } = require('../companionFactory');
 const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require('../constants');
 
@@ -308,36 +309,110 @@ describe('buildScavengeDispatch', () => {
     });
 });
 
+describe('rollWorkCountMultiplierTier', () => {
+    test('only ever returns one of the three defined tiers', () => {
+        for (let i = 0; i < 500; i++) {
+            const tier = rollWorkCountMultiplierTier();
+            expect(['normal', 'great', 'incredible']).toContain(tier.name);
+        }
+    });
+
+    test('boundary rolls resolve to the correct tier, in ascending cumulative order', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        expect(rollWorkCountMultiplierTier().name).toBe('normal');
+        Math.random.mockRestore();
+
+        jest.spyOn(Math, 'random').mockReturnValue(0.8); // lands in the .70-.95 'great' slice
+        expect(rollWorkCountMultiplierTier().name).toBe('great');
+        Math.random.mockRestore();
+
+        jest.spyOn(Math, 'random').mockReturnValue(0.99); // lands in the .95-1 'incredible' slice
+        expect(rollWorkCountMultiplierTier().name).toBe('incredible');
+        Math.random.mockRestore();
+    });
+});
+
 describe('resolveScavengeReward', () => {
-    function userWithScavenge(companionId, rarity, ownedOverrides = []) {
+    function userWithScavenge(companionId, rarity, ownedOverrides = [], scavengeReturnsByRarity = { legendary: 0, mythic: 0 }) {
         return {
             companions: {
                 owned: ownedOverrides,
                 active: null,
                 ownedCount: ownedOverrides.length,
                 mythicOwnedCount: 0,
-                scavenging: { companionId, rarity, returnsAt: Date.now() - 1000 }
+                scavenging: { companionId, rarity, returnsAt: Date.now() - 1000 },
+                scavengeReturnsByRarity
             }
         };
     }
 
-    test('bumps the scavenging companion\'s own workCount by that rarity\'s flat WORK_COUNT, leaving others untouched', () => {
+    test('a "normal" tier roll bumps the scavenging companion\'s own workCount by the base range roll, leaving others untouched, and sets hasScavenged', () => {
+        jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0) // base range roll -> minimum
+            .mockReturnValueOnce(0) // tier roll -> 'normal' (1x)
+            .mockReturnValueOnce(0); // starch roll
         const user = userWithScavenge('sprout', CompanionRarity.COMMON, [
             { id: 'sprout', workCount: 10 },
             { id: 'mole', workCount: 5 }
         ]);
-        const { owned, workCountGained } = resolveScavengeReward(user);
-        expect(workCountGained).toBe(CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON]);
+        const { owned, workCountGained, multiplierTier } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        expect(multiplierTier).toBe('normal');
+        expect(workCountGained).toBe(min);
         expect(owned).toEqual([
-            { id: 'sprout', workCount: 10 + CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] },
+            { id: 'sprout', workCount: 10 + min, hasScavenged: true },
             { id: 'mole', workCount: 5 }
         ]);
     });
 
     test('treats a missing workCount on the owned entry as 0', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
         const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout' }]);
         const { owned } = resolveScavengeReward(user);
-        expect(owned).toEqual([{ id: 'sprout', workCount: CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] }]);
+        Math.random.mockRestore();
+
+        const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        expect(owned).toEqual([{ id: 'sprout', workCount: min, hasScavenged: true }]);
+    });
+
+    test('a "great" tier roll multiplies the base workCount roll by 1.5x', () => {
+        jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)   // base range roll -> minimum
+            .mockReturnValueOnce(0.8) // tier roll -> 'great'
+            .mockReturnValueOnce(0);  // starch roll
+        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        const { workCountGained, multiplierTier } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        expect(multiplierTier).toBe('great');
+        expect(workCountGained).toBe(Math.floor(min * 1.5));
+    });
+
+    test('an "incredible" tier roll multiplies the base workCount roll by 3x', () => {
+        jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)    // base range roll -> minimum
+            .mockReturnValueOnce(0.99) // tier roll -> 'incredible'
+            .mockReturnValueOnce(0);   // starch roll
+        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        const { workCountGained, multiplierTier } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        expect(multiplierTier).toBe('incredible');
+        expect(workCountGained).toBe(Math.floor(min * 3));
+    });
+
+    test('workCountGained varies across rolls — the range roll and the multiplier tier both introduce real variance', () => {
+        const seen = new Set();
+        for (let i = 0; i < 500; i++) {
+            const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+            const { workCountGained } = resolveScavengeReward(user);
+            seen.add(workCountGained);
+        }
+        expect(seen.size).toBeGreaterThan(1);
     });
 
     test('starchesGained always lands within that rarity\'s own STARCH_RANGE, inclusive, and actually varies', () => {
@@ -354,17 +429,46 @@ describe('resolveScavengeReward', () => {
     });
 
     test('workCountGained is NOT scaled by the scavenging companion\'s own current level', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
         const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
         const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: maxWorkCount }]);
         const { workCountGained } = resolveScavengeReward(user);
-        expect(workCountGained).toBe(CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON]);
+        Math.random.mockRestore();
+
+        const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        expect(workCountGained).toBe(min);
     });
 
-    test('every rarity\'s WORK_COUNT lands on the same linear-in-duration rate (~2.67/h, from Common\'s 8/3h)', () => {
-        const commonRate = CompanionScavenging.WORK_COUNT[CompanionRarity.COMMON] / (CompanionScavenging.DURATION_SECONDS[CompanionRarity.COMMON] / 3600);
+    test('every rarity\'s WORK_COUNT_RANGE average lands on the same linear-in-duration rate (~2.67/h, from Common\'s 8/3h average)', () => {
+        const avg = (rarity) => {
+            const { min, max } = CompanionScavenging.WORK_COUNT_RANGE[rarity];
+            return (min + max) / 2;
+        };
+        const commonRate = avg(CompanionRarity.COMMON) / (CompanionScavenging.DURATION_SECONDS[CompanionRarity.COMMON] / 3600);
         for (const rarity of Object.values(CompanionRarity)) {
-            const rate = CompanionScavenging.WORK_COUNT[rarity] / (CompanionScavenging.DURATION_SECONDS[rarity] / 3600);
+            const rate = avg(rarity) / (CompanionScavenging.DURATION_SECONDS[rarity] / 3600);
             expect(rate).toBeCloseTo(commonRate, 5);
         }
+    });
+
+    test('bumps scavengeReturnsByRarity for Legendary/Mythic returns, leaves it alone for Common/Rare', () => {
+        const legendaryUser = userWithScavenge('rootcarver', CompanionRarity.LEGENDARY, [{ id: 'rootcarver', workCount: 0 }]);
+        expect(resolveScavengeReward(legendaryUser).scavengeReturnsByRarity).toEqual({ legendary: 1, mythic: 0 });
+
+        const mythicUser = userWithScavenge('mochi', CompanionRarity.MYTHIC, [{ id: 'mochi', workCount: 0 }]);
+        expect(resolveScavengeReward(mythicUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 1 });
+
+        const commonUser = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        expect(resolveScavengeReward(commonUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
+
+        const rareUser = userWithScavenge('mole', CompanionRarity.RARE, [{ id: 'mole', workCount: 0 }]);
+        expect(resolveScavengeReward(rareUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
+    });
+
+    test('does not mutate the caller\'s existing scavengeReturnsByRarity counts', () => {
+        const user = userWithScavenge('rootcarver', CompanionRarity.LEGENDARY, [{ id: 'rootcarver', workCount: 0 }], { legendary: 4, mythic: 9 });
+        const { scavengeReturnsByRarity } = resolveScavengeReward(user);
+        expect(scavengeReturnsByRarity).toEqual({ legendary: 5, mythic: 9 });
+        expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 4, mythic: 9 });
     });
 });

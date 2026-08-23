@@ -211,30 +211,70 @@ function buildScavengeDispatch(companion) {
     };
 }
 
+// Cumulative walk, same shape as work.js's own scenario table / starchFactory's
+// PROBABILITY_MATRIX — first tier whose cumulative `chance` clears the roll wins. See
+// CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS in constants.js for the actual odds/values.
+function rollWorkCountMultiplierTier() {
+    const roll = Math.random();
+    for (const tier of CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS) {
+        if (roll < tier.chance) {
+            return tier;
+        }
+    }
+    return CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS[CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS.length - 1];
+}
+
 // Pure computation of the collect-time reward. Assumes userDetails.companions.scavenging is
 // already non-null and return-ready — callers (companion-scavenge-collect.js) are
 // responsible for that check themselves, same division of labor as every other function in
-// this file. workCountGained is a FLAT per-rarity amount (CompanionScavenging.WORK_COUNT),
-// deliberately NOT scaled by the scavenging companion's own current level — level-scaling
-// the very counter that determines level would be a self-reinforcing compounding formula,
-// see systems/companions.md's balance-pass section for why this codebase avoids that
-// pattern everywhere else. starchesGained rolls CompanionScavenging.STARCH_RANGE[rarity]
-// the exact same inclusive way companionMarketFactory.rollNpcSalePrice already rolls its
-// own range. Does not touch `scavenging` itself or userDetails.starches — the caller clears/
-// credits those as part of its own write.
+// this file.
+//
+// workCountGained rolls a base amount from CompanionScavenging.WORK_COUNT_RANGE[rarity], then
+// applies a second independent roll — WORK_COUNT_MULTIPLIER_TIERS — on top (1x/1.5x/3x,
+// 70/25/5). Deliberately NOT scaled by the scavenging companion's own current level —
+// level-scaling the very counter that determines level would be a self-reinforcing
+// compounding formula, see systems/companions.md's balance-pass section for why this
+// codebase avoids that pattern everywhere else. This buff only changes how fast a
+// companion's own CAPPED level progression is reached, not an uncapped value stream, so it
+// doesn't fall into that category.
+//
+// starchesGained rolls CompanionScavenging.STARCH_RANGE[rarity] the exact same inclusive way
+// companionMarketFactory.rollNpcSalePrice already rolls its own range.
+//
+// hasScavenged is set true on the returning companion's own owned entry regardless of rarity
+// (uniform write) — only rendered as the "🗺️ Seasoned Scout" tag for Legendary/Mythic
+// companions in embedFactory.js's createCompanionListEmbed (rarity-gating lives entirely on
+// the display side). scavengeReturnsByRarity bumps the same way for Legendary/Mythic only,
+// backing the Legendary Legwork/Mythic Milestones achievements — both added 2026-08-23 per
+// the Scavenging cosmetic brainstorm.
+//
+// Does not touch `scavenging` itself or userDetails.starches — the caller clears/credits
+// those as part of its own write.
 function resolveScavengeReward(userDetails) {
     const { companionId, rarity } = userDetails.companions.scavenging;
-    const workCountGained = CompanionScavenging.WORK_COUNT[rarity];
-    const { min, max } = CompanionScavenging.STARCH_RANGE[rarity];
-    const starchesGained = min + Math.floor(Math.random() * (max - min + 1));
+
+    const { min: workMin, max: workMax } = CompanionScavenging.WORK_COUNT_RANGE[rarity];
+    const baseWorkCount = workMin + Math.floor(Math.random() * (workMax - workMin + 1));
+    const multiplierTier = rollWorkCountMultiplierTier();
+    const workCountGained = Math.floor(baseWorkCount * multiplierTier.multiplier);
+
+    const { min: starchMin, max: starchMax } = CompanionScavenging.STARCH_RANGE[rarity];
+    const starchesGained = starchMin + Math.floor(Math.random() * (starchMax - starchMin + 1));
 
     const owned = userDetails.companions.owned.map(c =>
         c.id === companionId
-            ? { ...c, workCount: (c.workCount || 0) + workCountGained }
+            ? { ...c, workCount: (c.workCount || 0) + workCountGained, hasScavenged: true }
             : c
     );
 
-    return { owned, starchesGained, workCountGained };
+    const scavengeReturnsByRarity = { ...userDetails.companions.scavengeReturnsByRarity };
+    if (rarity === CompanionRarity.LEGENDARY) {
+        scavengeReturnsByRarity.legendary = (scavengeReturnsByRarity.legendary || 0) + 1;
+    } else if (rarity === CompanionRarity.MYTHIC) {
+        scavengeReturnsByRarity.mythic = (scavengeReturnsByRarity.mythic || 0) + 1;
+    }
+
+    return { owned, starchesGained, workCountGained, multiplierTier: multiplierTier.name, scavengeReturnsByRarity };
 }
 
 module.exports = {
@@ -253,5 +293,6 @@ module.exports = {
     applyCompanionAward,
     isScavenging,
     buildScavengeDispatch,
-    resolveScavengeReward
+    resolveScavengeReward,
+    rollWorkCountMultiplierTier
 }

@@ -1,8 +1,10 @@
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
+const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const achievementFactory = new AchievementFactory();
 
 module.exports = {
     name: "companion-scavenge-collect",
@@ -32,10 +34,10 @@ module.exports = {
         const ownedEntryBefore = companionFactory.getOwnedEntry(userDetails, scavenging.companionId);
         const workCountBefore = ownedEntryBefore?.workCount || 0;
 
-        const { owned, starchesGained, workCountGained } = companionFactory.resolveScavengeReward(userDetails);
+        const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity } = companionFactory.resolveScavengeReward(userDetails);
 
         const written = await dynamoHandler.resolveScavenge(userId, scavenging.companionId, {
-            companions: { ...userDetails.companions, owned, scavenging: null },
+            companions: { ...userDetails.companions, owned, scavenging: null, scavengeReturnsByRarity },
             starches: (userDetails.starches || 0) + starchesGained
         });
         if (!written) {
@@ -43,7 +45,20 @@ module.exports = {
             return;
         }
 
-        const embed = embedFactory.createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountBefore + workCountGained, starchesGained);
+        const embed = embedFactory.createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountBefore + workCountGained, starchesGained, multiplierTier);
         interaction.editReply({ embeds: [embed] });
+
+        // Legendary Legwork / Mythic Milestones — checked against the just-written counts
+        // rather than re-fetching, same "build the post-write shape locally" shortcut
+        // work.js's own achievement check takes.
+        const newlyUnlocked = await achievementFactory.checkAndUnlock({
+            userId,
+            achievements: userDetails.achievements,
+            companions: { ...userDetails.companions, scavengeReturnsByRarity }
+        });
+        if (newlyUnlocked.length > 0) {
+            const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
+            interaction.followUp({ embeds: achievementEmbeds });
+        }
     }
 }

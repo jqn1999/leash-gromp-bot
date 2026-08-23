@@ -362,7 +362,8 @@ function getDefaultUserFields(userId, username) {
             active: null,            // companion id currently equipped, or null
             ownedCount: 0,
             mythicOwnedCount: 0,
-            scavenging: null         // { companionId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
+            scavenging: null,        // { companionId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
+            scavengeReturnsByRarity: { legendary: 0, mythic: 0 } // backs the Legendary Legwork/Mythic Milestones achievements — see companionScavengeCollect.js
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
         // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh

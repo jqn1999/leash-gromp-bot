@@ -142,7 +142,16 @@ const Achievements = [
     { id: "first_companion", name: "New Best Friend", description: "Win your first companion", statPath: "companions.ownedCount", threshold: 1 },
     { id: "companion_collector", name: "Menagerie Keeper", description: "Collect 5 different companions", statPath: "companions.ownedCount", threshold: 5 },
     { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 12 companions", statPath: "companions.ownedCount", threshold: 12 },
-    { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 }
+    { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 },
+
+    // Added 2026-08-23 per the Scavenging cosmetic brainstorm's Option A2 — off a new
+    // rarity-keyed counter (companions.scavengeReturnsByRarity), bumped on collect in
+    // companionScavengeCollect.js the same denormalized-counter shape workScenarioCounts.*
+    // already uses. Legendary/Mythic only, matching the brainstorm's proposed pair exactly —
+    // no Rare-tier achievement, since none was proposed and this codebase avoids tracking
+    // state nothing reads.
+    { id: "legendary_legwork", name: "Legendary Legwork", description: "Collect 10 Legendary-tier scavenging returns", statPath: "companions.scavengeReturnsByRarity.legendary", threshold: 10 },
+    { id: "mythic_milestones", name: "Mythic Milestones", description: "Collect 10 Mythic-tier scavenging returns", statPath: "companions.scavengeReturnsByRarity.mythic", threshold: 10 }
 ]
 
 const CatchUp = {
@@ -475,11 +484,15 @@ const CompanionLeveling = {
 // unscaled starch payout — see systems/companions.md#scavenging for the full mechanic.
 // DURATION_SECONDS: clean doubling per tier (3h/6h/12h/24h) — long enough to unambiguously
 // read as a between-sessions action, not a rapid-fire one.
-// WORK_COUNT: tuned 2026-08-22 to be STRICTLY LINEAR in duration (8 per 3h ≈ 2.67/h,
+// WORK_COUNT_RANGE: tuned 2026-08-22 to be STRICTLY LINEAR in duration (8 per 3h ≈ 2.67/h,
 // applied uniformly to every tier's own duration) rather than the original super-linear
 // table (8/20/45/100), which paid Mythic more than 2x Common's real hourly rate for no
 // reason beyond "it's the biggest number" — no rarity is now a "faster" scavenging-leveling
 // path than another, rarity only changes how often a player has to come back and redispatch.
+// Widened from a flat number to a { min, max } range 2026-08-23 (direct instruction — "add
+// ranges so the experience amount isn't always the same"), ±25% around that same original
+// flat value so the AVERAGE base roll is unchanged from the range alone — the actual buff
+// comes entirely from WORK_COUNT_MULTIPLIER_TIERS below, not from widening the range itself.
 // STARCH_RANGE: randomized 2026-08-22 (a flat guaranteed number felt too deterministic) —
 // each rarity is a { min, max } range rolled the same inclusive way
 // companionMarketFactory.rollNpcSalePrice already rolls its own range, centered on the
@@ -495,12 +508,31 @@ const CompanionScavenging = {
         [CompanionRarity.LEGENDARY]: 43200, // 12h
         [CompanionRarity.MYTHIC]: 86400     // 24h
     },
-    WORK_COUNT: {
-        [CompanionRarity.COMMON]: 8,
-        [CompanionRarity.RARE]: 16,
-        [CompanionRarity.LEGENDARY]: 32,
-        [CompanionRarity.MYTHIC]: 64
+    WORK_COUNT_RANGE: {
+        [CompanionRarity.COMMON]: { min: 6, max: 10 },
+        [CompanionRarity.RARE]: { min: 12, max: 20 },
+        [CompanionRarity.LEGENDARY]: { min: 24, max: 40 },
+        [CompanionRarity.MYTHIC]: { min: 48, max: 80 }
     },
+    // Direct instruction 2026-08-23 ("buff the amount... normal, then 1.5x, then 3x") — a
+    // second, independent roll applied on top of the WORK_COUNT_RANGE base roll, same shape
+    // as starchFactory's PROBABILITY_MATRIX / work.js's own scenario table (cumulative
+    // thresholds, walked in ascending order, first one the roll clears wins). NOT
+    // rarity-specific — one shared table applies uniformly regardless of which tier
+    // scavenged, since nothing about the ask called for differentiating it further.
+    // Average multiplier: .70*1 + .25*1.5 + .05*3 = 1.225x — a real ~22.5% average buff to
+    // every tier's workCount gain, while keeping "normal" the plain-majority outcome and
+    // "incredible" a genuine rare highlight (1-in-20) rather than a coinflip.
+    // Bounded/safe the same way the STARCH_RANGE roll already is: this only affects how fast
+    // a companion's OWN capped level progression (CompanionLeveling.THRESHOLDS) is reached —
+    // it doesn't create a new uncapped value stream the way a permanent stat bonus would
+    // (see roadmap.md's 2026-08-23 Scavenging brainstorm for why THAT category of idea was
+    // rejected; this doesn't fall into it).
+    WORK_COUNT_MULTIPLIER_TIERS: [
+        { name: 'normal', multiplier: 1, chance: 0.70 },
+        { name: 'great', multiplier: 1.5, chance: 0.95 },
+        { name: 'incredible', multiplier: 3, chance: 1.0 }
+    ],
     STARCH_RANGE: {
         [CompanionRarity.COMMON]: { min: 3, max: 7 },
         [CompanionRarity.RARE]: { min: 10, max: 20 },
@@ -588,6 +620,10 @@ const Companions = [
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A watchful barn owl that spots the best moment to strike when you're robbing someone — stacks with your guild's rob-chance buff, if it has one.",
+        // Shown on the scavenging return embed instead of `description` (see
+        // embedFactory.js's createScavengeReturnEmbed) — added 2026-08-23 per the
+        // Scavenging cosmetic brainstorm's Option A1.
+        scavengeFlavor: "Barn Owl swept low over the fields at dusk, silent wings and sharp eyes catching a glint of something worth carrying home.",
         perks: [{ type: "robChanceFlat", value: 0.10 }]
     },
     {
@@ -596,6 +632,7 @@ const Companions = [
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A mole that knows a guy — somehow gets you a better rate every time you cash out your starches.",
+        scavengeFlavor: "Mole tunneled through half the county before surfacing with dirt-caked paws and a satisfied grin — turns out there's always something worth digging for underground.",
         // Redesigned from starchCapacityPercent (10%) during a balance pass — that perk
         // only gated /buy-starch's purchase cap, not the starches Taro Trader/Golden Yam
         // hand out for free (see workFactory.js's handleTaroTrader/handleGoldenYam,
@@ -613,6 +650,7 @@ const Companions = [
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A grizzled prospector who's spent a lifetime learning exactly where the ore is soft — Metal Potato doesn't stand a chance against them, and they know exactly where to dig for one in the first place.",
+        scavengeFlavor: "Prospector staked out a promising patch of dirt and worked it methodically, panning and prying until something worthwhile finally came loose.",
         // Metal Potato's own success roll (work.js's workScenarios) is a flat 10% for
         // everyone, independent of any stat — this is the first perk that touches it.
         // +20% (10%->30%, a 3x improvement) since Metal Potato is already rare to roll
@@ -644,6 +682,7 @@ const Companions = [
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A firefly that lights the way while you work, somehow making every session a little more productive.",
+        scavengeFlavor: "Firefly drifted off into the dark, a single bobbing light growing fainter and fainter — until it came bobbing right back, leading the way to something it found along the way.",
         // Bumped from 5% during the same balance pass as Sprout — 5% no longer read as a
         // real Rare-tier step up once workCooldownSkipChance's true throughput value
         // (Fieldmouse's Common-tier 5% skip = ~5.3% effective) was accounted for.
@@ -655,6 +694,7 @@ const Companions = [
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "A small potato spirit that bends time itself around your work cooldown — often enough it just skips the wait outright — and sharpens your focus while it's at it.",
+        scavengeFlavor: "Spudsprite blinked out of sight and was gone for what felt like both an instant and an eternity at once — time works strangely around it, even out scavenging.",
         perks: [
             { type: "workCooldownSkipChance", value: 0.15 },
             { type: "workMultiplierPercent", value: 0.08 }
@@ -666,6 +706,7 @@ const Companions = [
         rarity: CompanionRarity.LEGENDARY,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "An old root-vegetable spirit that's taken over guarding your bank — under its watch, it somehow holds more than it should, and quietly turns a profit besides.",
+        scavengeFlavor: "Rootcarver disappeared into the cellar's deepest corners, the ones even the Cellar Keeper claims not to fully remember stocking, and came back up with an old find dusted off.",
         // Rebalanced 2026-08-22: bankCapacityPercent replaced with starchSellBonusPercent
         // (same underlying problem balance-audit.md's 2026-08-22 entry documents for
         // bankCapacityPercent generally — it goes to a literal no-op the moment bank
@@ -695,6 +736,7 @@ const Companions = [
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, quietly tends a slow-growing harvest in the background, and always finds room to get a better rate cashing out starches.",
+        scavengeFlavor: "Elder Rootbeard returned at its own unhurried pace, the way it does everything, and delivered a field report on exactly what it found and where — some things never change with age.",
         // Rebalanced 2026-08-22: bankCapacityPercent replaced with passiveIncomePercent
         // (per balance-audit.md's Mochi-vs-Rootbeard finding — bankCapacityPercent could
         // hit literal zero realized value once bank regrade caps, right before every
@@ -719,6 +761,7 @@ const Companions = [
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/emojis/1048769954910060544.webp?size=96",
         description: "A small, stitched-together, faintly glowing zombie cat that just wants headpats and doesn't fully understand its claws are undead. It doesn't leave your side — keeping pace with you at work, and often enough just skipping you past the wait entirely — and somehow, it always finds its way back after a rebirth, more devoted each time.",
+        scavengeFlavor: "Mochi trotted back in glowing faintly, undead claws clicking on the ground, absolutely delighted with itself and dragging something back to show off like a cat with a gift.",
         // passiveIncomePercent cut 10%->6% as the other half of the 2026-08-22 rebalance —
         // Mochi keeps the bigger active-work kit (workMultiplierPercent, workCooldownSkipChance,
         // rebirthBonusPercent) and gets a smaller passive kicker than Rootbeard's now-10%,

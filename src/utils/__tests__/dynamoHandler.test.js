@@ -172,7 +172,7 @@ describe('findUser', () => {
     // active/ownedCount/mythicOwnedCount), so the top-level `user[key] === undefined`
     // check never fires for it; only the one-level-deep nested-object heal catches the
     // missing `scavenging` sub-key.
-    test('shallow-heals a pre-existing companions object missing the new scavenging sub-key', async () => {
+    test('shallow-heals a pre-existing companions object missing the new scavenging/scavengeReturnsByRarity sub-keys', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,
             Items: [{
@@ -185,6 +185,7 @@ describe('findUser', () => {
         const user = await dynamoHandler.findUser('u7', 'name7');
 
         expect(user.companions.scavenging).toBeNull();
+        expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
         // Existing sub-fields must survive the heal untouched.
         expect(user.companions.owned).toEqual([{ id: 'sprout', workCount: 3 }]);
         expect(user.companions.active).toBe('sprout');
@@ -194,15 +195,15 @@ describe('findUser', () => {
         );
         expect(companionsWrite).toBeDefined();
         const writtenValue = Object.values(companionsWrite[0].ExpressionAttributeValues)[0];
-        expect(writtenValue).toEqual({ owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null });
+        expect(writtenValue).toEqual({ owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 } });
     });
 
-    test('does not touch a companions object that already has scavenging', async () => {
+    test('does not touch a companions object that already has every sub-key', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,
             Items: [{
                 userId: 'u8', username: 'name8',
-                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: 123 } },
+                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 } },
             }],
         }));
         docClient.update.mockReturnValue(resolved({}));

@@ -1205,6 +1205,39 @@ and needs its own balance pass.
   doesn't touch that reasoning or the reward math at all — it's a separate, later, independent
   instruction to reduce how often the whole scenario fires.
 
+- [x] **28. Scavenging Cosmetic Layer + Companion XP Buff** — S/M — **Done**
+  What: two related shipments from the same day, both direct instruction against the 2026-08-23
+  Scavenging brainstorm below (item marked partially shipped — see that entry).
+  1. **Cosmetic layer (Option A of the brainstorm, picked as-is)**: per-companion `scavengeFlavor`
+     text on `createScavengeReturnEmbed` for the 8 non-Common companions (falls back to
+     `description` for Common, which stays untouched permanently); a one-time "🗺️ Seasoned Scout"
+     tag on `/companion`'s list for a Legendary/Mythic companion's first-ever scavenge collect
+     (`hasScavenged`, set uniformly on the owned entry, rarity-gated only in the embed); and two new
+     achievements, Legendary Legwork / Mythic Milestones (10 collects each), backed by a new
+     `companions.scavengeReturnsByRarity: { legendary, mythic }` counter.
+  2. **Companion XP buff** (a new ask, not part of the brainstorm — direct instruction): Scavenging's
+     `WORK_COUNT` went from a flat per-rarity number to a `{ min, max }` range (±25% around the old
+     flat value, same average), plus an independent `WORK_COUNT_MULTIPLIER_TIERS` roll on top —
+     `normal` (1x, 70%), `great` (1.5x, 25%), `incredible` (3x, 5%), average 1.225x. The range and the
+     tier roll are two separate mechanics answering two separate asks ("add ranges" vs. "buff the
+     amount... normal, then 1.5x, then 3x") rather than one combined formula.
+  Why: direct instruction, following the same-day brainstorm (user: "I like the cosmetic change")
+  plus a separate ask to buff companion XP with variance. Central design question for the XP buff —
+  does this recreate the "guaranteed, repeatable action + permanent bonus = compounding problem" the
+  brainstorm rejected other ideas for? No: it only speeds up progress toward a companion's own
+  *capped* level ceiling (`CompanionLeveling.THRESHOLDS`), not a new uncapped value stream, so it
+  doesn't fall into that category.
+  Notable: `resolveScavengeReward`'s signature grew (`multiplierTier`, `scavengeReturnsByRarity` now
+  returned alongside `owned`/`starchesGained`/`workCountGained`), so `companionScavengeCollect.js`
+  now also runs an `achievementFactory.checkAndUnlock` pass after the write (this command never
+  checked achievements before). `companionScavengeCancel.js`'s forfeit-preview text updated to show
+  the new range instead of a flat number. Test coverage: `companionFactory.test.js` gained a new
+  `rollWorkCountMultiplierTier` describe block and a rewritten `resolveScavengeReward` block (tier
+  boundaries, range variance, `hasScavenged`, `scavengeReturnsByRarity` bumping and
+  non-mutation); two `dynamoHandler.test.js` healing tests updated for the new
+  `scavengeReturnsByRarity` schema default (companions objects predating this feature now heal one
+  more sub-key). 330 tests suite-wide.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
@@ -1333,7 +1366,14 @@ and needs its own balance pass.
   `systems/companions.md`'s `full_roster` threshold doc fix regardless of outcome.
 
 - [ ] **Distinct Scavenging Rewards for Rare/Legendary/Mythic** (2026-08-23 brainstorm) — S/M once a
-  direction is picked. Today all four Scavenging tiers return the exact same two reward types, just
+  direction is picked. **Option A shipped the same day as item 28 above** — per-companion flavor
+  text, the Seasoned Scout tag, and the Legendary Legwork/Mythic Milestones achievements are all
+  live. Options B and C below are still open, unimplemented. Numbers table below is now stale for
+  `WORK_COUNT` specifically (see item 28 — it became a range plus a multiplier-tier roll), kept
+  as-is here since it's illustrating the *shape* of the original problem (same two reward types,
+  just scaled), not the current live values.
+
+  Today all four Scavenging tiers return the exact same two reward types, just
   scaled up (`CompanionScavenging` in `constants.js`):
 
   | Rarity | Duration | `WORK_COUNT` | `STARCH_RANGE` |

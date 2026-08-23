@@ -465,12 +465,17 @@ value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
   it, so it wasn't worth a conditional-write helper.
 - **`/companion-scavenge-collect`** (no args — only one slot exists). Rejects if nothing is
   scavenging, or if `returnsAt` is still in the future (states the remaining time). On success:
-  bumps that companion's `workCount` by a flat per-rarity amount
-  (`companionFactory.resolveScavengeReward`), credits the rolled starch payout, clears `scavenging`
-  to `null`, and replies with `embedFactory.createScavengeReturnEmbed` — the explicit "welcome back"
+  bumps that companion's `workCount` by a randomized per-rarity amount
+  (`companionFactory.resolveScavengeReward` — see Numbers below), credits the rolled starch
+  payout, marks that companion's owned entry `hasScavenged: true`, bumps
+  `companions.scavengeReturnsByRarity` for a Legendary/Mythic return, clears `scavenging` to
+  `null`, and replies with `embedFactory.createScavengeReturnEmbed` — the explicit "welcome back"
   moment (same celebratory-embed family as `createPoisonPotatoEmbed`/achievement unlocks), showing
   the companion, a before/after `workCount` (and the level line it crosses, if any) using the same
   `getNextLevelThreshold` progress numbers `/companion`'s list already surfaces, and starches gained.
+  Also runs an `achievementFactory.checkAndUnlock` pass afterward (against the just-written counts,
+  not a re-fetch — same shortcut `work.js`'s own check takes) for the Legendary Legwork/Mythic
+  Milestones achievements below.
 - **`/companion-scavenge-cancel`** (no args) — early recall. Unlike `/companion-cancel` (market —
   recovers a listing with nothing lost, so it skips a confirm step), an early recall forfeits a
   real, already-accruing reward, so this **does** use the same `buildConfirmCancelRow` flow
@@ -516,30 +521,50 @@ same as the duplicate branch already did — regression-tested in `companionFact
 
 **Numbers** (`CompanionScavenging` in `constants.js`, rarity-keyed):
 
-| Rarity | Duration | `WORK_COUNT` | `STARCH_RANGE` |
+| Rarity | Duration | `WORK_COUNT_RANGE` | `STARCH_RANGE` |
 |---|---|---|---|
-| Common | 3h (10,800s) | 8 | 3–7 |
-| Rare | 6h (21,600s) | 16 | 10–20 |
-| Legendary | 12h (43,200s) | 32 | 28–52 |
-| Mythic | 24h (86,400s) | 64 | 70–130 |
+| Common | 3h (10,800s) | 6–10 | 3–7 |
+| Rare | 6h (21,600s) | 12–20 | 10–20 |
+| Legendary | 12h (43,200s) | 24–40 | 28–52 |
+| Mythic | 24h (86,400s) | 48–80 | 70–130 |
 
 Duration is a clean doubling per tier — Common at 36x `/work`'s 300s cooldown / 3x the 1hr raid
 timer unambiguously reads as a between-sessions action, and Mythic's 24h lands on the same
 once-a-day check-in cadence `/enter-tower` already uses.
 
-`WORK_COUNT` is deliberately **flat per rarity, never scaled by the scavenging companion's own
-current level** — level-scaling the very counter that *determines* level would be a self-
-reinforcing compounding formula, the same trap the percentage-of-current-stat perk design already
-avoids everywhere else (see the balance-pass section above). The table is also **strictly linear in
-duration** (8-per-3h ≈ 2.67/h, applied uniformly to every tier's own duration) rather than favoring
-Mythic with a super-linear bonus — no rarity is a "faster" scavenging-leveling path than another;
-rarity only changes how often a player has to come back and redispatch. Reaching max level
-(`workCount` 3,725) via nothing but back-to-back scavenges of a single rarity takes ~58 days of
-continuous redispatching regardless of rarity — still strictly slower than actively grinding an
-*equipped* companion through ordinary `/work` play, so scavenging stays a background-only path, not
-a reason to under-equip your best companion. A dedicated player *can* now level several companions
-in parallel over months by keeping one benched companion perpetually scavenging alongside their
-equipped one — an accepted, intentional consequence of giving the bench something to do.
+`WORK_COUNT_RANGE` is deliberately **never scaled by the scavenging companion's own current
+level** — level-scaling the very counter that *determines* level would be a self-reinforcing
+compounding formula, the same trap the percentage-of-current-stat perk design already avoids
+everywhere else (see the balance-pass section above). Its average is **still strictly linear in
+duration** (8-per-3h average ≈ 2.67/h, applied uniformly to every tier's own duration) rather than
+favoring Mythic with a super-linear bonus — no rarity is a "faster" scavenging-leveling path than
+another; rarity only changes how often a player has to come back and redispatch.
+
+Was a flat per-rarity number (8/16/32/64) until 2026-08-23, when two changes landed together, both
+direct instruction:
+1. **Widened into a `{ min, max }` range**, ±25% around the original flat value ("add ranges so the
+   experience amount isn't always the same") — the range alone doesn't change the average, it only
+   adds variance around the same number the flat table already used.
+2. **`WORK_COUNT_MULTIPLIER_TIERS`** — a second, independent roll applied on top of the range roll
+   (`companionFactory.rollWorkCountMultiplierTier`, cumulative-threshold shape, same as
+   `work.js`'s own scenario table / `starchFactory`'s `PROBABILITY_MATRIX`): `normal` (1x, 70%),
+   `great` (1.5x, 25%), `incredible` (3x, 5%). Average multiplier `.70*1 + .25*1.5 + .05*3 = 1.225x`
+   — a real ~22.5% average buff to every tier's workCount gain ("buff the amount... normal, then
+   1.5x, then 3x"), while keeping `normal` the plain-majority outcome and `incredible` a genuine
+   rare highlight rather than a coinflip. Not rarity-specific — the same tier table applies
+   regardless of which rarity scavenged.
+
+This buff only accelerates how fast a companion's own **capped** level progression
+(`CompanionLeveling.THRESHOLDS`) is reached — it doesn't create a new uncapped value stream, so it
+doesn't fall into the "guaranteed, repeatable-forever action + permanent bonus = compounding
+problem" category `roadmap.md`'s 2026-08-23 Scavenging brainstorm explicitly rejected for other
+ideas (see its central-constraint discussion). Reaching max level (`workCount` 3,725) via nothing
+but back-to-back scavenges of a single rarity now takes somewhat less than the pre-buff ~58 days on
+average, still strictly slower than actively grinding an *equipped* companion through ordinary
+`/work` play, so scavenging stays a background-only path, not a reason to under-equip your best
+companion. A dedicated player *can* level several companions in parallel over months by keeping one
+benched companion perpetually scavenging alongside their equipped one — an accepted, intentional
+consequence of giving the bench something to do.
 
 `STARCH_RANGE` is a `{ min, max }` pair per rarity, rolled inclusive the same way
 `companionMarketFactory.rollNpcSalePrice` already rolls its own range (`min + Math.floor(Math.random()
@@ -550,6 +575,32 @@ Trader*/*Golden Yam* `/work` hits rather than derived from `CompanionMarket.MINI
 potato-denominated; starches trade at a wildly different unit scale) — a multi-hour, zero-effort,
 unscaled payout reads as "a nice bonus for basically no active play" early on, and decays toward
 irrelevance for a developed player the same way `/companion-sell-npc`'s flat pricing already does.
+Unlike `WORK_COUNT_RANGE`, the starch payout was left untouched by the 2026-08-23 buff — the ask was
+specifically about companion XP, not the starch side of the reward.
+
+**Cosmetic layer** (Option A of the 2026-08-23 Scavenging brainstorm, shipped the same day):
+- **Per-companion flavor text.** The 8 non-Common companions (Barn Owl, Mole, Firefly, Prospector,
+  Spudsprite, Rootcarver, Elder Rootbeard, Mochi) each carry a `scavengeFlavor` string in
+  `constants.js`, shown on `createScavengeReturnEmbed` instead of the companion's normal
+  `description` — a scavenging-specific line matching that companion's own established voice/kit,
+  rather than its generic bio. Common companions have no `scavengeFlavor`, so their return embed
+  falls back to `description` unchanged — Common was deliberately left out of this whole pass (see
+  the brainstorm's open questions) and stays the pure "starches for time" baseline permanently.
+- **"🗺️ Seasoned Scout" tag.** The first time a Legendary/Mythic companion completes any scavenge,
+  `resolveScavengeReward` sets `hasScavenged: true` on its owned entry (written uniformly for every
+  rarity, not just Legendary/Mythic — the rarity-gating lives entirely in
+  `createCompanionListEmbed`, which only renders the tag next to a Legendary/Mythic companion's name
+  when that flag is set). A one-time, purely cosmetic marker — once true it never reverts.
+- **Legendary Legwork / Mythic Milestones achievements** — 10 Legendary-tier and 10 Mythic-tier
+  scavenge collects respectively, backed by the new `companions.scavengeReturnsByRarity: {
+  legendary, mythic }` counter (bumped in `resolveScavengeReward`, same denormalized-counter shape
+  `workScenarioCounts.*` already uses). No Rare-tier equivalent — none was proposed, and this
+  codebase avoids tracking state nothing reads.
+
+Also on the mid-value B-tier of the brainstorm and not yet built: a small per-trip chance at a bonus
+companion find on a Rare/Legendary/Mythic return, and a one-time milestone-gated flat stat bonus for
+a player's first-ever Legendary/Mythic collect. See `roadmap.md`'s 2026-08-23 entry for the full
+option writeup if picked up later.
 
 ## Achievements
 
