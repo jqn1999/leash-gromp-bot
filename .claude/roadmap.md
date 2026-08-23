@@ -1343,6 +1343,20 @@ and needs its own balance pass.
   is a defensive addition beyond the literal bug report, scoped narrowly to "reply instead
   of silently hanging" — it does not change any command's actual error-handling logic.
 
+- [x] **33. Buff `/rob-npc` Odds — Maxed Mercenary Close to 80%** — S — **Done**
+  What: `RobNpc.BASE_CHANCE` 20%→30%, `RobNpc.CHANCE_PER_RANK` 2%→10%, `RobNpc.MAX_CHANCE`
+  30%→80% — a clean linear ramp of 30/40/50/60/70/80% across Mercenary Ranks 1-6 (was
+  20/22/24/26/28/30%). Payout math (`PAYOUT_MULTIPLIER`, `MAX_NPC_ROB_PAYOUT`) untouched —
+  this is an odds-only change. `constants.js`'s `RobNpc` comment block and
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md) updated to match; both
+  explicitly note this departs from the feature's original "stay well below a maxed real
+  `/rob` setup" framing, since the payout side (fixed, modest `MAX_NPC_ROB_PAYOUT`) already
+  keeps `/rob-npc` from out-performing a well-built real `/rob` overall regardless of odds.
+  Why: direct instruction.
+  Notable: no test values needed updating — `mercenaryFactory.test.js`'s `resolveNpcRob`
+  describe block asserts against the `RobNpc.*` constants themselves, not hardcoded
+  percentages, so it re-validated the new curve automatically. Full suite green (377/377).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

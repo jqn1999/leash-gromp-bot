@@ -233,13 +233,18 @@ numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`):
   `/rob`'s `robTimer` (`Rob.ROB_TIMER_SECONDS`, 3600s) and Bounty's own `bountyTimer` (also
   3600s), so spamming one action never locks out either of the other two.
 - **Odds**: flat base chance (no target to compare relative wealth against), scaling with
-  rank, capped well below a maxed real-`/rob` setup:
+  rank:
   ```
   successChance = min(RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rank - 1), RobNpc.MAX_CHANCE)
                   + companionFactory.getActivePerkValue(userDetails, "npcRobChanceFlat")   // Yukon only
   ```
-  `BASE_CHANCE` 20%, `+2%/rank`, capped **30%** at Rank 6 — deliberately below real `/rob`'s
-  realistic ceiling (base up to 25% + guild buff up to +20% + companion up to +15% ≈ 50%+).
+  `BASE_CHANCE` 30%, `+10%/rank`, capped **80%** at Rank 6 (30/40/50/60/70/80% across Ranks
+  1-6). Updated 2026-08-23, direct instruction, to make a maxed-out mercenary close to 80%
+  reliable — a deliberate departure from this feature's original "stay well below a maxed
+  real-`/rob` setup" framing. Still doesn't out-perform real `/rob` overall: the payout side
+  stays capped far below real `/rob`'s (a fixed, modest `MAX_NPC_ROB_PAYOUT` vs. a
+  percentage of a real player's balance) — a high top-end success rate here buys reliability
+  at a low ceiling per hit, not a better overall action than a well-built real `/rob`.
 - **Payout**: the exact same `calculateGainAmount` shape every `/work` reward uses
   (`handleGoldenPotato`/`handleLargePotato`'s exact formula — `workGainAmount * 4.5`,
   capped at `RobNpc.MAX_NPC_ROB_PAYOUT` (5,000) before the player's own multiplier scales

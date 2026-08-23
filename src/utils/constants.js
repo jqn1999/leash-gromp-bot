@@ -1193,23 +1193,25 @@ const BountyStatReward = {
 }
 
 // /rob-npc — a solo-only heist against a fictional target (no real player involved, a
-// newly-minted payout, not drawn from anyone's balance). Grounded against real /rob's own
-// numbers (Rob.ROB_TIMER_SECONDS/BASE_ROB_PENALTY, calculateRobChance's ~5-25% range in
-// rob.js): flat base chance (no target to compare wealth against) since there's no
-// target to compare relative wealth against, scaling with Mercenary Rank, capped well
-// below a maxed real-/rob setup (base 25% + guild buff 20% + companion 15% ~= 50%+) so
-// this never out-performs a well-built real-/rob setup on odds alone. Payout is
-// server-wealth-scaled via the same calculateGainAmount shape every /work reward uses,
-// anchored between Regular (x1) and Large (x10). Cooldown is its OWN separate field
-// (npcRobTimer) — distinct from both Rob.ROB_TIMER_SECONDS (real /rob's robTimer, 3600s)
-// and Bounty.BOUNTY_TIMER_SECONDS (also 3600s) — so spamming one action never locks out
-// either of the other two. No Mercenary Rank gate at all (available from Rank 1) — kept
-// modest specifically because it needs none.
+// newly-minted payout, not drawn from anyone's balance). No target to compare relative
+// wealth against, so this is a flat base chance scaling with Mercenary Rank rather than
+// real /rob's wealth-ratio formula. Ramp updated 2026-08-23, direct instruction, to land a
+// maxed-out (Rank 6) mercenary close to 80% — a deliberate departure from this constant's
+// original "stay well below a maxed real-/rob setup" framing: NPC rob's payout side is
+// already capped far below real /rob's (a fixed, modest MAX_NPC_ROB_PAYOUT vs. a
+// percentage of a real player's balance), so a high success ODDS at the top of the rank
+// curve doesn't make this out-perform real /rob overall, just far more reliable at a much
+// lower ceiling per hit. Payout is server-wealth-scaled via the same calculateGainAmount
+// shape every /work reward uses, anchored between Regular (x1) and Large (x10). Cooldown
+// is its OWN separate field (npcRobTimer) — distinct from both Rob.ROB_TIMER_SECONDS (real
+// /rob's robTimer, 3600s) and Bounty.BOUNTY_TIMER_SECONDS (also 3600s) — so spamming one
+// action never locks out either of the other two. No Mercenary Rank gate at all (available
+// from Rank 1).
 const RobNpc = {
     NPC_ROB_TIMER_SECONDS: 1800,   // 30 min
-    BASE_CHANCE: 0.20,
-    CHANCE_PER_RANK: 0.02,
-    MAX_CHANCE: 0.30,              // reached at Rank 6 (0.20 + 0.02*5 = 0.30)
+    BASE_CHANCE: 0.30,
+    CHANCE_PER_RANK: 0.10,
+    MAX_CHANCE: 0.80,              // reached at Rank 6 (0.30 + 0.10*5 = 0.80)
     PAYOUT_MULTIPLIER: 4.5,        // midpoint of the "x4-5" recommendation, between Regular (x1) and Large (x10)
     MAX_NPC_ROB_PAYOUT: 5000       // half of Work.MAX_LARGE_POTATO(10000), base cap before the player's
                                     // own multiplier scales it up — same "*_MAX_* caps the base, not the
