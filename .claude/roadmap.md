@@ -1332,6 +1332,123 @@ and needs its own balance pass.
   granted), `embedFactory.js` (a new celebratory embed or an extension of an existing one),
   `systems/companions.md`'s `full_roster` threshold doc fix regardless of outcome.
 
+- [ ] **Distinct Scavenging Rewards for Rare/Legendary/Mythic** (2026-08-23 brainstorm) — S/M once a
+  direction is picked. Today all four Scavenging tiers return the exact same two reward types, just
+  scaled up (`CompanionScavenging` in `constants.js`):
+
+  | Rarity | Duration | `WORK_COUNT` | `STARCH_RANGE` |
+  |---|---|---|---|
+  | Common | 3h | 8 | 3–7 |
+  | Rare | 6h | 16 | 10–20 |
+  | Legendary | 12h | 32 | 28–52 |
+  | Mythic | 24h | 64 | 70–130 |
+
+  Common staying a pure "starches for time" baseline is fine and should stay that way permanently —
+  the ask is specifically for Rare/Legendary/Mythic to feel like they're unlocking something
+  qualitatively different as the player climbs the rarity ladder, not just a bigger pile of the same
+  currency.
+
+  **Central constraint, more load-bearing here than it was for the Max-Level/Full-Roster capstone
+  entry above**: Scavenging is a **guaranteed, repeatable-forever action**, not a rare probabilistic
+  roll. Every other source of a *permanent* stat bonus in this game (Metal Potato, Sweet Potato,
+  Ancient Potato's regrade grant, weekly quest stat rewards) is gated behind a low-probability
+  `/work` roll or a slow weekly rotation — the thing that keeps them from compounding into something
+  absurd is that a player can't just choose to trigger them on demand. A Rare-tier scavenge can be
+  redispatched roughly 4x/day, forever, purely by choosing to. Attaching a **per-collection** permanent
+  stat bonus to Scavenging — even a tiny one — would be the same shape as Ancient Potato's original
+  free-regrade branch (nerfed 90% specifically for bypassing `/regrade`'s cost/fail-chance while
+  rolling more often than Golden — see `economy-and-work.md`), except worse, since scavenging isn't
+  probabilistic at all. Any "permanent tiny bonus" idea here needs to be **one-time and
+  milestone-gated** (fires once per account, never per trip) to avoid recreating that exact problem —
+  see Option B2 below.
+
+  **Option groups, safest to riskiest:**
+
+  A. Cosmetic/completionist-only (zero economy risk, reuses existing tracked state and achievement
+     infrastructure — same shape as the Max-Level capstone entry's Option A):
+     1. **Rarity-specific flavor text** on `createScavengeReturnEmbed`, per companion rather than a
+        generic line — e.g. Barn Owl's Rare-tier return mentions swiping something shiny, Elder
+        Rootbeard's Mythic-tier return reads like an old sage's field report. Formatting only, no
+        mechanical change — the exact "value surface is already bounded, just make the ladder feel
+        different" move this ask is really asking for at the cheapest possible tier.
+     2. **New achievements** off a new counter tracking scavenge collects by rarity (e.g.
+        `companions.scavengeReturnsByRarity: { rare, legendary, mythic }`, same denormalized-counter
+        shape `workScenarioCounts.*` already uses) — potato-punned names like "Legendary Legwork"
+        (10 Legendary-tier collects) and "Mythic Milestones" (10 Mythic-tier collects). Same
+        `statPath`-threshold shape every achievement already uses; zero new checking code.
+     3. **A one-time cosmetic tag** (e.g. "🗺️ Seasoned Scout") shown next to a companion in
+        `/companion`'s list the first time it completes a Legendary/Mythic-tier scavenge — same
+        "formatting off already-tracked state" shape as the Max-Level capstone's proposed "⭐ Bonded"
+        tag.
+
+  B. Bounded — a real reward, but never a standing/compounding value stream:
+     1. **Bonus-companion-find chance, Rare/Legendary/Mythic only** (this is the "small chance at rare
+        drops" the brief specifically asked for). On collect, roll a small chance — proposing 1%
+        Rare / 3% Legendary / 6% Mythic, anchored below/around/above `/work`'s existing 1.5%
+        Wandering Companion encounter rate and scaled by how long the dispatch tied up the single
+        scavenging slot — to also trigger a full `companionFactory.rollRarity`/`rollCompanion` roll,
+        routed through the exact same `applyCompanionAward` path a `/work` win or market purchase
+        already uses. Duplicate-vs-new handling, `ownedCount`/`mythicOwnedCount` achievement
+        counters, and the embed's existing "gained/leveled" language all just work with zero new
+        branching. This is a single bounded roll per trip — the same shape as an already-accepted
+        mechanic relocated to a different trigger, not a new parallel one — and never touches the
+        single-scavenging-slot invariant, since it pays out on collect, not by opening a second
+        concurrent role.
+     2. **One-time milestone-gated flat bonus.** The first time an account ever collects a
+        Legendary-tier scavenge, and separately the first time it ever collects a Mythic-tier one,
+        grant a flat one-time `sweetPotatoBuffs`-style bump — sized modestly, closer to a single Sweet
+        Potato roll than a Metal Potato one, since this is guaranteed-eventually rather than a rare
+        roll. Fires once per account, ever (tracked the same way `first_rebirth`/`toxic_tolerance`
+        already gate a one-time achievement off a threshold-crossing moment), never per-trip — this is
+        the shape that keeps a "permanent tiny bonus" from becoming the unbounded-compounding problem
+        described above.
+     3. **Companion-specific reward bias, not a new reward type.** Let a scavenging companion's own
+        relevant perk (e.g. Mole/Elder Rootbeard/Rootcarver's `starchSellBonusPercent`) bias where in
+        the *existing* `STARCH_RANGE` the roll lands — toward the top of the range instead of a flat
+        uniform roll — framed as "your starch-savvy companion negotiated a better haul." No new
+        reward type, no new persisted state, just a different roll shape for companions whose kit
+        already leans that direction.
+
+  C. Flagged for contrast, not recommended without a much stronger case:
+     1. **Any per-collection permanent stat bonus** — rejected outright per the central constraint
+        above, not deferred; this is the one idea in this brainstorm that most directly recreates a
+        problem this codebase already found and fixed once (Ancient Potato).
+     2. **Scavenge return also grants workCount to the currently-equipped companion** ("field notes
+        shared with the team"). Undermines Companion Leveling's explicit "real time investment, not a
+        currency sink" framing — it would hand free equipped-companion XP for an action that doesn't
+        require that companion to be equipped, active, or even relevant to the trip at all.
+     3. **A companion-market tie-in** (e.g. a temporary `CompanionMarket.TAX_PERCENT` discount voucher
+        on a high-rarity return) — a real engineering lift (new expiring-voucher state, a third
+        currency-adjacent object to track) for a payoff that doesn't obviously read as "qualitatively
+        different" from the existing reward pair. Better scoped as its own follow-up if the marketplace
+        layer specifically is what's wanted, not bundled into this ticket.
+
+  **Open questions, with a recommendation on each:**
+  - Does Common ever get folded into this treatment later, or stay the pure "starches for time"
+    baseline permanently? **Recommend: stays baseline permanently.** The entire point of this ask is
+    to make the *upper three* tiers read as different from Common — raising Common's floor too would
+    just re-flatten the ladder this brainstorm exists to un-flatten.
+  - Should the bonus-companion-find roll (B1) exclude landing on a Common companion for a Mythic-tier
+    dispatch, to avoid a deflating "24 hours and I got a Common" moment? **Recommend no
+    special-casing** — reuse the same `rollRarity` odds table used everywhere else in the game
+    (a `/work` Wandering Companion encounter can itself roll Common); a second, reweighted odds table
+    maintained solely for this one small mechanic isn't worth the drift risk for what's explicitly a
+    low-probability bonus roll, not the headline reward.
+  - Is a single new reward element (just B1) enough differentiation, or does each rarity need more than
+    one new mechanic to read as genuinely different rather than "one more roll bolted onto the same two
+    rewards"? **Recommend B1 + B2 together** — a per-trip rare-find roll plus a one-time milestone
+    payout are two different reward *shapes*, not just two numbers, which is enough to read as
+    distinct without needing a third mechanic for a v1.
+
+  Touches (once a direction is picked): `constants.js` (new bonus-find-chance table under
+  `CompanionScavenging` if B1 is taken; new one-time milestone bonus constants if B2 is taken; new
+  `Achievements` entries if A2 is taken), `companionFactory.js` (bonus-roll and/or milestone-check
+  logic, mirroring `resolveScavengeReward`'s existing pure-computation shape),
+  `companionScavengeCollect.js` (wiring the new roll(s) into the collect path),
+  `embedFactory.js` (`createScavengeReturnEmbed` gains the bonus-companion/milestone lines, or a
+  dedicated follow-up embed mirroring achievement-unlock's own follow-up pattern),
+  `systems/companions.md`'s Scavenging section once a direction ships.
+
 - [ ] **Multi-Server Support** — L — prompted by players in other Discords asking for the bot. Key
   decisions already locked: each server gets its own economy (leaderboard/work-scaling/starch
   totals), filtered live against Discord membership rather than partitioning user storage; the
