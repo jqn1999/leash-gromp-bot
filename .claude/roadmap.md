@@ -1314,6 +1314,118 @@ and needs its own balance pass.
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
 
+- [ ] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — M/L — needs a real balance pass,
+  same shape Guild Raids' own tuning history needed, before it can be scoped.
+
+  What: a personal, guild-independent alternative to Guild Raids — `/bounty-board` (read-only preview,
+  mirrors `/current-raid`) shows the caller's own Bounty tier options (I/II/III, mapped 1:1 to
+  Regular-mode Guild Raid's T1/T2/T3 difficulty/reward/penalty — see
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md)) with a live success-chance/
+  reward/penalty preview computed off the caller's own solo `effectiveRaidPower`
+  (`workMultiplierAmount * (1 + liveRebirthPercent)`, the exact same formula `raidFactory.js`'s
+  `getMemberRaidPower` already uses — no new stat-power formula needed, this is a 1-person roster run
+  through the same math, headcount bonus zeroed out since there's no roster) and the caller's personal
+  Bounty cooldown. `/take-bounty tier:<I|II|III>` resolves immediately, same no-confirm precedent
+  `/start-raid` already sets, on a personal cooldown (`userDetails.bountyTimer`, same shape as
+  `guild.raidTimer`). Wins accumulate `mercenaryBountyWinCount` (mirrors `guildRaidWinCount`), which
+  drives a **live-computed, capped** Mercenary Rank — a personal echo of Guild Level's
+  `getRaidLevelInfo` curve, never a stored/added value, for the same reason Guild Level itself is
+  computed live off `raidCount` rather than a second write path (see
+  [systems/guilds.md](systems/guilds.md#guild-level)). Rank grants two things, both capped and both
+  reusing an existing perk *type* rather than inventing a new one: (1) a personal reward multiplier on
+  Bounty wins only (same "only the winning side scales" rule Guild Level's own multiplier follows —
+  penalties untouched), and (2) a modest `robChanceFlat`-style bonus to the caller's own `/rob`
+  (stacks with, doesn't replace, the existing companion/guild `robChance` sources) — this is the
+  "mercenary/outlaw" flavor payoff, tied to the one mechanic this game already has for solo-vs-solo
+  theft rather than a new one. Rank/title (potato-punned) surfaces as a new field on `/profile` page 1,
+  next to Active Companion — no dedicated `/mercenary` command needed for v1, folding it into the
+  existing profile view instead of growing the command list for a single read.
+
+  Why: solo players today have zero equivalent of Guild Raids, Guild Contracts, the Guild Bank, Guild
+  Buffs, or the Guild Level ladder — every other system a solo player can already touch (Companions,
+  Quests, `/rebirth`, `/rob`) works identically whether or not they're guilded, and World Boss is
+  already the closest existing precedent for "server-wide raid content that doesn't require a guild" —
+  a useful shape to build on, not reinvent. This gives that player a real, own-progression
+  raid-equivalent loop instead of pure `/work` grinding, without requiring them to find or build a
+  guild roster first.
+
+  **What this explicitly does NOT do** (scope boundary, direct response to the "outlaws/thieves guild"
+  raw idea): this is **not** a second joinable, guild-like entity. Building an actual "Thieves Guild"
+  with its own roster/roles/bank would (a) structurally duplicate the real Guild system this session
+  just spent real effort balancing, under a confusingly similar name, and (b) defeat the stated
+  purpose outright — a guild you join to avoid joining a guild isn't a solo path, it's just Guilds with
+  reskinned flavor text. The "outlaw" identity is delivered entirely through Mercenary Rank's `/rob`
+  buff and cosmetic titles, not a new social structure. Also explicitly out of scope for v1: Elite/
+  Legendary/T4/Metal-King-equivalent Bounty tiers (Bounties cap at Regular-mode T1-T3 difficulty only —
+  see the balance finding below for why going further isn't just "more content," it directly competes
+  with Guild Raids' own deeper tiers), a Bounty-side Guild Bank/interest equivalent, and a Bounty-side
+  Contract system (Quests already fill that "structured objective" role for solo players).
+
+  **Central balance finding, grounded in already-documented numbers (no new computation needed)**: a
+  naive "just run the guild raid formula with a 1-person roster, full reward, no split" design is a
+  dominant-strategy trap, not a balanced alternative — because Guild Raid rewards/penalties are the
+  *same flat base amounts regardless of roster size*, then split evenly (`raidFactory.js`'s
+  `handlePotatoSplit`) across whoever's in the live roster. Concretely, off numbers already in
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md): a guild-level-1 guild (1.00x
+  reward multiplier) with 4 active raiders winning a Regular T1 (100,000 base reward) nets each member
+  25,000 — a solo Bounty keeping the full base reward would net 4x that for identical per-person stat
+  investment. At guild level 3 (1.70x) with a 6-person roster winning T3 (5,000,000 base): total
+  reward 8,500,000, per-member ≈1,416,667 — a solo Bounty at the unscaled base would still net over
+  3.5x that. The headcount bonus (+3%/member, capped +50% at ~17 members) helps a guild's *success
+  chance*, but nowhere near enough to offset a `/rosterSize` division at any realistic guild size —
+  only a guild's own Level multiplier (which takes real cumulative roster wins to build, up to 12,000
+  for the 10x cap) closes that gap over the long run. Left unscaled, Bounties would rationally
+  out-earn cooperative guild raiding for any small-to-mid guild, undermining the entire point of the
+  Guild system's own reward design.
+
+  Recommended fix: apply an explicit `SOLO_BOUNTY_REWARD_SHARE` discount (illustratively ~0.35-0.5x
+  base reward, i.e. roughly centered on what a realistic 3-6 person active-raiding guild's own
+  per-member split already looks like at low-to-mid guild levels) to the *reward* side only — leave
+  the penalty side unscaled at the full T1/T2/T3 base, since a solo player also bears the full risk of
+  playing alone, the same way a guild's own penalty is shared exactly as its reward is. This keeps
+  Bounties clearly worse than a functioning guild's per-member EV (preserving the incentive to
+  actually cooperate) while staying clearly better than plain `/work` grinding at comparable risk (so
+  it isn't dead content either) — and Mercenary Rank's own capped reward multiplier (recommend capping
+  well below Guild Level's 10x ceiling, on the order of 1.5-2x at max rank) lets a committed solo
+  player close *some* of that gap over a long timeline without ever fully erasing it. The exact
+  discount factor and rank-multiplier cap need a real EV derivation (the same `node -e`-against-
+  `constants.js` methodology `balance-audit.md`'s raid-tuning entries already use) once an architect
+  picks this up — this entry identifies the mechanism and a rough target range, not a final number,
+  and this codebase has no tracked "average guild roster size" stat today to calibrate against
+  precisely, so the range above is a best current estimate, not a measured one.
+
+  **Open questions, with a recommendation on each:**
+  - *Guild-gated or open to everyone?* Recommend **open to everyone**, not gated on `guildId === 0` —
+    nothing else in this game is mutually exclusive (a guild member already freely stacks `/work`,
+    Companions, Tower, World Boss on top of guild content), and gating on guild status would need a
+    "you just left your guild, are you now eligible" edge case this game has no precedent for handling
+    cleanly. The reward-share discount above is what keeps this from being worth *switching out of* a
+    real guild for, not an eligibility gate.
+  - *Should Bounties eventually grow their own Elite/Legendary/T4-equivalent tiers, gated behind
+    Mercenary Rank the way Elite/Legendary are gated behind Guild Level?* Recommend **not for v1** —
+    ship T1-III only, revisit once the T1-III reward-share/rank-cap numbers are actually live and
+    measurable; adding deeper tiers before those are validated risks tuning the wrong axis twice.
+  - *Personal cooldown length — same 3600s as `guild.raidTimer`, or something else?* Recommend
+    **matching the raid timer exactly (3600s, no buff-driven reduction — Mercenary Rank doesn't grant
+    a cooldown perk)**, specifically so attempt *frequency* can't be the lever that makes solo
+    out-earn guild raiding even after the reward-share discount above; the discount already exists on
+    the per-attempt axis, doubling up on the frequency axis too would fight that discount's own
+    purpose.
+  - *Dedicated `/mercenary` command vs. a `/profile` field?* Recommend **`/profile` field only** for
+    v1, matching how Guild Level's own info lives inside `/guild` rather than a separate command —
+    revisit only if profile-page real estate becomes a real constraint.
+
+  Touches (once a direction is picked): `constants.js` (new `Bounty`/`Mercenary` blocks —
+  `SOLO_BOUNTY_REWARD_SHARE`, a Mercenary Rank threshold/multiplier curve mirroring
+  `RaidLevel.THRESHOLDS`'s shape, potato-punned rank titles), `getDefaultUserFields` (`bountyTimer`,
+  `mercenaryBountyWinCount`), `raidFactory.js` (extracting the shared success-chance/effective-power
+  math so Bounties reuse it instead of duplicating raid constants — a real refactor, not just new
+  code, since today that logic is written assuming a `guild`/roster object), two new commands
+  (`bounty-board`, `take-bounty`), `embedFactory.js` (bounty preview/result embeds, a `/profile`
+  Mercenary Rank field), `rob.js` (reading the new perk source alongside the existing companion/guild
+  ones), 2 new `Achievements` entries (`bounty_novice`/`bounty_legend`, mirroring
+  `raid_novice`/`raid_veteran`'s shape off `mercenaryBountyWinCount`).
+
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
   conversation first: what's actually "cosmetic" here — profile embed color/border, a title (which
   might just *be* the Achievements & Titles system above rather than a separate system), a Discord
