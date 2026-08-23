@@ -143,11 +143,18 @@ On a **loss** (regardless of which scenario currency was drawn — the penalty a
 denominates in potatoes, representing the physical risk of the attempt itself):
 
 ```
-penalty = round(Raid.T{n}_RAID_PENALTY * getRandomFromInterval(.8, 1.2))   // independent roll from the reward-side one
+penalty = round(Raid.T{n}_RAID_PENALTY * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE)   // independent roll from the reward-side one
 ```
 
-No `SOLO_BOUNTY_REWARD_SHARE`, no rank multiplier, no Yukon bonus on the loss side — full,
-unscaled risk.
+Scaled down 2026-08-23, direct instruction, after a live report of a 16k win vs. an 83k
+loss at the same tier — `Raid.T{n}_RAID_PENALTY` carries the exact same raw magnitude as
+`Raid.T{n}_RAID_REWARD` (e.g. Tier I is ±100,000), but only the reward side had ever been
+discounted by `SOLO_BOUNTY_REWARD_SHARE`. Now both sides share that discount, so a loss
+lands in roughly the same range as a Rank-1 potato win at that tier. Still deliberately NOT
+reduced further by `rankInfo.rewardMultiplier` or Yukon's `bountyRewardPercent` — those
+stay reward-side-only perks — so as a mercenary ranks up, wins keep growing while losses
+stay flat: the risk/reward ratio genuinely improves with progression instead of a loss
+always mirroring a win at a worse rate.
 
 ### Balance rationale (`SOLO_BOUNTY_REWARD_SHARE`)
 

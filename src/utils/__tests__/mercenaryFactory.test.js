@@ -188,7 +188,7 @@ describe('resolveBountyAttempt', () => {
         expect(result.rewardAmount).toBe(expected);
     });
 
-    test('a loss pays the full, unscaled penalty — no SOLO_BOUNTY_REWARD_SHARE/rank/Yukon discount applied', async () => {
+    test('a loss pays the SOLO_BOUNTY_REWARD_SHARE-discounted penalty — same discount as a win, but no rank/Yukon discount on top', async () => {
         const user = baseUser({ workMultiplierAmount: 0.1 }); // effectiveBountyPower far below T1 difficulty -> near-zero success chance
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999) // win check fails (successChance is tiny)
@@ -204,7 +204,7 @@ describe('resolveBountyAttempt', () => {
         expect(result.won).toBe(false);
         expect(result.currency).toBe('potato');
         expect(result.rewardAmount).toBe(0);
-        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Raid.T1_RAID_PENALTY) * 0.8));
+        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Raid.T1_RAID_PENALTY) * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE));
     });
 
     test('success chance is capped at Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE even for an extremely overpowered mercenary', async () => {

@@ -1410,6 +1410,22 @@ and needs its own balance pass.
   adds on top of `/rob-npc`'s base rank-scaled chance — no test existed for the old
   perk-bonus wiring at all. Full suite green (384/384).
 
+- [x] **37. Scale Down Bounty Losses to Match Wins** — S — **Done**
+  What: `resolveBountyAttempt`'s loss-side penalty formula now applies the same
+  `Bounty.SOLO_BOUNTY_REWARD_SHARE` discount the reward side already applies —
+  `penalty = round(Raid.T{n}_RAID_PENALTY * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE)`,
+  was previously undiscounted ("full, unscaled risk"). Still deliberately not reduced
+  further by `rankInfo.rewardMultiplier` or Yukon's `bountyRewardPercent` — those stay
+  reward-side-only, so the risk/reward ratio actually improves as a mercenary ranks up
+  rather than losses staying an always-worse mirror of wins.
+  Why: direct player report of a live 16k win vs. 83k loss at the same tier —
+  `Raid.T{n}_RAID_PENALTY` carries the exact same raw magnitude as `Raid.T{n}_RAID_REWARD`
+  (e.g. Tier I is ±100,000), but only the reward side had ever been discounted.
+  Notable: updated the one existing test that pinned the old undiscounted formula
+  (`mercenaryFactory.test.js`); `resolveRivalConfrontation`'s own, separate loss formula
+  (`rawBase * tierFactor * 0.5 * variance`) is untouched by this — it was never built off
+  `SOLO_BOUNTY_REWARD_SHARE` in the first place. Full suite green (411/411).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

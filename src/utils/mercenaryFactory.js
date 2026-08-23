@@ -138,9 +138,19 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
         result.statReward = rollBountyStatReward(tierLetter, userDetails);
         result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[tierLetter];
     } else {
-        // Independent roll from the reward-side one — full, unscaled risk, no
-        // SOLO_BOUNTY_REWARD_SHARE/rank multiplier/Yukon bonus on the loss side.
-        result.penaltyAmount = Math.round(Math.abs(penaltyBase) * getRandomFromInterval(.8, 1.2));
+        // Scaled down 2026-08-23, direct instruction, after a live report of a 16k win vs.
+        // an 83k loss at the same tier — that gap was the direct, intended consequence of
+        // this branch's OLD "full, unscaled risk" design (penaltyBase carries the SAME raw
+        // magnitude as rewardBase — e.g. Tier I is +/-100,000 — but only the reward side
+        // was ever discounted by SOLO_BOUNTY_REWARD_SHARE). Now applies that same discount
+        // to the loss too, so a loss lands in roughly the SAME range as a Rank-1 potato win
+        // at that tier (both ~ tierBase * 0.15 * [.8-1.2]) — still an independent roll, and
+        // still deliberately NOT reduced further by rankInfo.rewardMultiplier or Yukon's
+        // bountyRewardPercent (those stay reward-side-only perks), so as a mercenary ranks
+        // up, wins keep growing while losses stay flat — the risk/reward ratio genuinely
+        // improves with progression instead of losses just being an always-worse mirror of
+        // gains.
+        result.penaltyAmount = Math.round(Math.abs(penaltyBase) * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE);
     }
 
     return result;
