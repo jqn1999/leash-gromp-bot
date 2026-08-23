@@ -1357,6 +1357,24 @@ and needs its own balance pass.
   describe block asserts against the `RobNpc.*` constants themselves, not hardcoded
   percentages, so it re-validated the new curve automatically. Full suite green (377/377).
 
+- [x] **34. Fix Poison Potato Embed Crash (undeclared `hitContext`)** — S — **Done**
+  What: `embedFactory.createPoisonPotatoEmbed`'s non-immune branch (i.e. anyone without an
+  equipped Guinea Pig) referenced an undeclared `hitContext` variable — never assigned
+  anywhere in the function — throwing a `ReferenceError`. `work.js`'s Poison Potato
+  scenario calls `workFactory.handlePoisonPotato` (which persists the potato loss and the
+  new `poisonMitigation` weekly-hit state to the DB) **before** building this embed, so the
+  DB write already went through by the time the embed crashed — every affected player
+  silently ate a real potato loss/cooldown lockout and never saw the result (surfacing as
+  `handleCommands.js`'s generic fallback error message, or a "thinking..." hang before item
+  32's fix). Fixed by actually declaring `hitContext`, mirroring the immune branch's own
+  `escalationContext` pattern — shows `hit #N this week` and, once repeat hits start
+  softening (`PoisonMitigation.REDUCTION_PER_HIT`), `— X% softer`.
+  Why: player report ("something seems wrong with poison potato displaying").
+  Notable: `embedFactory.js` had **zero** test coverage before this — the same "untested
+  path let a `ReferenceError`-on-the-common-path ship silently" lesson as items 29 and 32.
+  Added `src/utils/__tests__/embedFactory.test.js` (3 tests) covering the non-immune,
+  first-hit, and immune (Guinea Pig) branches. Full suite green (380/380, up from 377).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

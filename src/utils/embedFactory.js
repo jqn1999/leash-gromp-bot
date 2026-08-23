@@ -1151,6 +1151,9 @@ class EmbedFactory {
                     inline: true,
                 });
             } else {
+                const hitContext = reduction > 0
+                    ? `hit #${hitNumberThisWeek} this week — ${(reduction * 100).toFixed(0)}% softer`
+                    : `hit #${hitNumberThisWeek} this week`;
                 fields.push({
                     name: `Cooldown:`,
                     value: `${convertSecondstoMinutes(lockoutSeconds)} lockout (${hitContext})`,
