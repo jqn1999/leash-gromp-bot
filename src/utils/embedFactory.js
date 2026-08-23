@@ -1159,7 +1159,7 @@ class EmbedFactory {
     // the consolation potato payout instead, same "Gained" framing as every other
     // potato-reward encounter.
     createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null) {
-        const { isNew, companion, potatoesGained } = result;
+        const { isNew, companion, potatoesGained, workCountBefore, workCountAfter } = result;
         let fields = [{
             name: `Work Count:`,
             value: `${newWorkCount.toLocaleString()}`,
@@ -1180,7 +1180,19 @@ class EmbedFactory {
                 value: `${potatoesGained.toLocaleString()} potatoes`,
                 inline: true,
             });
-            description = `${companion.description}\n\nYou already have a ${companion.name} — it hands over a consolation bag of potatoes instead.`;
+            // The duplicate's own workCount also bumps (see workFactory.js's
+            // handleCompanionEncounter) — surfaced explicitly since "consolation bag of
+            // potatoes" used to read as the *only* thing a duplicate pull did.
+            const levelBefore = companionFactory.getCompanionLevel(workCountBefore);
+            const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
+            fields.push({
+                name: `${companion.name} Progress:`,
+                value: levelAfter > levelBefore
+                    ? `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})\nLv. ${levelBefore} → Lv. ${levelAfter}! 🎉`
+                    : `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})`,
+                inline: true,
+            });
+            description = `${companion.description}\n\nYou already have a ${companion.name} — it gains experience from the encounter and hands over a consolation bag of potatoes too.`;
         }
 
         if (cooldownSkippedByCompanion) {

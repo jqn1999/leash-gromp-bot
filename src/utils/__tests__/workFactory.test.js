@@ -396,6 +396,41 @@ describe('handleTaroTrader', () => {
     });
 });
 
+// Regression coverage for a real bug: a duplicate companion pull already bumps the
+// companion's own workCount (applyCompanionAward's !isNew branch), on top of the potato
+// consolation prize — but handleCompanionEncounter's return value used to only carry
+// `potatoesGained`, so the /work embed had no way to show that gain and its own copy said
+// the potatoes came "instead" of anything else. workCountBefore/workCountAfter now surface
+// that so the embed (createCompanionEncounterEmbed) can show it truthfully.
+describe('handleCompanionEncounter (duplicate pull)', () => {
+    test('reports both the potato payout and the companion\'s own workCount gain', async () => {
+        const userDetails = baseUser({
+            workMultiplierAmount: 2,
+            companions: { owned: [{ id: 'sprout', workCount: 5 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
+        });
+        const result = await workFactory.handleCompanionEncounter(userDetails, 1000, 1, 0, 'sprout');
+
+        expect(result.isNew).toBe(false);
+        expect(result.potatoesGained).toBeGreaterThan(0);
+        expect(result.workCountBefore).toBe(5);
+        expect(result.workCountAfter).toBeGreaterThan(result.workCountBefore);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.companions.owned[0].workCount).toBe(result.workCountAfter);
+    });
+
+    test('a brand-new companion is granted with no potato payout, and no workCount gain reported', async () => {
+        const userDetails = baseUser({
+            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: null },
+        });
+        const result = await workFactory.handleCompanionEncounter(userDetails, 1000, 1, 0, 'sprout');
+
+        expect(result.isNew).toBe(true);
+        expect(result.potatoesGained).toBe(0);
+        expect(result.workCountBefore).toBeUndefined();
+    });
+});
+
 // Regression coverage for the guild-facing Ancient Potato scenario (see
 // systems/economy-and-work.md): resets the guild's raid cooldown to ready-now, and
 // separately grants the roller a free regrade step on whichever track isn't maxed —

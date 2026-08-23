@@ -34,7 +34,14 @@ integer-key reordering trap; `Object.keys` already preserves ascending threshold
   server-wealth-aware way every other `/work` reward is (`CompanionDuplicateReward[rarity]` as the
   `maxGain` cap fed into `workFactory`'s existing `calculateGainAmount`) — *and* bumps that specific
   companion's `workCount` by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`, regardless of whether
-  it's currently equipped or benched (see Leveling below).
+  it's currently equipped or benched (see Leveling below). This has always been true mechanically,
+  but the `/work` reply embed didn't say so until a player reported it as "getting potatoes instead
+  of experience" — `handleCompanionEncounter` only ever returned `potatoesGained`, and
+  `createCompanionEncounterEmbed`'s copy literally said "instead". Fixed by having
+  `handleCompanionEncounter` also return `workCountBefore`/`workCountAfter` for the duplicate, and
+  the embed now shows a `<Companion> Progress:` field (before → after, plus a level-up callout) the
+  same way `createScavengeReturnEmbed` already does, with the description reworded to "gains
+  experience from the encounter **and** hands over a consolation bag of potatoes too."
 
 Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,

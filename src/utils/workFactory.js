@@ -226,7 +226,14 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return { isNew: false, companion, potatoesGained };
+        // applyCompanionAward already bumps the duplicate's own workCount by
+        // CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS (it's not just a potato
+        // consolation prize) — surfaced here so the embed can actually show it instead of
+        // silently applying it. See systems/companions.md for why this was invisible before.
+        const workCountBefore = userDetails.companions.owned.find(c => c.id === companion.id)?.workCount || 0;
+        const workCountAfter = companions.owned.find(c => c.id === companion.id)?.workCount || 0;
+
+        return { isNew: false, companion, potatoesGained, workCountBefore, workCountAfter };
     }
 
     async handleTaroTrader(userDetails, catchUpBonus = 0) {

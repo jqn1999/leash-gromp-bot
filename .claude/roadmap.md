@@ -1125,6 +1125,29 @@ and needs its own balance pass.
   outright. Regression-tested in `companionFactory.test.js`: `applyCompanionAward` now asserts
   an in-progress `scavenging` record survives a new-companion award unchanged.
 
+- [x] **25. Duplicate Companion Encounter: Show the XP Gain, Not Just Potatoes** — S — **Done**
+  What: a duplicate companion pull from `/work` has always bumped that companion's own
+  `workCount` by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (see #19 above and Obtaining a
+  companion in `systems/companions.md`) *in addition to* the potato consolation prize — but
+  `workFactory.js`'s `handleCompanionEncounter` only ever returned `potatoesGained` from that
+  branch, and `embedFactory.js`'s `createCompanionEncounterEmbed` copy literally said the
+  potatoes came "instead" of anything else. `handleCompanionEncounter` now also returns
+  `workCountBefore`/`workCountAfter` for a duplicate pull, and the embed shows a
+  `<Companion> Progress:` field (before → after, with a level-up callout), same shape
+  `createScavengeReturnEmbed` already uses for scavenging returns. Description reworded from
+  "...hands over a consolation bag of potatoes instead" to "...gains experience from the
+  encounter and hands over a consolation bag of potatoes too."
+  Why: player-reported confusion — "found a companion they already had and got potatoes, I
+  thought we changed it to give experience for the companion." The mechanic was never broken;
+  the display was. A player watching only the `/work` reply had no way to see the XP gain was
+  actually happening, so from their side it looked exactly like a straight potatoes-only
+  reward.
+  Notable: no data-model or write-path change at all — `applyCompanionAward`'s duplicate branch
+  (`{ ...companions, owned }`) was already correct, same branch confirmed safe in the #24
+  investigation right above. This was purely "the return value didn't carry information the
+  write already had." Covered by 2 new tests in `workFactory.test.js`'s new
+  `handleCompanionEncounter (duplicate pull)` describe block (314 total suite-wide).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
