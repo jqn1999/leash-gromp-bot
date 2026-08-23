@@ -1316,6 +1316,33 @@ and needs its own balance pass.
   the real `guild.guildId` and that `guildMercenarySwitchTimer`/`guildId` are written in one
   call. Full suite green (369/369) before push.
 
+- [x] **32. Fix Six Guild Commands Stuck on "Thinking..." (undeclared `userGuildId`) +
+  Global Error-Reply Fallback** — S — **Done**
+  What: a player reported `/guild-bank` hanging on Discord's "thinking..." state forever.
+  Investigation found the exact same undeclared-`userGuildId`-variable bug fixed in
+  `/leave` (item 31) also existed, independently, in **five more** guild-management
+  commands — `guild-bank` (both deposit and withdraw), `kick`, `promote`,
+  `pass-leadership`, `demote`, and `guild-upgrade` (both shop branches) — each throwing a
+  `ReferenceError` on its own main success path. All six fixed to use the already-in-scope
+  `guild.guildId`, the exact same fix as `/leave`.
+  Root cause of the *hang* specifically (not just the throw): `handleCommands.js`'s
+  top-level try/catch around every command's `callback()` only `console.log`s an uncaught
+  error — it never replies. Since every one of these commands calls `deferReply()` before
+  the crash, Discord is left waiting on an `editReply` that never comes. Fixed the catch
+  block itself to send a generic "something went wrong, try again" reply (or edit, if
+  already deferred) as a fallback, wrapped in its own try/catch so a secondary failure here
+  can't throw again — this doesn't just fix this one bug, it means *any* future uncaught
+  command error fails loud with a user-facing message instead of hanging silently.
+  Why: direct player report ("guild bank command then bot just gets stuck on thinking").
+  Notable: no test file existed for any of these six commands before this — added
+  `guildIdReferenceErrorFixes.test.js` (8 tests) asserting each command's guarded write
+  targets the real `guild.guildId`, not `undefined`, which is exactly the class of bug that
+  went undetected the first time (same lesson as item 29's `MAX_LARGE_POTATO` — an
+  untested path let a `ReferenceError`-on-main-success-path ship silently). Full suite
+  green (377/377, up from 369) before push. The `handleCommands.js` fallback-reply change
+  is a defensive addition beyond the literal bug report, scoped narrowly to "reply instead
+  of silently hanging" — it does not change any command's actual error-handling logic.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

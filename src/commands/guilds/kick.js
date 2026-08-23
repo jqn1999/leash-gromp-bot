@@ -68,7 +68,7 @@ module.exports = {
         const targetUserDetails = await dynamoHandler.findUser(targetUser, targetMember.username);
         await guildContractFactory.freezeDepartureContribution(guild, targetUser, targetUserDetails);
 
-        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList: newMemberList });
+        const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { memberList: newMemberList });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this kick. Please try again!`);
             return;

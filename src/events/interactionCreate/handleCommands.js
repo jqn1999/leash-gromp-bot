@@ -162,5 +162,19 @@ module.exports = async (client, interaction) => {
         await notifyAchievements(interaction, userDisplayName);
     } catch (e) {
         console.log(`There was an error running this command ${e}`)
+        // Without this, any uncaught error in a command's callback (a bug like a
+        // ReferenceError, a rejected promise, etc.) leaves the interaction stuck on
+        // Discord's "thinking..." state indefinitely, since deferReply() already fired but
+        // nothing ever calls editReply. Best-effort — swallow secondary failures here too.
+        const errorMessage = { content: 'Something went wrong running that command. Please try again, and let an admin know if it keeps happening!', ephemeral: true };
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply(errorMessage);
+            } else {
+                await interaction.reply(errorMessage);
+            }
+        } catch (replyError) {
+            console.log(`Failed to notify user of command error: ${replyError}`);
+        }
     }
 };

@@ -28,6 +28,12 @@ for why this was previously missing and how it was fixed.
 | [passLeadership.js](../../src/commands/guilds/passLeadership.js) | current Leader | Transfers `Leader` to a target member, downgrades self to `Member`. Can't target self |
 | [disbandGuild.js](../../src/commands/guilds/disbandGuild.js) | Leader | Disbands the guild — clears `memberList` to `[]` but leaves the guild record itself in place ("in case it's needed again"), so a disbanded guild can still be looked up by name/ID with zero members and no Leader. `createGuildEmbed` renders `Leader: Unknown` for that case instead of crashing |
 
+`kick.js`, `promote.js`, `passLeadership.js`, `demote.js`, and `guildBank.js`/`guildBuy.js`
+(bank deposit/withdraw and both shop tiers) each used to reference an undeclared
+`userGuildId` variable on their guarded write, throwing a `ReferenceError` and leaving the
+interaction stuck on Discord's "thinking..." state — fixed to `guild.guildId`, see
+roadmap.md item 32.
+
 **Guild names must be unique, case-insensitively.** `create-new-guild` checks
 `findGuildByName` (which already matches on the stored `guildNameLowercase`) before creating,
 and rejects with the existing guild's name if one's already taken — otherwise the second guild

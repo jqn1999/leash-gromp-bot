@@ -111,7 +111,7 @@ module.exports = {
             const adminUserShare = totalAmount - netAmount;
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
+            await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
 
             const embed = embedFactory.createGuildBankEmbed(userDisplayName, userId, userAvatar, guild.guildName, 'deposit', netAmount, adminUserShare, userPotatoes, guildBankStored, guildBankCapacity);
             interaction.editReply({ embeds: [embed] });
@@ -153,7 +153,7 @@ module.exports = {
             userPotatoes += netAmount;
             guildBankStored -= netAmount;
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
-            await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
+            await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
 
             const embed = embedFactory.createGuildBankEmbed(userDisplayName, userId, userAvatar, guild.guildName, 'withdraw', netAmount, 0, userPotatoes, guildBankStored, guildBankCapacity);
             interaction.editReply({ embeds: [embed] });

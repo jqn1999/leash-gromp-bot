@@ -197,8 +197,8 @@ module.exports = {
                     // Bonus re-added on top of the shop's flat tier value so it survives
                     // this purchase instead of being overwritten by it.
                     const newBankCapacity = chosenItem.amount + guildBankCapacityBonus;
-                    await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
-                    await dynamoHandler.updateGuildDatabase(userGuildId, "bankCapacity", newBankCapacity);
+                    await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
+                    await dynamoHandler.updateGuildDatabase(guild.guildId, "bankCapacity", newBankCapacity);
                     interaction.editReply(`${userDisplayName} your guild bank upgrade has completed and you now have a max guild bank capacity of ${newBankCapacity.toLocaleString()}`);
                 }
                 break;
@@ -213,8 +213,8 @@ module.exports = {
                 if (guildHasEnough) {
                     guildBankStored -= chosenItem.cost;
                     const newMemberCap = chosenItem.amount;
-                    await dynamoHandler.updateGuildDatabase(userGuildId, 'bankStored', guildBankStored);
-                    await dynamoHandler.updateGuildDatabase(userGuildId, "memberCap", newMemberCap);
+                    await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
+                    await dynamoHandler.updateGuildDatabase(guild.guildId, "memberCap", newMemberCap);
                     interaction.editReply(`${userDisplayName} your guild's member cap has been upgraded to ${newMemberCap} members!`);
                 }
                 break;

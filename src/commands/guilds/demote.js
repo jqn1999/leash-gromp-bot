@@ -76,7 +76,7 @@ module.exports = {
                 user.role = role;
             }
         })
-        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList });
+        const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { memberList });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this demotion. Please try again!`);
             return;
