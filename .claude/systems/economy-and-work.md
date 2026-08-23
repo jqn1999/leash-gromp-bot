@@ -49,6 +49,16 @@ was there before but with the bot id instead."
 | Taro | .081–.101 | `handleTaroTrader` | No potatoes — grants **starches** instead |
 | Regular | remainder | `handleRegularWork` | Formula uncapped multiplier, capped `Work.MAX_BASE_WORK_GAIN(1000)`; flavor mob from `regularWorkMobs` is cosmetic only |
 
+**`Work.MAX_LARGE_POTATO` briefly didn't exist (2026-08-22 evening–2026-08-23).** An edit adding
+`ANCIENT_POTATO_PAYOUT_CHANCE` to the `Work` object in `constants.js` replaced the
+`MAX_LARGE_POTATO: 10000` line instead of inserting alongside it. `calculateGainAmount`'s cap check
+(`maxGain < currentGain ? maxGain : currentGain`) silently falls through to fully uncapped when
+`maxGain` is `undefined` (`undefined < currentGain` is always `false`), so every Large Potato roll
+in that window paid out uncapped — caught by a live player report (a 5x-multiplier player getting
+286k from a single roll) rather than by the test suite, since no test exercised this cap at all
+before this incident. Restored to the exact original value; regression-tested in
+`workFactory.test.js`'s new `handleLargePotato` describe block.
+
 ### Poison Potato mitigation (bad-luck protection)
 
 Player feedback: Poison Potato felt too punishing — mainly the lockout (a full **hour**, replacing

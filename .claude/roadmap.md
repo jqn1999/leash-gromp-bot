@@ -1238,6 +1238,32 @@ and needs its own balance pass.
   `scavengeReturnsByRarity` schema default (companions objects predating this feature now heal one
   more sub-key). 330 tests suite-wide.
 
+- [x] **29. Restore Accidentally-Deleted `Work.MAX_LARGE_POTATO`** — S — **Done**
+  What: `Work.MAX_LARGE_POTATO: 10000` was silently deleted from `constants.js` in commit
+  `f97f427` (this session, "Add a chance for Ancient Potato to grant potatoes instead of a
+  stat bump") — an edit replaced that line with the new `ANCIENT_POTATO_PAYOUT_CHANCE`
+  constant instead of inserting it alongside. `workFactory.js`'s `handleLargePotato` kept
+  referencing `Work.MAX_LARGE_POTATO` the whole time; with the constant gone,
+  `calculateGainAmount`'s cap check (`maxGain < currentGain ? maxGain : currentGain`)
+  silently fell through to fully uncapped on every roll, since `undefined < currentGain` is
+  always `false` in JS. Restored to the exact original value (`10000` — 10% of
+  `MAX_METAL_POTATO`'s 100,000, matching Large's ×10 vs. Metal's ×20 payout-coefficient
+  ratio). Added `handleLargePotato` regression tests to `workFactory.test.js` (this
+  scenario had zero test coverage before, which is exactly how the deletion went
+  unnoticed) — 332 tests suite-wide.
+  Why: player-reported bug — "why did a large potato just give a player with 5x multi
+  286k?" Traced via `git log -S`/`git show` on `constants.js`, not guesswork: the exact
+  commit and diff line that deleted the constant were identified directly. This wasn't a
+  one-off fluke roll — every Large Potato win between that commit landing and this fix
+  was uncapped, growing worse as server-wealth-scaled `workGainAmount` climbs, with no
+  ceiling at all (unlike every sibling scenario, which all still had their own caps
+  intact).
+  Notable: caught same-day by a live player, not by the test suite — a reminder that a
+  new numeric constant added alongside existing ones in the same object needs its own
+  care that the edit actually inserts rather than silently replaces a neighboring line,
+  especially in a large flat constants object with no schema/type checking to catch a
+  now-undefined reference at edit time.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

@@ -43,6 +43,17 @@ const Work = {
     // instruction. Applies uniformly to both stat-bump branches (one roll, checked once,
     // before either branch is picked — see handleAncientPotato).
     ANCIENT_POTATO_PAYOUT_CHANCE: 0.25,
+    // Restored 2026-08-23 — accidentally deleted in the commit right above this one
+    // (f97f427, adding ANCIENT_POTATO_PAYOUT_CHANCE) when an edit replaced this line
+    // instead of inserting alongside it. workFactory.js's handleLargePotato has referenced
+    // Work.MAX_LARGE_POTATO the whole time; with the constant gone, calculateGainAmount's
+    // cap check (`maxGain < currentGain ? maxGain : currentGain`) silently fell through to
+    // uncapped every time (`undefined < currentGain` is always false), so Large Potato paid
+    // out fully uncapped for every roll between those two commits — flagged after a live
+    // report of a 5x-multiplier player getting 286k from one. Same value it always had —
+    // 10,000 keeps the same 10%-of-Metal's-cap ratio as the ×10-vs-×20 payout coefficient
+    // gap between the two scenarios.
+    MAX_LARGE_POTATO: 10000,
     MAX_METAL_POTATO: 100000,
     MAX_POISON_POTATO: 10000,
     // Only paid out to a fully-regraded player (nothing left to grant a free regrade

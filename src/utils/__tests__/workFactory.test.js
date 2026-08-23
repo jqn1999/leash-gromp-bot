@@ -418,6 +418,33 @@ describe('live rebirth bonus (via handleRegularWork)', () => {
     });
 });
 
+// Regression coverage for a real bug: Work.MAX_LARGE_POTATO was accidentally deleted from
+// constants.js in the same commit that added ANCIENT_POTATO_PAYOUT_CHANCE (an edit replaced
+// the line instead of inserting alongside it). With the constant gone, calculateGainAmount's
+// cap check (`maxGain < currentGain ? maxGain : currentGain`) silently fell through to
+// uncapped on every roll (`undefined < currentGain` is always false) — Large Potato paid out
+// fully uncapped, unlike every sibling scenario, until a live report (a 5x-multiplier player
+// getting 286k from one roll) caught it. No test previously exercised this cap at all, which
+// is exactly how the deletion went unnoticed.
+describe('handleLargePotato', () => {
+    test('caps the payout at MAX_LARGE_POTATO instead of scaling unbounded with workGainAmount', async () => {
+        const userDetails = baseUser({ workMultiplierAmount: 10 });
+        // currentGain = 5000*10 = 50000, well past MAX_LARGE_POTATO (10000) — uncapped this
+        // would be floor(50000 * 1 * 10 * .95) = 475000.
+        const gained = await workFactory.handleLargePotato(userDetails, 5000, 1, 0);
+        const expectedCapped = Math.floor(Work.MAX_LARGE_POTATO * 1 * 10 * .95);
+        expect(gained).toBe(expectedCapped);
+        expect(gained).toBeLessThan(475000);
+    });
+
+    test('a workGainAmount under the cap is unaffected by it', async () => {
+        const userDetails = baseUser({ workMultiplierAmount: 1 });
+        // currentGain = 100*10 = 1000, well under MAX_LARGE_POTATO (10000) — cap never kicks in.
+        const gained = await workFactory.handleLargePotato(userDetails, 100, 1, 0);
+        expect(gained).toBe(Math.floor(1000 * 1 * 1 * .95));
+    });
+});
+
 describe('handleTaroTrader', () => {
     test('grants starches, not potatoes', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 2 });
