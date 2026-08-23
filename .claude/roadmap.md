@@ -1060,6 +1060,31 @@ and needs its own balance pass.
   `starchFactory.test.js` asserting every pattern produces exactly 5/6/7 prices on request (293/293
   tests passing).
 
+- [x] **23. Shop/Buy UX: Show Current Tier + Cost Preview** — S — **Done**
+  What: `/shop` now shows the caller's own tier progress instead of a flat price list —
+  every item in the paginated listing gets a ✅ owned / ➡️ next up / 🔒 locked marker, and the
+  embed description always calls out the actual next purchase (name, cost, and whether the
+  caller can currently afford it) even when it's not on the visible page. `/buy` no longer
+  purchases immediately — it now shows a preview embed (cost, current potato balance, and the
+  stat's before → after value) with Confirm/Cancel buttons, same 30s confirm-flow shape as
+  `/rebirth`, and re-fetches the user right after Confirm to re-verify the chosen tier and
+  balance are still current before actually spending anything.
+  New `src/utils/shopFactory.js` centralizes the tier/status logic both commands need
+  (`SHOP_ID_BY_SELECT`, `getUserBaseShopValue`, `getNextItemFromShop`, `getShopTierStatus`,
+  `formatShopValue`) — previously `buy.js` had its own private copy of the base-value/
+  next-item lookup and `shop.js` had no notion of a logged-in user at all. Covered by a new
+  `shopFactory.test.js` (14 tests); `buy.js`/`shop.js` themselves stay untested, matching this
+  codebase's existing convention of testing the factory module behind a confirm-flow command
+  rather than the command's Discord glue (e.g. `rebirthFactory.js` has tests, `rebirth.js`
+  doesn't).
+  Why: direct instruction — players had to open `/shop` to see prices without any indication
+  of which tier they were actually on, then separately run `/buy` and only find out the cost
+  (or that they couldn't afford it) after the purchase had already gone through or failed.
+  Notable: `buy.js`'s two sequential `updateUserDatabase` calls (potatoes, then the stat field)
+  were also collapsed into one `updateUserFields` batched write on the actual purchase path,
+  matching the single-write pattern `rebirth.js`/`regrade.js` already use instead of writing
+  the account in two separate round trips.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands");
+const { buildPaginationRow, runPaginatedReply, getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
 const { shops } = require("../../utils/constants");
+const { SHOP_ID_BY_SELECT, getUserBaseShopValue } = require("../../utils/shopFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -47,26 +48,19 @@ module.exports = {
     deleted: false,
     callback: async (client, interaction) => {
         let shopSelect = interaction.options.get('shop-select')?.value;
-        let shopDetails;
-        switch (shopSelect) {
-            case 'work-shop':
-                shopDetails = shops.find((currentShop) => currentShop.shopId == 'workShop');
-                break;
-            case 'passive-income-shop':
-                shopDetails = shops.find((currentShop) => currentShop.shopId == 'passiveIncomeShop');
-                break;
-            case 'bank-shop':
-                shopDetails = shops.find((currentShop) => currentShop.shopId == 'bankShop');
-                break;
-            case 'starch-shop':
-                shopDetails = shops.find((currentShop) => currentShop.shopId == 'starchShop');
-                break;
-        }
+        const shopId = SHOP_ID_BY_SELECT[shopSelect];
+        const shopDetails = shops.find((currentShop) => currentShop.shopId == shopId);
 
         await interaction.deferReply({ ephemeral: true });
 
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        if (!userDetails) return;
+
+        const progress = { shopId, baseValue: getUserBaseShopValue(userDetails, shopId), potatoes: userDetails.potatoes };
+
         const pages = chunkArray(shopDetails.items, PAGE_SIZE);
-        const renderPage = (pageIndex) => embedFactory.createShopPageEmbed(shopDetails, pages[pageIndex], pageIndex, pages.length);
+        const renderPage = (pageIndex) => embedFactory.createShopPageEmbed(shopDetails, pages[pageIndex], pageIndex, pages.length, progress);
 
         const embed = renderPage(0);
         const components = pages.length > 1 ? [buildPaginationRow('shop', 0, pages.length)] : [];

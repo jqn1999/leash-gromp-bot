@@ -268,7 +268,21 @@ upgrades to.
 
 [buy.js](../../src/commands/buying/buy.js) matches a user's current **base** stat (raw stat minus
 `sweetPotatoBuffs` minus `regrades.<stat>.regradeAmount`) against each item's `currentAmount` to
-find the next purchasable tier — buffs/regrades don't let you skip shop tiers early.
+find the next purchasable tier — buffs/regrades don't let you skip shop tiers early. This base-value
+lookup (`getUserBaseShopValue`/`getNextItemFromShop`) lives in
+[shopFactory.js](../../src/utils/shopFactory.js), shared by both `/buy` and `/shop` so they always
+agree on where a player actually stands.
+
+`/buy` shows a cost + before/after preview with Confirm/Cancel buttons before spending anything
+(same shape as `/rebirth`'s confirm flow below), and re-checks the chosen tier and potato balance
+against a **fresh** fetch right after Confirm is clicked — a purchase started stale (another
+purchase or a Sweet Potato encounter landed during the 30s confirm window) is caught and the player
+is told to re-run `/buy` rather than silently buying the wrong tier or going negative. `/shop`'s
+per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's own
+progress, and its description calls out the actual next purchase (cost + whether they can currently
+afford it) regardless of which page it's actually on — before this, `/shop` was a static price list
+with no notion of where the viewer stood, and `/buy` only revealed cost/success-or-failure after
+already executing the purchase.
 
 ## Regrade (gacha enhancement)
 

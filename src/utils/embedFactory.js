@@ -7,6 +7,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
+const shopFactory = require("../utils/shopFactory");
 const eventFactory = new EventFactory();
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
@@ -448,22 +449,77 @@ class EmbedFactory {
 
     // Paginated exactly like createAchievementsPageEmbed/createQuestsPageEmbed — shop
     // item lists (up to 10 entries) made for a very long single embed otherwise.
-    createShopPageEmbed(shopDetails, pageItems, pageIndex, totalPages) {
+    // `progress`, when passed, is { shopId, baseValue, potatoes } — the user's own tier
+    // progress in this shop. Without it (no logged-in user context available) the embed
+    // falls back to the old plain listing. With it, every item gets a ✅/➡️/🔒 marker (owned /
+    // buyable next / needs earlier tiers first) so a player can tell where they stand without
+    // cross-referencing /buy separately, and the description calls out the actual next
+    // purchase (which may not even be on the current page) plus whether they can afford it.
+    createShopPageEmbed(shopDetails, pageItems, pageIndex, totalPages, progress = null) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
-        const shopList = pageItems.map(element => ({
-            name: `${element.id}) ${element.name} (${element.amount.toLocaleString()})`,
-            value: `${element.description}\nId: ${element.id} | Cost: ${element.cost.toLocaleString()}`,
-            inline: false,
-        }));
+
+        let numericBaseValue, nextItem;
+        if (progress) {
+            numericBaseValue = Number(progress.baseValue);
+            nextItem = shopFactory.getNextItemFromShop(shopDetails, progress.baseValue);
+        }
+
+        const shopList = pageItems.map(element => {
+            let marker = '';
+            if (progress) {
+                const status = shopFactory.getShopTierStatus(element, numericBaseValue);
+                marker = status === shopFactory.SHOP_TIER_STATUS.OWNED ? '✅ '
+                    : status === shopFactory.SHOP_TIER_STATUS.NEXT ? '➡️ '
+                    : '🔒 ';
+            }
+            return {
+                name: `${marker}${element.id}) ${element.name} (${element.amount.toLocaleString()})`,
+                value: `${element.description}\nId: ${element.id} | Cost: ${element.cost.toLocaleString()}`,
+                inline: false,
+            };
+        });
+
+        let description = `${shopDetails.description}`;
+        if (progress) {
+            description += `\nYour current tier: ${shopFactory.formatShopValue(progress.shopId, progress.baseValue)}`;
+            if (nextItem === -1) {
+                description += `\n✅ Fully maxed out!`;
+            } else {
+                const afford = progress.potatoes >= nextItem.cost ? '✅ you can afford this' : `❌ need ${(nextItem.cost - progress.potatoes).toLocaleString()} more`;
+                description += `\n➡️ Next up: **${nextItem.name}** — ${nextItem.cost.toLocaleString()} potatoes (${afford})`;
+            }
+        }
+        description += `\nPage ${pageIndex + 1} / ${totalPages}`;
 
         const embed = new EmbedBuilder()
             .setTitle(`${shopDetails.title}`)
-            .setDescription(`${shopDetails.description}\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setDescription(description)
             .setColor("Orange")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(shopList)
+        return embed;
+    }
+
+    // The pre-purchase confirmation /buy now shows before spending anything — cost, what the
+    // stat becomes after, and whether the user can currently afford it, mirroring the
+    // preview-then-confirm shape createRebirthPreviewEmbed already established.
+    createBuyPreviewEmbed(shopDetails, item, shopId, baseValue, potatoes) {
+        const newBaseValue = item.amount;
+        const canAfford = potatoes >= item.cost;
+        const embed = new EmbedBuilder()
+            .setTitle(`Buy: ${item.name}`)
+            .setDescription(item.description)
+            .setColor(canAfford ? "Orange" : "Red")
+            .addFields(
+                { name: 'Shop', value: shopDetails.title, inline: false },
+                { name: 'Cost', value: `${item.cost.toLocaleString()} potatoes`, inline: true },
+                { name: 'You have', value: `${potatoes.toLocaleString()} potatoes`, inline: true },
+                { name: 'Effect', value: `${shopFactory.formatShopValue(shopId, baseValue)} → ${shopFactory.formatShopValue(shopId, newBaseValue)}`, inline: false },
+            )
+            .setFooter({ text: canAfford ? "Made by Beggar" : "You don't have enough potatoes for this yet — Confirm will re-check and stop you from buying." })
+            .setTimestamp(Date.now())
         return embed;
     }
 
