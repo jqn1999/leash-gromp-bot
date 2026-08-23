@@ -1314,52 +1314,200 @@ and needs its own balance pass.
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
 
-- [ ] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — M/L — needs a real balance pass,
-  same shape Guild Raids' own tuning history needed, before it can be scoped.
+- [ ] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — L — needs a real balance pass, same
+  shape Guild Raids' own tuning history needed, before it can be scoped. **Revised 2026-08-23** per
+  direct feedback — six concrete additions layered onto the original direction below (Rank-gated
+  tiers, flavor-text scenario tables, per-scenario currency, a rare stat-reward tier, an NPC-rob
+  command replacing the original `/rob`-buff idea, and a Mercenary-exclusive companion). What still
+  holds from the original pass: the unified-track direction (one system, not three), killing the
+  literal "join a Thieves Guild" idea, and the reward-sharing dominant-strategy finding below.
 
-  What: a personal, guild-independent alternative to Guild Raids — `/bounty-board` (read-only preview,
-  mirrors `/current-raid`) shows the caller's own Bounty tier options (I/II/III, mapped 1:1 to
-  Regular-mode Guild Raid's T1/T2/T3 difficulty/reward/penalty — see
-  [systems/raids-and-world-events.md](systems/raids-and-world-events.md)) with a live success-chance/
-  reward/penalty preview computed off the caller's own solo `effectiveRaidPower`
-  (`workMultiplierAmount * (1 + liveRebirthPercent)`, the exact same formula `raidFactory.js`'s
-  `getMemberRaidPower` already uses — no new stat-power formula needed, this is a 1-person roster run
-  through the same math, headcount bonus zeroed out since there's no roster) and the caller's personal
-  Bounty cooldown. `/take-bounty tier:<I|II|III>` resolves immediately, same no-confirm precedent
-  `/start-raid` already sets, on a personal cooldown (`userDetails.bountyTimer`, same shape as
-  `guild.raidTimer`). Wins accumulate `mercenaryBountyWinCount` (mirrors `guildRaidWinCount`), which
-  drives a **live-computed, capped** Mercenary Rank — a personal echo of Guild Level's
-  `getRaidLevelInfo` curve, never a stored/added value, for the same reason Guild Level itself is
-  computed live off `raidCount` rather than a second write path (see
-  [systems/guilds.md](systems/guilds.md#guild-level)). Rank grants two things, both capped and both
-  reusing an existing perk *type* rather than inventing a new one: (1) a personal reward multiplier on
-  Bounty wins only (same "only the winning side scales" rule Guild Level's own multiplier follows —
-  penalties untouched), and (2) a modest `robChanceFlat`-style bonus to the caller's own `/rob`
-  (stacks with, doesn't replace, the existing companion/guild `robChance` sources) — this is the
-  "mercenary/outlaw" flavor payoff, tied to the one mechanic this game already has for solo-vs-solo
-  theft rather than a new one. Rank/title (potato-punned) surfaces as a new field on `/profile` page 1,
-  next to Active Companion — no dedicated `/mercenary` command needed for v1, folding it into the
-  existing profile view instead of growing the command list for a single read.
+  **What**: a personal, guild-independent alternative to Guild Raids — `/bounty-board` (read-only
+  preview, mirrors `/current-raid`) shows the caller's own unlocked Bounty tiers (I/II/III, mapped 1:1
+  to Regular-mode Guild Raid's T1/T2/T3 difficulty/reward/penalty — see
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md)) with a live success-chance
+  preview computed off the caller's own solo `effectiveRaidPower` (`workMultiplierAmount * (1 +
+  liveRebirthPercent)`, the exact same formula `raidFactory.js`'s `getMemberRaidPower` already uses —
+  a 1-person roster run through the same math, headcount bonus zeroed out), current Mercenary Rank,
+  and cooldown remaining. `/take-bounty tier:<I|II|III>` resolves immediately (same no-confirm
+  precedent `/start-raid` sets) against a randomly-drawn flavor scenario for that tier, on a personal
+  cooldown (`userDetails.bountyTimer`, same shape as `guild.raidTimer`). Wins accumulate
+  `mercenaryBountyWinCount` (mirrors `guildRaidWinCount`), driving a **live-computed, capped**
+  Mercenary Rank exactly the way Guild Level is computed live off `raidCount` rather than stored (see
+  [systems/guilds.md](systems/guilds.md#guild-level)). Rank/title (potato-punned) surfaces as a new
+  `/profile` page-1 field, next to Active Companion — no dedicated `/mercenary` command for v1.
 
-  Why: solo players today have zero equivalent of Guild Raids, Guild Contracts, the Guild Bank, Guild
-  Buffs, or the Guild Level ladder — every other system a solo player can already touch (Companions,
-  Quests, `/rebirth`, `/rob`) works identically whether or not they're guilded, and World Boss is
-  already the closest existing precedent for "server-wide raid content that doesn't require a guild" —
-  a useful shape to build on, not reinvent. This gives that player a real, own-progression
-  raid-equivalent loop instead of pure `/work` grinding, without requiring them to find or build a
-  guild roster first.
+  **Why**: solo players today have zero equivalent of Guild Raids, Guild Contracts, the Guild Bank,
+  Guild Buffs, or the Guild Level ladder — every other system a solo player can already touch
+  (Companions, Quests, `/rebirth`, `/rob`) works identically whether or not they're guilded, and World
+  Boss is the closest existing precedent for "server-wide raid content that doesn't require a guild" —
+  a useful shape to build on, not reinvent.
 
-  **What this explicitly does NOT do** (scope boundary, direct response to the "outlaws/thieves guild"
-  raw idea): this is **not** a second joinable, guild-like entity. Building an actual "Thieves Guild"
-  with its own roster/roles/bank would (a) structurally duplicate the real Guild system this session
-  just spent real effort balancing, under a confusingly similar name, and (b) defeat the stated
-  purpose outright — a guild you join to avoid joining a guild isn't a solo path, it's just Guilds with
-  reskinned flavor text. The "outlaw" identity is delivered entirely through Mercenary Rank's `/rob`
-  buff and cosmetic titles, not a new social structure. Also explicitly out of scope for v1: Elite/
-  Legendary/T4/Metal-King-equivalent Bounty tiers (Bounties cap at Regular-mode T1-T3 difficulty only —
-  see the balance finding below for why going further isn't just "more content," it directly competes
-  with Guild Raids' own deeper tiers), a Bounty-side Guild Bank/interest equivalent, and a Bounty-side
-  Contract system (Quests already fill that "structured objective" role for solo players).
+  **What this explicitly does NOT do** (direct response to the "outlaws/thieves guild" raw idea): this
+  is **not** a second joinable, guild-like entity — see the original reasoning (duplicates the real
+  Guild system under a confusing name, and a guild you join to avoid joining a guild isn't actually a
+  solo path). Also out of scope for v1: Elite/Legendary/T4/Metal-King-equivalent Bounty tiers beyond
+  Tier III (see the reward-sharing finding below for why going deeper directly competes with Guild
+  Raids' own upper tiers), a Bounty-side Guild Bank/interest equivalent, and a Bounty-side Contract
+  system (Quests already fills that role for solo players).
+
+  **1. Tier gating — Mercenary Rank, a new curve (addresses ask #1).** The user confirmed Bounty tiers
+  should require rank, explicitly framed as acceptable because it makes Mercenary "rewarding but in a
+  different way to guilds." New `MercenaryRank.THRESHOLDS`, keyed on `mercenaryBountyWinCount` — not a
+  straight copy of `RaidLevel.THRESHOLDS` (that curve is sized for a *guild's aggregate* win count
+  across potentially dozens of members over a long lifetime, topping out at 12,000 wins for 10x; a
+  solo player only ever adds their own wins, one at a time, on an hourly-ish cooldown) and not a
+  straight copy of `CompanionLeveling.THRESHOLDS` either (that curve's cadence assumes a 300s `/work`
+  loop, 12x faster than Bounty's proposed 3600s cooldown — see #5 below for why that cooldown is
+  proposed to match `Rob.ROB_TIMER_SECONDS`/`guild.raidTimer` exactly). Recommend reusing
+  `CompanionLeveling.THRESHOLDS`'s early *shape* (0/15/50/125/275/525 — already-vetted numbers, not
+  arbitrary) but reading them against **wins**, not raw attempts, which naturally compensates for the
+  slower cadence since only successful attempts advance rank at all:
+
+  | Rank | Wins required | Unlocks | Reward multiplier |
+  |---|---|---|---|
+  | 1 | 0 | Tier I | 1.00x |
+  | 2 | 15 | Tier II | ~1.15x |
+  | 3 | 50 | Tier III | ~1.35x |
+  | 4 | 125 | — | ~1.50x |
+  | 5 | 275 | — | ~1.65x |
+  | 6 (max) | 525 | — | 1.75x (recommended cap — see the reward-sharing finding's cap discussion below) |
+
+  At a rough 3-5 real wins/day for an active player (Tier I's success chance is meant to sit near
+  Regular T1's own high effective rate), Rank 2 lands a few real days in, Rank 3 roughly one to two
+  real weeks in — comparable real-world pacing to Guild Level 2/3's own multi-day-to-multi-week feel,
+  not a same-session unlock. Illustrative only; final thresholds need the same EV-driven tuning pass
+  as the reward-share discount below, since they interact (a bigger reward-share discount makes each
+  win "worth less," which doesn't change win-count pacing directly but does change whether grinding
+  toward Rank 3 feels worth it at all).
+
+  **2. Flavor-text scenario tables (addresses ask #2).** New `BountyScenarios`, keyed by tier, mirroring
+  `regularWorkMobs`'/the raid mob arrays' shape (`{ name, winFlavor, loseFlavor, currency }`) — narrative
+  variety per outcome instead of one static bounty-board message, reusing the exact "cosmetic mob
+  flavor, mechanically identical formula" pattern `/work`'s own `regularWorkMobs` already establishes
+  (see [systems/economy-and-work.md](systems/economy-and-work.md)). Bounty targets should read as
+  wanted-poster/heist flavor (e.g. "The Chip Thief," "Marsh Bandit Malone," "The Gravy Smuggler") rather
+  than reusing Guild Raid's own mob roster verbatim — same numbers underneath, different narrative skin,
+  same as how Metal King's numbers differ from T1-T4's despite sharing the raid system.
+
+  **3. Per-scenario currency split (addresses ask #3).** Most Bounty scenarios pay potatoes (the T1-T3
+  base reward, discounted per the finding below); a minority pay starches instead, mirroring how
+  Taro Trader/Golden Yam are the only starch-paying `/work` encounters out of ~9 total types. Recommend
+  the potato/starch split **widen with tier** (deeper content reads as "more varied," the same direction
+  Sweet/Ancient/Mimic/Golden Yam already skew rarer-and-different rather than rarer-and-bigger):
+
+  | Tier | Potato-flavored scenarios | Starch-flavored scenarios |
+  |---|---|---|
+  | I | ~80% | ~20% |
+  | II | ~70% | ~30% |
+  | III | ~60% | ~40% |
+
+  **Starch payout scale — deliberately NOT Scavenging's "stay modest forever" treatment.** Scavenging's
+  starch payout is explicitly unscaled by `effectiveMultiplier`/server wealth because Scavenging is a
+  zero-risk, zero-cooldown-real-cost background tap (see
+  [systems/companions.md](systems/companions.md#scavenging)) — Bounties are the opposite: a real
+  success-chance roll, a real potato-penalty downside, and a much longer real cooldown (3600s vs.
+  `/work`'s 300s) gating each attempt. That's structurally the same category as Taro Trader itself, not
+  Scavenging, so a starch-flavored Bounty should reuse **Taro Trader's own formula**
+  (`round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))`, see
+  [systems/economy-and-work.md](systems/economy-and-work.md#taro-trader)), scaled up per tier the same
+  direction Golden Yam sits 8-12x above Taro's implicit 1-1.5x baseline: recommend roughly ×1 (Tier I,
+  on par with a plain Taro Trader hit), ×2-3 (Tier II), ×4-6 (Tier III) applied to that same formula —
+  grounded directly against an existing, already-tuned formula rather than a new one, and defensible
+  specifically because Tier II/III are gated behind real Mercenary Rank progress, not freely repeatable
+  on demand the way Taro Trader itself is (subject only to `/work`'s own draw odds).
+
+  **4. Rare permanent stat-increase tier (addresses ask #4) — the central risk question.** Is a Bounty
+  attempt "guaranteed-repeatable-on-demand" (Scavenging's shape, which the 2026-08-23 brainstorm
+  rejected any per-collection permanent bonus for) or "gated behind real cooldown/risk" (`/work`'s own
+  Metal/Sweet/Ancient Potato shape, which already safely carries permanent-stat payouts)? **It's the
+  latter** — a Bounty attempt costs a real ~3600s cooldown slot *and* carries a real chance to lose the
+  full T1-T3 penalty outright (capped success rate, same as a raid), which is categorically different
+  from Scavenging's zero-fail, zero-cooldown-cost dispatch. That said, Bounties are still *player-
+  initiated on demand*, unlike `/work`'s stat encounters, which additionally require hitting a specific
+  low-probability encounter slice (Sweet ~2%, Metal ~1%, Ancient 0.15%) before any internal mechanic
+  even applies — so the stat-reward branch needs its **own** low-probability roll layered on top of a
+  Bounty *win* (never a loss), not a flat/moderate chance on every win, or it would become a
+  cooldown-gated (not encounter-probability-gated) stat-growth tap that's easier to reach on demand than
+  `/work`'s own rare rolls simply by being deliberately repeatable every successful attempt:
+
+  | Tier | Stat-roll chance per win | Grant shape |
+  |---|---|---|
+  | I | ~0.5-1% | Sweet-Potato-scale flat `sweetPotatoBuffs` bump (+0.2 work multi / +1.15x passive capped +100,000 / +1.15x bank capped +1,000,000) |
+  | II | ~1.5-2.5% | between Sweet and Metal Potato's scale |
+  | III | ~3-5% | Metal-Potato-scale flat bump (+0.6 work multi / equivalent passive/bank scale) |
+
+  Following Ancient Potato's own already-fixed precedent exactly: this must be a flat, permanent
+  `sweetPotatoBuffs`-style addition, **never** written into `regrades.X.regradeAmount`/`failStack` — a
+  partial amount landing off a tier's exact checkpoint would break `/regrade`'s own exact-match tier
+  lookup the same way Ancient Potato's original design did before its 2026-08-22 nerf (see
+  [systems/economy-and-work.md](systems/economy-and-work.md#ancient-potato)). Sizing anchored directly
+  to Sweet/Metal Potato's own already-vetted flat amounts (not a fraction of a real regrade tier's cost,
+  which is exactly the math that made Ancient Potato's original grant worth 97x-475x a same-roll Golden
+  Potato) — this is the load-bearing mitigation, not "rare" alone.
+
+  **5. NPC-rob command, replacing the original `/rob`-buff idea entirely (addresses ask #5).** New
+  `/rob-npc` (naming mirrors `/companion-sell-npc`'s `<verb>-npc` convention) — a solo-only heist attempt
+  against a fictional target, no real player involved, newly-minted payout (not drawn from anyone's
+  balance). Grounded directly against real `/rob`'s own numbers in `rob.js`/`constants.js`'s `Rob` block:
+  - **Odds**: real `/rob`'s `calculateRobChance` ranges roughly 5-25% based on relative wealth vs. the
+    target (`.05 + (.2 - userPotatoes/total*.2)`), before any guild/companion bonus. Recommend `/rob-npc`
+    use a **flat** base chance (no target to compare wealth against) starting at 20% at Rank 1 —
+    centered in real `/rob`'s typical range — scaling **+2%/Mercenary Rank, capped +10% at Rank 6** (30%
+    max), deliberately kept below real `/rob`'s own realistic ceiling (base up to 25% + guild buff up to
+    +20% + companion up to +15% ≈ 50%+ in a maxed setup) so `/rob-npc` never out-performs a well-built
+    real-`/rob` setup on odds alone.
+  - **Payout**: server-wealth-scaled via the same `calculateGainAmount` shape every `/work` reward uses
+    (not a percentage of a real target's balance — there isn't one), anchored **between Regular (×1) and
+    Large (×10)** — recommend ×4-5, capped at half of `Work.MAX_LARGE_POTATO` (5,000 base, before the
+    player's own multiplier scales it up, same "`*_MAX_*` caps the base, not the final payout"
+    convention every other cap in this game follows). Kept modest specifically because — unlike Bounties
+    — this needs **no** Mercenary Rank gate at all (available from Rank 1), so it can't be allowed to
+    become an on-demand, zero-social-risk upgrade over grinding Large Potato odds.
+  - **Fail state**: recommend a **whiff, no loss** (mirrors Metal Potato's own "0 potatoes, just resets
+    the timer" failure), *not* real `/rob`'s wealth-percentage fine + extra work-timer penalty — real
+    `/rob`'s harsh fail state exists as a deterrent/symmetry mechanism specifically because a real player
+    is on the other end of a successful hit; `/rob-npc` has no other player to protect, so there's no
+    symmetry argument forcing a punishing fail. Flagged as an open question below, not asserted as the
+    only option — the user may want more thief-flavored risk here.
+  - **Cooldown**: a **separate** field, `npcRobTimer` — not shared with real `/rob`'s `robTimer` (sharing
+    would let spamming one lock out the other, bad UX for two different verbs) and not shared with
+    `bountyTimer` either (no reason to force mutual exclusion between two different Mercenary actions).
+    Recommend matching `Rob.ROB_TIMER_SECONDS` exactly (3600s) — "an hour to plan your next heist, real
+    or fictional" reads as thematically consistent, and keeps `/rob-npc` from being spammable at
+    `/work`-cadence.
+
+  **6. Mercenary-exclusive companion (addresses ask #6).** Recommend **Legendary**, not Mythic — Bounties
+  are deliberately capped below Guild Raids' endgame ceiling (see the reward-sharing finding), and a
+  Mythic-tier companion locked behind this track would make a side-system for solo players outshine the
+  two existing endgame Mythics (Elder Rootbeard/Mochi), the opposite of the "stay below the ceiling"
+  discipline the rest of this design leans on. **Dual-perk**, matching the existing Legendary pattern
+  exactly (Spudsprite: `workCooldownSkipChance` 15% + `workMultiplierPercent` 8%; Rootcarver:
+  `starchSellBonusPercent` 12% + `passiveIncomePercent` 8% — no existing Legendary is single-perk, no
+  reason to break that here). Proposed name: **Yukon, the Highwayman** (Yukon Gold — a real potato
+  variety — doubling as an outlaw title, matching the Rootcarver/Elder Rootbeard root-vegetable-pun
+  convention). Two new perk types, sized against the existing ladder rather than invented from nothing:
+  - `npcRobChanceFlat` ~12% — sits between Barn Owl's Rare-tier `robChanceFlat` (10%) and Elder
+    Rootbeard's Mythic-tier `robChanceFlat` (15%), the same relative placement Rootcarver's Legendary
+    `starchSellBonusPercent` (12%) holds between Mole's Rare 9% and Elder Rootbeard's Mythic 15% on that
+    axis.
+  - `bountyRewardPercent` ~12-15% (applied to the already-discounted Bounty payout, non-compounding —
+    same "percentage of a computed payout, not a persistent stat" shape `starchSellBonusPercent` already
+    uses safely) — anchored near Rootcarver's 12% and Prospector's paired Rare-tier bump (20% + 2%) for a
+    dual-perk companion whose two values land in the same neighborhood as each other.
+
+  **Obtaining it — recommend the normal universal roll, not Mercenary-Rank-gated.** Slots into the
+  existing `Companions` roster and drops through the same 1.5% Wandering Companion `/work` encounter →
+  8%-conditional Legendary roll → uniform pick among `getCompanionsByRarity('legendary')`, exactly like
+  every other companion — meaning any player can obtain it, not just active mercenaries. Gating the drop
+  on `mercenaryBountyWinCount` was considered and rejected: `rollCompanion()`/`getCompanionsByRarity` are
+  today pure, stateless functions with zero per-user filtering logic anywhere in the roll path — making
+  one companion's availability conditional on an external progression stat would be a real, precedent-
+  breaking refactor (nothing in this system is drop-gated today; Guinea Pig/Prospector, the two most
+  recent additions, both shipped through the exact same universal roll) for a payoff that isn't actually
+  necessary — a non-mercenary owner just holds a companion whose perks sit idle until they ever try a
+  Bounty or `/rob-npc`, the same way a `/rob`-averse player can already own Barn Owl today without it
+  changing anything about how they play.
 
   **Central balance finding, grounded in already-documented numbers (no new computation needed)**: a
   naive "just run the guild raid formula with a 1-person roster, full reward, no split" design is a
@@ -1386,13 +1534,13 @@ and needs its own balance pass.
   Bounties clearly worse than a functioning guild's per-member EV (preserving the incentive to
   actually cooperate) while staying clearly better than plain `/work` grinding at comparable risk (so
   it isn't dead content either) — and Mercenary Rank's own capped reward multiplier (recommend capping
-  well below Guild Level's 10x ceiling, on the order of 1.5-2x at max rank) lets a committed solo
-  player close *some* of that gap over a long timeline without ever fully erasing it. The exact
-  discount factor and rank-multiplier cap need a real EV derivation (the same `node -e`-against-
-  `constants.js` methodology `balance-audit.md`'s raid-tuning entries already use) once an architect
-  picks this up — this entry identifies the mechanism and a rough target range, not a final number,
-  and this codebase has no tracked "average guild roster size" stat today to calibrate against
-  precisely, so the range above is a best current estimate, not a measured one.
+  at 1.75x — see the tier-gating table above) lets a committed solo player close *some* of that gap
+  over a long timeline without ever fully erasing it. The exact discount factor and rank-multiplier cap
+  need a real EV derivation (the same `node -e`-against-`constants.js` methodology `balance-audit.md`'s
+  raid-tuning entries already use) once an architect picks this up — this entry identifies the mechanism
+  and a rough target range, not a final number, and this codebase has no tracked "average guild roster
+  size" stat today to calibrate against precisely, so the range above is a best current estimate, not a
+  measured one.
 
   **Open questions, with a recommendation on each:**
   - *Guild-gated or open to everyone?* Recommend **open to everyone**, not gated on `guildId === 0` —
@@ -1401,30 +1549,34 @@ and needs its own balance pass.
     "you just left your guild, are you now eligible" edge case this game has no precedent for handling
     cleanly. The reward-share discount above is what keeps this from being worth *switching out of* a
     real guild for, not an eligibility gate.
-  - *Should Bounties eventually grow their own Elite/Legendary/T4-equivalent tiers, gated behind
-    Mercenary Rank the way Elite/Legendary are gated behind Guild Level?* Recommend **not for v1** —
-    ship T1-III only, revisit once the T1-III reward-share/rank-cap numbers are actually live and
-    measurable; adding deeper tiers before those are validated risks tuning the wrong axis twice.
-  - *Personal cooldown length — same 3600s as `guild.raidTimer`, or something else?* Recommend
-    **matching the raid timer exactly (3600s, no buff-driven reduction — Mercenary Rank doesn't grant
-    a cooldown perk)**, specifically so attempt *frequency* can't be the lever that makes solo
-    out-earn guild raiding even after the reward-share discount above; the discount already exists on
-    the per-attempt axis, doubling up on the frequency axis too would fight that discount's own
-    purpose.
-  - *Dedicated `/mercenary` command vs. a `/profile` field?* Recommend **`/profile` field only** for
-    v1, matching how Guild Level's own info lives inside `/guild` rather than a separate command —
-    revisit only if profile-page real estate becomes a real constraint.
+  - *Should Bounties eventually grow their own Elite/Legendary/T4-equivalent tiers, gated behind higher
+    Mercenary Rank?* Recommend **not for v1** — ship T1-III only, revisit once the T1-III
+    reward-share/rank-cap numbers are actually live and measurable.
+  - *Personal Bounty cooldown length* — recommend **matching the raid timer exactly (3600s, no
+    buff-driven reduction)**, so attempt *frequency* can't be the lever that makes solo out-earn guild
+    raiding even after the reward-share discount.
+  - *Dedicated `/mercenary` command vs. a `/profile` field?* Recommend **`/profile` field only** for v1,
+    matching how Guild Level's own info lives inside `/guild` rather than a separate command.
+  - *`/rob-npc`'s fail state — whiff-only, or a real (smaller-than-real-`/rob`) penalty?* Recommend
+    **whiff-only** per the symmetry argument above, but flagged as genuinely open since a completely
+    consequence-free thief-flavored action may read as too safe for the "outlaw" framing — a modest flat
+    penalty (in `Rob.BASE_ROB_PENALTY`'s neighborhood, 5,000, rather than a wealth-percentage fine) is a
+    reasonable middle option if whiff-only feels too tame in practice.
+  - *Mercenary companion drop-gating* — recommend **ungated/universal roll** per the reasoning above;
+    revisit only if a future feature already needs to make `rollCompanion` user-context-aware for an
+    unrelated reason, at which point gating this specific companion becomes a much smaller incremental
+    lift.
 
-  Touches (once a direction is picked): `constants.js` (new `Bounty`/`Mercenary` blocks —
-  `SOLO_BOUNTY_REWARD_SHARE`, a Mercenary Rank threshold/multiplier curve mirroring
-  `RaidLevel.THRESHOLDS`'s shape, potato-punned rank titles), `getDefaultUserFields` (`bountyTimer`,
-  `mercenaryBountyWinCount`), `raidFactory.js` (extracting the shared success-chance/effective-power
-  math so Bounties reuse it instead of duplicating raid constants — a real refactor, not just new
-  code, since today that logic is written assuming a `guild`/roster object), two new commands
-  (`bounty-board`, `take-bounty`), `embedFactory.js` (bounty preview/result embeds, a `/profile`
-  Mercenary Rank field), `rob.js` (reading the new perk source alongside the existing companion/guild
-  ones), 2 new `Achievements` entries (`bounty_novice`/`bounty_legend`, mirroring
-  `raid_novice`/`raid_veteran`'s shape off `mercenaryBountyWinCount`).
+  Touches (once a direction is picked): `constants.js` (new `Bounty`/`MercenaryRank` blocks —
+  `SOLO_BOUNTY_REWARD_SHARE`, the rank threshold/multiplier table, `BountyScenarios` per tier,
+  `BountyStatReward` odds/grant table, new `RobNpc` block, a new `Companions` roster entry for Yukon),
+  `getDefaultUserFields` (`bountyTimer`, `npcRobTimer`, `mercenaryBountyWinCount`), `raidFactory.js`
+  (extracting the shared success-chance/effective-power math so Bounties reuse it instead of duplicating
+  raid constants — a real refactor, since today that logic assumes a `guild`/roster object),
+  `companionFactory.js` (two new perk-type entries in `getActivePerkValue`'s lookup), new commands
+  (`bounty-board`, `take-bounty`, `rob-npc`), `embedFactory.js` (bounty/rob-npc preview+result embeds,
+  the stat-reward callout, a `/profile` Mercenary Rank field), 2-4 new `Achievements` entries mirroring
+  `raid_novice`/`raid_veteran`'s shape off `mercenaryBountyWinCount`.
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping
   conversation first: what's actually "cosmetic" here — profile embed color/border, a title (which
