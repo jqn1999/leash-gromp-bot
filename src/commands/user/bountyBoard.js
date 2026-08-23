@@ -6,7 +6,9 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 // Read-only preview, mirrors /current-raid's own precedent — never snapshots or claims
-// anything just by viewing. See systems/mercenary-bounties.md.
+// anything just by viewing. Ephemeral (personal view only) — direct instruction, since
+// this shows a player's own Rank/success-chance preview, not something worth broadcasting
+// to the channel. See systems/mercenary-bounties.md.
 module.exports = {
     name: "bounty-board",
     description: "View your Mercenary Rank, unlocked Bounty tiers, and live success-chance preview",
@@ -14,7 +16,7 @@ module.exports = {
     deleted: false,
     options: [],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
