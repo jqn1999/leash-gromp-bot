@@ -21,7 +21,7 @@ for why this was previously missing and how it was fixed.
 |---|---|---|
 | [invite.js](../../src/commands/guilds/invite.js) | Elder+ | Adds a target user ID to `guild.inviteList` |
 | `join-guild` | anyone on the invite list | Must be under `memberCap`; must not already be in a *different* guild; removed from `inviteList`, added to `memberList` as `Member`, `guildId` set on the user record |
-| [leave.js](../../src/commands/guilds/leave.js) | any non-Leader member | Removes self from `memberList`, resets `guildId` to `0`. Leaders must `pass-leadership` first — there's no "disband via leave" path for a Leader |
+| [leave.js](../../src/commands/guilds/leave.js) | any non-Leader member | Removes self from `memberList`, resets `guildId` to `0`, and starts the guild↔mercenary switch cooldown (`guildMercenarySwitchTimer`, see [mercenary-bounties.md](mercenary-bounties.md#guild--mercenary-switch-cooldown)). Leaders must `pass-leadership` first — there's no "disband via leave" path for a Leader |
 | [kick.js](../../src/commands/guilds/kick.js) | Co-Leader/Leader | Can't kick the Leader; only the Leader can kick a Co-Leader; can't kick self |
 | [promote.js](../../src/commands/guilds/promote.js) | Leader can promote to Co-Leader; Leader or Co-Leader can promote to Elder | Blocks promoting someone already at or above the target role |
 | [demote.js](../../src/commands/guilds/demote.js) | Co-Leader/Leader can demote to Member/Elder | Only the Leader can demote a Co-Leader |

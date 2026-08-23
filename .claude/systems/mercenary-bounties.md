@@ -35,6 +35,33 @@ casing needed since it isn't an index key the way `guildId`/`webLinkToken` are).
 - Every Bounty-family command (`/bounty-board`, `/take-bounty`, `/rob-npc`) rejects a
   non-mercenary outright, in addition to whatever tier/cooldown/rank gate it also needs.
 
+### Guild ↔ Mercenary switch cooldown
+
+Added after launch, direct instruction, to stop rapid guild↔mercenary flipping to
+double-dip both tracks' benefits in quick succession (ride a guild raid, retire to
+mercenary for a Bounty, rejoin a guild the moment that's done). A new
+`guildMercenarySwitchTimer` field (ms epoch, default `0`, healed like every other
+top-level default field) is:
+
+- **Set** on the two EXIT actions — `/leave` (guild) and `/retire-mercenary`.
+- **Checked** on the three ENTRY actions — `/become-mercenary`, `/create-new-guild`, and
+  `/join-guild` — each rejecting with a "wait `<time>`" message
+  (`convertSecondstoMinutes`) until `Bounty.GUILD_SWITCH_COOLDOWN_SECONDS` (86400s / 24h,
+  a starting value, easy to retune) has elapsed since the timer was set.
+
+Only the actual guild↔mercenary *crossing* is gated. Same-side re-entry is deliberately
+not — e.g. retiring as a mercenary and becoming one again without ever touching a guild
+is unaffected, since `guildMercenarySwitchTimer` is only ever read by the opposite side's
+entry check. A fresh account (timer `0`, decades in the past relative to `Date.now()`) is
+never blocked by this.
+
+While adding the `/leave` half of this, found and fixed a pre-existing, unrelated bug:
+`/leave`'s guarded `updateGuildFieldsWithLock` call referenced an undeclared
+`userGuildId` variable, which would throw a `ReferenceError` for any non-leader member
+running `/leave` — the command's own main success path. Fixed to `guild.guildId`; see the
+`leave.js` row in [guilds.md](guilds.md) and `mercenaryMutualExclusivity.test.js`'s
+`/leave` describe block for the regression test.
+
 ## Mercenary Rank
 
 Computed **live** off `mercenaryBountyWinCount` (wins only, never attempts) — same

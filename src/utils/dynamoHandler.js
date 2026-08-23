@@ -371,6 +371,9 @@ function getDefaultUserFields(userId, username) {
         bountyTimer: 0,   // same shape as workTimer/robTimer — a plain ms-epoch timestamp
         npcRobTimer: 0,   // SEPARATE from robTimer (real /rob, 3600s) and bountyTimer
                            // (also 3600s) — see RobNpc.NPC_ROB_TIMER_SECONDS (1800s)
+        guildMercenarySwitchTimer: 0,   // set on /retire-mercenary and /leave (guild),
+                                         // checked on /become-mercenary, /create-new-guild,
+                                         // and /join-guild — see Bounty.GUILD_SWITCH_COOLDOWN_SECONDS
         companions: {                // see systems/companions.md
             owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null

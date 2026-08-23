@@ -1035,7 +1035,19 @@ const Bounty = {
     // scaled by this per-tier multiplier — NOT discounted by SOLO_BOUNTY_REWARD_SHARE
     // (that discount exists specifically to stop potato Bounties out-earning guild raids;
     // guild raids never pay starches, so there's no analogous risk to guard against here).
-    STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 }
+    STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 },
+    // Added 2026-08-23, direct instruction — without this, a player could rapidly flip
+    // guild <-> mercenary to double-dip both tracks' benefits in quick succession (e.g.
+    // ride a guild raid, retire to mercenary for a Bounty an hour later, rejoin a guild
+    // the moment that's done). Only gates the SWITCH direction, not same-side re-entry:
+    // userDetails.guildMercenarySwitchTimer is set on the two EXIT actions
+    // (/retire-mercenary, /leave) and checked on the three ENTRY actions
+    // (/become-mercenary, /create-new-guild, /join-guild) — becoming a mercenary again
+    // right after retiring (without ever touching a guild) isn't gated by this at all,
+    // only an actual guild<->mercenary crossing is. 24h — a starting value, easy to
+    // retune; long enough to block same-day double-dipping, short enough not to feel like
+    // a punishment for a genuine one-time switch.
+    GUILD_SWITCH_COOLDOWN_SECONDS: 86400
 }
 
 // Flavor-text scenario tables, keyed by tier — mirrors regularWorkMobs'/raid mob arrays'

@@ -41,12 +41,14 @@ module.exports = {
         // memberList write below regardless of ordering.
         await guildContractFactory.freezeDepartureContribution(guild, userId, userDetails);
 
-        const written = await dynamoHandler.updateGuildFieldsWithLock(userGuildId, guild.guildVersion, { memberList: newMemberList });
+        const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { memberList: newMemberList });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this. Please try again!`);
             return;
         }
-        await dynamoHandler.updateUserDatabase(userId, "guildId", 0);
+        // Starts the guild<->mercenary switch cooldown — the other half of this pair is
+        // checked in becomeMercenary.js. See Bounty.GUILD_SWITCH_COOLDOWN_SECONDS.
+        await dynamoHandler.updateUserFields(userId, { guildId: 0, guildMercenarySwitchTimer: Date.now() });
         interaction.editReply(`${userDisplayName} you have left the guild, '${guild.guildName}'!`);
     }
 }

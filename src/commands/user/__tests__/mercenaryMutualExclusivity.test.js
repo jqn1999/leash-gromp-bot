@@ -30,6 +30,7 @@ function baseUser(overrides = {}) {
         potatoes: 10000000,
         guildId: 0,
         isMercenary: false,
+        guildMercenarySwitchTimer: 0,
         ...overrides,
     };
 }
@@ -69,6 +70,27 @@ describe('/become-mercenary', () => {
 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { isMercenary: true });
     });
+
+    // Regression coverage for the switch-cooldown pair with /leave — see leave.js's own
+    // guildMercenarySwitchTimer write.
+    test('rejects a user who left a guild too recently', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ guildMercenarySwitchTimer: Date.now() - 1000 }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/left your guild too recently/i));
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('succeeds once the switch cooldown has fully elapsed', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ guildMercenarySwitchTimer: Date.now() - 90000000 })); // >24h ago
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { isMercenary: true });
+    });
 });
 
 describe('/retire-mercenary', () => {
@@ -84,16 +106,22 @@ describe('/retire-mercenary', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('succeeds for a current mercenary, without touching mercenaryBountyWinCount', async () => {
+    test('succeeds for a current mercenary, without touching mercenaryBountyWinCount, and starts the switch cooldown', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ isMercenary: true, mercenaryBountyWinCount: 40 }));
         const interaction = fakeInteraction();
 
+        const before = Date.now();
         await callback({}, interaction);
+        const after = Date.now();
 
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { isMercenary: false });
-        // The exact call above must be the ONLY write — no accompanying reset of
-        // mercenaryBountyWinCount/Rank anywhere in the same command.
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [calledUserId, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledUserId).toBe('user-1');
+        expect(calledFields.isMercenary).toBe(false);
+        // mercenaryBountyWinCount/Rank must NOT be reset by this call.
+        expect(calledFields).not.toHaveProperty('mercenaryBountyWinCount');
+        expect(calledFields.guildMercenarySwitchTimer).toBeGreaterThanOrEqual(before);
+        expect(calledFields.guildMercenarySwitchTimer).toBeLessThanOrEqual(after);
     });
 });
 
@@ -109,6 +137,29 @@ describe('/create-new-guild rejects an active mercenary', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/mercenary/i));
         expect(dynamoHandler.getSortedGuildsById).not.toHaveBeenCalled();
         expect(dynamoHandler.createGuild).not.toHaveBeenCalled();
+    });
+
+    // Regression coverage for the switch-cooldown pair with /retire-mercenary.
+    test('rejects a former mercenary who retired too recently', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: 99999999, guildMercenarySwitchTimer: Date.now() - 1000 }));
+        const interaction = fakeInteraction({ 'guild-name': 'My Guild' });
+
+        await callback({}, interaction);
+
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/retired as a mercenary too recently/i));
+        expect(dynamoHandler.getSortedGuildsById).not.toHaveBeenCalled();
+        expect(dynamoHandler.createGuild).not.toHaveBeenCalled();
+    });
+
+    test('succeeds once the switch cooldown has fully elapsed', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: 99999999, guildMercenarySwitchTimer: Date.now() - 90000000 }));
+        dynamoHandler.getSortedGuildsById.mockResolvedValue([]);
+        dynamoHandler.findGuildByName.mockResolvedValue(null);
+        const interaction = fakeInteraction({ 'guild-name': 'My Guild' });
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.createGuild).toHaveBeenCalled();
     });
 });
 
@@ -126,5 +177,58 @@ describe('/join-guild rejects an active mercenary', () => {
 
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/mercenary/i));
         expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
+    });
+
+    // Regression coverage for the switch-cooldown pair with /retire-mercenary.
+    test('rejects a former mercenary who retired too recently', async () => {
+        dynamoHandler.findGuildByName.mockResolvedValue({
+            guildId: 7, inviteList: ['user-1'], memberList: [], memberCap: 10, guildName: 'Some Guild', guildVersion: 1,
+        });
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ guildId: 0, guildMercenarySwitchTimer: Date.now() - 1000 }));
+        const interaction = fakeInteraction({ 'guild-name': 'Some Guild' });
+
+        await callback({}, interaction);
+
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/retired as a mercenary too recently/i));
+        expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
+    });
+});
+
+// Regression coverage for a real bug found while adding the switch cooldown: /leave's
+// success path referenced an undeclared `userGuildId` variable (never assigned anywhere in
+// the file), which would throw a ReferenceError for any non-leader member leaving a guild —
+// the command's own main success path. Fixed to use guild.guildId, and now also starts the
+// guild<->mercenary switch cooldown as part of the same write.
+describe('/leave', () => {
+    const { callback } = require('../../guilds/leave');
+
+    function guildFixture(overrides = {}) {
+        return {
+            guildId: 7,
+            guildName: 'Some Guild',
+            guildVersion: 3,
+            memberList: [{ id: 'user-1', username: 'User', role: 'member' }],
+            ...overrides,
+        };
+    }
+
+    test('does not throw, and writes guildId + guildMercenarySwitchTimer in one call', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'user-1', username: 'User', guildId: 7 });
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
+        dynamoHandler.updateGuildFieldsWithLock.mockResolvedValue(true);
+        const interaction = fakeInteraction();
+
+        const before = Date.now();
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+        const after = Date.now();
+
+        // The guarded write must target the real guild.guildId, not an undefined variable.
+        expect(dynamoHandler.updateGuildFieldsWithLock).toHaveBeenCalledWith(7, 3, { memberList: [] });
+
+        const [calledUserId, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledUserId).toBe('user-1');
+        expect(calledFields.guildId).toBe(0);
+        expect(calledFields.guildMercenarySwitchTimer).toBeGreaterThanOrEqual(before);
+        expect(calledFields.guildMercenarySwitchTimer).toBeLessThanOrEqual(after);
     });
 });

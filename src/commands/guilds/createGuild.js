@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { Bounty } = require("../../utils/constants");
 
 GUILD_COST = 1000000
 
@@ -54,6 +55,16 @@ module.exports = {
         // systems/mercenary-bounties.md.
         if (userDetails.isMercenary) {
             interaction.editReply(`${userDisplayName}, you're a mercenary — run /retire-mercenary before founding a guild.`)
+            return;
+        }
+
+        // Only relevant right after retiring as a mercenary — the other half of the
+        // switch-cooldown pair /retire-mercenary sets. A fresh account (timer 0) is never
+        // blocked by this.
+        const timeSinceSwitchInSeconds = Math.floor((Date.now() - userDetails.guildMercenarySwitchTimer) / 1000);
+        const timeUntilSwitchAvailableInSeconds = Bounty.GUILD_SWITCH_COOLDOWN_SECONDS - timeSinceSwitchInSeconds;
+        if (timeSinceSwitchInSeconds < Bounty.GUILD_SWITCH_COOLDOWN_SECONDS) {
+            interaction.editReply(`${userDisplayName}, you retired as a mercenary too recently — wait ${convertSecondstoMinutes(timeUntilSwitchAvailableInSeconds)} before founding a guild.`);
             return;
         }
 

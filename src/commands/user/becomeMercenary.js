@@ -1,5 +1,6 @@
-const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
+const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { Bounty } = require("../../utils/constants");
 
 // Mercenary and guild membership are mutually exclusive — see systems/mercenary-bounties.md.
 // No cost, no confirm step, mirrors /join-raid's toggle immediacy: reversible (see
@@ -24,6 +25,16 @@ module.exports = {
 
         if (userDetails.isMercenary) {
             interaction.editReply(`${userDisplayName}, you're already a mercenary!`);
+            return;
+        }
+
+        // Only relevant right after leaving a guild — /leave sets this timer, this is the
+        // other half of the switch-cooldown pair. A fresh account (timer 0) is never
+        // blocked by this.
+        const timeSinceSwitchInSeconds = Math.floor((Date.now() - userDetails.guildMercenarySwitchTimer) / 1000);
+        const timeUntilSwitchAvailableInSeconds = Bounty.GUILD_SWITCH_COOLDOWN_SECONDS - timeSinceSwitchInSeconds;
+        if (timeSinceSwitchInSeconds < Bounty.GUILD_SWITCH_COOLDOWN_SECONDS) {
+            interaction.editReply(`${userDisplayName}, you left your guild too recently — wait ${convertSecondstoMinutes(timeUntilSwitchAvailableInSeconds)} before becoming a mercenary.`);
             return;
         }
 

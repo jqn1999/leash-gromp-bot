@@ -1293,6 +1293,29 @@ and needs its own balance pass.
   balance clamp gap that same audit flagged in `raidFactory.js`'s `handlePotatoSplit`. Both
   were deliberately left for a separate pass per the user's own "for now" framing.
 
+- [x] **31. Guild ↔ Mercenary Switch Cooldown + `/leave` Bug Fix** — S — **Done**
+  What: new `Bounty.GUILD_SWITCH_COOLDOWN_SECONDS` constant (86400s / 24h, a starting
+  value) and a new `guildMercenarySwitchTimer` user field (ms epoch, default `0`, healed
+  like any other default field). Set on the two EXIT actions (`/leave`, `/retire-mercenary`)
+  and checked on the three ENTRY actions (`/become-mercenary`, `/create-new-guild`,
+  `/join-guild`), each rejecting with a "wait `<time>`" message until the cooldown elapses.
+  Same-side re-entry (e.g. re-becoming a mercenary without ever touching a guild) is
+  deliberately not gated — only an actual guild↔mercenary crossing is. See
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#guild--mercenary-switch-cooldown).
+  Also fixed a genuine, unrelated pre-existing bug found while touching `leave.js`:
+  its guarded `updateGuildFieldsWithLock` call referenced an undeclared `userGuildId`
+  variable (never assigned anywhere in the file), which would throw a `ReferenceError` for
+  any non-leader member running `/leave` — the command's own main success path. Fixed to
+  `guild.guildId`.
+  Why: direct instruction, immediately after Mercenary Bounties shipped — without this, a
+  player could rapidly flip guild↔mercenary to double-dip both tracks' benefits in quick
+  succession (e.g. ride a guild raid, retire to mercenary for a Bounty an hour later,
+  rejoin a guild the moment that's done).
+  Notable: 6 new/rewritten tests in `mercenaryMutualExclusivity.test.js` (13 total, up from
+  7), including a dedicated `/leave` regression test asserting the guarded write targets
+  the real `guild.guildId` and that `guildMercenarySwitchTimer`/`guildId` are written in one
+  call. Full suite green (369/369) before push.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
