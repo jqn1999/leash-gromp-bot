@@ -1,7 +1,7 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { WorkFactory } = require("../../utils/workFactory");
+const { WorkFactory, getEffectiveScenarioChance } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
@@ -249,8 +249,12 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     let matchedScenarioType;
     let multiplier = getRandomFromInterval(.8, 1.2);
     const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+    // Prospector — see workFactory.js's getEffectiveScenarioChance for why this widens
+    // Metal Potato's slice per-request instead of mutating the shared workScenarios array.
+    const metalEncounterBonus = companionFactory.getActivePerkValue(userDetails, "metalEncounterChanceFlat");
     for (const scenario of workScenarios) {
-        if (workScenarioRoll < scenario.chance) {
+        const effectiveChance = getEffectiveScenarioChance(scenario.type, scenario.chance, metalEncounterBonus);
+        if (workScenarioRoll < effectiveChance) {
             potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
             matchedScenarioType = scenario.type;
             break;

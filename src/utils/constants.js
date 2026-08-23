@@ -612,12 +612,31 @@ const Companions = [
         name: "Prospector",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A grizzled prospector who's spent a lifetime learning exactly where the ore is soft — Metal Potato doesn't stand a chance against them.",
+        description: "A grizzled prospector who's spent a lifetime learning exactly where the ore is soft — Metal Potato doesn't stand a chance against them, and they know exactly where to dig for one in the first place.",
         // Metal Potato's own success roll (work.js's workScenarios) is a flat 10% for
         // everyone, independent of any stat — this is the first perk that touches it.
         // +20% (10%->30%, a 3x improvement) since Metal Potato is already rare to roll
         // into in the first place; a smaller bump wouldn't feel worth chasing.
-        perks: [{ type: "metalSuccessChanceFlat", value: 0.20 }]
+        //
+        // metalEncounterChanceFlat added 2026-08-23 per balance-audit.md's 2026-08-23
+        // Income Power sizing pass: Prospector was realizing only ~2.9% of the same
+        // potato-scenario EV measure Rare peers Mole/Firefly realize unconditionally at a
+        // flat 9%, since metalSuccessChanceFlat only ever matters conditional on Metal
+        // Potato's own rare 1.0% base encounter chance (work.js's workScenarios) already
+        // hitting. A universal encounter-chance buff was considered and rejected — it
+        // would've handed free EV to every non-Prospector player too, not corrected
+        // Prospector's own pricing. This perk instead widens Metal Potato's slice of the
+        // roll table ONLY while Prospector is equipped (see work.js's performWork,
+        // workFactory.js's getEffectiveScenarioChance), donated entirely from Regular's
+        // catch-all remainder the same way the EV model assumed. +2% (1.0%->3.0%
+        // effective for a Prospector owner) lands right at/slightly past the 9% parity
+        // bar (~10.1% by the same measure) — the success-chance perk above was
+        // deliberately left untouched since the encounter-chance lever alone already
+        // closes the gap; stacking a success-chance increase on top would overshoot.
+        perks: [
+            { type: "metalSuccessChanceFlat", value: 0.20 },
+            { type: "metalEncounterChanceFlat", value: 0.02 }
+        ]
     },
     {
         id: "firefly",

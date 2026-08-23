@@ -80,7 +80,8 @@ const PERK_LABELS = {
     // companionFactory.getGuineaPigTaxAndRebate) — takes { taxPercent, rebatePercent }
     // instead of a plain number, computed by formatCompanionPerks below.
     poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
-    metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`
+    metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
+    metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`
 };
 
 // level defaults to 1 (unscaled) for roster-reference displays (createHelpCompanionsEmbed)

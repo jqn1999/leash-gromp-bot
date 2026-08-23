@@ -1148,6 +1148,37 @@ and needs its own balance pass.
   write already had." Covered by 2 new tests in `workFactory.test.js`'s new
   `handleCompanionEncounter (duplicate pull)` describe block (314 total suite-wide).
 
+- [x] **26. Prospector: New `metalEncounterChanceFlat` Perk (+2%)** — S — **Done**
+  What: Prospector (Rare) gets a second perk, `metalEncounterChanceFlat: 0.02`, alongside its
+  existing `metalSuccessChanceFlat: 0.20`. Wired into `work.js`'s `performWork` via a new pure
+  function, `workFactory.getEffectiveScenarioChance(scenarioType, baseChance,
+  metalEncounterBonus)` — widens Metal Potato's own slice of the cumulative roll table
+  (every scenario type `>= WORK_SCENARIO_INDICES.METAL`, i.e. Metal through Golden Yam, shifts
+  up by the bonus) without mutating `work.js`'s shared module-level `workScenarios` array,
+  which is reused across every concurrent player's `/work` call — a per-request mutation there
+  would race. Regular (the fixed-at-1 catch-all, `WORK_SCENARIO_INDICES.REGULAR = -1`, always
+  fails the `>= METAL` check) absorbs the difference by shrinking, same "donated from Regular"
+  shape the EV sizing assumed. `metalSuccessChanceFlat` itself is unchanged. 5 new tests in
+  `workFactory.test.js` for the pure function (55 total in that file; 319 suite-wide).
+  Why: direct instruction, sized against the #25-adjacent `balance-audit.md` 2026-08-23 Income
+  Power pass (Prospector vs. Mole/Firefly) — see that entry and the roadmap discussion above it
+  for the full EV derivation. User specifically wanted this scoped as a Prospector-exclusive
+  companion perk (not a universal chance bump affecting every player) — the balance-auditor's
+  original number (+2.1pp) was sized for a universal-buff framing; re-solved for the
+  companion-exclusive framing (where Prospector alone captures both the wider encounter chance
+  AND its existing 30% success chance on that chance, rather than splitting the gain with every
+  baseline player) gives a smaller number, +1.7pp exactly for 9% parity. User asked to wire it
+  as a round +2%, which lands at ~10.1% (slightly past parity) — also asked whether
+  `metalSuccessChanceFlat` should increase too; it should not, since +2% encounter chance alone
+  already meets/exceeds the 9% bar Mole/Firefly set, and stacking a success-chance increase on
+  top would overshoot.
+  Notable: this also resolves a "Considered and deferred" note already sitting in
+  `systems/companions.md` from when Prospector's first perk shipped — encounter-chance
+  favoritism was explicitly considered back then and shelved specifically because the shared
+  `workScenarios` array looked like it would need to become per-user (a bigger change). The pure
+  per-request-computed-chance approach sidesteps that concern entirely rather than requiring the
+  bigger rework that was originally assumed necessary.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

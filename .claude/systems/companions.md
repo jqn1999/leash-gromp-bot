@@ -114,7 +114,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) |
+| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) + `metalEncounterChanceFlat` +2% (Metal Potato's own 1.0% base encounter chance, Prospector-owner only — see below) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -134,6 +134,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
 | Metal Success Chance | — | 20% (Prospector) | — | — |
+| Metal Encounter Chance | — | 2% (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why.
@@ -205,13 +206,26 @@ companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat")`) —
 30%, a 3x improvement, sized up from the usual Rare-tier bump specifically because Metal Potato is
 already rare to roll into in the first place; a smaller number wouldn't feel worth chasing.
 
-**Considered and deferred**: boosting the odds of *landing on* Sweet/Metal Potato in the first
-place, rather than just the success roll once you're there. The `/work` scenario odds
-(`eventFactory.js`'s `workChances`) are a single shared table mutated once for the whole bot
-(`setWorkScenarios`), not computed per-user — there's no way to give one player better odds of
-rolling into a specific scenario without either a new "reroll" mechanic (check, only on a REGULAR
-result, whether an equipped companion gets a small chance to upgrade that call into Sweet/Metal
-instead) or making the odds table per-user, both bigger changes than this pass needed.
+**Follow-up (2026-08-23): the previously-deferred encounter-chance idea shipped, via a
+non-mutating approach.** Prompted by a `balance-audit.md` Income Power sizing pass: Prospector was
+realizing only ~2.9% of the same potato-scenario EV measure Rare peers Mole/Firefly realize
+unconditionally at a flat 9%, since `metalSuccessChanceFlat` only ever matters conditional on Metal
+Potato's own rare 1.0% base encounter chance already hitting. The concern raised above (the odds
+table, `work.js`'s module-level `workScenarios`, is shared/mutated once for the whole bot via
+`setWorkScenarios` — not computed per-user, and mutating it per-request would race across
+concurrent players) turned out not to require solving at all: `workFactory.js`'s
+`getEffectiveScenarioChance(scenarioType, baseChance, metalEncounterBonus)` is a **pure function**
+computed fresh at roll-comparison time in `work.js`'s `performWork`, never touching the shared array.
+Prospector's new `metalEncounterChanceFlat` (+2%, `getActivePerkValue`'d the same as every other
+perk) widens Metal Potato's own slice of the cumulative roll table — every scenario from Metal
+onward (Sweet, Companion, Taro, Ancient, Mimic, Golden Yam) shifts up by the same bonus so each
+keeps its own slice width, and Regular (the fixed-at-1 catch-all) absorbs the difference by
+shrinking. This is Prospector-exclusive value (unlike a universal chance bump, which was considered
+and rejected — it would've hidden the actual "Prospector is underpriced" signal by handing free EV
+to every non-Prospector player too). +2% (1.0%→3.0% effective encounter chance for a Prospector
+owner) lands at ~10.1% of the same EV measure, at/slightly past the 9% parity bar — deliberately not
+also touching `metalSuccessChanceFlat`, since the encounter-chance lever alone already closes the
+gap and stacking both would overshoot.
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 

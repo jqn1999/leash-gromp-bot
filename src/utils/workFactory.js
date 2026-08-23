@@ -4,6 +4,23 @@ const { Work, CompanionDuplicateReward, PoisonMitigation, REGRADE_CAPS, workRegr
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
+
+// Prospector's metalEncounterChanceFlat perk (see constants.js) widens Metal Potato's own
+// slice of work.js's cumulative roll table — every scenario from Metal onward (Sweet,
+// Companion, Taro, Ancient, Mimic, Golden Yam) shifts up by the same bonus so each keeps
+// its own slice width unchanged, and Regular (the fixed-at-1 catch-all, WORK_SCENARIO_INDICES
+// -1, always fails `>= METAL`) absorbs the difference by shrinking — exactly the "donated
+// entirely from Regular" shape balance-audit.md's 2026-08-23 sizing pass assumed. Kept as a
+// standalone pure function (rather than mutating work.js's shared module-level
+// `workScenarios` array in place) since that array is reused across every concurrent
+// player's /work call — a per-request mutation there would race.
+function getEffectiveScenarioChance(scenarioType, baseChance, metalEncounterBonus) {
+    if (metalEncounterBonus > 0 && scenarioType >= WORK_SCENARIO_INDICES.METAL) {
+        return baseChance + metalEncounterBonus;
+    }
+    return baseChance;
+}
 
 // Used by handleAncientPotato to pick a random eligible track and look up its real
 // current tier — regradeKey matches userDetails.regrades' keys, statField matches the
@@ -730,5 +747,6 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
 module.exports = {
     WorkFactory,
     getCurrentWeekTag,
-    computePoisonMitigation
+    computePoisonMitigation,
+    getEffectiveScenarioChance
 }

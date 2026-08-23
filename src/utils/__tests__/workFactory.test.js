@@ -1,8 +1,9 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChance } = require('../workFactory');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
+const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
 const workFactory = new WorkFactory();
 
@@ -29,6 +30,38 @@ beforeEach(() => {
     dynamoHandler.findGuildById.mockResolvedValue(null);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     dynamoHandler.addUserDatabase.mockResolvedValue({});
+});
+
+// Prospector's metalEncounterChanceFlat perk (see constants.js) — widens Metal Potato's own
+// slice of work.js's cumulative roll table without mutating the shared workScenarios array.
+// Pure function, so covered directly rather than via a full /work roll simulation.
+describe('getEffectiveScenarioChance', () => {
+    test('a zero bonus is a no-op for every scenario', () => {
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.METAL, 0.061, 0)).toBe(0.061);
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.REGULAR, 1, 0)).toBe(1);
+    });
+
+    test('Metal Potato itself gets the bonus added', () => {
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.METAL, 0.061, 0.02)).toBeCloseTo(0.081);
+    });
+
+    test('every scenario after Metal in roll order also shifts up by the same bonus, keeping its own slice width unchanged', () => {
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.SWEET, 0.081, 0.02)).toBeCloseTo(0.101);
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.GOLDEN_YAM, 0.130, 0.02)).toBeCloseTo(0.150);
+    });
+
+    test('scenarios before Metal in roll order are untouched', () => {
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.GOLDEN, 0.001, 0.02)).toBe(0.001);
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.POISON, 0.011, 0.02)).toBe(0.011);
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.LARGE, 0.051, 0.02)).toBe(0.051);
+    });
+
+    // Regular is the fixed-at-1 catch-all (WORK_SCENARIO_INDICES.REGULAR = -1, always fails
+    // `>= METAL`) — it has to stay untouched so it absorbs the widened Metal slice by
+    // shrinking, exactly the "donated entirely from Regular" shape the EV sizing assumed.
+    test('Regular (the catch-all) is never widened, even with a bonus active', () => {
+        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.REGULAR, 1, 0.02)).toBe(1);
+    });
 });
 
 describe('getCurrentWeekTag', () => {
