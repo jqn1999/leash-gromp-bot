@@ -1433,8 +1433,9 @@ and needs its own balance pass.
 
 - [ ] **Rival Bounty Hunters (Notoriety → confrontation)** — M, build-ready — see the
   "Architect's technical design" subsection at the end of this entry. Not yet built.
-  Product-owner brainstorm, revised after direct feedback on the difficulty model — not yet
-  architect-reviewed. Requested as "one more unique flavor of activity" for Mercenaries, distinct
+  Product-owner brainstorm, revised after direct feedback on the difficulty model, then taken
+  through a full architect design pass. Requested as "one more unique flavor of activity" for
+  Mercenaries, distinct
   from Bounties (reads as "guild raid, but solo") and `/rob-npc` (a quick heist mini-game against a
   fictional target) — this one flips the framing from "you hunt a target" to "you've built a
   reputation and now something is hunting *you*," the rival-mercenary/outlaw angle the original
@@ -1627,6 +1628,384 @@ and needs its own balance pass.
   {1,600}, `MAX_RIVAL_REWARD_BASE` {600,000}, `TIER_REWARD_FACTOR` {.6/.85/1.0}), a small new
   `RivalMercenaries` flavor table in `constants.js`, and `embedFactory.js` additions for both
   commands' embeds.
+
+  ### Architect's technical design (2026-08-23)
+
+  Full build-ready spec — a developer agent should be able to implement directly from this section
+  with zero other context. Grounded against live `constants.js`/`dynamoHandler.js`/`mercenaryFactory.js`/
+  `raidFactory.js`/`embedFactory.js` as they actually exist post-Mercenary-Bounties-launch, not
+  estimated. Every `Raid`/`Bounty`/`MercenaryRank`/`RobNpc`/`BountyStatReward` number cited below was
+  read directly from `constants.js`, not copied from this roadmap entry's own (slightly stale, in one
+  case) prose — see the RobNpc/Yukon note under §2.
+
+  **Genuinely new pattern, flagged upfront: a resettable resource-threshold gate, not a cooldown
+  timer.** Every other repeatable Mercenary action (`/take-bounty`, `/rob-npc`, real `/rob`, `/work`)
+  is gated by a ms-epoch timestamp field checked against a fixed `*_TIMER_SECONDS` constant.
+  `/confront-rival` has **no cooldown field at all** — it's gated purely by
+  `mercenaryNotoriety >= Rival.CONFRONTATION_THRESHOLD`, and the reset-to-0-on-any-resolution behavior
+  *is* the re-gating mechanism for the next cycle. This is the first accumulated-counter-as-gate (as
+  opposed to elapsed-time-as-gate) pattern in this codebase. Practically this means `/confront-rival`
+  needs no `convertSecondstoMinutes`-style "wait N minutes" rejection message — its rejection message
+  is a progress readout instead ("you need N more Notoriety — check `/notoriety`"), and there is no
+  interaction at all with `guildMercenarySwitchTimer` or any other timer field.
+
+  **1. Gating chain for `/confront-rival tier:<easy|medium|hard>`** (checked in this order, mirroring
+  `take-bounty.js`'s own layered-rejection style):
+  1. `!userDetails.isMercenary` → reject (same message every Bounty-family command already uses).
+  2. `mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank < 2` → reject
+     ("you need to be Mercenary Rank 2+ to confront a Rival Bounty Hunter — win more Bounties first").
+     Reuses the exact same rank lookup Bounty/`/rob-npc` already call; no new rank-gating logic needed.
+  3. `userDetails.mercenaryNotoriety < Rival.CONFRONTATION_THRESHOLD` → reject, stating current/needed
+     Notoriety.
+  No confirm step (matches `/take-bounty`'s own immediacy, and the "player chooses timing" requirement
+  from the product-owner pass is naturally satisfied — there's no forced window to miss since nothing
+  expires).
+
+  **2. Data model — two new top-level fields on `getDefaultUserFields`**, healed exactly like
+  `isMercenary`/`mercenaryBountyWinCount`/`bountyTimer` were (plain top-level keys, no index-key
+  special-casing, picked up automatically by `findUser`'s generic diff-and-heal loop the first time an
+  existing account is read post-deploy):
+
+  ```js
+  mercenaryNotoriety: 0,          // resets to 0 on EVERY /confront-rival resolution, win or lose —
+                                   // this is the "cycle, not a ladder" counter
+  rivalConfrontationWinCount: 0,  // LIFETIME, never reset — same delta-vs-lifetime split
+                                   // poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached
+                                   // already established: mercenaryNotoriety is the resetting
+                                   // progress meter, this is the monotonic counter the two new
+                                   // achievements (§8) and /notoriety's "rivals defeated" line read
+  ```
+
+  Both are simple numbers, not nested objects — no `records`-style one-level-deep healing needed. Note
+  this file's own **RobNpc/Yukon-chance numbers above are stale** relative to live `constants.js`
+  (`RobNpc.BASE_CHANCE`/`CHANCE_PER_RANK`/`MAX_CHANCE` are live `0.30`/`0.10`/`0.80`, not the `0.20`/
+  `0.02`/`0.30` this entry's own prose still shows; `MercenaryCompanionDrop.YUKON_CHANCE` is live
+  `{I:.01, II:.02, III:.05}`, not `{.0015, .004, .01}`) — both were buffed post-launch by direct
+  instruction (see [systems/mercenary-bounties.md](mercenary-bounties.md#rob-npc-robnpc)) after this
+  Rival entry's own prose was written. Irrelevant to Rival's own formulas (which don't reference
+  `RobNpc`/`MercenaryCompanionDrop` at all), flagged only so nobody building this off the roadmap's own
+  numbers accidentally treats this entry's copy as current.
+
+  **3. Formula simplification finding — `effectiveRaidPower` is dead weight in the success-chance
+  formula and should not be computed at all.** The product-owner pass's own formula block already
+  annotates this (`baseChance = min(effectiveRaidPower / difficulty, tierCap) // = tierCap exactly, by
+  construction`) but stops short of the natural conclusion: since `difficulty` is *defined as*
+  `effectiveRaidPower / tierCap`, the ratio `effectiveRaidPower / difficulty` **always equals
+  `tierCap`** regardless of what `effectiveRaidPower` actually is — the player's power cancels out of
+  its own difficulty formula exactly, by construction, not approximately. Implementing the literal
+  two-step (`difficulty = effectiveRaidPower / tierCap`, then `effectiveRaidPower / difficulty`) would
+  be correct but pointless — a full `raidFactory.getEffectiveRaidPower([userDetails])` call (which
+  itself calls `rebirthFactory.getLiveRebirthPercent`) computed only to be immediately divided back out
+  to a constant. The **actually-resolved formula never depends on `effectiveRaidPower` at all**:
+
+  ```
+  tierCap       = Rival.TIER_SUCCESS_CAP[tier]              // .90 / .65 / .60
+  successChance = min(tierCap * getRandomFromInterval(.8, 1.2), tierCap)
+  ```
+
+  This is implemented directly, with **no import of `raidFactory.getEffectiveRaidPower` or
+  `rebirthFactory.getLiveRebirthPercent` anywhere in Rival's success-chance path** — a real
+  simplification versus Bounty/`/rob-npc`, both of which *do* need the player's actual power (Bounty's
+  difficulty is a fixed `Raid.T{n}_RAID_DIFFICULTY`, not self-relative, so its ratio doesn't cancel).
+  One direct consequence worth flagging to the product owner rather than silently deciding: **rebirth
+  progress has zero effect anywhere in Rival Bounty Hunters** — not in success chance (shown above) and
+  not in the reward formula either, which the product-owner pass's own math deliberately scales off raw
+  `workMultiplierAmount`, not `effectiveRaidPower` (see §5). This is very likely intentional — the
+  entire pitch of self-relative difficulty was "stays stable at any power level," and a flat `tierCap`
+  achieves that trivially without needing power as an input at all — but it does mean a heavily-rebirthed
+  player's Rival fights feel mechanically identical to a fresh Rank-2 mercenary's, differing only in
+  reward size (via `workMultiplierAmount`, which does still climb with rebirth's own multiplier
+  compounding upstream of Rival's formula). Flagged as a judgment call, not silently resolved — see the
+  summary at the end of this response.
+
+  **4. `Rival` (`constants.js`) — final block, all numbers grounded against the product-owner pass's own
+  math, cross-checked against live `Raid`/`MercenaryRank` constants:**
+
+  ```js
+  const Rival = {
+      NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
+      NOTORIETY_PER_NPC_ROB_WIN: 1,
+      CONFRONTATION_THRESHOLD: 20,
+      TIER_SUCCESS_CAP: { easy: 0.90, medium: 0.65, hard: 0.60 },
+      BASE_REWARD_PER_MULTIPLIER: 1600,
+      MAX_RIVAL_REWARD_BASE: 600000,
+      TIER_REWARD_FACTOR: { easy: 0.6, medium: 0.85, hard: 1.0 }
+  }
+  ```
+
+  **Grounding for `CONFRONTATION_THRESHOLD: 20`, checked against real pacing, not asserted:**
+  `/confront-rival` itself is gated at Mercenary Rank 2 (15 lifetime Bounty wins, per live
+  `MercenaryRank.THRESHOLDS`), and Notoriety accrues from the *same* Bounty wins that build rank in the
+  first place (plus any parallel `/rob-npc` wins, which carry no rank gate and run on a shorter 1800s
+  cooldown). A player who mixes tiers on the way to Rank 2 has typically already banked 15-45 Notoriety
+  from those same 15 wins alone by the time the Rank gate opens — meaning **the first confrontation is
+  usually available the same session Rank 2 unlocks**, with Rank 2's own ~15-real-win cadence (several
+  real days for an active player, per `mercenary-bounties.md`'s own Rank pacing note) doing most of the
+  actual gating work up front. `CONFRONTATION_THRESHOLD`'s real job is pacing *every subsequent* cycle,
+  where it's the only gate left (Rank never un-unlocks): a maxed Rank-6 player running Hard-only Bounties
+  (3 Notoriety/win, 3600s cooldown, ≤60% win rate) needs roughly 10-15 real Bounty attempts to refill 20
+  Notoriety after each confrontation — mixing in `/rob-npc` wins (1 Notoriety/win, 1800s cooldown, up to
+  80% win rate at Rank 6) shortens that meaningfully. Net effect: "a handful of real sessions between
+  fights," not instant and not a wall, matching the ask directly — and because Notoriety keeps accruing
+  from ordinary Bounty/`/rob-npc` play whether or not the player is actively working toward a
+  confrontation, it never requires a dedicated grind, only continued play.
+
+  **5. Success chance & reward/penalty formula — final, using §3's simplification:**
+
+  ```
+  successChance = min(Rival.TIER_SUCCESS_CAP[tier] * getRandomFromInterval(.8, 1.2), Rival.TIER_SUCCESS_CAP[tier])
+  won           = Math.random() < successChance
+
+  rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)   // same live lookup Bounty/rob-npc use
+  rawBase  = min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE)
+
+  // WIN:
+  reward  = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+
+  // LOSS (independent variance roll from the reward-side one, no rank multiplier — full unscaled risk,
+  // same "no discount on the loss side" precedent Bounty's own SOLO_BOUNTY_REWARD_SHARE sets):
+  penalty = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * 0.5 * getRandomFromInterval(.8, 1.2))
+  ```
+
+  Cross-checked directly against live `Raid`/`MercenaryRank` constants (not re-derived from scratch —
+  the product-owner pass's own numbers already check out): at `workMultiplierAmount ≈ 375`, `rawBase`
+  saturates at the `600,000` cap; a maxed Rank-6 (`1.75x`) Hard-tier (`1.0` factor) win's realistic
+  ceiling is `600,000 × 1.0 × 1.2 × 1.75 = 1,260,000` — inside Bounty's own live Rank-6 range
+  (`≈1,050,000`-`1,575,000`, avg `≈1,312,500`, per `mercenary-bounties.md`) and below the guild's own
+  live per-member T3 figure (`Raid.T3_RAID_REWARD = 5,000,000`, level-3/6-person split `≈1,416,667`) —
+  confirms the "never out-earns organized guild raiding, stays in Bounty's own territory" property holds
+  against the actual shipped numbers, not just the illustrative ones this entry's prose used.
+
+  **No Yukon interaction, by design — flagged as a judgment call, not silently decided.** Bounty's own
+  reward formula includes a `(1 + yukonBonus)` term reading `companionFactory.getActivePerkValue(userDetails,
+  "bountyRewardPercent")`; the product-owner pass's Rival formula has no equivalent term anywhere, and
+  Yukon's perk is explicitly named `bountyRewardPercent`, not a generic Mercenary-income perk. Implemented
+  as written — **Rival confrontations do not read any companion perk, and do not roll for Yukon** (Yukon
+  is obtained only via `/take-bounty`'s own dedicated `MercenaryCompanionDrop.YUKON_CHANCE` roll,
+  untouched by this feature) — consistent with the roadmap's explicit "no companion tied to this" scope
+  note. If the product owner wants Yukon's `bountyRewardPercent` to also apply here, that's a one-line
+  addition (`* (1 + companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent"))` in the win
+  branch above) — deliberately not added preemptively since the roadmap's own math never mentions it.
+
+  Loss write includes a `Math.max(0, ...)` floor on `potatoes` — `Raid`'s own `handlePotatoSplit` and
+  Bounty's `take-bounty.js` both currently lack this floor (an open finding in `balance-audit.md`'s
+  "Guild Raid ... Negative-Balance Clamp" entry above, unresolved there), but since this is a brand-new
+  write path rather than a reuse of either existing one, there's no cost to closing the gap here
+  preemptively rather than inheriting it. Doesn't fix the pre-existing Raid/Bounty issue — that's still
+  a separate, already-tracked item — just avoids introducing a third copy of the same bug.
+
+  **6. Guaranteed permanent stat bump — reuses `BountyStatReward.TIER_I_GRANT` directly, unconditionally
+  (no roll-chance gate).** The product-owner pass specifies this is sized at exactly Sweet Potato's own
+  magnitude, which **is** `BountyStatReward.TIER_I_GRANT` verbatim (itself `workFactory.sweetPotatoRewards`
+  reused directly) — no new grant table needed. `mercenaryFactory.js` already has the exact "pick one of
+  three tracks uniformly, resolve the percentage-of-current-stat delta" logic inline inside
+  `rollBountyStatReward`'s `tierLetter !== 'III'` branch; this needs the same resolution **without** the
+  `Math.random() >= rollChance` early-return, since Rival's bump is guaranteed on a win, not rare:
+
+  ```js
+  // mercenaryFactory.js — new function, reuses the existing calculatePercentDelta helper unchanged
+  function resolveGuaranteedStatBump(userDetails) {
+      const pool = BountyStatReward.TIER_I_GRANT;
+      const picked = pool[Math.floor(Math.random() * pool.length)];
+      if (picked.type === 'workMultiplierAmount') {
+          return { type: 'workMultiplierAmount', amount: picked.amount };
+      }
+      const currentValue = picked.type === 'passiveAmount' ? userDetails.passiveAmount : userDetails.bankCapacity;
+      const roundIncrement = picked.type === 'passiveAmount' ? 10000 : 50000;
+      return { type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) };
+  }
+  ```
+
+  Applied via the same write path Bounty's own rare stat branch uses:
+  `raidFactory.handleStatSplit([{ id: userId, username }], bump.type, bump.amount)` — no new write logic.
+
+  **Resolves the roadmap's own open question ("should Hard grant an amplified stat bump?") — no,
+  uniform across all three tiers.** Tier is already a real risk/reward axis via `TIER_SUCCESS_CAP`
+  (lower win rate) and `TIER_REWARD_FACTOR` (bigger payout on a win); stacking a third "harder tier =
+  bigger permanent bump" axis on top would be a third independent lever doing the same job as the first
+  two, adding tuning surface without adding a meaningfully different choice. Hard's own lower win rate
+  already means a player who only fights Hard collects this guaranteed bump less often in real time than
+  an Easy-only player — that's Hard's "cost" for the bump specifically, no separate amplification needed.
+
+  **7. `RivalMercenaries` (`constants.js`) — 6 named rivals, reused across every player and every
+  tier**, mirroring `Raid`'s named-boss shape (`{ name, thumbnailUrl, description, winFlavor,
+  loseFlavor }` — using `winFlavor`/`loseFlavor` rather than `success`/`failureDescription` to match
+  `BountyScenarios`' own naming instead, since this table is picked per-attempt like that one, not
+  per-tier-bracket like `regularRaidMobs`/`eliteRaidMobs`). One entry is drawn uniformly at random on
+  every `/confront-rival` call, independent of `tier` — tier changes the fight's numbers, never which
+  rival shows up, per the product-owner pass's explicit instruction:
+
+  ```js
+  const RivalMercenaries = {
+      description: "Your growing reputation has drawn the attention of the realm's most notorious bounty hunters — sooner or later, one of them comes looking for you.",
+      roster: [
+          { name: "The Rustbeard Ronin",
+            thumbnailUrl: "<placeholder — needs commissioned art, same as Yukon/T4 raid bosses>",
+            description: "A wandering blade-for-hire whose rusted armor has seen more bounties than anyone cares to count.",
+            winFlavor: "The Ronin's rusted blade meets yours one time too many, and finally gives — a grudging nod is the only concession you get, but it's enough.",
+            loseFlavor: "The Rustbeard Ronin's rusted armor turns out to hide a much sharper edge than expected. You live to fight another day, just not today." },
+          { name: "Marsh Widow Malvina",
+            thumbnailUrl: "<placeholder>",
+            description: "She's collected more bounties out of the wetlands than the local constabulary has ever managed, and she's not planning on stopping at you.",
+            winFlavor: "Malvina's home turf finally works against her — you know the marsh better than she expected, and it costs her the fight.",
+            loseFlavor: "Malvina knows every sinking patch of that marsh by name. You don't, and it shows." },
+          { name: "Deadfall Duncan",
+            thumbnailUrl: "<placeholder>",
+            description: "A trapper-turned-hunter who's never met a bounty he thought was worth losing sleep over — until yours.",
+            winFlavor: "Duncan's own trap gets sprung on him first — a rare miscalculation he won't be living down anytime soon.",
+            loseFlavor: "Duncan's traps are half the reason he's still hunting after all these years. Today, you find out why the hard way." },
+          { name: "The Coinpurse Reaper",
+            thumbnailUrl: "<placeholder>",
+            description: "Rumor has it the Reaper only takes contracts worth remembering — apparently, you qualify now.",
+            winFlavor: "The Reaper's reputation turns out to be bigger than the Reaper themself — the contract on your head gets torn up on the spot.",
+            loseFlavor: "The Coinpurse Reaper's reputation is, unfortunately, entirely earned. You'll be paying that particular debt down for a while." },
+          { name: "Old Scattergun Suze",
+            thumbnailUrl: "<placeholder>",
+            description: "Retired twice, un-retired twice — Suze keeps coming out of retirement specifically for bounties like yours.",
+            winFlavor: "Suze's aim isn't what it used to be, and today that's the difference — you walk away, and she walks off muttering about retiring for real this time.",
+            loseFlavor: "Suze's aim is exactly what it used to be, unfortunately for you. Third retirement, still on hold." },
+          { name: "The Hollow Ledger",
+            thumbnailUrl: "<placeholder>",
+            description: "Nobody's ever seen the Ledger's face — only the tally of names they've collected on, which keeps getting longer.",
+            winFlavor: "Whatever's under that hood, it bleeds like anything else — your name comes off the Ledger's tally for good.",
+            loseFlavor: "The Hollow Ledger adds one more name to an already very long list, and doesn't even slow down to gloat about it." }
+      ]
+  }
+  ```
+
+  Flavor text is cosmetic only (same `constants.md` "not mechanically load-bearing" status
+  `BountyScenarios`/`regularWorkMobs` already carry) — the 6 entries above lock down the template; a
+  7th+ rival is pure data, no code changes.
+
+  **8. `mercenaryFactory.js` additions** — `resolveRivalConfrontation(userDetails, tier)`, the single
+  computation-only function `/confront-rival` calls (same "no DB writes inside the resolve function"
+  division of labor `resolveBountyAttempt`/`resolveNpcRob` already use):
+
+  ```js
+  function pickRandomRival() {
+      return RivalMercenaries.roster[Math.floor(Math.random() * RivalMercenaries.roster.length)];
+  }
+
+  async function resolveRivalConfrontation(userDetails, tier) {
+      const tierCap = Rival.TIER_SUCCESS_CAP[tier];
+      const successChance = Math.min(tierCap * getRandomFromInterval(.8, 1.2), tierCap);
+      const won = Math.random() < successChance;
+      const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+      const rival = pickRandomRival();
+
+      const result = { tier, won, successChance, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
+      const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE);
+      const tierFactor = Rival.TIER_REWARD_FACTOR[tier];
+
+      if (won) {
+          result.rewardAmount = Math.round(rawBase * tierFactor * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier);
+          result.statBump = resolveGuaranteedStatBump(userDetails);
+      } else {
+          result.penaltyAmount = Math.round(rawBase * tierFactor * 0.5 * getRandomFromInterval(.8, 1.2));
+      }
+      return result;
+  }
+  ```
+
+  Notoriety accrual itself is **not** a `mercenaryFactory.js` function — it's a one-line constant
+  lookup (`Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` / `Rival.NOTORIETY_PER_NPC_ROB_WIN`) added directly
+  into `takeBounty.js`'s and `robNpc.js`'s existing win branches via `addAttributes.mercenaryNotoriety`,
+  the same `updateUserFields`-level `ADD` `mercenaryBountyWinCount` already uses in `takeBounty.js` —
+  matching the existing division of labor where simple counter bumps live at the command call site, not
+  inside the factory.
+
+  **9. Commands** (both `src/commands/user/`, matching every other Mercenary command):
+
+  | Command | Flow |
+  |---|---|
+  | `/notoriety` | No args, read-only (mirrors `/bounty-board`'s never-snapshots-anything-by-viewing precedent). Rejects if not a mercenary. Shows: current `mercenaryNotoriety` / `Rival.CONFRONTATION_THRESHOLD`, whether Rank 2+ is met, whether a confrontation is available right now, and lifetime `rivalConfrontationWinCount`. |
+  | `/confront-rival tier:<easy\|medium\|hard>` | Gating chain per §1. No confirm step, no cooldown (per the new-pattern note above). Resolves immediately via `resolveRivalConfrontation`, writes the result (§10), replies with the result embed. |
+
+  `/confront-rival`'s `tier` option uses lowercase string values (`easy`/`medium`/`hard`) matching
+  `Rival.TIER_SUCCESS_CAP`/`TIER_REWARD_FACTOR`'s own keys directly — deliberately **not** reusing
+  Bounty's `I`/`II`/`III` Roman-numeral convention, since Rival's three tiers are a risk-level choice
+  (Easy/Medium/Hard), not an absolute-difficulty rung the way Bounty's tiers are; using different option
+  values for a semantically different kind of "tier" avoids implying the two are the same axis.
+
+  **10. Persistence — the full write sequence for `/confront-rival`:**
+
+  ```js
+  const setAttributes = { mercenaryNotoriety: 0 };   // full reset, win OR lose — resolves the roadmap's
+                                                       // own "does a loss forfeit Notoriety at any tier"
+                                                       // question: yes, always, regardless of tier chosen
+  const addAttributes = {};
+
+  if (result.won) {
+      addAttributes.rivalConfrontationWinCount = 1;   // lifetime — NOT mercenaryBountyWinCount; a Rival
+                                                        // win never advances Mercenary Rank, only Bounty
+                                                        // wins do (see mercenary-bounties.md's own
+                                                        // "distinct from the lifetime win count" framing)
+      setAttributes.potatoes = userDetails.potatoes + result.rewardAmount;
+      setAttributes.totalEarnings = userDetails.totalEarnings + result.rewardAmount;
+  } else {
+      setAttributes.potatoes = Math.max(0, userDetails.potatoes - result.penaltyAmount);
+      setAttributes.totalLosses = userDetails.totalLosses - result.penaltyAmount;
+  }
+
+  await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
+
+  if (result.won) {
+      await raidFactory.handleStatSplit([{ id: userId, username }], result.statBump.type, result.statBump.amount);
+  }
+  ```
+
+  Explicitly **not** using `dynamoHandler.updateIfNewRecord`/a new `records.largestRivalReward` field —
+  considered (mirrors `records.largestBountyReward` exactly, same zero-marginal-cost precedent) but left
+  out of this pass since it wasn't asked for; a one-line addition later if wanted (add the default field,
+  add the `updateIfNewRecord` call on a potato win — identical shape to `largestBountyReward`).
+
+  **11. `embedFactory.js` additions**: `createNotorietyEmbed(userDisplayName, notoriety, threshold,
+  rankInfo, confrontable, rivalConfrontationWinCount)` (mirrors `createBountyBoardEmbed`'s shape — a
+  progress line plus a Ready-now/locked field) and `createRivalConfrontationResultEmbed(userDisplayName,
+  result)` (mirrors `createBountyResultEmbed`'s win/loss + stat-reward-callout shape, minus the
+  currency/scenario-flavor split Bounty needs — Rival always pays potatoes and always grants the stat
+  bump on a win, so there's no conditional currency branch or rare-roll callout, just a flat "🏅
+  Permanent Stat Reward" field shown unconditionally on every win).
+
+  **12. Achievements** — 2 new entries, keyed on the new lifetime `rivalConfrontationWinCount` (not
+  `mercenaryNotoriety`, which resets and can't back a monotonic achievement threshold — same
+  `poisonMitigation.weeklyHitCount` vs. `totalPoisonMilestonesReached` split this codebase already
+  established):
+
+  | id | Name | Threshold |
+  |---|---|---|
+  | `rival_first_blood` | Turned the Tables | `rivalConfrontationWinCount >= 1` |
+  | `rival_hunter_of_hunters` | Hunter of Hunters | `rivalConfrontationWinCount >= 15` |
+
+  15 mirrors Rank 2's own 15-win threshold as a "real, sustained commitment" marker — deliberately not a
+  hard-capped capstone the way `mercenary_legend`'s 525 mirrors Rank 6's cap, since Rival confrontations
+  have no rank-style ceiling to anchor a capstone threshold to; this is a cycling activity, not a ladder,
+  so a third "grand master" tier isn't a natural fit here the way it was for Bounty's own rank-max
+  achievement.
+
+  **13. Resolved open questions (final answers):**
+  - *Does a loss forfeit all accumulated Notoriety, regardless of tier?* **Yes** — `mercenaryNotoriety`
+    resets to 0 unconditionally in §10's write, win or lose, at any tier.
+  - *Small named roster or fully randomized flavor?* **Small named roster, 6 entries** (§7) — reused
+    across every tier, picked uniformly at random per attempt.
+  - *Rare companion/cosmetic drop on a Rival win?* **Deferred**, per the roadmap's own recommendation —
+    no Yukon roll, no new companion, nothing added here.
+  - *Should the Notoriety threshold vary by which tier the player intends to fight?* **No** — one shared
+    `Rival.CONFRONTATION_THRESHOLD` unlocks the choice of all three tiers at confrontation time.
+  - *Should Hard grant an amplified stat bump?* **No** — uniform bump size across all three tiers (§6);
+    tier's own success-chance/reward-factor axes already differentiate risk/reward without a third lever.
+
+  **Judgment calls the product owner may want to weigh in on before build starts** (not silently
+  decided, flagged explicitly per this doc's own convention):
+  - Rebirth progress has **no effect anywhere** in Rival Bounty Hunters, a direct consequence of §3's
+    formula simplification — confirmed structurally correct given the approved formulas, but worth a
+    conscious sign-off given every other late-game system (Bounty, Raid, `/rob-npc`) does factor it in.
+  - Yukon's `bountyRewardPercent` perk **does not apply** to Rival's reward (§5) — the roadmap's own
+    formula never includes it, but this is the first place in the Mercenary track where an existing
+    companion perk is deliberately *not* extended to a new, closely-related action; worth confirming
+    that's intentional rather than an oversight in the original pitch.
+  - `records.largestRivalReward` was **not** added (§10) despite being a free, precedent-matching
+    addition — left out only because it wasn't requested, not because of any downside.
 
 - [x] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — L — **Shipped 2026-08-23**, built
   directly off the architect's technical design at the end of this entry — see
