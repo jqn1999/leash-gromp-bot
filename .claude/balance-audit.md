@@ -906,3 +906,96 @@ in favor of branch 3's potato payout, so a stat bump isn't guaranteed on every e
 anymore. See `roadmap.md`'s item 21 follow-up note for the implementation and the three existing
 tests that needed `Math.random` pinned to stay deterministic once branch selection itself became
 randomized (this test file doesn't mock `Math.random` globally).
+
+---
+
+## 2026-08-23 — Prospector vs. Mole/Firefly (Rare-tier) Income Power sizing
+
+Focused re-check, prompted by a request for a concrete Metal Potato base-encounter-chance number
+to bring Prospector in line with its Rare peers. Not a fix — a sizing recommendation for
+`product-owner`/`architect`, per usual. Verified against source, not `systems/companions.md` (no
+existing entry covers Prospector specifically).
+
+**Confirmed mechanism** (`work.js:96-131`, `workFactory.js:76-125`, `constants.js:610-621`):
+Metal Potato's encounter chance is a flat, companion-independent `1.0%` per `/work` roll
+(`work.js:131`, the `.051→.061` cumulative slice). Independently, a *second* roll on encounter
+decides success: base `10%`, `+ getActivePerkValue(..., "metalSuccessChanceFlat")`
+(`work.js:112`) — Prospector (Rare) is the only companion on this perk, at `+0.20` flat
+(`constants.js:620`, `10%→30%`). On success, `handleMetalPotato` pays `floor(min(100000,
+workGainAmount*20) * multiplier * effectiveMultiplier * .95)` (`workFactory.js:90`) plus a
+*permanent* stat bump (`metalPotatoRewards`, `workFactory.js:676-682`: `workMultiplierReward:
+0.6` flat-add, `passiveReward`/`bankCapacityReward: 1.5` of current, capped) folded into
+`sweetPotatoBuffs`. Note: `Work.MAX_LARGE_POTATO` does not exist in `constants.js` — Large
+Potato's `calculateGainAmount` call (`workFactory.js:583`) receives `undefined` as `maxGain`, so
+`maxGain < currentGain` is always `false` and Large Potato is effectively **uncapped**, unlike
+every other scaled reward. Flagged as a probable separate bug (Large Potato scaling unbounded
+with server wealth) — not sized or fixed here, out of scope for this request, but worth its own
+look since it fed directly into the EV math below.
+
+**Income Power computation** (`node -e`, not eyeballed): built per-work-roll EV in "coefficient
+units" (`workGainAmount * effectiveMultiplier * 0.95`) across the four real potato-payout
+scenarios (`Golden/Large/Metal/Regular` — the same grouping `work.js`'s own
+`POTATO_PAYOUT_SCENARIO_TYPES` already uses, deliberately excluding Poison/Sweet/Taro/Companion/
+Ancient/Mimic/GoldenYam, which pay in a different currency or aren't potato-scaled the same way).
+Chances taken directly from `work.js`'s cumulative table: Golden `.001`, Large `.040`, Metal
+`.010`, Regular = remainder after all ten scenario widths (`.880` combined with Metal). Payout
+coefficients: Golden `100`, Large `10`, Metal `20` (on success only), Regular `1`.
+
+Because every term in both the numerator (Prospector's marginal EV) and denominator (total
+potato-scenario EV) scales by the same `effectiveMultiplier` factor, **the ratio is stage-
+invariant** — it holds the same at fresh/early, mid, and maxed/late `effectiveMultiplier`, as long
+as `workGainAmount*20` stays under `MAX_METAL_POTATO=100000` (true unless per-server "wealth"
+pushes the shared `workGainAmount` floor past 5,000 — a separate, per-server variable this can't
+fully rule out, noted as a caveat, not sized).
+
+- At the current `1.0%` encounter chance, Prospector's marginal EV (the `+20pp` success-chance
+  delta, conditional on the `1%` encounter) works out to **~2.9%** of total potato-scenario EV per
+  `/work` roll — computed as `(pMetal * 0.20 * 20) / (pGolden*100 + pLarge*10 + pMetal*0.10*20 +
+  pRegular*1)` with `pRegular` solved self-consistently (`= 0.880 - pMetal`, since Regular is the
+  literal remainder bucket, not fixed).
+- Firefly's `workMultiplierPercent +0.09` (`constants.js:631`) and Mole's `starchSellBonusPercent
+  +0.09` (`constants.js:608`) are both realized **unconditionally** on their respective actions —
+  Firefly's in particular is exactly `9.0%` of this same potato-scenario EV base, every single
+  `/work` roll, by construction (`effectiveMultiplier` uniformly scales all four scenarios).
+  Prospector currently realizes roughly **a third** of that.
+- Solving `pMetal * 0.20 * 20 = 0.09 * (1.38 + pMetal)` (the self-consistent EV-parity condition)
+  for `pMetal` gives **`pMetal ≈ 3.18%`** — i.e. raising Metal Potato's base encounter chance from
+  `1.0%` to **~3.1%–3.2%** (a **+2.1 to +2.2 percentage-point increase**, roughly tripling
+  frequency) brings Prospector's realized EV to the same `~9%`-of-potato-EV bar Firefly/Mole
+  already clear, with the perk itself (`+20%` success) left untouched as specified.
+
+**Complications flagged, not resolved here:**
+1. **Not Prospector-exclusive value.** Base success stays `10%` for everyone — raising `pMetal`
+   from `1.0%`→`3.18%` also raises every *non*-Prospector player's own potato-scenario EV by
+   `EV_total(0.0318)/EV_total(0.01) - 1 ≈ +1.6%`, since Regular's remainder bucket shrinks 1-for-1
+   to feed Metal's higher-EV-per-hit bucket. The buff is a net economy-wide EV increase, not a
+   Prospector-only correction; Prospector owners' *relative* edge over non-owners is what actually
+   moves from `~2.9%`→`~9%`.
+2. **Compounding side effect independent of the potato math.** `metalPotatoRewards.
+   workMultiplierReward = 0.6` (flat, permanent, uncapped) fires on every Metal Potato *success*,
+   not just every encounter. Tripling `pMetal` triples the rate of these permanent multiplier/
+   passive%/bank% bumps for the **entire playerbase** (non-Prospector: `0.01*0.10=0.001`→
+   `0.0318*0.10≈0.00318` successes/roll; Prospector: `0.01*0.30=0.003`→`0.0318*0.30≈0.00954`
+   successes/roll — both exactly `3.18x`). Since this is a permanent additive stat rather than a
+   one-time payout, it compounds into every future `/work`/passive tick for the rest of the
+   game — a bigger long-run economy-inflation lever than the raw potato EV number suggests, and
+   worth weighing against the narrower "is Prospector priced right" question before picking a
+   final number.
+
+**Severity**: live, not hypothetical — Prospector is a real, currently-underpriced Rare pick by
+this measure. **Recommendation** (for `product-owner`/`architect`, not applied here): raise Metal
+Potato's base encounter chance from `1.0%` to a point in **`3.0%–3.2%`** (`+2.0` to `+2.2pp`) for
+full parity with Firefly/Mole; if the universal-benefit and permanent-stat-bump-rate side effects
+(above) are judged too large a system-wide lever to pull in one move, a partial step (e.g.
+`+1.0–1.5pp`, landing Prospector around `50–65%` of parity) paired with revisiting whether the
+`metalSuccessChanceFlat` perk value itself should also move is the fallback worth weighing —
+either way this is a two-variable knob (encounter chance × perk value) and the request specifically
+asked for the encounter-chance side held alone.
+
+### Checked, no issues found (this pass)
+
+- **`CompanionRarityOdds`/roster placement of Prospector** — Rare tier, single-perk, matches every
+  other single-perk Rare's shape (Mole/Firefly). No structural placement issue.
+- **`metalSuccessChanceFlat` as a perk type** — correctly single-sourced through
+  `companionFactory.getActivePerkValue`, no other companion touches this perk key, no double-
+  counting or wiring bug found.
