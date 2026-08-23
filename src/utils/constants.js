@@ -1229,7 +1229,11 @@ const RobNpc = {
 // purely because Bounty attempts are inherently 12x less frequent (3600s vs /work's 300s
 // cooldown) — an accepted, explicit tradeoff, not a modeling error.
 const MercenaryCompanionDrop = {
-    YUKON_CHANCE: { I: 0.0015, II: 0.004, III: 0.01 }   // 0.15% / 0.4% / 1.0% per WINNING resolution
+    // Buffed 2026-08-23, direct instruction, to make Yukon meaningfully more frequent —
+    // Bounty attempts run on a 3600s cooldown (vs. /work's 300s), so even a rate tuned to
+    // land close to Legendary's real per-/work-call odds still takes ~12x longer in real
+    // time to pay off; this buff is deliberately NOT trying to preserve that parity anymore.
+    YUKON_CHANCE: { I: 0.01, II: 0.02, III: 0.05 }   // 1% / 2% / 5% per WINNING resolution
 }
 
 const GuildRoles = {

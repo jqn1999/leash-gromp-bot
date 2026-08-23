@@ -280,13 +280,28 @@ logic:
   everywhere else.
 
 **Odds** (`MercenaryCompanionDrop.YUKON_CHANCE`, checked once per win, independent of the
-stat-reward roll): 0.15% / 0.4% / 1.0% for Tier I/II/III. Sized so the *per-attempt* rate at
-each tier's own 0.9 success-chance cap (the best realistic case) lands close to Legendary's
-own real per-`/work`-call rate (0.12% = 1.5% Wandering Companion encounter × 8% conditional
-Legendary roll) — Tier I: `0.0015 * 0.9 = 0.135%`. The remaining gap — real calendar time to
-obtain is still ~12x longer than a Legendary `/work` pull — is purely because Bounty
-attempts are inherently 12x less frequent (3600s vs. `/work`'s 300s cooldown), an accepted,
-explicit tradeoff.
+stat-reward roll): **1% / 2% / 5%** for Tier I/II/III. Buffed 2026-08-23, direct
+instruction, up from the original 0.15% / 0.4% / 1.0% — that original sizing deliberately
+aimed for per-attempt parity with Legendary's real per-`/work`-call rate (0.12%), but still
+left Yukon ~12x slower to obtain in real time purely because Bounty attempts run on a 3600s
+cooldown vs. `/work`'s 300s. This buff abandons that parity goal outright in favor of making
+Yukon noticeably more attainable given how infrequent Bounty runs are.
+
+Duplicate pulls while the owned Yukon is out scavenging or listed on the market both work
+correctly, with no special-casing needed:
+- **Scavenging**: `isScavenging` never removes the entry from `companions.owned` (see
+  `companionFactory.applyCompanionAward`'s own comment on this), so `resolveYukonAward`'s
+  duplicate branch fires exactly as normal, adding `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`
+  to the scavenging copy's `workCount` — nothing Yukon-specific, this is how every companion
+  already behaves. See `mercenaryFactory.test.js`'s dedicated regression test.
+- **Listed on the market**: `companionMarketFactory.removeFromOwned` pulls a listed
+  companion out of `owned` entirely (escrow), so a fresh Bounty win while Yukon is listed is
+  seen as a genuine new pull, not a duplicate — the reconciliation happens later instead:
+  `companionCancel.js`'s `attemptCancelListing` already merges the listing's `workCount`
+  into the reacquired copy (rather than pushing a second `owned` entry) if the listing is
+  cancelled, and a completed sale simply goes to a different buyer's own `owned` array. This
+  is general market-escrow logic, not Yukon-specific — see the regression test added in
+  `companionCancel.test.js`.
 
 **Perks**:
 - `npcRobChanceFlat` 12% — `/rob-npc`-exclusive, deliberately a *different* perk type from

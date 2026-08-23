@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const mercenaryFactory = require('../mercenaryFactory');
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionDuplicateReward } = require('../constants');
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionDuplicateReward, CompanionLeveling } = require('../constants');
 
 function baseUser(overrides = {}) {
     return {
@@ -330,5 +330,40 @@ describe('resolveYukonAward', () => {
         expect(result.isNew).toBe(false);
         expect(result.potatoesGained).toBeGreaterThan(0);
         expect(result.potatoesGained).toBeLessThanOrEqual(CompanionDuplicateReward.legendary);
+    });
+
+    // Regression coverage for a player concern raised alongside the drop-rate buff above:
+    // does pulling a duplicate Yukon while the owned one is out scavenging still count as a
+    // real duplicate (adding to its workCount) rather than something going wrong? isNew is
+    // driven purely by companionFactory.ownsCompanion's `owned` array membership —
+    // isScavenging (companions.scavenging.companionId) never removes the entry from `owned`
+    // (see companionFactory.applyCompanionAward's own comment on this), so this needs no
+    // special-casing: the duplicate branch above already fires exactly the same way whether
+    // or not the owned copy happens to be out scavenging right now. This test pins that down
+    // explicitly with a live `companions.scavenging` record set, so a future change to
+    // ownsCompanion/isScavenging that broke this would fail here instead of silently.
+    test('a duplicate pull still applies correctly while the owned Yukon is out scavenging', async () => {
+        const user = baseUser({
+            workMultiplierAmount: 1,
+            companions: {
+                owned: [{ id: 'yukon', workCount: 5 }],
+                active: null,
+                ownedCount: 1,
+                mythicOwnedCount: 0,
+                scavenging: { companionId: 'yukon', rarity: 'legendary', returnsAt: Date.now() + 100000 },
+            },
+        });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        let result;
+        try {
+            result = await mercenaryFactory.resolveYukonAward(user, 1000, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.isNew).toBe(false);
+        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS }]);
+        // The scavenging record itself must survive untouched — applyCompanionAward only
+        // ever rebuilds `owned`, spreading the rest of `companions` through unchanged.
+        expect(result.companions.scavenging).toEqual(user.companions.scavenging);
     });
 });

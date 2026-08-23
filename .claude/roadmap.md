@@ -1375,6 +1375,24 @@ and needs its own balance pass.
   Added `src/utils/__tests__/embedFactory.test.js` (3 tests) covering the non-immune,
   first-hit, and immune (Guinea Pig) branches. Full suite green (380/380, up from 377).
 
+- [x] **35. Buff Yukon's Drop Rate + Verify Duplicate-While-Scavenging/Listed** — S — **Done**
+  What: `MercenaryCompanionDrop.YUKON_CHANCE` buffed from 0.15%/0.4%/1.0% to **1%/2%/5%**
+  (Tier I/II/III) — an odds-only change, no other Yukon mechanics touched. Also verified,
+  per the user's explicit ask, that a duplicate Yukon pull correctly adds to the owned
+  copy's `workCount` whether that copy is currently out scavenging or listed on the
+  market — both already worked correctly via pre-existing, non-Yukon-specific mechanisms
+  (`isScavenging` never removes a companion from `owned`; the market's escrow-removal +
+  `attemptCancelListing`'s reacquired-copy merge already reconcile a listing against a
+  fresh pull of the same companion), so no code changes were needed there — only new
+  regression tests confirming it, since neither path had explicit coverage before.
+  Why: direct instruction — "chance to win being like 1%, 2%, 5%... bc of how less
+  frequent bounty runs are," plus a request to confirm the scavenging/listed duplicate
+  case works "like usual."
+  Notable: added a scavenging-specific test to `mercenaryFactory.test.js` and a new
+  `src/commands/user/__tests__/companionCancel.test.js` (2 tests) — the market-listing
+  reconciliation path had zero test coverage of any kind before this, for any companion,
+  not just Yukon. Full suite green (383/383, up from 380).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -1397,107 +1415,154 @@ and needs its own balance pass.
      regardless of which direction the gating fix above takes.
 
 - [ ] **Rival Bounty Hunters (Notoriety → confrontation)** — M, once a direction is picked.
-  Product-owner brainstorm, not yet architect-reviewed. Requested as "one more unique flavor of
-  activity" for Mercenaries, distinct from Bounties (reads as "guild raid, but solo") and `/rob-npc`
-  (a quick heist mini-game against a fictional target) — this one flips the framing from "you hunt a
-  target" to "you've built a reputation and now something is hunting *you*," the rival-mercenary/
-  outlaw angle the original Mercenary brainstorm flagged but never built.
+  Product-owner brainstorm, revised after direct feedback on the difficulty model — not yet
+  architect-reviewed. Requested as "one more unique flavor of activity" for Mercenaries, distinct
+  from Bounties (reads as "guild raid, but solo") and `/rob-npc` (a quick heist mini-game against a
+  fictional target) — this one flips the framing from "you hunt a target" to "you've built a
+  reputation and now something is hunting *you*," the rival-mercenary/outlaw angle the original
+  Mercenary brainstorm flagged but never built.
 
-  **What**: a new personal, resettable counter, `mercenaryNotoriety` (distinct from the lifetime
-  `mercenaryBountyWinCount` that drives Rank — this one cycles), built up by normal Bounty/`/rob-npc`
-  play: `/take-bounty` wins add `Notoriety.PER_TIER_GAIN` (proposed 1/2/3 for Tier I/II/III — harder
-  bounties build your legend faster) and `/rob-npc` wins add a flat 1. Once it crosses
-  `Notoriety.CONFRONTATION_THRESHOLD` (proposed 20 — chosen so an all-Tier-I-wins pace hits it around
-  the same real-world cadence Rank 2 itself takes at 15 wins, per
-  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#mercenary-rank); mixing in higher
-  tiers or `/rob-npc` wins accelerates it), a Rival Bounty Hunter becomes available to confront — a
-  new read-only `/notoriety` command (mirrors `/bounty-board`'s shape) shows the running count,
-  threshold, and whether a rival is currently confrontable; a new `/confront-rival` (no confirm step,
-  same immediacy precedent `/take-bounty`/`/rob-npc` already set) resolves the duel on demand — the
-  player chooses *when*, there's no forced cooldown or expiring window, so nothing punishes waiting
-  until better-prepared.
+  **What (unchanged from the original pitch)**: a new personal, resettable counter,
+  `mercenaryNotoriety` (distinct from the lifetime `mercenaryBountyWinCount` that drives Rank — this
+  one cycles), built up by normal Bounty/`/rob-npc` play: `/take-bounty` wins add
+  `Notoriety.PER_TIER_GAIN` (proposed 1/2/3 for Tier I/II/III — harder bounties build your legend
+  faster) and `/rob-npc` wins add a flat 1. Once it crosses `Notoriety.CONFRONTATION_THRESHOLD`
+  (proposed 20 — chosen so an all-Tier-I-wins pace hits it around the same real-world cadence Rank 2
+  itself takes at 15 wins, per
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#mercenary-rank)), a Rival Bounty
+  Hunter becomes confrontable — read-only `/notoriety` (mirrors `/bounty-board`'s shape) shows the
+  running count, threshold, and availability; `/confront-rival tier:<easy|medium|hard>` (no confirm
+  step, same immediacy precedent `/take-bounty`/`/rob-npc` already set) resolves the duel on demand —
+  player-chosen timing, no forced cooldown or expiring window. Gated by Mercenary Rank 2+ overall
+  (Tier II's own unlock rank — a Rank 1 mercenary shouldn't walk into a boss-caliber fight before
+  proving themselves on a real Bounty tier). Notoriety fully resets to 0 on any resolution, win or
+  lose.
 
-  **Gated by Mercenary Rank**: notoriety can accrue from Rank 1, but confronting a rival requires
-  Rank 2+ (Tier II's own unlock rank) — a Rank 1 mercenary shouldn't be able to walk into a
-  boss-caliber fight before they've even proven themselves on a real Bounty tier.
+  **Revised, direct instruction — difficulty is now self-relative, not a fixed target.** The original
+  pitch reused a fixed `Raid.T3_RAID_DIFFICULTY` constant capped at Elite's .75 rate. Flagged as a
+  problem: a *fixed* difficulty target inevitably drifts from "genuine threat" to "trivial" as a
+  player's `workMultiplierAmount` compounds over months of shop/regrade/rebirth progress — the mirror
+  image of the drift the catch-up bonus exists to correct on the other end of the spectrum (see
+  [systems/economy-and-work.md](systems/economy-and-work.md#catch-up-bonus)). Reworked into three
+  tiers, each difficulty defined as a **ratio of the player's own current power**, so the odds stay
+  stable at any stage of the game instead of drifting — "always an available grindable event," as
+  requested.
 
-  **Mechanically new, not a Bounty reskin**: every existing Mercenary action rolls independently
-  against a flat difficulty on its own cooldown. This is the first mechanic where *repeated normal
-  play* builds toward a mandatory, higher-stakes reckoning the player must eventually resolve (win or
-  lose, Notoriety resets to 0 either way — win it and your legend is settled, at least until you build
-  it back up; lose it and you've been humbled). That's the "push-your-luck via accumulation" texture
-  none of Bounties/`/rob-npc`/Guild Raids currently have, without literally being the card-game-style
-  push-your-luck already queued as item 9 (Potato High-Low) — this one is state that accrues from
-  real gameplay across many separate actions, not a single round with a cash-out choice.
+  **Three tiers, each pinned directly to an existing Raid success-rate cap** — reusing
+  `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`/`ELITE_MAXIMUM_RAID_SUCCESS_RATE`/
+  `LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE` (.90/.75/.60) rather than inventing new cap numbers, the same
+  three bands the rest of the game already uses to communicate "how hard is this":
 
-  **Grounded formula sketch** (illustrative, needs the architect's own pass): reuse
-  `raidFactory.getEffectiveRaidPower` on the 1-person list exactly like Bounty already does (zero new
-  power formula) against `Raid.T3_RAID_DIFFICULTY` (600) — but capped at
-  `Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE` (.75) instead of Bounty's own Regular-mode .9 cap, so this
-  reads as a genuinely tougher fight even for a high-power player, not a near-guaranteed tier-III
-  bounty with extra flavor text. On a win: `round(Raid.T3_RAID_REWARD * getRandomFromInterval(.8,1.2)
-  * rankInfo.rewardMultiplier)` — **not** discounted by `Bounty.SOLO_BOUNTY_REWARD_SHARE`, since that
-  discount exists specifically to stop a *repeatable, cooldown-gated* solo action from out-earning
-  guild raiding on a per-hour basis (see
-  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#balance-rationale-solo_bounty_reward_share)),
-  and a confrontation gated behind ~20 accumulated Notoriety points isn't repeatable on that same
-  cadence — plus a guaranteed (not rare-roll) permanent stat bump sized at exactly Sweet Potato's own
-  per-track magnitude (`workMultiplierAmount +0.2` / `passiveAmount` +1.15x current, capped +100,000 /
-  `bankCapacity` +1.15x current, capped +1,000,000 — one track picked uniformly), justified as
-  guaranteed-but-modest since this event is far rarer than Sweet Potato's own ~2%-per-`/work` odds. On
-  a loss: Notoriety still resets to 0 (the confrontation is resolved either way, win or lose) plus a
-  flat potato penalty proposed at `Raid.T3_RAID_PENALTY * getRandomFromInterval(.8,1.2) * 0.5` — half
-  T3's full penalty, since (unlike a Bounty tier, which runs on a forced cooldown) the player fully
-  controls *when* to confront and can simply wait until well-prepared; a full unscaled penalty would
-  just push every player toward indefinite over-preparation with no real tension either way. Every
-  number above is a starting proposal for the architect's own EV pass, not a final balance call — same
-  "revisit once real usage exists" caveat `SOLO_BOUNTY_REWARD_SHARE` itself already carries.
+  | Tier | Difficulty formula | Resulting success chance |
+  |---|---|---|
+  | Easy | `effectiveRaidPower / Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.90)` | 90%, flat, at any power level |
+  | Medium | `effectiveRaidPower / Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE (.75)` | 75%, flat |
+  | Hard | `effectiveRaidPower / Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE (.60)` | 60%, flat |
 
-  **What this explicitly does NOT do**: it is not a Bounty Tier IV, and shouldn't be scoped as a
-  fourth difficulty rung with its own selectable tier — the whole point is that it's *triggered by
-  accumulated play*, not chosen off a menu. It doesn't touch the companion system for v1 — deliberately
-  not proposing a second Bounty-exclusive companion alongside Yukon; adding one would dilute Yukon's
-  own exclusivity and force a second same-day `full_roster` achievement-threshold bump. It isn't a
-  personal Guild-Contract or Guild-Bank equivalent — both were already explicitly ruled out of scope
-  for the Mercenary track when it shipped (see
+  Setting difficulty to exactly `effectiveRaidPower / cap` isn't incidental — it's what makes
+  `successChance = min(effectiveRaidPower / difficulty, cap)` collapse to precisely `cap` for every
+  player, always (the `min(...)` never actually binds, since the ratio *is* the cap by construction).
+  `effectiveRaidPower` stays `raidFactory.getEffectiveRaidPower`'s existing 1-person formula
+  (`workMultiplierAmount * (1 + liveRebirthPercent)`), the exact one Bounty already reuses — zero new
+  power formula, same reasoning as the original pitch, just applied on both sides of the ratio now.
+
+  **Why all three tiers unlock together, unlike Bounty's rank-gated tier progression**: Bounty's
+  Tier I/II/III gating exists because those tiers are *absolute* difficulty — a low-power player really
+  could get trapped rolling a tier they can't win. That risk doesn't exist here by construction (Easy
+  is always 90% and Hard is always 60%, for a Rank-1-fresh mercenary and a maxed rebirther alike), so
+  gating Medium/Hard behind extra Notoriety or Rank thresholds would be pure friction, not a real
+  safety mechanism — once the base Rank 2+ gate and the shared Notoriety threshold are met, the player
+  freely picks their own risk level every time, the same choice shape `/start-raid`'s `raid-select`
+  already offers (regular/elite/legendary), just self-relative instead of absolute.
+
+  **Reward now scales with the player's own `workMultiplierAmount`, not a flat Raid reward** — a
+  consequence of the difficulty change: since a maxed player faces exactly the same odds as a fresh
+  one, a flat reward would leave a heavily-invested mercenary risking a real fight for a trivial
+  payout relative to their own economy. Mirrors Daily Streak's "reward scales with the player's
+  current multiplier" shape rather than Bounty's flat `Raid.T{n}_RAID_REWARD` shape, since Bounty's
+  flat reward was calibrated against a flat difficulty — that pairing no longer applies once
+  difficulty itself is self-relative:
+
+  ```
+  reward  = round(Rival.BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount * tierRewardFactor
+                   * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+  penalty = round(Rival.BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount * tierRewardFactor * 0.5
+                   * getRandomFromInterval(.8, 1.2))   // no rank multiplier on the loss side, same
+                                                        // "full unscaled risk" precedent Bounty sets
+  ```
+
+  Proposed `Rival.BASE_REWARD_PER_MULTIPLIER = 20,000` — sized to land Easy tier's win near Daily
+  Streak's own **day-14 peak** payout (`750 * 28.5 ≈ 21,375` per multiplier point, see
+  [systems/daily-streak.md](systems/daily-streak.md)), not its day-1 floor: reaching Notoriety's
+  ~20-point threshold through real Bounty/`/rob-npc` play plausibly takes comparable-or-more calendar
+  time than a 2-week login streak for an active mercenary, so the payout should read at that scale, not
+  a daily-freebie scale. Proposed `tierRewardFactor` 1.0 / 1.75 / 3.0 for Easy/Medium/Hard — grounded
+  so raw per-attempt EV still climbs with risk despite the shared 50%-of-reward penalty ratio
+  (`EV = rewardFactor * rewardBase * (1.5 * successChance - 0.5)`, the same breakeven-shape math
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md#mode-level-breakeven) already
+  uses for Regular/Elite/Legendary): Easy ≈ `0.85 * rewardBase`, Medium ≈ `1.09 * rewardBase`, Hard ≈
+  `1.20 * rewardBase` — a real but modest EV climb, so Hard reads as genuinely higher-risk/higher-
+  reward, not a strictly dominant pick over grinding Easy repeatedly. Every number here is a starting
+  proposal for the architect's own EV pass, same "revisit once real usage exists" caveat
+  `SOLO_BOUNTY_REWARD_SHARE` itself already carries.
+
+  **Guaranteed permanent stat bump on a win is unchanged** from the original pitch — sized at exactly
+  Sweet Potato's own per-track magnitude (`workMultiplierAmount +0.2` / `passiveAmount` +1.15x
+  current, capped +100,000 / `bankCapacity` +1.15x current, capped +1,000,000 — one track picked
+  uniformly), the same regardless of which of the three difficulty tiers was fought; whether Hard
+  should grant an amplified version is left as an open question below rather than assumed.
+
+  **What this explicitly does NOT do**: it's still not a Bounty Tier IV in the "absolute-difficulty
+  rung" sense — Bounty's I/II/III are progressively unlocked, fixed-difficulty content; Rival's
+  easy/medium/hard is a free risk-level choice available all at once the moment the base gate is met,
+  precisely because self-relative difficulty removes the reason Bounty needed progressive unlocking
+  in the first place. It doesn't touch the companion system for v1 — deliberately not proposing a
+  second Bounty-exclusive companion alongside Yukon; adding one would dilute Yukon's own exclusivity
+  and force a second same-day `full_roster` achievement-threshold bump. It isn't a personal
+  Guild-Contract or Guild-Bank equivalent — both were already explicitly ruled out of scope for the
+  Mercenary track when it shipped (see
   [systems/mercenary-bounties.md](systems/mercenary-bounties.md#out-of-scope-for-v1)) and nothing
   here reopens either.
 
-  **Two alternatives considered and rejected**:
+  **Two alternatives considered and rejected** (unchanged from the original pitch):
   - A black-market/fence system (sell "contraband" loot from Bounty wins at a shady NPC vendor) —
-    rejected: it's mostly a re-skinned sell path on top of currency the player already has, doesn't
-    add a genuinely new mechanic, and risks inventing a second parallel item economy this codebase has
-    consistently avoided (every other reward here folds into `potatoes`/`starches`/`sweetPotatoBuffs`,
-    never a new item type).
+    rejected: mostly a re-skinned sell path on top of currency the player already has, doesn't add a
+    genuinely new mechanic, and risks a second parallel item economy this codebase has consistently
+    avoided (every other reward here folds into `potatoes`/`starches`/`sweetPotatoBuffs`, never a new
+    item type).
   - A personal "Hideout" with rank-scaled passive upgrades (a Guild-Bank/Guild-Buff equivalent) —
-    rejected: this is the exact thing the original Mercenary Bounties scoping pass already
-    deliberately left out (see the "out of scope for v1" link above), and Mercenary Rank's own reward
-    multiplier already fills the "rank should feel rewarding" role that a passive-upgrade track would
-    otherwise duplicate.
+    rejected: already explicitly out of scope for the Mercenary track (see the "out of scope for v1"
+    link above), and Mercenary Rank's own reward multiplier already fills the "rank should feel
+    rewarding" role a passive-upgrade track would otherwise duplicate.
 
   **Open questions, with recommendations**:
-  1. **Does a loss forfeiting all accumulated Notoriety feel fair, or too punishing given the player
-     chose the timing?** Recommend yes, forfeit — the player controls *when* to confront (can always
-     wait for a stronger build first), so an uncapped "keep trying until it lands" design would make
-     Notoriety a pure formality rather than a real stake. Worth confirming against real play data once
-     shipped, same as every other threshold in this proposal.
-  2. **Should the Rival's identity/flavor be a small fixed roster (a handful of named rivals, e.g.
-     "The Rustbeard Ronin," "Marsh Widow Malvina") or fully randomized wanted-poster text like
-     `BountyScenarios`?** Recommend a small named roster (5-6 entries) reused across every player,
-     mirroring `Raid`'s own named bosses (Marrowveil, Solara, Umbrathorn) rather than
-     `BountyScenarios`' fully-flavored-per-attempt table — a recurring rival with a name has more
-     "rivalry" weight than a fresh throwaway target every time, and it's a smaller flavor-writing lift
-     than 10-entries-per-tier.
-  3. **Should a rival confrontation eventually unlock its own rare companion or cosmetic drop**,
-     the way Bounty wins can roll Yukon? Recommend deferring — ship the core notoriety-accrual +
-     confrontation loop first and see if it has legs before adding a second layered rare-drop system on
-     top, the same staged order Bounty's own stat-reward branch and Yukon followed (core mechanic
-     shipped first, rare-drop layer added after).
-  Touches (once approved): `mercenaryFactory.js` (notoriety accrual on Bounty/`/rob-npc` win branches,
-  a new `resolveRivalConfrontation`), two new commands (`/notoriety`, `/confront-rival`) in
-  `src/commands/user/`, a new `mercenaryNotoriety` top-level user field (healed like every other
-  default field), a small new `RivalMercenaries` flavor table in `constants.js`, and
-  `embedFactory.js` additions for both commands' embeds.
+  1. **Does a loss forfeiting all accumulated Notoriety feel fair, regardless of which tier was
+     chosen?** Recommend yes, forfeit in full at any tier — a player who wants a safer reset can
+     always fight Easy; choosing Hard and losing should cost the same full accumulated Notoriety, not
+     a tier-scaled partial loss, to keep the risk/reward choice meaningful.
+  2. **Should the Rival's identity/flavor be a small fixed roster or fully randomized wanted-poster
+     text like `BountyScenarios`?** Recommend a small named roster (5-6 entries, e.g. "The Rustbeard
+     Ronin," "Marsh Widow Malvina"), reused across every player and every tier (tier changes the
+     fight's stats, not which rival shows up) — mirrors `Raid`'s own named bosses (Marrowveil, Solara,
+     Umbrathorn) rather than `BountyScenarios`' fully-flavored-per-attempt table.
+  3. **Should a rival confrontation eventually unlock its own rare companion or cosmetic drop**, the
+     way Bounty wins can roll Yukon? Recommend deferring — ship the core notoriety-accrual +
+     tiered-confrontation loop first and see if it has legs, the same staged order Bounty's own
+     stat-reward branch and Yukon followed (core mechanic shipped first, rare-drop layer added after).
+  4. **New, from the difficulty rework: should the Notoriety threshold ever vary by which tier the
+     player intends to fight**, rather than one shared threshold unlocking all three? Recommend no —
+     a shared threshold is what makes the "always available, pick your own risk" framing clean;
+     tier-specific thresholds would reintroduce exactly the progressive-gating friction the
+     self-relative difficulty model was meant to remove.
+
+  Touches (once approved): `mercenaryFactory.js` (notoriety accrual on Bounty/`/rob-npc` win
+  branches, a new `resolveRivalConfrontation(userDetails, tier)`), two new commands (`/notoriety`,
+  `/confront-rival` with a `tier` choice option) in `src/commands/user/`, a new `mercenaryNotoriety`
+  top-level user field (healed like every other default field), a new `Rival` constants block
+  (`CONFRONTATION_THRESHOLD`, `BASE_REWARD_PER_MULTIPLIER`, `TIER_REWARD_FACTOR`, reusing the existing
+  `Raid.*_MAXIMUM_RAID_SUCCESS_RATE` constants directly rather than duplicating them), a small new
+  `RivalMercenaries` flavor table in `constants.js`, and `embedFactory.js` additions for both
+  commands' embeds.
 
 - [x] **Mercenary Bounties (Solo Raid-Equivalent Progression)** — L — **Shipped 2026-08-23**, built
   directly off the architect's technical design at the end of this entry — see
