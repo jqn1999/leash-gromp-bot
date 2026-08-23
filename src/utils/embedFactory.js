@@ -502,27 +502,6 @@ class EmbedFactory {
         return embed;
     }
 
-    // The pre-purchase confirmation /buy now shows before spending anything — cost, what the
-    // stat becomes after, and whether the user can currently afford it, mirroring the
-    // preview-then-confirm shape createRebirthPreviewEmbed already established.
-    createBuyPreviewEmbed(shopDetails, item, shopId, baseValue, potatoes) {
-        const newBaseValue = item.amount;
-        const canAfford = potatoes >= item.cost;
-        const embed = new EmbedBuilder()
-            .setTitle(`Buy: ${item.name}`)
-            .setDescription(item.description)
-            .setColor(canAfford ? "Orange" : "Red")
-            .addFields(
-                { name: 'Shop', value: shopDetails.title, inline: false },
-                { name: 'Cost', value: `${item.cost.toLocaleString()} potatoes`, inline: true },
-                { name: 'You have', value: `${potatoes.toLocaleString()} potatoes`, inline: true },
-                { name: 'Effect', value: `${shopFactory.formatShopValue(shopId, baseValue)} → ${shopFactory.formatShopValue(shopId, newBaseValue)}`, inline: false },
-            )
-            .setFooter({ text: canAfford ? "Made by Beggar" : "You don't have enough potatoes for this yet — Confirm will re-check and stop you from buying." })
-            .setTimestamp(Date.now())
-        return embed;
-    }
-
     async createBetEmbed(betDetails, interaction) {
         let odds, ratio;
         let fields = [];

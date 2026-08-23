@@ -171,9 +171,16 @@ function applyCompanionAward(userDetails, companion, initialWorkCount = 0, dupli
 
     return {
         isNew,
+        // Spread `companions` first (same as the duplicate branch above) rather than
+        // listing out only the fields this branch cares about — a real bug shipped here:
+        // the old version built { owned, active, ownedCount, mythicOwnedCount } from
+        // scratch, silently dropping `scavenging`. Since updateUserFields does a full SET
+        // on the `companions` field (not a deep merge), that meant finding a genuinely new
+        // companion while another one was out scavenging wiped the scavenge out from under
+        // the player — reported as "encountering a new companion ends my scavenging run".
         companions: {
+            ...companions,
             owned: [...companions.owned, { id: companion.id, workCount: initialWorkCount }],
-            active: companions.active,
             ownedCount: companions.ownedCount + 1,
             mythicOwnedCount: companions.mythicOwnedCount + (companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
         }

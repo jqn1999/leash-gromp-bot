@@ -155,6 +155,23 @@ describe('applyCompanionAward', () => {
         expect(result.companions.active).toBe('sprout');
     });
 
+    // Regression coverage for a real bug: a genuinely new companion used to be built from a
+    // fresh { owned, active, ownedCount, mythicOwnedCount } object rather than spreading the
+    // existing `companions`, silently dropping `scavenging`. Since workFactory.js writes the
+    // returned companions object as a full field overwrite (not a deep merge), that meant
+    // finding a new companion while a different one was out scavenging wiped the scavenge —
+    // reported by a player as "encountering a new companion ends my scavenging run".
+    test('winning a genuinely new companion does not clear an in-progress scavenge', () => {
+        const scavenging = { companionId: 'mole', rarity: CompanionRarity.RARE, returnsAt: Date.now() + 60000 };
+        const user = freshUser({
+            companions: { owned: [{ id: 'mole', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging }
+        });
+        const sprout = getCompanionById('sprout');
+        const result = applyCompanionAward(user, sprout);
+        expect(result.isNew).toBe(true);
+        expect(result.companions.scavenging).toEqual(scavenging);
+    });
+
     test('a market purchase carries the listing workCount over instead of starting at 0', () => {
         const user = freshUser();
         const firefly = getCompanionById('firefly');

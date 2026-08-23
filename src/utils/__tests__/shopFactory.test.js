@@ -1,8 +1,12 @@
-const { SHOP_ID_BY_SELECT, SHOP_TIER_STATUS, getUserBaseShopValue, getNextItemFromShop, getShopTierStatus, formatShopValue } = require('../shopFactory');
+jest.mock('../dynamoHandler');
+
+const dynamoHandler = require('../dynamoHandler');
+const { SHOP_ID_BY_SELECT, SHOP_TIER_STATUS, getUserBaseShopValue, getNextItemFromShop, getShopTierStatus, formatShopValue, attemptShopBuy } = require('../shopFactory');
 const { shops } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
+        potatoes: 0,
         workMultiplierAmount: 1,
         passiveAmount: 0,
         bankCapacity: 50000, // Bank.STARTING_CAPACITY — matches bankShop's item0 currentAmount
@@ -81,6 +85,51 @@ describe('getShopTierStatus', () => {
 
     test('a tier further out than the base is LOCKED', () => {
         expect(getShopTierStatus(tier3, tier1.currentAmount)).toBe(SHOP_TIER_STATUS.LOCKED);
+    });
+});
+
+describe('attemptShopBuy', () => {
+    const workShopItem0 = shops.find(s => s.shopId === 'workShop').items[0];
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        dynamoHandler.updateUserFields.mockResolvedValue({});
+    });
+
+    test('fails cleanly when the user can\'t be looked up', async () => {
+        dynamoHandler.findUser.mockResolvedValue(null);
+        const result = await attemptShopBuy('u1', 'user1', 'workShop');
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/database error/);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('fails with a clear reason when the shop is already maxed for this user', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 999999999, maxStarches: 200000 }));
+        const result = await attemptShopBuy('u1', 'user1', 'starchShop');
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/already maxed out/);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('fails with the missing-amount reason when the user can\'t afford the next tier', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 100 }));
+        const result = await attemptShopBuy('u1', 'user1', 'workShop');
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/do not have enough/);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('on success, deducts cost and writes the new stat value in one call', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: workShopItem0.cost + 500 }));
+        const result = await attemptShopBuy('u1', 'user1', 'workShop');
+
+        expect(result.ok).toBe(true);
+        expect(result.message).toContain(workShopItem0.name);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('u1', {
+            potatoes: 500,
+            workMultiplierAmount: workShopItem0.amount,
+        });
     });
 });
 

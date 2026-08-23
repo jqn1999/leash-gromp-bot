@@ -30,10 +30,10 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 | File | Command | Summary |
 |---|---|---|
-| `buy.js` | `/buy` | Purchase the next tier in one of the 4 personal shops — shows a cost/before-after preview with confirm/cancel buttons before spending anything, re-checking tier + balance against a fresh fetch right before committing |
+| `buy.js` | `/buy` | Purchase the next tier in one of the 4 personal shops immediately (no confirm step) — clear success/failure reply, re-checked fresh at execution time |
 | `regrade.js` | `/regrade` | Gacha-style permanent stat enhancement past max shop tier, with pity fail-stack |
 | `rebirth.js` | `/rebirth` | Prestige reset once every shop tier and regrade track is maxed, for a permanent buff — see [systems/economy-and-work.md](../systems/economy-and-work.md#rebirth-prestige-reset) |
-| `shop.js` | `/shop` | Read-only ephemeral display of shop tiers/prices for a category — marks each tier ✅ owned / ➡️ next up / 🔒 locked against the caller's own progress, and calls out the actual next purchase + affordability up top |
+| `shop.js` | `/shop` | Ephemeral display of shop tiers/prices for a category — marks each tier ✅ owned / ➡️ next up / 🔒 locked against the caller's own progress, calls out the actual next purchase + affordability up top, and carries a one-click "Buy Next Tier" button that purchases in place without leaving `/shop` |
 
 ## `guilds/` — [systems/guilds.md](../systems/guilds.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md)
 

@@ -273,16 +273,28 @@ lookup (`getUserBaseShopValue`/`getNextItemFromShop`) lives in
 [shopFactory.js](../../src/utils/shopFactory.js), shared by both `/buy` and `/shop` so they always
 agree on where a player actually stands.
 
-`/buy` shows a cost + before/after preview with Confirm/Cancel buttons before spending anything
-(same shape as `/rebirth`'s confirm flow below), and re-checks the chosen tier and potato balance
-against a **fresh** fetch right after Confirm is clicked — a purchase started stale (another
-purchase or a Sweet Potato encounter landed during the 30s confirm window) is caught and the player
-is told to re-run `/buy` rather than silently buying the wrong tier or going negative. `/shop`'s
-per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's own
-progress, and its description calls out the actual next purchase (cost + whether they can currently
-afford it) regardless of which page it's actually on — before this, `/shop` was a static price list
-with no notion of where the viewer stood, and `/buy` only revealed cost/success-or-failure after
-already executing the purchase.
+`/shop`'s per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's
+own progress, and its description calls out the actual next purchase (cost + whether they can
+currently afford it) regardless of which page it's actually on. `/shop` also carries a one-click
+**Buy Next Tier** button right on the page — clicking it purchases immediately (no separate confirm
+step), then re-renders the same page in place with updated progress/afford-status. `/buy` does the
+same purchase directly from the slash command, also with no confirm step, for anyone who'd rather
+type it than open `/shop` first. Both paths call the same `shopFactory.attemptShopBuy(userId,
+username, shopId)`, which re-fetches the user fresh at execution time (not whatever was captured
+when the page/command was first opened) and re-derives the actual next tier and cost from that fresh
+read before touching potatoes — so a purchase attempted after the visible state went stale (another
+purchase already landed, a Sweet Potato encounter changed the base value) still resolves correctly
+or fails with a clear reason, without needing a user-facing confirm click to get that safety. No
+optimistic-lock/version dance is needed the way `companionMarketFactory`'s `attemptBuy` needs one for
+a shared market listing — a personal shop tier can only ever be raced by the same account's own
+concurrent actions, the same low-stakes class of race this codebase already accepts elsewhere (e.g.
+companion scavenge collect).
+
+An earlier version of `/buy` added a preview-then-Confirm/Cancel step (mirroring `/rebirth`'s confirm
+flow) specifically so cost was visible before committing — superseded by this version once `/shop`
+itself started showing that same cost/afford information up front and gained its own buy button;
+requiring a second click to confirm what the player could already see stopped adding safety and just
+added friction, so both `/shop`'s button and `/buy` now execute immediately instead.
 
 ## Regrade (gacha enhancement)
 

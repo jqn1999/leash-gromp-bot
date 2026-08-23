@@ -1085,6 +1085,46 @@ and needs its own balance pass.
   matching the single-write pattern `rebirth.js`/`regrade.js` already use instead of writing
   the account in two separate round trips.
 
+  **Follow-up (same day): dropped the Confirm/Cancel step, added a one-click buy button.**
+  Direct instruction: the Confirm/Cancel round trip added right above was itself reported as
+  unsmooth — "type /buy, then also confirm it" — since `/shop` already shows the exact same
+  cost/afford information the confirm step was re-displaying. `/shop` now carries a **Buy Next
+  Tier** button right on the page (mirroring `companionMarket.js`'s numbered buy buttons —
+  same custom collector loop shape, layered on top of the existing prev/next pagination row),
+  and both it and `/buy` purchase **immediately**, no confirm click. The safety the confirm
+  step existed to provide didn't go away — it moved into `shopFactory.attemptShopBuy(userId,
+  username, shopId)`, a new shared function both paths call that re-fetches the user and
+  re-derives the next tier fresh at execution time (not whatever the page showed when it was
+  first opened), same spirit as `companionMarketFactory.attemptBuy`. `createBuyPreviewEmbed`
+  (added for the now-superseded Confirm/Cancel flow) was removed as dead code. Covered by 4 new
+  `attemptShopBuy` tests in `shopFactory.test.js` (18 total in that file); `/shop`'s button
+  itself stays untested, same convention as its pagination row already followed.
+
+- [x] **24. Companion Encounter Clobbers In-Progress Scavenge** — S — **Done**
+  What: `companionFactory.applyCompanionAward`'s "genuinely new companion" branch built its
+  returned `companions` object from scratch (`{ owned, active, ownedCount, mythicOwnedCount }`)
+  instead of spreading the existing `companions` first — the one branch of that function that
+  didn't already follow the pattern its own "duplicate companion" branch used
+  (`{ ...companions, owned }`). Since `workFactory.js`'s Wandering Companion encounter writes
+  the returned object back with a plain `updateUserFields` `SET` (a full field overwrite, not a
+  deep merge), any field the new-companion branch didn't explicitly carry forward was silently
+  erased — and `scavenging` was the one field it dropped. Fixed by spreading `companions` first
+  in that branch too, matching the duplicate branch exactly.
+  Why: player-reported bug — "if you have a companion scavenging and encounter a new one while
+  the old one is still scavenging, his scavenging ends." Confirmed exactly right: any `/work`
+  roll that found a brand-new (not-yet-owned) companion while a *different* companion was
+  scavenging wiped that scavenge's `returnsAt`/reward out from under the player with no warning
+  and no recovery — the run was just gone. A duplicate-companion roll was never affected (that
+  branch already preserved `scavenging` correctly), which is why this had gone unnoticed as a
+  narrower bug than it actually was.
+  Notable: distinct from the same-day-earlier-session "double pull during scavenge collect"
+  investigation (a genuine but narrow, accepted-as-low-stakes race in
+  `companionScavengeCollect.js`). This one wasn't a race at all — it fired deterministically on
+  every new-companion `/work` roll regardless of timing, and unlike the accepted race (worst
+  case: a duplicate pull's write ordering), this one destroyed a real, already-accruing reward
+  outright. Regression-tested in `companionFactory.test.js`: `applyCompanionAward` now asserts
+  an in-progress `scavenging` record survives a new-companion award unchanged.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

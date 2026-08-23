@@ -479,6 +479,20 @@ untouched — a scavenging companion is still validly "owned" (it can't be the *
 dispatch already requires it not be equipped) and still needs `getOwnedEntry` to resolve for the
 list display and for collect/cancel to read/write its `workCount`.
 
+**A fourth risk site, not a guard-check one — `workFactory.js`'s Wandering Companion encounter
+(`handleCompanionEncounter`).** Finding a companion during `/work` calls
+`companionFactory.applyCompanionAward`, which returns a full replacement `companions` object that
+`updateUserFields` then writes with a plain `SET` (not a deep merge) — so anything that object
+doesn't carry forward is silently erased, not just left unchanged. The "duplicate companion" branch
+always got this right (`{ ...companions, owned }` — spread first, override only `owned`), but the
+"genuinely new companion" branch built its return value from just `{ owned, active, ownedCount,
+mythicOwnedCount }`, omitting `scavenging` entirely. Reported by a player as "if I encounter a new
+companion while another one is out scavenging, the scavenge just ends" — confirmed exactly right:
+any `/work` roll that found a brand-new companion clobbered `scavenging` back to `undefined`
+regardless of how much time was left on it. Fixed by spreading `companions` first in that branch too,
+same as the duplicate branch already did — regression-tested in `companionFactory.test.js`
+(`applyCompanionAward` preserves an in-progress `scavenging` record across a new-companion award).
+
 **Numbers** (`CompanionScavenging` in `constants.js`, rarity-keyed):
 
 | Rarity | Duration | `WORK_COUNT` | `STARCH_RANGE` |
