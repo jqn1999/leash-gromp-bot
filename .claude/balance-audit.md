@@ -999,3 +999,157 @@ asked for the encounter-chance side held alone.
 - **`metalSuccessChanceFlat` as a perk type** — correctly single-sourced through
   `companionFactory.getActivePerkValue`, no other companion touches this perk key, no double-
   counting or wiring bug found.
+
+---
+
+## 2026-08-23 (follow-up) — Guild raids full-scope audit (prompted by a player complaint)
+
+Focused re-check, prompted by a specific player complaint: a brand-new guild running
+`/start-raid regular` landed on a T3 raid and lost ~5,000,000 potatoes right after the guild
+was founded. User's exact question: "look at guild raids as a whole and balancing. Should the
+t1 through t3 system even exist in raid difficulty selection?" Confirmed the mechanism directly
+in code (`startRaid.js`, `raidFactory.js`, `constants.js`'s `Raid`/`RaidLevel`), computed every
+number via `node -e` rather than estimating, and widened the pass to the rest of the guild raid
+system per the "as a whole" ask.
+
+### Mechanism confirmed
+
+`raid-select` (`regular`/`elite`/`legendary`/`stat`) is a difficulty **mode**, not a tier choice.
+Within a mode, one `Math.random()` roll picks which of Metal King/T4/T3/T2/T1 actually resolves,
+off a cumulative-chance table (`startRaid.js:219-352` for `regular`). A confirm/cancel preview
+(`buildRaidPreview`, `startRaid.js:721-789`) does show every bracket's real odds/success-chance/
+reward-penalty range before the player confirms — this is **not a hidden trap**, a careful player
+sees "T3: ~5% chance to hit, ~X% to win it, -4M to -6M potatoes on a loss" before committing. But
+there is no way to accept only the safe brackets — confirming commits the whole roster to
+whichever bracket the single roll lands on.
+
+### Findings
+
+**1. [HIGH, live] T2/T3 inside `regular` mode carry zero eligibility gating, and are deeply
+negative EV for any roster below roughly their own difficulty landmark — this is a real,
+frequently-triggered trap, not just "bad luck of the roll."** Stage: early/early-mid game
+(exactly the guild snapshot in the complaint). `startRaid.js:219-352` (`regularRaidScenarios` —
+only the T4 entry carries a `minGuildLevel` tag, `:275`; T3/T2/T1 have none), `constants.js:887-
+897` (`T1_RAID_DIFFICULTY:10`, `T2_RAID_DIFFICULTY:85`, `T3_RAID_DIFFICULTY:600`, reward=penalty
+magnitude at every tier).
+
+Computed `calculateRaidSuccessChance`/EV directly (`startRaid.js:174-178`) for realistic guild-
+level-1 rosters (`headcountBonus` from `RAID_HEADCOUNT_BONUS_PER_MEMBER=.03`,
+`RAID_HEADCOUNT_BONUS_CAP=.50`, `raidFactory.js:74-79`):
+
+| Roster | totalMultiplier | T1 chance / EV | T2 chance / EV | T3 chance / EV |
+|---|---|---|---|---|
+| 2 founders, fresh (WMA=1) | 1.03 | 10.3% / -79,400 | 1.2% / -487,882 | 0.17% / -4,982,833 |
+| 2 founders, early shop (WMA=3) | 3.09 | 30.9% / -38,200 | 3.6% / -463,647 | 0.52% / -4,948,500 |
+| 3 members, WMA=6 | 6.36 | 63.6% / +27,200 | 7.5% / -425,176 | 1.06% / -4,894,000 |
+| 5 members, WMA=50 (late/unmaxed shop) | 56.0 | 90% (cap) / +80,000 | 65.9% / +158,824 | 9.3% / -4,066,667 |
+| 5 members, WMA=350 (T3's own landmark: shop maxed+regrade half) | 392 | 90% / +80,000 | 90% / +400,000 | 65.3% / +1,533,333 |
+
+T3 doesn't turn positive-EV until a roster's average `effectiveRaidPower` approaches ~300
+(breakeven at 50% success chance, since T3's reward and penalty are equal magnitude) — that's
+`constants.js:876-879`'s own documented "shop maxed + regrade halfway" landmark, a genuine
+mid-game target, not something a founding roster has. T2 needs ~85 to even approach breakeven.
+Meanwhile the roll odds for these brackets are fixed regardless of roster strength or guild
+level: at guild level <8 (T4 locked, the case for every guild below level 8), `getEligibleScenarios`
+redistributes T4's mass and the real per-attempt odds are **Metal King 1.02%, T3 5.10%, T2
+20.41%, T1 73.47%** (computed directly from the cumulative `chance` values at `startRaid.js:247,
+274,300,325,350`) — a brand-new guild has better than 1-in-20 odds of hitting T3 and better than
+1-in-5 odds of hitting T2 on every single `regular`-mode attempt, with no way to opt out of
+either bracket short of not raiding at all.
+
+**This is a materially different failure than the one `getMinGuildLevelForTier` already guards
+against.** That function (`raidFactory.js:33-37`, applied only to the Elite/Legendary mode gate,
+`startRaid.js:842-850`) answers "if this roster could reach the tier's success-rate cap, would EV
+be positive at this guild level?" — a structural check independent of roster strength. Re-running
+it for Regular's own T1-T3 (`penaltyMult=1, cap=.9`) gives `breakevenMultiplier =
+1*(1/.9-1)=0.111`, and guild level 1's own `raidRewardMultiplier` (1.00) already clears that, so
+the function reports T1-T3 "viable" at guild level 1 — technically true (a strong-enough roster
+*can* profit at any guild level) but it says nothing about whether a *typical* level-1 roster is
+anywhere near strong enough, which the EV table above shows it isn't. The existing infrastructure
+solves the "cap sits under breakeven no matter what" trap (Elite/Legendary before their gate) but
+was never extended to the much more common "the tier is theoretically winnable but this specific
+roster is nowhere close" trap, which is exactly what's biting new guilds on T2/T3 today.
+
+**2. [MEDIUM-HIGH, live] `stat` mode is completely ungated and its cost is deterministic, not
+probabilistic — a fresh guild's empty bank guarantees the cost lands directly on members'
+personal balances, not just "on a bad roll."** Stage: early game. `startRaid.js:645-696`
+(`statRaidScenarios`), `constants.js:934-936` (`REGULAR_STAT_RAID_COST:-300000,
+REGULAR_STAT_RAID_DIFFICULTY:350`, `MAXIMUM_STAT_RAID_SUCCESS_RATE:.5`).
+
+Unlike T1-T4 (probabilistic penalty only on a loss), the 99%-weight "standard" stat-raid branch
+charges `Raid.REGULAR_STAT_RAID_COST * raidList.length` **unconditionally, win or lose**
+(`startRaid.js:677-678`), before the success roll even happens. For the same level-1 rosters
+above, success chance against difficulty 350 is ~0.3%-1.8% — nowhere near the intended
+"alternate path to T3/T4-caliber power" the design comment describes
+(`constants.js:928-933` frames it as bridging toward T3 readiness, difficulty deliberately between
+T2 and T3). Combined with a brand-new guild's `bankStored` starting at `0`
+(`dynamoHandler.js:1130`), `removeFromBankOrPurse` (`startRaid.js:185-198`) has nothing to drain
+and splits the entire 300,000-per-member cost directly onto raiders' personal balances on the
+very first attempt — this isn't bad luck, it's guaranteed. No `minGuildLevel`/roster-strength
+check exists for `stat` mode at all, same gap as T2/T3 above.
+
+**3. [MEDIUM, live, compounding both findings above] Loss splits have no floor at zero — a raid
+loss (or `stat` mode's flat cost) that exceeds a member's personal balance writes a negative
+`potatoes` value, not a clamped one.** `raidFactory.js:123-148` (`handlePotatoSplit`):
+`let userPotatoes = userDetails.potatoes + raidSplitAmount;` then written straight through
+`updateUserFields` (`dynamoHandler.js:116-136`) with no `Math.max(0, ...)` anywhere in the call
+chain — confirmed via `grep` across `raidFactory.js` and `dynamoHandler.js`. For comparison,
+`rob.js`'s loss (`calculateRobAmount`, `rob.js:165-168`) is inherently self-limiting because it's
+a percentage of the *target's own* current balance, not a flat split — guild raids have no
+equivalent guard. For a founding 2-person roster with modest personal holdings, a T3 loss
+(~2-3M/person after an empty guild bank absorbs nothing) or even a `stat`-mode 300k charge on a
+truly fresh account can straightforwardly push `potatoes` negative. Scale of the actual damage:
+at the ~950 potatoes/Regular-Work rate already documented elsewhere in this file
+(`constants.js`'s `CompanionMarket` comment) on a 5-minute cooldown, clawing back even a 2,000,000
+personal loss is on the order of ~175 hours of continuous `/work` calls (realistically days-to-
+weeks of casual play) — a guild-founding mistake with a recovery time far out of proportion to
+how early in the game it can happen.
+
+**4. [Verified, no new issue] Metal King's own gating/scaling and the Elite/Legendary
+`minGuildLevel` gate are correctly implemented and match the docs.** Re-derived
+`getMinGuildLevelForTier` by hand for Elite (`penaltyMult=2, cap=.75` → breakeven `0.667` → first
+`RaidLevel` tier clearing it is level 1 at `1.00x`) and Legendary (`penaltyMult=3, cap=.6` →
+breakeven `2.0` → level 4 at `2.30x`) — both match `systems/raids-and-world-events.md` and the
+prior 2026-08-22 "Checked, no issues found" entry for this exact check. Metal King's
+`DIFFICULTY_MULTIPLIER` (matching each mode's own T3 multiplier: regular ×1, elite ×3, legendary
+×6) is applied consistently to its reward, all three permanent stat bonuses, and its difficulty
+in all three scenario tables (`startRaid.js:221-247,356-393,502-537`) — no drift found. T4's
+`minGuildLevel` tag and `getEligibleScenarios` redistribution work correctly in every mode
+(verified the redistributed odds sum to 1.0 before and after T4 unlocks, see table above). These
+existing gates are sound; the gap is specifically that they were never extended to T2/T3/`stat`.
+
+### Bottom line on the user's actual question
+
+**Should T1-T3 exist as a random roll within `regular` mode at all?** The randomness itself
+isn't the core defect — Metal King's flat 1% no-penalty shot is a fine "lotto ticket baked into
+every raid" pattern, and the preview embed already discloses real odds/stakes before commit, so
+players aren't blindsided in the "hidden mechanic" sense. The actual defect is narrower and more
+fixable: **T2 and T3 (and `stat` mode) are bundled into every `regular`-mode roll with no floor
+tied to whether the roster attempting them can plausibly profit**, unlike T4/Elite/Legendary,
+which all got exactly this kind of floor already. Recommend extending the existing
+`getEligibleScenarios`/tag-based exclusion mechanism to T2/T3/`stat`, but keyed on **roster power
+(`totalMultiplier` vs. each tier's own breakeven `effectiveRaidPower`, e.g. ≥50% of difficulty for
+T2/T3 since reward=penalty there), not guild level** — guild level is already established in this
+codebase as a poor proxy for roster strength (that's the documented reason T4 needed its own
+*separate* gate on top of the Elite/Legendary level gate in the first place, `systems/raids-and-
+world-events.md`'s T4 section). A guild-level-only gate would under-protect a low-level guild
+with a genuinely strong roster and over-protect a high-level guild that just lost members or
+recently rebirthed. This is a smaller change than moving to deliberate tier selection (the other
+option the user raised) and reuses infrastructure that already exists for this exact shape of
+problem — but `product-owner`/`architect` should make the actual call between "gate the roll" vs.
+"let players choose a specific tier outright" (which would remove the multi-outcome-bundling
+complaint entirely, at the cost of a bigger UX change to `/start-raid`). Separately and
+regardless of which direction is chosen: Finding 3 (uncapped negative personal balances) is worth
+fixing on its own — it's a correctness gap, not a balance-tuning question, and it's what turns a
+bad-EV raid result into a genuinely damaging one for a fresh account.
+
+### Checked, no issues found (this pass)
+
+- **Preview embed accuracy** (`buildRaidPreview`, `startRaid.js:721-789`) — every bracket's
+  displayed odds/success-chance/reward/penalty match what the actual roll uses bracket-for-
+  bracket; no drift between what's shown and what's rolled.
+- **Guild starting funds** (`dynamoHandler.js:1119-1130`) — a brand-new guild starts with
+  `bankStored: 0`, `bankCapacity: 1,000,000`. A T3 loss (~4M-6M after the ±20% roll,
+  `constants.js:895-897`) exceeds even a fully-deposited fresh guild's bank capacity outright,
+  confirming the complaint's "~5,000,000 loss against a ~1,000,000 guild" framing is representative
+  of the worst case, not an outlier — see Findings 1 and 3.
