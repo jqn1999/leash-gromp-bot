@@ -65,6 +65,8 @@ const PERK_LABELS = {
     workMultiplierPercent: value => `+${(value * 100).toFixed(1)}% Work Multiplier`,
     workCooldownSkipChance: value => `${(value * 100).toFixed(1)}% chance to skip /work cooldown entirely`,
     passiveIncomePercent: value => `+${(value * 100).toFixed(1)}% Passive Income`,
+    // Shared by real /rob (rob.js) and /rob-npc (mercenaryFactory.js's resolveNpcRob) — see
+    // that function's own comment on why this used to be two separate perk types.
     robChanceFlat: value => `+${(value * 100).toFixed(1)}% Rob Success Chance`,
     // No companion currently grants this — Mole and Elder Rootbeard both moved to
     // starchSellBonusPercent in a balance pass (it only gated /buy-starch, not the free
@@ -83,10 +85,6 @@ const PERK_LABELS = {
     poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
     metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
-    // Yukon, the Highwayman only — deliberately separate perk types from real /rob's own
-    // robChanceFlat (Barn Owl/Elder Rootbeard) and Bounty's own reward math, so neither
-    // action's benefit compounds into the other. See mercenaryFactory.js.
-    npcRobChanceFlat: value => `+${(value * 100).toFixed(1)}% /rob-npc Success Chance`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`
 };
 

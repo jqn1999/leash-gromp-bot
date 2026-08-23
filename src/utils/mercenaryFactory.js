@@ -153,7 +153,12 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
 // without mocking dynamoHandler.getCachedServerTotal for every case.
 async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
-    const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "npcRobChanceFlat");
+    // Simplified 2026-08-23, direct instruction — this used to read a separate,
+    // /rob-npc-only npcRobChanceFlat perk. Now shares the same robChanceFlat perk real
+    // /rob's own bonus already uses (Barn Owl/Elder Rootbeard/Yukon) — the base chance
+    // formula below still stays its own flat/rank-based thing, not wealth-ratio-based like
+    // real /rob's calculateRobChance, only the bonus source is now shared.
+    const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
     const successChance = Math.min(
         RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rankInfo.rank - 1),
         RobNpc.MAX_CHANCE

@@ -280,6 +280,25 @@ describe('resolveNpcRob', () => {
         })();
     });
 
+    // Regression coverage for a direct instruction to simplify Yukon's perk: it used to
+    // grant a separate /rob-npc-only npcRobChanceFlat perk; now it shares the same
+    // robChanceFlat perk real /rob's Barn Owl/Elder Rootbeard already use, and that shared
+    // perk now boosts /rob-npc's success chance too (on top of, not instead of, the base
+    // flat/rank-based formula above — /rob-npc stays non-wealth-based).
+    test('robChanceFlat (Yukon) adds on top of the base rank-scaled chance', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        try {
+            const userWithYukon = baseUser({
+                mercenaryBountyWinCount: 0,
+                companions: { owned: [{ id: 'yukon', workCount: 0 }], active: 'yukon', ownedCount: 1, mythicOwnedCount: 1 },
+            });
+            const result = await mercenaryFactory.resolveNpcRob(userWithYukon, 1000, 0);
+            expect(result.successChance).toBeCloseTo(RobNpc.BASE_CHANCE + 0.12);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
     test('a whiff costs nothing — amount stays 0', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         let result;

@@ -236,7 +236,7 @@ numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`):
   rank:
   ```
   successChance = min(RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rank - 1), RobNpc.MAX_CHANCE)
-                  + companionFactory.getActivePerkValue(userDetails, "npcRobChanceFlat")   // Yukon only
+                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Elder Rootbeard/Yukon — shared with real /rob, see below
   ```
   `BASE_CHANCE` 30%, `+10%/rank`, capped **80%** at Rank 6 (30/40/50/60/70/80% across Ranks
   1-6). Updated 2026-08-23, direct instruction, to make a maxed-out mercenary close to 80%
@@ -245,6 +245,13 @@ numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`):
   stays capped far below real `/rob`'s (a fixed, modest `MAX_NPC_ROB_PAYOUT` vs. a
   percentage of a real player's balance) — a high top-end success rate here buys reliability
   at a low ceiling per hit, not a better overall action than a well-built real `/rob`.
+  Simplified 2026-08-23, direct instruction: Yukon's own bonus used to be a separate
+  `/rob-npc`-only `npcRobChanceFlat` perk type; it now shares the same `robChanceFlat`
+  perk Barn Owl/Elder Rootbeard grant for real `/rob`, so any `robChanceFlat` companion
+  boosts `/rob-npc` too (not just Yukon), and Yukon's own bonus now applies to real `/rob`
+  as well (mercenaries can still run it — never guild-gated). The base success formula
+  above is unchanged by this — still its own flat, rank-scaled thing, not wealth-ratio-based
+  like real `/rob`'s `calculateRobChance` — only the bonus source is now shared.
 - **Payout**: the exact same `calculateGainAmount` shape every `/work` reward uses
   (`handleGoldenPotato`/`handleLargePotato`'s exact formula — `workGainAmount * 4.5`,
   capped at `RobNpc.MAX_NPC_ROB_PAYOUT` (5,000) before the player's own multiplier scales
@@ -304,9 +311,10 @@ correctly, with no special-casing needed:
   `companionCancel.test.js`.
 
 **Perks**:
-- `npcRobChanceFlat` 12% — `/rob-npc`-exclusive, deliberately a *different* perk type from
-  Barn Owl/Elder Rootbeard's real-`/rob` `robChanceFlat`, so the two actions' bonuses never
-  compound into each other.
+- `robChanceFlat` 12% — simplified 2026-08-23, direct instruction, from a separate
+  `/rob-npc`-only `npcRobChanceFlat` perk type down to the same shared `robChanceFlat`
+  Barn Owl/Elder Rootbeard grant for real `/rob`. Now boosts both real `/rob` and
+  `/rob-npc` identically — see `/rob-npc (RobNpc)` above.
 - `bountyRewardPercent` 13.5% — applied to the already-discounted Bounty payout,
   non-compounding, same "percentage of a computed payout" shape `starchSellBonusPercent`
   already uses safely.

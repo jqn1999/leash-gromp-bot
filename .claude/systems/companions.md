@@ -127,10 +127,11 @@ for the full mechanism. Its `Companions` entry carries `dropSource: "bounty"`, w
 `companionFactory.getCompanionsByRarity` filters out of `rollCompanion`'s pool — the only
 roster entry that isn't implicitly `dropSource: "work"` by omission. Once owned, it behaves
 exactly like any other companion everywhere else (equip, market, `getActivePerkValue`,
-`/help topic:companions`). Perks: `npcRobChanceFlat` +12% (`/rob-npc`-exclusive, a
-deliberately different perk type from Barn Owl/Elder Rootbeard's real-`/rob`
-`robChanceFlat`) + `bountyRewardPercent` +13.5% (applied to the already-discounted Bounty
-payout).
+`/help topic:companions`). Perks: `robChanceFlat` +12% (the same shared perk type Barn
+Owl/Elder Rootbeard grant for real `/rob` — simplified 2026-08-23, direct instruction, from
+an earlier `/rob-npc`-only `npcRobChanceFlat` perk down to one shared perk that now boosts
+both real `/rob` and `/rob-npc` identically, since mercenaries can still run real `/rob`) +
+`bountyRewardPercent` +13.5% (applied to the already-discounted Bounty payout).
 
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
@@ -139,7 +140,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Work Multiplier | 5% (Sprout) | 9% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
 | Bank Capacity | 12% (Ladybug) | — | — | — |
-| Rob Chance | — | 10% (Barn Owl) | — | 15% (Elder Rootbeard) |
+| Rob Chance (real `/rob` + `/rob-npc`) | — | 10% (Barn Owl) | 12% (Yukon) | 15% (Elder Rootbeard) |
 | Starch Sell Bonus | — | 9% (Mole) | 12% (Rootcarver) | 15% (Elder Rootbeard) |
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |

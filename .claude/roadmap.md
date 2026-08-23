@@ -1393,6 +1393,23 @@ and needs its own balance pass.
   reconciliation path had zero test coverage of any kind before this, for any companion,
   not just Yukon. Full suite green (383/383, up from 380).
 
+- [x] **36. Simplify Yukon's Perk to Shared `robChanceFlat`** — S — **Done**
+  What: Yukon, the Highwayman's perk changed from a separate, `/rob-npc`-only
+  `npcRobChanceFlat` perk type to the same `robChanceFlat` perk Barn Owl/Elder Rootbeard
+  already grant for real `/rob` — same 12% value, now shared. `mercenaryFactory.js`'s
+  `resolveNpcRob` reads `robChanceFlat` instead of the removed `npcRobChanceFlat`, so any
+  `robChanceFlat` companion (not just Yukon) now boosts `/rob-npc`'s success chance too, on
+  top of its own flat/rank-scaled base formula (which stays non-wealth-based, unchanged).
+  Conversely, Yukon's bonus now also applies to real `/rob` — mercenaries can still run it,
+  it's never guild-gated. Removed the now-dead `npcRobChanceFlat` entry from
+  `embedFactory.js`'s `PERK_LABELS`.
+  Why: direct instruction — "make rob chance pet affect rob-npc. simplify the merc pet to
+  just increase rob chance. rob-npc can still be non wealth based chance for rob success."
+  Notable: `companions.md`, `mercenary-bounties.md` updated to match. Added a regression
+  test to `mercenaryFactory.test.js` confirming `robChanceFlat` (via an equipped Yukon)
+  adds on top of `/rob-npc`'s base rank-scaled chance — no test existed for the old
+  perk-bonus wiring at all. Full suite green (384/384).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -1414,7 +1431,8 @@ and needs its own balance pass.
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
 
-- [ ] **Rival Bounty Hunters (Notoriety → confrontation)** — M, once a direction is picked.
+- [ ] **Rival Bounty Hunters (Notoriety → confrontation)** — M, build-ready — see the
+  "Architect's technical design" subsection at the end of this entry. Not yet built.
   Product-owner brainstorm, revised after direct feedback on the difficulty model — not yet
   architect-reviewed. Requested as "one more unique flavor of activity" for Mercenaries, distinct
   from Bounties (reads as "guild raid, but solo") and `/rob-npc` (a quick heist mini-game against a

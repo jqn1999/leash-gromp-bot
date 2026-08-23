@@ -816,16 +816,18 @@ const Companions = [
         description: "An outlaw potato who made a name robbing the King's own supply wagons — now rides shotgun for whichever mercenary earned their trust.",
         scavengeFlavor: "Yukon rode out at dusk, the way it always does, and came back before sunup with a story it swears is true this time.",
         // Dual-perk, matching every existing Legendary exactly (Spudsprite, Rootcarver) —
-        // no Legendary is single-perk, no reason to break that here. npcRobChanceFlat
-        // sits between Barn Owl's Rare robChanceFlat (10%) and Elder Rootbeard's Mythic
-        // robChanceFlat (15%) on the analogous /rob-npc axis (a deliberately DIFFERENT
-        // perk type from robChanceFlat — this one only ever applies to /rob-npc, never
-        // real /rob). bountyRewardPercent (applied to the already-discounted Bounty
-        // payout, non-compounding) is anchored near Rootcarver's 12% and Prospector's
-        // paired Rare-tier bump, for a dual-perk companion whose two values land in the
-        // same neighborhood as each other.
+        // no Legendary is single-perk, no reason to break that here. Simplified
+        // 2026-08-23, direct instruction, from a separate /rob-npc-only npcRobChanceFlat
+        // perk type down to the same shared robChanceFlat Barn Owl/Elder Rootbeard already
+        // grant — now boosts BOTH real /rob and /rob-npc identically (mercenaries can still
+        // run real /rob, it's never guild-gated), one perk instead of two nearly-identical
+        // ones. Kept the same 12% value, still sitting between Barn Owl's Rare 10% and
+        // Elder Rootbeard's Mythic 15%. bountyRewardPercent (applied to the
+        // already-discounted Bounty payout, non-compounding) is anchored near Rootcarver's
+        // 12% and Prospector's paired Rare-tier bump, for a dual-perk companion whose two
+        // values land in the same neighborhood as each other.
         perks: [
-            { type: "npcRobChanceFlat", value: 0.12 },
+            { type: "robChanceFlat", value: 0.12 },
             { type: "bountyRewardPercent", value: 0.135 }
         ]
     }
