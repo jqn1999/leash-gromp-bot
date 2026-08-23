@@ -1448,63 +1448,106 @@ and needs its own balance pass.
   stable at any stage of the game instead of drifting — "always an available grindable event," as
   requested.
 
-  **Three tiers, each pinned directly to an existing Raid success-rate cap** — reusing
-  `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`/`ELITE_MAXIMUM_RAID_SUCCESS_RATE`/
-  `LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE` (.90/.75/.60) rather than inventing new cap numbers, the same
-  three bands the rest of the game already uses to communicate "how hard is this":
+  **Further refined, direct instruction (second pass)**: add a ±20% variance roll on top of each
+  tier's success chance so a confrontation feels "slightly random" rather than a deterministic
+  coin-weight, and re-ground the reward formula directly against guild-raid/Bounty parity instead of
+  Daily Streak — the first pass's reward math turned out to have no real ceiling relative to guild
+  raiding once checked against a realistic `workMultiplierAmount`, worth calling out plainly rather
+  than quietly patching (see the reward section below for the full correction).
 
-  | Tier | Difficulty formula | Resulting success chance |
-  |---|---|---|
-  | Easy | `effectiveRaidPower / Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.90)` | 90%, flat, at any power level |
-  | Medium | `effectiveRaidPower / Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE (.75)` | 75%, flat |
-  | Hard | `effectiveRaidPower / Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE (.60)` | 60%, flat |
+  **Three tiers, each pinned to a success-rate ceiling, plus a ±20% variance roll capped at that
+  ceiling.** The underlying difficulty formula stays self-relative
+  (`effectiveRaidPower / difficulty`), but the resolved chance no longer lands on the ceiling
+  *exactly* every time — it now rolls the same variance shape reward scaling already uses elsewhere in
+  this codebase (`getRandomFromInterval(.8, 1.2)`, the identical roll `resolveBountyAttempt`/
+  `resolveNpcRob`'s own reward math already applies), multiplied against the tier's ceiling and then
+  re-capped at that same ceiling — so a lucky roll can only ever reach the ceiling, never exceed it,
+  while an unlucky one can knock up to 20% off:
 
-  Setting difficulty to exactly `effectiveRaidPower / cap` isn't incidental — it's what makes
-  `successChance = min(effectiveRaidPower / difficulty, cap)` collapse to precisely `cap` for every
-  player, always (the `min(...)` never actually binds, since the ratio *is* the cap by construction).
-  `effectiveRaidPower` stays `raidFactory.getEffectiveRaidPower`'s existing 1-person formula
-  (`workMultiplierAmount * (1 + liveRebirthPercent)`), the exact one Bounty already reuses — zero new
-  power formula, same reasoning as the original pitch, just applied on both sides of the ratio now.
+  ```
+  tierCap       = Rival.TIER_SUCCESS_CAP[tier]                    // .90 / .65 / .60
+  baseChance    = min(effectiveRaidPower / difficulty, tierCap)   // = tierCap exactly, by construction
+  successChance = min(baseChance * getRandomFromInterval(.8, 1.2), tierCap)
+  ```
+
+  | Tier | Ceiling (`tierCap`) | Realized success-chance range | Difficulty formula |
+  |---|---|---|---|
+  | Easy | 90% | 72%–90% | `effectiveRaidPower / .90` |
+  | Medium | 65% | 52%–65% | `effectiveRaidPower / .65` |
+  | Hard | 60% | 48%–60% | `effectiveRaidPower / .60` |
+
+  Ceilings are the user's own restated numbers (90/65/60), not the first pass's 90/75/60 — Medium
+  moved down from 75% to 65%. That also means Medium and Hard no longer map onto
+  `Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE`/`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE` as cleanly as the first
+  pass did: only Easy's 90% and Hard's 60% still happen to coincide with Regular/Legendary's own real
+  Raid caps; Medium's 65% is now a standalone `Rival`-only value. Proposed as its own dedicated
+  `Rival.TIER_SUCCESS_CAP` block rather than continuing to alias `Raid.*_MAXIMUM_RAID_SUCCESS_RATE`
+  directly, now that the numbers have diverged. `effectiveRaidPower` itself is unchanged —
+  `raidFactory.getEffectiveRaidPower`'s existing 1-person formula
+  (`workMultiplierAmount * (1 + liveRebirthPercent)`), the exact one Bounty already reuses.
 
   **Why all three tiers unlock together, unlike Bounty's rank-gated tier progression**: Bounty's
   Tier I/II/III gating exists because those tiers are *absolute* difficulty — a low-power player really
   could get trapped rolling a tier they can't win. That risk doesn't exist here by construction (Easy
-  is always 90% and Hard is always 60%, for a Rank-1-fresh mercenary and a maxed rebirther alike), so
-  gating Medium/Hard behind extra Notoriety or Rank thresholds would be pure friction, not a real
-  safety mechanism — once the base Rank 2+ gate and the shared Notoriety threshold are met, the player
-  freely picks their own risk level every time, the same choice shape `/start-raid`'s `raid-select`
-  already offers (regular/elite/legendary), just self-relative instead of absolute.
+  always lands 72%-90% and Hard always lands 48%-60%, for a Rank-1-fresh mercenary and a maxed
+  rebirther alike — never outside those bands regardless of power), so gating Medium/Hard behind extra
+  Notoriety or Rank thresholds would be pure friction, not a real safety mechanism — once the base
+  Rank 2+ gate and the shared Notoriety threshold are met, the player freely picks their own risk level
+  every time, the same choice shape `/start-raid`'s `raid-select` already offers
+  (regular/elite/legendary), just self-relative instead of absolute.
 
-  **Reward now scales with the player's own `workMultiplierAmount`, not a flat Raid reward** — a
-  consequence of the difficulty change: since a maxed player faces exactly the same odds as a fresh
-  one, a flat reward would leave a heavily-invested mercenary risking a real fight for a trivial
-  payout relative to their own economy. Mirrors Daily Streak's "reward scales with the player's
-  current multiplier" shape rather than Bounty's flat `Raid.T{n}_RAID_REWARD` shape, since Bounty's
-  flat reward was calibrated against a flat difficulty — that pairing no longer applies once
-  difficulty itself is self-relative:
+  **Reward ceiling — re-derived directly against guild-raid/Bounty parity, not Daily Streak.** The
+  first pass anchored `Rival.BASE_REWARD_PER_MULTIPLIER` against Daily Streak's own day-14 peak
+  reward — the wrong comparison: Daily Streak has no obligation to stay under guild-raid parity (it's
+  not an alternative to guild membership), while Rival Hunter, as part of the Mercenary track, does.
+  Re-grounded against the same benchmarks `Bounty.SOLO_BOUNTY_REWARD_SHARE` was itself derived from
+  (see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#balance-rationale-solo_bounty_reward_share)):
+  a guild-level-3, 6-person roster winning T3 nets each member ≈1,416,667 (≈28.3% of the 5,000,000
+  base), and a maxed Rank-6 Bounty win nets ≈1,050,000-1,575,000 (avg ≈1,312,500) — already
+  established to sit just under that guild figure by design.
+
+  Reward still scales with the player's own `workMultiplierAmount` (unlike Bounty's flat
+  `Raid.T{n}_RAID_REWARD`), since a flat number would trivialize the fight for a heavily-invested
+  mercenary now that difficulty itself is self-relative — but left uncapped, that reward would keep
+  growing **linearly and without bound** as `workMultiplierAmount` compounds through
+  shop/regrade/rebirth, eventually exceeding even a maxed guild's own per-member raid share (which
+  stays flat, only scaled by a guild-level multiplier capped at 10x) — precisely the "too good to be a
+  merc" outcome flagged. Fixed the same way this codebase already bounds every other reward that
+  scales off a per-multiplier rate: a hard cap on the *base* term before tier/rank/variance scaling,
+  the same "cap the base, let the final number still be scaled by rank/multiplier on top" shape
+  `Work.MAX_GOLDEN_POTATO`/`RobNpc.MAX_NPC_ROB_PAYOUT` already use:
 
   ```
-  reward  = round(Rival.BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount * tierRewardFactor
-                   * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
-  penalty = round(Rival.BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount * tierRewardFactor * 0.5
-                   * getRandomFromInterval(.8, 1.2))   // no rank multiplier on the loss side, same
-                                                        // "full unscaled risk" precedent Bounty sets
+  rawBase = min(Rival.BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE)
+  reward  = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * getRandomFromInterval(.8, 1.2)
+                   * rankInfo.rewardMultiplier)
+  penalty = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * 0.5 * getRandomFromInterval(.8, 1.2))
+                   // no rank multiplier on the loss side, same "full unscaled risk" precedent
+                   // Bounty sets
   ```
 
-  Proposed `Rival.BASE_REWARD_PER_MULTIPLIER = 20,000` — sized to land Easy tier's win near Daily
-  Streak's own **day-14 peak** payout (`750 * 28.5 ≈ 21,375` per multiplier point, see
-  [systems/daily-streak.md](systems/daily-streak.md)), not its day-1 floor: reaching Notoriety's
-  ~20-point threshold through real Bounty/`/rob-npc` play plausibly takes comparable-or-more calendar
-  time than a 2-week login streak for an active mercenary, so the payout should read at that scale, not
-  a daily-freebie scale. Proposed `tierRewardFactor` 1.0 / 1.75 / 3.0 for Easy/Medium/Hard — grounded
-  so raw per-attempt EV still climbs with risk despite the shared 50%-of-reward penalty ratio
-  (`EV = rewardFactor * rewardBase * (1.5 * successChance - 0.5)`, the same breakeven-shape math
-  [systems/raids-and-world-events.md](systems/raids-and-world-events.md#mode-level-breakeven) already
-  uses for Regular/Elite/Legendary): Easy ≈ `0.85 * rewardBase`, Medium ≈ `1.09 * rewardBase`, Hard ≈
-  `1.20 * rewardBase` — a real but modest EV climb, so Hard reads as genuinely higher-risk/higher-
-  reward, not a strictly dominant pick over grinding Easy repeatedly. Every number here is a starting
-  proposal for the architect's own EV pass, same "revisit once real usage exists" caveat
-  `SOLO_BOUNTY_REWARD_SHARE` itself already carries.
+  Proposed `Rival.BASE_REWARD_PER_MULTIPLIER = 1,600`, `Rival.MAX_RIVAL_REWARD_BASE = 600,000`,
+  `Rival.TIER_REWARD_FACTOR = { easy: 0.6, medium: 0.85, hard: 1.0 }`. Grounded against
+  `raids-and-world-events.md`'s own per-member `effectiveRaidPower` landmarks (T3 ≈ 350, "shop maxed +
+  regrade halfway"): at that landmark, `rawBase` (1,600 × 350 = 560,000) is just short of the cap, and
+  a maxed Rank-6 Hard-tier win averages ≈980,000 (range ≈784,000-1,176,000 across the reward's own
+  ±20% variance roll) — clearly under both Bounty's own ≈1,312,500 Rank-6 average and the guild's
+  ≈1,416,667 per-member T3 figure. The cap saturates around `workMultiplierAmount ≈ 375` (T3/T4-
+  landmark territory) — past that point `rawBase` stays pinned at 600,000 no matter how much further
+  `workMultiplierAmount` grows via later regrade/rebirth cycles, so a maxed Rank-6 Hard-tier win's
+  realistic ceiling (`600,000 × 1.0 × up to 1.2 × 1.75 ≈ 1,260,000`) **never exceeds Bounty's own
+  Rank-6 ceiling (≈1,050,000-1,575,000) and stays permanently below the guild's own per-member T3
+  payout**, regardless of how far a player's stats compound beyond that landmark — this is the
+  concrete answer to "does this make solo mercenary play out-earn a well-organized guild": no, by
+  construction, at every power level, not just at the illustrative landmark used to pick the constants.
+  Easy/Medium pay proportionally less (factors 0.6/0.85) for their higher win rates. Penalty mirrors
+  the reward's own capped `rawBase` at half magnitude, so a maxed player's worst-case loss is bounded
+  too, not arbitrarily catastrophic just because their multiplier is large. Every number here is a
+  starting proposal for the architect's own EV pass, same "revisit once real usage exists" caveat
+  `SOLO_BOUNTY_REWARD_SHARE` itself already carries — but the *shape* (self-relative difficulty,
+  capped-base reward) is now structurally guaranteed to stay under guild-raid parity regardless of
+  final tuning, which the first pass's uncapped, Daily-Streak-anchored formula was not.
 
   **Guaranteed permanent stat bump on a win is unchanged** from the original pitch — sized at exactly
   Sweet Potato's own per-track magnitude (`workMultiplierAmount +0.2` / `passiveAmount` +1.15x
@@ -1556,11 +1599,14 @@ and needs its own balance pass.
      self-relative difficulty model was meant to remove.
 
   Touches (once approved): `mercenaryFactory.js` (notoriety accrual on Bounty/`/rob-npc` win
-  branches, a new `resolveRivalConfrontation(userDetails, tier)`), two new commands (`/notoriety`,
+  branches, a new `resolveRivalConfrontation(userDetails, tier)` handling both the variance-rolled
+  success chance and the capped reward/penalty math), two new commands (`/notoriety`,
   `/confront-rival` with a `tier` choice option) in `src/commands/user/`, a new `mercenaryNotoriety`
   top-level user field (healed like every other default field), a new `Rival` constants block
-  (`CONFRONTATION_THRESHOLD`, `BASE_REWARD_PER_MULTIPLIER`, `TIER_REWARD_FACTOR`, reusing the existing
-  `Raid.*_MAXIMUM_RAID_SUCCESS_RATE` constants directly rather than duplicating them), a small new
+  (`CONFRONTATION_THRESHOLD`, `TIER_SUCCESS_CAP` {.90/.65/.60 — Easy/Hard incidentally match
+  `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`/`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE` but are proposed as
+  standalone values now that Medium has diverged from Elite's own cap}, `BASE_REWARD_PER_MULTIPLIER`
+  {1,600}, `MAX_RIVAL_REWARD_BASE` {600,000}, `TIER_REWARD_FACTOR` {.6/.85/1.0}), a small new
   `RivalMercenaries` flavor table in `constants.js`, and `embedFactory.js` additions for both
   commands' embeds.
 
