@@ -1031,6 +1031,35 @@ and needs its own balance pass.
   assertions they were written for stay meaningful instead of ~25%-flaky; a fourth test was added
   specifically covering the potato-instead fork.
 
+- [x] **22. Starch Price-Count Cycle Fix** — S — **Done**
+  What: `starchFactory.js`'s `makeStarchPrices(starch, lastPat, priceCount)` and all 7 pattern
+  generators (`createFluctuating`, `createLarge`, `createDecreasing`, `createSmall`,
+  `createSteadyClimb`, `createNarrowPeak`, `createChoppy`) now take an explicit `priceCount` and
+  produce exactly that many values, instead of every generator hardcoding 6 regardless of cycle.
+  New exported `STARCH_PRICE_COUNT_BY_RESET_DAY = { Monday: 5, Thursday: 7 }`.
+  `starchEvents.js`'s reset cron (`0 10 * * 1,4`) now determines which day it fired on and passes
+  the matching count into `makeStarchPrices`; the two daily shift crons were consolidated into one
+  shared `shiftNextSellPrice()` helper that also guards against shifting an already-empty queue
+  (holds the last `starch_sell` instead of writing `NaN` if this ever recurs).
+  Why: user asked whether both weekly starch cycles get the same number of price changes — they
+  didn't, and the mismatch was an active bug, not just an asymmetry. The Monday→Thursday cycle
+  (3 calendar days) only ever fires 5 shift crons before the next reset overwrites `starch_values`,
+  so the old fixed-6 generation silently wasted one generated price every single week. The
+  Thursday→Monday cycle (4 calendar days) fires 7 shift crons — one more than the 6 values ever
+  generated — so its 7th shift called `.shift()` on an already-empty array; `[].shift()` is
+  `undefined` and `Math.floor(undefined)` is `NaN`, so `starch_sell` was actually broken (`NaN`)
+  every week from Sunday night through Monday's reset. Confirmed via direct simulation (day-by-day
+  cron-firing count for both cycles) and a literal `.shift()` overrun repro before fixing.
+  Notable: user also asked whether the live-stored DynamoDB `starch_values`/`starch_sell` could be
+  corrected directly from this session. Checked — the AWS credentials present in this environment
+  are proxy-injected placeholders (not real keys), and no `AWS_REGION` is configured anywhere
+  (`constants.js` requires `process.env.AWS_REGION`), so this session has no real path to the live
+  table regardless of credentials. Told the user to add the missing value manually, per their own
+  stated fallback; the code fix itself self-corrects starting from the very next Monday/Thursday
+  reset with no manual intervention needed going forward. Added regression coverage in
+  `starchFactory.test.js` asserting every pattern produces exactly 5/6/7 prices on request (293/293
+  tests passing).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Cosmetic Loot** — liked the idea, but implementation approach isn't settled. Needs a scoping

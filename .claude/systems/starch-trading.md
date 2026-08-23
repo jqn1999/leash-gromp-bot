@@ -30,11 +30,26 @@ explicitly for the same reason; this closes the one place starch trading didn't.
   (range 9500–10999), stored as `starch_buy` in the stats table's `starch` doc.
 - On the **same** schedule: every user's `starches` balance is wiped
   (`dynamoHandler.removeStarches()`), and a full week of future **sell** prices is pre-generated via
-  `starchFactory.makeStarchPrices(buyPrice, lastPattern)` and stored as the `starch_values` array.
+  `starchFactory.makeStarchPrices(buyPrice, lastPattern, priceCount)` and stored as the
+  `starch_values` array.
 - The next sell price is shifted off `starch_values` and set as `starch_sell` daily at `22:00`
   (every day, via cron `0 22 * * *` — Monday and Thursday's buying windows both close at 10pm, and
   every other day sells all day anyway) and `10:00` (every day except Monday/Thursday, when 10am
   opens a buying window instead — cron `0 10 * * 2,3,5,6,7`).
+
+**`priceCount` must match how many times the shift crons actually fire before the next reset** —
+the two cycles are NOT the same length. Monday→Thursday is 3 calendar days (5 shifts: Mon 22:00,
+Tue 10:00/22:00, Wed 10:00/22:00), Thursday→Monday is 4 calendar days (7 shifts: Thu 22:00, Fri/Sat/
+Sun 10:00/22:00). `starchEvents.js`'s reset job computes `resetDay` from the firing day and looks up
+the right count via `STARCH_PRICE_COUNT_BY_RESET_DAY = { Monday: 5, Thursday: 7 }` (exported from
+`starchFactory.js`), rather than assuming a fixed 6. Getting this wrong is a real bug that shipped:
+every pattern generator used to hardcode exactly 6 output values regardless of cycle, which meant
+the Monday cycle silently wasted one generated price every week (only 5 of the 6 ever got shifted
+out before the next reset overwrote the array) while the Thursday cycle ran the queue dry on its
+7th shift — `[].shift()` is `undefined`, `Math.floor(undefined)` is `NaN`, so `starch_sell` was
+actually broken (NaN) every week from Sunday night until Monday's reset regenerated it.
+`shiftNextSellPrice()` in `starchEvents.js` now also guards against shifting an empty queue
+defensively, holding the last known `starch_sell` instead of writing `NaN` if this ever recurs.
 
 ## Price pattern generation (`makeStarchPrices`)
 
@@ -57,27 +72,30 @@ here, caught by a reachability test (`starchFactory.test.js`) rather than by ins
 re-verified by an exhaustive per-row sweep when `NARROW_PEAK`/`CHOPPY` were added on top.
 
 Each pattern generator (`createFluctuating`, `createLarge`, `createDecreasing`, `createSmall`,
-`createSteadyClimb`, `createNarrowPeak`, `createChoppy`) produces 6 price points, applied as a
-multiplier against the base buy price. Large-spike weeks can reach roughly `starch*(5+normal())` ≈
-5–6× the buy price. `STEADY_CLIMB` starts around 55–65% of the buy price and climbs ~8–20% per step
-across all 6 points, rewarding whoever holds to the last couple of price points rather than timing
-one specific peak.
+`createSteadyClimb`, `createNarrowPeak`, `createChoppy`) takes a `priceCount` param and produces
+exactly that many price points (5 or 7 in practice — see `priceCount` note above), applied as a
+multiplier against the base buy price. At `priceCount=6` (the shape every pattern used to be
+hardcoded to) large-spike weeks can reach roughly `starch*(5+normal())` ≈ 5–6× the buy price, and
+`STEADY_CLIMB` starts around 55–65% of the buy price and climbs ~8–20% per step, rewarding whoever
+holds to the last couple of price points rather than timing one specific peak; at 5 or 7 points the
+same per-step formulas apply, just over a shorter or longer run.
 
 **`NARROW_PEAK`/`CHOPPY` are deliberately "semi difficult to profit"** — every other pattern is
 either a real spike to catch, a reliable payoff (`STEADY_CLIMB`), or a guaranteed loss
 (`DECREASING`, whose values never clear 1.0× the buy price even at their best roll). These two sit
 between "clearly profitable if timed" and "clearly a loss," a real coinflip rather than either
 extreme:
-- `NARROW_PEAK` — one randomly-positioned day out of the 6 gets a shot at `0.75-1.25×` the buy
-  price; the other 5 sit clearly underwater at `0.55-0.75×`. Since the peak's own range straddles
-  1.0×, there's a flat 50/50 chance that single shot doesn't even clear breakeven at all — on top of
-  needing to correctly identify which of the 6 days it landed on.
-- `CHOPPY` — every one of the 6 days is an **independent uniform** roll (`Math.random()` directly,
+- `NARROW_PEAK` — one randomly-positioned day out of the cycle gets a shot at `0.75-1.25×` the buy
+  price; every other day sits clearly underwater at `0.55-0.75×`. Since the peak's own range
+  straddles 1.0×, there's a flat 50/50 chance that single shot doesn't even clear breakeven at all —
+  on top of needing to correctly identify which day it landed on.
+- `CHOPPY` — every day in the cycle is an **independent uniform** roll (`Math.random()` directly,
   not the `normal()` helper every other pattern uses, which clusters toward the middle) between
   `0.65-1.15×`, no trend connecting one day to the next. A single check has ~30% odds of clearing
-  breakeven; checking all 6 days across the week pushes real odds to ~88%, so it rewards active
-  checking without ever guaranteeing a win, and the upside on any individual hit is capped modest
-  (15%) rather than a big payoff.
+  breakeven; checking every day across a 6-day cycle pushes real odds to ~88% (fewer/more days in
+  the 5- or 7-day cycles shift that figure accordingly), so it rewards active checking without ever
+  guaranteeing a win, and the upside on any individual hit is capped modest (15%) rather than a big
+  payoff.
 
 Both patterns' slices in each row were carved out of what used to be `STEADY_CLIMB`'s catch-all
 remainder (60/20/20 split — `STEADY_CLIMB` keeps 60% of its old share, `NARROW_PEAK`/`CHOPPY` split

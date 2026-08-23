@@ -24,7 +24,19 @@ class starchFactory {
 
     constructor() { }
 
-    async makeStarchPrices(starch, lastPat) {
+    // priceCount: how many daily price changes this specific cycle will actually consume
+    // before the NEXT reset overwrites starch_values — NOT a fixed 6. The two cycles a
+    // week splits into are different lengths (Monday->Thursday is 3 calendar days,
+    // Thursday->Monday is 4), and starchEvents.js's shift cadence (2/day on non-reset
+    // days, 1/day on reset days themselves) works out to 5 shifts for the Monday cycle
+    // and 7 for the Thursday cycle — see STARCH_PRICE_COUNT_BY_RESET_DAY below and
+    // systems/starch-trading.md. Every pattern generator used to always produce exactly
+    // 6 values regardless of which cycle asked, which meant the Monday cycle silently
+    // wasted 1 generated price every week (discarded on Thursday's reset) while the
+    // Thursday cycle ran the queue dry: its 7th shift (Sunday 10pm) called `.shift()` on
+    // an already-empty array, and `Math.floor(undefined)` is `NaN` — so `starch_sell`
+    // was actually broken every single week from Sunday night until Monday's reset.
+    async makeStarchPrices(starch, lastPat, priceCount) {
 
         // choose pattern for this week
         const patChance = Math.random()
@@ -42,25 +54,25 @@ class starchFactory {
         // make pattern
         switch (pattern) {
             case 0: // fluctuating
-                prices = createFluctuating(starch)
+                prices = createFluctuating(starch, priceCount)
                 break;
             case 1: // large spike
-                prices = createLarge(starch)
+                prices = createLarge(starch, priceCount)
                 break;
             case 2: // decreasing
-                prices = createDecreasing(starch)
+                prices = createDecreasing(starch, priceCount)
                 break;
             case 3: // small_spike
-                prices = createSmall(starch)
+                prices = createSmall(starch, priceCount)
                 break;
             case 4: // steady_climb
-                prices = createSteadyClimb(starch)
+                prices = createSteadyClimb(starch, priceCount)
                 break;
             case 5: // narrow_peak
-                prices = createNarrowPeak(starch)
+                prices = createNarrowPeak(starch, priceCount)
                 break;
             case 6: // choppy
-                prices = createChoppy(starch)
+                prices = createChoppy(starch, priceCount)
                 break;
         }
 
@@ -69,6 +81,15 @@ class starchFactory {
         return prices
     }
 }
+
+// Monday's reset kicks off a 3-day cycle (Mon/Tue/Wed) worth of shifts before Thursday's
+// reset overwrites it; Thursday's reset kicks off a 4-day cycle (Thu/Fri/Sat/Sun) before
+// the following Monday's reset. See starchEvents.js's own cron jobs for the exact
+// schedule this counts against — keep these in sync if that schedule ever changes.
+const STARCH_PRICE_COUNT_BY_RESET_DAY = {
+    Monday: 5,
+    Thursday: 7,
+};
 
 function normal() {
     var rand = 0;
@@ -80,24 +101,26 @@ function normal() {
     return rand / 6;
 }
 
-async function createFluctuating(starch) {
+// Alternates a decaying value with a fresh random spike, one push per day, for exactly
+// priceCount days — start's coin flip picks which role goes first, same as before this
+// was parametrized (previously a fixed "3 loops of 2 pushes" = always 6; a single
+// alternating loop generalizes to any count, odd or even, without changing either
+// formula).
+async function createFluctuating(starch, priceCount) {
 
     start = Math.random()
     const vals = []
 
     // calculate
     let decStarch = starch * (.6 + (normal() * .2))
-    if (start < .5) {
-        for (var i = 0; i < 3; i++) {
+    const decGoesFirst = start < .5;
+    for (var i = 0; i < priceCount; i++) {
+        const isDecTurn = decGoesFirst ? (i % 2 === 0) : (i % 2 === 1);
+        if (isDecTurn) {
             vals.push(decStarch)
             decStarch = decStarch * (1 - (normal() * .06))
+        } else {
             vals.push(starch * (0.9 + normal() * .5))
-        }
-    } else {
-        for (var i = 0; i < 3; i++) {
-            vals.push(starch * (0.9 + normal() * .5))
-            vals.push(decStarch)
-            decStarch = decStarch * (1 - (normal() * .06))
         }
     }
     return vals
@@ -122,7 +145,14 @@ function largePeak(starch) {
     return spike
 }
 
-async function createLarge(starch) {
+// The 3-value spike itself (largePeak) stays a fixed size regardless of priceCount —
+// that's this pattern's identity, not something that should shrink/grow. What scales is
+// how many "cooldown" days surround it: extraCount = priceCount - 1 (opening) - 3
+// (peak), distributed before/after the peak depending on the same 3-way branch roll as
+// before (peak early/mid/late), using each branch's own existing decay formula chained
+// however many times extraCount calls for instead of a hardcoded 1 or 2.
+async function createLarge(starch, priceCount) {
+    const extraCount = Math.max(0, priceCount - 4);
     let vals = []
     let decStarch = starch * (.85 + (normal() * .05))
     vals.push(decStarch)
@@ -130,29 +160,40 @@ async function createLarge(starch) {
     start = Math.random()
     if (start < .33) {
         vals = vals.concat(largePeak(starch))
-        vals.push(starch * (.9 + (normal() * .4)))
-        vals.push(starch * (.7 + (normal() * .2)))
+        let tail = starch * (.9 + (normal() * .4))
+        for (let i = 0; i < extraCount; i++) {
+            vals.push(tail)
+            tail = tail * (.85 - (normal() * .1))
+        }
     } else if (start < .66) {
-        decStarch = decStarch * (.97 - (normal() * .02))
-        vals.push(decStarch)
+        const preCount = Math.floor(extraCount / 2);
+        const postCount = extraCount - preCount;
+        for (let i = 0; i < preCount; i++) {
+            decStarch = decStarch * (.97 - (normal() * .02))
+            vals.push(decStarch)
+        }
         vals = vals.concat(largePeak(starch))
-        vals.push(decStarch * (.97 - (normal() * .02)))
+        for (let i = 0; i < postCount; i++) {
+            decStarch = decStarch * (.97 - (normal() * .02))
+            vals.push(decStarch)
+        }
     } else {
-        decStarch = decStarch * (.97 - (normal() * .02))
-        vals.push(decStarch)
-        vals.push(decStarch * (.97 - (normal() * .02)))
+        for (let i = 0; i < extraCount; i++) {
+            decStarch = decStarch * (.97 - (normal() * .02))
+            vals.push(decStarch)
+        }
         vals = vals.concat(largePeak(starch))
     }
 
     return vals
 }
 
-async function createDecreasing(starch) {
+async function createDecreasing(starch, priceCount) {
     let vals = []
     let decStarch = starch * (.85 + (normal() * .05))
     vals.push(decStarch)
 
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < priceCount - 1; i++) {
         decStarch = decStarch * (.85 + (normal() * .10))
         vals.push(decStarch)
     }
@@ -169,7 +210,11 @@ function smallPeak(starch) {
     return spike
 }
 
-async function createSmall(starch) {
+// smallPeak's 4-value spike stays fixed size (same reasoning as largePeak above);
+// extraCount = priceCount - 4 surrounding "cooldown" days distributed before/after
+// depending on the same 3-way early/mid/late branch roll as before.
+async function createSmall(starch, priceCount) {
+    const extraCount = Math.max(0, priceCount - 4);
     start = Math.random()
     let vals = []
     let decStarch
@@ -177,17 +222,29 @@ async function createSmall(starch) {
     if (start < .33) {
         vals = vals.concat(smallPeak(starch))
         decStarch = starch * (.9 + (normal() * .5))
-        vals.push(decStarch)
-        vals.push(decStarch * (.9 + (normal() * .05)))
+        for (let i = 0; i < extraCount; i++) {
+            vals.push(decStarch)
+            decStarch = decStarch * (.9 + (normal() * .05))
+        }
     } else if (start < .66) {
+        const preCount = Math.floor(extraCount / 2);
+        const postCount = extraCount - preCount;
         decStarch = starch * (.4 + (normal() * .5))
-        vals.push(decStarch)
+        for (let i = 0; i < preCount; i++) {
+            vals.push(decStarch)
+            decStarch = decStarch * (.9 + (normal() * .5))
+        }
         vals = vals.concat(smallPeak(starch))
-        vals.push(decStarch * (.9 + (normal() * .5)))
+        for (let i = 0; i < postCount; i++) {
+            vals.push(decStarch)
+            decStarch = decStarch * (.9 + (normal() * .5))
+        }
     } else {
         decStarch = starch * (.4 + (normal() * .5))
-        vals.push(decStarch)
-        vals.push(decStarch * (.9 + (normal() * .05)))
+        for (let i = 0; i < extraCount; i++) {
+            vals.push(decStarch)
+            decStarch = decStarch * (.9 + (normal() * .05))
+        }
         vals = vals.concat(smallPeak(starch))
     }
 
@@ -201,12 +258,12 @@ async function createSmall(starch) {
 // steps, so it can still land anywhere from a modest gain to a genuine payoff depending
 // on how the normal() rolls stack — a real fifth risk/reward profile, not just a
 // relabeled DECREASING.
-async function createSteadyClimb(starch) {
+async function createSteadyClimb(starch, priceCount) {
     let vals = []
     let climbStarch = starch * (.55 + (normal() * .1))
     vals.push(climbStarch)
 
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < priceCount - 1; i++) {
         climbStarch = climbStarch * (1.08 + (normal() * .12))
         vals.push(climbStarch)
     }
@@ -218,16 +275,16 @@ async function createSteadyClimb(starch) {
 // other pattern either has a real spike to catch (FLUCTUATING/LARGE_SPIKE/SMALL_SPIKE),
 // a reliable payoff (STEADY_CLIMB), or a guaranteed loss (DECREASING, never clears 1.0×
 // buy price even at its best point). NARROW_PEAK sits in between those extremes: one
-// randomly-positioned day out of the 6 gets a shot at profit, 0.75-1.25× the buy price —
-// a flat 50/50 on whether that single shot even clears breakeven at all, on top of the
-// existing difficulty of correctly identifying which of the 6 days it landed on. The
-// other 5 days sit clearly underwater (0.55-0.75×) so there's no fallback if you guess
+// randomly-positioned day out of the cycle's priceCount gets a shot at profit, 0.75-1.25×
+// the buy price — a flat 50/50 on whether that single shot even clears breakeven at all,
+// on top of the existing difficulty of correctly identifying which day it landed on. The
+// other days sit clearly underwater (0.55-0.75×) so there's no fallback if you guess
 // wrong or miss the day.
-async function createNarrowPeak(starch) {
+async function createNarrowPeak(starch, priceCount) {
     const vals = []
-    const peakIndex = Math.floor(Math.random() * 6)
+    const peakIndex = Math.floor(Math.random() * priceCount)
 
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < priceCount; i++) {
         if (i === peakIndex) {
             vals.push(starch * (.75 + (normal() * .5)))
         } else {
@@ -239,16 +296,16 @@ async function createNarrowPeak(starch) {
 }
 
 // The other "semi difficult" pattern, but noisy instead of a single narrow shot — every
-// one of the 6 days is an independent, uniformly-random roll (not the normal() helper
+// day in the cycle is an independent, uniformly-random roll (not the normal() helper
 // every other pattern uses, which clusters toward the middle — genuine flat
 // unpredictability instead of a bell curve) between 0.65-1.15× the buy price, with no
 // trend connecting one day to the next. A single check has roughly a 30% chance of
-// landing above breakeven; checking every day across the week pushes real odds up
-// (~88%), so it rewards active checking without being a guaranteed win even then — the
-// upside on any individual hit is capped modest (15%) rather than a big payoff.
-async function createChoppy(starch) {
+// landing above breakeven; checking every day across the cycle pushes real odds up
+// (~88% over 6 checks), so it rewards active checking without being a guaranteed win even
+// then — the upside on any individual hit is capped modest (15%) rather than a big payoff.
+async function createChoppy(starch, priceCount) {
     const vals = []
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < priceCount; i++) {
         vals.push(starch * (.65 + (Math.random() * .5)))
     }
     return vals
@@ -345,5 +402,6 @@ const PROBABILITY_MATRIX = {
 
 module.exports = {
     starchFactory,
-    isStarchBuyingWindow
+    isStarchBuyingWindow,
+    STARCH_PRICE_COUNT_BY_RESET_DAY
 }
