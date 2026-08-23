@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const mercenaryFactory = require('../mercenaryFactory');
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionDuplicateReward, CompanionLeveling } = require('../constants');
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionDuplicateReward, CompanionLeveling, Rival, RivalMercenaries } = require('../constants');
 
 function baseUser(overrides = {}) {
     return {
@@ -384,5 +384,207 @@ describe('resolveYukonAward', () => {
         // The scavenging record itself must survive untouched — applyCompanionAward only
         // ever rebuilds `owned`, spreading the rest of `companions` through unchanged.
         expect(result.companions.scavenging).toEqual(user.companions.scavenging);
+    });
+});
+
+describe('resolveGuaranteedStatBump', () => {
+    test('picks exactly one of the three TIER_I_GRANT tracks uniformly, no roll-chance gate', () => {
+        const user = baseUser({ passiveAmount: 100000, bankCapacity: 1000000 });
+        // A single Math.random() call (pool-index pick) — unlike rollBountyStatReward,
+        // there's no separate ROLL_CHANCE roll to clear first, since this bump is
+        // guaranteed on every Rival win.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // index 0 -> workMultiplierAmount
+        try {
+            const result = mercenaryFactory.resolveGuaranteedStatBump(user);
+            expect(result).toEqual({ type: 'workMultiplierAmount', amount: BountyStatReward.TIER_I_GRANT[0].amount });
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('a passiveAmount hit applies the same percentage-of-current, capped, min-increment rounding Bounty\'s own stat rewards use', () => {
+        const user = baseUser({ passiveAmount: 1000000 }); // well above the breakpoint where the cap kicks in
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.35); // pool index 1 -> passiveAmount
+        try {
+            const result = mercenaryFactory.resolveGuaranteedStatBump(user);
+            expect(result.type).toBe('passiveAmount');
+            expect(result.amount).toBe(BountyStatReward.TIER_I_GRANT[1].maxGainSweetPotato);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('a bankCapacity hit resolves against the current bankCapacity', () => {
+        const user = baseUser({ bankCapacity: 10000000 });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.7); // pool index 2 -> bankCapacity
+        try {
+            const result = mercenaryFactory.resolveGuaranteedStatBump(user);
+            expect(result.type).toBe('bankCapacity');
+            expect(result.amount).toBeGreaterThan(0);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+});
+
+describe('pickRandomRival', () => {
+    test('returns the first roster entry when the roll lands on index 0', () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            expect(mercenaryFactory.pickRandomRival()).toBe(RivalMercenaries.roster[0]);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('returns the last roster entry when the roll lands just under 1', () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        try {
+            expect(mercenaryFactory.pickRandomRival()).toBe(RivalMercenaries.roster[RivalMercenaries.roster.length - 1]);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+});
+
+describe('resolveRivalConfrontation', () => {
+    // Call order inside resolveRivalConfrontation: (1) the successChance variance roll's
+    // own Math.random() (inside getRandomFromInterval), (2) the win-check roll, (3) the
+    // rival-pick roll, then on a WIN: (4) the reward variance roll, (5) resolveGuaranteedStatBump's
+    // pool-index roll; on a LOSS: (4) the penalty variance roll only.
+
+    test('successChance is tierCap scaled by a ±20% variance roll, capped at tierCap exactly on a high roll', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(1)        // variance roll -> getRandomFromInterval(.8,1.2) = 1.2 -> tierCap*1.2 capped at tierCap
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll -> .8
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'easy');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.successChance).toBeCloseTo(Rival.TIER_SUCCESS_CAP.easy);
+    });
+
+    test('a low variance roll realizes ~80% of tierCap, never below that floor', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)  // variance roll -> .8 -> tierCap*.8
+            .mockReturnValueOnce(0)  // win check succeeds
+            .mockReturnValueOnce(0)  // rival pick
+            .mockReturnValueOnce(0)  // reward variance roll
+            .mockReturnValueOnce(0); // stat bump pool index
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'medium');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.successChance).toBeCloseTo(Rival.TIER_SUCCESS_CAP.medium * 0.8);
+    });
+
+    test('a win pays reward = round(rawBase * tierFactor * variance * rankMultiplier), and grants a guaranteed stat bump', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)  // successChance variance roll
+            .mockReturnValueOnce(0)  // win check -> win
+            .mockReturnValueOnce(0)  // rival pick
+            .mockReturnValueOnce(0)  // reward variance roll -> .8
+            .mockReturnValueOnce(0); // stat bump pool index -> workMultiplierAmount
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'hard');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.won).toBe(true);
+        expect(result.rival).toBe(RivalMercenaries.roster[0]);
+        const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * 90, Rival.MAX_RIVAL_REWARD_BASE);
+        const expectedReward = Math.round(rawBase * Rival.TIER_REWARD_FACTOR.hard * 0.8 * 1); // rank 1 multiplier is 1.00
+        expect(result.rewardAmount).toBe(expectedReward);
+        expect(result.penaltyAmount).toBe(0);
+        expect(result.statBump).toEqual({ type: 'workMultiplierAmount', amount: BountyStatReward.TIER_I_GRANT[0].amount });
+    });
+
+    test('a maxed-rank win scales the reward by rankInfo.rewardMultiplier on top of the same base formula', async () => {
+        const maxRank = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const user = baseUser({ workMultiplierAmount: 90, mercenaryBountyWinCount: maxRank.winsRequired });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0);
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'hard');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * 90, Rival.MAX_RIVAL_REWARD_BASE);
+        const expectedReward = Math.round(rawBase * Rival.TIER_REWARD_FACTOR.hard * 0.8 * maxRank.rewardMultiplier);
+        expect(result.rewardAmount).toBe(expectedReward);
+    });
+
+    test('rawBase is capped at MAX_RIVAL_REWARD_BASE for an extremely high workMultiplierAmount', async () => {
+        const user = baseUser({ workMultiplierAmount: 100000 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0) // reward variance roll -> .8
+            .mockReturnValueOnce(0);
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'hard');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const expectedReward = Math.round(Rival.MAX_RIVAL_REWARD_BASE * Rival.TIER_REWARD_FACTOR.hard * 0.8 * 1);
+        expect(result.rewardAmount).toBe(expectedReward);
+    });
+
+    test('a loss pays penalty = round(rawBase * tierFactor * 0.5 * variance), no rank multiplier, no stat bump, no reward', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // successChance variance roll
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll -> .8
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user, 'easy');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.won).toBe(false);
+        expect(result.rewardAmount).toBe(0);
+        expect(result.statBump).toBeNull();
+        const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * 90, Rival.MAX_RIVAL_REWARD_BASE);
+        const expectedPenalty = Math.round(rawBase * Rival.TIER_REWARD_FACTOR.easy * 0.5 * 0.8);
+        expect(result.penaltyAmount).toBe(expectedPenalty);
+    });
+
+    // Structural regression for the roadmap's own flagged judgment call: rebirth progress
+    // must have ZERO effect anywhere in Rival Bounty Hunters — success chance is a flat
+    // tierCap-based roll (never computes effectiveRaidPower/getLiveRebirthPercent), and the
+    // reward formula scales off raw workMultiplierAmount only. Varying rebirthCount with
+    // every other input pinned must produce byte-identical results.
+    test('rebirthCount has zero effect on success chance or reward — the formula never reads it', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.1);
+        try {
+            const noRebirthUser = baseUser({ workMultiplierAmount: 90, rebirthCount: 0 });
+            const maxRebirthUser = baseUser({ workMultiplierAmount: 90, rebirthCount: 999 });
+            const noRebirthResult = await mercenaryFactory.resolveRivalConfrontation(noRebirthUser, 'medium');
+            const maxRebirthResult = await mercenaryFactory.resolveRivalConfrontation(maxRebirthUser, 'medium');
+            expect(noRebirthResult.successChance).toBe(maxRebirthResult.successChance);
+            expect(noRebirthResult.rewardAmount).toBe(maxRebirthResult.rewardAmount);
+            expect(noRebirthResult.penaltyAmount).toBe(maxRebirthResult.penaltyAmount);
+        } finally {
+            randomSpy.mockRestore();
+        }
     });
 });

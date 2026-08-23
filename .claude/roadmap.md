@@ -1431,8 +1431,50 @@ and needs its own balance pass.
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
 
-- [ ] **Rival Bounty Hunters (Notoriety → confrontation)** — M, build-ready — see the
-  "Architect's technical design" subsection at the end of this entry. Not yet built.
+- [x] **Rival Bounty Hunters (Notoriety → confrontation)** — M — **Shipped 2026-08-23**, built
+  directly off the architect's technical design at the end of this entry — see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#rival-bounty-hunters) for the
+  shipped implementation.
+  What: two new commands (`/notoriety`, `/confront-rival tier:<easy|medium|hard>`), a new
+  resetting `mercenaryNotoriety` counter (built up by `/take-bounty`/`/rob-npc` wins) plus a
+  lifetime `rivalConfrontationWinCount`, a self-relative per-tier success-chance ceiling
+  (`Rival.TIER_SUCCESS_CAP` .90/.65/.60, ±20% variance roll capped at the ceiling), a
+  capped-base reward/penalty formula scaling off `workMultiplierAmount`
+  (`Rival.BASE_REWARD_PER_MULTIPLIER`/`MAX_RIVAL_REWARD_BASE`/`TIER_REWARD_FACTOR`), a
+  guaranteed (not rare-rolled) permanent stat bump on a win reusing
+  `BountyStatReward.TIER_I_GRANT` directly, a 6-entry named `RivalMercenaries` roster, and 2
+  new `rivalConfrontationWinCount`-keyed achievements (`rival_first_blood`,
+  `rival_hunter_of_hunters`).
+  Notable design points: implemented the architect's §3 formula-simplification finding
+  literally — `resolveRivalConfrontation`'s success-chance path never calls
+  `raidFactory.getEffectiveRaidPower`/`rebirthFactory.getLiveRebirthPercent` at all, since
+  `tierCap` is the already-resolved ceiling once `effectiveRaidPower` cancels out of its own
+  self-relative difficulty formula by construction — a real simplification versus
+  Bounty/`/rob-npc`, not an oversight, and confirmed via a dedicated regression test
+  (`mercenaryFactory.test.js`) that varying `rebirthCount` alone produces byte-identical
+  results with every other input pinned. The three judgment calls the architect flagged were
+  each confirmed and implemented exactly as specified, not silently accepted as defaults: (1)
+  rebirth has zero effect anywhere in this feature, a structural consequence of the approved
+  difficulty/reward formulas, confirmed correct; (2) Yukon's `bountyRewardPercent` perk does
+  NOT apply to Rival rewards — `resolveRivalConfrontation` never calls
+  `companionFactory.getActivePerkValue`, matching the approved formula exactly; (3)
+  `records.largestRivalReward` was deliberately not added — free and precedent-matching, but
+  out of scope since it wasn't requested. No deviations from the architect's build-ready
+  spec's actual formulas/data shapes were needed — `getMercenaryRankInfo`,
+  `RaidFactory.handleStatSplit`, `BountyStatReward.TIER_I_GRANT`, and `updateUserFields`'s
+  `setAttributes`/`addAttributes` split all matched the spec's assumptions on first read
+  against live source. Verified via 17 new `mercenaryFactory.test.js` unit tests
+  (`resolveGuaranteedStatBump`/`pickRandomRival`/`resolveRivalConfrontation`, including the
+  ±20%-variance-cap and rebirth-has-no-effect regressions) plus 14 new command-level
+  regression tests across three new files (`rivalNotorietyAccrual.test.js` — Notoriety accrual
+  only fires on a win at each of `/take-bounty`'s/`/rob-npc`'s two call sites;
+  `confrontRival.test.js` — the 3-step gating chain, the win/loss write sequence including the
+  `Math.max(0, ...)` potato floor, and Notoriety resetting to 0 on a loss at every tier, not
+  just Easy; `notoriety.test.js` — the read-only `confrontable` computation). Full suite: 384 →
+  410 tests, all green.
+
+  Original brainstorm and design history preserved below for context.
+
   Product-owner brainstorm, revised after direct feedback on the difficulty model, then taken
   through a full architect design pass. Requested as "one more unique flavor of activity" for
   Mercenaries, distinct

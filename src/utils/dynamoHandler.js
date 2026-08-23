@@ -374,6 +374,16 @@ function getDefaultUserFields(userId, username) {
         guildMercenarySwitchTimer: 0,   // set on /retire-mercenary and /leave (guild),
                                          // checked on /become-mercenary, /create-new-guild,
                                          // and /join-guild — see Bounty.GUILD_SWITCH_COOLDOWN_SECONDS
+        // Rival Bounty Hunters (systems/mercenary-bounties.md#rival-bounty-hunters) — a
+        // resettable resource-threshold gate, not a cooldown timer. mercenaryNotoriety is
+        // the CYCLING progress meter (built up by /take-bounty and /rob-npc wins, reset to
+        // 0 on every /confront-rival resolution, win or lose); rivalConfrontationWinCount
+        // is the LIFETIME, never-reset counter the two rival_* achievements and
+        // /notoriety's own "rivals defeated" line read — same
+        // poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached resetting-vs-
+        // monotonic split this codebase already established.
+        mercenaryNotoriety: 0,
+        rivalConfrontationWinCount: 0,
         companions: {                // see systems/companions.md
             owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null

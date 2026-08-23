@@ -1,4 +1,4 @@
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, CompanionDuplicateReward, Work, Raid } = require("../utils/constants");
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, CompanionDuplicateReward, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower } = require("../utils/raidFactory");
 const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti } = require("../utils/workFactory");
@@ -215,11 +215,78 @@ async function resolveYukonAward(userDetails, workGainAmount, catchUpBonus = 0) 
     return { isNew: false, companion: yukon, companions, potatoesGained };
 }
 
+// Rival Bounty Hunters' guaranteed permanent stat bump — reuses BountyStatReward.TIER_I_GRANT
+// directly (Sweet Potato's own exact magnitude, per the design doc) and the same
+// calculatePercentDelta helper Bounty's own rollBountyStatReward already uses, WITHOUT that
+// function's rollChance early-return — this bump is guaranteed on every Rival win, not a
+// rare roll. Uniform across all three tiers by design (tier already differentiates
+// risk/reward via TIER_SUCCESS_CAP/TIER_REWARD_FACTOR; a third "harder tier = bigger bump"
+// axis would just duplicate that job) — see systems/mercenary-bounties.md.
+function resolveGuaranteedStatBump(userDetails) {
+    const pool = BountyStatReward.TIER_I_GRANT;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    if (picked.type === 'workMultiplierAmount') {
+        return { type: 'workMultiplierAmount', amount: picked.amount };
+    }
+    const currentValue = picked.type === 'passiveAmount' ? userDetails.passiveAmount : userDetails.bankCapacity;
+    const roundIncrement = picked.type === 'passiveAmount' ? 10000 : 50000;
+    return { type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) };
+}
+
+// One entry drawn uniformly at random on every /confront-rival call, independent of tier —
+// tier changes the fight's numbers, never which rival shows up (RivalMercenaries.roster).
+function pickRandomRival() {
+    return RivalMercenaries.roster[Math.floor(Math.random() * RivalMercenaries.roster.length)];
+}
+
+// /confront-rival's single resolve function — computation only, no DB writes, same
+// division of labor resolveBountyAttempt/resolveNpcRob already use; the caller
+// (confront-rival.js) owns persisting the result.
+//
+// Success chance deliberately does NOT compute effectiveRaidPower/rebirth at all — see
+// constants.js's own Rival block comment for why the player's power cancels out of its own
+// self-relative difficulty formula by construction (tierCap IS the resolved ceiling), a
+// real formula simplification versus Bounty/rob-npc, not an oversight. One direct
+// consequence, flagged rather than silently decided: rebirth progress has zero effect
+// anywhere in Rival Bounty Hunters (not here, and not in the reward formula below either,
+// which scales off raw workMultiplierAmount, never effectiveRaidPower).
+//
+// Reward/penalty formula deliberately does NOT read companionFactory.getActivePerkValue(
+// userDetails, "bountyRewardPercent") — Yukon's perk is scoped to Bounty by name and the
+// approved formula never includes it here; flagged as a judgment call, not silently decided
+// (see roadmap.md's own summary).
+async function resolveRivalConfrontation(userDetails, tier) {
+    const tierCap = Rival.TIER_SUCCESS_CAP[tier];
+    const successChance = Math.min(tierCap * getRandomFromInterval(.8, 1.2), tierCap);
+    const won = Math.random() < successChance;
+    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+    const rival = pickRandomRival();
+
+    const result = { tier, won, successChance, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
+    const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE);
+    const tierFactor = Rival.TIER_REWARD_FACTOR[tier];
+
+    if (won) {
+        result.rewardAmount = Math.round(rawBase * tierFactor * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier);
+        result.statBump = resolveGuaranteedStatBump(userDetails);
+    } else {
+        // Independent variance roll from the reward-side one, no rank multiplier — full,
+        // unscaled risk, same "no discount on the loss side" precedent Bounty's own
+        // SOLO_BOUNTY_REWARD_SHARE sets.
+        result.penaltyAmount = Math.round(rawBase * tierFactor * 0.5 * getRandomFromInterval(.8, 1.2));
+    }
+
+    return result;
+}
+
 module.exports = {
     TIER_NUMBER,
     getMercenaryRankInfo,
     rollBountyStatReward,
     resolveBountyAttempt,
     resolveNpcRob,
-    resolveYukonAward
+    resolveYukonAward,
+    resolveGuaranteedStatBump,
+    pickRandomRival,
+    resolveRivalConfrontation
 }

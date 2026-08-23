@@ -173,7 +173,17 @@ const Achievements = [
     // capstone, same category as full_roster/serial_rebirther.
     { id: "mercenary_recruit", name: "Tater Bounty Hunter", description: "Win your first mercenary bounty", statPath: "mercenaryBountyWinCount", threshold: 1 },
     { id: "mercenary_veteran", name: "Seasoned Mercenary", description: "Win 25 mercenary bounties", statPath: "mercenaryBountyWinCount", threshold: 25 },
-    { id: "mercenary_legend", name: "The Iron Tuber", description: "Reach max Mercenary Rank (525 bounty wins)", statPath: "mercenaryBountyWinCount", threshold: 525 }
+    { id: "mercenary_legend", name: "The Iron Tuber", description: "Reach max Mercenary Rank (525 bounty wins)", statPath: "mercenaryBountyWinCount", threshold: 525 },
+
+    // Rival Bounty Hunters — keyed on the new LIFETIME rivalConfrontationWinCount, not
+    // mercenaryNotoriety (which resets to 0 on every resolution and can't back a monotonic
+    // achievement threshold), same poisonMitigation.weeklyHitCount vs.
+    // totalPoisonMilestonesReached split. 15 mirrors Rank 2's own 15-win threshold as a
+    // "real, sustained commitment" marker — deliberately not a hard-capped capstone the way
+    // mercenary_legend's 525 mirrors Rank 6's cap, since Rival confrontations have no
+    // rank-style ceiling to anchor a capstone threshold to.
+    { id: "rival_first_blood", name: "Turned the Tables", description: "Defeat your first Rival Bounty Hunter", statPath: "rivalConfrontationWinCount", threshold: 1 },
+    { id: "rival_hunter_of_hunters", name: "Hunter of Hunters", description: "Defeat 15 Rival Bounty Hunters", statPath: "rivalConfrontationWinCount", threshold: 15 }
 ]
 
 const CatchUp = {
@@ -1238,6 +1248,97 @@ const MercenaryCompanionDrop = {
     YUKON_CHANCE: { I: 0.01, II: 0.02, III: 0.05 }   // 1% / 2% / 5% per WINNING resolution
 }
 
+// Rival Bounty Hunters — a Mercenary-exclusive, guild-independent activity layered on top
+// of Bounty/rob-npc play (see systems/mercenary-bounties.md#rival-bounty-hunters and
+// roadmap.md's "Rival Bounty Hunters" entry for the full derivation). Notoriety
+// (userDetails.mercenaryNotoriety) accrues from ordinary Bounty/rob-npc WINS and, once it
+// crosses CONFRONTATION_THRESHOLD, unlocks /confront-rival's free choice of all three risk
+// tiers at once — there is no separate Bounty-style progressive tier gate here, since
+// difficulty is self-relative (see mercenaryFactory.resolveRivalConfrontation) rather than
+// absolute, so a low-power player can never get trapped rolling a tier they can't win.
+//
+// Formula simplification (load-bearing, not just an implementation detail): tierCap
+// (TIER_SUCCESS_CAP[tier]) is the resolved success-chance ceiling directly — difficulty is
+// DEFINED as effectiveRaidPower / tierCap, so effectiveRaidPower / difficulty always equals
+// tierCap regardless of the player's actual power, and cancels out of its own formula by
+// construction. The success-chance path below never computes effectiveRaidPower at all —
+// no raidFactory.getEffectiveRaidPower / rebirthFactory.getLiveRebirthPercent call anywhere
+// in Rival's success-chance math, unlike Bounty/rob-npc (whose difficulty is a fixed
+// absolute number, not self-relative, so their own ratio doesn't cancel). One direct,
+// flagged-not-silent consequence: rebirth progress has ZERO effect anywhere in Rival Bounty
+// Hunters — not on success chance (shown above) and not on the reward formula either, which
+// scales off raw workMultiplierAmount, not effectiveRaidPower. This is correct given the
+// approved "stays stable at any power level" design goal, not an oversight.
+const Rival = {
+    NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
+    NOTORIETY_PER_NPC_ROB_WIN: 1,
+    CONFRONTATION_THRESHOLD: 20,
+    // Ceiling each tier's success chance rolls up to via getRandomFromInterval(.8, 1.2) —
+    // the realized range is 80%-100% of these numbers (72%-90% / 52%-65% / 48%-60%), never
+    // exceeding the ceiling on a lucky roll. Easy/Hard incidentally match
+    // Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE/LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE but are
+    // standalone values here, not an alias — Medium (.65) has no Raid equivalent.
+    TIER_SUCCESS_CAP: { easy: 0.90, medium: 0.65, hard: 0.60 },
+    // rawBase = min(BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount, MAX_RIVAL_REWARD_BASE)
+    // — the same "cap the base term before tier/rank/variance scaling" shape
+    // Work.MAX_GOLDEN_POTATO/RobNpc.MAX_NPC_ROB_PAYOUT already use, so reward can't grow
+    // linearly and unbounded off a compounding workMultiplierAmount. Saturates around
+    // workMultiplierAmount ~= 375 (T3/T4-landmark territory); a maxed Rank-6 Hard-tier win's
+    // realistic ceiling (600,000 * 1.0 * up to 1.2 * 1.75 ~= 1,260,000) stays inside
+    // Bounty's own live Rank-6 range (~1,050,000-1,575,000) and below the guild's own
+    // per-member T3 payout (~1,416,667) at every power level, not just this landmark — see
+    // roadmap.md's own worked derivation.
+    BASE_REWARD_PER_MULTIPLIER: 1600,
+    MAX_RIVAL_REWARD_BASE: 600000,
+    TIER_REWARD_FACTOR: { easy: 0.6, medium: 0.85, hard: 1.0 }
+}
+
+// 6 named rivals, reused across every player and every tier — mirrors Raid's own named-
+// boss shape (Marrowveil, Solara, Umbrathorn), not BountyScenarios' fully-flavored-per-
+// attempt table, since the product-owner pass explicitly asked for tier to change the
+// fight's numbers, never which rival shows up. winFlavor/loseFlavor names match
+// BountyScenarios' own naming (this table is drawn per-attempt like that one, not per-tier-
+// bracket like regularRaidMobs/eliteRaidMobs). Flavor text is cosmetic only, same
+// "not mechanically load-bearing" status BountyScenarios/regularWorkMobs already carry —
+// a 7th+ rival is pure data, no code changes required. thumbnailUrl is a placeholder (the
+// bot's own generic avatar) until real commissioned art exists — same fallback Yukon and
+// the T4 raid bosses already use (see startRaid.js's own comment on this).
+const RivalMercenaries = {
+    description: "Your growing reputation has drawn the attention of the realm's most notorious bounty hunters — sooner or later, one of them comes looking for you.",
+    roster: [
+        { name: "The Rustbeard Ronin",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "A wandering blade-for-hire whose rusted armor has seen more bounties than anyone cares to count.",
+          winFlavor: "The Ronin's rusted blade meets yours one time too many, and finally gives — a grudging nod is the only concession you get, but it's enough.",
+          loseFlavor: "The Rustbeard Ronin's rusted armor turns out to hide a much sharper edge than expected. You live to fight another day, just not today." },
+        { name: "Marsh Widow Malvina",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "She's collected more bounties out of the wetlands than the local constabulary has ever managed, and she's not planning on stopping at you.",
+          winFlavor: "Malvina's home turf finally works against her — you know the marsh better than she expected, and it costs her the fight.",
+          loseFlavor: "Malvina knows every sinking patch of that marsh by name. You don't, and it shows." },
+        { name: "Deadfall Duncan",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "A trapper-turned-hunter who's never met a bounty he thought was worth losing sleep over — until yours.",
+          winFlavor: "Duncan's own trap gets sprung on him first — a rare miscalculation he won't be living down anytime soon.",
+          loseFlavor: "Duncan's traps are half the reason he's still hunting after all these years. Today, you find out why the hard way." },
+        { name: "The Coinpurse Reaper",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "Rumor has it the Reaper only takes contracts worth remembering — apparently, you qualify now.",
+          winFlavor: "The Reaper's reputation turns out to be bigger than the Reaper themself — the contract on your head gets torn up on the spot.",
+          loseFlavor: "The Coinpurse Reaper's reputation is, unfortunately, entirely earned. You'll be paying that particular debt down for a while." },
+        { name: "Old Scattergun Suze",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "Retired twice, un-retired twice — Suze keeps coming out of retirement specifically for bounties like yours.",
+          winFlavor: "Suze's aim isn't what it used to be, and today that's the difference — you walk away, and she walks off muttering about retiring for real this time.",
+          loseFlavor: "Suze's aim is exactly what it used to be, unfortunately for you. Third retirement, still on hold." },
+        { name: "The Hollow Ledger",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "Nobody's ever seen the Ledger's face — only the tally of names they've collected on, which keeps getting longer.",
+          winFlavor: "Whatever's under that hood, it bleeds like anything else — your name comes off the Ledger's tally for good.",
+          loseFlavor: "The Hollow Ledger adds one more name to an already very long list, and doesn't even slow down to gloat about it." }
+    ]
+}
+
 const GuildRoles = {
     LEADER: "Leader",
     COLEADER: "Co-Leader",
@@ -1912,6 +2013,8 @@ module.exports = {
     BountyStatReward,
     RobNpc,
     MercenaryCompanionDrop,
+    Rival,
+    RivalMercenaries,
     metalKingRaidBoss,
     metalPotatoSuccess,
     metalPotatoFailure,

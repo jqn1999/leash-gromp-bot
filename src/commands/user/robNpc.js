@@ -1,6 +1,6 @@
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { RobNpc, Work } = require("../../utils/constants");
+const { RobNpc, Work, Rival } = require("../../utils/constants");
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -43,13 +43,20 @@ module.exports = {
         const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus);
 
         const setAttributes = { npcRobTimer: Date.now() };
+        const addAttributes = {};
         if (result.won && result.amount > 0) {
             setAttributes.potatoes = userDetails.potatoes + result.amount;
             setAttributes.totalEarnings = userDetails.totalEarnings + result.amount;
         }
+        // Rival Bounty Hunters — Notoriety accrual on a win, same one-line constant-lookup
+        // shape takeBounty.js uses (not a mercenaryFactory.js function). See
+        // systems/mercenary-bounties.md#rival-bounty-hunters.
+        if (result.won) {
+            addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_NPC_ROB_WIN;
+        }
         // Whiff-only failure — no loss, npcRobTimer resets on both outcomes the same as
         // every other cooldown-gated action in this bot.
-        await dynamoHandler.updateUserFields(userId, setAttributes);
+        await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
         const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result);
         interaction.editReply({ embeds: [embed] });

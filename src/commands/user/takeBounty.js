@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Work } = require("../../utils/constants");
+const { Bounty, Work, Rival } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -69,6 +69,11 @@ module.exports = {
 
         if (result.won) {
             addAttributes.mercenaryBountyWinCount = 1;
+            // Rival Bounty Hunters — Notoriety accrual is a one-line constant lookup, not a
+            // mercenaryFactory.js function, matching mercenaryBountyWinCount's own "simple
+            // counter bumps live at the command call site" division of labor. See
+            // systems/mercenary-bounties.md#rival-bounty-hunters.
+            addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_BOUNTY_TIER[tier];
             if (result.currency === 'potato') {
                 userPotatoes += result.rewardAmount;
                 userTotalEarnings += result.rewardAmount;

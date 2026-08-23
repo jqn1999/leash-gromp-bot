@@ -1503,6 +1503,117 @@ class EmbedFactory {
         return embed;
     }
 
+    // Rival Bounty Hunters — /notoriety's read-only preview, mirrors createBountyBoardEmbed's
+    // own shape (a progress line plus a Ready-now/locked field). `rankInfo` is
+    // mercenaryFactory.getMercenaryRankInfo's own return shape; `confrontable` is precomputed
+    // by notoriety.js (Rank 2+ AND notoriety >= threshold).
+    createNotorietyEmbed(userDisplayName, notoriety, threshold, rankInfo, confrontable, rivalConfrontationWinCount) {
+        const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+        const rankLine = `Rank ${rankInfo.rank} — ${title}`;
+
+        const fields = [
+            {
+                name: 'Notoriety:',
+                value: `${notoriety.toLocaleString()} / ${threshold.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: 'Mercenary Rank Gate:',
+                value: rankInfo.rank >= 2 ? 'Met (Rank 2+)' : `Not met — Rank 2 required (currently Rank ${rankInfo.rank})`,
+                inline: true,
+            },
+        ];
+
+        fields.push({
+            name: 'Confrontation:',
+            value: confrontable ? 'Ready now! Run /confront-rival to pick your tier.' : 'Not available yet.',
+            inline: false,
+        });
+
+        fields.push({
+            name: 'Rivals Defeated (lifetime):',
+            value: `${rivalConfrontationWinCount.toLocaleString()}`,
+            inline: true,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Notoriety`)
+            .setDescription(rankLine)
+            .setColor(confrontable ? 'Green' : 'Yellow')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Rival Bounty Hunters — /confront-rival's result embed, mirrors createBountyResultEmbed's
+    // win/loss + stat-reward-callout shape, minus the currency/scenario-flavor split Bounty
+    // needs (Rival always pays potatoes and always grants the guaranteed stat bump on a win,
+    // so there's no conditional currency branch or rare-roll callout). `result` is
+    // mercenaryFactory.resolveRivalConfrontation's own return shape.
+    createRivalConfrontationResultEmbed(userDisplayName, result) {
+        const { tier, won, successChance, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
+        const color = won ? 'Green' : 'Red';
+        const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+        const fields = [];
+
+        fields.push({
+            name: 'Result:',
+            value: won ? rival.winFlavor : rival.loseFlavor,
+            inline: false,
+        });
+
+        fields.push({
+            name: 'Success Chance:',
+            value: `${(successChance * 100).toFixed(2)}%`,
+            inline: true,
+        });
+
+        if (won) {
+            fields.push({
+                name: 'Potatoes Gained:',
+                value: `${rewardAmount.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        } else {
+            fields.push({
+                name: 'Potatoes Lost:',
+                value: `${penaltyAmount.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        }
+
+        if (won && statBump) {
+            const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            fields.push({
+                name: '🏅 Permanent Stat Reward',
+                value: `+${statBump.amount.toLocaleString()} ${statLabels[statBump.type]}`,
+                inline: false,
+            });
+        }
+
+        fields.push({
+            name: 'Notoriety:',
+            value: 'Reset to 0',
+            inline: true,
+        });
+
+        fields.push({
+            name: 'Mercenary Rank:',
+            value: `Rank ${rankInfo.rank}`,
+            inline: true,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} confronts ${rival.name} — ${tierLabel}`)
+            .setDescription(won ? 'Success!' : 'Failed.')
+            .setColor(color)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Landing page for /help — lists every topic (pulled from HelpTopics so it can never
     // drift from the choices the slash command itself offers).
     createHelpOverviewEmbed() {

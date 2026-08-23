@@ -36,7 +36,8 @@ those AWS services.
 - [systems/betting-and-games.md](systems/betting-and-games.md) — prediction-market betting, coinflip,
   RPS, rob.
 - [systems/mercenary-bounties.md](systems/mercenary-bounties.md) — the solo, guild-independent
-  alternative to Guild Raids: Mercenary Rank, Bounty tiers, `/rob-npc`, Yukon the companion.
+  alternative to Guild Raids: Mercenary Rank, Bounty tiers, `/rob-npc`, Yukon the companion,
+  Rival Bounty Hunters (Notoriety → `/confront-rival`).
 - [reference/commands.md](reference/commands.md) — one-line summary of every slash command by category.
 - [reference/constants.md](reference/constants.md) — key tunable constants from `src/utils/constants.js`,
   with pointers to where each is used.

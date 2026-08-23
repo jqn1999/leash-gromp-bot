@@ -390,6 +390,230 @@ were previously private, module-scoped functions inside `workFactory.js`. Widene
 exact same reward-scaling formula every other `/work`-shaped reward uses, instead of
 duplicating it.
 
+## Rival Bounty Hunters
+
+**Shipped 2026-08-23**, built directly off the architect's technical design in
+[roadmap.md](../roadmap.md#rival-bounty-hunters-notoriety--confrontation) — a
+Mercenary-exclusive activity layered on top of ordinary Bounty/`/rob-npc` play. Flips the
+framing from "you hunt a target" (Bounty) to "you've built a reputation and now something is
+hunting *you*." Gated by Mercenary Rank 2+ (Tier II's own unlock rank) plus a **resettable
+resource-threshold gate**, not a cooldown timer — the first accumulated-counter-as-gate
+pattern in this codebase. `/confront-rival` has no cooldown field at all; the
+reset-to-0-on-any-resolution behavior of `mercenaryNotoriety` *is* the re-gating mechanism
+for the next cycle.
+
+### Notoriety accrual and the confrontation gate
+
+`userDetails.mercenaryNotoriety` (a resetting counter, distinct from the lifetime
+`mercenaryBountyWinCount` that drives Rank) builds up from ordinary Bounty/`/rob-npc` **wins**
+— a one-line constant lookup added directly at each command's existing win-branch call site
+(`takeBounty.js`, `robNpc.js`), not a `mercenaryFactory.js` function, matching
+`mercenaryBountyWinCount`'s own "simple counter bumps live at the command call site" division
+of labor:
+
+- `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
+- `/rob-npc` win: `+Rival.NOTORIETY_PER_NPC_ROB_WIN` (flat 1).
+
+`/confront-rival tier:<easy|medium|hard>` is gated by, checked in order (mirroring
+`take-bounty.js`'s own layered-rejection style):
+1. `!userDetails.isMercenary` → reject.
+2. `mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank < 2` →
+   reject ("you need to be Mercenary Rank 2+...").
+3. `userDetails.mercenaryNotoriety < Rival.CONFRONTATION_THRESHOLD` (20) → reject, stating
+   current/needed Notoriety.
+
+No confirm step (same immediacy precedent `/take-bounty` sets), and no interaction at all
+with `guildMercenarySwitchTimer` or any other timer field. Once both gates are met, the
+player freely picks **any of the three risk tiers** — unlike Bounty's rank-gated tier
+progression, all three unlock together the moment the shared gate opens (see the difficulty
+formula below for why that's safe by construction).
+
+### Success chance — self-relative difficulty, no `effectiveRaidPower` computed at all
+
+Each tier is pinned to a fixed success-chance **ceiling** (`Rival.TIER_SUCCESS_CAP`), not an
+absolute difficulty number — the whole point being that odds stay stable at any power level
+instead of drifting the way a fixed target inevitably would as `workMultiplierAmount`
+compounds. A ±20% variance roll (`getRandomFromInterval(.8, 1.2)`) is applied on top and
+re-capped at the ceiling, so a lucky roll can only ever reach the ceiling, never exceed it:
+
+```
+successChance = min(Rival.TIER_SUCCESS_CAP[tier] * getRandomFromInterval(.8, 1.2), Rival.TIER_SUCCESS_CAP[tier])
+won           = Math.random() < successChance
+```
+
+| Tier | Ceiling | Realized range |
+|---|---|---|
+| Easy | 90% | 72%–90% |
+| Medium | 65% | 52%–65% |
+| Hard | 60% | 48%–60% |
+
+**Formula simplification, load-bearing, not just an implementation detail**: the
+product-owner pass's original formula was `difficulty = effectiveRaidPower / tierCap`, then
+`successChance = min(effectiveRaidPower / difficulty, tierCap)` — but since `difficulty` is
+*defined as* `effectiveRaidPower / tierCap`, that ratio always equals `tierCap` regardless of
+the player's actual power, and cancels out of its own formula by construction. The shipped
+code implements the already-resolved formula directly, above — **no call to
+`raidFactory.getEffectiveRaidPower` or `rebirthFactory.getLiveRebirthPercent` anywhere in
+Rival's success-chance path**, unlike Bounty/`/rob-npc` (whose difficulty is a fixed absolute
+number, not self-relative, so their own ratio doesn't cancel).
+
+This is why all three tiers unlock together, unlike Bounty's progressive tier gating: a
+low-power player can never get trapped rolling a tier they can't win (Easy always lands
+72%-90%, Hard always lands 48%-60%, for a Rank-2-fresh mercenary and a maxed rebirther alike),
+so gating Medium/Hard behind extra thresholds would be pure friction, not a real safety
+mechanism.
+
+### Reward / penalty formula
+
+Reward still scales with the player's own `workMultiplierAmount` (a flat number would
+trivialize the fight for a heavily-invested mercenary now that difficulty itself is
+self-relative), but the **base term is hard-capped before tier/rank/variance scaling** — the
+same "cap the base, let the final number still be scaled by rank/multiplier on top" shape
+`Work.MAX_GOLDEN_POTATO`/`RobNpc.MAX_NPC_ROB_PAYOUT` already use, so reward can't grow
+linearly and unbounded as `workMultiplierAmount` compounds through shop/regrade/rebirth:
+
+```
+rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
+rawBase  = min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE)
+
+// WIN:
+reward  = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+
+// LOSS (independent variance roll, no rank multiplier — full unscaled risk, same
+// "no discount on the loss side" precedent Bounty's own SOLO_BOUNTY_REWARD_SHARE sets):
+penalty = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * 0.5 * getRandomFromInterval(.8, 1.2))
+```
+
+`rawBase` saturates at `Rival.MAX_RIVAL_REWARD_BASE` (600,000) once `workMultiplierAmount`
+reaches ~375 (T3/T4-landmark territory) — past that, further shop/regrade/rebirth progress
+doesn't grow the reward further. A maxed Rank-6 (1.75x) Hard-tier (1.0 factor) win's realistic
+ceiling is `600,000 × 1.0 × 1.2 × 1.75 = 1,260,000` — inside Bounty's own live Rank-6 range
+(~1,050,000-1,575,000) and below the guild's own live per-member T3 payout (~1,416,667) at
+every power level, confirming Rival never out-earns organized guild raiding, by construction.
+
+The loss write floors `potatoes` at 0 (`Math.max(0, ...)`) — `Raid`'s `handlePotatoSplit` and
+Bounty's own `take-bounty.js` both currently lack this floor (a pre-existing, separately
+tracked finding in `balance-audit.md`), but since Rival is a brand-new write path rather than
+a reuse of either, there's no cost to closing the gap here preemptively.
+
+### Guaranteed permanent stat bump
+
+Unconditional on every win (no roll-chance gate), sized at exactly Sweet Potato's own
+magnitude (`BountyStatReward.TIER_I_GRANT`, reused directly — no new grant table), uniform
+across all three tiers. `mercenaryFactory.resolveGuaranteedStatBump(userDetails)` picks one of
+the three tracks uniformly and resolves the same percentage-of-current-stat delta
+`rollBountyStatReward` already uses, just without that function's `ROLL_CHANCE` early-return.
+Applied via the same write path Bounty's own rare stat branch uses:
+`raidFactory.handleStatSplit([{ id: userId, username }], bump.type, bump.amount)`.
+
+Deliberately uniform, not tier-scaled — tier already differentiates risk/reward via
+`TIER_SUCCESS_CAP` (win rate) and `TIER_REWARD_FACTOR` (payout size); a third "harder tier =
+bigger bump" axis would just duplicate that job. Hard's own lower win rate already means an
+Hard-only player collects this less often in real time — that's Hard's own "cost" already,
+no separate amplification needed.
+
+### `RivalMercenaries` — the named rival roster
+
+6 named rivals (`constants.js`), reused across every player and every tier — mirrors `Raid`'s
+own named-boss shape (Marrowveil, Solara, Umbrathorn), not `BountyScenarios`' fully-flavored-
+per-attempt table, since tier changes the fight's numbers, never which rival shows up. One
+entry (`{ name, thumbnailUrl, description, winFlavor, loseFlavor }`) is drawn uniformly at
+random on every `/confront-rival` call, independent of `tier`. Roster: The Rustbeard Ronin,
+Marsh Widow Malvina, Deadfall Duncan, The Coinpurse Reaper, Old Scattergun Suze, The Hollow
+Ledger. Flavor text is cosmetic only, same non-load-bearing status `BountyScenarios`/
+`regularWorkMobs` already carry — `thumbnailUrl` is a placeholder pending commissioned art,
+same as Yukon's own entry.
+
+### Commands
+
+Both live in `src/commands/user/`:
+
+| Command | Flow |
+|---|---|
+| `/notoriety` | No args, read-only (mirrors `/bounty-board`'s never-snapshots precedent). Rejects if not a mercenary. Shows current Notoriety/threshold, whether Rank 2+ is met, whether a confrontation is available right now, and lifetime `rivalConfrontationWinCount`. |
+| `/confront-rival tier:<easy\|medium\|hard>` | Gating chain above. No confirm step, no cooldown. Resolves immediately via `mercenaryFactory.resolveRivalConfrontation`, writes the result, replies with the result embed. |
+
+`tier`'s option values are lowercase `easy`/`medium`/`hard` (matching
+`Rival.TIER_SUCCESS_CAP`/`TIER_REWARD_FACTOR`'s own keys) — deliberately **not** Bounty's
+`I`/`II`/`III` Roman-numeral convention, since this is a risk-level choice, not an
+absolute-difficulty rung the way Bounty's tiers are.
+
+### Data model
+
+Two new top-level fields, healed exactly like every other top-level default field:
+
+```js
+mercenaryNotoriety: 0,          // resets to 0 on EVERY /confront-rival resolution, win or lose —
+                                 // the "cycle, not a ladder" progress meter
+rivalConfrontationWinCount: 0,  // LIFETIME, never reset — same delta-vs-lifetime split
+                                 // poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached
+                                 // already established
+```
+
+`/confront-rival`'s write sequence:
+
+```js
+const setAttributes = { mercenaryNotoriety: 0 };   // full reset, win OR lose
+const addAttributes = {};
+
+if (result.won) {
+    addAttributes.rivalConfrontationWinCount = 1;   // lifetime — NOT mercenaryBountyWinCount;
+                                                      // a Rival win never advances Mercenary Rank
+    setAttributes.potatoes = userDetails.potatoes + result.rewardAmount;
+    setAttributes.totalEarnings = userDetails.totalEarnings + result.rewardAmount;
+} else {
+    setAttributes.potatoes = Math.max(0, userDetails.potatoes - result.penaltyAmount);
+    setAttributes.totalLosses = userDetails.totalLosses - result.penaltyAmount;
+}
+```
+
+A loss forfeits **all** accumulated Notoriety, at any tier — resolves the roadmap's own open
+question directly: choosing Hard and losing costs the same full reset as choosing Easy and
+losing, keeping the risk/reward choice meaningful rather than diluting it with a tier-scaled
+partial loss.
+
+`records.largestRivalReward` was **not** added — considered (mirrors `records.largestBountyReward`
+exactly, zero marginal cost) but left out since it wasn't requested; a one-line addition later
+if wanted.
+
+### Achievements
+
+Two new entries, keyed on the new **lifetime** `rivalConfrontationWinCount` (not
+`mercenaryNotoriety`, which resets and can't back a monotonic achievement threshold — same
+`poisonMitigation.weeklyHitCount` vs. `totalPoisonMilestonesReached` split):
+
+| id | Name | Threshold |
+|---|---|---|
+| `rival_first_blood` | Turned the Tables | `rivalConfrontationWinCount >= 1` |
+| `rival_hunter_of_hunters` | Hunter of Hunters | `rivalConfrontationWinCount >= 15` |
+
+15 mirrors Rank 2's own 15-win threshold as a "real, sustained commitment" marker —
+deliberately not a hard-capped capstone the way `mercenary_legend`'s 525 mirrors Rank 6's cap,
+since Rival confrontations have no rank-style ceiling to anchor a capstone threshold to.
+
+### Judgment calls confirmed, not silently decided
+
+Three points the architect flagged explicitly for a conscious sign-off before build, all
+confirmed and implemented exactly as specified — no code changes resulted from this pass,
+just an explicit record that each was considered rather than defaulted past:
+
+1. **Rebirth has zero effect anywhere in Rival Bounty Hunters.** A structural consequence of
+   the approved difficulty formula (tierCap cancels the player's power out of its own success-
+   chance formula by construction — see the formula simplification above) and of the reward
+   formula scaling off raw `workMultiplierAmount` rather than `effectiveRaidPower`. Confirmed
+   correct given the approved math; a heavily-rebirthed player's Rival fights are mechanically
+   identical to a fresh Rank-2 mercenary's, differing only in reward size (via
+   `workMultiplierAmount`, which does still climb with rebirth's own multiplier compounding
+   upstream of Rival's formula).
+2. **Yukon's `bountyRewardPercent` perk does NOT apply to Rival rewards.** The approved
+   formula never includes it, and Yukon's perk is explicitly named `bountyRewardPercent`, not
+   a generic Mercenary-income perk — `resolveRivalConfrontation` never calls
+   `companionFactory.getActivePerkValue` at all. If this should extend to Rival later, it's a
+   one-line addition to the win branch (`* (1 + companionFactory.getActivePerkValue(userDetails,
+   "bountyRewardPercent"))`).
+3. **`records.largestRivalReward` was not added.** Free, precedent-matching, zero-downside —
+   skipped only because it wasn't requested, not scope-creeping past what was asked for.
+
 ## Out of scope for v1
 
 - Elite/Legendary/T4-equivalent Bounty tiers beyond Tier III — ship T1-III only, revisit
