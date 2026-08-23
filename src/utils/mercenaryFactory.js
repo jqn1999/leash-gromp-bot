@@ -46,20 +46,27 @@ function calculatePercentDelta(previousValue, rewardMultiplier, maxGain, roundIn
     return roundIncrement;
 }
 
-// The rare permanent stat-increase branch (constants.js's BountyStatReward) — checked
-// once per Bounty WIN, never a loss. Tier I/II pick ONE of three tracks uniformly at
-// random (TIER_I_GRANT/TIER_II_GRANT reuse workFactory.js's own sweetPotatoRewards shape
-// exactly); Tier III grants ALL THREE at once (TIER_III_GRANT matches
-// workFactory.js's metalPotatoRewards exactly). Returns null on a miss, otherwise an
-// array of { type, amount } — already-resolved final deltas (percentage-of-current-stat,
-// capped, min-increment rounded, same math Sweet/Metal Potato's own handlers use) ready
-// to hand to raidFactory.handleStatSplit one entry at a time.
-function rollBountyStatReward(tierLetter, userDetails) {
-    const rollChance = BountyStatReward.ROLL_CHANCE[tierLetter];
-    if (Math.random() >= rollChance) {
-        return null;
+// Resolves one TIER_I_GRANT/TIER_II_GRANT pool entry into its final { type, amount } delta —
+// shared by pickStatGrant's single-pick branches and Rival's pickTwoDistinctStatGrants.
+function resolveGrantAmount(picked, userDetails) {
+    if (picked.type === 'workMultiplierAmount') {
+        return { type: 'workMultiplierAmount', amount: picked.amount };
     }
+    const currentValue = picked.type === 'passiveAmount' ? userDetails.passiveAmount : userDetails.bankCapacity;
+    const roundIncrement = picked.type === 'passiveAmount' ? 10000 : 50000;
+    return { type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) };
+}
 
+// The actual grant-picking logic shared by rollBountyStatReward (Bounty's rare roll) and
+// resolveGuaranteedStatBump (Rival's guaranteed-on-win bump) — tierLetter is I/II/III in
+// both callers (Rival's easy/medium/hard map onto these 1:1, see resolveGuaranteedStatBump).
+// Tier I/II pick ONE of three tracks uniformly at random (TIER_I_GRANT/TIER_II_GRANT reuse
+// workFactory.js's own sweetPotatoRewards shape exactly); Tier III grants ALL THREE at once
+// (TIER_III_GRANT matches workFactory.js's metalPotatoRewards exactly). Always returns an
+// array of { type, amount } — already-resolved final deltas (percentage-of-current-stat,
+// capped, min-increment rounded, same math Sweet/Metal Potato's own handlers use) ready to
+// hand to raidFactory.handleStatSplit one entry at a time.
+function pickStatGrant(tierLetter, userDetails) {
     if (tierLetter === 'III') {
         const grant = BountyStatReward.TIER_III_GRANT;
         return [
@@ -71,13 +78,17 @@ function rollBountyStatReward(tierLetter, userDetails) {
 
     const pool = tierLetter === 'I' ? BountyStatReward.TIER_I_GRANT : BountyStatReward.TIER_II_GRANT;
     const picked = pool[Math.floor(Math.random() * pool.length)];
+    return [resolveGrantAmount(picked, userDetails)];
+}
 
-    if (picked.type === 'workMultiplierAmount') {
-        return [{ type: 'workMultiplierAmount', amount: picked.amount }];
+// The rare permanent stat-increase branch (constants.js's BountyStatReward) — checked
+// once per Bounty WIN, never a loss. Returns null on a miss, otherwise pickStatGrant's array.
+function rollBountyStatReward(tierLetter, userDetails) {
+    const rollChance = BountyStatReward.ROLL_CHANCE[tierLetter];
+    if (Math.random() >= rollChance) {
+        return null;
     }
-    const currentValue = picked.type === 'passiveAmount' ? userDetails.passiveAmount : userDetails.bankCapacity;
-    const roundIncrement = picked.type === 'passiveAmount' ? 10000 : 50000;
-    return [{ type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) }];
+    return pickStatGrant(tierLetter, userDetails);
 }
 
 // One function that returns everything /take-bounty's embed needs (success roll, scenario
@@ -225,60 +236,94 @@ async function resolveYukonAward(userDetails, workGainAmount, catchUpBonus = 0) 
     return { isNew: false, companion: yukon, companions, potatoesGained };
 }
 
-// Rival Bounty Hunters' guaranteed permanent stat bump — reuses BountyStatReward.TIER_I_GRANT
-// directly (Sweet Potato's own exact magnitude, per the design doc) and the same
-// calculatePercentDelta helper Bounty's own rollBountyStatReward already uses, WITHOUT that
-// function's rollChance early-return — this bump is guaranteed on every Rival win, not a
-// rare roll. Uniform across all three tiers by design (tier already differentiates
-// risk/reward via TIER_SUCCESS_CAP/TIER_REWARD_FACTOR; a third "harder tier = bigger bump"
-// axis would just duplicate that job) — see systems/mercenary-bounties.md.
-function resolveGuaranteedStatBump(userDetails) {
-    const pool = BountyStatReward.TIER_I_GRANT;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    if (picked.type === 'workMultiplierAmount') {
-        return { type: 'workMultiplierAmount', amount: picked.amount };
-    }
-    const currentValue = picked.type === 'passiveAmount' ? userDetails.passiveAmount : userDetails.bankCapacity;
-    const roundIncrement = picked.type === 'passiveAmount' ? 10000 : 50000;
-    return { type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) };
+// Rival-only: picks 2 DISTINCT tracks (not Bounty's own single-pick shape) from
+// BountyStatReward.TIER_II_GRANT's pool of 3 — the pool always has exactly 3 entries, so
+// "pick 2" is just "exclude 1 at random," unbiased and simpler than a shuffle. Reuses the
+// same per-item amount resolution pickStatGrant's Tier I/II branch already does.
+function pickTwoDistinctStatGrants(userDetails) {
+    const pool = BountyStatReward.TIER_II_GRANT;
+    const excludeIndex = Math.floor(Math.random() * pool.length);
+    const chosen = pool.filter((_, i) => i !== excludeIndex);
+    return chosen.map(picked => resolveGrantAmount(picked, userDetails));
 }
 
-// One entry drawn uniformly at random on every /confront-rival call, independent of tier —
-// tier changes the fight's numbers, never which rival shows up (RivalMercenaries.roster).
+// Rival Bounty Hunters' guaranteed permanent stat bump — guaranteed on every win, not a rare
+// roll (no rollChance gate, unlike Bounty's own rollBountyStatReward). Scope is keyed by the
+// RANDOMLY ROLLED scenario (see resolveRivalConfrontation, constants.js's Rival block):
+// easy grants 1 track (pickStatGrant('I', ...)), medium grants 2 DISTINCT tracks
+// (pickTwoDistinctStatGrants — genuinely new selection shape), hard grants all 3 at once
+// (pickStatGrant('III', ...), Metal-Potato-scale). Always returns an array.
+function resolveGuaranteedStatBump(userDetails, scenario) {
+    if (scenario === 'hard') {
+        return pickStatGrant('III', userDetails);
+    }
+    if (scenario === 'medium') {
+        return pickTwoDistinctStatGrants(userDetails);
+    }
+    return pickStatGrant('I', userDetails);
+}
+
+// One entry drawn uniformly at random on every /confront-rival call, independent of which
+// scenario got rolled — the scenario changes the fight's numbers, never which rival shows up
+// (RivalMercenaries.roster).
 function pickRandomRival() {
     return RivalMercenaries.roster[Math.floor(Math.random() * RivalMercenaries.roster.length)];
 }
 
-// /confront-rival's single resolve function — computation only, no DB writes, same
-// division of labor resolveBountyAttempt/resolveNpcRob already use; the caller
-// (confront-rival.js) owns persisting the result.
+// Which of the three scenarios (easy/medium/hard) this confrontation rolls — weighted by
+// Rival.SCENARIO_CHANCE, which sums to 1.0 by construction. Extracted as its own function so
+// the weighted-roll logic is directly testable without needing a full resolve call.
+function rollRivalScenario() {
+    const roll = Math.random();
+    if (roll < Rival.SCENARIO_CHANCE.hard) {
+        return 'hard';
+    }
+    if (roll < Rival.SCENARIO_CHANCE.hard + Rival.SCENARIO_CHANCE.medium) {
+        return 'medium';
+    }
+    return 'easy';
+}
+
+// /confront-rival's single resolve function — computation only, no DB writes, same division
+// of labor resolveBountyAttempt/resolveNpcRob already use; the caller (confront-rival.js)
+// owns persisting the result. Redesigned 2026-08-23, direct instruction: the player no
+// longer picks a tier at all — which scenario (easy/medium/hard) this confrontation is gets
+// rolled internally (rollRivalScenario), each with its own literal success-chance RANGE (a
+// direct roll inside [min, max], not a ceiling with variance rolling down from it — see
+// constants.js's Rival.SUCCESS_CHANCE_RANGE) and its own stat-reward scope
+// (resolveGuaranteedStatBump). This removes the earlier "why would anyone ever pick
+// Medium/Hard" problem outright, since there's no choice to game — rarer scenarios are both
+// harder and better, full stop.
 //
-// Success chance deliberately does NOT compute effectiveRaidPower/rebirth at all — see
-// constants.js's own Rival block comment for why the player's power cancels out of its own
-// self-relative difficulty formula by construction (tierCap IS the resolved ceiling), a
-// real formula simplification versus Bounty/rob-npc, not an oversight. One direct
-// consequence, flagged rather than silently decided: rebirth progress has zero effect
-// anywhere in Rival Bounty Hunters (not here, and not in the reward formula below either,
-// which scales off raw workMultiplierAmount, never effectiveRaidPower).
+// Success chance deliberately does NOT compute effectiveRaidPower/rebirth at all — the
+// range itself is the whole formula, nothing else feeds it. One direct consequence, flagged
+// rather than silently decided: rebirth progress has zero effect anywhere in Rival Bounty
+// Hunters (not here, and not in the reward formula below either, which scales off raw
+// workMultiplierAmount, never effectiveRaidPower).
 //
 // Reward/penalty formula deliberately does NOT read companionFactory.getActivePerkValue(
 // userDetails, "bountyRewardPercent") — Yukon's perk is scoped to Bounty by name and the
 // approved formula never includes it here; flagged as a judgment call, not silently decided
 // (see roadmap.md's own summary).
-async function resolveRivalConfrontation(userDetails, tier) {
-    const tierCap = Rival.TIER_SUCCESS_CAP[tier];
-    const successChance = Math.min(tierCap * getRandomFromInterval(.8, 1.2), tierCap);
+async function resolveRivalConfrontation(userDetails) {
+    const scenario = rollRivalScenario();
+    const [minChance, maxChance] = Rival.SUCCESS_CHANCE_RANGE[scenario];
+    // Yukon-only — see constants.js's Companions entry for why this is kept modest (5%,
+    // half of Hard's own 10-point-wide range) and deliberately uncapped, matching real
+    // /rob's own robChance.
+    const rivalSuccessBonus = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat");
+    const successChance = getRandomFromInterval(minChance, maxChance) + rivalSuccessBonus;
     const won = Math.random() < successChance;
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     const rival = pickRandomRival();
 
-    const result = { tier, won, successChance, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
+    const result = { scenario, won, successChance, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
     const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE);
-    const tierFactor = Rival.TIER_REWARD_FACTOR[tier];
+    const tierFactor = Rival.TIER_REWARD_FACTOR[scenario];
 
     if (won) {
         result.rewardAmount = Math.round(rawBase * tierFactor * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier);
-        result.statBump = resolveGuaranteedStatBump(userDetails);
+        result.statBump = resolveGuaranteedStatBump(userDetails, scenario);
     } else {
         // Independent variance roll from the reward-side one, no rank multiplier — full,
         // unscaled risk, same "no discount on the loss side" precedent Bounty's own
@@ -297,6 +342,8 @@ module.exports = {
     resolveNpcRob,
     resolveYukonAward,
     resolveGuaranteedStatBump,
+    pickTwoDistinctStatGrants,
     pickRandomRival,
+    rollRivalScenario,
     resolveRivalConfrontation
 }

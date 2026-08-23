@@ -85,7 +85,8 @@ const PERK_LABELS = {
     poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
     metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
-    bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`
+    bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
+    rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`
 };
 
 // Mercenary Rank titles — potato-punned, same non-load-bearing flavor status
@@ -1526,7 +1527,7 @@ class EmbedFactory {
 
         fields.push({
             name: 'Confrontation:',
-            value: confrontable ? 'Ready now! Run /confront-rival to pick your tier.' : 'Not available yet.',
+            value: confrontable ? 'Ready now! Run /confront-rival — which scenario you get is a surprise.' : 'Not available yet.',
             inline: false,
         });
 
@@ -1552,9 +1553,9 @@ class EmbedFactory {
     // so there's no conditional currency branch or rare-roll callout). `result` is
     // mercenaryFactory.resolveRivalConfrontation's own return shape.
     createRivalConfrontationResultEmbed(userDisplayName, result) {
-        const { tier, won, successChance, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
+        const { scenario, won, successChance, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
         const color = won ? 'Green' : 'Red';
-        const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+        const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
         const fields = [];
 
         fields.push({
@@ -1585,9 +1586,10 @@ class EmbedFactory {
 
         if (won && statBump) {
             const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            const statText = statBump.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
             fields.push({
                 name: '🏅 Permanent Stat Reward',
-                value: `+${statBump.amount.toLocaleString()} ${statLabels[statBump.type]}`,
+                value: statText,
                 inline: false,
             });
         }
@@ -1605,7 +1607,7 @@ class EmbedFactory {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} confronts ${rival.name} — ${tierLabel}`)
+            .setTitle(`${userDisplayName} confronts ${rival.name} — ${scenarioLabel} Scenario`)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

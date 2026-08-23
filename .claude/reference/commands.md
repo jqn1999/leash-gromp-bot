@@ -31,7 +31,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `takeBounty.js` | `/take-bounty tier:<I\|II\|III>` | Resolves a bounty attempt immediately (no confirm) against a random flavor scenario for that tier — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `robNpc.js` | `/rob-npc` | Solo heist against a fictional target, 30 min cooldown, whiff-only failure — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `notoriety.js` | `/notoriety` | Read-only: current Notoriety vs. threshold, Rank 2+ gate status, confrontation availability, lifetime Rival wins — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
-| `confrontRival.js` | `/confront-rival tier:<easy\|medium\|hard>` | Resolves a Rival Bounty Hunter confrontation immediately (no confirm) once Notoriety crosses the threshold — resettable resource-threshold gate, not a cooldown — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
+| `confrontRival.js` | `/confront-rival` | Resolves a Rival Bounty Hunter confrontation immediately (no confirm, no options — which scenario you get is rolled, not chosen) once Notoriety crosses the threshold — resettable resource-threshold gate, not a cooldown — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 

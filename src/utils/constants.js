@@ -825,20 +825,26 @@ const Companions = [
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
         description: "An outlaw potato who made a name robbing the King's own supply wagons — now rides shotgun for whichever mercenary earned their trust.",
         scavengeFlavor: "Yukon rode out at dusk, the way it always does, and came back before sunup with a story it swears is true this time.",
-        // Dual-perk, matching every existing Legendary exactly (Spudsprite, Rootcarver) —
-        // no Legendary is single-perk, no reason to break that here. Simplified
-        // 2026-08-23, direct instruction, from a separate /rob-npc-only npcRobChanceFlat
-        // perk type down to the same shared robChanceFlat Barn Owl/Elder Rootbeard already
-        // grant — now boosts BOTH real /rob and /rob-npc identically (mercenaries can still
-        // run real /rob, it's never guild-gated), one perk instead of two nearly-identical
-        // ones. Kept the same 12% value, still sitting between Barn Owl's Rare 10% and
-        // Elder Rootbeard's Mythic 15%. bountyRewardPercent (applied to the
+        // Was dual-perk, matching every other Legendary (Spudsprite, Rootcarver) — now a
+        // deliberate TRIPLE-perk exception, direct instruction 2026-08-23, once Rival Bounty
+        // Hunters gave a Bounty-only companion a third action to plausibly help with.
+        // robChanceFlat simplified from a separate /rob-npc-only npcRobChanceFlat perk type
+        // down to the same shared robChanceFlat Barn Owl/Elder Rootbeard already grant — now
+        // boosts BOTH real /rob and /rob-npc identically (mercenaries can still run real
+        // /rob, it's never guild-gated). Kept at 12%, still sitting between Barn Owl's Rare
+        // 10% and Elder Rootbeard's Mythic 15%. bountyRewardPercent (applied to the
         // already-discounted Bounty payout, non-compounding) is anchored near Rootcarver's
-        // 12% and Prospector's paired Rare-tier bump, for a dual-perk companion whose two
-        // values land in the same neighborhood as each other.
+        // 12% and Prospector's paired Rare-tier bump. rivalSuccessChanceFlat is new — a flat
+        // additive bonus on /confront-rival's rolled successChance (mercenaryFactory
+        // resolveRivalConfrontation), kept modest at 5% specifically because Rival's ranges
+        // are narrow (Hard is only 10 percentage points wide, 10%-20%) — 5% is meaningful
+        // (half of Hard's own range width) without trivializing the difficulty a rolled
+        // Hard scenario is supposed to represent. Deliberately NOT capped at 1.0 anywhere,
+        // matching real /rob's own robChance, which is never clamped either.
         perks: [
             { type: "robChanceFlat", value: 0.12 },
-            { type: "bountyRewardPercent", value: 0.135 }
+            { type: "bountyRewardPercent", value: 0.135 },
+            { type: "rivalSuccessChanceFlat", value: 0.05 }
         ]
     }
 ]
@@ -1252,45 +1258,70 @@ const MercenaryCompanionDrop = {
 // of Bounty/rob-npc play (see systems/mercenary-bounties.md#rival-bounty-hunters and
 // roadmap.md's "Rival Bounty Hunters" entry for the full derivation). Notoriety
 // (userDetails.mercenaryNotoriety) accrues from ordinary Bounty/rob-npc WINS and, once it
-// crosses CONFRONTATION_THRESHOLD, unlocks /confront-rival's free choice of all three risk
-// tiers at once — there is no separate Bounty-style progressive tier gate here, since
-// difficulty is self-relative (see mercenaryFactory.resolveRivalConfrontation) rather than
-// absolute, so a low-power player can never get trapped rolling a tier they can't win.
+// crosses CONFRONTATION_THRESHOLD, unlocks /confront-rival — no player choice at all (see
+// SCENARIO_CHANCE below), so a low-power player can never get trapped picking a tier they
+// can't win.
 //
-// Formula simplification (load-bearing, not just an implementation detail): tierCap
-// (TIER_SUCCESS_CAP[tier]) is the resolved success-chance ceiling directly — difficulty is
-// DEFINED as effectiveRaidPower / tierCap, so effectiveRaidPower / difficulty always equals
-// tierCap regardless of the player's actual power, and cancels out of its own formula by
-// construction. The success-chance path below never computes effectiveRaidPower at all —
-// no raidFactory.getEffectiveRaidPower / rebirthFactory.getLiveRebirthPercent call anywhere
-// in Rival's success-chance math, unlike Bounty/rob-npc (whose difficulty is a fixed
-// absolute number, not self-relative, so their own ratio doesn't cancel). One direct,
-// flagged-not-silent consequence: rebirth progress has ZERO effect anywhere in Rival Bounty
-// Hunters — not on success chance (shown above) and not on the reward formula either, which
-// scales off raw workMultiplierAmount, not effectiveRaidPower. This is correct given the
-// approved "stays stable at any power level" design goal, not an oversight.
+// Formula (redesigned 2026-08-23, direct instruction — replaced the original self-relative
+// tierCap/difficulty formula entirely): successChance is a literal roll inside
+// SUCCESS_CHANCE_RANGE[scenario], no player power/rebirth/difficulty math involved anywhere
+// (mercenaryFactory.resolveRivalConfrontation never calls raidFactory.getEffectiveRaidPower
+// or rebirthFactory.getLiveRebirthPercent). One direct, flagged-not-silent consequence:
+// rebirth progress has ZERO effect anywhere in Rival Bounty Hunters — not on success chance
+// and not on the reward formula either, which scales off raw workMultiplierAmount. This is
+// correct given the approved "stays stable at any power level" design goal, not an
+// oversight. Yukon's rivalSuccessChanceFlat perk (see the Companions entry below) is the
+// one thing that DOES add to successChance, applied after the range roll.
 const Rival = {
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
     NOTORIETY_PER_NPC_ROB_WIN: 1,
     CONFRONTATION_THRESHOLD: 20,
-    // Ceiling each tier's success chance rolls up to via getRandomFromInterval(.8, 1.2) —
-    // the realized range is 80%-100% of these numbers (72%-90% / 52%-65% / 48%-60%), never
-    // exceeding the ceiling on a lucky roll. Easy/Hard incidentally match
-    // Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE/LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE but are
-    // standalone values here, not an alias — Medium (.65) has no Raid equivalent.
-    TIER_SUCCESS_CAP: { easy: 0.90, medium: 0.65, hard: 0.60 },
+    // Redesigned 2026-08-23, direct instruction — /confront-rival no longer lets the player
+    // pick a tier at all (removed the old TIER_SUCCESS_CAP + player-facing `tier` option
+    // entirely). The reason: the guaranteed stat bump WAS uniform across tiers at the time,
+    // so a rational player would always pick Easy for the identical bump at the best odds —
+    // there was no real reason to ever pick Medium/Hard. Rather than just scale the bump by
+    // tier (the other fix considered), the whole mechanic is now a single random roll: which
+    // scenario you get is decided FOR you (SCENARIO_CHANCE), and each scenario has its own
+    // literal success-chance RANGE (not a ceiling with variance rolling down from it) plus
+    // its own stat-reward scope. Rarer scenarios are both harder AND better — SCENARIO_CHANCE
+    // sums to 1.0 by construction.
+    SCENARIO_CHANCE: { easy: 0.60, medium: 0.30, hard: 0.10 },
+    // successChance = getRandomFromInterval(min, max) — a literal roll inside the range, not
+    // a ceiling. Deliberately non-overlapping and monotonically harder from easy to hard.
+    SUCCESS_CHANCE_RANGE: { easy: [0.40, 0.60], medium: [0.20, 0.40], hard: [0.10, 0.20] },
+    // Stat reward SCOPE per scenario (how many of the 3 tracks — workMultiplierAmount/
+    // passiveAmount/bankCapacity — get granted on a win, not their individual magnitude):
+    // easy grants 1 (BountyStatReward.TIER_I_GRANT's pool, picked uniformly — see
+    // mercenaryFactory.pickStatGrant), medium grants 2 DISTINCT tracks (TIER_II_GRANT's
+    // pool, see mercenaryFactory.pickTwoDistinctStatGrants — a genuinely new selection
+    // shape, not reused from Bounty's own single-pick Tier II), hard grants all 3 at once
+    // (TIER_III_GRANT, same as Bounty's own Tier III — see pickStatGrant).
     // rawBase = min(BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount, MAX_RIVAL_REWARD_BASE)
     // — the same "cap the base term before tier/rank/variance scaling" shape
     // Work.MAX_GOLDEN_POTATO/RobNpc.MAX_NPC_ROB_PAYOUT already use, so reward can't grow
-    // linearly and unbounded off a compounding workMultiplierAmount. Saturates around
-    // workMultiplierAmount ~= 375 (T3/T4-landmark territory); a maxed Rank-6 Hard-tier win's
-    // realistic ceiling (600,000 * 1.0 * up to 1.2 * 1.75 ~= 1,260,000) stays inside
-    // Bounty's own live Rank-6 range (~1,050,000-1,575,000) and below the guild's own
-    // per-member T3 payout (~1,416,667) at every power level, not just this landmark — see
-    // roadmap.md's own worked derivation.
+    // linearly and unbounded off a compounding workMultiplierAmount.
+    //
+    // TIER_REWARD_FACTOR re-derived 2026-08-23, direct instruction ("make the potato gain
+    // also equally modified to match those new %'s") to mirror the same 1/2/3 escalation
+    // the stat-reward SCOPE above now uses (1 track / 2 tracks / 3 tracks) — the clearest,
+    // most literal reading of "match" available once the odds/stat-count redesign landed.
+    // MAX_RIVAL_REWARD_BASE dropped from 600,000 to 200,000 (÷3) specifically so the new 3x
+    // hard factor lands on the EXACT SAME absolute ceiling the old 1.0x factor did — the
+    // "never out-earns organized guild raiding" balance promise (see roadmap.md's worked
+    // derivation) is preserved by construction, not just approximately: a maxed Rank-6 hard
+    // win's realistic ceiling is still 200,000 * 3 * up to 1.2 * 1.75 ~= 1,260,000, same as
+    // before — inside Bounty's own live Rank-6 range (~1,050,000-1,575,000) and below the
+    // guild's own per-member T3 payout (~1,416,667). BASE_REWARD_PER_MULTIPLIER left
+    // unchanged, so the cap now saturates earlier (workMultiplierAmount ~= 125 instead of
+    // ~375) — a deliberate side effect, not a bug: this is a solo-accessible track, an
+    // earlier saturation point just means less-developed mercenaries reach the same
+    // per-scenario ceiling sooner. Penalty (resolveRivalConfrontation) reads these same
+    // constants, so losses scale proportionally too — not a separate ask, just a
+    // consequence of sharing the formula.
     BASE_REWARD_PER_MULTIPLIER: 1600,
-    MAX_RIVAL_REWARD_BASE: 600000,
-    TIER_REWARD_FACTOR: { easy: 0.6, medium: 0.85, hard: 1.0 }
+    MAX_RIVAL_REWARD_BASE: 200000,
+    TIER_REWARD_FACTOR: { easy: 1, medium: 2, hard: 3 }
 }
 
 // 6 named rivals, reused across every player and every tier — mirrors Raid's own named-

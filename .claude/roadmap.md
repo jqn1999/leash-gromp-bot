@@ -1426,6 +1426,41 @@ and needs its own balance pass.
   (`rawBase * tierFactor * 0.5 * variance`) is untouched by this — it was never built off
   `SOLO_BOUNTY_REWARD_SHARE` in the first place. Full suite green (411/411).
 
+- [x] **38. Redesign `/confront-rival`: No Player Tier Choice, Scenario Roll Instead** — S/M —
+  **Done**
+  What: `/confront-rival` no longer takes a `tier:<easy|medium|hard>` option at all — which
+  scenario a confrontation *is* now gets rolled internally (`Rival.SCENARIO_CHANCE`:
+  60%/30%/10% easy/medium/hard), not chosen. Each scenario's `successChance` is a literal
+  roll inside its own range (`Rival.SUCCESS_CHANCE_RANGE`: 40-60%/20-40%/10-20%), replacing
+  the old ceiling-with-variance formula. Stat-reward scope now escalates with scenario too
+  (previously uniform, always 1 track): easy grants 1 random track, medium grants 2
+  **distinct** tracks (a genuinely new selection shape, `pickTwoDistinctStatGrants`), hard
+  grants all 3 at once. `Rival.TIER_REWARD_FACTOR` re-derived to `{easy:1, medium:2, hard:3}`
+  (was `{0.6, 0.85, 1.0}`) to mirror that same 1/2/3 escalation on the potato side;
+  `MAX_RIVAL_REWARD_BASE` dropped 600,000→200,000 (÷3) so the new 3x hard factor lands on
+  the *exact same* absolute reward ceiling the old 1.0x factor did — the "never out-earns
+  guild raiding" promise holds by construction, not approximately. Yukon gained a third perk,
+  `rivalSuccessChanceFlat` +5% (now a deliberate triple-perk exception to the
+  "every Legendary is dual-perk" convention) — the first Rival-specific companion benefit.
+  Why: direct instruction, in three parts across one message: "obviously we dont want them
+  to pick the difficulty if the reward is the same for them all" (the root design flaw —
+  the guaranteed stat bump was uniform across tiers at the time, so a rational player would
+  always pick Easy), followed by the exact new mechanic ("60% chance of easy... 40-60%
+  chance of success which gives 1 random stat" etc.), then two follow-ups: "make the potato
+  gain also equally modified to match those new %'s" and "update the yukon companion to have
+  some % success increase for rival fights."
+  Notable: removing the `tier` option meant `resolveRivalConfrontation`'s signature dropped
+  its second argument entirely; `result.tier` renamed to `result.scenario` throughout
+  (`embedFactory.js`, `confrontRival.js`) to avoid reading as a player choice. `statBump` is
+  now always an array (even for easy's single track) instead of sometimes a bare object —
+  `confrontRival.js`'s write loop and `createRivalConfrontationResultEmbed`'s rendering both
+  updated to match, mirroring `createBountyResultEmbed`'s existing array-rendering pattern.
+  Rebuilt the `resolveRivalConfrontation`/`resolveGuaranteedStatBump` describe blocks in
+  `mercenaryFactory.test.js` and `confrontRival.test.js` from scratch (old tests asserted
+  the removed `tier`-argument API); a duplicate, stale `resolveGuaranteedStatBump` describe
+  block from an earlier iteration was also found and deleted. Full suite green (416/416, up
+  from 411).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

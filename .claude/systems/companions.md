@@ -120,8 +120,10 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
-**Yukon, the Highwayman** (Legendary, dual-perk) is the roster's 13th companion but
-deliberately **not** obtainable through this table's `/work` roll at all — see
+**Yukon, the Highwayman** (Legendary, **triple**-perk — a deliberate exception to the
+"every Legendary is dual-perk" convention, made 2026-08-23 once Rival Bounty Hunters gave a
+Bounty-only companion a third action to plausibly help with) is the roster's 13th companion
+but deliberately **not** obtainable through this table's `/work` roll at all — see
 [mercenary-bounties.md](mercenary-bounties.md#yukon-the-highwayman--the-one-bounty-exclusive-companion)
 for the full mechanism. Its `Companions` entry carries `dropSource: "bounty"`, which
 `companionFactory.getCompanionsByRarity` filters out of `rollCompanion`'s pool — the only
@@ -131,7 +133,10 @@ exactly like any other companion everywhere else (equip, market, `getActivePerkV
 Owl/Elder Rootbeard grant for real `/rob` — simplified 2026-08-23, direct instruction, from
 an earlier `/rob-npc`-only `npcRobChanceFlat` perk down to one shared perk that now boosts
 both real `/rob` and `/rob-npc` identically, since mercenaries can still run real `/rob`) +
-`bountyRewardPercent` +13.5% (applied to the already-discounted Bounty payout).
+`bountyRewardPercent` +13.5% (applied to the already-discounted Bounty payout) +
+`rivalSuccessChanceFlat` +5% (adds to `/confront-rival`'s rolled success-chance range — see
+[mercenary-bounties.md](mercenary-bounties.md#rival-bounty-hunters), kept modest since Hard's
+own range is only 10 percentage points wide).
 
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
@@ -141,6 +146,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
 | Bank Capacity | 12% (Ladybug) | — | — | — |
 | Rob Chance (real `/rob` + `/rob-npc`) | — | 10% (Barn Owl) | 12% (Yukon) | 15% (Elder Rootbeard) |
+| Rival Confrontation Success Chance | — | — | 5% flat (Yukon) | — |
 | Starch Sell Bonus | — | 9% (Mole) | 12% (Rootcarver) | 15% (Elder Rootbeard) |
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |

@@ -1,22 +1,22 @@
 // /confront-rival's gating chain (§1 of the architect's technical design in roadmap.md) and
 // its write-sequence invariants (§10) — the reset-to-0-on-any-resolution behavior IS the
 // re-gating mechanism for the next cycle, so it's worth pinning down directly rather than
-// only trusting mercenaryFactory.resolveRivalConfrontation's own pure-formula tests. See
-// systems/mercenary-bounties.md#rival-bounty-hunters.
+// only trusting mercenaryFactory.resolveRivalConfrontation's own pure-formula tests.
+// Redesigned 2026-08-23, direct instruction: the command no longer takes a `tier` option at
+// all — which scenario (easy/medium/hard) a confrontation is gets rolled internally, not
+// chosen by the player. See systems/mercenary-bounties.md#rival-bounty-hunters.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { Rival } = require('../../../utils/constants');
 
-function fakeInteraction(optionValues = {}) {
+function fakeInteraction() {
     return {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
         followUp: jest.fn().mockResolvedValue(),
         user: { id: 'user-1', username: 'User', displayName: 'User' },
-        options: {
-            get: (name) => (optionValues[name] !== undefined ? { value: optionValues[name] } : undefined),
-        },
+        options: { get: () => undefined },
     };
 }
 
@@ -36,6 +36,7 @@ function baseUser(overrides = {}) {
         bankCapacity: 1000000,
         sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
         guildId: 0,
+        companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 },
         // Pre-unlocked so the unrelated mercenary_recruit achievement (mercenaryBountyWinCount
         // >= 1, already satisfied by Rank 2's own 15-win requirement) doesn't fire an extra,
         // out-of-scope achievementFactory.checkAndUnlock write during these tests.
@@ -54,7 +55,7 @@ describe('/confront-rival gating chain', () => {
 
     test('rejects a non-mercenary', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ isMercenary: false }));
-        const interaction = fakeInteraction({ tier: 'easy' });
+        const interaction = fakeInteraction();
 
         await callback({}, interaction);
 
@@ -64,7 +65,7 @@ describe('/confront-rival gating chain', () => {
 
     test('rejects below Mercenary Rank 2', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 0 })); // Rank 1
-        const interaction = fakeInteraction({ tier: 'easy' });
+        const interaction = fakeInteraction();
 
         await callback({}, interaction);
 
@@ -74,7 +75,7 @@ describe('/confront-rival gating chain', () => {
 
     test('rejects below the Notoriety threshold even at Rank 2+', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD - 1 }));
-        const interaction = fakeInteraction({ tier: 'easy' });
+        const interaction = fakeInteraction();
 
         await callback({}, interaction);
 
@@ -88,10 +89,10 @@ describe('/confront-rival write sequence', () => {
 
     test('a win resets mercenaryNotoriety to 0, ADDs rivalConfrontationWinCount, and credits potatoes', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction({ tier: 'easy' });
-        // resolveRivalConfrontation's own call order: successChance variance roll, win
-        // check, rival pick, reward variance roll, stat-bump pool index — all forced toward
-        // a clean win via 0.
+        const interaction = fakeInteraction();
+        // resolveRivalConfrontation's own call order: scenario roll, successChance roll, win
+        // check, rival pick, reward variance roll — all forced toward a clean hard-scenario
+        // win via 0 (hard's stat bump, TIER_III_GRANT, is fully deterministic — no roll needed).
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         try {
             await callback({}, interaction);
@@ -100,8 +101,8 @@ describe('/confront-rival write sequence', () => {
         }
 
         // The main resolution write is always the FIRST updateUserFields call — a win also
-        // triggers a second, separate call from raidFactory.handleStatSplit's own guaranteed
-        // permanent stat bump write, which isn't this test's concern.
+        // triggers separate calls from raidFactory.handleStatSplit's own guaranteed
+        // permanent stat bumps (one per track), which isn't this test's concern.
         const [calledUserId, setAttributes, addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(calledUserId).toBe('user-1');
         expect(setAttributes.mercenaryNotoriety).toBe(0);
@@ -114,10 +115,11 @@ describe('/confront-rival write sequence', () => {
     test('a loss resets mercenaryNotoriety to 0, does NOT add rivalConfrontationWinCount, and floors potatoes at 0', async () => {
         // A tiny potato balance plus a near-guaranteed loss to exercise the Math.max(0, ...) floor.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: 10, totalLosses: 0 }));
-        const interaction = fakeInteraction({ tier: 'hard' });
+        const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)        // successChance variance roll
-            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // scenario roll -> hard
+            .mockReturnValueOnce(0.999999) // successChance roll -> top of hard's range (~.20)
+            .mockReturnValueOnce(0.999999) // win check fails (exceeds .20)
             .mockReturnValueOnce(0)        // rival pick
             .mockReturnValueOnce(1);       // penalty variance roll -> maximizes the penalty
         try {
@@ -138,13 +140,15 @@ describe('/confront-rival write sequence', () => {
     });
 
     // Resolves the roadmap's own open question directly: a loss forfeits ALL accumulated
-    // Notoriety regardless of which tier was chosen, not a tier-scaled partial loss.
-    test('Notoriety resets to 0 on a loss at every tier, not just Easy', async () => {
-        for (const tier of ['easy', 'medium', 'hard']) {
+    // Notoriety regardless of which scenario got rolled, not a scenario-scaled partial loss.
+    test('Notoriety resets to 0 on a loss whichever scenario gets rolled', async () => {
+        const scenarioRolls = { hard: 0, medium: 0.15, easy: 0.5 };
+        for (const scenario of Object.keys(scenarioRolls)) {
             dynamoHandler.updateUserFields.mockClear();
             dynamoHandler.findUser.mockResolvedValue(baseUser());
-            const interaction = fakeInteraction({ tier });
+            const interaction = fakeInteraction();
             const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(scenarioRolls[scenario])
                 .mockReturnValueOnce(0)
                 .mockReturnValueOnce(0.999999) // guarantee a loss
                 .mockReturnValueOnce(0)

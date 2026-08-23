@@ -421,8 +421,8 @@ of labor:
 - `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
 - `/rob-npc` win: `+Rival.NOTORIETY_PER_NPC_ROB_WIN` (flat 1).
 
-`/confront-rival tier:<easy|medium|hard>` is gated by, checked in order (mirroring
-`take-bounty.js`'s own layered-rejection style):
+`/confront-rival` is gated by, checked in order (mirroring `take-bounty.js`'s own
+layered-rejection style):
 1. `!userDetails.isMercenary` → reject.
 2. `mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank < 2` →
    reject ("you need to be Mercenary Rank 2+...").
@@ -430,73 +430,101 @@ of labor:
    current/needed Notoriety.
 
 No confirm step (same immediacy precedent `/take-bounty` sets), and no interaction at all
-with `guildMercenarySwitchTimer` or any other timer field. Once both gates are met, the
-player freely picks **any of the three risk tiers** — unlike Bounty's rank-gated tier
-progression, all three unlock together the moment the shared gate opens (see the difficulty
-formula below for why that's safe by construction).
+with `guildMercenarySwitchTimer` or any other timer field. Once both gates are met, running
+the command resolves a confrontation immediately — **the player does not pick a difficulty**
+(see below for why).
 
-### Success chance — self-relative difficulty, no `effectiveRaidPower` computed at all
+### No player choice — which scenario you get is rolled for you
 
-Each tier is pinned to a fixed success-chance **ceiling** (`Rival.TIER_SUCCESS_CAP`), not an
-absolute difficulty number — the whole point being that odds stay stable at any power level
-instead of drifting the way a fixed target inevitably would as `workMultiplierAmount`
-compounds. A ±20% variance roll (`getRandomFromInterval(.8, 1.2)`) is applied on top and
-re-capped at the ceiling, so a lucky roll can only ever reach the ceiling, never exceed it:
+Redesigned 2026-08-23, direct instruction, replacing the original `tier:<easy|medium|hard>`
+player-choice option entirely. The original design let the player pick a tier, but the
+guaranteed stat bump was uniform across all three at the time — a rational player would
+always pick Easy for the identical bump at the best odds, so there was never a real reason to
+pick Medium/Hard. Rather than just scale the bump by tier (the other fix considered), the
+whole mechanic became a single weighted random roll instead: which scenario (easy/medium/hard)
+a confrontation *is* gets decided for you, not chosen.
 
 ```
-successChance = min(Rival.TIER_SUCCESS_CAP[tier] * getRandomFromInterval(.8, 1.2), Rival.TIER_SUCCESS_CAP[tier])
-won           = Math.random() < successChance
+scenario = weighted roll: 60% easy / 30% medium / 10% hard   (Rival.SCENARIO_CHANCE)
 ```
 
-| Tier | Ceiling | Realized range |
-|---|---|---|
-| Easy | 90% | 72%–90% |
-| Medium | 65% | 52%–65% |
-| Hard | 60% | 48%–60% |
+Rarer scenarios are both harder **and** better on every axis — success chance, stat-reward
+scope, and potato reward all escalate together, so there's no way to "always pick the safe
+option": the option isn't yours to pick.
 
-**Formula simplification, load-bearing, not just an implementation detail**: the
-product-owner pass's original formula was `difficulty = effectiveRaidPower / tierCap`, then
-`successChance = min(effectiveRaidPower / difficulty, tierCap)` — but since `difficulty` is
-*defined as* `effectiveRaidPower / tierCap`, that ratio always equals `tierCap` regardless of
-the player's actual power, and cancels out of its own formula by construction. The shipped
-code implements the already-resolved formula directly, above — **no call to
-`raidFactory.getEffectiveRaidPower` or `rebirthFactory.getLiveRebirthPercent` anywhere in
-Rival's success-chance path**, unlike Bounty/`/rob-npc` (whose difficulty is a fixed absolute
-number, not self-relative, so their own ratio doesn't cancel).
+### Success chance — a literal range roll, no `effectiveRaidPower` computed at all
 
-This is why all three tiers unlock together, unlike Bounty's progressive tier gating: a
-low-power player can never get trapped rolling a tier they can't win (Easy always lands
-72%-90%, Hard always lands 48%-60%, for a Rank-2-fresh mercenary and a maxed rebirther alike),
-so gating Medium/Hard behind extra thresholds would be pure friction, not a real safety
-mechanism.
+Each scenario has its own literal success-chance **range** (`Rival.SUCCESS_CHANCE_RANGE`) — a
+direct `getRandomFromInterval(min, max)` roll, not a ceiling with variance rolling down from
+it (the original design's shape). Odds stay stable at any power level the same way the
+original self-relative-difficulty formula did — this redesign keeps that property, just via a
+flat range instead of a derived ceiling:
+
+```
+[minChance, maxChance] = Rival.SUCCESS_CHANCE_RANGE[scenario]
+rivalSuccessBonus       = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat")   // Yukon only
+successChance           = getRandomFromInterval(minChance, maxChance) + rivalSuccessBonus
+won                     = Math.random() < successChance
+```
+
+| Scenario | Roll chance | Success chance range | Stat reward |
+|---|---|---|---|
+| Easy | 60% | 40%–60% | 1 random track |
+| Medium | 30% | 20%–40% | 2 random tracks |
+| Hard | 10% | 10%–20% | all 3 tracks |
+
+**Yes, a Rival confrontation can absolutely end in a loss** — even Easy only wins 40-60% of
+the time, and Medium/Hard are more likely to lose than win (20-40% and 10-20% respectively).
+This is by design: Rival fights are meant to read as genuinely risky, not a guaranteed payout
+with a coat of flavor text.
+
+No call to `raidFactory.getEffectiveRaidPower` or `rebirthFactory.getLiveRebirthPercent`
+anywhere in this path — success chance depends only on which scenario got rolled (plus
+Yukon's flat bonus, see below), never on the player's own power. One direct, flagged
+consequence: **rebirth progress has zero effect anywhere in Rival Bounty Hunters** — not
+here, and not in the reward formula either (see below).
+
+**Yukon's `rivalSuccessChanceFlat` perk** (new, direct instruction — Yukon previously had no
+Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll.
+Kept modest specifically because Hard's own range is only 10 percentage points wide (10%-20%)
+— 5% is meaningful (half that width) without trivializing what a rolled Hard scenario is
+supposed to represent. Deliberately uncapped, matching real `/rob`'s own `robChance` (never
+clamped either). This makes Yukon a **triple-perk** companion — a deliberate exception to the
+"every Legendary is dual-perk" convention (Spudsprite, Rootcarver), made once Rival gave a
+Bounty-only companion a third action to plausibly help with.
 
 ### Reward / penalty formula
 
-Reward still scales with the player's own `workMultiplierAmount` (a flat number would
-trivialize the fight for a heavily-invested mercenary now that difficulty itself is
-self-relative), but the **base term is hard-capped before tier/rank/variance scaling** — the
-same "cap the base, let the final number still be scaled by rank/multiplier on top" shape
-`Work.MAX_GOLDEN_POTATO`/`RobNpc.MAX_NPC_ROB_PAYOUT` already use, so reward can't grow
-linearly and unbounded as `workMultiplierAmount` compounds through shop/regrade/rebirth:
+Reward still scales with the player's own `workMultiplierAmount`, with the same hard-capped
+base term (`Work.MAX_GOLDEN_POTATO`/`RobNpc.MAX_NPC_ROB_PAYOUT`'s "cap the base, scale the
+final number by rank/multiplier on top" shape) so it can't grow linearly and unbounded as
+`workMultiplierAmount` compounds:
 
 ```
 rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
 rawBase  = min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE)
 
 // WIN:
-reward  = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+reward  = round(rawBase * Rival.TIER_REWARD_FACTOR[scenario] * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
 
 // LOSS (independent variance roll, no rank multiplier — full unscaled risk, same
 // "no discount on the loss side" precedent Bounty's own SOLO_BOUNTY_REWARD_SHARE sets):
-penalty = round(rawBase * Rival.TIER_REWARD_FACTOR[tier] * 0.5 * getRandomFromInterval(.8, 1.2))
+penalty = round(rawBase * Rival.TIER_REWARD_FACTOR[scenario] * 0.5 * getRandomFromInterval(.8, 1.2))
 ```
 
-`rawBase` saturates at `Rival.MAX_RIVAL_REWARD_BASE` (600,000) once `workMultiplierAmount`
-reaches ~375 (T3/T4-landmark territory) — past that, further shop/regrade/rebirth progress
-doesn't grow the reward further. A maxed Rank-6 (1.75x) Hard-tier (1.0 factor) win's realistic
-ceiling is `600,000 × 1.0 × 1.2 × 1.75 = 1,260,000` — inside Bounty's own live Rank-6 range
-(~1,050,000-1,575,000) and below the guild's own live per-member T3 payout (~1,416,667) at
-every power level, confirming Rival never out-earns organized guild raiding, by construction.
+`Rival.TIER_REWARD_FACTOR` re-derived 2026-08-23, direct instruction ("make the potato gain
+also equally modified to match those new %'s"), to mirror the same 1/2/3 escalation the
+stat-reward scope now uses: `{ easy: 1, medium: 2, hard: 3 }` (was `{ easy: 0.6, medium: 0.85,
+hard: 1.0 }`). `Rival.MAX_RIVAL_REWARD_BASE` dropped from 600,000 to **200,000** (÷3)
+specifically so the new 3x hard factor lands on the exact same absolute ceiling the old 1.0x
+factor did — the "never out-earns organized guild raiding" promise is preserved **by
+construction**, not just approximately: a maxed Rank-6 hard win's realistic ceiling is still
+`200,000 × 3 × 1.2 × 1.75 ≈ 1,260,000` — inside Bounty's own live Rank-6 range
+(~1,050,000-1,575,000) and below the guild's own live per-member T3 payout (~1,416,667).
+`Rival.BASE_REWARD_PER_MULTIPLIER` (1,600) is unchanged, so the cap now saturates earlier —
+around `workMultiplierAmount ≈ 125` instead of `≈ 375` — a deliberate side effect (this is a
+solo-accessible track; an earlier saturation point just means less-developed mercenaries
+reach the same per-scenario ceiling sooner), not a bug.
 
 The loss write floors `potatoes` at 0 (`Math.max(0, ...)`) — `Raid`'s `handlePotatoSplit` and
 Bounty's own `take-bounty.js` both currently lack this floor (a pre-existing, separately
@@ -505,31 +533,41 @@ a reuse of either, there's no cost to closing the gap here preemptively.
 
 ### Guaranteed permanent stat bump
 
-Unconditional on every win (no roll-chance gate), sized at exactly Sweet Potato's own
-magnitude (`BountyStatReward.TIER_I_GRANT`, reused directly — no new grant table), uniform
-across all three tiers. `mercenaryFactory.resolveGuaranteedStatBump(userDetails)` picks one of
-the three tracks uniformly and resolves the same percentage-of-current-stat delta
-`rollBountyStatReward` already uses, just without that function's `ROLL_CHANCE` early-return.
-Applied via the same write path Bounty's own rare stat branch uses:
-`raidFactory.handleStatSplit([{ id: userId, username }], bump.type, bump.amount)`.
+Unconditional on every win (no roll-chance gate) — scope keyed by the **rolled scenario**,
+not chosen by the player:
 
-Deliberately uniform, not tier-scaled — tier already differentiates risk/reward via
-`TIER_SUCCESS_CAP` (win rate) and `TIER_REWARD_FACTOR` (payout size); a third "harder tier =
-bigger bump" axis would just duplicate that job. Hard's own lower win rate already means an
-Hard-only player collects this less often in real time — that's Hard's own "cost" already,
-no separate amplification needed.
+- **Easy**: 1 track, picked uniformly from `BountyStatReward.TIER_I_GRANT` (Sweet-Potato-scale)
+  — `mercenaryFactory.pickStatGrant('I', userDetails)`.
+- **Medium**: 2 **distinct** tracks from `BountyStatReward.TIER_II_GRANT`'s pool of 3 — a
+  genuinely new selection shape (`mercenaryFactory.pickTwoDistinctStatGrants`), not reused
+  from Bounty's own single-pick Tier II. The pool always has exactly 3 entries, so "pick 2" is
+  implemented as "exclude 1 at random" — unbiased, simpler than a shuffle.
+- **Hard**: all 3 tracks at once, matching Bounty's own Tier III exactly (Metal-Potato-scale)
+  — `mercenaryFactory.pickStatGrant('III', userDetails)`.
+
+`resolveGuaranteedStatBump(userDetails, scenario)` always returns an **array** (unlike
+Bounty's own `rollBountyStatReward`, which can return `null` on a miss — this bump is never a
+miss). Applied one entry at a time via the same write path Bounty's own stat branch uses:
+`raidFactory.handleStatSplit([{ id: userId, username }], grant.type, grant.amount)`.
+
+Originally shipped uniform across all three scenarios (always 1 track, `TIER_I_GRANT`) — that
+was the exact design flaw that motivated the whole no-choice redesign above: an identical
+guaranteed reward at every tier meant there was no reason to ever pick harder ones. Scoping
+the bump by scenario removes the problem at its root, on top of removing the choice itself.
 
 ### `RivalMercenaries` — the named rival roster
 
-6 named rivals (`constants.js`), reused across every player and every tier — mirrors `Raid`'s
-own named-boss shape (Marrowveil, Solara, Umbrathorn), not `BountyScenarios`' fully-flavored-
-per-attempt table, since tier changes the fight's numbers, never which rival shows up. One
-entry (`{ name, thumbnailUrl, description, winFlavor, loseFlavor }`) is drawn uniformly at
-random on every `/confront-rival` call, independent of `tier`. Roster: The Rustbeard Ronin,
-Marsh Widow Malvina, Deadfall Duncan, The Coinpurse Reaper, Old Scattergun Suze, The Hollow
-Ledger. Flavor text is cosmetic only, same non-load-bearing status `BountyScenarios`/
-`regularWorkMobs` already carry — `thumbnailUrl` is a placeholder pending commissioned art,
-same as Yukon's own entry.
+6 named rivals (`constants.js`), reused across every player and every scenario — mirrors
+`Raid`'s own named-boss shape (Marrowveil, Solara, Umbrathorn), not `BountyScenarios`'
+fully-flavored-per-attempt table, since the scenario roll changes the fight's numbers, never
+which rival shows up. One entry (`{ name, thumbnailUrl, description, winFlavor, loseFlavor }`)
+is drawn uniformly at random on every `/confront-rival` call, independent of which scenario
+got rolled. Roster: The Rustbeard Ronin, Marsh Widow Malvina, Deadfall Duncan, The Coinpurse
+Reaper, Old Scattergun Suze, The Hollow Ledger. Flavor text is cosmetic only, same
+non-load-bearing status `BountyScenarios`/`regularWorkMobs` already carry — `thumbnailUrl`
+points at the bot's own generic avatar as a placeholder pending commissioned art, same
+fallback Yukon and the T4 raid bosses already use (not literal placeholder text — that shipped
+as a real bug initially and was caught in review).
 
 ### Commands
 
@@ -538,12 +576,7 @@ Both live in `src/commands/user/`:
 | Command | Flow |
 |---|---|
 | `/notoriety` | No args, read-only (mirrors `/bounty-board`'s never-snapshots precedent). Rejects if not a mercenary. Shows current Notoriety/threshold, whether Rank 2+ is met, whether a confrontation is available right now, and lifetime `rivalConfrontationWinCount`. |
-| `/confront-rival tier:<easy\|medium\|hard>` | Gating chain above. No confirm step, no cooldown. Resolves immediately via `mercenaryFactory.resolveRivalConfrontation`, writes the result, replies with the result embed. |
-
-`tier`'s option values are lowercase `easy`/`medium`/`hard` (matching
-`Rival.TIER_SUCCESS_CAP`/`TIER_REWARD_FACTOR`'s own keys) — deliberately **not** Bounty's
-`I`/`II`/`III` Roman-numeral convention, since this is a risk-level choice, not an
-absolute-difficulty rung the way Bounty's tiers are.
+| `/confront-rival` | No options at all — the scenario is rolled internally, not chosen. Gating chain above. No confirm step, no cooldown. Resolves immediately via `mercenaryFactory.resolveRivalConfrontation`, writes the result, replies with the result embed. |
 
 ### Data model
 
@@ -574,10 +607,10 @@ if (result.won) {
 }
 ```
 
-A loss forfeits **all** accumulated Notoriety, at any tier — resolves the roadmap's own open
-question directly: choosing Hard and losing costs the same full reset as choosing Easy and
-losing, keeping the risk/reward choice meaningful rather than diluting it with a tier-scaled
-partial loss.
+A loss forfeits **all** accumulated Notoriety, whichever scenario got rolled — resolves the
+roadmap's own open question directly: a Hard-scenario loss costs the same full reset as an
+Easy-scenario loss, keeping the outcome meaningful rather than diluting it with a
+scenario-scaled partial loss.
 
 `records.largestRivalReward` was **not** added — considered (mirrors `records.largestBountyReward`
 exactly, zero marginal cost) but left out since it wasn't requested; a one-line addition later
@@ -600,24 +633,16 @@ since Rival confrontations have no rank-style ceiling to anchor a capstone thres
 
 ### Judgment calls confirmed, not silently decided
 
-Three points the architect flagged explicitly for a conscious sign-off before build, all
-confirmed and implemented exactly as specified — no code changes resulted from this pass,
-just an explicit record that each was considered rather than defaulted past:
-
-1. **Rebirth has zero effect anywhere in Rival Bounty Hunters.** A structural consequence of
-   the approved difficulty formula (tierCap cancels the player's power out of its own success-
-   chance formula by construction — see the formula simplification above) and of the reward
-   formula scaling off raw `workMultiplierAmount` rather than `effectiveRaidPower`. Confirmed
-   correct given the approved math; a heavily-rebirthed player's Rival fights are mechanically
-   identical to a fresh Rank-2 mercenary's, differing only in reward size (via
+1. **Rebirth has zero effect anywhere in Rival Bounty Hunters.** True both before and after
+   the no-choice redesign — success chance depends only on the rolled scenario (plus Yukon's
+   flat bonus), and the reward formula scales off raw `workMultiplierAmount` rather than
+   `effectiveRaidPower`. A heavily-rebirthed player's Rival fights are mechanically identical
+   to a fresh Rank-2 mercenary's at the same scenario, differing only in reward size (via
    `workMultiplierAmount`, which does still climb with rebirth's own multiplier compounding
    upstream of Rival's formula).
-2. **Yukon's `bountyRewardPercent` perk does NOT apply to Rival rewards.** The approved
-   formula never includes it, and Yukon's perk is explicitly named `bountyRewardPercent`, not
-   a generic Mercenary-income perk — `resolveRivalConfrontation` never calls
-   `companionFactory.getActivePerkValue` at all. If this should extend to Rival later, it's a
-   one-line addition to the win branch (`* (1 + companionFactory.getActivePerkValue(userDetails,
-   "bountyRewardPercent"))`).
+2. **Yukon's `bountyRewardPercent` perk does NOT apply to Rival rewards** — still true.
+   Yukon's `rivalSuccessChanceFlat` perk (new) is a deliberately *separate* lever on the odds
+   side, not a retroactive extension of `bountyRewardPercent` onto Rival's reward side.
 3. **`records.largestRivalReward` was not added.** Free, precedent-matching, zero-downside —
    skipped only because it wasn't requested, not scope-creeping past what was asked for.
 

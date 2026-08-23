@@ -1,4 +1,3 @@
-const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rival } = require("../../utils/constants");
@@ -13,29 +12,19 @@ const achievementFactory = new AchievementFactory();
 // Gated by a resettable resource-threshold (mercenaryNotoriety >= CONFRONTATION_THRESHOLD),
 // not a cooldown timer — the first accumulated-counter-as-gate pattern in this codebase.
 // Resolves immediately, no confirm step — same immediacy precedent /take-bounty already
-// sets. See systems/mercenary-bounties.md#rival-bounty-hunters.
+// sets. No tier option — 2026-08-23, direct instruction, removed player tier choice
+// entirely: which scenario (easy/medium/hard) this confrontation is gets rolled internally
+// by mercenaryFactory.resolveRivalConfrontation (Rival.SCENARIO_CHANCE), not picked by the
+// player. See systems/mercenary-bounties.md#rival-bounty-hunters.
 module.exports = {
     name: "confront-rival",
     description: "Confront a Rival Bounty Hunter drawn by your accumulated Notoriety",
     devOnly: false,
     deleted: false,
-    options: [
-        {
-            name: 'tier',
-            description: 'Which risk level to fight',
-            required: true,
-            type: ApplicationCommandOptionType.String,
-            choices: [
-                { name: 'Easy', value: 'easy' },
-                { name: 'Medium', value: 'medium' },
-                { name: 'Hard', value: 'hard' },
-            ]
-        }
-    ],
+    options: [],
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const tier = interaction.options.get('tier')?.value;
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
@@ -56,7 +45,7 @@ module.exports = {
             return;
         }
 
-        const result = await mercenaryFactory.resolveRivalConfrontation(userDetails, tier);
+        const result = await mercenaryFactory.resolveRivalConfrontation(userDetails);
 
         // Full reset, win OR lose — the reset-to-0-on-any-resolution behavior IS the
         // re-gating mechanism for the next cycle (see mercenaryNotoriety's own comment in
@@ -77,7 +66,9 @@ module.exports = {
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
         if (result.won) {
-            await raidFactory.handleStatSplit([{ id: userId, username }], result.statBump.type, result.statBump.amount);
+            for (const grant of result.statBump) {
+                await raidFactory.handleStatSplit([{ id: userId, username }], grant.type, grant.amount);
+            }
         }
 
         const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result);
