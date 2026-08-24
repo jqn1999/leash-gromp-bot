@@ -1385,8 +1385,12 @@ const RivalMercenaries = {
 // Unlike the personal bank's single pool, a mercenary owns up to 6 SEPARATE safehouses —
 // one slot unlocked per Mercenary Rank tier, bought in order, each with its own balance
 // and fixed capacity. Compartmentalizing this way (rather than just one bigger number) is
-// the actual point: funding a purchase only ever requires withdrawing from ONE house,
-// exposing that house's balance to /rob, not the mercenary's entire stash at once.
+// the actual point: a house itself is NEVER a /rob target — /rob only ever reads the
+// liquid potatoes wallet, with zero concept of which house money came from (same as it's
+// always been oblivious to the personal bank). What compartmentalizing actually buys is
+// smaller MINIMUM exposure: funding a purchase only ever requires withdrawing from ONE
+// house, so the amount that briefly becomes robbable liquid potatoes is bounded by that
+// one house's balance, not the mercenary's entire stash landing in the wallet at once.
 // mercenaryFactory.getMercenaryRankInfo gates which slot is purchasable next; a fully
 // Rank-6 mercenary who's bought every slot holds 555,000,000 potatoes of compartmentalized
 // capacity — enough to meaningfully soften the tier-7 cliff above without eliminating

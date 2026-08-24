@@ -29,10 +29,17 @@ either, but mercenaries have no guild-level fallback to point to at all.
 The personal bank (`/bank`, `userDetails.bankStored`/`bankCapacity`) already exists and already scales
 via regrades + `bankCapacityPercent` + rebirth — a Safehouse that was just "another pool of the same
 shape, bigger" wouldn't add anything new. Instead, a mercenary owns up to 6 SEPARATE safehouses, each
-with its own balance and fixed capacity. Funding a purchase only ever requires withdrawing from ONE
-house, exposing that house's balance to `/rob` — the rest of the mercenary's stash, sitting in other
-houses, stays untouched and protected the whole time. This is a genuinely different risk shape from
-the personal bank's single pool, not just more of the same number.
+with its own balance and fixed capacity.
+
+**A house itself is never a `/rob` target** — `/rob` only ever reads the liquid `potatoes` wallet and
+has zero concept of which house any of it came from, same as it's always been oblivious to the
+personal bank. Once a withdrawal lands, it's indistinguishable from any other liquid potatoes already
+sitting in the wallet. What compartmentalizing actually buys is a smaller MINIMUM exposure: funding a
+purchase only ever requires withdrawing from ONE house, so the amount that briefly becomes robbable
+liquid potatoes is bounded by that one house's balance, not the mercenary's entire stash landing in
+the wallet at once. The rest of the stash, sitting in other houses, stays genuinely untouched and
+protected the whole time — this is a different risk SHAPE from the personal bank's single pool
+(smaller forced exposure per purchase), not a claim that /rob can somehow target a specific house.
 
 ## Data model
 
