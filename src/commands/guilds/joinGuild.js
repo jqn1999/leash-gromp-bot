@@ -13,8 +13,25 @@ module.exports = {
             description: 'Name of guild you want to join',
             required: true,
             type: ApplicationCommandOptionType.String,
+            autocomplete: true
         }
     ],
+    // Scoped to guilds the invoking user is actually invited to — same reasoning as
+    // companionSell.js's autocomplete narrowing to what's actually usable, rather than
+    // listing every guild in the game. Matches case-insensitively but returns each
+    // guild's real stored casing (e.g. "Honest Workers"), never a forced upper/lowercase
+    // transform.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const userId = interaction.user.id;
+        const allGuilds = await dynamoHandler.getSortedGuildsById();
+        const choices = allGuilds
+            .filter(g => g.inviteList?.includes(userId))
+            .filter(g => g.guildName.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(g => ({ name: g.guildName, value: g.guildName }));
+        await interaction.respond(choices);
+    },
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply();

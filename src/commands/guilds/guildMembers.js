@@ -13,8 +13,20 @@ module.exports = {
             name: 'guild-name',
             description: 'Name of guild you want to display',
             type: ApplicationCommandOptionType.String,
+            autocomplete: true
         }
     ],
+    // Same shape as guild.js's own autocomplete — matches case-insensitively but returns
+    // each guild's real stored casing, never a forced upper/lowercase transform.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const allGuilds = await dynamoHandler.getSortedGuildsById();
+        const choices = allGuilds
+            .filter(g => g.guildName.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(g => ({ name: g.guildName, value: g.guildName }));
+        await interaction.respond(choices);
+    },
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply({ ephemeral: true });

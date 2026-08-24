@@ -23,6 +23,20 @@ was silently wrong on any deployment not already running in America/New_York. Ev
 day-boundary check in this codebase (`isMondayEST`, the Tower reset, etc.) already converts
 explicitly for the same reason; this closes the one place starch trading didn't.
 
+**The price-changing crons in `starchEvents.js` had the same class of bug, fixed 2026-08-24.**
+`isStarchBuyingWindow()` was always EST-correct, but the three `schedule.scheduleJob(...)` calls that
+actually wipe/roll/shift prices were bare cron strings with no `tz`, so `node-schedule` ran them
+against the host's raw system clock — UTC on this deployment, with no `TZ` env var or Dockerfile
+setting found anywhere pinning it otherwise. That meant the Monday/Thursday wipe+reroll and both
+daily sell-price shifts fired ~4-6 hours *before* the EST boundary they were meant to mark (the exact
+gap drifted across DST, since a raw UTC cron doesn't shift with it the way `isStarchBuyingWindow()`'s
+`Intl` conversion does) — concretely, the Monday/Thursday starch wipe landed hours before the buying
+window actually opened, silently shortening that day's real sell window since balances were already
+zeroed while `isStarchBuyingWindow()` still reported "selling allowed." All three `scheduleJob` calls
+now pass `{ rule, tz: 'America/New_York' }` instead of a bare rule string, so they fire at the exact
+same real-world moment the window check flips, DST included. `priceCount`'s 5-vs-7 arithmetic was
+never affected either way — it's keyed by weekday count, not literal clock alignment.
+
 ## Price cycle
 
 - **Buy price** is set once per cycle — one cron, `0 10 * * 1,4` (Monday AND Thursday, both

@@ -3,6 +3,18 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const starchFactory = require("../../utils/starchFactory");
 
 module.exports = async (client) => {
+    // All 3 jobs below pin tz: 'America/New_York' explicitly (2026-08-24) — previously a
+    // bare cron string, which node-schedule runs against the HOST's system clock, not EST.
+    // starchFactory.js's isStarchBuyingWindow() (the actual buy/sell gate players hit) has
+    // always converted to America/New_York correctly; these jobs didn't, so on a
+    // UTC-clocked host the wipe/roll/shift below fired ~4-6 hours before the window
+    // actually flipped (the exact gap drifts across DST, since a raw UTC cron doesn't
+    // shift with it the way an Intl-based conversion does) — e.g. the Monday/Thursday
+    // starch wipe landing hours before 10am EST silently cut that day's real sell window
+    // short, since balances were already zeroed while isStarchBuyingWindow() still said
+    // "selling allowed." Pinning tz here makes these fire at the exact same real-world
+    // moment the window check flips, DST included.
+    //
     // MONDAY 10AM/THURSDAY 10AM: SET BUY PRICE, DELETE OLD STARCHS, CALC PRICES FOR WEEK
     // Both buying windows now open at the same time of day, so one job covers both — but
     // the two cycles they kick off aren't the same length (Monday->Thursday is 3 days,
@@ -11,7 +23,7 @@ module.exports = async (client) => {
     // starchFactory.js's STARCH_PRICE_COUNT_BY_RESET_DAY and its own comment for why a
     // fixed 6 either wasted a generated price every Monday cycle or ran the queue dry —
     // and produced a literal NaN sell price — every Thursday cycle).
-    schedule.scheduleJob('0 10 * * 1,4', async function () {
+    schedule.scheduleJob({ rule: '0 10 * * 1,4', tz: 'America/New_York' }, async function () {
         //DELETE EVERYONES STARCHES
         await dynamoHandler.removeStarches()
 
@@ -35,12 +47,12 @@ module.exports = async (client) => {
 
     // 10PM: LOAD NEXT SELL PRICE — every day, since Monday and Thursday both close their
     // buying window at 10pm and every other day is selling all day anyway.
-    schedule.scheduleJob('0 22 * * *', async function () {
+    schedule.scheduleJob({ rule: '0 22 * * *', tz: 'America/New_York' }, async function () {
         await shiftNextSellPrice();
     });
 
     // 10AM (minus Mon/Thu, when 10am opens a buying window instead): LOAD NEXT SELL PRICE
-    schedule.scheduleJob('0 10 * * 2,3,5,6,7', async function () {
+    schedule.scheduleJob({ rule: '0 10 * * 2,3,5,6,7', tz: 'America/New_York' }, async function () {
         await shiftNextSellPrice();
     });
 }

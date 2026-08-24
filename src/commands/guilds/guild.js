@@ -13,8 +13,23 @@ module.exports = {
             name: 'guild-name',
             description: 'Name of guild you want to display',
             type: ApplicationCommandOptionType.String,
+            autocomplete: true
         }
     ],
+    // Matches the typed-so-far text case-insensitively against every guild's real name,
+    // but returns the guild's own guildName casing (e.g. "Honest Workers"), never a
+    // forced upper/lowercase transform — findGuildByName's own lookup is already
+    // case-insensitive (matches on guildNameLowercase), so this is purely a display/typo
+    // convenience, not a correctness requirement. Capped at Discord's 25-result max.
+    autocomplete: async (client, interaction) => {
+        const focused = (interaction.options.getFocused() || '').toLowerCase();
+        const allGuilds = await dynamoHandler.getSortedGuildsById();
+        const choices = allGuilds
+            .filter(g => g.guildName.toLowerCase().includes(focused))
+            .slice(0, 25)
+            .map(g => ({ name: g.guildName, value: g.guildName }));
+        await interaction.respond(choices);
+    },
     deleted: false,
     callback: async (client, interaction) => {
         await interaction.deferReply({ ephemeral: true });

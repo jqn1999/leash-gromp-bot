@@ -1519,6 +1519,52 @@ and needs its own balance pass.
   `mercenary-bounties.md`'s success-chance and starch-reward sections, `companions.md`'s
   `workMultiplierPercent` perk-usage table row. Full suite green (420/420, up from 416).
 
+- [x] **41. Starch Trader Price-Update Crons Pinned to America/New_York** — S — **Done**
+  What: `starchEvents.js`'s three `schedule.scheduleJob` calls (Monday/Thursday wipe+reroll,
+  daily 10pm sell shift, daily 10am sell shift) now pass `{ rule, tz: 'America/New_York' }`
+  instead of a bare cron string. Previously they ran against the host's raw system clock
+  (UTC on this deployment, confirmed no `TZ` env var/Dockerfile setting anywhere) while
+  `starchFactory.js`'s `isStarchBuyingWindow()` — the actual buy/sell gate players hit —
+  has always converted to EST correctly. That gap meant the crons fired ~4-6 hours before
+  the EST boundary they were meant to mark (drifting further across DST, since a raw UTC
+  cron doesn't shift with it the way an `Intl` conversion does), most visibly: the Monday/
+  Thursday starch wipe landing hours before the buying window opened, silently shortening
+  that day's real sell window since balances were already zeroed while
+  `isStarchBuyingWindow()` still said selling was allowed.
+  Why: a player asked what time the buying window opens, noted it was still sellable at
+  8:55am EST, then asked to confirm the update times were genuinely EST and not host/UTC
+  time — investigation found the real mismatch, user said to fix it.
+  Notable: `priceCount`'s 5-vs-7 shift-count arithmetic (Monday cycle vs. Thursday cycle)
+  is keyed by weekday count via the cron's own day selector, not literal clock alignment,
+  so it was never at risk from this bug and needed no change. `node-schedule` 2.1.1
+  (already the installed version) supports the `{rule, tz}` object form natively — no new
+  dependency. Full suite green (420/420, unaffected — no test coverage exercises real
+  cron firing time).
+
+- [x] **42. Guild-Name Lookup Commands Get Autocomplete, Preserving Original Casing** — S —
+  **Done**
+  What: `/guild`, `/guild-members`, and `/join-guild`'s `guild-name` option now has
+  `autocomplete: true`, matching the established per-command autocomplete pattern
+  (`companionSell.js`/`companionSellNpc.js`/`companionScavenge.js`) rather than a bare
+  free-text field. Each suggestion is built from the guild's own stored `guildName` field
+  — e.g. a guild named "Honest Workers" shows as "Honest Workers" in the dropdown, never
+  forced to a different case — while the filter that matches against what's been typed so
+  far is case-insensitive. `/join-guild`'s autocomplete is additionally scoped to guilds
+  the invoking user is actually on the `inviteList` for (same "narrow to what's usable"
+  reasoning `companionSell.js` already applies to owned-and-unlisted companions); `/guild`
+  and `/guild-members` are read-only lookups with no ownership gate, so theirs lists every
+  guild matching the typed text.
+  Why: direct instruction, delivered mid-turn alongside the starch-timing fix above:
+  "make the guild command where a user inputs a guild name have auto filling with caps not
+  being forced (so honest workers would still show a guild called Honest Workers."
+  `findGuildByName`'s lookup was already case-insensitive (matches on the stored
+  `guildNameLowercase` field) — the ask was about the autocomplete suggestion UX, not a
+  lookup-correctness bug.
+  Notable: all three reuse `dynamoHandler.getSortedGuildsById()` (already exported, already
+  filters to guilds with at least one member) rather than adding a new DB query — capped at
+  Discord's 25-result max per keystroke, same as every other autocomplete in this codebase.
+  Full suite green (420/420, unaffected — no existing tests target these command files).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
