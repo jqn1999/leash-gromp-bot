@@ -1153,3 +1153,159 @@ bad-EV raid result into a genuinely damaging one for a fresh account.
   `constants.js:895-897`) exceeds even a fully-deposited fresh guild's bank capacity outright,
   confirming the complaint's "~5,000,000 loss against a ~1,000,000 guild" framing is representative
   of the worst case, not an outlier — see Findings 1 and 3.
+
+---
+
+## 2026-08-24 — Exploit hunt (player-facing "is there a secret OP way to make potatoes?")
+
+Directed investigation, not the standard periodic sweep: hunted specifically for live exploits
+across the full economy, with extra scrutiny on everything that shipped in the last ~24h
+(Mercenary Bounties, Rival Bounty Hunters, Yukon's perk churn, NPC rob odds, Scavenging's new
+tier-scaled starch payout), per this project's own precedent of two real holes shipping same-day
+(a deleted `MAX_LARGE_POTATO` cap, a `userGuildId` `ReferenceError` in six guild commands).
+
+### Findings
+
+**1. [CRITICAL, live, not new but newly load-bearing] A solo, self-founded 1-member guild
+captures the ENTIRE undiluted `/start-raid` reward — no minimum roster size is enforced anywhere
+in the guild-raid path — making solo guild raiding strictly dominant to both real multi-member
+guild raiding *and* the brand-new Mercenary Bounty system it was explicitly priced against.**
+`src/commands/guilds/startRaid.js:881` only rejects `raidList.length == 0`, never checks for
+`== 1`; `src/commands/guilds/joinRaid.js` lets the sole member opt into `autoJoinRaids` alone;
+`src/commands/guilds/disbandGuild.js` even requires exactly 1 member to disband, confirming
+1-member guilds are a normal, reachable state. `raidFactory.calculateRaidSplit`
+(`raidFactory.js:205-208`) is `Math.round(totalRaidSplit / raidList.length)` — for
+`raidList.length === 1` this returns the full base reward, undivided.
+
+`Bounty.SOLO_BOUNTY_REWARD_SHARE` (`constants.js:1052`, 0.15, capped at `1.75x` Rank 6 →
+effectively 0.2625) exists specifically so a solo player can't out-earn realistic multi-member
+guild raiding, and Mercenary Bounty tiers I-III reuse `Raid.T{1,2,3}_RAID_DIFFICULTY` and the same
+`getEffectiveRaidPower`-for-a-1-person-array success-chance formula guild raids use for a 1-person
+roster (`mercenaryFactory.resolveBountyAttempt`, `raidFactory.getEffectiveRaidPower`) — so a solo
+mercenary and a solo self-guilded raider roll *the exact same odds*. The only difference is the
+payout: Bounty discounts by `SOLO_BOUNTY_REWARD_SHARE * rankInfo.rewardMultiplier`; a 1-member
+guild's raid does not discount at all, and on top of that the guild-level reward multiplier
+(`RaidLevel.THRESHOLDS`, `constants.js:362-375`, up to 10.00x at level 10 — a level a solo raider
+can grind toward exactly as fast as any guild, since `raidCount` increments identically regardless
+of roster size) also compounds fully undiluted, even though its own code comment
+(`constants.js:358-361`) explicitly assumes it will always be "split across a real 3-10 person
+roster."
+
+Computed via `node -e` (`Raid.T1_RAID_REWARD=100000`, `T3_RAID_REWARD=5000000`,
+`METAL_KING_REWARD=10000000`, `constants.js:954-979`):
+
+| Scenario | Range per successful attempt (both on the same 3600s cooldown) |
+|---|---|
+| Bounty Tier I, Rank 1 (fresh mercenary) | 12,000 – 18,000 |
+| Bounty Tier I, Rank 6 (maxed, 525 wins) | 21,000 – 31,500 |
+| Solo guild raid, T1, guild level 1 (day one) | 80,000 – 120,000 |
+| Solo guild raid, T1, guild level 10 (maxed) | 800,000 – 1,200,000 |
+| Bounty Tier III, Rank 6 (maxed) | 1,050,000 – 1,575,000 |
+| Solo guild raid, T3, guild level 1 (day one) | 4,000,000 – 6,000,000 |
+| Solo guild raid, T3, guild level 10 (maxed) | 40,000,000 – 60,000,000 |
+| Solo guild raid, Metal King (1% shot), guild level 10 | 80,000,000 – 120,000,000 |
+
+A day-one solo guild (only cost: the one-time `GUILD_COST` 1,000,000 potatoes,
+`createGuild.js:6`) already out-earns a maxed-out, 525-win Mercenary Rank 6 by ~3.8x per identical
+attempt; a maxed-level solo guild out-earns it by ~38x. Losses are also softer solo-guilded — a
+raid loss drains the guild's own bank first (`removeFromBankOrPurse`, `startRaid.js:185-198`)
+before touching the player's personal balance, whereas a Bounty loss is an immediate, undiscounted
+personal deduction. There is no offsetting downside to being a 1-member guild: no PvP, no upkeep,
+no penalty for low roster size beyond the (now-absent) reward split.
+
+This isn't a bug introduced in the last 24h — `RaidLevel`/`startRaid.js`'s lack of a roster-size
+floor predates Mercenary Bounties — but it directly undercuts the new system's core balance
+premise (every `SOLO_BOUNTY_REWARD_SHARE`/`MAX_RIVAL_REWARD_BASE` derivation in
+`mercenary-bounties.md` explicitly assumes real guild raiding requires a multi-person roster to
+access) and is, on the numbers above, the single largest live exploit currently reachable by a
+normal player with no coding trick involved — just command sequencing
+(`/create-new-guild` → `/join-raid` → `/start-raid`, repeat hourly). **Recommend**
+`product-owner`/`architect` add a minimum-roster-size floor (or a per-capita reward formula) to
+`startRaid.js`, the same way `Raid.T4`/Elite/Legendary already gate on guild level — solo guild
+raiding should never be the option that beats both real multi-member guilds and Mercenary Bounty
+did on the same footing.
+
+**2. [MEDIUM, confirmed still-present, pre-existing/tracked] Unfloored personal-balance loss
+writes still exist in two spots — confirmed, not fixed this session outside of `/confront-rival`.**
+`src/commands/user/takeBounty.js:87-89` (`userPotatoes -= result.penaltyAmount;` then written
+straight to `setAttributes.potatoes`, no `Math.max(0, ...)`) and
+`src/utils/raidFactory.js:123-148` (`handlePotatoSplit`'s `let userPotatoes = userDetails.potatoes
++ raidSplitAmount;`, written unfloored in both branches) can both drive a personal balance
+negative on an unlucky flat-magnitude loss (unlike `/rob`'s percentage-of-current-balance
+penalties, which are self-limiting). By contrast `confrontRival.js:62` (`Math.max(0,
+userDetails.potatoes - result.penaltyAmount)`) already has the floor, and its own comment
+explicitly notes the other two are known gaps. Traced every downstream consumer of
+`userDetails.potatoes` (shop purchases, bank deposits, `/rob` targeting, catch-up bonus — which
+reads `totalEarnings`, not `potatoes`) and found no path where a negative balance itself produces
+a *gain* — this reads as a correctness/display bug and a soft-lockout risk for the affected player,
+not a duplication exploit. Severity kept at MEDIUM (not HIGH) for that reason. **Recommend** adding
+the same `Math.max(0, ...)` floor to both remaining sites.
+
+**3. [LOW, real but narrow] `/disband-guild` is a third guild-exit path that does not set
+`guildMercenarySwitchTimer`, unlike `/leave` and `/retire-mercenary`.** `disbandGuild.js:34-35`
+writes `memberList: []` and `guildId: 0` directly via `updateUserDatabase`, never touching
+`guildMercenarySwitchTimer` the way `leave.js:51` and `retireMercenary.js:33` do. Since
+`disband-guild` only works on a 1-member guild (`disbandGuild.js:22`), a solo self-guilded raider
+(see Finding 1) can disband and immediately `/become-mercenary` with zero wait, bypassing the
+24h `Bounty.GUILD_SWITCH_COOLDOWN_SECONDS` anti-flip-flop cooldown that was "Added after launch,
+direct instruction, to stop rapid guild↔mercenary flipping" (`constants.js:1059-1070`). Low
+severity because Finding 1 already makes staying solo-guilded strictly better than flipping to
+mercenary at all, so this doesn't currently unlock extra value beyond skipping a one-time 24h
+wait — but it is a genuine, unpatched gap in the exact mechanism built to close this category of
+hole. **Recommend** setting `guildMercenarySwitchTimer` in `disband-guild.js` too, for
+completeness/symmetry with the other two exit paths.
+
+### Checked, no issues found (this pass)
+
+- **All six previously-broken `userGuildId` `ReferenceError` sites** (`guild-bank`, `kick`,
+  `promote`, `pass-leadership`, `demote`, `guild-upgrade`/`guildBuy.js`) plus `/leave` — every one
+  now correctly uses the already-in-scope `guild.guildId`; no stale `userGuildId` reference
+  remains anywhere in `src/commands/guilds/`.
+- **`Work.MAX_LARGE_POTATO`** (`constants.js:56`) — exists and is correctly read by
+  `workFactory.js:600`; the previously-shipped "deleted cap" bug is confirmed still fixed, with a
+  regression test (`workFactory.test.js:421-442`) covering it.
+- **Yukon's perk consolidation** (`robChanceFlat`/`bountyRewardPercent`/`rivalSuccessChanceFlat`,
+  `constants.js:847-849`) — no stale `npcRobChanceFlat` references remain anywhere in `src/`
+  outside of historical comments; `companionFactory.getActivePerkValue` only ever reads the single
+  active companion's perk array (`companionFactory.js:126-138`), so there's no cross-companion
+  stacking. `rob.js:133` and `mercenaryFactory.js:182` both correctly read the same shared
+  `robChanceFlat` key.
+- **Mercenary/Bounty/Rival referenced constants** — every `Bounty.*`/`RobNpc.*`/`Rival.*`/
+  `MercenaryRank.*`/`MercenaryCompanionDrop.*` reference in `mercenaryFactory.js` and the five
+  command files resolves to a real, defined constant (`constants.js:1019-1373`) — no
+  `MAX_LARGE_POTATO`-style missing-cap repeat found in this new system.
+- **`RobNpc`/`Rival` success-chance formulas** — `RobNpc.MAX_CHANCE` (0.80) and
+  `Rival.SUCCESS_CHANCE_RANGE` (max 0.60) both stay well under 100% even after the uncapped
+  `robChanceFlat`/`rivalSuccessChanceFlat` companion bonuses are added; real `/rob`'s own
+  `calculateRobChance` (`rob.js:45-52`) tops out around 0.25 base + at most one guild buff + one
+  companion perk, never observed to approach 1.0 in any reachable stat combination checked.
+  `Rival.MAX_RIVAL_REWARD_BASE` (200,000) correctly caps `Rival`'s reward base pre-tier-scaling,
+  confirmed the 3x `hard` `TIER_REWARD_FACTOR` lands on the same absolute ceiling the old 1.0x
+  factor + 600,000 base did, as the constants.js comment claims.
+- **Scavenging's new tier-scaled starch payout** (`CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS`,
+  `constants.js:565-569`, applied to both `workCountGained` and `starchesGained` in
+  `companionFactory.resolveScavengeReward`) — cumulative-threshold roll
+  (`rollWorkCountMultiplierTier`, `companionFactory.js:224-232`) is implemented correctly
+  (0.70/0.95/1.0, first tier whose threshold clears the roll wins, no off-by-one); payout stays
+  small and rarity-range-bounded (Mythic max `130 * 3 = 390` starches) — no uncapped stream
+  introduced.
+- **Cooldown/rate-limit fields specific to the new commands** — `bountyTimer`, `npcRobTimer`, and
+  the resettable `mercenaryNotoriety` gate are each read from and written to consistently within
+  their own command; no cross-wiring found (e.g. `/rob-npc` never touches `bountyTimer` or vice
+  versa, matching the documented "separate cooldown" design).
+- **Negative-balance edge cases in real `/rob`** (`rob.js:15-19,45-52`) — `calculateFailedRobPenalty`
+  and `calculateRobChance` both explicitly branch on `userPotatoes < 0`, so the pre-existing
+  percentage-of-balance design degrades safely; not a new gap.
+
+### Noted but out of primary scope
+
+- **Systemic non-atomic read-modify-write races**: `dynamoHandler.updateUserFields`
+  (`dynamoHandler.js:116-136`) has no `ConditionExpression`, unlike `claimDailyStreak`
+  (`dynamoHandler.js:142-149`), which deliberately added one to close an identical race. Every
+  cooldown-gated command in this codebase (`/work`, `/rob`, `/take-bounty`, `/rob-npc`,
+  `/confront-rival`, `/start-raid`) reads `userDetails` then writes it back unconditionally,
+  so two near-simultaneous invocations from the same account could both pass a cooldown/state
+  check before either write lands, double-granting a reward. This predates every change in the
+  last 24h and applies uniformly across the whole economy, not specifically to the new systems —
+  flagged for awareness, not re-scored as a new finding, since exploiting it requires firing two
+  genuinely concurrent interactions (sub-second timing), not just replaying a stale command.
