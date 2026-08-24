@@ -1461,6 +1461,26 @@ and needs its own balance pass.
   block from an earlier iteration was also found and deleted. Full suite green (416/416, up
   from 411).
 
+- [x] **39. Scale Scavenging Starches by the Same normal/great/incredible Tier as workCount**
+  — S — **Done**
+  What: `companionFactory.resolveScavengeReward`'s `starchesGained` is now scaled by the
+  SAME `multiplierTier` roll `workCountGained` already used (`Math.floor(baseStarches *
+  multiplierTier.multiplier)`), not a second independent roll — one outcome now describes
+  the whole scavenge return, not two uncorrelated ones. `WORK_COUNT_MULTIPLIER_TIERS`
+  (normal 1x/70%, great 1.5x/25%, incredible 3x/5%) is unchanged in shape/odds; only its
+  scope widened from "workCount only" to "workCount and starches."
+  Why: direct instruction — "make starches also go up based on the normal great
+  incredible," a follow-up after confirming the original 2026-08-23 buff only ever touched
+  workCount, not starches.
+  Notable: this reopens a decision `companions.md` had explicitly documented as deliberate
+  ("the ask was specifically about companion XP, not the starch side") — updated that doc
+  section to match the new, wider scope rather than leaving a stale "left untouched"
+  claim in place. Updated 5 existing `resolveScavengeReward` tests
+  (`companionFactory.test.js`) that either asserted starch values unscaled or bounded
+  `starchesGained` to the pre-multiplier `STARCH_RANGE`, which the incredible tier can now
+  legitimately exceed. Full suite green (416/416, same count — existing tests extended,
+  no new describe blocks needed).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

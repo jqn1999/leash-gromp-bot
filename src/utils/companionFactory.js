@@ -246,7 +246,11 @@ function rollWorkCountMultiplierTier() {
 // doesn't fall into that category.
 //
 // starchesGained rolls CompanionScavenging.STARCH_RANGE[rarity] the exact same inclusive way
-// companionMarketFactory.rollNpcSalePrice already rolls its own range.
+// companionMarketFactory.rollNpcSalePrice already rolls its own range, THEN applies the same
+// multiplierTier roll workCountGained uses — 2026-08-24, direct instruction, so a
+// "great"/"incredible" scavenge return is a better payout across the board, not just a
+// companion-leveling speedup. Deliberately the SAME roll (not a second, independent one) —
+// one outcome describes the whole return, not two uncorrelated ones.
 //
 // hasScavenged is set true on the returning companion's own owned entry regardless of rarity
 // (uniform write) — only rendered as the "🗺️ Seasoned Scout" tag for Legendary/Mythic
@@ -266,7 +270,8 @@ function resolveScavengeReward(userDetails) {
     const workCountGained = Math.floor(baseWorkCount * multiplierTier.multiplier);
 
     const { min: starchMin, max: starchMax } = CompanionScavenging.STARCH_RANGE[rarity];
-    const starchesGained = starchMin + Math.floor(Math.random() * (starchMax - starchMin + 1));
+    const baseStarches = starchMin + Math.floor(Math.random() * (starchMax - starchMin + 1));
+    const starchesGained = Math.floor(baseStarches * multiplierTier.multiplier);
 
     const owned = userDetails.companions.owned.map(c =>
         c.id === companionId

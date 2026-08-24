@@ -366,12 +366,14 @@ describe('resolveScavengeReward', () => {
             { id: 'sprout', workCount: 10 },
             { id: 'mole', workCount: 5 }
         ]);
-        const { owned, workCountGained, multiplierTier } = resolveScavengeReward(user);
+        const { owned, workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
         const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        const { min: starchMin } = CompanionScavenging.STARCH_RANGE[CompanionRarity.COMMON];
         expect(multiplierTier).toBe('normal');
         expect(workCountGained).toBe(min);
+        expect(starchesGained).toBe(starchMin); // 1x multiplier -> unscaled base roll
         expect(owned).toEqual([
             { id: 'sprout', workCount: 10 + min, hasScavenged: true },
             { id: 'mole', workCount: 5 }
@@ -388,32 +390,36 @@ describe('resolveScavengeReward', () => {
         expect(owned).toEqual([{ id: 'sprout', workCount: min, hasScavenged: true }]);
     });
 
-    test('a "great" tier roll multiplies the base workCount roll by 1.5x', () => {
+    test('a "great" tier roll multiplies both the base workCount and starch rolls by 1.5x', () => {
         jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)   // base range roll -> minimum
             .mockReturnValueOnce(0.8) // tier roll -> 'great'
             .mockReturnValueOnce(0);  // starch roll
         const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
-        const { workCountGained, multiplierTier } = resolveScavengeReward(user);
+        const { workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
         const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        const { min: starchMin } = CompanionScavenging.STARCH_RANGE[CompanionRarity.COMMON];
         expect(multiplierTier).toBe('great');
         expect(workCountGained).toBe(Math.floor(min * 1.5));
+        expect(starchesGained).toBe(Math.floor(starchMin * 1.5));
     });
 
-    test('an "incredible" tier roll multiplies the base workCount roll by 3x', () => {
+    test('an "incredible" tier roll multiplies both the base workCount and starch rolls by 3x', () => {
         jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // base range roll -> minimum
             .mockReturnValueOnce(0.99) // tier roll -> 'incredible'
             .mockReturnValueOnce(0);   // starch roll
         const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
-        const { workCountGained, multiplierTier } = resolveScavengeReward(user);
+        const { workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
         const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
+        const { min: starchMin } = CompanionScavenging.STARCH_RANGE[CompanionRarity.COMMON];
         expect(multiplierTier).toBe('incredible');
         expect(workCountGained).toBe(Math.floor(min * 3));
+        expect(starchesGained).toBe(Math.floor(starchMin * 3));
     });
 
     test('workCountGained varies across rolls — the range roll and the multiplier tier both introduce real variance', () => {
@@ -426,14 +432,15 @@ describe('resolveScavengeReward', () => {
         expect(seen.size).toBeGreaterThan(1);
     });
 
-    test('starchesGained always lands within that rarity\'s own STARCH_RANGE, inclusive, and actually varies', () => {
+    test('starchesGained always lands within that rarity\'s own STARCH_RANGE scaled by the multiplier tier (up to 3x), and actually varies', () => {
         const { min, max } = CompanionScavenging.STARCH_RANGE[CompanionRarity.MYTHIC];
+        const maxPossibleMultiplier = Math.max(...CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS.map(t => t.multiplier));
         const seen = new Set();
         for (let i = 0; i < 500; i++) {
             const user = userWithScavenge('mochi', CompanionRarity.MYTHIC, [{ id: 'mochi', workCount: 0 }]);
             const { starchesGained } = resolveScavengeReward(user);
             expect(starchesGained).toBeGreaterThanOrEqual(min);
-            expect(starchesGained).toBeLessThanOrEqual(max);
+            expect(starchesGained).toBeLessThanOrEqual(Math.floor(max * maxPossibleMultiplier));
             seen.add(starchesGained);
         }
         expect(seen.size).toBeGreaterThan(1);

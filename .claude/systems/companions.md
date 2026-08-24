@@ -594,8 +594,14 @@ Trader*/*Golden Yam* `/work` hits rather than derived from `CompanionMarket.MINI
 potato-denominated; starches trade at a wildly different unit scale) — a multi-hour, zero-effort,
 unscaled payout reads as "a nice bonus for basically no active play" early on, and decays toward
 irrelevance for a developed player the same way `/companion-sell-npc`'s flat pricing already does.
-Unlike `WORK_COUNT_RANGE`, the starch payout was left untouched by the 2026-08-23 buff — the ask was
-specifically about companion XP, not the starch side of the reward.
+
+Initially left untouched by the 2026-08-23 buff (that ask was specifically about companion XP), but
+**2026-08-24, direct instruction** ("make starches also go up based on the normal great incredible")
+extended `WORK_COUNT_MULTIPLIER_TIERS` to scale `starchesGained` too —
+`Math.floor(baseStarches * multiplierTier.multiplier)`, the exact same roll `workCountGained` already
+uses (not a second, independent roll — one outcome now describes the whole return). A "great"/
+"incredible" scavenge is a genuinely better payout across the board now, not just a faster
+companion-leveling tick.
 
 **Cosmetic layer** (Option A of the 2026-08-23 Scavenging brainstorm, shipped the same day):
 - **Per-companion flavor text.** The 8 non-Common companions (Barn Owl, Mole, Firefly, Prospector,

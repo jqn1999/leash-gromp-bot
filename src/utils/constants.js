@@ -552,13 +552,15 @@ const CompanionScavenging = {
     // thresholds, walked in ascending order, first one the roll clears wins). NOT
     // rarity-specific — one shared table applies uniformly regardless of which tier
     // scavenged, since nothing about the ask called for differentiating it further.
-    // Average multiplier: .70*1 + .25*1.5 + .05*3 = 1.225x — a real ~22.5% average buff to
-    // every tier's workCount gain, while keeping "normal" the plain-majority outcome and
-    // "incredible" a genuine rare highlight (1-in-20) rather than a coinflip.
-    // Bounded/safe the same way the STARCH_RANGE roll already is: this only affects how fast
-    // a companion's OWN capped level progression (CompanionLeveling.THRESHOLDS) is reached —
-    // it doesn't create a new uncapped value stream the way a permanent stat bonus would
-    // (see roadmap.md's 2026-08-23 Scavenging brainstorm for why THAT category of idea was
+    // Average multiplier: .70*1 + .25*1.5 + .05*3 = 1.225x — a real ~22.5% average buff.
+    // Extended 2026-08-24, direct instruction ("make starches also go up based on the normal
+    // great incredible") to ALSO scale STARCH_RANGE's roll by this same tier — one shared
+    // roll now drives both, so a "great"/"incredible" scavenge is a genuinely better return
+    // across the board, not just a companion-leveling speedup. Bounded/safe the same way the
+    // STARCH_RANGE roll already was: this only affects how fast a companion's OWN capped
+    // level progression is reached and how big one already-modest scavenge payout is — it
+    // doesn't create a new uncapped value stream the way a permanent stat bonus would (see
+    // roadmap.md's 2026-08-23 Scavenging brainstorm for why THAT category of idea was
     // rejected; this doesn't fall into it).
     WORK_COUNT_MULTIPLIER_TIERS: [
         { name: 'normal', multiplier: 1, chance: 0.70 },
