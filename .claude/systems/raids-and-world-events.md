@@ -72,16 +72,21 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
 raider stats — `raidFactory.js`'s `getEffectiveRaidPower`:
 
 ```
-memberPower = workMultiplierAmount * (1 + liveRebirthPercent)   // getMemberRaidPower
+memberPower = workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultiplierPercent)   // getMemberRaidPower
 averagePower = mean(memberPower across the roster)
 headcountBonus = min(RAID_HEADCOUNT_BONUS_CAP, RAID_HEADCOUNT_BONUS_PER_MEMBER * (rosterSize - 1))
 effectiveRaidPower = averagePower * (1 + headcountBonus)
 ```
 
-Two changes from the old flat sum:
+Three changes from the old flat sum:
 - **Rebirth is folded in.** Previously only raw `workMultiplierAmount` counted, silently ignoring a
   rebirther's live rebirth bonus (up to +100%, +140% with Mochi — see `rebirthFactory.js`'s
   `getLiveRebirthPercent`) even though it applies everywhere else.
+- **The equipped companion's `workMultiplierPercent` perk is folded in too (2026-08-24).** Previously
+  `getMemberRaidPower` didn't read companion perks at all, even though `/work`'s own reward formula
+  and Bounty's reward-side formulas already did — a player-reported gap where Sprout/Firefly/
+  Spudsprite/Mochi's work-multiplier perk visibly moved reward size but not raid/Bounty success
+  chance. Additive alongside rebirth on the same base, not a second multiplicative layer.
 - **Average + capped per-member headcount bonus, not a straight sum.** A straight sum let any guild
   trivialize difficulty by fielding more raiders regardless of their individual strength (difficulty
   numbers are flat, never divided by roster size) — a straight average alone removes that but then
@@ -90,8 +95,11 @@ Two changes from the old flat sum:
   roster — the same shape `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` already uses elsewhere),
   splits the difference: bigger roster still helps, but can't substitute for actual member strength.
 
-Firefly's `guildRaidMultiplierPercent` companion perk (best among the roster, not summed) is applied
-multiplicatively on top of `effectiveRaidPower`, same as before.
+Firefly-style `guildRaidMultiplierPercent` companion perk (best among the roster, not summed) is
+still applied multiplicatively on top of `effectiveRaidPower` in `startRaid.js` — a separate
+mechanism from the `workMultiplierPercent` fold-in above, since it depends on which specific perk is
+active among raiders rather than each member's own power. Currently dormant (no companion grants it
+right now, see `companions.md`).
 
 ### Success chance & tiers
 

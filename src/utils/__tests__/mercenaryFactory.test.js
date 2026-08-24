@@ -188,6 +188,60 @@ describe('resolveBountyAttempt', () => {
         expect(result.rewardAmount).toBe(expected);
     });
 
+    // 2026-08-24: a player reported their companion's workMultiplierPercent perk wasn't
+    // moving Bounty at all — the starch-flavored reward formula was missing
+    // getCompanionWorkMulti even though resolveNpcRob/resolveYukonAward's identical shape
+    // already included it. This locks the fix in.
+    test('the starch-flavored win formula folds in the equipped companion\'s workMultiplierPercent perk, same as resolveNpcRob', async () => {
+        const user = baseUser({
+            workMultiplierAmount: 90,
+            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)    // win check
+            .mockReturnValueOnce(0.15) // scenario index -> starch entry
+            .mockReturnValueOnce(0.5)  // starch base range roll
+            .mockReturnValueOnce(0.99) // stat-reward miss
+            .mockReturnValueOnce(0.99); // yukon miss
+        let result;
+        try {
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(result.currency).toBe('starch');
+        const userMultiplier = 90;
+        const companionMultiplier = userMultiplier * 0.05; // Sprout's workMultiplierPercent at level 1
+        const totalMultiplier = userMultiplier + companionMultiplier;
+        const base = Math.round((0.5 * (1.5 * totalMultiplier - totalMultiplier) + totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
+        const expected = Math.round(base * 1 * 1);
+        expect(result.rewardAmount).toBe(expected);
+        expect(result.rewardAmount).toBeGreaterThan(Math.round(Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I));
+    });
+
+    // 2026-08-24: Bounty's success chance for a solo mercenary runs through
+    // getEffectiveRaidPower([userDetails]) — same shared formula guild raids use — which
+    // now also folds in the equipped companion's workMultiplierPercent perk (see
+    // raidFactory.test.js). This confirms that flows through end to end via resolveBountyAttempt.
+    test('an equipped companion\'s workMultiplierPercent perk raises Bounty success chance too', async () => {
+        const withoutCompanion = baseUser({ workMultiplierAmount: 5 }); // T1 difficulty 10 -> 0.5 raw, well under the .9 cap
+        const withCompanion = baseUser({
+            workMultiplierAmount: 5,
+            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // force a loss branch in both cases so we only need 3 rolls
+        let resultWithout, resultWith;
+        try {
+            resultWithout = await mercenaryFactory.resolveBountyAttempt(withoutCompanion, 'I');
+            resultWith = await mercenaryFactory.resolveBountyAttempt(withCompanion, 'I');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(resultWith.successChance).toBeGreaterThan(resultWithout.successChance);
+        expect(resultWith.successChance).toBeCloseTo((5 * 1.05) / Raid.T1_RAID_DIFFICULTY);
+    });
+
     test('a loss pays the SOLO_BOUNTY_REWARD_SHARE-discounted penalty — same discount as a win, but no rank/Yukon discount on top', async () => {
         const user = baseUser({ workMultiplierAmount: 0.1 }); // effectiveBountyPower far below T1 difficulty -> near-zero success chance
         const randomSpy = jest.spyOn(Math, 'random')

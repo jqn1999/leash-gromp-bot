@@ -148,6 +148,32 @@ describe('getMemberRaidPower', () => {
         expect(getMemberRaidPower(undefined)).toBe(0);
         expect(getMemberRaidPower({ workMultiplierAmount: undefined })).toBe(0);
     });
+
+    // 2026-08-24: a player reported their equipped companion's workMultiplierPercent perk
+    // (Sprout/Firefly/Spudsprite/Mochi) wasn't moving their Bounty success chance — traced
+    // to this function never reading companion perks at all, unlike the reward-side
+    // formulas which already did. Folded in here so both success chance AND reward (both
+    // of which route through getMemberRaidPower/getEffectiveRaidPower for Bounty) pick it
+    // up from one shared source, same as rebirth already does.
+    test('folds in the active companion\'s workMultiplierPercent perk multiplicatively', () => {
+        const user = {
+            workMultiplierAmount: 100,
+            rebirthCount: 0,
+            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        };
+        // Sprout's workMultiplierPercent is 0.05 at level 1 (workCount 0)
+        expect(getMemberRaidPower(user)).toBeCloseTo(105);
+    });
+
+    test('stacks additively with rebirth rather than compounding', () => {
+        const user = {
+            workMultiplierAmount: 100,
+            rebirthCount: 1,
+            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+        };
+        // rebirthCount 1 -> +5%, Sprout -> +5%, both additive on the base: 100 * 1.10
+        expect(getMemberRaidPower(user)).toBeCloseTo(110);
+    });
 });
 
 describe('getEffectiveRaidPower', () => {

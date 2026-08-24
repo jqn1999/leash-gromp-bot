@@ -109,10 +109,12 @@ successChance         = min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXI
 
 `getEffectiveRaidPower` is already generic over an array of `userDetails`, not
 guild-shaped — a 1-person array gets averaged (itself) with a headcount bonus of 0
-(`rosterSize - 1 = 0`), so this needed **zero changes to `raidFactory.js`**. A solo
-Bounty's power is exactly `workMultiplierAmount * (1 + liveRebirthPercent)`, unaffected by
-Firefly's `guildRaidMultiplierPercent` perk (applied separately in `startRaid.js`, not
-inside `getEffectiveRaidPower` itself).
+(`rosterSize - 1 = 0`), so this needed no Bounty-specific reimplementation. A solo Bounty's
+power is `workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultiplierPercent)`
+(see `raids-and-world-events.md`'s "Effective raid power" — `getMemberRaidPower` folds in
+the equipped companion's `workMultiplierPercent` perk as of 2026-08-24), unaffected by
+Firefly-style `guildRaidMultiplierPercent` (applied separately in `startRaid.js`, not
+inside `getEffectiveRaidPower` itself, and irrelevant to solo Bounty anyway).
 
 ### Reward/penalty formula
 
@@ -131,13 +133,20 @@ that discount exists specifically to stop *potato* Bounties out-earning guild ra
 raids never pay starches, so there's no analogous risk here):
 
 ```
-base = round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier))) * Bounty.STARCH_TIER_MULTIPLIER[tier]
+totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier
+base = round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[tier]
 starchReward = round(base * rankInfo.rewardMultiplier * (1 + yukonBonus))
 ```
 
 (`guildMultiplier` is always 0 for a mercenary — a mercenary can never be guilded — but the
 formula still calls the standard `getGuildWorkMulti` helper for consistency with every
-other Taro-shaped reward.)
+other Taro-shaped reward. `companionMultiplier` = `workFactory.js`'s `getCompanionWorkMulti`
+— added 2026-08-24, fixing a gap where `resolveNpcRob`/`resolveYukonAward` already included
+the equipped companion's `workMultiplierPercent` perk in their identically-shaped reward
+formulas but this branch didn't. Scoped to the starch branch only, which already had this
+multiplier-based shape to extend — the potato-flavored branch above stays a fixed
+`Raid.T{n}_RAID_REWARD` base by design, matching Regular Guild Raid's own fixed T1-T3
+rewards, so it was left alone.)
 
 On a **loss** (regardless of which scenario currency was drawn — the penalty always
 denominates in potatoes, representing the physical risk of the attempt itself):

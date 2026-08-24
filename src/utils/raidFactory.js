@@ -1,6 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { RaidLevel, Raid } = require("../utils/constants");
 const rebirthFactory = require("../utils/rebirthFactory");
+const companionFactory = require("../utils/companionFactory");
 
 // Guild level + raid reward multiplier, computed live from raidCount (wins only) rather
 // than read from a stored field — see constants.js's RaidLevel for the curve and why
@@ -58,19 +59,21 @@ async function getLiveRaidRoster(guild) {
 // rather than NaN, so one bad lookup can't poison a whole roster's average.
 function getMemberRaidPower(userDetails) {
     if (!userDetails || !Number.isFinite(userDetails.workMultiplierAmount)) return 0;
-    return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails));
+    const companionWorkMultiplierPercent = companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
+    return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails) + companionWorkMultiplierPercent);
 }
 
 // The effective raid power a roster rolls against: average per-member power (see
-// getMemberRaidPower) plus a headcount bonus for bringing more raiders — same per-member
-// % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER already uses, capped so a max-size
-// roster doesn't spiral. A straight average alone gives zero incentive to recruit more
-// raiders; a straight sum lets any guild trivialize difficulty by fielding more bodies
-// regardless of their individual strength — this splits the difference. Shared by
-// startRaid.js's actual roll and currentRaid.js's preview display so the two numbers
-// never drift out of sync. Excludes the Firefly companion boost, which startRaid.js
-// applies separately since it depends on which specific perk is active among raiders,
-// not just their power.
+// getMemberRaidPower, which now folds in each member's own workMultiplierPercent
+// companion perk alongside rebirth) plus a headcount bonus for bringing more raiders —
+// same per-member % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER already uses, capped
+// so a max-size roster doesn't spiral. A straight average alone gives zero incentive to
+// recruit more raiders; a straight sum lets any guild trivialize difficulty by fielding
+// more bodies regardless of their individual strength — this splits the difference.
+// Shared by startRaid.js's actual roll, currentRaid.js's preview display, and Bounty's
+// solo 1-person "roster" so all three never drift out of sync. Still excludes the
+// Firefly-style guildRaidMultiplierPercent boost, which startRaid.js applies separately
+// since it depends on which specific perk is active among raiders, not just their power.
 function getEffectiveRaidPower(memberDetailsList) {
     if (memberDetailsList.length === 0) return 0;
     const averagePower = memberDetailsList.reduce((sum, m) => sum + getMemberRaidPower(m), 0) / memberDetailsList.length;

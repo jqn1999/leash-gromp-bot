@@ -1481,6 +1481,44 @@ and needs its own balance pass.
   legitimately exceed. Full suite green (416/416, same count — existing tests extended,
   no new describe blocks needed).
 
+- [x] **40. Companion workMultiplierPercent Consistently Affects Bounty Reward AND Success
+  Chance, Same as Guild Raids** — S — **Done**
+  What: two related gaps closed in one pass. (1) `raidFactory.js`'s `getMemberRaidPower` —
+  the single shared power formula behind BOTH guild raid success chance (`startRaid.js`,
+  `currentRaid.js`) AND solo Bounty success chance (`mercenaryFactory.resolveBountyAttempt`,
+  via `getEffectiveRaidPower([userDetails])`) — never read any companion perk at all.
+  Now folds in the equipped companion's `workMultiplierPercent` perk (Sprout/Firefly/
+  Spudsprite/Mochi) additively alongside live rebirth: `workMultiplierAmount * (1 +
+  liveRebirthPercent + companionWorkMultiplierPercent)`. (2) Separately, Bounty's
+  starch-flavored reward formula in `resolveBountyAttempt` was missing
+  `workFactory.getCompanionWorkMulti` even though the identically-shaped `resolveNpcRob`
+  and `resolveYukonAward` reward formulas already included it — now reads
+  `userMultiplier + guildMultiplier + companionMultiplier` the same way those two do.
+  Bounty's potato-flavored reward branch (a fixed `Raid.T{n}_RAID_REWARD` base, not
+  multiplier-scaled at all, mirroring Regular Guild Raid's own fixed T1-T3 reward design)
+  was deliberately left alone — there was no existing multiplier-based term to extend
+  there, and restructuring it wasn't asked for.
+  Why: a player reported their companion's work-multi perk "isn't working on bounty
+  success rate." Confirmed as *not* a regression — guild raids have never read
+  `workMultiplierPercent` for success chance either, only for reward — but surfaced a
+  real, separate, unintended inconsistency (Bounty reward missing the companion multiplier
+  Rob/Yukon already had) while investigating. Direct instruction after flagging both:
+  "Work it into the reward formula. Also make multi count including companion increase
+  work consistently for things such as the bounties and guild raids."
+  Notable: `guildRaidMultiplierPercent` (Firefly-style, best-of-roster, applied separately
+  in `startRaid.js`'s own `totalMultiplier`, currently dormant) is structurally independent
+  of this change and untouched — confirmed by reading exactly where it composes
+  (`startRaid.js:914-917`, multiplicative on top of `getEffectiveRaidPower`'s result, not
+  inside `raidFactory.js` at all) before editing, so the two mechanisms can't collide or
+  double-count if a future companion is ever reassigned to `guildRaidMultiplierPercent`
+  again. New coverage: `raidFactory.test.js` (2 new `getMemberRaidPower` tests — companion
+  perk folds in additively, stacks correctly alongside rebirth), `mercenaryFactory.test.js`
+  (2 new `resolveBountyAttempt` tests — starch reward includes the companion multiplier,
+  success chance rises with an equipped companion). Docs updated:
+  `raids-and-world-events.md`'s "Effective raid power" formula and changelist,
+  `mercenary-bounties.md`'s success-chance and starch-reward sections, `companions.md`'s
+  `workMultiplierPercent` perk-usage table row. Full suite green (420/420, up from 416).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -142,7 +142,15 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
                                                                                             // consistency with
                                                                                             // every other
                                                                                             // Taro-shaped reward
-            const base = Math.round(getRandomFromInterval(userMultiplier + guildMultiplier, 1.5 * (userMultiplier + guildMultiplier))) * Bounty.STARCH_TIER_MULTIPLIER[tierLetter];
+            const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier); // Sprout/Firefly/
+                                                                                              // Spudsprite/Mochi's
+                                                                                              // workMultiplierPercent
+                                                                                              // — was missing here
+                                                                                              // even though resolveNpcRob
+                                                                                              // and resolveYukonAward
+                                                                                              // both already include it
+            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier;
+            const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[tierLetter];
             result.rewardAmount = Math.round(base * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
         }
 
