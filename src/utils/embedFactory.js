@@ -1041,7 +1041,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, isBoostedMetalHit = false) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -1061,6 +1061,19 @@ class EmbedFactory {
 
         if (cooldownSkippedByCompanion) {
             fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        }
+
+        // A "boosted" Metal Potato hit — one that only landed because a companion perk
+        // widened its odds — pays a reduced reward and grants no work-multiplier bump at
+        // all (see workFactory.handleMetalPotato). That reduction has to actually show up
+        // here or it's just an unexplained smaller number, same reasoning the Poison
+        // Mitigation embed's own visibility field already established.
+        if (isBoostedMetalHit) {
+            fields.push({
+                name: `⛏️ Prospector's Own Luck:`,
+                value: `This strike only happened because of your companion's boosted odds — reduced haul, no Work Multiplier bump this time.`,
+                inline: false,
+            });
         }
 
         if (mob.credit) {

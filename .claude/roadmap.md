@@ -1692,6 +1692,53 @@ and needs its own balance pass.
   follow-up. Full suite green (456/456, unaffected in count — existing tests updated in
   place, no new describe blocks needed).
 
+- [x] **47. Metal Potato "Boosted Hits" — Closes Prospector's Uncapped Compounding
+  Snowball** — M — **Done**
+  What: Metal Potato's flat, uncapped `+0.6` `workMultiplierAmount` grant (unlike its
+  own passive/bank-capacity grants, which already had a per-hit cap) fed directly back
+  into every future `/work` roll's payout, including future Metal hits — a companion
+  that lands more Metal hits doesn't just earn more per hit, it also compounds that
+  uncapped stat faster. `workFactory.isMetalHitBoosted` (new, exported, unit-tested
+  directly) checks a hit's encounter roll and success roll independently against their
+  own UNBOOSTED thresholds (1.0%/10%), using the exact same roll values that already
+  resolved the real encounter/success — a hit is "boosted" unless *both* would have
+  cleared on their own. A player with no Metal-boosting companion always gets
+  `isBoostedHit: false` (their thresholds are never widened at all), so this is a
+  complete no-op outside of Prospector or any future companion with
+  `metalEncounterChanceFlat`/`metalSuccessChanceFlat`. A boosted hit
+  (`handleMetalPotato`'s new `isBoostedHit` param) still resolves, at
+  `metalPotatoRewards.boostedHitRewardScale` (25%) of the normal potato/passive/bank
+  reward — but the work-multiplier grant is skipped entirely, not just scaled, since
+  that's the one uncapped field actually driving the snowball. Visible on the result
+  embed (`createWorkEmbed`'s new `isBoostedMetalHit` field), same "a reduction has to
+  actually show up or it's just an unexplained smaller number" precedent Poison
+  Mitigation's own embed already established.
+  Why: direct instruction, following an extended EV investigation in this same
+  conversation. A flat single-hit EV comparison (Prospector vs. Spudsprite, 10,000
+  `/work` calls) found Prospector only ~1.1x ahead — but modeling the SAME comparison
+  with work multi correctly compounding live throughout the run (not held fixed) found
+  Prospector actually 3.4x ahead in potatoes and 7.5x in passive amount, because the
+  static model never let the snowball actually run. Tested cutting Prospector's own
+  encounter/success perks (even halving both only brought the ratio to 1.56x) and
+  cutting the stat-reward magnitude alone (1/4 strength still left it at 1.44x) — both
+  confirmed the compounding, not Prospector's own perk sizing, was the real cause; only
+  zeroing the work-multiplier grant specifically flipped the result. The "boosted hit"
+  mechanic (decompose each hit into genuine-vs-boosted via independent roll comparison,
+  reduced reward + zero work-multi grant on the boosted portion) was proposed directly
+  by the user as a way to preserve full reward on however many Metal hits a player would
+  have gotten anyway, while only taming the excess. Scale tuned from 50% (still 4x ahead
+  on passive, 0.91x on potatoes) to 25% (0.83x potatoes, 2.46x passive) by direct
+  instruction.
+  Notable: passive's residual ~2.46x edge is accepted as-is, not decoupled onto its own
+  harsher scale — direct instruction to keep one shared `boostedHitRewardScale` for both
+  potatoes and passive/bank, rather than adding a second tuning knob. `handleMetalPotato`
+  and `createWorkEmbed` both changed return/param shape in a backward-compatible way
+  (`isBoostedHit`/`isBoostedMetalHit` both default to producing today's exact original
+  behavior when omitted) — every existing caller and test needed zero changes; only new
+  describe blocks were added. 15 new tests (`isMetalHitBoosted`'s roll-comparison truth
+  table, `handleMetalPotato`'s boosted-hit reward scaling and work-multi removal). Full
+  suite green (467/467, up from 456).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

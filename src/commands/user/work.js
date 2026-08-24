@@ -1,7 +1,7 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { WorkFactory, getEffectiveScenarioChance } = require("../../utils/workFactory");
+const { WorkFactory, getEffectiveScenarioChance, isMetalHitBoosted } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
@@ -104,16 +104,26 @@ var workScenarios = [
         type: WORK_SCENARIO_INDICES.LARGE
     },
     {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
+        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false, workScenarioRoll, metalBaseChance) => {
             const userId = userDetails.userId;
-            const metalPotatoRoll = Math.random();
+            const metalSuccessRoll = Math.random();
+            const BASE_METAL_SUCCESS_CHANCE = .1;
             // Prospector — a flat bonus on top of the base 10% success chance, the
             // only stat that touches this roll.
-            const metalSuccessChance = .1 + companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat");
+            const metalSuccessChance = BASE_METAL_SUCCESS_CHANCE + companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat");
             let potatoesGained;
-            if (metalPotatoRoll < metalSuccessChance) {
-                potatoesGained = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion);
+            if (metalSuccessRoll < metalSuccessChance) {
+                // "Boosted hit" (see workFactory.handleMetalPotato's own comment) — a
+                // hit that only landed because a companion perk widened Metal's
+                // encounter chance (metalEncounterChanceFlat) and/or success chance
+                // (metalSuccessChanceFlat) past the base 1.0%/10%. Uses the exact same
+                // roll values that just resolved the real encounter/success, not a
+                // fresh re-roll — see isMetalHitBoosted for the actual comparison.
+                const isBoostedHit = isMetalHitBoosted(workScenarioRoll, metalBaseChance, metalSuccessRoll, BASE_METAL_SUCCESS_CHANCE);
+
+                const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus, isBoostedHit);
+                potatoesGained = metalResult.potatoesGained;
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, isBoostedHit);
             } else {
                 potatoesGained = 0;
 
@@ -259,7 +269,12 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     for (const scenario of workScenarios) {
         const effectiveChance = getEffectiveScenarioChance(scenario.type, scenario.chance, metalEncounterBonus);
         if (workScenarioRoll < effectiveChance) {
-            potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
+            // workScenarioRoll + scenario.chance (Metal's own UNBOOSTED base chance) are
+            // passed through to every action — only Metal's own action reads them, to
+            // determine whether a given hit would have encountered at all without
+            // metalEncounterChanceFlat widening its slice (see that action for the full
+            // "boosted hit" determination, alongside the success roll it makes itself).
+            potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply, workScenarioRoll, scenario.chance);
             matchedScenarioType = scenario.type;
             break;
         }

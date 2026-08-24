@@ -114,7 +114,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) + `metalEncounterChanceFlat` +2% (Metal Potato's own 1.0% base encounter chance, Prospector-owner only — see below) |
+| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) + `metalEncounterChanceFlat` +2% (Metal Potato's own 1.0% base encounter chance, Prospector-owner only — see below). A hit that only landed because of this boost pays 25% reward and grants no work-multiplier bump — see "boosted hits" below |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -245,6 +245,47 @@ to every non-Prospector player too). +2% (1.0%→3.0% effective encounter chance
 owner) lands at ~10.1% of the same EV measure, at/slightly past the 9% parity bar — deliberately not
 also touching `metalSuccessChanceFlat`, since the encounter-chance lever alone already closes the
 gap and stacking both would overshoot.
+
+### Second follow-up (2026-08-24): "boosted hits" — closing an uncapped compounding snowball
+
+The EV-parity analysis above only ever measured a single Metal Potato hit's immediate potato payout
+— it never accounted for the fact that Metal Potato *also* grants a flat, **uncapped** `+0.6`
+`workMultiplierAmount` bump on every success (unlike its own passive/bank-capacity grants, which
+already had a per-hit cap — `maxPassiveGain`/`maxBankCapacityGain`, see `metalPotatoRewards` in
+`workFactory.js`). That grant feeds directly back into `effectiveMultiplier`, which sizes the payout
+of every future `/work` roll — including future Metal hits. A companion that lands more Metal hits
+doesn't just earn more potatoes per hit, it also lands more of these uncapped compounding grants,
+which then makes every subsequent roll (of any scenario type) bigger too.
+
+Modeled precisely (live-compounding, not a flat-multiplier approximation) over 10,000 `/work` calls
+at an 8x work multi: Prospector's combined encounter+success boost (9x more expected Metal
+successes than baseline) let it out-earn Spudsprite **3.4x** in total potatoes and **7.5x** in
+passive amount — nowhere close to the ~1.1x a naive single-hit EV comparison suggested, because that
+comparison never let the snowball actually run.
+
+**The fix scopes to exactly the hits that wouldn't have happened without the boost.** A Metal hit's
+encounter roll and success roll are each checked independently against their own UNBOOSTED
+threshold (`workFactory.isMetalHitBoosted`, using the *same* roll values that already resolved the
+real encounter/success, not a fresh re-roll) — a hit is "boosted" unless *both* rolls would have
+cleared their base threshold (1.0% encounter, 10% success) on their own. A player with no
+Metal-boosting companion always gets `isBoostedHit: false`, since their thresholds are never widened
+in the first place — this is a complete no-op outside of Prospector (or any future companion with
+either `metalEncounterChanceFlat` or `metalSuccessChanceFlat`).
+
+A boosted hit (`workFactory.handleMetalPotato`'s `isBoostedHit` param) still resolves — it's not
+"Prospector doesn't work" — but at `metalPotatoRewards.boostedHitRewardScale` (25%) of the normal
+potato/passive/bank-capacity reward, and **the work-multiplier grant is skipped entirely**, not just
+scaled down — since that's the one field with no cap of its own, any nonzero grant on every boosted
+hit still re-feeds the same snowball, just slower. Visible on the result embed
+(`createWorkEmbed`'s `isBoostedMetalHit` field) so a reduced haul doesn't read as an unexplained
+smaller number, same reasoning Poison Mitigation's own visibility field already established.
+
+Tuned by direct instruction after testing several scales: 50% left Prospector still 4x ahead on
+passive and just under parity on potatoes (0.91x); 25% (the shipped value) lands potatoes at 0.83x
+of Spudsprite's total (Prospector now slightly *behind* on raw potatoes) and passive at 2.46x
+(down from 7.5x, but still a real, accepted residual edge — deliberately left as-is rather than
+decoupling passive onto its own, harsher scale, per direct instruction to keep one shared scale for
+both).
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 
