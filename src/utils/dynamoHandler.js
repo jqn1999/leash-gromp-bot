@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -336,7 +336,14 @@ function getDefaultUserFields(userId, username) {
                 failStack: 0
             }
         },
-        maxStarches: 25000,
+        // Rebalanced 2026-08-24 (down from 25,000) — the old default cost ~250,000,000
+        // potatoes to fill by purchase at the going starch_buy price, wildly out of reach
+        // for the early/mid-game player this default is meant to onboard. See
+        // systems/starch-trading.md and the matching starchShop rescale in constants.js.
+        // Must stay in sync with shops[starchShop].items[0].currentAmount and
+        // rebirthFactory.computeRebirthState's own maxStarches reset — Starch.STARTING_CAPACITY
+        // is the single shared source both read, same Bank.STARTING_CAPACITY precedent.
+        maxStarches: Starch.STARTING_CAPACITY,
         achievements: [],
         loginStreak: 0,
         lastLoginDate: null,

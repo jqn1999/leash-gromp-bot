@@ -1658,6 +1658,40 @@ and needs its own balance pass.
   instead of a single slot number so its confirmation embed can show the per-house
   breakdown either way. Full suite green (456/456, up from 443).
 
+- [x] **46. Starch Capacity Rescaled — 25,000 Start Was Effectively Unreachable** — S — **Done**
+  What: `maxStarches`'s starting default drops from 25,000 to **250** (`Starch.
+  STARTING_CAPACITY`, a new shared constant), and `starchShop`'s 5-tier ladder rescales to
+  match (250→500→1,000→2,500→5,000→10,000, costs 1M→3M→10M→30M→75M — same rising
+  cost-per-unit-capacity shape as before, just at roughly a tenth-to-hundredth the old
+  scale). Full before/after table in `systems/starch-trading.md`.
+  Why: direct instruction, following from "should starch limits and upgrades and such be
+  reworked? 25k starting capacity is very large." Investigation confirmed it sharply:
+  filling the old 25,000 cap by RNG (Taro Trader/Golden Yam) took ~86,000 `/work` calls
+  (~10 months at max cadence); filling it by PURCHASE — the actually-intended use, per
+  user clarification that starches are meant to be bought as an investment ahead of a
+  hoped-for price rise, not just earned — cost ~250,000,000 potatoes, wildly out of reach
+  for the early/mid-game player a starting default should onboard.
+  Notable: caught a real bug while wiring the shared constant —
+  `rebirthFactory.computeRebirthState` had its OWN separate hardcoded `maxStarches:
+  25000` (rebirth's reset value), which would have silently kept resetting rebirthing
+  players to the stale pre-rebalance default forever if left as a second, undetected copy
+  of the old literal. Fixed by introducing `Starch.STARTING_CAPACITY` as the single shared
+  source (`getDefaultUserFields` and `computeRebirthState` both read it now), same
+  `Bank.STARTING_CAPACITY` precedent already used for the personal bank's own starting
+  value. Confirmed safe for existing accounts without a migration:
+  `shopFactory.getNextItemFromShop`'s exact-match lookup already falls through to
+  "already maxed out" for any `maxStarches` that doesn't match a tier in the new, smaller
+  ladder (true for anyone still at the old 25,000 default, which exceeds the new 10,000
+  ceiling) — and per the user, no live account had bought a `starchShop` tier yet anyway,
+  so this was a theoretical check, not an active one. Two stale `rebirthFactory.test.js`
+  fixtures (representing a "fresh, nothing-maxed" account with the old `maxStarches:
+  25000`) updated to `250` — under the new ladder that old value read as
+  already-past-every-tier, silently dropping "Starch Capacity shop" off a fresh account's
+  `missing` requirements list. Deliberately untouched: Taro Trader/Golden Yam's own
+  starch INCOME formulas — this pass is capacity/cost only, income rate is a flagged
+  follow-up. Full suite green (456/456, unaffected in count — existing tests updated in
+  place, no new describe blocks needed).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -1,5 +1,5 @@
 const { checkRebirthEligibility, getRebirthBonusPercent, getLiveRebirthPercent, previewRebirthBonus, computeRebirthState } = require('../rebirthFactory');
-const { Rebirth, Bank } = require('../constants');
+const { Rebirth, Bank, Starch } = require('../constants');
 
 function maxedUser(overrides = {}) {
     return {
@@ -24,7 +24,7 @@ function maxedUser(overrides = {}) {
 describe('checkRebirthEligibility', () => {
     test('a brand-new account is missing every requirement', () => {
         const fresh = {
-            workMultiplierAmount: 1, passiveAmount: 0, bankCapacity: 0, maxStarches: 25000,
+            workMultiplierAmount: 1, passiveAmount: 0, bankCapacity: 0, maxStarches: 250,
             sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
             regrades: {
                 workMulti: { regradeAmount: 0, failStack: 0 },
@@ -59,7 +59,7 @@ describe('checkRebirthEligibility', () => {
         const onlyWorkMultiDone = maxedUser({
             passiveAmount: 100000,
             bankCapacity: 100000,
-            maxStarches: 25000,
+            maxStarches: 250,
             regrades: {
                 workMulti: { regradeAmount: 500, failStack: 0 },
                 passiveAmount: { regradeAmount: 0, failStack: 0 },
@@ -167,7 +167,7 @@ describe('computeRebirthState', () => {
         expect(result.workMultiplierAmount).toBe(1 + 5);
         expect(result.passiveAmount).toBe(0 + 10000);
         expect(result.bankCapacity).toBe(Bank.STARTING_CAPACITY + 100000);
-        expect(result.maxStarches).toBe(25000);
+        expect(result.maxStarches).toBe(Starch.STARTING_CAPACITY);
     });
 
     test('sweetPotatoBuffs carries forward exactly as-is — rebirth no longer writes into it', () => {

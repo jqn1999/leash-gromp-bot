@@ -342,6 +342,17 @@ const Bank = {
     STARTING_CAPACITY: 50000
 }
 
+// Starch investing (systems/starch-trading.md). STARTING_CAPACITY must stay in sync with
+// shops[starchShop].items[0].currentAmount, same "single source of truth shared by the
+// default and the shop's first tier" precedent Bank.STARTING_CAPACITY already sets above —
+// getDefaultUserFields and rebirthFactory.computeRebirthState both read this rather than
+// each hardcoding their own copy, closing off the exact class of bug that would otherwise
+// let the two silently drift apart (rebirth resetting a player to a stale, pre-rebalance
+// default while new accounts get the current one).
+const Starch = {
+    STARTING_CAPACITY: 250
+}
+
 // Shared cap for guild.raidHistory/guild.contractHistory — both are append-and-trim
 // lists (newest last), capped so a long-lived guild's history doesn't grow the guild
 // record without bound. Paginated 5/page in /guild-history, so 25 is 5 pages deep.
@@ -1893,47 +1904,58 @@ const shops = [
     {
         shopId: "starchShop",
         description: "This is where you upgrade your max starches to continue on your investing journey",
+        // Rescaled 2026-08-24 (currentAmount/amount down ~50-100x, cost down ~40-125x from
+        // the old 25,000-start/750,000,000-ceiling ladder) — the old starting cap
+        // (25,000, see dynamoHandler.js's getDefaultUserFields) cost ~250,000,000 potatoes
+        // to fill by purchase at the going starch_buy price, putting starch investing out
+        // of reach for anyone but a serious whale even at the STARTING tier. This ladder
+        // keeps the same 5-tier shape and the same rising-cost-per-unit-capacity curve the
+        // old one had (4,000 -> 6,000 -> 6,667 -> 12,000 -> 15,000 potatoes per starch of
+        // capacity gained here), just rescaled so the starting cap (250, ~2.4-2.75MM to
+        // fill by purchase) reads as an early/mid-game investment instead of an
+        // effectively-unreachable ceiling. Doesn't touch starch INCOME (Taro Trader/Golden
+        // Yam's own roll formulas) — see systems/starch-trading.md.
         items: [
             {
-                currentAmount: 25000,
-                amount: 50000,
-                cost: 125000000,
+                currentAmount: 250,
+                amount: 500,
+                cost: 1000000,
                 description: "Better than nothin",
                 id: 1,
                 name: "Robinhood",
                 type: "maxStarches"
             },
             {
-                currentAmount: 50000,
-                amount: 75000,
-                cost: 187500000,
+                currentAmount: 500,
+                amount: 1000,
+                cost: 3000000,
                 description: "Slightly better than Robinhood... slightly",
                 id: 2,
                 name: "Ally Invest",
                 type: "maxStarches"
             },
             {
-                currentAmount: 75000,
-                amount: 100000,
-                cost: 250000000,
+                currentAmount: 1000,
+                amount: 2500,
+                cost: 10000000,
                 description: "Trusted by many retail investors for their investment needs",
                 id: 3,
                 name: "Fidelity",
                 type: "maxStarches"
             },
             {
-                currentAmount: 100000,
-                amount: 150000,
-                cost: 500000000,
+                currentAmount: 2500,
+                amount: 5000,
+                cost: 30000000,
                 description: "A good firm for holding large amounts of starches",
                 id: 4,
                 name: "Charles Schwab",
                 type: "maxStarches"
             },
             {
-                currentAmount: 150000,
-                amount: 200000,
-                cost: 750000000,
+                currentAmount: 5000,
+                amount: 10000,
+                cost: 75000000,
                 description: "The best investment firm for holding your large stash of starches",
                 id: 5,
                 name: "Vanguard",
@@ -2057,6 +2079,7 @@ module.exports = {
     GuildContract,
     Bet,
     Bank,
+    Starch,
     GuildHistory,
     GuildBuffScaling,
     GuildBuffDescriptions,

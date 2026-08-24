@@ -9,6 +9,43 @@ earned primarily from the Taro Trader `/work` encounter (see
 [systems/economy-and-work.md](economy-and-work.md)) and capped by `maxStarches`
 (upgradeable via the `starchShop`).
 
+## Capacity — rescaled 2026-08-24
+
+`maxStarches` starts at `Starch.STARTING_CAPACITY` (**250**, down from 25,000). The old default cost
+~250,000,000 potatoes to fill by purchase at the going `starch_buy` price — completely out of reach
+for the early/mid-game player a *starting* default is supposed to onboard, since starches are meant
+to be bought as an investment (hold through the week, hope the price moved before selling), not just
+earned via `/work` RNG. `starchShop`'s 5-tier ladder (`shops[starchShop]` in `constants.js`) is
+rescaled to match, same shape as before (rising cost-per-unit-capacity through the tiers) just at a
+tenth-to-hundredth the old scale:
+
+| Tier | Old | New |
+|---|---|---|
+| Start | 25,000 | 250 |
+| 1 (Robinhood) | →50,000 / 125,000,000 | →500 / 1,000,000 |
+| 2 (Ally Invest) | →75,000 / 187,500,000 | →1,000 / 3,000,000 |
+| 3 (Fidelity) | →100,000 / 250,000,000 | →2,500 / 10,000,000 |
+| 4 (Charles Schwab) | →150,000 / 500,000,000 | →5,000 / 30,000,000 |
+| 5 (Vanguard) | →200,000 / 750,000,000 | →10,000 / 75,000,000 |
+
+`Starch.STARTING_CAPACITY` is the single shared source for the default (`dynamoHandler.
+getDefaultUserFields`) and rebirth's reset value (`rebirthFactory.computeRebirthState`) — same
+`Bank.STARTING_CAPACITY` precedent, closing off the class of bug where the two silently drift apart
+(a rebirth resetting a player to a stale pre-rebalance default while new accounts get the current
+one — this happened for real during this rescale before the shared constant was introduced;
+`computeRebirthState` still had a bare `25000` literal until it was caught).
+
+Existing accounts already at the old 25,000 default (or any live purchase past it) are unaffected —
+`shopFactory.getNextItemFromShop`'s exact-match lookup against `currentAmount` simply falls through
+to "already maxed out" for any value that doesn't match a tier in the new, smaller ladder, which is
+accurate (25,000 comfortably exceeds the new 10,000 ceiling) and requires no migration. No live
+account had purchased any `starchShop` tier at the time of this change, so this was a purely
+theoretical compatibility check, not an active concern.
+
+Deliberately untouched by this pass: Taro Trader/Golden Yam's own starch INCOME formulas (how many
+starches a `/work` roll grants) — this rescale only addresses capacity/cost, not earn rate. A
+follow-up pass may revisit income rate once this lands.
+
 ## Trading windows (all times EST, checked identically in all 3 commands)
 
 - **Buying allowed**: Monday 10:00–21:59, Thursday 10:00–21:59 — two identically shaped
