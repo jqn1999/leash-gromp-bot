@@ -47,7 +47,17 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   power (see "Effective raid power" below), plus time left on `guild.raidTimer`. Uses the exact same
   `raidFactory.js` helpers `start-raid` rolls against, so the number shown here never drifts out of
   sync with what a real raid attempt would use. (The guild buff that used to boost this total
-  directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).)
+  directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).) Once
+  `raidTimer` has elapsed, the reply also carries a Start Raid button. Clicking it reveals a row of
+  mode buttons — one per `raid-select` choice the guild currently qualifies for (Regular and Stat
+  always; Elite/Legendary only once `getUnlockedRaidModes` says the guild's level clears that
+  tier's breakeven, re-checked live at click time rather than reusing the level `current-raid` was
+  first rendered with) — and picking one runs `startRaid.js`'s exported `runStartRaidFlow`, the
+  same function `/start-raid`'s own callback delegates to, so a raid started this way is identical
+  in every respect (permission check, cooldown, roster, preview + confirm, scenario roll) to typing
+  the slash command. No separate elder/co-leader/leader check is needed on the button path itself —
+  only the original invoker's own clicks are ever processed, and `runStartRaidFlow`'s internal role
+  check is authoritative either way.
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
   value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes

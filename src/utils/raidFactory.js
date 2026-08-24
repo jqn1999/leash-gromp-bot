@@ -37,6 +37,24 @@ function getMinGuildLevelForTier(penaltyMult, maxSuccessRate) {
     return firstViableTier ? firstViableTier.level : RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level;
 }
 
+// Which of /start-raid's four modes a guild can actually attempt right now, keyed the
+// same way its raid-select choices are. Regular and Stat have no level gate (Stat's lack
+// of one is a known pre-existing gap, not something this function is responsible for
+// fixing); Elite/Legendary reuse the same getMinGuildLevelForTier breakeven check
+// startRaid.js's callback already gates on, so a mode never shows here as unlocked when
+// startRaid.js would actually reject it. Used by currentRaid.js's "Start Raid" button to
+// only offer mode buttons the guild's level currently qualifies for.
+function getUnlockedRaidModes(guildLevel) {
+    const eliteRequiredLevel = getMinGuildLevelForTier(Raid.ELITE_PENALTY_INCREASE, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+    const legendaryRequiredLevel = getMinGuildLevelForTier(Raid.LEGENDARY_PENALTY_INCREASE, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+    return {
+        regular: true,
+        elite: guildLevel >= eliteRequiredLevel,
+        legendary: guildLevel >= legendaryRequiredLevel,
+        stat: true
+    };
+}
+
 // The live raid roster: every current guild member whose persistent autoJoinRaids
 // toggle (/join-raid) is on, fetched fresh on every call instead of read from a stored
 // guild.raidList. Replaces the old push-on-join/splice-on-leave array, which needed
@@ -214,6 +232,7 @@ module.exports = {
     RaidFactory,
     getRaidLevelInfo,
     getMinGuildLevelForTier,
+    getUnlockedRaidModes,
     getLiveRaidRoster,
     getGuildLevelClosestToWins,
     getEligibleScenarios,

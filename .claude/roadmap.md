@@ -1739,6 +1739,42 @@ and needs its own balance pass.
   table, `handleMetalPotato`'s boosted-hit reward scaling and work-multi removal). Full
   suite green (467/467, up from 456).
 
+- [x] **48. Start Raid Button on `/current-raid`** — S — **Done**
+  What: once `guild.raidTimer` has elapsed, `/current-raid`'s reply now carries a Start
+  Raid button. Clicking it reveals a second row of mode buttons — one per `raid-select`
+  choice (`regular`/`elite`/`legendary`/`stat`) the guild currently qualifies for, via
+  `raidFactory.js`'s new `getUnlockedRaidModes(guildLevel)` (Regular/Stat always unlocked
+  — Stat's lack of a gate is a known, separately-tracked pre-existing gap, not something
+  this feature fixes; Elite/Legendary reuse the same `getMinGuildLevelForTier` breakeven
+  check `start-raid`'s own eligibility gate already used) — computed from a fresh
+  `dynamoHandler.findGuildById` re-fetch at click time rather than the guild snapshot
+  `/current-raid` was first rendered with, so a stale level can't offer or hide a mode the
+  guild's current level doesn't actually match. Picking a mode runs `startRaid.js`'s
+  logic through a newly extracted, exported `runStartRaidFlow(interaction, raidSelection)`
+  — every line of `/start-raid`'s old callback body from the permission check through
+  `raidTimer` reset, unchanged, just pulled out of the callback closure. `/start-raid`'s
+  own callback is now a thin wrapper (`deferReply` → read the option → delegate). Works
+  identically from either entry point because `interaction.editReply(...)` behaves the
+  same on a `ChatInputCommandInteraction` and a `MessageComponentInteraction` once each
+  has been acknowledged the appropriate way (`deferReply` vs. `deferUpdate` — done by
+  each caller *before* calling in, never inside `runStartRaidFlow` itself).
+  Why: direct instruction ("Button on /current-raid that lets you start raid if it's
+  ready"). Row-of-mode-buttons over a one-click Regular-only default was a direct user
+  choice via `AskUserQuestion` — matches `/start-raid`'s own options exactly, just picked
+  with buttons instead of typed.
+  Notable: `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` moved out of
+  `startRaid.js`'s bare, undeclared module-scope assignments (this codebase's established
+  but fragile implicit-global pattern for a few tuning numbers) into properly declared,
+  exported `Raid.ELITE_PENALTY_INCREASE`/`Raid.LEGENDARY_PENALTY_INCREASE` fields in
+  `constants.js` — needed once `getUnlockedRaidModes` in a different file required the
+  same numbers `getMinGuildLevelForTier` already keyed off of; values unchanged (1.5/2).
+  No separate permission check needed on `current-raid.js`'s button path — only the
+  original invoker's own clicks are ever processed by the collector filter, and
+  `runStartRaidFlow`'s own internal Elder+ check is authoritative regardless of entry
+  point. 3 new tests (`getUnlockedRaidModes`'s regular/stat-always-on and Elite/Legendary
+  breakeven-level agreement with the existing `getMinGuildLevelForTier` coverage). Full
+  suite green (470/470, up from 467).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -962,6 +962,16 @@ const Raid = {
     MAXIMUM_STAT_RAID_SUCCESS_RATE: .5,
     RAID_TIMER_SECONDS: 3600,
 
+    // Moved here 2026-08-24 from startRaid.js's own bare, undeclared module-scope
+    // assignments (`ELITE_PENALTY_INCREASE = 1.5`, an implicit global — this codebase's
+    // established but fragile pattern for a few module-scope tuning numbers). Needed a
+    // real exported home once raidFactory.js's getUnlockedRaidModes (see /current-raid's
+    // start-raid button) needed the same numbers getMinGuildLevelForTier already keyed
+    // off of, rather than either duplicating the magic numbers a second place or reaching
+    // for startRaid.js's implicit global from a different file.
+    ELITE_PENALTY_INCREASE: 1.5,
+    LEGENDARY_PENALTY_INCREASE: 2,
+
     T1_RAID_REWARD: 100000,
     T1_RAID_PENALTY: -100000,
     T1_RAID_DIFFICULTY: 10,

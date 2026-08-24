@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -362,5 +362,29 @@ describe('getMinGuildLevelForTier', () => {
         // A penalty multiplier so large no guild level's raidRewardMultiplier could ever
         // clear it before the cap.
         expect(getMinGuildLevelForTier(1000, 0.5)).toBe(RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level);
+    });
+});
+
+describe('getUnlockedRaidModes', () => {
+    // Regular and Stat are always offered — Stat currently has no eligibility gate at all
+    // anywhere in the game (a known, separately-tracked gap, not something this function
+    // is responsible for fixing).
+    test('regular and stat are always unlocked, even at guild level 1', () => {
+        const modes = getUnlockedRaidModes(1);
+        expect(modes.regular).toBe(true);
+        expect(modes.stat).toBe(true);
+    });
+
+    // Mirrors the getMinGuildLevelForTier describe block above: Elite (1.5x penalty, 75%
+    // cap) is viable from level 1, Legendary (2x penalty, 60% cap) not until level 3 —
+    // this function must agree with startRaid.js's own gate exactly, or a button here
+    // could offer a mode /start-raid would immediately reject.
+    test('elite is unlocked from guild level 1', () => {
+        expect(getUnlockedRaidModes(1).elite).toBe(true);
+    });
+
+    test('legendary is locked below guild level 3 and unlocked from level 3', () => {
+        expect(getUnlockedRaidModes(2).legendary).toBe(false);
+        expect(getUnlockedRaidModes(3).legendary).toBe(true);
     });
 });

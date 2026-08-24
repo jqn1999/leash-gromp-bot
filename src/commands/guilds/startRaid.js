@@ -359,7 +359,9 @@ const regularRaidScenarios = [
 // Lv3 breakeven point needed ~12.8x more roster power to break even on Elite, a cliff
 // rather than a ramp. Halving DIFFICULTY_MULTIPLIER and softening this to 1.5 brings that
 // down to ~4.6x — still clearly a harder mode, no longer a wall.
-ELITE_PENALTY_INCREASE = 1.5;
+// ELITE_PENALTY_INCREASE moved to constants.js's Raid object 2026-08-24 — was a bare,
+// undeclared module-scope assignment (an implicit global) until raidFactory.js needed the
+// same number too. Every reference below now reads Raid.ELITE_PENALTY_INCREASE.
 const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -415,7 +417,7 @@ const eliteRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = ultimateRaidMob.failureDescription;
             }
@@ -429,7 +431,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 1.5; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 1.5; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -442,7 +444,7 @@ const eliteRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -455,7 +457,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 2.25; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 2.25; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -468,7 +470,7 @@ const eliteRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -481,7 +483,7 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see ELITE_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -494,7 +496,7 @@ const eliteRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -507,7 +509,7 @@ const eliteRaidScenarios = [
 ]
 
 // Softened 2026-08-23 (3 -> 2) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below —
-// same pass and reasoning as ELITE_PENALTY_INCREASE's comment above. Doesn't fully remove
+// same pass and reasoning as Raid.ELITE_PENALTY_INCREASE's comment above. Doesn't fully remove
 // a structural property the old 3x tuning had, just eases it: breakeven success rate
 // (penaltyMult / (1 + penaltyMult)) was 75% at 3x, above Legendary's own 60% success-rate
 // cap — meaning raw roster power (totalMultiplier) alone could never make it profitable,
@@ -519,7 +521,8 @@ const eliteRaidScenarios = [
 // design for the top mode — the softening here is about how HARSH that requirement is
 // (breakeven totalMultiplier at guild level 7-10, worked out in balance-audit.md), not
 // about removing the "needs guild level, not just stats" property entirely.
-LEGENDARY_PENALTY_INCREASE = 2;
+// LEGENDARY_PENALTY_INCREASE moved to constants.js's Raid object 2026-08-24, same reason
+// as ELITE_PENALTY_INCREASE above.
 const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
@@ -572,7 +575,7 @@ const legendaryRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = ultimateRaidMob.failureDescription;
             }
@@ -586,7 +589,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -599,7 +602,7 @@ const legendaryRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -612,7 +615,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 4; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 4; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -625,7 +628,7 @@ const legendaryRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -638,7 +641,7 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 5; // halved 2026-08-23, see LEGENDARY_PENALTY_INCREASE's comment above
+            const DIFFICULTY_MULTIPLIER = 5; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -651,7 +654,7 @@ const legendaryRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -764,8 +767,8 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, 
 
     const tierConfig = {
         regular: { scenarios: regularRaidScenarios, maxRate: Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 1, t3: 1, t2: 1, t1: 1 }, penaltyMult: 1 },
-        elite: { scenarios: eliteRaidScenarios, maxRate: Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 2, t3: 3, t2: 4.5, t1: 6 }, penaltyMult: ELITE_PENALTY_INCREASE },
-        legendary: { scenarios: legendaryRaidScenarios, maxRate: Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 4, t3: 6, t2: 8, t1: 10 }, penaltyMult: LEGENDARY_PENALTY_INCREASE },
+        elite: { scenarios: eliteRaidScenarios, maxRate: Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 2, t3: 3, t2: 4.5, t1: 6 }, penaltyMult: Raid.ELITE_PENALTY_INCREASE },
+        legendary: { scenarios: legendaryRaidScenarios, maxRate: Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 4, t3: 6, t2: 8, t1: 10 }, penaltyMult: Raid.LEGENDARY_PENALTY_INCREASE },
     }[raidSelection];
 
     // T4 isn't shown/rollable at all below its unlock level — see getEligibleScenarios.
@@ -809,6 +812,179 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, 
     return brackets;
 }
 
+// Everything a raid attempt needs once a mode has already been chosen — shared by
+// /start-raid's own callback and /current-raid's "Start Raid" button flow (see
+// currentRaid.js), so both entry points run through exactly one implementation instead of
+// risking drift between a slash-command copy and a button-driven copy of this much raid
+// resolution logic. Assumes the interaction has ALREADY been acknowledged (deferReply for
+// a slash command, deferUpdate for a button click) — everything from here on only ever
+// calls interaction.editReply, which works identically on either interaction type once
+// acknowledged, so this function itself doesn't need to know or care which kind it got.
+async function runStartRaidFlow(interaction, raidSelection) {
+    const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+
+    const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+    if (!userDetails) return;
+
+    const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to start the raid of!");
+    if (!guild) return;
+    const guildId = guild.guildId;
+    const guildName = guild.guildName;
+    const memberList = guild.memberList;
+    const { level: guildLevel, multiplier: raidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
+
+    // Elite/Legendary gated by guild level, not by how much totalMultiplier the
+    // roster brings — below the derived level, the tier's success-rate cap sits
+    // under its mathematical breakeven point (see getMinGuildLevelForTier), so no
+    // amount of individual stat investment can make it profitable. Checked before
+    // any raid-list/member work so a guild that can't unlock a tier finds out
+    // immediately instead of after paying for member lookups.
+    if (raidSelection === 'elite' || raidSelection === 'legendary') {
+        const penaltyMult = raidSelection === 'elite' ? Raid.ELITE_PENALTY_INCREASE : Raid.LEGENDARY_PENALTY_INCREASE;
+        const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
+        const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+        if (guildLevel < requiredLevel) {
+            interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
+            return;
+        }
+    }
+
+    let raidList = await getLiveRaidRoster(guild);
+    let raidCount = guild.raidCount;
+    const raidCountBeforeThisRaid = raidCount;
+    let guildTotalEarnings = guild.totalEarnings;
+    let guildBankStored = guild.bankStored;
+    let guildBankCapacity = guild.bankCapacity;
+    let remainingBankSpace = guildBankCapacity - guildBankStored;
+
+    if (raidList.length == 0) {
+        interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
+        return;
+    }
+
+    const member = memberList.find((currentMember) => currentMember.id == userId)
+    if (!member) {
+        interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+        return;
+    }
+
+    let canStartRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
+    if (!canStartRaids) {
+        interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
+        return;
+    }
+
+    const timeUntilRaidAvailableInMS = guild.raidTimer - Date.now()
+    if (timeUntilRaidAvailableInMS > 0) {
+        interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS / 1000))} before raiding again!`);
+        return;
+    }
+
+    const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+    // Average per-member power (raw workMultiplierAmount + live rebirth bonus) plus
+    // a headcount bonus for roster size — see raidFactory.js's getEffectiveRaidPower,
+    // shared with currentRaid.js so the two commands never show conflicting numbers.
+    let totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
+
+    // Firefly — whichever participant has the best guildRaidMultiplierPercent perk
+    // active lifts the whole raid, same multiplicative shape as the guild raidMulti
+    // buff. Takes the best rather than summing everyone's, so multiple members
+    // equipping Firefly doesn't stack into an unintended snowball.
+    const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
+    if (raidCompanionBoost > 0) {
+        totalMultiplier *= (1 + raidCompanionBoost);
+    }
+
+    // Which difficulty bracket (Metal King/T4/T3/T2/T1) gets rolled is random, so
+    // show every bracket's odds and stakes up front — this commits the whole
+    // roster's raid list on one roll, previously with zero preview of what that
+    // meant. T4 is only shown once the guild's level has unlocked it.
+    const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, guildLevel);
+    const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier);
+    const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('raid', 'Start the raid', 'Not yet')] });
+
+    const collectorFilter = i => i.user.id === interaction.user.id;
+    const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+    if (!confirmation) {
+        const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
+        await reply.edit({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+        return;
+    }
+
+    if (confirmation.customId === 'raid_cancel') {
+        const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
+        await confirmation.update({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
+        return;
+    }
+
+    await confirmation.deferUpdate();
+
+    const raidScenarioRoll = Math.random();
+    let potatoesGained = 0;
+    if (raidSelection == 'regular') {
+        for (const scenario of getEligibleScenarios(regularRaidScenarios, guildLevel)) {
+            if (raidScenarioRoll < scenario.chance) {
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                break;
+            }
+        }
+        guildTotalEarnings += potatoesGained;
+        await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+    } else if (raidSelection == 'elite') {
+        for (const scenario of getEligibleScenarios(eliteRaidScenarios, guildLevel)) {
+            if (raidScenarioRoll < scenario.chance) {
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                break;
+            }
+        }
+        guildTotalEarnings += potatoesGained;
+        await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+    } else if (raidSelection == 'legendary') {
+        for (const scenario of getEligibleScenarios(legendaryRaidScenarios, guildLevel)) {
+            if (raidScenarioRoll < scenario.chance) {
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                break;
+            }
+        }
+        guildTotalEarnings += potatoesGained;
+        await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+    } else if (raidSelection == 'stat') {
+        for (const scenario of statRaidScenarios) {
+            if (raidScenarioRoll < scenario.chance) {
+                await scenario.action(guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction);
+                break;
+            }
+        }
+    }
+
+    // Win/loss is derived from a fresh re-fetch of raidCount rather than threading a
+    // result object through all 14 scenario closures above — every winning closure
+    // already increments and persists raidCount, so comparing against the value read
+    // before this raid started is a reliable, much lower-risk signal than touching
+    // each closure's return contract (which guildTotalEarnings math above depends on
+    // staying a bare number).
+    const freshGuild = await dynamoHandler.findGuildById(guildId);
+    const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
+    const raidHistoryEntry = {
+        timestamp: Date.now(),
+        raidTier: raidSelection,
+        won: wonThisRaid,
+        potatoDelta: potatoesGained
+    };
+    const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
+    const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
+    await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
+
+    guild.guildBuff == "raidTimer"
+        ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel)))
+        : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
+
+    // No raidList to clear anymore — the roster is computed live from each member's
+    // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so
+    // whoever's still opted in stays opted in for the next raid automatically.
+}
+
 module.exports = {
     name: "start-raid",
     description: "Starts a raid",
@@ -841,168 +1017,8 @@ module.exports = {
     ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
-        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const raidSelection = interaction.options.get('raid-select')?.value;
-
-        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
-        if (!userDetails) return;
-
-        const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to start the raid of!");
-        if (!guild) return;
-        const guildId = guild.guildId;
-        const guildName = guild.guildName;
-        const memberList = guild.memberList;
-        const { level: guildLevel, multiplier: raidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
-
-        // Elite/Legendary gated by guild level, not by how much totalMultiplier the
-        // roster brings — below the derived level, the tier's success-rate cap sits
-        // under its mathematical breakeven point (see getMinGuildLevelForTier), so no
-        // amount of individual stat investment can make it profitable. Checked before
-        // any raid-list/member work so a guild that can't unlock a tier finds out
-        // immediately instead of after paying for member lookups.
-        if (raidSelection === 'elite' || raidSelection === 'legendary') {
-            const penaltyMult = raidSelection === 'elite' ? ELITE_PENALTY_INCREASE : LEGENDARY_PENALTY_INCREASE;
-            const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
-            const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
-            if (guildLevel < requiredLevel) {
-                interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
-                return;
-            }
-        }
-
-        let raidList = await getLiveRaidRoster(guild);
-        let raidCount = guild.raidCount;
-        const raidCountBeforeThisRaid = raidCount;
-        let guildTotalEarnings = guild.totalEarnings;
-        let guildBankStored = guild.bankStored;
-        let guildBankCapacity = guild.bankCapacity;
-        let remainingBankSpace = guildBankCapacity - guildBankStored;
-
-        if (raidList.length == 0) {
-            interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
-            return;
-        }
-
-        const member = memberList.find((currentMember) => currentMember.id == userId)
-        if (!member) {
-            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
-            return;
-        }
-
-        let canStartRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
-        if (!canStartRaids) {
-            interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
-            return;
-        }
-
-        const timeUntilRaidAvailableInMS = guild.raidTimer - Date.now()
-        if (timeUntilRaidAvailableInMS > 0) {
-            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS / 1000))} before raiding again!`);
-            return;
-        }
-
-        const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
-        // Average per-member power (raw workMultiplierAmount + live rebirth bonus) plus
-        // a headcount bonus for roster size — see raidFactory.js's getEffectiveRaidPower,
-        // shared with currentRaid.js so the two commands never show conflicting numbers.
-        let totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
-
-        // Firefly — whichever participant has the best guildRaidMultiplierPercent perk
-        // active lifts the whole raid, same multiplicative shape as the guild raidMulti
-        // buff. Takes the best rather than summing everyone's, so multiple members
-        // equipping Firefly doesn't stack into an unintended snowball.
-        const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
-        if (raidCompanionBoost > 0) {
-            totalMultiplier *= (1 + raidCompanionBoost);
-        }
-
-        // Which difficulty bracket (Metal King/T4/T3/T2/T1) gets rolled is random, so
-        // show every bracket's odds and stakes up front — this commits the whole
-        // roster's raid list on one roll, previously with zero preview of what that
-        // meant. T4 is only shown once the guild's level has unlocked it.
-        const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, guildLevel);
-        const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier);
-        const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('raid', 'Start the raid', 'Not yet')] });
-
-        const collectorFilter = i => i.user.id === interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
-
-        if (!confirmation) {
-            const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
-            await reply.edit({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
-            return;
-        }
-
-        if (confirmation.customId === 'raid_cancel') {
-            const cancelledEmbed = embedFactory.createRaidCancelledEmbed(guildName);
-            await confirmation.update({ embeds: [cancelledEmbed], components: [] }).catch(() => {});
-            return;
-        }
-
-        await confirmation.deferUpdate();
-
-        const raidScenarioRoll = Math.random();
-        let potatoesGained = 0;
-        if (raidSelection == 'regular') {
-            for (const scenario of getEligibleScenarios(regularRaidScenarios, guildLevel)) {
-                if (raidScenarioRoll < scenario.chance) {
-                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
-                    break;
-                }
-            }
-            guildTotalEarnings += potatoesGained;
-            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
-        } else if (raidSelection == 'elite') {
-            for (const scenario of getEligibleScenarios(eliteRaidScenarios, guildLevel)) {
-                if (raidScenarioRoll < scenario.chance) {
-                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
-                    break;
-                }
-            }
-            guildTotalEarnings += potatoesGained;
-            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
-        } else if (raidSelection == 'legendary') {
-            for (const scenario of getEligibleScenarios(legendaryRaidScenarios, guildLevel)) {
-                if (raidScenarioRoll < scenario.chance) {
-                    potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
-                    break;
-                }
-            }
-            guildTotalEarnings += potatoesGained;
-            await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
-        } else if (raidSelection == 'stat') {
-            for (const scenario of statRaidScenarios) {
-                if (raidScenarioRoll < scenario.chance) {
-                    await scenario.action(guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction);
-                    break;
-                }
-            }
-        }
-
-        // Win/loss is derived from a fresh re-fetch of raidCount rather than threading a
-        // result object through all 14 scenario closures above — every winning closure
-        // already increments and persists raidCount, so comparing against the value read
-        // before this raid started is a reliable, much lower-risk signal than touching
-        // each closure's return contract (which guildTotalEarnings math above depends on
-        // staying a bare number).
-        const freshGuild = await dynamoHandler.findGuildById(guildId);
-        const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
-        const raidHistoryEntry = {
-            timestamp: Date.now(),
-            raidTier: raidSelection,
-            won: wonThisRaid,
-            potatoDelta: potatoesGained
-        };
-        const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
-        const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
-        await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
-
-        guild.guildBuff == "raidTimer"
-            ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel)))
-            : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
-
-        // No raidList to clear anymore — the roster is computed live from each member's
-        // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so
-        // whoever's still opted in stays opted in for the next raid automatically.
-    }
+        await runStartRaidFlow(interaction, raidSelection);
+    },
+    runStartRaidFlow
 }

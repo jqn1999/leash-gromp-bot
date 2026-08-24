@@ -1,9 +1,31 @@
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
-const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPower } = require("../../utils/raidFactory");
+const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPower, getRaidLevelInfo, getUnlockedRaidModes } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
+const { runStartRaidFlow } = require("./startRaid");
 const embedFactory = new EmbedFactory();
+
+// Labels for the mode-selection row shown after "Start Raid" is clicked — keyed exactly
+// like /start-raid's own raid-select choices and getUnlockedRaidModes's return shape, so a
+// button click here starts the exact same raid mode typing the option manually would.
+const RAID_MODE_LABELS = {
+    regular: 'Regular',
+    elite: 'Elite',
+    legendary: 'Legendary',
+    stat: 'Stat'
+};
+
+function buildRaidModeRow(unlockedModes) {
+    const buttons = Object.entries(RAID_MODE_LABELS)
+        .filter(([mode]) => unlockedModes[mode])
+        .map(([mode, label]) => new ButtonBuilder()
+            .setCustomId(`current_raid_mode_${mode}`)
+            .setLabel(label)
+            .setStyle(ButtonStyle.Primary));
+    return new ActionRowBuilder().addComponents(buttons);
+}
 
 module.exports = {
     name: "current-raid",
@@ -49,7 +71,48 @@ module.exports = {
         // never shows a different number than what a real raid attempt would use.
         const totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
 
-        embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
-        interaction.editReply({ embeds: [embed] });
+        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
+
+        // Only offer the Start Raid button once the cooldown has actually elapsed —
+        // clicking it before then would just hit runStartRaidFlow's own cooldown
+        // rejection, so there's no reason to show it early.
+        const raidIsReady = timeUntilRaidAvailableInSeconds <= 0;
+        const startRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('current_raid_start').setLabel('Start Raid').setStyle(ButtonStyle.Success)
+        );
+
+        const reply = await interaction.editReply({ embeds: [embed], components: raidIsReady ? [startRow] : [] });
+        if (!raidIsReady) return;
+
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        const startClick = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+        if (!startClick) {
+            await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+            return;
+        }
+        await startClick.deferUpdate();
+
+        // Re-fetched rather than reusing the guild/level looked up above — time may have
+        // passed since this reply first went out, and a stale level here could offer (or
+        // hide) an Elite/Legendary button the guild no longer does/does qualify for.
+        const freshGuild = await dynamoHandler.findGuildById(guild.guildId);
+        const { level: guildLevel } = getRaidLevelInfo(freshGuild.raidCount);
+        const unlockedModes = getUnlockedRaidModes(guildLevel);
+
+        await interaction.editReply({ embeds: [embed], components: [buildRaidModeRow(unlockedModes)] });
+
+        const modeClick = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+        if (!modeClick) {
+            await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+            return;
+        }
+
+        const raidSelection = modeClick.customId.replace('current_raid_mode_', '');
+        await modeClick.deferUpdate();
+        // runStartRaidFlow takes it from here — the shared implementation /start-raid's
+        // own callback also delegates to, so this button starts exactly the raid typing
+        // the slash command would (permission check, cooldown, roster, preview + confirm,
+        // scenario roll, all of it).
+        await runStartRaidFlow(modeClick, raidSelection);
     }
 }
