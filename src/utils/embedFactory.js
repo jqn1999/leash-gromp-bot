@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -8,6 +8,7 @@ const guildBuffFactory = require("../utils/guildBuffFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
+const safehouseFactory = require("../utils/safehouseFactory");
 const shopFactory = require("../utils/shopFactory");
 const eventFactory = new EventFactory();
 
@@ -2204,6 +2205,121 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`🏰 ${guildName}'s Guild Bank`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // /safehouse with no args (or the `list` action) — an overview of every owned
+    // safehouse plus, unlike createBankEmbed, a field on the NEXT purchasable slot (cost,
+    // rank gate, or "all 6 owned!") since buying more slots is the only way Safehouse
+    // capacity grows at all — there's no regrade-style upgrade path to also show.
+    createSafehouseListEmbed(userDisplayName, userId, userAvatar, ownedSlots, nextSlotInfo, rankInfo) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+
+        const fields = ownedSlots.length > 0 ? ownedSlots.map(owned => {
+            const def = safehouseFactory.getSlotDefinition(owned.slot);
+            const bar = buildProgressBar(owned.balance, def.capacity);
+            const fillPercent = def.capacity > 0 ? (owned.balance / def.capacity * 100) : 0;
+            return {
+                name: `Safehouse #${owned.slot}`,
+                value: `${bar} ${fillPercent.toFixed(1)}%\n${owned.balance.toLocaleString()} / ${def.capacity.toLocaleString()} potatoes`,
+                inline: false,
+            };
+        }) : [{ name: 'No safehouses yet', value: `Run \`/safehouse buy\` to buy your first one — unlocked at Mercenary Rank 1.`, inline: false }];
+
+        const totalStored = safehouseFactory.getTotalStored({ safehouses: ownedSlots });
+        const totalCapacity = safehouseFactory.getTotalCapacity({ safehouses: ownedSlots });
+        fields.push({
+            name: `Total`,
+            value: `${totalStored.toLocaleString()} / ${totalCapacity.toLocaleString()} potatoes across ${ownedSlots.length} / ${Safehouse.SLOTS.length} safehouses`,
+            inline: false,
+        });
+
+        if (nextSlotInfo) {
+            const rankMet = rankInfo.rank >= nextSlotInfo.rankRequired;
+            fields.push({
+                name: `Next Safehouse (#${nextSlotInfo.slot})`,
+                value: `${nextSlotInfo.cost.toLocaleString()} potatoes — +${nextSlotInfo.capacity.toLocaleString()} capacity\n${rankMet ? 'Unlocked — run `/safehouse buy`' : `Requires Mercenary Rank ${nextSlotInfo.rankRequired} (you're Rank ${rankInfo.rank})`}`,
+                inline: false,
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🗝️ ${userDisplayName}'s Safehouses`)
+            .setDescription(`Mercenary-exclusive stashes — each holds its own balance, so funding a purchase only ever exposes one house to /rob, not your whole stash.`)
+            .setColor("DarkPurple")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Shown when /safehouse deposit|withdraw is run with no amount, offering quick
+    // percentage buttons — same shape createBankAmountPickerEmbed already uses, scoped to
+    // one house instead of the whole personal bank.
+    createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, slotBalance) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const def = safehouseFactory.getSlotDefinition(slotNumber);
+        const available = action === 'deposit' ? userPotatoes : slotBalance;
+        const availableLabel = action === 'deposit' ? 'Liquid Potatoes' : `Safehouse #${slotNumber} Balance`;
+
+        const fields = [
+            {
+                name: `${availableLabel}:`,
+                value: `${available.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Safehouse #${slotNumber} Capacity:`,
+                value: `${buildProgressBar(slotBalance, def.capacity)} ${(def.capacity > 0 ? slotBalance / def.capacity * 100 : 0).toFixed(1)}%\n${slotBalance.toLocaleString()} / ${def.capacity.toLocaleString()} potatoes`,
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🗝️ ${userDisplayName}, how much do you want to ${action} into Safehouse #${slotNumber}?`)
+            .setDescription(`Pick a quick amount below, or run \`/safehouse\` again with a specific number.`)
+            .setColor("Blue")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createSafehouseEmbed(userDisplayName, userId, userAvatar, action, slotNumber, netAmount, feeAmount, userPotatoes, slotBalance) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const def = safehouseFactory.getSlotDefinition(slotNumber);
+        const actionLabel = action === 'deposit' ? 'Deposited' : 'Withdrew';
+        const color = action === 'deposit' ? 'Green' : 'Blue';
+
+        const fields = [
+            {
+                name: `${actionLabel} (Safehouse #${slotNumber}):`,
+                value: feeAmount > 0
+                    ? `${netAmount.toLocaleString()} potatoes (${feeAmount.toLocaleString()} potato fee charged)`
+                    : `${netAmount.toLocaleString()} potatoes`,
+                inline: false,
+            },
+            {
+                name: `Liquid Potatoes:`,
+                value: `${userPotatoes.toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Safehouse #${slotNumber} Capacity:`,
+                value: `${buildProgressBar(slotBalance, def.capacity)} ${(def.capacity > 0 ? slotBalance / def.capacity * 100 : 0).toFixed(1)}%\n${slotBalance.toLocaleString()} / ${def.capacity.toLocaleString()} potatoes`,
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🗝️ ${userDisplayName}'s Safehouse #${slotNumber}`)
             .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })

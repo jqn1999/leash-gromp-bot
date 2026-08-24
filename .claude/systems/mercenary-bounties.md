@@ -90,6 +90,9 @@ potato-punned (`embedFactory.js`'s `MERCENARY_RANK_TITLES`), not mechanically lo
 same status `Achievements`' names already have: Spud Recruit → Tater Tracker → Root Ranger
 → Tuber Marauder → Tater Highwayman → The Iron Tuber (Rank 6, the cap).
 
+Rank also gates how many [Safehouses](safehouses.md) a mercenary can own — one slot unlocks per
+Rank tier, each a separately-purchased, separately-balanced stash of extra bank capacity.
+
 ## Bounty tiers I/II/III — reuse `Raid.T1/T2/T3_RAID_*` directly
 
 Bounty tiers map 1:1 onto Regular-mode Guild Raid's T1/T2/T3 — there is **no separate

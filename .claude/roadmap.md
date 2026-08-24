@@ -1584,6 +1584,39 @@ and needs its own balance pass.
   explicit guards over implicit ones. Full suite green (420/420, unaffected — no existing
   tests target `companion.js`).
 
+- [x] **44. Safehouses — Mercenary-Exclusive Extra Bank Capacity** — M — **Done**
+  What: new mercenary-exclusive system (`safehouseFactory.js`, `safehouse.js`,
+  `systems/safehouses.md`) closing a real gap found while scoping it: `/shop`'s personal
+  purchases only ever spend from the liquid `potatoes` wallet, never `bankStored`, unlike
+  `/guild-buy` which spends straight out of `guild.bankStored` — so every player, guilded
+  or not, has to expose a huge liquid sum to `/rob` before affording their next personal
+  shop tier no matter how maxed their bank is (the `bankCapacity` shop ladder's own tier
+  6→7 jump goes from a 50M cap to a 500M cost — a 450M+ exposure window). A mercenary owns
+  up to 6 SEPARATE safehouses (`constants.js`'s `Safehouse.SLOTS`, one slot per Mercenary
+  Rank tier, bought strictly in order, escalating 2M→400M cost / 15M→200M capacity, 555M
+  total at max rank) rather than one bigger pool — funding a purchase only ever means
+  withdrawing from ONE house, exposing that house's balance to `/rob`, not the mercenary's
+  whole stash. `/safehouse buy|deposit|withdraw|list`, deposit/withdraw mirroring `/bank`'s
+  exact UX (percentage-picker fallback when no amount is typed, same `Bank.TAX_BASE`/
+  `TAX_PERCENT` deposit tax so this isn't a tax-free alternative that undercuts `/bank`'s
+  own economy).
+  Why: direct instruction — "guilds have guild banks, mercenaries dont right now and have
+  no way of bridging some gaps in the bank/shop phases where you need to store alot of
+  money liquid before you can buy the next tier even with a maxed out bank... flesh out the
+  concept of 'safehouses'." Investigation surfaced that the real root cause (`/shop` can't
+  spend from `bankStored` at all) isn't mercenary-specific — every player hits it — so I
+  asked which direction to take before designing blind; user chose the mercenary-exclusive
+  stash over the root-cause fix specifically to preserve the liquid-exposure window, since
+  "the gap in time is what allows some users to do a quick rob if they catch it fast enough
+  which adds some enjoyment."
+  Notable: **purely defensive, by explicit instruction** — Safehouses cannot be raided by
+  Rivals or other mercenaries (considered, deliberately deferred, documented in
+  `safehouses.md`'s own "Explicitly out of scope" section alongside the still-deferred
+  `/shop`-spends-from-`bankStored` root fix, which the user asked to keep in mind for
+  later, not drop). `getDefaultUserFields` gained `safehouses: []`; `findUser`'s existing
+  healing step backfills it for existing accounts automatically, no migration needed. 23
+  new `safehouseFactory.test.js` tests. Full suite green (443/443, up from 420).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

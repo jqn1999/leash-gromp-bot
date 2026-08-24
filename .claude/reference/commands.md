@@ -16,7 +16,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `stats.js` | `/user-stats` | Base+buff+regrade breakdown plus live effective totals (guild buff/companion/rebirth folded in, same modifiers `/profile` uses) for self or a target user |
 | `achievements.js` | `/achievements` | Full achievement list (unlocked + locked-with-progress) for self or a target user — see [systems/achievements.md](../systems/achievements.md) |
 | `quests.js` | `/quests` | Active daily/weekly quest list with progress, self or a target user (read-only, doesn't snapshot/claim) — see [systems/quests.md](../systems/quests.md) |
-| `companion.js` | `/companion` | Paginated list of owned companions with a per-page equip button row — clicking the active companion's own button unequips it instead, disabled otherwise only for a scavenging companion — see [systems/companions.md](../systems/companions.md) |
+| `companion.js` | `/companion` | Paginated list of owned companions (or, via optional `target-user`, another user's — read-only, no equip buttons) with a per-page equip button row on your own list — clicking the active companion's own button unequips it instead, disabled otherwise only for a scavenging companion — see [systems/companions.md](../systems/companions.md) |
 | `companionMarket.js` | `/companion-market` | Not ephemeral (others can see it) but invoker-only buttons — paginated browser of active companion market listings with numbered buy buttons (1-5 per page, no price on the label, disabled for your own listings) — see [systems/companions.md](../systems/companions.md) |
 | `companionSell.js` | `/companion-sell` | List an owned companion for sale (autocomplete filtered to owned/not-scavenging/not-already-listed, confirm/cancel flow, escrow) — see [systems/companions.md](../systems/companions.md) |
 | `companionSellNpc.js` | `/companion-sell-npc` | Instantly sell an owned companion to an NPC, well under market value (autocomplete filtered to owned/not-scavenging, confirm/cancel flow) — see [systems/companions.md](../systems/companions.md#marketplace) |
@@ -32,6 +32,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `robNpc.js` | `/rob-npc` | Solo heist against a fictional target, 30 min cooldown, whiff-only failure — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `notoriety.js` | `/notoriety` | Read-only: current Notoriety vs. threshold, Rank 2+ gate status, confrontation availability, lifetime Rival wins — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `confrontRival.js` | `/confront-rival` | Resolves a Rival Bounty Hunter confrontation immediately (no confirm, no options — which scenario you get is rolled, not chosen) once Notoriety crosses the threshold — resettable resource-threshold gate, not a cooldown — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
+| `safehouse.js` | `/safehouse action:<list\|buy\|deposit\|withdraw>` | Mercenary-exclusive extra bank capacity — up to 6 separately-owned, separately-balanced stashes gated by Mercenary Rank, so funding a purchase only ever exposes one house to `/rob`, not the whole stash; deposit/withdraw mirror `/bank`'s UX (percentage picker, same deposit tax), purely defensive — see [systems/safehouses.md](../systems/safehouses.md) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 
@@ -48,12 +49,12 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 |---|---|---|
 | `createGuild.js` | `/create-guild` | Founds a new guild with the caller as Leader |
 | `disbandGuild.js` | `/disband-guild` | Leader disbands the guild |
-| `guild.js` | `/guild` | Guild info embed |
-| `guildMembers.js` | `/guild-members` | Member list with roles |
+| `guild.js` | `/guild` | Guild info embed — optional `guild-name` has autocomplete, shows real stored casing |
+| `guildMembers.js` | `/guild-members` | Member list with roles — optional `guild-name` has autocomplete, shows real stored casing |
 | `guildBank.js` | `/guild-bank` | Deposit (taxed, any member) / withdraw (Co-Leader+, untaxed) |
 | `guildBuy.js` | `/guild-upgrade` | Spends guild bank potatoes on bank-capacity or member-cap tier upgrades |
 | `invite.js` | `/invite` | Elder+ invites a user to the guild |
-| `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap |
+| `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap — `guild-name` has autocomplete scoped to guilds you're actually invited to |
 | `leave.js` | `/leave` | Non-Leader member leaves the guild |
 | `kick.js` | `/kick` | Co-Leader/Leader removes a member (role-gated) |
 | `promote.js` | `/promote` | Raise a member's role (role-gated) |

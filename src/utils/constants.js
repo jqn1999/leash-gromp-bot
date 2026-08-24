@@ -1372,6 +1372,37 @@ const RivalMercenaries = {
     ]
 }
 
+// Mercenary-exclusive stash system (systems/safehouses.md) — purely defensive, closing
+// the gap where even a fully-regraded personal bank can't cover the next shop tier's cost
+// (the bankCapacity shop ladder jumps from a 50,000,000 tier-6 cap straight to a
+// 500,000,000 tier-7 cost — a real 450M+ liquid exposure window /shop's wallet-only
+// spending forces on EVERY player, mercenary or not). Deliberately does NOT let /shop
+// spend from any bank/safehouse directly — that liquid-window-before-a-big-purchase is a
+// kept design tension (it's what makes a well-timed /rob catch someone mid-purchase fun),
+// so Safehouses only ever add more PROTECTED capacity, never a way to skip the exposure
+// window entirely.
+//
+// Unlike the personal bank's single pool, a mercenary owns up to 6 SEPARATE safehouses —
+// one slot unlocked per Mercenary Rank tier, bought in order, each with its own balance
+// and fixed capacity. Compartmentalizing this way (rather than just one bigger number) is
+// the actual point: funding a purchase only ever requires withdrawing from ONE house,
+// exposing that house's balance to /rob, not the mercenary's entire stash at once.
+// mercenaryFactory.getMercenaryRankInfo gates which slot is purchasable next; a fully
+// Rank-6 mercenary who's bought every slot holds 555,000,000 potatoes of compartmentalized
+// capacity — enough to meaningfully soften the tier-7 cliff above without eliminating
+// exposure on the biggest purchases (a maxed personal bank + all 6 safehouses still falls
+// short of the 1B/2B top shop tiers).
+const Safehouse = {
+    SLOTS: [
+        { slot: 1, rankRequired: 1, cost: 2000000,   capacity: 15000000 },
+        { slot: 2, rankRequired: 2, cost: 8000000,   capacity: 30000000 },
+        { slot: 3, rankRequired: 3, cost: 25000000,  capacity: 60000000 },
+        { slot: 4, rankRequired: 4, cost: 75000000,  capacity: 100000000 },
+        { slot: 5, rankRequired: 5, cost: 200000000, capacity: 150000000 },
+        { slot: 6, rankRequired: 6, cost: 400000000, capacity: 200000000 },
+    ]
+}
+
 const GuildRoles = {
     LEADER: "Leader",
     COLEADER: "Co-Leader",
@@ -2048,6 +2079,7 @@ module.exports = {
     MercenaryCompanionDrop,
     Rival,
     RivalMercenaries,
+    Safehouse,
     metalKingRaidBoss,
     metalPotatoSuccess,
     metalPotatoFailure,

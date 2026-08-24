@@ -384,6 +384,14 @@ function getDefaultUserFields(userId, username) {
         // monotonic split this codebase already established.
         mercenaryNotoriety: 0,
         rivalConfrontationWinCount: 0,
+        // Safehouses (systems/safehouses.md) — mercenary-exclusive, purely defensive extra
+        // bank capacity. Array of { slot, balance } for each PURCHASED slot only (not one
+        // entry per Safehouse.SLOTS definition) — an empty array means no safehouses owned
+        // yet, same "only store what's actually true" shape companions.owned already uses.
+        // Capacity per slot is never stored here, only looked up live from
+        // Safehouse.SLOTS by slot number (same "computed live off a static table" pattern
+        // MercenaryRank/RaidLevel already use) — see safehouseFactory.js.
+        safehouses: [],
         companions: {                // see systems/companions.md
             owned: [],               // array of { id, level } — level static at 1 for now
             active: null,            // companion id currently equipped, or null
