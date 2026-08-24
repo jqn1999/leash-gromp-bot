@@ -1565,6 +1565,25 @@ and needs its own balance pass.
   Discord's 25-result max per keystroke, same as every other autocomplete in this codebase.
   Full suite green (420/420, unaffected — no existing tests target these command files).
 
+- [x] **43. `/companion` Can View Another User's Companion List** — S — **Done**
+  What: `/companion` gains an optional `target-user` option (Mentionable, same shape
+  `/profile.js`'s own target-user option and resolution already use, right down to the
+  `interaction.guild.members.fetch(...)` lookup and "That user doesn't exist in this
+  server" error). Viewing another user's list is read-only — no equip buttons are rendered
+  at all, since equipping only ever mutates the *invoking* user's own state, never the
+  viewed user's; pagination still works normally. `embedFactory.createCompanionListEmbed`
+  gained a `canEquip = true` param (defaults true so its one real caller's own-list path is
+  unchanged) that drops the "use the buttons below to equip..." line from the description
+  when viewing someone else's list, since there are no buttons to reference in that case.
+  Why: direct instruction — "allow users to use companion to look at other user's
+  companion lists."
+  Notable: `companion.js`'s `buildRows`/the two mid-collector-loop re-render calls all
+  thread a `canEquip` flag through explicitly (`canEquip = userId === invokingUserId`)
+  rather than relying solely on "no equip buttons were ever rendered so the click can't
+  happen" — defensive redundancy, cheap and matches this codebase's general preference for
+  explicit guards over implicit ones. Full suite green (420/420, unaffected — no existing
+  tests target `companion.js`).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

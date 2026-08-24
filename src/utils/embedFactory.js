@@ -1697,7 +1697,7 @@ class EmbedFactory {
     // exactly like createAchievementsPageEmbed/createQuestsPageEmbed. scavenging (optional):
     // the live userDetails.companions.scavenging record ({ companionId, rarity, returnsAt })
     // or null — powers the third status branch below (see systems/companions.md#scavenging).
-    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned, scavenging = null) {
+    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned, scavenging = null, canEquip = true) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
             let status;
             if (companion.id === activeId) {
@@ -1732,7 +1732,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Companions`)
-            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.`)
+            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}${canEquip ? `\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.` : ''}`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

@@ -372,10 +372,17 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 
 ## Viewing and equipping
 
-`/companion` — no args shows a paginated (5/page) list of owned companions, perk text, and which
-one is active (or, since Scavenging shipped, currently out scavenging — see below). The `equip`
-option (choices drawn from the full roster) switches the active slot, rejected if the caller doesn't
-own that companion or if it's currently out scavenging.
+`/companion` — no args shows a paginated (5/page) list of the invoking user's own owned companions,
+perk text, and which one is active (or, since Scavenging shipped, currently out scavenging — see
+below). Equipping is button-driven, not a command argument: each page shows up to 5 buttons, one per
+listed companion, labeled with that companion's own name; clicking one equips it, clicking the
+already-active one again unequips it (`companion.js`'s `attemptEquip`). Rejected if the caller
+doesn't own that companion or it's currently out scavenging.
+
+An optional `target-user` (Mentionable, same option shape `/profile`'s own target-user uses) views
+**another** user's companion list instead — read-only: no equip buttons are rendered at all for
+someone else's list, since equipping only ever mutates the *invoking* user's own state, never the
+viewed user's. Pagination still works normally if the viewed list spans multiple pages.
 
 ## Marketplace
 

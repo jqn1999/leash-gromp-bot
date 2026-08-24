@@ -1,4 +1,4 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle, ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, buildPaginationRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
@@ -91,12 +91,16 @@ function buildEquipRow(pageItems, userDetails) {
     return new ActionRowBuilder().addComponents(buttons);
 }
 
-function buildRows(pages, pageIndex, userDetails) {
+// canEquip is false when viewing another user's list — read-only in that case, same as
+// every other "view someone else's stuff" command (see /profile's target-user option):
+// equipping only ever mutates the INVOKING user's own state, so it makes no sense to show
+// (let alone wire up) equip buttons for a companion list that isn't the invoker's own.
+function buildRows(pages, pageIndex, userDetails, canEquip) {
     const rows = [];
     if (pages.length > 1) {
         rows.push(buildPaginationRow(PAGE_PREFIX, pageIndex, pages.length));
     }
-    const equipRow = buildEquipRow(pages[pageIndex], userDetails);
+    const equipRow = canEquip ? buildEquipRow(pages[pageIndex], userDetails) : null;
     if (equipRow) {
         rows.push(equipRow);
     }
@@ -105,12 +109,40 @@ function buildRows(pages, pageIndex, userDetails) {
 
 module.exports = {
     name: "companion",
-    description: "View your companions, or equip one as your active companion",
+    description: "View your companions (or another user's), or equip one as your active companion",
     devOnly: false,
     deleted: false,
+    options: [
+        {
+            name: 'target-user',
+            description: 'The user to view the companion list of',
+            required: false,
+            type: ApplicationCommandOptionType.Mentionable,
+        },
+    ],
     callback: async (client, interaction) => {
         await interaction.deferReply({ ephemeral: true });
-        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+
+        const [invokingUserId] = getUserInteractionDetails(interaction);
+        let userId, username, userDisplayName;
+
+        // Same target-user resolution /profile.js already uses — Mentionable rather than
+        // User so it also accepts a role mention gracefully failing the members.fetch below
+        // instead of a type mismatch at the Discord API layer.
+        const targetUserId = interaction.options.get('target-user')?.value;
+        if (targetUserId) {
+            const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+            if (!targetMember) {
+                await interaction.editReply('That user doesn\'t exist in this server.');
+                return;
+            }
+            userId = targetMember.id;
+            userDisplayName = targetMember.displayName;
+            username = targetMember.user.username;
+        } else {
+            [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        }
+        const canEquip = userId === invokingUserId;
 
         let userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
@@ -120,14 +152,14 @@ module.exports = {
 
         const renderPage = (idx) => embedFactory.createCompanionListEmbed(
             userDisplayName, pages[idx], idx, pages.length,
-            userDetails.companions?.active ?? null, totalOwned, userDetails.companions?.scavenging ?? null
+            userDetails.companions?.active ?? null, totalOwned, userDetails.companions?.scavenging ?? null, canEquip
         );
 
         const embed = renderPage(0);
-        const components = buildRows(pages, 0, userDetails);
+        const components = buildRows(pages, 0, userDetails, canEquip);
         const reply = await interaction.editReply({ embeds: [embed], components });
 
-        if (pages.length <= 1 && !buildEquipRow(pages[0], userDetails)) return;
+        if (pages.length <= 1 && !(canEquip && buildEquipRow(pages[0], userDetails))) return;
 
         // Custom collector loop, not runPaginatedReply/buildPaginationRow's generic
         // prev/next-only loop — this page also needs to react to equip-button clicks
@@ -144,7 +176,7 @@ module.exports = {
 
             if (clicked.customId === `${PAGE_PREFIX}_prev` || clicked.customId === `${PAGE_PREFIX}_next`) {
                 pageIndex = clicked.customId === `${PAGE_PREFIX}_next` ? pageIndex + 1 : pageIndex - 1;
-                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex, userDetails) });
+                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(pages, pageIndex, userDetails, canEquip) });
                 continue;
             }
 
@@ -167,7 +199,7 @@ module.exports = {
                 await interaction.editReply({
                     content: `${userDisplayName}, ${result.message}`,
                     embeds: [renderPage(pageIndex)],
-                    components: buildRows(pages, pageIndex, userDetails)
+                    components: buildRows(pages, pageIndex, userDetails, canEquip)
                 });
                 continue;
             }
