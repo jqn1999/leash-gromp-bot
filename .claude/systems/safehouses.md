@@ -69,12 +69,44 @@ reason (rank-gated vs. can't-afford vs. already own every slot) via
 
 ## Depositing and withdrawing
 
-`/safehouse deposit house:<n> amount:<all|number>` / `/safehouse withdraw house:<n> amount:<...>` —
-same shape `/bank` already uses, including the no-`amount` quick-percentage-button fallback
-(25%/50%/Deposit-or-Withdraw-All/Cancel). Deposits are taxed identically to the personal bank
-(`Bank.TAX_BASE`/`Bank.TAX_PERCENT`, funds the same admin-user sink) — Safehouses are not a
+`/safehouse deposit [house:<n>] amount:<all|number>` / `/safehouse withdraw [house:<n>]
+amount:<...>` — same shape `/bank` already uses, including the no-`amount` quick-percentage-button
+fallback (25%/50%/Deposit-or-Withdraw-All/Cancel). Deposits are taxed identically to the personal
+bank (`Bank.TAX_BASE`/`Bank.TAX_PERCENT`, funds the same admin-user sink) — Safehouses are not a
 tax-free alternative that would undercut `/bank`'s own tax economy; the advantage they offer is
 compartmentalized capacity, not a cheaper deposit. Withdrawal stays free, same as `/bank`.
+
+**`house` is optional (2026-08-24) — the smooth, default path.** A player who doesn't care which
+house is used just runs `/safehouse deposit amount:5000000` with no house picked:
+
+- **Deposit** — `safehouseFactory.splitDepositRandomly` spreads the amount across every owned,
+  not-full house with a randomized, organic-feeling proportional split (not an even division —
+  each house gets a random share of what's left each pass, floored at a 0.2x weight so no eligible
+  house is ever reduced to a near-invisible sliver), respecting each house's own remaining capacity.
+  This is what actually sells "safely storing money around" rather than it reading as an invisible
+  implementation detail — the confirmation embed shows a per-house breakdown line
+  (`Safehouse #2: +1,204,331`, etc.), not just a single total.
+- **Withdraw** — `safehouseFactory.autoWithdrawAllocation` drains owned houses with balance in a
+  random order until the amount is covered. Unlike deposits, WHICH house a withdrawal draws from has
+  no effect on the compartmentalized-risk story at all — withdrawn potatoes are equally liquid (and
+  equally `/rob`-exposed) no matter which house they came from — so this is pure flavor, a simple
+  greedy drain, not a proportional split.
+
+A player who *does* want to pick can still pass `house:<n>` explicitly on either action — nothing
+about the explicit-house path changed; it's the same single-house deposit/withdraw the command
+always had, just no longer the only way to use it.
+
+**Why the split algorithm is bounded by house count, not deposit size.** A naive "roll one random
+weight per house per pass, allocate proportionally" loop can stall indefinitely on the last few
+potatoes of a deposit — if every house's floored share rounds down to 0 (which becomes likely once
+the remaining amount drops below the number of eligible houses), no house gets clamped to capacity,
+`eligible` never shrinks, and the loop never terminates. `splitDepositRandomly` guards the
+proportional pass with `remaining >= eligible.length` specifically to avoid this, then falls back to
+a second, trivially-bounded loop (handing out at most `eligible.length - 1` leftover potatoes one at
+a time) to finish off whatever the flooring pass couldn't cleanly divide. The whole thing is bounded
+by `Safehouse.SLOTS.length` (currently 6) regardless of whether the deposit is 5 potatoes or
+555,000,000 — verified directly in `safehouseFactory.test.js` (exact-total-allocated invariants,
+per-house capacity-respecting invariants, and a timing assertion for a large multi-house split).
 
 `/safehouse list` shows every owned house's fill bar, the combined total, and the next purchasable
 slot's cost/rank requirement (or "you already own every safehouse!").

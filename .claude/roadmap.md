@@ -1617,6 +1617,47 @@ and needs its own balance pass.
   healing step backfills it for existing accounts automatically, no migration needed. 23
   new `safehouseFactory.test.js` tests. Full suite green (443/443, up from 420).
 
+- [x] **45. Safehouse `house` Becomes Optional — Auto-Split Deposits, Auto-Drain Withdrawals**
+  — S — **Done**
+  What: `/safehouse deposit`/`withdraw`'s `house` option is no longer required to use the
+  command at all — omitting it is now the smooth default path.
+  `safehouseFactory.splitDepositRandomly` spreads a deposit across every owned, not-full
+  house with a randomized, non-even proportional split (weights floored at 0.2x so no
+  eligible house is reduced to a near-invisible sliver each round), respecting each
+  house's own remaining capacity — this is what actually sells "safely storing money
+  around" rather than reading as an invisible implementation detail, backed by a
+  per-house breakdown line in the confirmation embed (`Safehouse #2: +1,204,331`, etc.).
+  `safehouseFactory.autoWithdrawAllocation` drains owned houses with balance in random
+  order until the withdrawal amount is covered — a simple greedy drain, not a
+  proportional split, since which house a withdrawal comes from has zero effect on
+  risk (withdrawn potatoes are equally `/rob`-exposed regardless of source house). An
+  explicit `house:<n>` still works exactly as before on either action for a player who
+  wants to pick.
+  Why: direct instruction — "make sure safehouse deposit/buy and such feels smooth
+  without always having to select a house (but a user can select if they want). If they
+  dont select, have the money split between available houses somewhat randomly just to
+  make it feel like a user safely storing money around." (`buy` was already
+  house-independent — it always targets the next purchasable slot automatically — so
+  only deposit/withdraw needed the change.)
+  Notable: the first draft of `splitDepositRandomly` (a single "roll one random weight
+  per house, allocate `floor(share)`, repeat until `remaining` hits 0" loop with no
+  lower guard) had a genuine infinite-loop risk — once `remaining` drops below the
+  number of still-eligible houses, every house's floored share can legitimately round to
+  0 forever, since no house ever gets clamped to capacity to shrink `eligible` and
+  `remaining` never decreases either. Fixed by bounding the proportional pass to
+  `remaining >= eligible.length` and falling back to a second, trivially-bounded
+  one-potato-at-a-time loop for the leftover (guaranteed smaller than the house count).
+  Verified directly: a stress test of 200 random deposits against randomized starting
+  balances (exact-total-allocated + never-exceeds-capacity invariants, all fast) plus an
+  explicit timing assertion on a large multi-house split, alongside manual sanity checks
+  covering a full 6-house 555,000,000 deposit, edge cases smaller than the house count
+  (1 and 5 potatoes across 6 empty houses), and a single-house deposit. 13 new
+  `safehouseFactory.test.js` tests. `createSafehouseAmountPickerEmbed`/
+  `createSafehouseEmbed` both generalized to accept `null`/multi-slot input rather than
+  assuming exactly one house, and `createSafehouseEmbed` now takes an allocations array
+  instead of a single slot number so its confirmation embed can show the per-house
+  breakdown either way. Full suite green (456/456, up from 443).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

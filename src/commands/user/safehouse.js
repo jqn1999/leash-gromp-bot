@@ -37,7 +37,7 @@ module.exports = {
         },
         {
             name: 'house',
-            description: 'Which safehouse number (required for deposit/withdraw)',
+            description: 'Which safehouse number — omit to auto-spread deposits/withdrawals across your safehouses',
             required: false,
             type: ApplicationCommandOptionType.Number,
         },
@@ -83,28 +83,40 @@ module.exports = {
             }
 
             await dynamoHandler.updateUserFields(userId, { potatoes: result.potatoes, safehouses: result.safehouses });
-            interaction.editReply(`${userDisplayName}, you bought Safehouse #${result.slot.slot} for ${result.slot.cost.toLocaleString()} potatoes! It holds up to ${result.slot.capacity.toLocaleString()} potatoes — use \`/safehouse deposit\` to start stashing.`);
+            interaction.editReply(`${userDisplayName}, you bought Safehouse #${result.slot.slot} for ${result.slot.cost.toLocaleString()} potatoes! It holds up to ${result.slot.capacity.toLocaleString()} potatoes — use \`/safehouse deposit\` to start stashing (leave \`house\` blank to spread it around automatically).`);
             return;
         }
 
-        // deposit / withdraw share everything from here — both act on exactly one owned
-        // safehouse, same "pick a target, then an amount" shape /bank already uses.
-        const slotNumber = Math.floor(interaction.options.get('house')?.value);
-        if (!slotNumber || !Number.isFinite(slotNumber)) {
-            interaction.editReply(`${userDisplayName}, specify which safehouse with \`house\` (see \`/safehouse list\` for your safehouse numbers).`);
-            return;
-        }
-
+        // deposit / withdraw share everything from here. `house` is optional — omitting it
+        // is the smooth/default path: deposits get randomly spread across every owned,
+        // not-full house (safehouseFactory.splitDepositRandomly) and withdrawals drain
+        // whichever owned houses have balance (autoWithdrawAllocation), so a player never
+        // HAS to think about which specific house they're using unless they want to.
         const ownedSlots = safehouseFactory.getOwnedSlots(userDetails);
-        const record = ownedSlots.find(s => s.slot === slotNumber);
-        if (!record) {
-            interaction.editReply(`${userDisplayName}, you don't own Safehouse #${slotNumber}. Run \`/safehouse list\` to see what you own.`);
+        if (ownedSlots.length === 0) {
+            interaction.editReply(`${userDisplayName}, you don't own any safehouses yet — run \`/safehouse buy\` first.`);
             return;
         }
-        const def = safehouseFactory.getSlotDefinition(slotNumber);
-        const remainingSpace = def.capacity - record.balance;
+
+        const rawHouse = interaction.options.get('house')?.value;
+        const slotNumber = rawHouse === undefined ? null : Math.floor(rawHouse);
+        let record = null;
+        if (slotNumber !== null) {
+            record = ownedSlots.find(s => s.slot === slotNumber);
+            if (!record) {
+                interaction.editReply(`${userDisplayName}, you don't own Safehouse #${slotNumber}. Run \`/safehouse list\` to see what you own, or leave \`house\` blank to spread it across what you do own.`);
+                return;
+            }
+        }
 
         let userPotatoes = userDetails.potatoes;
+        const totalStored = safehouseFactory.getTotalStored(userDetails);
+        const totalCapacity = safehouseFactory.getTotalCapacity(userDetails);
+        // "Headroom"/"available" scope to the one picked house when given, otherwise the
+        // combined total across every owned house.
+        const depositHeadroom = record ? (safehouseFactory.getSlotDefinition(slotNumber).capacity - record.balance) : safehouseFactory.getTotalRemainingSpace(userDetails);
+        const withdrawAvailable = record ? record.balance : totalStored;
+
         let netAmount = interaction.options.get('amount')?.value;
 
         // No amount typed — offer a quick percentage picker instead of forcing a re-run
@@ -114,16 +126,20 @@ module.exports = {
                 interaction.editReply(`${userDisplayName}, you don't have any potatoes to deposit.`);
                 return;
             }
-            if (action === 'withdraw' && record.balance < 1) {
-                interaction.editReply(`${userDisplayName}, you don't have any potatoes in Safehouse #${slotNumber} to withdraw.`);
+            if (action === 'withdraw' && withdrawAvailable < 1) {
+                interaction.editReply(record
+                    ? `${userDisplayName}, you don't have any potatoes in Safehouse #${slotNumber} to withdraw.`
+                    : `${userDisplayName}, you don't have any potatoes in any safehouse to withdraw.`);
                 return;
             }
-            if (action === 'deposit' && remainingSpace <= 0) {
-                interaction.editReply(`${userDisplayName}, Safehouse #${slotNumber} is already full!`);
+            if (action === 'deposit' && depositHeadroom <= 0) {
+                interaction.editReply(record
+                    ? `${userDisplayName}, Safehouse #${slotNumber} is already full!`
+                    : `${userDisplayName}, all of your safehouses are already full!`);
                 return;
             }
 
-            const pickerEmbed = embedFactory.createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, record.balance);
+            const pickerEmbed = embedFactory.createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, record?.balance ?? 0, totalStored, totalCapacity);
             const reply = await interaction.editReply({ embeds: [pickerEmbed], components: [buildAmountPickerRow(action)] });
 
             const collectorFilter = i => i.user.id === interaction.user.id;
@@ -140,13 +156,15 @@ module.exports = {
 
             await confirmation.deferUpdate();
             const pct = Number(confirmation.customId.replace('safehouse_pct_', ''));
-            netAmount = pct === 100 ? 'all' : String(Math.floor((action === 'deposit' ? userPotatoes : record.balance) * pct / 100));
+            netAmount = pct === 100 ? 'all' : String(Math.floor((action === 'deposit' ? userPotatoes : withdrawAvailable) * pct / 100));
         }
 
         let totalAmount;
         if (action === 'deposit') {
-            if (remainingSpace <= 0) {
-                interaction.editReply(`${userDisplayName}, Safehouse #${slotNumber} is already full!`);
+            if (depositHeadroom <= 0) {
+                interaction.editReply(record
+                    ? `${userDisplayName}, Safehouse #${slotNumber} is already full!`
+                    : `${userDisplayName}, all of your safehouses are already full!`);
                 return;
             }
 
@@ -157,8 +175,8 @@ module.exports = {
                     return;
                 }
                 netAmount = Math.round((totalAmount - Bank.TAX_BASE) / (1 + Bank.TAX_PERCENT));
-                if (netAmount >= remainingSpace) {
-                    netAmount = remainingSpace;
+                if (netAmount >= depositHeadroom) {
+                    netAmount = depositHeadroom;
                 }
                 totalAmount = netAmount + safehouseFactory.calculateDepositTax(netAmount);
             } else {
@@ -168,8 +186,10 @@ module.exports = {
                     return;
                 }
                 totalAmount = netAmount + safehouseFactory.calculateDepositTax(netAmount);
-                if (netAmount > remainingSpace) {
-                    interaction.editReply(`${userDisplayName}, Safehouse #${slotNumber} only has ${remainingSpace.toLocaleString()} potatoes of space remaining.`);
+                if (netAmount > depositHeadroom) {
+                    interaction.editReply(record
+                        ? `${userDisplayName}, Safehouse #${slotNumber} only has ${depositHeadroom.toLocaleString()} potatoes of space remaining.`
+                        : `${userDisplayName}, your safehouses only have ${depositHeadroom.toLocaleString()} potatoes of space remaining combined.`);
                     return;
                 }
             }
@@ -183,39 +203,51 @@ module.exports = {
                 return;
             }
 
+            const allocations = record
+                ? [{ slot: slotNumber, amount: netAmount }]
+                : safehouseFactory.splitDepositRandomly(userDetails, netAmount);
+
             userPotatoes -= totalAmount;
             const feeAmount = totalAmount - netAmount;
-            const updatedSafehouses = safehouseFactory.applyDeposit(userDetails, slotNumber, netAmount);
+            const updatedSafehouses = safehouseFactory.applyMultiDeposit(userDetails, allocations);
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', feeAmount);
             await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, safehouses: updatedSafehouses });
 
-            const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'deposit', slotNumber, netAmount, feeAmount, userPotatoes, record.balance + netAmount);
+            const newTotalStored = safehouseFactory.getTotalStored({ safehouses: updatedSafehouses });
+            const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'deposit', allocations, feeAmount, userPotatoes, newTotalStored, totalCapacity);
             interaction.editReply({ content: '', embeds: [embed], components: [] });
         } else {
             if (netAmount.toLowerCase() == 'all') {
-                netAmount = record.balance;
+                netAmount = withdrawAvailable;
             } else {
                 netAmount = Math.floor(Number(netAmount));
                 if (isNaN(netAmount)) {
                     interaction.editReply(`${userDisplayName}, something went wrong with your amount to withdraw. Try again!`);
                     return;
                 }
-                if (netAmount > record.balance) {
-                    interaction.editReply(`${userDisplayName}, Safehouse #${slotNumber} only has ${record.balance.toLocaleString()} potatoes stored.`);
+                if (netAmount > withdrawAvailable) {
+                    interaction.editReply(record
+                        ? `${userDisplayName}, Safehouse #${slotNumber} only has ${withdrawAvailable.toLocaleString()} potatoes stored.`
+                        : `${userDisplayName}, your safehouses only have ${withdrawAvailable.toLocaleString()} potatoes stored combined.`);
                     return;
                 }
             }
 
             if (netAmount < 1) {
-                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts! Safehouse #${slotNumber} has ${record.balance.toLocaleString()} potatoes stored.`);
+                interaction.editReply(`${userDisplayName}, you can only withdraw positive amounts!`);
                 return;
             }
 
+            const allocations = record
+                ? [{ slot: slotNumber, amount: netAmount }]
+                : safehouseFactory.autoWithdrawAllocation(userDetails, netAmount);
+
             userPotatoes += netAmount;
-            const updatedSafehouses = safehouseFactory.applyWithdraw(userDetails, slotNumber, netAmount);
+            const updatedSafehouses = safehouseFactory.applyMultiWithdraw(userDetails, allocations);
             await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, safehouses: updatedSafehouses });
 
-            const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'withdraw', slotNumber, netAmount, 0, userPotatoes, record.balance - netAmount);
+            const newTotalStored = safehouseFactory.getTotalStored({ safehouses: updatedSafehouses });
+            const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'withdraw', allocations, 0, userPotatoes, newTotalStored, totalCapacity);
             interaction.editReply({ content: '', embeds: [embed], components: [] });
         }
     }

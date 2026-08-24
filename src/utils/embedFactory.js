@@ -2260,13 +2260,20 @@ class EmbedFactory {
     }
 
     // Shown when /safehouse deposit|withdraw is run with no amount, offering quick
-    // percentage buttons — same shape createBankAmountPickerEmbed already uses, scoped to
-    // one house instead of the whole personal bank.
-    createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, slotBalance) {
+    // percentage buttons — same shape createBankAmountPickerEmbed already uses.
+    // slotNumber is null when no house was picked (the common case now — see
+    // safehouseFactory.splitDepositRandomly/autoWithdrawAllocation): the "available"
+    // figure and capacity field both fall back to the total across every owned house
+    // instead of one house's own numbers.
+    createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, houseBalance, totalStored, totalCapacity) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const def = safehouseFactory.getSlotDefinition(slotNumber);
-        const available = action === 'deposit' ? userPotatoes : slotBalance;
-        const availableLabel = action === 'deposit' ? 'Liquid Potatoes' : `Safehouse #${slotNumber} Balance`;
+        const isSingleHouse = slotNumber !== null;
+        const def = isSingleHouse ? safehouseFactory.getSlotDefinition(slotNumber) : null;
+        const capacityLabel = isSingleHouse ? `Safehouse #${slotNumber} Capacity` : `Total Safehouse Capacity`;
+        const capacityBalance = isSingleHouse ? houseBalance : totalStored;
+        const capacityMax = isSingleHouse ? def.capacity : totalCapacity;
+        const available = action === 'deposit' ? userPotatoes : capacityBalance;
+        const availableLabel = action === 'deposit' ? 'Liquid Potatoes' : (isSingleHouse ? `Safehouse #${slotNumber} Balance` : `Total Stored Across Safehouses`);
 
         const fields = [
             {
@@ -2275,15 +2282,18 @@ class EmbedFactory {
                 inline: true,
             },
             {
-                name: `Safehouse #${slotNumber} Capacity:`,
-                value: `${buildProgressBar(slotBalance, def.capacity)} ${(def.capacity > 0 ? slotBalance / def.capacity * 100 : 0).toFixed(1)}%\n${slotBalance.toLocaleString()} / ${def.capacity.toLocaleString()} potatoes`,
+                name: `${capacityLabel}:`,
+                value: `${buildProgressBar(capacityBalance, capacityMax)} ${(capacityMax > 0 ? capacityBalance / capacityMax * 100 : 0).toFixed(1)}%\n${capacityBalance.toLocaleString()} / ${capacityMax.toLocaleString()} potatoes`,
                 inline: false,
             },
         ];
 
+        const target = isSingleHouse ? `into Safehouse #${slotNumber}` : (action === 'deposit' ? 'across your safehouses' : 'from your safehouses');
         const embed = new EmbedBuilder()
-            .setTitle(`🗝️ ${userDisplayName}, how much do you want to ${action} into Safehouse #${slotNumber}?`)
-            .setDescription(`Pick a quick amount below, or run \`/safehouse\` again with a specific number.`)
+            .setTitle(`🗝️ ${userDisplayName}, how much do you want to ${action} ${target}?`)
+            .setDescription(isSingleHouse
+                ? `Pick a quick amount below, or run \`/safehouse\` again with a specific number.`
+                : `Pick a quick amount below, or run \`/safehouse\` again with a specific number.${action === 'deposit' ? ' Not picking a house spreads the deposit across your safehouses automatically.' : ''}`)
             .setColor("Blue")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -2292,18 +2302,32 @@ class EmbedFactory {
         return embed;
     }
 
-    createSafehouseEmbed(userDisplayName, userId, userAvatar, action, slotNumber, netAmount, feeAmount, userPotatoes, slotBalance) {
+    // allocations: [{ slot, amount }] — one entry for an explicit single-house
+    // deposit/withdraw, several when the player let it auto-split/auto-drain across their
+    // safehouses. The breakdown line is what actually sells "money spread around" instead
+    // of it just being an invisible implementation detail.
+    createSafehouseEmbed(userDisplayName, userId, userAvatar, action, allocations, feeAmount, userPotatoes, totalStored, totalCapacity) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const def = safehouseFactory.getSlotDefinition(slotNumber);
         const actionLabel = action === 'deposit' ? 'Deposited' : 'Withdrew';
+        const sign = action === 'deposit' ? '+' : '-';
         const color = action === 'deposit' ? 'Green' : 'Blue';
+        const netAmount = allocations.reduce((sum, a) => sum + a.amount, 0);
+        const isSingleHouse = allocations.length === 1;
+
+        const breakdown = [...allocations]
+            .sort((a, b) => a.slot - b.slot)
+            .map(a => `Safehouse #${a.slot}: ${sign}${a.amount.toLocaleString()}`)
+            .join('\n');
 
         const fields = [
             {
-                name: `${actionLabel} (Safehouse #${slotNumber}):`,
-                value: feeAmount > 0
-                    ? `${netAmount.toLocaleString()} potatoes (${feeAmount.toLocaleString()} potato fee charged)`
-                    : `${netAmount.toLocaleString()} potatoes`,
+                name: `${actionLabel}${isSingleHouse ? ` (Safehouse #${allocations[0].slot})` : ' (spread across your safehouses)'}:`,
+                value: [
+                    feeAmount > 0
+                        ? `${netAmount.toLocaleString()} potatoes (${feeAmount.toLocaleString()} potato fee charged)`
+                        : `${netAmount.toLocaleString()} potatoes`,
+                    isSingleHouse ? null : breakdown,
+                ].filter(Boolean).join('\n'),
                 inline: false,
             },
             {
@@ -2312,14 +2336,14 @@ class EmbedFactory {
                 inline: true,
             },
             {
-                name: `Safehouse #${slotNumber} Capacity:`,
-                value: `${buildProgressBar(slotBalance, def.capacity)} ${(def.capacity > 0 ? slotBalance / def.capacity * 100 : 0).toFixed(1)}%\n${slotBalance.toLocaleString()} / ${def.capacity.toLocaleString()} potatoes`,
+                name: `Total Safehouse Capacity:`,
+                value: `${buildProgressBar(totalStored, totalCapacity)} ${(totalCapacity > 0 ? totalStored / totalCapacity * 100 : 0).toFixed(1)}%\n${totalStored.toLocaleString()} / ${totalCapacity.toLocaleString()} potatoes`,
                 inline: false,
             },
         ];
 
         const embed = new EmbedBuilder()
-            .setTitle(`🗝️ ${userDisplayName}'s Safehouse #${slotNumber}`)
+            .setTitle(`🗝️ ${userDisplayName}'s Safehouse${isSingleHouse ? ` #${allocations[0].slot}` : 's'}`)
             .setColor(color)
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
