@@ -81,9 +81,11 @@ const PERK_LABELS = {
     regradeChanceFlat: value => `+${(value * 100).toFixed(1)}% Regrade Success Chance`,
     rebirthBonusPercent: value => `+${(value * 100).toFixed(1)}% Rebirth Bonus`,
     // The one perk that doesn't scale as a single multiplied-up value (see
-    // companionFactory.getGuineaPigTaxAndRebate) — takes { taxPercent, rebatePercent }
-    // instead of a plain number, computed by formatCompanionPerks below.
-    poisonImmunity: ({ taxPercent, rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout (-${(taxPercent * 100).toFixed(1)}% yield tax on every other gain)`,
+    // companionFactory.getGuineaPigRebate) — takes { rebatePercent } instead of a plain
+    // number, computed by formatCompanionPerks below. Used to also carry a taxPercent
+    // clause (a yield tax on every other gain) — removed 2026-08-25 by direct
+    // instruction, so this is now pure upside like every other perk's description.
+    poisonImmunity: ({ rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout`,
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
     metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
@@ -112,10 +114,9 @@ function formatCompanionPerks(companion, level = 1) {
     const multiplier = companionFactory.getLevelMultiplier(level);
     return companion.perks.map(perk => {
         // poisonImmunity doesn't fit the "one value multiplied up" shape every other perk
-        // uses — see companionFactory.getGuineaPigTaxAndRebate.
+        // uses — see companionFactory.getGuineaPigRebate.
         if (perk.type === 'poisonImmunity') {
             return PERK_LABELS.poisonImmunity({
-                taxPercent: perk.value / multiplier,
                 rebatePercent: Work.GUINEA_PIG_POISON_REBATE_PERCENT * multiplier
             });
         }

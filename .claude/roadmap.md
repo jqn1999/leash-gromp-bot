@@ -1934,6 +1934,27 @@ and needs its own balance pass.
   `Math.random` roll; an elevated Poison-style cooldown never skipped on the same roll,
   and never sets `_cooldownSkippedByCompanion`). Full suite green (472/472, up from 470).
 
+- [x] **53. Remove Guinea Pig's Yield Tax** — S — **Done**
+  What: Guinea Pig's `poisonImmunity` perk used to carry a small always-on tax on every
+  OTHER (non-poison) `/work` gain — 3% at level 1, shrinking to ~2.07% at level 10 — as
+  the offsetting cost for its poison-immunity/rebate/no-lockout benefit. That tax is now
+  removed entirely: `workFactory.js`'s `calculateGainAmount` no longer touches
+  `userDetails` for it at all, and `companionFactory.getGuineaPigTaxAndRebate` is renamed
+  to `getGuineaPigRebate` (drops `taxPercent` from its return — only `{level,
+  rebatePercent}` now). The poison-hit rebate itself (50% at level 1, up to 72.5% at
+  level 10, further escalating per-hit-this-week) and the always-skipped lockout are
+  completely unchanged. `Companions`' `guinea_pig` entry drops its now-unused
+  `value: 0.03`; `embedFactory.js`'s `poisonImmunity` perk description drops the
+  "(-X% yield tax on every other gain)" clause.
+  Why: direct instruction — "Remove gain penalty from poison pet."
+  Notable: this reverses the "first perk with a real cost" framing item 19's Guinea Pig
+  Poison Rebate Rework (2026-08-22) deliberately introduced — see
+  [systems/companions.md](systems/companions.md#guinea-pig) for the full before/after.
+  2 existing tests updated in place (one regular-work test that asserted the tax reduced
+  gain now asserts equipping Guinea Pig changes nothing outside Poison Potato; one
+  level-scaling test that asserted a smaller tax at max level now asserts ordinary gains
+  are identical regardless of level). Full suite green (472/472, unchanged in count).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

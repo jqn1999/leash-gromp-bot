@@ -86,31 +86,25 @@ function getLevelMultiplier(level) {
 }
 
 // Guinea Pig is the one companion whose perk doesn't scale the ordinary
-// getActivePerkValue way — leveling it makes BOTH halves of its dual-sided perk better
-// (cheaper tax AND a bigger poison rebate), rather than one plain value multiplied
-// uniformly. rebateBasePercent is passed in rather than imported here so this stays a
-// pure function of its own base perk value (companionFactory has no existing dependency
-// on the Work constants bucket the rebate base lives in — see workFactory.js's
-// handlePoisonPotato/calculateGainAmount, the only two callers). Returns null unless
-// Guinea Pig is the active companion, so callers can `if (guineaPig) {...}` directly.
-function getGuineaPigTaxAndRebate(userDetails, rebateBasePercent) {
+// getActivePerkValue way — see workFactory.js's handlePoisonPotato, the only caller.
+// rebateBasePercent is passed in rather than imported here so this stays a pure function
+// (companionFactory has no existing dependency on the Work constants bucket the rebate
+// base lives in). Returns null unless Guinea Pig is the active companion, so the caller
+// can `if (guineaPig) {...}` directly.
+// Renamed 2026-08-25 from getGuineaPigTaxAndRebate (dropped `taxPercent` from its return)
+// when the perk's own yield tax on every other gain was removed by direct instruction —
+// this is now a pure rebate lookup, no offsetting cost to compute alongside it.
+function getGuineaPigRebate(userDetails, rebateBasePercent) {
     const active = getActiveCompanion(userDetails);
     if (!active || active.id !== 'guinea_pig') {
         return null;
     }
-    const perk = active.perks.find(p => p.type === 'poisonImmunity');
-    const baseTax = perk ? perk.value : 0;
     const owned = getOwnedEntry(userDetails, active.id);
     const level = getCompanionLevel(owned?.workCount);
     const multiplier = getLevelMultiplier(level);
     return {
         level,
-        // Divides DOWN by the level multiplier instead of multiplying up — the tax is the
-        // perk's cost, so leveling should make it cheaper, not more expensive. At max
-        // level (1.45x) the base 3% tax lands at 3/1.45 ≈ 2.07%.
-        taxPercent: baseTax / multiplier,
-        // Multiplies UP as usual — this half is the perk's benefit, same direction every
-        // other perk in the roster scales.
+        // Multiplies UP as usual — same direction every other perk in the roster scales.
         rebatePercent: rebateBasePercent * multiplier
     };
 }
@@ -301,7 +295,7 @@ module.exports = {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
-    getGuineaPigTaxAndRebate,
+    getGuineaPigRebate,
     applyCompanionAward,
     isScavenging,
     buildScavengeDispatch,

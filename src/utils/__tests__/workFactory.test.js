@@ -191,7 +191,11 @@ describe('handleRegularWork', () => {
         expect(gainedWithBonus).toBeGreaterThan(gainedNoBonus);
     });
 
-    test('Guinea Pig shaves its yield tax off every gain, not just Poison Potato', async () => {
+    // Regression test: Guinea Pig used to shave a yield tax off every gain (not just
+    // Poison Potato) as the offsetting cost for its immunity/rebate perk — removed
+    // 2026-08-25 by direct instruction ("Remove gain penalty from poison pet"), so
+    // equipping it should no longer change an ordinary gain at all.
+    test('Guinea Pig no longer taxes ordinary gains — equipping it changes nothing outside Poison Potato', async () => {
         const noCompanion = baseUser({ userId: 'a', workMultiplierAmount: 50 });
         const withGuineaPig = baseUser({
             userId: 'b', workMultiplierAmount: 50,
@@ -199,7 +203,7 @@ describe('handleRegularWork', () => {
         });
         const gainedNoCompanion = await workFactory.handleRegularWork(noCompanion, 1000, 1, 0);
         const gainedWithGuineaPig = await workFactory.handleRegularWork(withGuineaPig, 1000, 1, 0);
-        expect(gainedWithGuineaPig).toBe(Math.floor(gainedNoCompanion * 0.97));
+        expect(gainedWithGuineaPig).toBe(gainedNoCompanion);
     });
 });
 
@@ -335,10 +339,12 @@ describe('handlePoisonPotato', () => {
             expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS);
         });
 
-        // Locks in the asymmetric scaling this rework introduced: leveling Guinea Pig now
-        // makes BOTH halves of its perk better (bigger rebate, cheaper tax), unlike every
-        // other perk where a single value just scales the same direction.
-        test('a maxed-level Guinea Pig gets a bigger rebate and a smaller yield tax than level 1', async () => {
+        // Locks in that leveling Guinea Pig grows its rebate, same direction every other
+        // perk in the roster scales. It used to also shrink an offsetting yield tax on
+        // ordinary (non-poison) gains — removed 2026-08-25 by direct instruction ("Remove
+        // gain penalty from poison pet") — so a regular work gain is now identical
+        // regardless of Guinea Pig's level, asserted below alongside the rebate growth.
+        test('a maxed-level Guinea Pig gets a bigger poison rebate than level 1, with no change to ordinary gains', async () => {
             const level1User = guineaPigUser({ userId: 'lvl1', workMultiplierAmount: 50 });
             const maxLevelUser = guineaPigUser({
                 userId: 'lvl10', workMultiplierAmount: 50,
@@ -352,9 +358,7 @@ describe('handlePoisonPotato', () => {
 
             const level1Regular = await workFactory.handleRegularWork(level1User, 1000, 1, 0);
             const maxLevelRegular = await workFactory.handleRegularWork(maxLevelUser, 1000, 1, 0);
-            // Same effectiveMultiplier for both (workMultiplierAmount is equal), so a
-            // smaller tax on the max-level user shows up directly as a bigger regular gain.
-            expect(maxLevelRegular).toBeGreaterThan(level1Regular);
+            expect(maxLevelRegular).toBe(level1Regular);
         });
 
         // Locks in the actual point of this rework — the user's own complaint was that

@@ -110,7 +110,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Sprout | Common | `workMultiplierPercent` +5% |
 | Fieldmouse | Common | `workCooldownSkipChance` 5% (chance to skip the `/work` cooldown entirely, rather than reduce it) |
 | Ladybug | Common | `bankCapacityPercent` +12% |
-| Guinea Pig | Common | `poisonImmunity` (converts a level-scaled fraction of a weekly-mitigated Poison Potato loss into a gain instead, always skips the lockout) at the cost of a level-scaled tax on every other gain — see below, both halves scale with level in the direction that rewards it |
+| Guinea Pig | Common | `poisonImmunity` (converts a level-scaled fraction of a weekly-mitigated Poison Potato loss into a gain instead, always skips the lockout) — see below |
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
@@ -158,11 +158,9 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why.
 
-### Guinea Pig: the roster's first tradeoff perk
+### Guinea Pig
 
-Every other perk is pure upside — Guinea Pig is the first with a real, always-on cost. The whole
-point is a genuine "power vs. safety" choice rather than just "which flavor of power," so it's
-Common on purpose: Poison Potato's 1-hour lockout (`Work.POISON_POTATO_TIMER_INCREASE_SECONDS`)
+Common on purpose: Poison Potato's 30-minute lockout (`Work.POISON_POTATO_TIMER_INCREASE_SECONDS`)
 disproportionately hurts newer players (an entire session lost), so that protection stays easy to
 find rather than gated behind luck.
 
@@ -170,12 +168,7 @@ find rather than gated behind luck.
 per direct instruction, with balance grounding from `balance-audit.md`'s same-day entry: the
 standing Poison Mitigation system (weekly bad-luck protection everyone gets, see
 [economy-and-work.md](economy-and-work.md)) had already eroded most of immunity's edge over just
-eating a mitigated hit raw, especially for max-level companions and heavy players — and the old
-design's leveling made the tax *worse* with no offsetting benefit, since both the tax and the
-(flat, unleveled) payout used the same uniformly-scaled perk value.
-
-The rework makes leveling help both halves instead of just one hurting, across two same-day
-passes:
+eating a mitigated hit raw, especially for max-level companions and heavy players.
 
 - **The rebate** (`handlePoisonPotato` in `workFactory.js`): every hit — Guinea Pig included —
   runs through the exact same weekly `computePoisonMitigation` calculation everyone else gets
@@ -199,11 +192,17 @@ passes:
     through the whole week — this was a direct fix for the account holder's own complaint that
     the mitigated-loss version made each successive poison *less* beneficial with the pet
     equipped.
-- **The tax** (`calculateGainAmount`, the shared choke-point every potato-denominated gain
-  scenario funnels through): the same `poisonImmunity: 0.03` base value as before, applied
-  **after** the house's cut so the tax comes out of the player's own take only — but now scales
-  **down** with level instead of up, landing at 2.07% at level 10 instead of climbing to 4.35%.
-  Unaffected by weekly hit count — only the rebate escalates.
+
+**2026-08-25: the offsetting yield tax was removed entirely**, by direct instruction ("Remove
+gain penalty from poison pet"). From 2026-08-22 through 2026-08-25, Guinea Pig had briefly been
+the roster's first perk with a real, always-on cost — a small tax on every OTHER (non-poison)
+gain, applied in `calculateGainAmount` (the shared choke-point every potato-denominated gain
+scenario funnels through), landing at 3% at level 1 and shrinking to ~2.07% at level 10. That
+entire tax mechanism is now gone — `calculateGainAmount` no longer reads `userDetails` for
+Guinea Pig at all, and `companionFactory.getGuineaPigTaxAndRebate` was renamed to
+`getGuineaPigRebate` (drops the `taxPercent` half of its old return shape). Guinea Pig is once
+again pure upside like every other companion perk — no "power vs. safety" tradeoff framing
+applies to it anymore.
 
 The rebate and tax derive from one function, `companionFactory.getGuineaPigTaxAndRebate(userDetails,
 rebateBasePercent)` — the one companion whose perk doesn't fit `getActivePerkValue`'s ordinary

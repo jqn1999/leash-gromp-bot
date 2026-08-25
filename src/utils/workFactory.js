@@ -499,9 +499,8 @@ class WorkFactory {
         // converts a level-scaled fraction of whatever loss remains AFTER mitigation into
         // a gain instead of taking it, and always skips the lockout (this is a hit that
         // pays out, not one to be locked out from following up on) — see
-        // companionFactory.getGuineaPigTaxAndRebate for why the rebate scales UP with
-        // level while the perk's own tax cost (in calculateGainAmount, below) scales DOWN.
-        const guineaPig = companionFactory.getGuineaPigTaxAndRebate(userDetails, Work.GUINEA_PIG_POISON_REBATE_PERCENT);
+        // companionFactory.getGuineaPigRebate for why the rebate scales UP with level.
+        const guineaPig = companionFactory.getGuineaPigRebate(userDetails, Work.GUINEA_PIG_POISON_REBATE_PERCENT);
         const immune = guineaPig !== null;
 
         let userTotalLosses = userDetails.totalLosses;
@@ -762,13 +761,12 @@ const sweetPotatoRewards = [
     }
 ]
 
-// userDetails is optional and only used for Guinea Pig's own yield tax — applied AFTER
-// the house's share is computed so the house's cut is always based on the gross gain,
-// unaffected by a player's own companion; the tax comes purely out of the player's own
-// take. handlePoisonPotato itself deliberately never passes userDetails through when
-// computing the poison loss/rebate — that number already goes through Guinea Pig's own
-// rebate math there, taxing it here too would double-charge the one thing this
-// companion's perk exists to pay out on.
+// userDetails is no longer read here — Guinea Pig's yield tax on every other gain (the
+// reason this parameter originally existed) was removed 2026-08-25 by direct instruction
+// ("Remove gain penalty from poison pet"). Kept in every call site's signature rather
+// than stripped from all ~7 callers across workFactory.js/mercenaryFactory.js purely to
+// minimize this change's blast radius; a future perk needing a per-user adjustment here
+// has a ready-made hook.
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
@@ -777,16 +775,6 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
     // number to whichever /work handler called it), so there's nothing to display it in.
     const houseShare = Math.floor(gainAmount / .95 * .05);
     await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
-
-    if (userDetails) {
-        // Guinea Pig's own tax — see companionFactory.getGuineaPigTaxAndRebate for why
-        // this scales DOWN with level (opposite direction from the rebate this same
-        // companion grants in handlePoisonPotato, above).
-        const guineaPig = companionFactory.getGuineaPigTaxAndRebate(userDetails, Work.GUINEA_PIG_POISON_REBATE_PERCENT);
-        if (guineaPig) {
-            gainAmount = Math.floor(gainAmount * (1 - guineaPig.taxPercent));
-        }
-    }
 
     return gainAmount
 }
