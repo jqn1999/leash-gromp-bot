@@ -47,7 +47,12 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   power (see "Effective raid power" below), plus time left on `guild.raidTimer`. Uses the exact same
   `raidFactory.js` helpers `start-raid` rolls against, so the number shown here never drifts out of
   sync with what a real raid attempt would use. (The guild buff that used to boost this total
-  directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).) Once
+  directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).) The Total
+  Multiplier in the title is no longer just an opaque number — the description spells out what it's
+  made of, e.g. "1.75x average raider power + 3% headcount bonus (2 raiders)", via
+  `raidFactory.getEffectiveRaidPowerBreakdown` (a `{averagePower, headcountBonus, effectivePower}`
+  breakdown `getEffectiveRaidPower` itself is now a thin wrapper over, so both stay byte-identical).
+  Once
   `raidTimer` has elapsed, the reply also carries a Start Raid button. Clicking it reveals a row of
   mode buttons — one per `raid-select` choice the guild currently qualifies for (Baby, Regular, and
   Stat always; Elite/Legendary only once `getUnlockedRaidModes` says the guild's level clears that

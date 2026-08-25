@@ -84,22 +84,33 @@ function getMemberRaidPower(userDetails) {
     return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails) + companionWorkMultiplierPercent);
 }
 
-// The effective raid power a roster rolls against: average per-member power (see
-// getMemberRaidPower, which now folds in each member's own workMultiplierPercent
-// companion perk alongside rebirth) plus a headcount bonus for bringing more raiders —
-// same per-member % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER already uses, capped
-// so a max-size roster doesn't spiral. A straight average alone gives zero incentive to
-// recruit more raiders; a straight sum lets any guild trivialize difficulty by fielding
-// more bodies regardless of their individual strength — this splits the difference.
+// The effective raid power a roster rolls against, broken into its two components —
+// average per-member power (see getMemberRaidPower, which folds in each member's own
+// workMultiplierPercent companion perk alongside rebirth) and a headcount bonus for
+// bringing more raiders — same per-member % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER
+// already uses, capped so a max-size roster doesn't spiral. A straight average alone gives
+// zero incentive to recruit more raiders; a straight sum lets any guild trivialize
+// difficulty by fielding more bodies regardless of their individual strength — this splits
+// the difference. Returns the breakdown (not just the final number) so currentRaid.js's
+// embed can show players what the total multiplier is actually made of, not just the
+// opaque result — see getEffectiveRaidPower below for callers that only need the number.
+function getEffectiveRaidPowerBreakdown(memberDetailsList) {
+    if (memberDetailsList.length === 0) {
+        return { averagePower: 0, headcountBonus: 0, effectivePower: 0 };
+    }
+    const averagePower = memberDetailsList.reduce((sum, m) => sum + getMemberRaidPower(m), 0) / memberDetailsList.length;
+    const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
+    return { averagePower, headcountBonus, effectivePower: averagePower * (1 + headcountBonus) };
+}
+
 // Shared by startRaid.js's actual roll, currentRaid.js's preview display, and Bounty's
 // solo 1-person "roster" so all three never drift out of sync. Still excludes the
 // Firefly-style guildRaidMultiplierPercent boost, which startRaid.js applies separately
 // since it depends on which specific perk is active among raiders, not just their power.
+// Thin wrapper over getEffectiveRaidPowerBreakdown for every caller that only needs the
+// final number, not the average/headcount-bonus split.
 function getEffectiveRaidPower(memberDetailsList) {
-    if (memberDetailsList.length === 0) return 0;
-    const averagePower = memberDetailsList.reduce((sum, m) => sum + getMemberRaidPower(m), 0) / memberDetailsList.length;
-    const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
-    return averagePower * (1 + headcountBonus);
+    return getEffectiveRaidPowerBreakdown(memberDetailsList).effectivePower;
 }
 
 // The guild level whose winsRequired is closest to targetWins — used to gate T4 raids
@@ -240,5 +251,6 @@ module.exports = {
     getGuildLevelClosestToWins,
     getEligibleScenarios,
     getMemberRaidPower,
-    getEffectiveRaidPower
+    getEffectiveRaidPower,
+    getEffectiveRaidPowerBreakdown
 }

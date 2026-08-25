@@ -2,7 +2,7 @@ const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
-const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPower, getRaidLevelInfo, getUnlockedRaidModes } = require("../../utils/raidFactory");
+const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPowerBreakdown, getRaidLevelInfo, getUnlockedRaidModes } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { runStartRaidFlow } = require("./startRaid");
 const embedFactory = new EmbedFactory();
@@ -69,10 +69,14 @@ module.exports = {
         }
         // Same average-plus-headcount-bonus formula /start-raid actually rolls against
         // (see raidFactory.js's getEffectiveRaidPower) — kept in sync so this preview
-        // never shows a different number than what a real raid attempt would use.
-        const totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
+        // never shows a different number than what a real raid attempt would use. The
+        // breakdown (not just the final number) is passed to the embed so players can see
+        // what the Total Multiplier is actually made of — average raider power plus a
+        // headcount bonus — instead of an opaque single figure.
+        const powerBreakdown = getEffectiveRaidPowerBreakdown(raidMemberDetails);
+        const totalMultiplier = powerBreakdown.effectivePower;
 
-        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds);
+        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown);
 
         // Only offer the Start Raid button once the cooldown has actually elapsed —
         // clicking it before then would just hit runStartRaidFlow's own cooldown

@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -203,6 +203,38 @@ describe('getEffectiveRaidPower', () => {
 
     test('an empty roster is 0, not NaN from a division by zero', () => {
         expect(getEffectiveRaidPower([])).toBe(0);
+    });
+});
+
+describe('getEffectiveRaidPowerBreakdown', () => {
+    test('effectivePower matches getEffectiveRaidPower exactly for the same roster', () => {
+        const roster = [
+            { workMultiplierAmount: 100, rebirthCount: 0 },
+            { workMultiplierAmount: 0, rebirthCount: 0 },
+            { workMultiplierAmount: 50, rebirthCount: 0 },
+        ];
+        expect(getEffectiveRaidPowerBreakdown(roster).effectivePower).toBeCloseTo(getEffectiveRaidPower(roster));
+    });
+
+    test('averagePower and headcountBonus combine to produce effectivePower', () => {
+        const roster = [
+            { workMultiplierAmount: 100, rebirthCount: 0 },
+            { workMultiplierAmount: 0, rebirthCount: 0 },
+        ];
+        const breakdown = getEffectiveRaidPowerBreakdown(roster);
+        expect(breakdown.averagePower).toBeCloseTo(50);
+        expect(breakdown.headcountBonus).toBeCloseTo(Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER);
+        expect(breakdown.effectivePower).toBeCloseTo(breakdown.averagePower * (1 + breakdown.headcountBonus));
+    });
+
+    test('a solo raider has a 0 headcount bonus', () => {
+        const breakdown = getEffectiveRaidPowerBreakdown([{ workMultiplierAmount: 40, rebirthCount: 0 }]);
+        expect(breakdown.headcountBonus).toBe(0);
+        expect(breakdown.averagePower).toBeCloseTo(40);
+    });
+
+    test('an empty roster returns all zeros, not NaN', () => {
+        expect(getEffectiveRaidPowerBreakdown([])).toEqual({ averagePower: 0, headcountBonus: 0, effectivePower: 0 });
     });
 });
 

@@ -792,7 +792,14 @@ class EmbedFactory {
         return embed;
     }
 
-    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds) {
+    // powerBreakdown: raidFactory.getEffectiveRaidPowerBreakdown's { averagePower,
+    // headcountBonus, effectivePower } — shown in the description so the Total Multiplier
+    // in the title isn't just an opaque number: it's each raider's own power averaged
+    // together, then bumped by a headcount bonus for roster size (see
+    // raidFactory.getEffectiveRaidPower's own comment for why it's average-plus-bonus
+    // rather than a straight sum). Optional and defaults to null so any other caller of
+    // this embed that hasn't been updated to pass it yet still renders without throwing.
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown = null) {
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
@@ -804,9 +811,13 @@ class EmbedFactory {
             raidTime = 'Ready'
         }
 
+        const multiplierExplainer = powerBreakdown
+            ? ` — ${powerBreakdown.averagePower.toFixed(2)}x average raider power${powerBreakdown.headcountBonus > 0 ? ` + ${(powerBreakdown.headcountBonus * 100).toFixed(0)}% headcount bonus (${raidList.length} raider${raidList.length == 1 ? '' : 's'})` : ` (no headcount bonus below 2 raiders)`}`
+            : '';
+
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)\nRaid Timer: ${raidTime}`)
-            .setDescription(`Below is the list of the current raid members for '${guild.guildName}'`)
+            .setDescription(`Below is the list of the current raid members for '${guild.guildName}'${multiplierExplainer}`)
             .setColor("Orange")
             .setThumbnail(guild.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })

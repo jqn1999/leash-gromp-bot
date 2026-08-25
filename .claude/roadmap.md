@@ -1955,6 +1955,29 @@ and needs its own balance pass.
   level-scaling test that asserted a smaller tax at max level now asserts ordinary gains
   are identical regardless of level). Full suite green (472/472, unchanged in count).
 
+- [x] **54. `/current-raid` Shows What the Total Multiplier Is Made Of** — S — **Done**
+  What: the Total Multiplier in `/current-raid`'s title used to be a single opaque
+  number. The description now spells out its two components — e.g. "1.75x average raider
+  power + 3% headcount bonus (2 raiders)", or "(no headcount bonus below 2 raiders)" for
+  a solo roster. `raidFactory.js`'s `getEffectiveRaidPower` (average per-member power
+  plus a capped headcount bonus — see its own comment) is refactored into a new exported
+  `getEffectiveRaidPowerBreakdown(memberDetailsList)` returning `{averagePower,
+  headcountBonus, effectivePower}`; `getEffectiveRaidPower` itself is now a thin wrapper
+  returning just `.effectivePower`, so every other existing caller (`startRaid.js`'s
+  actual roll, Bounty's solo 1-person "roster" via `mercenaryFactory.resolveBountyAttempt`)
+  is untouched and byte-identical to before. `embedFactory.createRaidMemberListEmbed`
+  takes a new optional `powerBreakdown` param (defaults `null`, so it can't throw for any
+  caller not yet passing it) and builds the explainer clause from it.
+  Why: direct instruction — "Update current raid command embed with the correct multi
+  amount used for raids now if its average + any % increase based on members so its more
+  clear to people."
+  Notable: only `currentRaid.js` calls `createRaidMemberListEmbed` (confirmed via a
+  repo-wide search), so there was no second caller needing the same update.
+  4 new tests for `getEffectiveRaidPowerBreakdown` (matches `getEffectiveRaidPower`
+  exactly for the same roster; average/bonus combine to the effective number; solo
+  raider has a 0 bonus; empty roster returns all zeros, not `NaN`). Full suite green
+  (476/476, up from 472).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
