@@ -1807,6 +1807,109 @@ and needs its own balance pass.
   load check and the full suite. Full suite green (470/470, unchanged in count — extended
   an existing test in place rather than adding a new describe block).
 
+- [ ] **50. `/rob-npc` Heist Ladder — 4 Player-Picked Tiers Gated by Mercenary Rank** — M
+  What: `/rob-npc` currently has exactly one flavor of attempt — flat payout formula,
+  whiff-only failure, success chance scaling only with `MercenaryRank` (0.30 base +
+  0.10/rank, capped 0.80), `+1` notoriety on a win. This adds a required `heist-type`
+  option (same shape as `/start-raid`'s `raid-select` — all 4 choices always listed, a
+  locked pick rejected with the reason, same pattern `startRaid.js`'s elite/legendary gate
+  already uses) with 4 tiers gated by `MercenaryRank.THRESHOLDS`' own rank curve:
+  - **Tier I "Corner Store"** (rank 1+, unchanged): 0.30 base chance, +0.10/rank, cap
+    0.80; payout cap 5,000 (today's `RobNpc.MAX_NPC_ROB_PAYOUT`); whiff-only failure, no
+    loss; `+1` notoriety per `Rival.NOTORIETY_PER_NPC_ROB_WIN` (unchanged).
+  - **Tier II "Payroll Truck"** (rank 2+, 15 wins): 0.20 base, +0.08/rank, cap 0.60;
+    payout cap 10,000 (matches `Work.MAX_LARGE_POTATO` exactly); **real failure penalty**
+    — `round(payoutCap * 0.5 * getRandomFromInterval(.8,1.2))`, i.e. 4,000-6,000 potatoes
+    on a loss, same shape `resolveRivalConfrontation`'s own loss formula already uses
+    (half of a win-shaped roll); `+2` notoriety per win.
+  - **Tier III "Armored Vault"** (rank 4+, 125 wins): 0.12 base, +0.06/rank, cap 0.42;
+    payout cap 20,000; same penalty shape, 8,000-12,000 on a loss; `+3` notoriety per win.
+  - **Tier IV "The Big Score"** (rank 6 only, 525 wins — the max rank, so this tier has no
+    real "improves with rank" range, just a fixed 0.26 once reachable): 0.06 base,
+    +0.04/rank, cap 0.26; payout cap 40,000; same penalty shape, 16,000-24,000 on a loss;
+    `+4` notoriety per win; PLUS a 5% roll on a win into
+    `mercenaryFactory.pickStatGrant('I', userDetails)` (reuses `BountyStatReward`'s
+    existing `TIER_I_GRANT` pool, no new grant table) — the one thing Tiers I-III never
+    offer, giving rank 6 a reason to keep pulling past "same payout as rank 4."
+  All 4 tiers reuse `calculateGainAmount`'s existing shape unchanged
+  (`workGainAmount * RobNpc.PAYOUT_MULTIPLIER` capped at the tier's own payout cap, same
+  "`*_MAX_*` caps the base, not the final payout" convention every other cap in this game
+  follows) — only the cap varies by tier, `PAYOUT_MULTIPLIER` (4.5x) stays shared since at
+  4.5x it's likely already the binding constraint above Tier I's 5,000 cap on any active
+  server (verify at implementation — if `workGainAmount * 4.5` doesn't already clear
+  10k/20k/40k for a real player's `workGainAmount`, the higher tiers' caps may need
+  raising further or `PAYOUT_MULTIPLIER` may need its own per-tier value too). Failure
+  penalty subtracts straight from potatoes unclamped, same precedent
+  `takeBounty.js`/`confrontRival.js` already set (`userPotatoes -= penaltyAmount`) — same
+  known, already-flagged "can a loss put someone negative" gap noted under Guild Raid's
+  own T2/T3 entry below, not a new one introduced here.
+  Why: direct instruction — "can you think of some way to build out heists a bit more
+  than just an extra work that feeds notoriety every 30 minutes? maybe based on merc lvl
+  3 and 6 or 2 4 6 and unlocking certain heist events/scenarios that do a bit more."
+  Resolved via `AskUserQuestion`: player picks a heist type each attempt (not an
+  auto-escalating rare roll, mirroring `/start-raid`'s own `raid-select` menu rather than
+  Guild Raid's hidden Metal King-style rarity), gated at rank 2/4/6 as a 4-tier ladder
+  (Tier I always, II/III/IV at 15/125/525 wins) rather than reusing Bounty's own
+  rank-1/2/3+ curve.
+  Notable: Tier I is the only tier left whiff-only on purpose — it stays the safe,
+  always-available intro action exactly as it behaves today (zero regression for anyone
+  who only ever uses the base heist), and real stakes only start at Tier II, matching the
+  "bigger score = real risk" heist framing the reward/penalty pair is meant to sell.
+  Not yet built — numbers above are a first pass grounded in existing formulas/precedent,
+  not yet balance-reviewed against live play; the `PAYOUT_MULTIPLIER` saturation question
+  flagged above should be checked before implementing.
+
+- [ ] **51. Sellable Companion Duplicates — Real Spares Instead of Auto-Potato Payout** — M/L
+  What: today, `applyCompanionAward`'s duplicate branch (`companionFactory.js:170-177`)
+  bumps the existing `owned` entry's `workCount` by `CompanionLeveling.
+  DUPLICATE_WORK_COUNT_BONUS` (10) and — via the caller, `workFactory.js`'s
+  `handleCompanionEncounter` — auto-converts the "wasted" duplicate into a flat potato
+  payout off `CompanionDuplicateReward[rarity]` (5,000/20,000/75,000/250,000 by rarity).
+  This replaces that auto-conversion entirely: a duplicate pull still bumps `workCount`
+  by the same 10 (leveling-fuel behavior unchanged, no regression), but instead of an
+  automatic payout, the player gets a genuine second copy they choose what to do with —
+  NPC-sell it instantly (reusing `/companion-sell-npc`'s existing
+  `companionMarketFactory.rollNpcSalePrice` formula exactly: 30-50% of
+  `CompanionMarket.MINIMUM_PRICE[rarity]` scaled by the companion's own level multiplier),
+  list it on `/companion-market` for a player-set price (reusing the existing escrow/tax
+  flow as-is, `CompanionMarket.TAX_PERCENT` 5%), or keep it equipped/leveling like normal
+  (equip already works off ownership-by-id alone, so this needs no new equip logic at all).
+  Data model: `getOwnedEntry`'s current "at most one owned entry per companion id"
+  invariant (explicitly assumed by `getOwnedEntry`, market escrow/`removeFromOwned`, and
+  the companion list embed) stays intact — add a `quantity` field to the owned entry
+  (`{ id, workCount, quantity }`, default 1 for every existing/new-pull entry via a
+  one-time self-healing backfill, same pattern `findUser`'s existing healing already uses
+  elsewhere) rather than pushing a second `owned` entry for the same id. A duplicate pull
+  increments `quantity` by 1 instead of creating a second entry; selling/listing a spare
+  decrements `quantity` by 1 and only removes the entry outright once `quantity` hits 0
+  AND it isn't the player's last copy of that companion (i.e. `quantity` can't go below 1
+  while the entry still needs to exist for equip/leveling — needs its own explicit rule:
+  proposal is `quantity` floors at 1, "spares" are `quantity - 1`, and only a spare count
+  above 0 is ever sellable, so a player can never accidentally sell away their only/active
+  copy). `/companion`'s list embed needs a small display change to show spare count
+  (`×N` alongside the existing name/rarity/level line) instead of the current bare
+  owned/not-owned-by-id shape.
+  Why: direct instruction — "for pet duplicates i want you to start planning out ability
+  for a user to sell to npc/list on companion marketplace or somehow have it in their
+  companion list as a duplicate new pet they can choose to sell/equip like normal maybe. I
+  want them to be able to sell." Resolved via `AskUserQuestion`: replaces the automatic
+  potato payout rather than stacking a sellable spare on top of it — `CompanionDuplicateReward`'s
+  own comment already frames that payout as "a consolation, not the primary reward," which
+  stops being true once a genuine duplicate is possible, and stacking both would be a
+  straight, unreviewed buff to every duplicate pull rather than a redesign of the same
+  reward.
+  Notable: chosen over the alternative of pushing a second full `owned` entry per id
+  specifically because that alternative breaks the "one entry per id" invariant baked into
+  `getOwnedEntry`, market escrow, and the list embed everywhere they're used today — the
+  `quantity`-field approach is additive and leaves equip/leveling code untouched entirely.
+  `CompanionDuplicateReward` becomes dead once this ships (no other caller) — remove it
+  rather than leave it orphaned. Not yet built — this is a data-model change touching
+  `dynamoHandler.js`'s default `companions` shape, `companionFactory.js`,
+  `companionMarketFactory.js`, `workFactory.js`'s `handleCompanionEncounter`, and
+  `embedFactory.js`'s companion list embed, so it should go through the architect agent
+  for a full technical design (exact backfill mechanics, exact market/NPC-sell call
+  signature changes) before a developer pass, given the L-leaning surface area.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
