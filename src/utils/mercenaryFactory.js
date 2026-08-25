@@ -1,4 +1,4 @@
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, CompanionDuplicateReward, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower } = require("../utils/raidFactory");
 const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti } = require("../utils/workFactory");
@@ -215,33 +215,25 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
     return result;
 }
 
-// Yukon's duplicate-pull consolation — mirrors workFactory.js's handleCompanionEncounter
-// duplicate branch exactly (same CompanionDuplicateReward[rarity] maxGain, same
-// calculateGainAmount shape), since applyCompanionAward itself only builds the post-roll
-// companions object — the potato consolation on an already-owned pull is always the
-// caller's own responsibility (see companionFactory.applyCompanionAward's own comment).
-// workGainAmount/catchUpBonus are passed in the same way resolveNpcRob's are, for the
-// same testability reason.
-async function resolveYukonAward(userDetails, workGainAmount, catchUpBonus = 0) {
+// Yukon's duplicate-pull outcome — mirrors workFactory.js's handleCompanionEncounter
+// duplicate branch exactly, since applyCompanionAward itself only builds the post-roll
+// companions object and every caller decides what else happens on top (see
+// companionFactory.applyCompanionAward's own comment). Removed 2026-08-25, direct
+// instruction ("do the code changes for sellable companion duplicates"): the old
+// CompanionDuplicateReward-scaled potato consolation — a duplicate Yukon now grants a
+// real spare (applyCompanionAward's quantity bump) the player can sell, exactly like any
+// other duplicate companion. No longer takes workGainAmount/catchUpBonus — both were only
+// ever used to compute that removed payout.
+function resolveYukonAward(userDetails) {
     const yukon = companionFactory.getCompanionById('yukon');
     const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, yukon);
 
     if (isNew) {
-        return { isNew: true, companion: yukon, companions, potatoesGained: 0 };
+        return { isNew: true, companion: yukon, companions };
     }
 
-    const userMultiplier = userDetails.workMultiplierAmount;
-    const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-    const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-    const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-    const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
-    const multiplier = getRandomFromInterval(.8, 1.2);
-
-    const maxGain = CompanionDuplicateReward[yukon.rarity];
-    const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
-    const potatoesGained = await calculateGainAmount(workGainAmount * tierRatio, maxGain, multiplier, effectiveMultiplier, userDetails);
-
-    return { isNew: false, companion: yukon, companions, potatoesGained };
+    const spareCount = companionFactory.getSpareCount({ companions }, yukon.id);
+    return { isNew: false, companion: yukon, companions, spareCount };
 }
 
 // Rival-only: picks 2 DISTINCT tracks (not Bounty's own single-pick shape) from

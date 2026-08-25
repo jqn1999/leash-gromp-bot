@@ -1216,13 +1216,14 @@ class EmbedFactory {
         return embed;
     }
 
-    // result: { isNew, companion, potatoesGained } from workFactory.handleCompanionEncounter.
-    // A brand-new companion shows its perk and a reminder to equip it via /companion (won,
-    // not auto-equipped — equipping stays a deliberate choice); a duplicate pull shows
-    // the consolation potato payout instead, same "Gained" framing as every other
-    // potato-reward encounter.
+    // result: { isNew, companion, workCountBefore, workCountAfter, spareCount } from
+    // workFactory.handleCompanionEncounter. A brand-new companion shows its perk and a
+    // reminder to equip it via /companion (won, not auto-equipped — equipping stays a
+    // deliberate choice); a duplicate pull shows the spare it just granted instead — see
+    // systems/companions.md#sellable-duplicates for why this replaced the old flat potato
+    // consolation.
     createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null) {
-        const { isNew, companion, potatoesGained, workCountBefore, workCountAfter } = result;
+        const { isNew, companion, workCountBefore, workCountAfter, spareCount } = result;
         let fields = [{
             name: `Work Count:`,
             value: `${newWorkCount.toLocaleString()}`,
@@ -1239,13 +1240,12 @@ class EmbedFactory {
             description = `${companion.description}\n\nRun \`/companion\` and use its equip button to make ${companion.name} your active companion!`;
         } else {
             fields.push({
-                name: `Potatoes Gained:`,
-                value: `${potatoesGained.toLocaleString()} potatoes`,
+                name: `Spare ${companion.name}:`,
+                value: `${spareCount} on hand — sell with /companion-sell or /companion-sell-npc, or just keep it`,
                 inline: true,
             });
             // The duplicate's own workCount also bumps (see workFactory.js's
-            // handleCompanionEncounter) — surfaced explicitly since "consolation bag of
-            // potatoes" used to read as the *only* thing a duplicate pull did.
+            // handleCompanionEncounter) — surfaced explicitly rather than silently applied.
             const levelBefore = companionFactory.getCompanionLevel(workCountBefore);
             const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
             fields.push({
@@ -1255,7 +1255,7 @@ class EmbedFactory {
                     : `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})`,
                 inline: true,
             });
-            description = `${companion.description}\n\nYou already have a ${companion.name} — it gains experience from the encounter and hands over a consolation bag of potatoes too.`;
+            description = `${companion.description}\n\nYou already have a ${companion.name} — it gains experience from the encounter and you now hold a spare copy too.`;
         }
 
         if (cooldownSkippedByCompanion) {
@@ -1483,7 +1483,7 @@ class EmbedFactory {
                 name: yukonAward.isNew ? '🤠 A new companion joins you!' : '🤠 Yukon, the Highwayman (already owned)',
                 value: yukonAward.isNew
                     ? `You've earned the loyalty of Yukon, the Highwayman — a Legendary companion found only through Mercenary Bounties!`
-                    : `You already have Yukon's loyalty — instead, you find ${yukonAward.potatoesGained.toLocaleString()} potatoes among their haul.`,
+                    : `You already have Yukon's loyalty — instead, this haul includes a spare Yukon (${yukonAward.spareCount} on hand now) you can sell with /companion-sell or /companion-sell-npc.`,
                 inline: false,
             });
         }
@@ -1749,8 +1749,14 @@ class EmbedFactory {
             // than on the write side.
             const isUpperRarity = companion.rarity === CompanionRarity.LEGENDARY || companion.rarity === CompanionRarity.MYTHIC;
             const scoutTag = (companion.hasScavenged && isUpperRarity) ? ' 🗺️ Seasoned Scout' : '';
+            // Spares (extra copies beyond the one that equips/levels — see
+            // companionFactory.getSpareCount) are sellable via /companion-sell and
+            // /companion-sell-npc without touching this actual copy. Only shown once
+            // there's at least one, so a companion with no spares reads exactly as it did
+            // before this existed.
+            const spareTag = companion.spareCount > 0 ? ` (+${companion.spareCount} spare${companion.spareCount == 1 ? '' : 's'})` : '';
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}${spareTag}`,
                 value: `${formatCompanionPerks(companion, level)}\n${progress}\n${status}`,
                 inline: false,
             };

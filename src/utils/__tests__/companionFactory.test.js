@@ -6,6 +6,7 @@ const {
     ownsCompanion,
     getActiveCompanion,
     getOwnedEntry,
+    getSpareCount,
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,
@@ -118,12 +119,12 @@ describe('getActiveCompanion / getActivePerkValue', () => {
 });
 
 describe('applyCompanionAward', () => {
-    test('a new companion is added to owned and bumps ownedCount', () => {
+    test('a new companion is added to owned at quantity 1 and bumps ownedCount', () => {
         const user = freshUser();
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(true);
-        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 0 }]);
+        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 0, quantity: 1 }]);
         expect(result.companions.ownedCount).toBe(1);
         expect(result.companions.mythicOwnedCount).toBe(0);
     });
@@ -136,16 +137,26 @@ describe('applyCompanionAward', () => {
         expect(result.companions.mythicOwnedCount).toBe(1);
     });
 
-    test('a duplicate pull bumps the existing entry\'s workCount instead of adding a new owned entry', () => {
+    test('a duplicate pull bumps the existing entry\'s workCount and quantity instead of adding a new owned entry', () => {
         const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 20 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 20 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS }]);
+        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 20 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
         expect(result.companions.ownedCount).toBe(1);
     });
 
-    test('a duplicate pull on a companion that is not the active one still bumps its workCount', () => {
+    // A missing quantity on the pre-existing entry (an account from before this field
+    // existed) reads as 1, so the first duplicate pull after this shipped still lands on
+    // exactly 2, not NaN or 1.
+    test('a second duplicate pull on the same companion bumps quantity again, off the already-bumped value', () => {
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 20, quantity: 2 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const sprout = getCompanionById('sprout');
+        const result = applyCompanionAward(user, sprout);
+        expect(result.companions.owned[0].quantity).toBe(3);
+    });
+
+    test('a duplicate pull on a companion that is not the active one still bumps its workCount and quantity', () => {
         const user = freshUser({
             companions: {
                 owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 5 }],
@@ -155,7 +166,7 @@ describe('applyCompanionAward', () => {
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.companions.owned).toEqual([
-            { id: 'sprout', workCount: CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS },
+            { id: 'sprout', workCount: CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 },
             { id: 'mole', workCount: 5 },
         ]);
     });
@@ -188,17 +199,21 @@ describe('applyCompanionAward', () => {
         const user = freshUser();
         const firefly = getCompanionById('firefly');
         const result = applyCompanionAward(user, firefly, 42);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 42 }]);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 42, quantity: 1 }]);
     });
 
-    test('buying a companion you already own combines workCount instead of being blocked or discarded', () => {
+    // Buying a companion you already own goes through this same duplicate branch, so it
+    // grants a spare too (quantity 2), not just combined workCount — a market purchase of
+    // a companion you already have shouldn't behave any differently than any other
+    // duplicate-acquisition path.
+    test('buying a companion you already own combines workCount and grants a spare, instead of being blocked or discarded', () => {
         const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 100 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
         const firefly = getCompanionById('firefly');
         // companionBuy.js passes the listing's workCount for BOTH params — whichever
         // branch fires should credit the same amount either way.
         const result = applyCompanionAward(user, firefly, 275, 275);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 100 + 275 }]);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 100 + 275, quantity: 2 }]);
         expect(result.companions.ownedCount).toBe(1);
     });
 
@@ -206,7 +221,24 @@ describe('applyCompanionAward', () => {
         const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 0 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
         const firefly = getCompanionById('firefly');
         const result = applyCompanionAward(user, firefly, 0, 999);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 999 }]);
+        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 999, quantity: 2 }]);
+    });
+});
+
+describe('getSpareCount', () => {
+    test('0 for an unowned companion', () => {
+        const user = freshUser();
+        expect(getSpareCount(user, 'sprout')).toBe(0);
+    });
+
+    test('0 for a single owned copy, whether quantity is explicit or missing (older accounts)', () => {
+        expect(getSpareCount(freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0, quantity: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } }), 'sprout')).toBe(0);
+        expect(getSpareCount(freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } }), 'sprout')).toBe(0);
+    });
+
+    test('quantity - 1 once there are extra copies', () => {
+        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0, quantity: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        expect(getSpareCount(user, 'sprout')).toBe(2);
     });
 });
 

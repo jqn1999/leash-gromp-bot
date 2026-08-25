@@ -338,15 +338,19 @@ correctly, with no special-casing needed:
   non-compounding, same "percentage of a computed payout" shape `starchSellBonusPercent`
   already uses safely.
 
-On a hit, `mercenaryFactory.resolveYukonAward(userDetails, workGainAmount, catchUpBonus)`
-always calls `companionFactory.applyCompanionAward` unconditionally — no ownership check
-needed first, since that function already handles the "already own it" case (bumps
-`workCount` by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`). The potato consolation on a
-duplicate pull is `resolveYukonAward`'s own responsibility (mirrors
-`workFactory.handleCompanionEncounter`'s duplicate branch exactly — same
-`CompanionDuplicateReward.legendary` maxGain, same `calculateGainAmount` shape) since
-`applyCompanionAward` itself only ever builds the post-roll `companions` object, never pays
-potatoes.
+On a hit, `mercenaryFactory.resolveYukonAward(userDetails)` always calls
+`companionFactory.applyCompanionAward` unconditionally — no ownership check needed first,
+since that function already handles the "already own it" case (bumps `workCount` by
+`CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` and `quantity` by 1). A duplicate pull used
+to also pay a potato consolation here (mirroring `workFactory.handleCompanionEncounter`'s
+own duplicate branch exactly — same `CompanionDuplicateReward.legendary` maxGain, same
+`calculateGainAmount` shape); removed 2026-08-25 alongside
+[systems/companions.md](companions.md#sellable-duplicates)'s sellable-duplicates rework —
+a duplicate Yukon now grants a real, sellable spare (`resolveYukonAward`'s returned
+`spareCount`) instead, exactly like any other duplicate companion. Both call sites were
+updated together specifically because they were already documented as intentional mirrors
+of each other; leaving one on the old potato-payout behavior while the other moved to
+spares would have broken that.
 
 ## Commands
 

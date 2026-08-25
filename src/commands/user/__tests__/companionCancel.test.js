@@ -43,7 +43,7 @@ describe('attemptCancelListing', () => {
 
         expect(result.ok).toBe(true);
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('seller-1', {
-            companions: expect.objectContaining({ owned: [{ id: 'yukon', workCount: 20 }] }),
+            companions: expect.objectContaining({ owned: [{ id: 'yukon', workCount: 20, quantity: 1 }] }),
         });
     });
 
@@ -67,7 +67,9 @@ describe('attemptCancelListing', () => {
         // Exactly one owned entry for yukon, workCount summed (3 + 20), not two entries —
         // and ownedCount/mythicOwnedCount stay untouched (escrow removal never decremented
         // them, so a cancel restoring the same acquisition must not touch them either).
-        expect(calledFields.companions.owned).toEqual([{ id: 'yukon', workCount: 23 }]);
+        // quantity bumps to 2 — the listing being cancelled comes back as a spare, since
+        // the seller already holds a (re-acquired) copy of their own.
+        expect(calledFields.companions.owned).toEqual([{ id: 'yukon', workCount: 23, quantity: 2 }]);
         expect(calledFields.companions.ownedCount).toBe(2);
         expect(calledFields.companions.mythicOwnedCount).toBe(2);
     });

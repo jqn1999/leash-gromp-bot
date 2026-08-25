@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, CompanionDuplicateReward, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
+const { Work, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -232,12 +232,16 @@ class WorkFactory {
 
     // Wandering Companion encounter — rolls a companion by rarity (see
     // companionFactory.js). A new companion is added to owned (not auto-equipped,
-    // equipping stays a deliberate /companion equip choice); a duplicate pays out a
-    // modest potato consolation instead, scaled the same server-wealth-aware way every
-    // other /work reward is (see calculateGainAmount below). forcedCompanionId lets
-    // /admin-work skip the roll and test a specific companion directly — every real
-    // /work call leaves it null/undefined, which falls through to the normal roll.
-    async handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus = 0, forcedCompanionId = null) {
+    // equipping stays a deliberate /companion equip choice); a duplicate grants a real
+    // second copy instead ("spare" — see companionFactory.applyCompanionAward's own
+    // comment) that the player can sell (NPC or player market) or just keep. Removed
+    // 2026-08-25, direct instruction ("do the code changes for sellable companion
+    // duplicates"): the old automatic CompanionDuplicateReward potato consolation —
+    // workGainAmount/multiplier/catchUpBonus were only ever used to compute that, so this
+    // no longer takes them. forcedCompanionId lets /admin-work skip the roll and test a
+    // specific companion directly — every real /work call leaves it null/undefined,
+    // which falls through to the normal roll.
+    async handleCompanionEncounter(userDetails, forcedCompanionId = null) {
         const userId = userDetails.userId;
         const companion = forcedCompanionId ? companionFactory.getCompanionById(forcedCompanionId) : companionFactory.rollCompanion();
         const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
@@ -252,45 +256,25 @@ class WorkFactory {
 
         const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
 
-        if (isNew) {
-            await dynamoHandler.updateUserFields(userId, {
-                companions: companions,
-                workScenarioCounts: workScenarioCounts,
-                workTimer: workTimer
-            }, { workCount: 1 });
-            return { isNew: true, companion, potatoesGained: 0 };
-        }
-
-        let userPotatoes = userDetails.potatoes;
-        let userTotalEarnings = userDetails.totalEarnings;
-        let userMultiplier = userDetails.workMultiplierAmount;
-        let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
-        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
-
-        const maxGain = CompanionDuplicateReward[companion.rarity];
-        const tierRatio = maxGain / Work.MAX_BASE_WORK_GAIN;
-        const potatoesGained = await calculateGainAmount(workGainAmount * tierRatio, maxGain, multiplier, effectiveMultiplier, userDetails);
-        userPotatoes += potatoesGained;
-        userTotalEarnings += potatoesGained;
-
         await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalEarnings: userTotalEarnings,
             companions: companions,
             workScenarioCounts: workScenarioCounts,
             workTimer: workTimer
         }, { workCount: 1 });
 
+        if (isNew) {
+            return { isNew: true, companion };
+        }
+
         // applyCompanionAward already bumps the duplicate's own workCount by
-        // CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS (it's not just a potato
-        // consolation prize) — surfaced here so the embed can actually show it instead of
-        // silently applying it. See systems/companions.md for why this was invisible before.
+        // CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS and the entry's quantity by 1 (a
+        // new spare) — surfaced here so the embed can show both instead of silently
+        // applying them. See systems/companions.md for the full writeup.
         const workCountBefore = userDetails.companions.owned.find(c => c.id === companion.id)?.workCount || 0;
         const workCountAfter = companions.owned.find(c => c.id === companion.id)?.workCount || 0;
+        const spareCount = companionFactory.getSpareCount({ companions }, companion.id);
 
-        return { isNew: false, companion, potatoesGained, workCountBefore, workCountAfter };
+        return { isNew: false, companion, workCountBefore, workCountAfter, spareCount };
     }
 
     async handleTaroTrader(userDetails, catchUpBonus = 0) {

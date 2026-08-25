@@ -76,8 +76,16 @@ module.exports = {
         }
         const { companion } = validation;
 
+        // Listing always escrows exactly one unit — companionMarketFactory.removeFromOwned
+        // decrements a spare first if there is one, only pulling the actual owned entry
+        // (and unequipping it) once there's nothing left but the last copy.
+        const spareCount = companionFactory.getSpareCount(userDetails, companionId);
+        const consequence = spareCount > 0
+            ? `You have ${spareCount} spare${spareCount == 1 ? '' : 's'} — this lists one of them, your equipped/leveling copy stays put until it sells.`
+            : `This is your only copy — it will leave your owned companions (and be unequipped if active) until it sells or you cancel the listing.`;
+
         const reply = await interaction.editReply({
-            content: `${userDisplayName}, list ${companion.name} for ${price.toLocaleString()} potatoes? It will leave your owned companions (and be unequipped if active) until it sells or you cancel the listing.`,
+            content: `${userDisplayName}, list ${companion.name} for ${price.toLocaleString()} potatoes? ${consequence}`,
             components: [buildConfirmCancelRow('companion_sell', 'List it')]
         });
 

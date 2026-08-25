@@ -132,8 +132,6 @@ function getActivePerkValue(userDetails, perkType) {
 }
 
 // Pure computation of the post-roll companions state — does not touch potatoes.
-// Callers own the duplicate-consolation payout themselves (see workFactory.js), since
-// that reuses the same server-wealth-scaled math every other /work reward already uses.
 // Does not auto-equip a newly-won companion — equipping stays a deliberate choice via
 // /companion equip, same as every other "pick one" mechanic in this bot.
 //
@@ -147,16 +145,29 @@ function getActivePerkValue(userDetails, perkType) {
 // - duplicateWorkCountBonus: how much to ADD to the existing entry if this companion is
 //   already owned, rather than creating a second owned entry for the same id (which the
 //   rest of this codebase assumes never happens — getOwnedEntry, market listing/sale,
-//   etc. all expect at most one). Defaults to CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS
-//   (a genuine /work duplicate pull is real, if modest, luck). companionBuy.js and
-//   companionCancel.js both pass the same workCount value for both params, since either
-//   branch firing should credit that specific amount of training either way — buying (or
-//   getting back) a companion you already own combines the levels rather than being
-//   blocked or silently discarding the leveled one.
+//   etc. all expect at most one owned ENTRY per id — see getSpareCount below for the
+//   quantity dimension that represents multiple copies within that one entry). Defaults
+//   to CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS (a genuine /work duplicate pull is
+//   real, if modest, luck). companionBuy.js and companionCancel.js both pass the same
+//   workCount value for both params, since either branch firing should credit that
+//   specific amount of training either way — buying (or getting back) a companion you
+//   already own combines the levels rather than being blocked or silently discarding the
+//   leveled one.
+//
+// Every owned entry carries a `quantity` (added 2026-08-25, direct instruction — "do the
+// code changes for sellable companion duplicates") — 1 for a normal single copy, bumped
+// by 1 whenever the duplicate branch below fires, regardless of source (a /work
+// duplicate pull, buying a companion you already own, or a cancelled listing being
+// merged back in — every one of those paths already funnels through this function or,
+// for companionCancel.js's own inline restore logic, mirrors it). A missing `quantity`
+// on an older entry reads as 1 everywhere it's consumed (getSpareCount below) rather
+// than needing an eager DB migration. The extra copies beyond the first ("spares") are
+// what /companion-sell and /companion-sell-npc can now sell without touching the
+// player's actual equipped/leveling copy — see companionMarketFactory.removeFromOwned.
 //
 // workFactory.js's handleCompanionEncounter already writes back whatever `companions`
 // this returns unconditionally, so the duplicate branch needed no caller-side changes to
-// start taking effect when leveling first shipped.
+// start taking effect when leveling (and now quantity) first shipped.
 function applyCompanionAward(userDetails, companion, initialWorkCount = 0, duplicateWorkCountBonus = CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS) {
     const companions = userDetails.companions;
     const isNew = !ownsCompanion(userDetails, companion.id);
@@ -164,7 +175,7 @@ function applyCompanionAward(userDetails, companion, initialWorkCount = 0, dupli
     if (!isNew) {
         const owned = companions.owned.map(c =>
             c.id === companion.id
-                ? { ...c, workCount: (c.workCount || 0) + duplicateWorkCountBonus }
+                ? { ...c, workCount: (c.workCount || 0) + duplicateWorkCountBonus, quantity: (c.quantity || 1) + 1 }
                 : c
         );
         return { isNew, companions: { ...companions, owned } };
@@ -181,11 +192,24 @@ function applyCompanionAward(userDetails, companion, initialWorkCount = 0, dupli
         // the player — reported as "encountering a new companion ends my scavenging run".
         companions: {
             ...companions,
-            owned: [...companions.owned, { id: companion.id, workCount: initialWorkCount }],
+            owned: [...companions.owned, { id: companion.id, workCount: initialWorkCount, quantity: 1 }],
             ownedCount: companions.ownedCount + 1,
             mythicOwnedCount: companions.mythicOwnedCount + (companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
         }
     };
+}
+
+// How many EXTRA copies of a companion the player holds beyond their first (the one
+// that equips/levels) — the sellable count /companion-sell and /companion-sell-npc now
+// offer alongside the option to sell the companion outright. 0 for an unowned companion
+// or a normal single copy; a missing `quantity` on an older owned entry (from before
+// this field existed) reads as 1 (a single copy, 0 spares), not undefined/NaN.
+function getSpareCount(userDetails, companionId) {
+    const owned = getOwnedEntry(userDetails, companionId);
+    if (!owned) {
+        return 0;
+    }
+    return Math.max(0, (owned.quantity || 1) - 1);
 }
 
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
@@ -291,6 +315,7 @@ module.exports = {
     ownsCompanion,
     getActiveCompanion,
     getOwnedEntry,
+    getSpareCount,
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,

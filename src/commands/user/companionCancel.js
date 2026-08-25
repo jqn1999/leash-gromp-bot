@@ -64,12 +64,20 @@ async function attemptCancelListing(userId, username, listingId) {
     // have re-acquired this exact companion while the listing was up (another /work pull,
     // or buying it off someone else's listing), and pushing a second owned entry for the
     // same id would break everything else that assumes at most one.
+    //
+    // quantity handling (added 2026-08-25 alongside sellable duplicates): a cancel always
+    // gives back exactly the one unit this listing escrowed. If the entry still exists
+    // (alreadyReacquired — whether because listing a spare only ever decremented quantity
+    // rather than removing the entry, or because the seller genuinely got another copy in
+    // the meantime), that's a spare coming back, so quantity goes up by 1. If the entry
+    // is gone entirely (their only copy was listed, escrow removed it outright), this
+    // recreates it at quantity 1, mirroring removeFromOwned's own two-branch shape.
     const alreadyReacquired = freshUserDetails.companions.owned.some(c => c.id === listing.companionId);
     const updatedOwned = alreadyReacquired
         ? freshUserDetails.companions.owned.map(c =>
-            c.id === listing.companionId ? { ...c, workCount: (c.workCount || 0) + (listing.workCount || 0) } : c
+            c.id === listing.companionId ? { ...c, workCount: (c.workCount || 0) + (listing.workCount || 0), quantity: (c.quantity || 1) + 1 } : c
           )
-        : [...freshUserDetails.companions.owned, { id: listing.companionId, workCount: listing.workCount || 0 }];
+        : [...freshUserDetails.companions.owned, { id: listing.companionId, workCount: listing.workCount || 0, quantity: 1 }];
 
     await dynamoHandler.updateUserFields(userId, {
         companions: { ...freshUserDetails.companions, owned: updatedOwned }

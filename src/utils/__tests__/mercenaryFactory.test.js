@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const mercenaryFactory = require('../mercenaryFactory');
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionDuplicateReward, CompanionLeveling, Rival, RivalMercenaries } = require('../constants');
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionLeveling, Rival, RivalMercenaries } = require('../constants');
 
 function baseUser(overrides = {}) {
     return {
@@ -379,30 +379,25 @@ describe('resolveNpcRob', () => {
 });
 
 describe('resolveYukonAward', () => {
-    test('a new pull just builds the companions object, no potato consolation', async () => {
+    test('a new pull just builds the companions object, no potato consolation', () => {
         const user = baseUser();
-        const result = await mercenaryFactory.resolveYukonAward(user, 1000, 0);
+        const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(true);
-        expect(result.potatoesGained).toBe(0);
-        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 0 }]);
+        expect(result.potatoesGained).toBeUndefined();
+        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 0, quantity: 1 }]);
     });
 
-    test('a duplicate pull pays a potato consolation scaled off CompanionDuplicateReward.legendary, same shape workFactory.handleCompanionEncounter uses', async () => {
-        // A near-1x effective multiplier so CompanionDuplicateReward.legendary's own base
-        // cap (not the player's own multiplier scaling it further) is what's actually
-        // being exercised here — see calculateGainAmount's own "*_MAX_* caps the base, not
-        // the final payout" convention (same as RobNpc.MAX_NPC_ROB_PAYOUT's comment).
-        const user = baseUser({ workMultiplierAmount: 1, companions: { owned: [{ id: 'yukon', workCount: 5 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // pins the .8-1.2 multiplier roll to .8
-        let result;
-        try {
-            result = await mercenaryFactory.resolveYukonAward(user, 1000, 0);
-        } finally {
-            randomSpy.mockRestore();
-        }
+    // 2026-08-25: the old potato consolation (scaled off CompanionDuplicateReward.legendary)
+    // was removed by direct instruction ("do the code changes for sellable companion
+    // duplicates") — a duplicate Yukon now grants a real, sellable spare instead, same as
+    // any other duplicate companion pull.
+    test('a duplicate pull grants a spare instead of a potato consolation', () => {
+        const user = baseUser({ workMultiplierAmount: 1, companions: { owned: [{ id: 'yukon', workCount: 5, quantity: 1 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+        const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(false);
-        expect(result.potatoesGained).toBeGreaterThan(0);
-        expect(result.potatoesGained).toBeLessThanOrEqual(CompanionDuplicateReward.legendary);
+        expect(result.potatoesGained).toBeUndefined();
+        expect(result.spareCount).toBe(1);
+        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
     });
 
     // Regression coverage for a player concern raised alongside the drop-rate buff above:
@@ -415,7 +410,7 @@ describe('resolveYukonAward', () => {
     // or not the owned copy happens to be out scavenging right now. This test pins that down
     // explicitly with a live `companions.scavenging` record set, so a future change to
     // ownsCompanion/isScavenging that broke this would fail here instead of silently.
-    test('a duplicate pull still applies correctly while the owned Yukon is out scavenging', async () => {
+    test('a duplicate pull still applies correctly while the owned Yukon is out scavenging', () => {
         const user = baseUser({
             workMultiplierAmount: 1,
             companions: {
@@ -426,15 +421,9 @@ describe('resolveYukonAward', () => {
                 scavenging: { companionId: 'yukon', rarity: 'legendary', returnsAt: Date.now() + 100000 },
             },
         });
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
-        let result;
-        try {
-            result = await mercenaryFactory.resolveYukonAward(user, 1000, 0);
-        } finally {
-            randomSpy.mockRestore();
-        }
+        const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS }]);
+        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
         // The scavenging record itself must survive untouched — applyCompanionAward only
         // ever rebuilds `owned`, spreading the rest of `companions` through unchanged.
         expect(result.companions.scavenging).toEqual(user.companions.scavenging);

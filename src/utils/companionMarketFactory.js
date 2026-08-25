@@ -51,13 +51,32 @@ function buildListing(userDetails, companion, price) {
     };
 }
 
-// Escrow removal — pulls the companion out of `owned` entirely (unequipping it first if
-// it was active) so it physically can't be equipped, re-listed, or duplicated while for
-// sale. Deliberately does NOT decrement ownedCount/mythicOwnedCount: those are lifetime
-// achievement counters (see Achievements' companion entries), and selling a companion you
-// already earned credit for shouldn't claw an achievement back.
+// Escrow removal for selling/listing ONE unit of a companion. Quantity-aware (added
+// 2026-08-25, direct instruction — "do the code changes for sellable companion
+// duplicates"): if the owned entry has spares (quantity > 1, see
+// companionFactory.getSpareCount), this only decrements quantity by 1 — the entry stays
+// in `owned`, still equipped/leveling exactly as before, since a spare sale should never
+// touch the player's actual copy. Only once quantity would hit 0 (the player's last/only
+// copy) does this fall back to the original behavior: pull the entry out of `owned`
+// entirely, unequipping it first if it was active, so it physically can't be equipped,
+// re-listed, or duplicated while for sale. Deliberately does NOT decrement
+// ownedCount/mythicOwnedCount either way: those are lifetime achievement counters (see
+// Achievements' companion entries), and selling a companion you already earned credit
+// for shouldn't claw an achievement back.
 function removeFromOwned(userDetails, companionId) {
     const companions = userDetails.companions;
+    const existing = companions.owned.find(c => c.id === companionId);
+    const currentQuantity = existing?.quantity || 1;
+
+    if (currentQuantity > 1) {
+        return {
+            owned: companions.owned.map(c => c.id === companionId ? { ...c, quantity: currentQuantity - 1 } : c),
+            active: companions.active,
+            ownedCount: companions.ownedCount,
+            mythicOwnedCount: companions.mythicOwnedCount
+        };
+    }
+
     return {
         owned: companions.owned.filter(c => c.id !== companionId),
         active: companions.active === companionId ? null : companions.active,

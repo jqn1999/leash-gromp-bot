@@ -547,37 +547,42 @@ describe('handleTaroTrader', () => {
 });
 
 // Regression coverage for a real bug: a duplicate companion pull already bumps the
-// companion's own workCount (applyCompanionAward's !isNew branch), on top of the potato
-// consolation prize — but handleCompanionEncounter's return value used to only carry
-// `potatoesGained`, so the /work embed had no way to show that gain and its own copy said
-// the potatoes came "instead" of anything else. workCountBefore/workCountAfter now surface
-// that so the embed (createCompanionEncounterEmbed) can show it truthfully.
+// companion's own workCount (applyCompanionAward's !isNew branch) — but
+// handleCompanionEncounter's return value used to only carry `potatoesGained`, so the
+// /work embed had no way to show that gain. workCountBefore/workCountAfter surface that
+// so the embed (createCompanionEncounterEmbed) can show it truthfully. 2026-08-25: the
+// potato consolation itself was removed entirely (direct instruction — "do the code
+// changes for sellable companion duplicates") in favor of a real, sellable spare —
+// spareCount now surfaces that the same way workCountBefore/workCountAfter do.
 describe('handleCompanionEncounter (duplicate pull)', () => {
-    test('reports both the potato payout and the companion\'s own workCount gain', async () => {
+    test('reports the companion\'s own workCount gain and the new spare, no potato payout', async () => {
         const userDetails = baseUser({
             workMultiplierAmount: 2,
-            companions: { owned: [{ id: 'sprout', workCount: 5 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
+            companions: { owned: [{ id: 'sprout', workCount: 5, quantity: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
         });
-        const result = await workFactory.handleCompanionEncounter(userDetails, 1000, 1, 0, 'sprout');
+        const result = await workFactory.handleCompanionEncounter(userDetails, 'sprout');
 
         expect(result.isNew).toBe(false);
-        expect(result.potatoesGained).toBeGreaterThan(0);
+        expect(result.potatoesGained).toBeUndefined();
         expect(result.workCountBefore).toBe(5);
         expect(result.workCountAfter).toBeGreaterThan(result.workCountBefore);
+        expect(result.spareCount).toBe(1);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.companions.owned[0].workCount).toBe(result.workCountAfter);
+        expect(setFields.companions.owned[0].quantity).toBe(2);
     });
 
-    test('a brand-new companion is granted with no potato payout, and no workCount gain reported', async () => {
+    test('a brand-new companion is granted with no potato payout, and no workCount/spare gain reported', async () => {
         const userDetails = baseUser({
             companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: null },
         });
-        const result = await workFactory.handleCompanionEncounter(userDetails, 1000, 1, 0, 'sprout');
+        const result = await workFactory.handleCompanionEncounter(userDetails, 'sprout');
 
         expect(result.isNew).toBe(true);
-        expect(result.potatoesGained).toBe(0);
+        expect(result.potatoesGained).toBeUndefined();
         expect(result.workCountBefore).toBeUndefined();
+        expect(result.spareCount).toBeUndefined();
     });
 });
 

@@ -159,10 +159,14 @@ var workScenarios = [
         // (chained or not) omits it, leaving it undefined and falling through to the
         // normal roll inside handleCompanionEncounter.
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const companionResult = await workFactory.handleCompanionEncounter(userDetails, workGainAmount, multiplier, catchUpBonus, forcedCompanionId);
+            const companionResult = await workFactory.handleCompanionEncounter(userDetails, forcedCompanionId);
             embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion);
             await sendWorkResult(interaction, embed, isChainedReply);
-            return companionResult.potatoesGained;
+            // A companion encounter (new or duplicate) never pays potatoes anymore — a
+            // duplicate grants a spare instead (see handleCompanionEncounter) — so this
+            // always returns 0 rather than an undefined companionResult.potatoesGained,
+            // which would otherwise poison performWork's totalPayout accumulation with NaN.
+            return 0;
         },
         chance: .096,
         type: WORK_SCENARIO_INDICES.COMPANION

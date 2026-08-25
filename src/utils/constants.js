@@ -475,19 +475,14 @@ const PoisonMitigation = {
     MILESTONE_REDUCTION: 0.90
 }
 
-// Rolling a companion you already own pays out potatoes instead of nothing — these are
-// maxGain caps fed into workFactory's existing calculateGainAmount, same shape as
-// Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO, so the payout scales with
-// server wealth and the player's own multiplier exactly like every other /work reward
-// rather than being a flat amount that goes stale as the economy grows. Deliberately
-// modest relative to Large/Metal/Golden at the same rarity feel, since this is a
-// consolation, not the primary reward for that rarity.
-const CompanionDuplicateReward = {
-    [CompanionRarity.COMMON]: 5000,
-    [CompanionRarity.RARE]: 20000,
-    [CompanionRarity.LEGENDARY]: 75000,
-    [CompanionRarity.MYTHIC]: 250000
-}
+// Rolling a companion you already own used to pay out a flat potato consolation off
+// this table (maxGain caps fed into workFactory's calculateGainAmount, same shape as
+// Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO) instead of granting anything
+// real. Removed 2026-08-25, direct instruction ("do the code changes for sellable
+// companion duplicates") — a duplicate pull now grants a genuine second copy (a "spare",
+// tracked via each owned entry's own `quantity` field) instead of an automatic payout;
+// the player decides whether to sell it (NPC or player market) or just hold it. See
+// companionFactory.applyCompanionAward and systems/companions.md#sellable-duplicates.
 
 // Each owned companion tracks its own `workCount` — cumulative /work resolutions while
 // that specific companion was the ACTIVE one (see companionFactory.getCompanionLevel and
@@ -2097,7 +2092,6 @@ module.exports = {
     CompanionRarityOdds,
     CompanionMarket,
     PoisonMitigation,
-    CompanionDuplicateReward,
     CompanionLeveling,
     CompanionScavenging,
     Companions,

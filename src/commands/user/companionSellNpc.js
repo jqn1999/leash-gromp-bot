@@ -60,8 +60,17 @@ module.exports = {
         const { companion, level } = validation;
         const { min, max } = companionMarketFactory.getNpcSaleRange(companion, level);
 
+        // Selling always gives up exactly one unit — companionMarketFactory.removeFromOwned
+        // decrements a spare first if there is one, only pulling the actual owned entry
+        // (and unequipping it) once there's nothing left but the last copy. Spelled out
+        // here so the confirmation is honest about which outcome this particular sale is.
+        const spareCount = companionFactory.getSpareCount(userDetails, companionId);
+        const consequence = spareCount > 0
+            ? `You have ${spareCount} spare${spareCount == 1 ? '' : 's'} — this sells one of them, your equipped/leveling copy is untouched.`
+            : `This is your only copy — it will leave your owned companions entirely, no refunds.`;
+
         const reply = await interaction.editReply({
-            content: `${userDisplayName}, sell ${companion.name} (level ${level}) to an NPC for somewhere between **${min.toLocaleString()}** and **${max.toLocaleString()}** potatoes (rolled when you confirm)? This is well under what it could fetch on /companion-sell — only do this if you don't want to wait for a buyer. It will leave your owned companions immediately, no refunds.`,
+            content: `${userDisplayName}, sell ${companion.name} (level ${level}) to an NPC for somewhere between **${min.toLocaleString()}** and **${max.toLocaleString()}** potatoes (rolled when you confirm)? This is well under what it could fetch on /companion-sell — only do this if you don't want to wait for a buyer. ${consequence}`,
             components: [buildConfirmCancelRow('companion_sell_npc', 'Sell it')]
         });
 

@@ -1,8 +1,7 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionDuplicateReward`, `CompanionLeveling`, `CompanionScavenging`,
-`Companions`) +
+`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
 [src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel}.js](../../src/commands/user/).
@@ -27,21 +26,65 @@ Common 65% / Rare 25% / Legendary 8% / Mythic 2%) and then uniformly among that 
 integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't subject to JS's
 integer-key reordering trap; `Object.keys` already preserves ascending threshold order here.
 
-- **New companion**: added to `owned` at `workCount: 0` (level 1), not auto-equipped (equipping
-  stays a deliberate choice). Bumps `companions.ownedCount` (and `mythicOwnedCount` for a Mythic) —
-  the achievement counters.
-- **Duplicate** (already owned): pays a modest potato consolation, scaled the same
-  server-wealth-aware way every other `/work` reward is (`CompanionDuplicateReward[rarity]` as the
-  `maxGain` cap fed into `workFactory`'s existing `calculateGainAmount`) — *and* bumps that specific
-  companion's `workCount` by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`, regardless of whether
-  it's currently equipped or benched (see Leveling below). This has always been true mechanically,
-  but the `/work` reply embed didn't say so until a player reported it as "getting potatoes instead
-  of experience" — `handleCompanionEncounter` only ever returned `potatoesGained`, and
-  `createCompanionEncounterEmbed`'s copy literally said "instead". Fixed by having
-  `handleCompanionEncounter` also return `workCountBefore`/`workCountAfter` for the duplicate, and
-  the embed now shows a `<Companion> Progress:` field (before → after, plus a level-up callout) the
-  same way `createScavengeReturnEmbed` already does, with the description reworded to "gains
-  experience from the encounter **and** hands over a consolation bag of potatoes too."
+- **New companion**: added to `owned` at `workCount: 0, quantity: 1` (level 1), not auto-equipped
+  (equipping stays a deliberate choice). Bumps `companions.ownedCount` (and `mythicOwnedCount` for a
+  Mythic) — the achievement counters.
+- **Duplicate** (already owned): bumps that specific companion's `workCount` by
+  `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`, regardless of whether it's currently equipped or
+  benched (see Leveling below), *and* bumps its `quantity` by 1 — a genuine second copy ("spare"),
+  sellable via `/companion-sell`/`/companion-sell-npc` without touching the actual equipped/leveling
+  copy. See Sellable Duplicates below for the full mechanic; this used to instead pay a flat potato
+  consolation (`CompanionDuplicateReward[rarity]`), removed 2026-08-25.
+  `handleCompanionEncounter` returns `workCountBefore`/`workCountAfter`/`spareCount` for the
+  duplicate (not `potatoesGained` anymore), and the embed shows a `<Companion> Progress:` field
+  (before → after, plus a level-up callout, same shape `createScavengeReturnEmbed` already uses)
+  alongside a `Spare <Companion>:` field.
+
+## Sellable Duplicates
+
+Added 2026-08-25, direct instruction ("do the code changes for sellable companion duplicates").
+Every `owned` entry now carries a `quantity` (1 for a normal single copy) alongside its existing
+`workCount` — `{ id, workCount, quantity }`. A missing `quantity` on an older entry (from before
+this field existed) reads as 1 everywhere it's consumed rather than needing an eager DB migration,
+the same "compute the default at the read site" precedent `getCompanionLevel`/`getMemberRaidPower`
+already use elsewhere in this codebase, rather than `findUser`'s own top-level-field healing (which
+only handles plain-object sub-keys one level deep, not per-item fields inside an array).
+
+- **`companionFactory.getSpareCount(userDetails, companionId)`** — `quantity - 1`, floored at 0. The
+  "extra" copies beyond the one that equips/levels; 0 for an unowned companion or a normal single
+  copy.
+- **Granting a spare** (`companionFactory.applyCompanionAward`'s duplicate branch) — every path that
+  can produce a duplicate acquisition funnels through this one function (a `/work` Wandering
+  Companion duplicate, buying a companion you already own off the market, a duplicate Yukon pull —
+  see [mercenary-bounties.md](mercenary-bounties.md)), so `quantity` tracking needed zero
+  caller-side changes to take effect, same "one shared function, no special-casing per caller"
+  property `workCount` bumping already had.
+- **Selling a spare** (`companionMarketFactory.removeFromOwned`, used by both
+  `/companion-sell-npc`'s instant sale and `/companion-sell`'s market listing escrow) — quantity-aware:
+  if the entry has spares (`quantity > 1`), this only decrements `quantity` by 1 — the entry stays in
+  `owned`, still equipped/leveling exactly as before. Only once `quantity` would hit 0 (the player's
+  last/only copy) does this fall back to the original behavior: pull the entry out of `owned`
+  entirely, unequipping it first if active. **Deliberately still allows selling your only copy** —
+  this is additive to the existing sell commands, not a new restriction; nothing about "you can
+  liquidate a companion you don't want at all anymore" changed. Both sell commands' confirmation
+  text now spells out which outcome a given sale is ("You have N spares — this sells one of them,
+  your equipped/leveling copy is untouched" vs. "This is your only copy — it will leave your owned
+  companions entirely").
+- **Cancelling a listing** (`companionCancel.js`'s `attemptCancelListing`, inline logic, deliberately
+  not routed through `applyCompanionAward` — see Marketplace below for why) mirrors
+  `removeFromOwned`'s two-branch shape in reverse: if the entry still exists (the listed unit was a
+  spare, or the seller re-acquired the companion some other way while the listing was up), the
+  cancelled listing comes back as a spare (`quantity` +1, `workCount` merged in as before). If the
+  entry is gone entirely (their only copy was listed), this recreates it at `quantity: 1`.
+- **Display**: `/companion`'s list embed shows spare count as a `(+N spares)` tag on each entry's
+  title, only when there's at least one — a companion with no spares reads exactly as it did before
+  this existed. `companion.js`'s `buildOwnedPages` computes `spareCount` per entry via
+  `getSpareCount` so the embed never needs to reach back into `userDetails.companions.owned` itself.
+- **`CompanionDuplicateReward` removed entirely** — the potato-consolation constant table it fed
+  (`workFactory.handleCompanionEncounter` and `mercenaryFactory.resolveYukonAward`, mirrored
+  exactly) had no other callers, so both were updated together rather than leaving one converted to
+  spares and the other still auto-paying potatoes (the two were already documented as intentional
+  mirrors of each other — see mercenary-bounties.md).
 
 Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,

@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Work, Rival } = require("../../utils/constants");
+const { Bounty, Rival } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -110,25 +110,12 @@ module.exports = {
         // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty
         // resolution only (dropSource "bounty", never the normal /work roll — see
         // companionFactory.getCompanionsByRarity). Always resolved unconditionally on a
-        // hit; resolveYukonAward already handles the "already own it" duplicate-
-        // consolation case correctly.
+        // hit; resolveYukonAward already handles the "already own it" duplicate case
+        // correctly (grants a sellable spare instead of a potato payout).
         let yukonAward = null;
         if (result.won && result.yukonHit) {
-            const total = await dynamoHandler.getCachedServerTotal();
-            const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL);
-            const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
-            const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
-
-            yukonAward = await mercenaryFactory.resolveYukonAward(userDetails, workGainAmount, catchUpBonus);
-
-            const yukonWriteFields = { companions: yukonAward.companions };
-            if (!yukonAward.isNew && yukonAward.potatoesGained > 0) {
-                userPotatoes += yukonAward.potatoesGained;
-                userTotalEarnings += yukonAward.potatoesGained;
-                yukonWriteFields.potatoes = userPotatoes;
-                yukonWriteFields.totalEarnings = userTotalEarnings;
-            }
-            await dynamoHandler.updateUserFields(userId, yukonWriteFields);
+            yukonAward = mercenaryFactory.resolveYukonAward(userDetails);
+            await dynamoHandler.updateUserFields(userId, { companions: yukonAward.companions });
         }
 
         const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward);

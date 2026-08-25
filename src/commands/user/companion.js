@@ -25,7 +25,7 @@ function buildOwnedPages(userDetails) {
     const ownedCompanions = (userDetails.companions?.owned ?? [])
         .map(o => {
             const companion = companionFactory.getCompanionById(o.id);
-            return companion ? { ...companion, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false } : null;
+            return companion ? { ...companion, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false, spareCount: companionFactory.getSpareCount(userDetails, o.id) } : null;
         })
         .filter(Boolean);
     return { pages: chunkArray(ownedCompanions, PAGE_SIZE), totalOwned: ownedCompanions.length };

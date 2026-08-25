@@ -115,6 +115,38 @@ describe('removeFromOwned', () => {
         expect(result.ownedCount).toBe(1);
         expect(result.mythicOwnedCount).toBe(1);
     });
+
+    // Sellable duplicates (2026-08-25, direct instruction): selling/listing one unit of a
+    // companion with spares only decrements quantity — the entry stays in `owned`, still
+    // equipped/leveling exactly as before, since a spare sale must never touch the
+    // player's actual copy.
+    describe('with spares (quantity > 1)', () => {
+        test('decrements quantity instead of removing the entry', () => {
+            const user = userWith({ owned: [{ id: 'sprout', workCount: 40, quantity: 3 }], active: 'sprout', ownedCount: 1 });
+            const result = removeFromOwned(user, 'sprout');
+            expect(result.owned).toEqual([{ id: 'sprout', workCount: 40, quantity: 2 }]);
+        });
+
+        test('does not unequip the active companion when a spare is sold', () => {
+            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 2 }], active: 'sprout', ownedCount: 1 });
+            const result = removeFromOwned(user, 'sprout');
+            expect(result.active).toBe('sprout');
+        });
+
+        test('selling the last spare (quantity 2 -> 1) still leaves the actual copy owned', () => {
+            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 2 }], active: 'sprout', ownedCount: 1 });
+            const result = removeFromOwned(user, 'sprout');
+            expect(result.owned).toEqual([{ id: 'sprout', workCount: 0, quantity: 1 }]);
+            expect(result.active).toBe('sprout');
+        });
+
+        test('a SECOND sale once quantity is back to 1 falls back to full removal', () => {
+            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 1 }], active: 'sprout', ownedCount: 1 });
+            const result = removeFromOwned(user, 'sprout');
+            expect(result.owned).toEqual([]);
+            expect(result.active).toBeNull();
+        });
+    });
 });
 
 describe('computeSaleSplit', () => {

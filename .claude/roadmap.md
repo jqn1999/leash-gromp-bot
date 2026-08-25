@@ -1859,56 +1859,48 @@ and needs its own balance pass.
   not yet balance-reviewed against live play; the `PAYOUT_MULTIPLIER` saturation question
   flagged above should be checked before implementing.
 
-- [ ] **51. Sellable Companion Duplicates — Real Spares Instead of Auto-Potato Payout** — M/L
-  What: today, `applyCompanionAward`'s duplicate branch (`companionFactory.js:170-177`)
-  bumps the existing `owned` entry's `workCount` by `CompanionLeveling.
-  DUPLICATE_WORK_COUNT_BONUS` (10) and — via the caller, `workFactory.js`'s
-  `handleCompanionEncounter` — auto-converts the "wasted" duplicate into a flat potato
-  payout off `CompanionDuplicateReward[rarity]` (5,000/20,000/75,000/250,000 by rarity).
-  This replaces that auto-conversion entirely: a duplicate pull still bumps `workCount`
-  by the same 10 (leveling-fuel behavior unchanged, no regression), but instead of an
-  automatic payout, the player gets a genuine second copy they choose what to do with —
-  NPC-sell it instantly (reusing `/companion-sell-npc`'s existing
-  `companionMarketFactory.rollNpcSalePrice` formula exactly: 30-50% of
-  `CompanionMarket.MINIMUM_PRICE[rarity]` scaled by the companion's own level multiplier),
-  list it on `/companion-market` for a player-set price (reusing the existing escrow/tax
-  flow as-is, `CompanionMarket.TAX_PERCENT` 5%), or keep it equipped/leveling like normal
-  (equip already works off ownership-by-id alone, so this needs no new equip logic at all).
-  Data model: `getOwnedEntry`'s current "at most one owned entry per companion id"
-  invariant (explicitly assumed by `getOwnedEntry`, market escrow/`removeFromOwned`, and
-  the companion list embed) stays intact — add a `quantity` field to the owned entry
-  (`{ id, workCount, quantity }`, default 1 for every existing/new-pull entry via a
-  one-time self-healing backfill, same pattern `findUser`'s existing healing already uses
-  elsewhere) rather than pushing a second `owned` entry for the same id. A duplicate pull
-  increments `quantity` by 1 instead of creating a second entry; selling/listing a spare
-  decrements `quantity` by 1 and only removes the entry outright once `quantity` hits 0
-  AND it isn't the player's last copy of that companion (i.e. `quantity` can't go below 1
-  while the entry still needs to exist for equip/leveling — needs its own explicit rule:
-  proposal is `quantity` floors at 1, "spares" are `quantity - 1`, and only a spare count
-  above 0 is ever sellable, so a player can never accidentally sell away their only/active
-  copy). `/companion`'s list embed needs a small display change to show spare count
-  (`×N` alongside the existing name/rarity/level line) instead of the current bare
-  owned/not-owned-by-id shape.
+- [x] **51. Sellable Companion Duplicates — Real Spares Instead of Auto-Potato Payout** — M/L — **Done**
+  What: `applyCompanionAward`'s duplicate branch now bumps a new `quantity` field (1 for
+  a normal single copy) on the owned entry by 1, alongside the existing `workCount` bump
+  by `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (unchanged, no regression to
+  leveling). The old auto-conversion of a duplicate into a flat potato payout off
+  `CompanionDuplicateReward[rarity]` is removed entirely — the player now gets a real
+  extra copy ("spare", `companionFactory.getSpareCount` = `quantity - 1`) they choose
+  what to do with: NPC-sell it (`/companion-sell-npc`), list it on the market
+  (`/companion-sell`), or just keep it. Both sell paths funnel through
+  `companionMarketFactory.removeFromOwned`, made quantity-aware: a spare sale only
+  decrements `quantity` (the actual equipped/leveling entry is untouched); only once
+  `quantity` would hit 0 does it fall back to the original full-removal-and-unequip
+  behavior — selling your only copy still works exactly as before, this is additive, not
+  a new restriction. `companionCancel.js`'s inline restore logic mirrors that in reverse
+  (gives back a spare via `quantity` +1, or recreates the entry at `quantity: 1`).
+  `getOwnedEntry`'s "at most one owned entry per companion id" invariant is preserved —
+  `quantity` lives inside that one entry rather than a second entry ever being pushed. A
+  missing `quantity` on an older entry reads as 1 at every consumption site (no eager DB
+  migration needed). `/companion`'s list embed shows a `(+N spares)` tag once there's at
+  least one. `mercenaryFactory.resolveYukonAward` (a duplicate Yukon pull via
+  `/take-bounty`) was updated the same way, since it was already documented as an
+  intentional mirror of `handleCompanionEncounter`'s duplicate branch —
+  `CompanionDuplicateReward` had exactly these two callers, both converted together, so
+  the constant is now fully removed rather than left orphaned.
   Why: direct instruction — "for pet duplicates i want you to start planning out ability
   for a user to sell to npc/list on companion marketplace or somehow have it in their
   companion list as a duplicate new pet they can choose to sell/equip like normal maybe. I
-  want them to be able to sell." Resolved via `AskUserQuestion`: replaces the automatic
-  potato payout rather than stacking a sellable spare on top of it — `CompanionDuplicateReward`'s
-  own comment already frames that payout as "a consolation, not the primary reward," which
-  stops being true once a genuine duplicate is possible, and stacking both would be a
-  straight, unreviewed buff to every duplicate pull rather than a redesign of the same
-  reward.
-  Notable: chosen over the alternative of pushing a second full `owned` entry per id
-  specifically because that alternative breaks the "one entry per id" invariant baked into
-  `getOwnedEntry`, market escrow, and the list embed everywhere they're used today — the
-  `quantity`-field approach is additive and leaves equip/leveling code untouched entirely.
-  `CompanionDuplicateReward` becomes dead once this ships (no other caller) — remove it
-  rather than leave it orphaned. Not yet built — this is a data-model change touching
-  `dynamoHandler.js`'s default `companions` shape, `companionFactory.js`,
-  `companionMarketFactory.js`, `workFactory.js`'s `handleCompanionEncounter`, and
-  `embedFactory.js`'s companion list embed, so it should go through the architect agent
-  for a full technical design (exact backfill mechanics, exact market/NPC-sell call
-  signature changes) before a developer pass, given the L-leaning surface area.
+  want them to be able to sell," followed by "do the code changes for sellable companion
+  duplicates." Replaces the automatic potato payout rather than stacking a sellable spare
+  on top of it (resolved via `AskUserQuestion` at spec time) — `CompanionDuplicateReward`'s
+  own comment already framed that payout as "a consolation, not the primary reward," which
+  stopped being true once a genuine duplicate became possible.
+  Notable: chosen over pushing a second full `owned` entry per id specifically because
+  that alternative would have broken the "one entry per id" invariant baked into
+  `getOwnedEntry`, market escrow, and the list embed everywhere they're used — the
+  `quantity`-field approach is additive and leaves equip/leveling code completely
+  untouched. See [systems/companions.md](systems/companions.md#sellable-duplicates) for
+  the full writeup. 12 new/updated tests across `companionFactory.test.js`
+  (`getSpareCount`, quantity bumping in `applyCompanionAward`),
+  `companionMarketFactory.test.js` (`removeFromOwned`'s spare-decrement vs. full-removal
+  branches), `companionCancel.test.js`, `workFactory.test.js`, and
+  `mercenaryFactory.test.js`. Full suite green (484/484, up from 476).
 
 - [x] **52. Fix: Companion Cooldown-Skip Erasing Poison Potato's Lockout** — S — **Done**
   What: `dynamoHandler.calculateWorkTimerValue` rolled a companion's
