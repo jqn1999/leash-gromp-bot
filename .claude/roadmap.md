@@ -1910,6 +1910,30 @@ and needs its own balance pass.
   for a full technical design (exact backfill mechanics, exact market/NPC-sell call
   signature changes) before a developer pass, given the L-leaning surface area.
 
+- [x] **52. Fix: Companion Cooldown-Skip Erasing Poison Potato's Lockout** — S — **Done**
+  What: `dynamoHandler.calculateWorkTimerValue` rolled a companion's
+  `workCooldownSkipChance` (Fieldmouse/Spudsprite/Mochi) unconditionally, before ever
+  checking what `cooldownTime` it was even given. A skip proc on a Poison Potato hit
+  collapsed the real (mitigated) lockout straight to "ready now," and also fired
+  `work.js`'s `_cooldownSkippedByCompanion` auto-chain into an immediate extra `/work`
+  call — that chained call's own normal `WORK_TIMER_SECONDS` (5 min) write was the last
+  one to land, so a poisoned player who also procced a skip saw a bare 5-minute wait
+  instead of the real lockout. Fixed by gating the skip roll on
+  `cooldownTime === Work.WORK_TIMER_SECONDS` — only a genuinely standard-length cooldown
+  is skippable now. See [systems/economy-and-work.md](systems/economy-and-work.md)'s
+  Poison Potato section for the full writeup.
+  Why: direct player report — "The work skip auto trigger should consider poison a user
+  hit a poison potato then it work skipped to a regular work but the cd was only 5
+  minutes. It should've poisoned and stopped the next skip."
+  Notable: Guinea Pig's immune poison branch already passes `WORK_TIMER_SECONDS` itself
+  (that hit was already designed to carry no lockout), so it's unaffected and stays
+  skippable exactly as before — this fix only changes behavior for the non-immune poison
+  branch's elevated lockout. Every other ordinary `/work` scenario is unaffected too,
+  since they all already passed `WORK_TIMER_SECONDS`. 2 new tests in
+  `dynamoHandler.test.js` (standard cooldown still skippable on a forced-low
+  `Math.random` roll; an elevated Poison-style cooldown never skipped on the same roll,
+  and never sets `_cooldownSkippedByCompanion`). Full suite green (472/472, up from 470).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

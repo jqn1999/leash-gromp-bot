@@ -100,6 +100,23 @@ of the loss). Two changes, both in `workFactory.js`:
    constants, but it would have silently discarded any reduced/variable poison lockout. Now just uses
    `cooldownTime` directly; behavior-preserving for every other existing caller.
 
+   **2026-08-25 follow-up bug, player-reported**: `calculateWorkTimerValue` rolled a companion's
+   `workCooldownSkipChance` (Fieldmouse/Spudsprite/Mochi) *unconditionally*, before ever looking at
+   what `cooldownTime` it was even given — so a skip proc on a Poison Potato hit collapsed the real
+   lockout down to "ready now" outright, on top of firing `work.js`'s `_cooldownSkippedByCompanion`
+   auto-chain into an immediate extra `/work` call. That chained call's own normal
+   `WORK_TIMER_SECONDS` write was the last one to land, so a poisoned player who also happened to
+   proc a skip saw a bare 5-minute wait instead of the real (mitigated) lockout — the punishment
+   silently vanished. Fixed by gating the skip roll on `cooldownTime === Work.WORK_TIMER_SECONDS`
+   (dynamoHandler.js): only a genuinely standard-length cooldown is skippable now. Guinea Pig's
+   immune poison branch still passes `WORK_TIMER_SECONDS` itself (see above — that hit was already
+   designed to carry no lockout), so it's unaffected and stays skippable exactly as before; every
+   other ordinary `/work` scenario is unaffected too, since they all already passed
+   `WORK_TIMER_SECONDS`. 2 new tests in `dynamoHandler.test.js`'s `calculateWorkTimerValue` describe
+   block (standard cooldown still skippable on a forced-low `Math.random` roll; an elevated
+   Poison-style cooldown is never skipped on the same forced-low roll, and never sets
+   `_cooldownSkippedByCompanion`). Full suite green (472/472, up from 470).
+
    Guinea Pig's full poison immunity is unaffected and unchanged — an immune hit doesn't touch
    `poisonMitigation` at all (there's no loss/lockout to mitigate), so it doesn't build weekly-hit
    progress or count toward the milestone either.

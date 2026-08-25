@@ -254,8 +254,20 @@ const resolveScavenge = async function (userId, companionId, setAttributes = {})
 // companion actually did it without every /work scenario's handler needing its return
 // shape changed to carry an extra flag through.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
+    // Only the STANDARD cooldown is skippable — gated on cooldownTime === WORK_TIMER_SECONDS
+    // rather than rolling skipChance unconditionally. A non-immune Poison Potato hit passes
+    // its own elevated lockoutSeconds here (workFactory.js:546, always < POISON_POTATO_
+    // TIMER_INCREASE_SECONDS but never equal to WORK_TIMER_SECONDS), so this now correctly
+    // leaves that punishment alone instead of a companion's workCooldownSkipChance erasing
+    // it — previously a skip proc on a poisoned call set the timer to "ready now" AND (via
+    // work.js's _cooldownSkippedByCompanion chain) fired an immediate follow-up /work call,
+    // whose own normal WORK_TIMER_SECONDS write was the last one to land, so the player saw
+    // a bare 5-minute cooldown after being poisoned instead of the real lockout. Guinea
+    // Pig's immune poison branch (workFactory.js:539) still passes WORK_TIMER_SECONDS
+    // itself, so it stays skippable exactly as before — that hit was already designed to
+    // carry no lockout at all.
     const skipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
-    if (skipChance > 0 && Math.random() < skipChance) {
+    if (cooldownTime === Work.WORK_TIMER_SECONDS && skipChance > 0 && Math.random() < skipChance) {
         userDetails._cooldownSkippedByCompanion = companionFactory.getActiveCompanion(userDetails).id;
         return Date.now();
     }

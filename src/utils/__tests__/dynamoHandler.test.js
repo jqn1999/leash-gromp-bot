@@ -23,7 +23,7 @@ jest.mock('aws-sdk', () => {
 const AWS = require('aws-sdk');
 const docClient = new AWS.DynamoDB.DocumentClient();
 const dynamoHandler = require('../dynamoHandler');
-const { Bank, shops } = require('../constants');
+const { Bank, shops, Work } = require('../constants');
 
 const resolved = (value) => ({ promise: () => Promise.resolve(value) });
 const rejected = (err) => ({ promise: () => Promise.reject(err) });
@@ -417,5 +417,48 @@ describe('applyGuildTreasuryInterest', () => {
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
         expect(docClient.update).not.toHaveBeenCalled();
+    });
+});
+
+describe('calculateWorkTimerValue', () => {
+    // Fieldmouse's workCooldownSkipChance — a real companion perk rather than a mock, so
+    // this exercises the actual companionFactory.getActivePerkValue/getActiveCompanion
+    // lookups, not a stand-in.
+    const userWithFieldmouse = () => ({
+        companions: { owned: [{ id: 'fieldmouse', workCount: 0 }], active: 'fieldmouse' }
+    });
+
+    afterEach(() => {
+        Math.random.mockRestore();
+    });
+
+    test('a standard-length cooldown IS skippable on a companion proc', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0); // well below any skipChance
+        const userDetails = userWithFieldmouse();
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBe('fieldmouse');
+    });
+
+    // Regression test: a non-immune Poison Potato hit passes its own elevated
+    // lockoutSeconds (workFactory.js's handlePoisonPotato), which must never be skippable
+    // — previously a companion's workCooldownSkipChance proc on a poisoned call collapsed
+    // the real lockout down to "ready now" and chained an immediate extra /work call,
+    // whose own normal 5-minute cooldown was the last write to land, so the player saw a
+    // bare 5-minute wait after being poisoned instead of the real, longer punishment.
+    test('an elevated (non-standard) cooldown, like a Poison Potato lockout, is NEVER skipped even on a companion proc', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0); // would have skipped a standard cooldown
+        const userDetails = userWithFieldmouse();
+        const poisonLockoutSeconds = Work.POISON_POTATO_TIMER_INCREASE_SECONDS;
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, poisonLockoutSeconds);
+
+        expect(result).toBeGreaterThanOrEqual(before + poisonLockoutSeconds * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
     });
 });
