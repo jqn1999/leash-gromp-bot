@@ -366,11 +366,13 @@ describe('getMinGuildLevelForTier', () => {
 });
 
 describe('getUnlockedRaidModes', () => {
-    // Regular and Stat are always offered — Stat currently has no eligibility gate at all
-    // anywhere in the game (a known, separately-tracked gap, not something this function
-    // is responsible for fixing).
-    test('regular and stat are always unlocked, even at guild level 1', () => {
+    // Baby, Regular, and Stat are always offered — Baby is deliberately gate-free (it's
+    // the guaranteed-T1-only on-ramp for guilds too weak for Regular's full table); Stat
+    // currently has no eligibility gate at all anywhere in the game (a known,
+    // separately-tracked gap, not something this function is responsible for fixing).
+    test('baby, regular, and stat are always unlocked, even at guild level 1', () => {
         const modes = getUnlockedRaidModes(1);
+        expect(modes.baby).toBe(true);
         expect(modes.regular).toBe(true);
         expect(modes.stat).toBe(true);
     });

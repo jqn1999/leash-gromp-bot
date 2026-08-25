@@ -1775,6 +1775,38 @@ and needs its own balance pass.
   breakeven-level agreement with the existing `getMinGuildLevelForTier` coverage). Full
   suite green (470/470, up from 467).
 
+- [x] **49. `baby` Raid Mode — Guaranteed-T1 Safe On-Ramp** — S — **Done**
+  What: a fifth `raid-select` option, `baby`, alongside `regular`/`elite`/`legendary`/
+  `stat`. `startRaid.js`'s `babyRaidScenarios` is literally
+  `[regularRaidScenarios[regularRaidScenarios.length - 1]]` — the exact same Tier 1 entry
+  Regular's own table can land in (same mob flavor text, same
+  `Raid.T1_RAID_REWARD`/`T1_RAID_PENALTY`/`T1_RAID_DIFFICULTY`), reused by reference
+  rather than duplicated so it can never drift out of sync with Regular's own T1 tuning.
+  The only difference from picking Regular and getting lucky is that here it's
+  **guaranteed** — no chance of instead rolling into Regular's far rarer but much harder
+  Metal King/T4/T3/T2 brackets. No guild-level gate (`getUnlockedRaidModes` now reports
+  `baby: true` unconditionally, same as Regular/Stat) — it's meant to be available from
+  guild level 1. Wins still increment `raidCount`/`guildRaidWinCount` exactly like every
+  other mode, so baby raids count fully toward guild-level progression. Wired into
+  `buildRaidPreview` (a dedicated single-bracket branch mirroring what Regular's own T1
+  bracket would show, just at guaranteed odds) and into `/current-raid`'s mode-button row
+  (`getUnlockedRaidModes`, `RAID_MODE_LABELS`) alongside the other four modes — a full
+  ActionRow now holds exactly 5 buttons, Discord's per-row limit.
+  Why: direct instruction — "make a baby tier raid thats the easiest raid type a guild can
+  choose... only have the t1 regular raid as an option for people to grind raid levels for
+  not much reward without risking the t2 t3 in regular when weak." Reusing Regular's T1
+  entry by reference rather than inventing new reward/penalty numbers was a deliberate
+  choice: the user's own framing ("t1 regular raid as an option") described reusing T1
+  exactly, and T1's numbers were already vetted balance, so there was nothing to re-derive
+  here — the entire value of `baby` is removing the T2/T3/T4/Metal King variance, not
+  further softening T1 itself.
+  Notable: no separate `babyRaidMobs` table — `regularRaidMobs[0]`'s existing flavor text
+  carries over via the same reused scenario entry. 1 test extended (`getUnlockedRaidModes`
+  always reporting `baby: true`) — no dedicated `startRaid.js` test file exists (same gap
+  noted in item 48), so this refactor's correctness otherwise rests on the `require()`
+  load check and the full suite. Full suite green (470/470, unchanged in count — extended
+  an existing test in place rather than adding a new describe block).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

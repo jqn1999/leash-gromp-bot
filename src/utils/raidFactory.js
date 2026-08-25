@@ -37,17 +37,20 @@ function getMinGuildLevelForTier(penaltyMult, maxSuccessRate) {
     return firstViableTier ? firstViableTier.level : RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level;
 }
 
-// Which of /start-raid's four modes a guild can actually attempt right now, keyed the
-// same way its raid-select choices are. Regular and Stat have no level gate (Stat's lack
-// of one is a known pre-existing gap, not something this function is responsible for
-// fixing); Elite/Legendary reuse the same getMinGuildLevelForTier breakeven check
-// startRaid.js's callback already gates on, so a mode never shows here as unlocked when
-// startRaid.js would actually reject it. Used by currentRaid.js's "Start Raid" button to
-// only offer mode buttons the guild's level currently qualifies for.
+// Which of /start-raid's five modes a guild can actually attempt right now, keyed the
+// same way its raid-select choices are. Baby, Regular, and Stat have no level gate (Baby
+// is deliberately always available — it's the guaranteed-T1-only on-ramp for guilds too
+// weak for Regular's full table; Stat's lack of a gate is a separate, known pre-existing
+// gap, not something this function is responsible for fixing); Elite/Legendary reuse the
+// same getMinGuildLevelForTier breakeven check startRaid.js's callback already gates on,
+// so a mode never shows here as unlocked when startRaid.js would actually reject it. Used
+// by currentRaid.js's "Start Raid" button to only offer mode buttons the guild's level
+// currently qualifies for.
 function getUnlockedRaidModes(guildLevel) {
     const eliteRequiredLevel = getMinGuildLevelForTier(Raid.ELITE_PENALTY_INCREASE, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
     const legendaryRequiredLevel = getMinGuildLevelForTier(Raid.LEGENDARY_PENALTY_INCREASE, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
     return {
+        baby: true,
         regular: true,
         elite: guildLevel >= eliteRequiredLevel,
         legendary: guildLevel >= legendaryRequiredLevel,

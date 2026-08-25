@@ -49,8 +49,8 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   sync with what a real raid attempt would use. (The guild buff that used to boost this total
   directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).) Once
   `raidTimer` has elapsed, the reply also carries a Start Raid button. Clicking it reveals a row of
-  mode buttons — one per `raid-select` choice the guild currently qualifies for (Regular and Stat
-  always; Elite/Legendary only once `getUnlockedRaidModes` says the guild's level clears that
+  mode buttons — one per `raid-select` choice the guild currently qualifies for (Baby, Regular, and
+  Stat always; Elite/Legendary only once `getUnlockedRaidModes` says the guild's level clears that
   tier's breakeven, re-checked live at click time rather than reusing the level `current-raid` was
   first rendered with) — and picking one runs `startRaid.js`'s exported `runStartRaidFlow`, the
   same function `/start-raid`'s own callback delegates to, so a raid started this way is identical
@@ -61,7 +61,16 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
   value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
-  `raid-select` ∈ `regular` / `elite` / `legendary` / `stat`.
+  `raid-select` ∈ `baby` / `regular` / `elite` / `legendary` / `stat`.
+- **`baby` mode (2026-08-25)** is the easiest raid-select option, meant as a safe on-ramp for a
+  guild too weak to gamble on Regular's full five-bracket table. `startRaid.js`'s
+  `babyRaidScenarios` is literally `[regularRaidScenarios[regularRaidScenarios.length - 1]]` — the
+  exact same Tier 1 entry Regular's own table can land in (same mob flavor text, same
+  `Raid.T1_RAID_REWARD`/`T1_RAID_PENALTY`/`T1_RAID_DIFFICULTY`), reused by reference rather than
+  duplicated, so it can never drift out of sync with Regular's own T1 tuning. The only difference
+  from picking Regular and getting lucky is that here it's **guaranteed** — no chance of instead
+  rolling into Regular's far rarer but much harder Metal King/T4/T3/T2 brackets. No guild-level
+  gate at all (`getUnlockedRaidModes` always reports `baby: true`), same as Regular/Stat.
 - **Elite/Legendary are gated by guild level**, not by roster strength: `raidFactory.js`'s
   `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` derives the guild level at which a tier's
   success-rate cap first sits at or above that tier's mathematical breakeven success chance

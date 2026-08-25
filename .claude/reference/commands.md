@@ -63,7 +63,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `setBuff.js` | `/set-buff` | Co-Leader/Leader sets the guild's single active buff |
 | `createRaid.js` | — | **Retired** (`deleted: true`) — had a self-inflicted `activeRaid` deadlock bug and wasn't checked by `join-raid`/`start-raid` anyway, see raids doc |
 | `joinRaid.js` | `/join-raid` | Join the guild's pending raid roster |
-| `startRaid.js` | `/start-raid` | Elder+ resolves the raid (regular/elite/legendary/stat) against the roster |
+| `startRaid.js` | `/start-raid` | Elder+ resolves the raid (baby/regular/elite/legendary/stat) against the roster — `baby` is a guaranteed-T1-only safe on-ramp |
 | `currentRaid.js` | `/current-raid` | Shows raid roster, combined multiplier, cooldown remaining; once ready, a Start Raid button reveals unlocked-mode buttons that delegate to `startRaid.js`'s `runStartRaidFlow` |
 | `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract, the guild's aggregate progress, and a Top Contributors leaderboard (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
 | `guildHistory.js` | `/guild-history` | Paginated past raids or completed Guild Contracts (`type: raids \| contracts`) — see [systems/guilds.md](../systems/guilds.md#guild-history) |

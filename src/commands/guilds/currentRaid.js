@@ -11,6 +11,7 @@ const embedFactory = new EmbedFactory();
 // like /start-raid's own raid-select choices and getUnlockedRaidModes's return shape, so a
 // button click here starts the exact same raid mode typing the option manually would.
 const RAID_MODE_LABELS = {
+    baby: 'Baby',
     regular: 'Regular',
     elite: 'Elite',
     legendary: 'Legendary',

@@ -351,6 +351,17 @@ const regularRaidScenarios = [
     }
 ]
 
+// Baby tier: a fifth raid-select option that always resolves to the exact same Tier 1
+// bracket regularRaidScenarios' own last entry does (same mob table, same
+// Raid.T1_RAID_REWARD/PENALTY/DIFFICULTY) — reusing that entry directly rather than a
+// second copy, so baby can never drift out of sync with Regular's own T1 tuning. The only
+// difference from picking Regular and getting lucky is that here it's guaranteed: no
+// chance of instead rolling into Regular's far rarer but much harder Metal King/T4/T3/T2
+// brackets. Meant as a safe on-ramp for a guild too weak to gamble on Regular's full table
+// — grind guaranteed T1 wins toward raid level first, then graduate to Regular once the
+// roster can stomach an occasional T2/T3 roll.
+const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]];
+
 // Softened 2026-08-23 (2 -> 1.5) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below,
 // per balance-audit.md's guild-raid mode-breakeven pass — see that entry for the full
 // derivation. Direct instruction: "soften penalties... it's ok if elite's starting
@@ -743,6 +754,22 @@ function bracketOdds(scenarios) {
 // without rolling — so the preview a player sees can't drift out of sync with the real
 // outcome logic above.
 function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, guildLevel) {
+    if (raidSelection === 'baby') {
+        // Mirrors exactly what Regular's own T1 bracket (mult 1, penaltyMult 1) would show
+        // — babyRaidScenarios rolls that identical bracket, just guaranteed instead of a
+        // rare-ish chance among Regular's other four.
+        const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
+        const [rewardMin, rewardMax] = midRange(Raid.T1_RAID_REWARD * raidRewardMultiplier);
+        const [penaltyMin, penaltyMax] = midRange(Math.abs(Raid.T1_RAID_PENALTY));
+        return [{
+            name: 'Tier 1 (guaranteed)',
+            odds: 1,
+            successChance,
+            rewardText: `+${rewardMin.toLocaleString()} to ${rewardMax.toLocaleString()} potatoes`,
+            penaltyText: `-${penaltyMin.toLocaleString()} to ${penaltyMax.toLocaleString()} potatoes`,
+        }];
+    }
+
     if (raidSelection === 'stat') {
         const metalKingChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
         const regularChance = calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
@@ -922,7 +949,18 @@ async function runStartRaidFlow(interaction, raidSelection) {
 
     const raidScenarioRoll = Math.random();
     let potatoesGained = 0;
-    if (raidSelection == 'regular') {
+    if (raidSelection == 'baby') {
+        // No getEligibleScenarios needed — babyRaidScenarios is always the single,
+        // never-gated T1 entry, so there's nothing to filter by guild level.
+        for (const scenario of babyRaidScenarios) {
+            if (raidScenarioRoll < scenario.chance) {
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
+                break;
+            }
+        }
+        guildTotalEarnings += potatoesGained;
+        await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
+    } else if (raidSelection == 'regular') {
         for (const scenario of getEligibleScenarios(regularRaidScenarios, guildLevel)) {
             if (raidScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction);
@@ -996,6 +1034,10 @@ module.exports = {
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [
+                {
+                    name: 'baby',
+                    value: 'baby'
+                },
                 {
                     name: 'regular',
                     value: 'regular'
