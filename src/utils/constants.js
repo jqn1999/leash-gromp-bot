@@ -522,7 +522,18 @@ const CompanionLeveling = {
         { level: 8, workCountRequired: 1525 },
         { level: 9, workCountRequired: 2425 },
         { level: 10, workCountRequired: 3725 },
-    ]
+    ],
+    // Mercenary Companion Leveling (roadmap #59) — the equipped companion's workCount
+    // grant from /take-bounty/`/rob-npc` is scaled against /work's own 300s cooldown
+    // (companionFactory.getCooldownScaledWorkCountGrant), but the pure ratio (12x/6x)
+    // assumes a player hits /work back-to-back the instant its cooldown clears, which
+    // overstates how often anyone actually plays that tightly. Direct instruction,
+    // immediately after the pure-ratio version shipped: "instead of a pure 12x and 6x do
+    // 8x and 4x since people aren't generally perfectly working every 5 minutes anyway."
+    // 2/3 lands exactly on both requested numbers (12 * 2/3 = 8, 6 * 2/3 = 4) while staying
+    // a real, reusable "realistic play" discount rather than two independently hardcoded
+    // numbers that would silently drift out of that same ratio if either cooldown changes.
+    REALISTIC_PLAY_DISCOUNT: 2 / 3
 }
 
 // Companion Scavenging (roadmap #17): a benched (owned, unequipped, not already

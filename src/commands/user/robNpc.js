@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { RobNpc, Work } = require("../../utils/constants");
+const { RobNpc, Work, CompanionLeveling } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -88,12 +88,14 @@ module.exports = {
         // Companion leveling (roadmap #59, direct instruction — "have it level during
         // heists and bounties... account for the longer cooldown"). Unconditional on
         // win/loss, same as /work's own per-call bump. Cooldown-scaled against /work's own
-        // 300s baseline (see companionFactory.getCooldownScaledWorkCountGrant) — shared
-        // across all 4 heist tiers, same as the cooldown itself, since every tier costs the
-        // same real time regardless of which one was picked.
+        // 300s baseline (see companionFactory.getCooldownScaledWorkCountGrant), then pulled
+        // back by CompanionLeveling.REALISTIC_PLAY_DISCOUNT since the pure ratio (6x)
+        // assumes a player hits /work back-to-back the instant its cooldown clears — 4x,
+        // direct instruction. Shared across all 4 heist tiers, same as the cooldown itself,
+        // since every tier costs the same real time regardless of which one was picked.
         setAttributes.companions = companionFactory.levelActiveCompanion(
             userDetails.companions,
-            companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS)
+            companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)
         );
         // npcRobTimer resets on every outcome the same as every other cooldown-gated action
         // in this bot, win, whiff, or loss alike.

@@ -239,15 +239,24 @@ function applyMaxLevelTracking(companions, instanceId) {
 //
 // Rather than a flat "+1 per attempt" (which would level a companion far SLOWER through
 // Bounty/Heist than through /work, since both run on much longer cooldowns than /work's
-// 300s), this scales the grant so a companion levels at the same real-time RATE no matter
-// which action is feeding it: a cooldown N times longer than /work's grants N times the
-// workCount /work would have granted across that same stretch of real time. Reads the
-// action's own live cooldown constant directly (Bounty.BOUNTY_TIMER_SECONDS,
+// 300s), this scales the grant so a companion levels at close to the same real-time RATE
+// no matter which action is feeding it: a cooldown N times longer than /work's grants
+// roughly N times the workCount /work would have granted across that same stretch of real
+// time. Reads the action's own live cooldown constant directly (Bounty.BOUNTY_TIMER_SECONDS,
 // RobNpc.NPC_ROB_TIMER_SECONDS) rather than a hardcoded ratio, so this stays correct
-// automatically if either cooldown ever changes. Floored at 1 so a hypothetical
-// cooldown shorter than /work's could never round down to 0.
-function getCooldownScaledWorkCountGrant(actionCooldownSeconds) {
-    return Math.max(1, Math.round(actionCooldownSeconds / Work.WORK_TIMER_SECONDS));
+// automatically if either cooldown ever changes.
+//
+// discountFactor (default 1, i.e. the pure ratio) exists for callers like Bounty/Heist
+// that want less than the full 1:1 rate-parity — direct instruction, after the pure-ratio
+// version shipped: "instead of a pure 12x and 6x do 8x and 4x since people aren't
+// generally perfectly working every 5 minutes anyway." The pure ratio assumes a player
+// hits /work back-to-back on cooldown the instant it's up, which realistically overstates
+// how often anyone actually does — CompanionLeveling.REALISTIC_PLAY_DISCOUNT (2/3) pulls
+// the grant back down to account for that gap (3600/300 * 2/3 = 8, 1800/300 * 2/3 = 4).
+// Floored at 1 either way so a short cooldown or a small discount could never round down
+// to 0.
+function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor = 1) {
+    return Math.max(1, Math.round((actionCooldownSeconds / Work.WORK_TIMER_SECONDS) * discountFactor));
 }
 
 // Levels the currently-EQUIPPED instance by workCountGained and folds in

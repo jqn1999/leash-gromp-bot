@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Rival } = require("../../utils/constants");
+const { Bounty, Rival, CompanionLeveling } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -95,12 +95,13 @@ module.exports = {
         // heists and bounties... account for the longer cooldown"). Unconditional on
         // win/loss, same as /work's own per-call bump — a Bounty attempt is a real time
         // investment either way. Cooldown-scaled against /work's own 300s baseline (see
-        // companionFactory.getCooldownScaledWorkCountGrant) so the equipped companion
-        // levels at the same real-time rate through Bounty as it would through /work,
-        // rather than 12x slower just because Bounty's cooldown happens to be 12x longer.
+        // companionFactory.getCooldownScaledWorkCountGrant), then pulled back by
+        // CompanionLeveling.REALISTIC_PLAY_DISCOUNT since the pure ratio (12x) assumes a
+        // player hits /work back-to-back the instant its cooldown clears — 8x, direct
+        // instruction.
         let leveledCompanions = companionFactory.levelActiveCompanion(
             userDetails.companions,
-            companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS)
+            companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)
         );
 
         // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty

@@ -427,23 +427,34 @@ a mercenary's equipped companion only leveled through ordinary `/work` or Scaven
 
 Rather than a flat "+1 per attempt" (which would level a companion far SLOWER through
 Bounty/Heist than through `/work`, since both run on much longer cooldowns), the grant is
-scaled so a companion levels at the same real-time RATE no matter which action is feeding
-it — an action with a cooldown N times longer than `/work`'s (`Work.WORK_TIMER_SECONDS`,
-300s) grants N times the workCount a single `/work` call would across that same stretch of
-real time:
+scaled against how much longer that action's cooldown is than `/work`'s
+(`Work.WORK_TIMER_SECONDS`, 300s) — an action with a cooldown N times longer grants roughly
+N times the workCount a single `/work` call would across that same stretch of real time:
 
 ```
-companionFactory.getCooldownScaledWorkCountGrant(actionCooldownSeconds) =
-    max(1, round(actionCooldownSeconds / Work.WORK_TIMER_SECONDS))
+companionFactory.getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor = 1) =
+    max(1, round((actionCooldownSeconds / Work.WORK_TIMER_SECONDS) * discountFactor))
 ```
 
-- **`/take-bounty`**: `getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS)` = 12
-  (3600s / 300s) — same grant regardless of tier (all three share `BOUNTY_TIMER_SECONDS`).
-- **`/rob-npc`**: `getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS)` = 6
-  (1800s / 300s) — same grant regardless of which Heist Ladder tier is picked (all 4 share
-  the one `NPC_ROB_TIMER_SECONDS` cooldown).
+The pure ratio (`discountFactor` at its default of 1) would be Bounty: 12x (3600s/300s),
+`/rob-npc`: 6x (1800s/300s) — but that assumes a player hits `/work` back-to-back the
+instant its cooldown clears, which overstates how often anyone actually plays that
+tightly. **Same-day follow-up, direct instruction**: "instead of a pure 12x and 6x do 8x
+and 4x since people aren't generally perfectly working every 5 minutes anyway." Rather than
+two independently hardcoded numbers (which would silently drift out of ratio with each
+other if either cooldown is later rebalanced), `CompanionLeveling.REALISTIC_PLAY_DISCOUNT`
+(2/3) is applied as the `discountFactor` — it lands exactly on both requested numbers
+(12 × 2/3 = 8, 6 × 2/3 = 4) while staying a single, reusable "realistic play" concept:
+
+- **`/take-bounty`**: `getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS,
+  CompanionLeveling.REALISTIC_PLAY_DISCOUNT)` = **8** — same grant regardless of tier (all
+  three share `BOUNTY_TIMER_SECONDS`).
+- **`/rob-npc`**: `getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS,
+  CompanionLeveling.REALISTIC_PLAY_DISCOUNT)` = **4** — same grant regardless of which Heist
+  Ladder tier is picked (all 4 share the one `NPC_ROB_TIMER_SECONDS` cooldown).
 - Reads the action's own live cooldown constant directly rather than a hardcoded ratio, so
-  this stays correct automatically if either cooldown ever changes.
+  the underlying rate-parity math stays correct automatically if either cooldown ever
+  changes — only the discount itself is a fixed, deliberately-chosen tuning knob.
 
 **Unconditional on win/loss** — same as `/work`'s own per-call leveling bump, which happens
 regardless of which scenario resolved. A Bounty or Heist attempt is a genuine TIME

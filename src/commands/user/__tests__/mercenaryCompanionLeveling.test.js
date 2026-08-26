@@ -14,10 +14,13 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Bounty, RobNpc, Work, MercenaryRank } = require('../../../utils/constants');
+const { Bounty, RobNpc, Work, MercenaryRank, CompanionLeveling } = require('../../../utils/constants');
 
-const BOUNTY_GRANT = Math.max(1, Math.round(Bounty.BOUNTY_TIMER_SECONDS / Work.WORK_TIMER_SECONDS));
-const HEIST_GRANT = Math.max(1, Math.round(RobNpc.NPC_ROB_TIMER_SECONDS / Work.WORK_TIMER_SECONDS));
+// Both cooldown-scaled AND pulled back by REALISTIC_PLAY_DISCOUNT (direct instruction:
+// "instead of a pure 12x and 6x do 8x and 4x since people aren't generally perfectly
+// working every 5 minutes anyway") — see companionFactory.getCooldownScaledWorkCountGrant.
+const BOUNTY_GRANT = Math.max(1, Math.round((Bounty.BOUNTY_TIMER_SECONDS / Work.WORK_TIMER_SECONDS) * CompanionLeveling.REALISTIC_PLAY_DISCOUNT));
+const HEIST_GRANT = Math.max(1, Math.round((RobNpc.NPC_ROB_TIMER_SECONDS / Work.WORK_TIMER_SECONDS) * CompanionLeveling.REALISTIC_PLAY_DISCOUNT));
 
 function fakeInteraction(optionValues = {}) {
     return {

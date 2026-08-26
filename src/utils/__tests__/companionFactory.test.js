@@ -626,6 +626,19 @@ describe('getCooldownScaledWorkCountGrant', () => {
     test('never rounds down to 0 even for a cooldown shorter than /work\'s own', () => {
         expect(getCooldownScaledWorkCountGrant(1)).toBe(1);
     });
+
+    // Direct instruction, after the pure-ratio version shipped: "instead of a pure 12x and
+    // 6x do 8x and 4x since people aren't generally perfectly working every 5 minutes
+    // anyway." CompanionLeveling.REALISTIC_PLAY_DISCOUNT (2/3) is what turns the pure
+    // ratio into those exact numbers.
+    test('a discountFactor pulls the grant back below the pure ratio — Bounty lands on exactly 8, Heist on exactly 4', () => {
+        expect(getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)).toBe(8);
+        expect(getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)).toBe(4);
+    });
+
+    test('never rounds down to 0 even when a small discountFactor would otherwise push it there', () => {
+        expect(getCooldownScaledWorkCountGrant(Work.WORK_TIMER_SECONDS, 0.1)).toBe(1);
+    });
 });
 
 describe('levelActiveCompanion', () => {

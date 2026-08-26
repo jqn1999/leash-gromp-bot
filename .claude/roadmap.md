@@ -2214,6 +2214,21 @@ and needs its own balance pass.
   [systems/mercenary-bounties.md#mercenary-companion-leveling](systems/mercenary-bounties.md#mercenary-companion-leveling)
   for the full writeup. Full suite green (538/538, up from 522).
 
+  **Follow-up, same day, direct instruction**: "Instead of a pure 12x and 6x do 8x and 4x
+  since people aren't generally perfectly working every 5 minutes anyway." The pure
+  cooldown ratio assumed a player hits `/work` back-to-back the instant its cooldown
+  clears — realistically overstated. `getCooldownScaledWorkCountGrant` gained an optional
+  `discountFactor` param (default 1, i.e. the old pure-ratio behavior — every pre-existing
+  call site not touched by this follow-up keeps its exact prior behavior); new
+  `CompanionLeveling.REALISTIC_PLAY_DISCOUNT` (2/3) is passed from both `/take-bounty` and
+  `/rob-npc` and lands exactly on both requested numbers (12 × 2/3 = 8, 6 × 2/3 = 4) — a
+  single reusable "realistic play" constant rather than two independently hardcoded numbers
+  that would silently drift out of ratio with each other if either cooldown is later
+  rebalanced. 2 new tests in `companionFactory.test.js`'s existing
+  `getCooldownScaledWorkCountGrant` describe block (discount lands on exactly 8/4; a small
+  discount still floors at 1); `mercenaryCompanionLeveling.test.js`'s existing grant
+  constants updated to fold in the discount. Full suite green (540/540, up from 538).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
