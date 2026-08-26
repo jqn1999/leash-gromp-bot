@@ -241,52 +241,91 @@ entry via `raidFactory.handleStatSplit([{ id: userId, username }], type, amount)
 1-person "raidList" through the exact same write path any other stat-granting reward in
 this codebase already uses.
 
-## `/rob-npc` (`RobNpc`)
+## `/rob-npc` (`RobNpc`) — the Heist Ladder
 
 A solo-only heist attempt against a fictional target — no real player involved, a
 newly-minted payout (not drawn from anyone's balance). Grounded against real `/rob`'s own
-numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`):
+numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`).
 
-- **No Mercenary Rank gate at all** — available from Rank 1, unlike Bounties.
-- **Cooldown**: its own field, `npcRobTimer`, **1800s (30 min)** — separate from both real
-  `/rob`'s `robTimer` (`Rob.ROB_TIMER_SECONDS`, 3600s) and Bounty's own `bountyTimer` (also
-  3600s), so spamming one action never locks out either of the other two.
-- **Odds**: flat base chance (no target to compare relative wealth against), scaling with
-  rank:
+**Roadmap #50, direct instruction**: "can you think of some way to build out heists a bit
+more than just an extra work that feeds notoriety every 30 minutes? maybe based on merc lvl
+3 and 6 or 2 4 6 and unlocking certain heist events/scenarios that do a bit more." Resolved
+via `AskUserQuestion`: the player picks a heist type each attempt via a required
+`heist-type` option (same shape as `/start-raid`'s own `raid-select` — all 4 choices always
+listed, a locked pick rejected with the reason, same pattern `startRaid.js`'s
+Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gated at Ranks
+1/2/4/6 as a 4-tier ladder.
+
+- **Cooldown**: still its own field, `npcRobTimer`, **1800s (30 min)** — separate from both
+  real `/rob`'s `robTimer` (`Rob.ROB_TIMER_SECONDS`, 3600s) and Bounty's own `bountyTimer`
+  (also 3600s), so spamming one action never locks out either of the other two. **Shared
+  across all 4 tiers** — picking a bigger score doesn't buy a longer wait, just bigger
+  stakes on the same clock.
+- **Odds**: flat base chance per tier (no target to compare relative wealth against),
+  scaling with rank:
   ```
-  successChance = min(RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rank - 1), RobNpc.MAX_CHANCE)
-                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Elder Rootbeard/Yukon — shared with real /rob, see below
+  successChance = min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance)
+                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Elder Rootbeard/Yukon — shared with real /rob
   ```
-  `BASE_CHANCE` 30%, `+10%/rank`, capped **80%** at Rank 6 (30/40/50/60/70/80% across Ranks
-  1-6). Updated 2026-08-23, direct instruction, to make a maxed-out mercenary close to 80%
-  reliable — a deliberate departure from this feature's original "stay well below a maxed
-  real-`/rob` setup" framing. Still doesn't out-perform real `/rob` overall: the payout side
-  stays capped far below real `/rob`'s (a fixed, modest `MAX_NPC_ROB_PAYOUT` vs. a
-  percentage of a real player's balance) — a high top-end success rate here buys reliability
-  at a low ceiling per hit, not a better overall action than a well-built real `/rob`.
   Simplified 2026-08-23, direct instruction: Yukon's own bonus used to be a separate
-  `/rob-npc`-only `npcRobChanceFlat` perk type; it now shares the same `robChanceFlat`
-  perk Barn Owl/Elder Rootbeard grant for real `/rob`, so any `robChanceFlat` companion
-  boosts `/rob-npc` too (not just Yukon), and Yukon's own bonus now applies to real `/rob`
-  as well (mercenaries can still run it — never guild-gated). The base success formula
-  above is unchanged by this — still its own flat, rank-scaled thing, not wealth-ratio-based
-  like real `/rob`'s `calculateRobChance` — only the bonus source is now shared.
+  `/rob-npc`-only `npcRobChanceFlat` perk; it now shares the same `robChanceFlat` perk Barn
+  Owl/Elder Rootbeard grant for real `/rob`, so any `robChanceFlat` companion boosts
+  `/rob-npc` too (not just Yukon), and Yukon's own bonus applies to real `/rob` as well
+  (mercenaries can still run it — never guild-gated). Still its own flat, rank-scaled thing
+  per tier, not wealth-ratio-based like real `/rob`'s `calculateRobChance`.
 - **Payout**: the exact same `calculateGainAmount` shape every `/work` reward uses
-  (`handleGoldenPotato`/`handleLargePotato`'s exact formula — `workGainAmount * 4.5`,
-  capped at `RobNpc.MAX_NPC_ROB_PAYOUT` (5,000) before the player's own multiplier scales
-  it up), anchored between Regular (×1) and Large (×10). **Deliberately NOT scaled by
-  Mercenary Rank's reward multiplier or Yukon's `bountyRewardPercent`** — Rank's benefit to
-  `/rob-npc` is entirely on the odds side; Bounty's Rank/Yukon benefit is entirely on the
+  (`handleGoldenPotato`/`handleLargePotato`'s exact formula — `workGainAmount *
+  RobNpc.PAYOUT_MULTIPLIER` (4.5x, **shared across every tier**), capped at that tier's own
+  `payoutCap` before the player's own multiplier scales it up). **Deliberately NOT scaled
+  by Mercenary Rank's reward multiplier or Yukon's `bountyRewardPercent`** — Rank's benefit
+  to `/rob-npc` is entirely on the odds side; Bounty's Rank/Yukon benefit is entirely on the
   reward-size side, keeping each lever on one axis only.
-- **Fail state**: whiff-only, no loss — mirrors Metal Potato's own "0 potatoes, just resets
-  the timer" failure. No real player is on the other end, so there's no symmetry argument
-  forcing a punishing fail the way real `/rob`'s fine exists for.
 
-`mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus)` is the single
-resolve function `/rob-npc` calls — `workGainAmount`/`catchUpBonus` are computed by the
-caller the same way `work.js`'s callback computes them for a real `/work` call, kept as
-params rather than fetched internally so the function stays testable without mocking
-`dynamoHandler.getCachedServerTotal` for every case.
+**The 4 tiers** (`RobNpc.TIERS`):
+
+| Tier | Rank | Base / +per-rank / cap | Payout cap | On a whiff | Notoriety/win | Extra |
+|---|---|---|---|---|---|---|
+| Corner Store | 1+ | 30% / +10% / 80% | 5,000 | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
+| Payroll Truck | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2])` = 4,000-6,000 lost | +2 | — |
+| Armored Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 lost | +3 | — |
+| The Big Score | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 lost | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+
+Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
+defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
+(`mercenaryFactory.getMercenaryRankInfo`) is equivalent to gating on that win count
+directly, with no second counter to track. **Tier I ("Corner Store") is unchanged from
+before this ladder existed** — same base/rank chance curve, same payout cap, still
+whiff-only — it stays the safe, always-available intro action with zero regression for
+anyone who only ever ran the single flat `/rob-npc` this replaced. Real stakes only start
+at Tier II: a whiff there (and on every tier above it) costs `RobNpc.PENALTY_PERCENT_OF_CAP`
+(half) of that tier's own `payoutCap`, scaled by the same `getRandomFromInterval(.8, 1.2)`
+variance roll every other reward/penalty pair in this game uses — subtracted straight from
+potatoes unclamped, same precedent `takeBounty.js`/`confrontRival.js` already set (a loss
+CAN put a player negative — a known, already-flagged gap shared with Guild Raid's own
+T2/T3 entry on the roadmap, not a new one introduced here).
+
+`PAYOUT_MULTIPLIER` stays **shared** across every tier rather than scaling per-tier — only
+the cap differs. Verified at implementation against a live reported server total
+(~19.7M potatoes, giving `workGainAmount` ~39,400 via `Work.PERCENT_OF_TOTAL`) that
+`workGainAmount * PAYOUT_MULTIPLIER` already clears every tier's `payoutCap` well before
+the top of the ladder — the spec's own "verify before implementing" caveat. A brand-new,
+still near-zero-wealth server simply grows into full tier differentiation over time, the
+same "`*_MAX_*` caps the base, not the final payout" behavior Metal/Ancient/Golden Potato
+already have at low server wealth.
+
+The Big Score's stat-grant branch is the one thing Tiers I-III never offer — reuses
+`BountyStatReward`'s existing `TIER_I_GRANT` pool (no new grant table), applied via
+`raidFactory.handleStatSplit` the same way `takeBounty.js`'s own rare stat-reward branch
+already writes it. Gives Rank 6 a reason to keep pulling The Big Score past "same payout as
+every other Rank 6 win."
+
+`mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, heistTierKey)`
+is the single resolve function `/rob-npc` calls — `workGainAmount`/`catchUpBonus` are
+computed by the caller the same way `work.js`'s callback computes them for a real `/work`
+call, kept as params rather than fetched internally so the function stays testable without
+mocking `dynamoHandler.getCachedServerTotal` for every case. `heistTierKey` defaults to
+Tier I (`'corner_store'`) so any pre-ladder call site keeps behaving exactly as it did
+before this rework.
 
 ## Yukon, the Highwayman — the one Bounty-exclusive companion
 
@@ -363,7 +402,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/retire-mercenary` | No args, no confirm. Rejects if not currently a mercenary. Progress persists. |
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + wins-to-next-rank, which tiers are unlocked, a live success-chance preview per unlocked tier, and `bountyTimer` remaining. |
 | `/take-bounty tier:<I\|II\|III>` | Rejects if not a mercenary, if `tier` isn't yet unlocked, or if `bountyTimer` hasn't elapsed. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout, all in one result embed. |
-| `/rob-npc` | Rejects if not a mercenary or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed. |
+| `/rob-npc heist-type:<Corner Store\|Payroll Truck\|Armored Vault\|The Big Score>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Big Score). |
 
 ## Data model
 
@@ -435,7 +474,11 @@ for the next cycle.
 of labor:
 
 - `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
-- `/rob-npc` win: `+Rival.NOTORIETY_PER_NPC_ROB_WIN` (flat 1).
+- `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/2/3/4 for Corner
+  Store/Payroll Truck/Armored Vault/The Big Score — see `/rob-npc (RobNpc)` below). Used to
+  be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1) before the Heist Ladder rework
+  (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor of each `RobNpc.TIERS`
+  entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s own per-tier shape.
 
 `/confront-rival` is gated by, checked in order (mirroring `take-bounty.js`'s own
 layered-rejection style):
@@ -512,9 +555,9 @@ Bounty-only companion a third action to plausibly help with.
 ### Reward / penalty formula
 
 Reward still scales with the player's own `workMultiplierAmount`, with the same hard-capped
-base term (`Work.MAX_GOLDEN_POTATO`/`RobNpc.MAX_NPC_ROB_PAYOUT`'s "cap the base, scale the
-final number by rank/multiplier on top" shape) so it can't grow linearly and unbounded as
-`workMultiplierAmount` compounds:
+base term (`Work.MAX_GOLDEN_POTATO`/each `RobNpc.TIERS` entry's own `payoutCap`'s "cap the
+base, scale the final number by rank/multiplier on top" shape) so it can't grow linearly
+and unbounded as `workMultiplierAmount` compounds:
 
 ```
 rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)

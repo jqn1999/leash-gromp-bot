@@ -1807,8 +1807,8 @@ and needs its own balance pass.
   load check and the full suite. Full suite green (470/470, unchanged in count — extended
   an existing test in place rather than adding a new describe block).
 
-- [ ] **50. `/rob-npc` Heist Ladder — 4 Player-Picked Tiers Gated by Mercenary Rank** — M
-  What: `/rob-npc` currently has exactly one flavor of attempt — flat payout formula,
+- [x] **50. `/rob-npc` Heist Ladder — 4 Player-Picked Tiers Gated by Mercenary Rank** — M — **Done**
+  What: `/rob-npc` used to have exactly one flavor of attempt — flat payout formula,
   whiff-only failure, success chance scaling only with `MercenaryRank` (0.30 base +
   0.10/rank, capped 0.80), `+1` notoriety on a win. This adds a required `heist-type`
   option (same shape as `/start-raid`'s `raid-select` — all 4 choices always listed, a
@@ -1855,9 +1855,27 @@ and needs its own balance pass.
   always-available intro action exactly as it behaves today (zero regression for anyone
   who only ever uses the base heist), and real stakes only start at Tier II, matching the
   "bigger score = real risk" heist framing the reward/penalty pair is meant to sell.
-  Not yet built — numbers above are a first pass grounded in existing formulas/precedent,
-  not yet balance-reviewed against live play; the `PAYOUT_MULTIPLIER` saturation question
-  flagged above should be checked before implementing.
+  `mercenaryFactory.resolveNpcRob` gained a 4th param (`heistTierKey`, defaulting to Tier
+  I's own key) rather than a breaking signature change, so no pre-existing call site needed
+  updating. `RobNpc.BASE_CHANCE`/`CHANCE_PER_RANK`/`MAX_CHANCE`/`MAX_NPC_ROB_PAYOUT` (the
+  old single-tier constants) were removed entirely in favor of each `RobNpc.TIERS` entry
+  carrying its own `baseChance`/`chancePerRank`/`maxChance`/`payoutCap` — Tier I's values
+  are numerically identical to the old top-level ones, just relocated. `Rival.NOTORIETY_PER_NPC_ROB_WIN`
+  (flat 1) was similarly removed in favor of each tier's own `notorietyPerWin`, mirroring
+  `NOTORIETY_PER_BOUNTY_TIER`'s existing per-tier shape. The `PAYOUT_MULTIPLIER` saturation
+  question flagged above was checked before implementing: verified against a live reported
+  server total (~19.7M potatoes, `workGainAmount` ~39,400) that the shared 4.5x multiplier
+  already clears every tier's payoutCap (5k/10k/20k/40k) well before the top of the ladder,
+  so no per-tier multiplier or higher caps were needed — a low-wealth server just grows
+  into full tier differentiation over time, same as Metal/Ancient/Golden Potato already do.
+  The Big Score's stat-grant branch reuses `raidFactory.handleStatSplit` (a 1-person
+  "raidList"), same precedent `takeBounty.js`'s own rare stat-reward branch already set.
+  `mercenaryFactory.test.js`'s `resolveNpcRob` describe block was rewritten to cover all 4
+  tiers (default-tier backward compat, per-tier chance scaling, Tier I's whiff-only
+  behavior, Tiers II-IV's penalty formula, payout-cap differentiation across tiers, The Big
+  Score's stat-grant roll); `rivalNotorietyAccrual.test.js` updated to pass a `heist-type`
+  option and assert against the picked tier's own `notorietyPerWin`. Full suite green
+  (508/508, up from 504).
 
 - [x] **51. Sellable Companion Duplicates — Real Spares Instead of Auto-Potato Payout** — M/L — **Done**
   What: `applyCompanionAward`'s duplicate branch now bumps a new `quantity` field (1 for

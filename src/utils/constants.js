@@ -1225,28 +1225,100 @@ const BountyStatReward = {
 
 // /rob-npc — a solo-only heist against a fictional target (no real player involved, a
 // newly-minted payout, not drawn from anyone's balance). No target to compare relative
-// wealth against, so this is a flat base chance scaling with Mercenary Rank rather than
-// real /rob's wealth-ratio formula. Ramp updated 2026-08-23, direct instruction, to land a
-// maxed-out (Rank 6) mercenary close to 80% — a deliberate departure from this constant's
-// original "stay well below a maxed real-/rob setup" framing: NPC rob's payout side is
-// already capped far below real /rob's (a fixed, modest MAX_NPC_ROB_PAYOUT vs. a
-// percentage of a real player's balance), so a high success ODDS at the top of the rank
-// curve doesn't make this out-perform real /rob overall, just far more reliable at a much
-// lower ceiling per hit. Payout is server-wealth-scaled via the same calculateGainAmount
-// shape every /work reward uses, anchored between Regular (x1) and Large (x10). Cooldown
-// is its OWN separate field (npcRobTimer) — distinct from both Rob.ROB_TIMER_SECONDS (real
-// /rob's robTimer, 3600s) and Bounty.BOUNTY_TIMER_SECONDS (also 3600s) — so spamming one
-// action never locks out either of the other two. No Mercenary Rank gate at all (available
-// from Rank 1).
+// wealth against, so every tier is a flat base chance scaling with Mercenary Rank rather
+// than real /rob's wealth-ratio formula. Payout is server-wealth-scaled via the same
+// calculateGainAmount shape every /work reward uses. Cooldown is its OWN separate field
+// (npcRobTimer) — distinct from both Rob.ROB_TIMER_SECONDS (real /rob's robTimer, 3600s)
+// and Bounty.BOUNTY_TIMER_SECONDS (also 3600s) — so spamming one action never locks out
+// either of the other two, and stays a SINGLE shared cooldown across all 4 tiers below
+// (picking a bigger heist doesn't buy a longer wait, just bigger stakes on the same clock).
+//
+// Heist Ladder (roadmap #50), direct instruction: "can you think of some way to build out
+// heists a bit more than just an extra work that feeds notoriety every 30 minutes? maybe
+// based on merc lvl 3 and 6 or 2 4 6 and unlocking certain heist events/scenarios that do
+// a bit more." Resolved via AskUserQuestion: the player picks a heist type each attempt
+// (a required `heist-type` option, same shape as /start-raid's own raid-select) rather
+// than an auto-escalating rare roll, gated at Ranks 1/2/4/6 as a 4-tier ladder. Each
+// tier's own `rankRequired` is just that rank NUMBER — MercenaryRank.THRESHOLDS already
+// defines what wins-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live
+// rank (mercenaryFactory.getMercenaryRankInfo) is equivalent to gating on that win count
+// directly, with no second counter to track.
+//
+// Tier I ("Corner Store") is UNCHANGED from before this ladder existed — same base/rank
+// chance curve, same payout cap, still whiff-only (no loss) — it stays the safe,
+// always-available intro action with zero regression for anyone who only ever ran the
+// single flat /rob-npc this replaced. Real stakes (a genuine loss on a whiff, matching the
+// "bigger score = real risk" heist framing) only start at Tier II. PAYOUT_MULTIPLIER stays
+// SHARED across every tier (not a per-tier value) — verified against a live reported
+// server total (~19.7M potatoes, giving workGainAmount ~39,400 via Work.PERCENT_OF_TOTAL)
+// that `workGainAmount * PAYOUT_MULTIPLIER` already clears every tier's payoutCap
+// (5k/10k/20k/40k) well before the top of the ladder, same as the spec's own "verify
+// before implementing" caveat asked for; a brand-new, still near-zero-wealth server simply
+// grows into full tier differentiation over time, the same "*_MAX_* caps the base, not the
+// final payout" behavior Metal/Ancient/Golden Potato already have at low server wealth.
 const RobNpc = {
-    NPC_ROB_TIMER_SECONDS: 1800,   // 30 min
-    BASE_CHANCE: 0.30,
-    CHANCE_PER_RANK: 0.10,
-    MAX_CHANCE: 0.80,              // reached at Rank 6 (0.30 + 0.10*5 = 0.80)
-    PAYOUT_MULTIPLIER: 4.5,        // midpoint of the "x4-5" recommendation, between Regular (x1) and Large (x10)
-    MAX_NPC_ROB_PAYOUT: 5000       // half of Work.MAX_LARGE_POTATO(10000), base cap before the player's
-                                    // own multiplier scales it up — same "*_MAX_* caps the base, not the
-                                    // final payout" convention every other cap in this game follows
+    NPC_ROB_TIMER_SECONDS: 1800,   // 30 min — shared across every tier
+    PAYOUT_MULTIPLIER: 4.5,        // shared across every tier — see this block's own comment above
+    // Failure penalty for any tier with hasPenalty: true — half that tier's own payoutCap,
+    // scaled by the same +/-20% variance roll every other reward/penalty pair in this game
+    // uses (getRandomFromInterval(.8, 1.2)), same shape resolveRivalConfrontation's own
+    // loss formula and Bounty's scaled-down loss already use.
+    PENALTY_PERCENT_OF_CAP: 0.5,
+    TIERS: [
+        {
+            key: 'corner_store',
+            label: 'Corner Store',
+            rankRequired: 1,
+            baseChance: 0.30,
+            chancePerRank: 0.10,
+            maxChance: 0.80,          // reached at Rank 6 (0.30 + 0.10*5 = 0.80)
+            payoutCap: 5000,          // half of Work.MAX_LARGE_POTATO(10000) — unchanged from pre-ladder /rob-npc
+            hasPenalty: false,        // whiff-only, no loss — the safe intro tier, exactly as /rob-npc always behaved
+            notorietyPerWin: 1,
+            statGrantChanceOnWin: 0
+        },
+        {
+            key: 'payroll_truck',
+            label: 'Payroll Truck',
+            rankRequired: 2,          // Rank 2 = MercenaryRank.THRESHOLDS' own 15-win threshold
+            baseChance: 0.20,
+            chancePerRank: 0.08,
+            maxChance: 0.60,
+            payoutCap: 10000,         // matches Work.MAX_LARGE_POTATO exactly
+            hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
+            notorietyPerWin: 2,
+            statGrantChanceOnWin: 0
+        },
+        {
+            key: 'armored_vault',
+            label: 'Armored Vault',
+            rankRequired: 4,          // Rank 4 = MercenaryRank.THRESHOLDS' own 125-win threshold
+            baseChance: 0.12,
+            chancePerRank: 0.06,
+            maxChance: 0.42,
+            payoutCap: 20000,
+            hasPenalty: true,
+            notorietyPerWin: 3,
+            statGrantChanceOnWin: 0
+        },
+        {
+            key: 'big_score',
+            label: 'The Big Score',
+            rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
+            baseChance: 0.06,
+            chancePerRank: 0.04,      // still technically "+/rank" for shape consistency with the other 3 tiers,
+                                       // but only reachable at Rank 6 itself (0.06 + 0.04*5 = 0.26 flat once unlocked)
+            maxChance: 0.26,
+            payoutCap: 40000,
+            hasPenalty: true,
+            notorietyPerWin: 4,
+            // The one thing Tiers I-III never offer — a 5% roll on a WIN into
+            // mercenaryFactory.pickStatGrant('I', userDetails), reusing BountyStatReward's
+            // existing TIER_I_GRANT pool rather than a new grant table — gives Rank 6 a
+            // reason to keep pulling this tier past "same payout as every other Rank 6 win."
+            statGrantChanceOnWin: 0.05
+        }
+    ]
 }
 
 // Yukon, the Highwayman's drop odds — see the Companions entry below (dropSource:
@@ -1287,7 +1359,10 @@ const MercenaryCompanionDrop = {
 // one thing that DOES add to successChance, applied after the range roll.
 const Rival = {
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
-    NOTORIETY_PER_NPC_ROB_WIN: 1,
+    // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
+    // notorietyPerWin (1/2/3/4 for Corner Store/Payroll Truck/Armored Vault/The Big Score)
+    // instead of a single flat constant here — removed alongside roadmap #50's Heist
+    // Ladder rework, mirroring NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
     CONFRONTATION_THRESHOLD: 20,
     // Redesigned 2026-08-23, direct instruction — /confront-rival no longer lets the player
     // pick a tier at all (removed the old TIER_SUCCESS_CAP + player-facing `tier` option
@@ -1312,8 +1387,8 @@ const Rival = {
     // (TIER_III_GRANT, same as Bounty's own Tier III — see pickStatGrant).
     // rawBase = min(BASE_REWARD_PER_MULTIPLIER * workMultiplierAmount, MAX_RIVAL_REWARD_BASE)
     // — the same "cap the base term before tier/rank/variance scaling" shape
-    // Work.MAX_GOLDEN_POTATO/RobNpc.MAX_NPC_ROB_PAYOUT already use, so reward can't grow
-    // linearly and unbounded off a compounding workMultiplierAmount.
+    // Work.MAX_GOLDEN_POTATO/each RobNpc.TIERS entry's own payoutCap already use, so reward
+    // can't grow linearly and unbounded off a compounding workMultiplierAmount.
     //
     // TIER_REWARD_FACTOR re-derived 2026-08-23, direct instruction ("make the potato gain
     // also equally modified to match those new %'s") to mirror the same 1/2/3 escalation

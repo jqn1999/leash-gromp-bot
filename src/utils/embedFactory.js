@@ -1519,25 +1519,47 @@ class EmbedFactory {
         return embed;
     }
 
-    // /rob-npc's own result embed — whiff-only failure (no loss), so there's no
-    // "Potatoes Lost" branch the way createBountyResultEmbed needs one. `result` is
-    // mercenaryFactory.resolveNpcRob's own return shape.
-    createRobNpcResultEmbed(userDisplayName, result) {
-        const { won, successChance, amount, rankInfo } = result;
-        const color = won ? 'Green' : 'Grey';
+    // /rob-npc's own result embed. `result` is mercenaryFactory.resolveNpcRob's own return
+    // shape; `tier` is the matching RobNpc.TIERS entry (robNpc.js already looked it up to
+    // gate the attempt, so it's passed in rather than re-derived from result.tier here).
+    // Since roadmap #50's Heist Ladder, a whiff is only harmless on Tier I (Corner Store) —
+    // Tiers II-IV carry a real penalty, same "Potatoes Lost" branch createBountyResultEmbed
+    // already needs for a Bounty loss.
+    createRobNpcResultEmbed(userDisplayName, result, tier) {
+        const { won, successChance, amount, rankInfo, penaltyAmount, statReward } = result;
+        const color = won ? 'Green' : (penaltyAmount > 0 ? 'Red' : 'Grey');
         const fields = [
+            { name: 'Heist:', value: tier.label, inline: true },
             { name: 'Chance:', value: `${(successChance * 100).toFixed(2)}%`, inline: true },
             { name: 'Mercenary Rank:', value: `Rank ${rankInfo.rank}`, inline: true },
         ];
         if (won) {
             fields.push({ name: 'Potatoes Gained:', value: `${amount.toLocaleString()} potatoes`, inline: false });
+            if (statReward) {
+                const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+                const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
+                fields.push({ name: '🏅 The Big Score — Permanent Stat Reward!', value: statText, inline: false });
+            }
+        } else if (penaltyAmount > 0) {
+            fields.push({ name: 'Potatoes Lost:', value: `${penaltyAmount.toLocaleString()} potatoes`, inline: false });
         }
 
+        const winFlavor = {
+            corner_store: `You ambush a passing supply wagon and make off clean before anyone's the wiser.`,
+            payroll_truck: `You crack the payroll truck's lockbox and vanish into the crowd with a real haul.`,
+            armored_vault: `The vault door gives way — you're in and out with a fortune before the alarm even finishes ringing.`,
+            big_score: `Every detail lands perfectly. The Big Score is yours, and it'll be talked about for a long time.`
+        };
+        const loseFlavor = {
+            corner_store: `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`,
+            payroll_truck: `The truck's guards spot you first — you barely escape, and it costs you.`,
+            armored_vault: `The vault's defenses catch you mid-break-in — a costly, narrow escape.`,
+            big_score: `The Big Score falls apart at the worst possible moment — an expensive, humbling failure.`
+        };
+
         const embed = new EmbedBuilder()
-            .setTitle(won ? `${userDisplayName} pulls off a heist!` : `${userDisplayName}'s heist falls through`)
-            .setDescription(won
-                ? `You ambush a passing supply wagon and make off clean before anyone's the wiser.`
-                : `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`)
+            .setTitle(won ? `${userDisplayName} pulls off ${tier.label}!` : `${userDisplayName}'s ${tier.label} heist falls through`)
+            .setDescription(won ? winFlavor[tier.key] : loseFlavor[tier.key])
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

@@ -10,7 +10,7 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Rival } = require('../../../utils/constants');
+const { Rival, RobNpc } = require('../../../utils/constants');
 
 function fakeInteraction(optionValues = {}) {
     return {
@@ -98,12 +98,13 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
     });
 });
 
-describe('/rob-npc accrues a flat 1 Notoriety on a win only', () => {
+describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only', () => {
     const { callback } = require('../robNpc');
+    const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'corner_store');
 
-    test('a win adds NOTORIETY_PER_NPC_ROB_WIN', async () => {
+    test('a win adds the picked tier\'s notorietyPerWin', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction();
+        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
         try {
             await callback({}, interaction);
@@ -112,12 +113,12 @@ describe('/rob-npc accrues a flat 1 Notoriety on a win only', () => {
         }
 
         const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(addAttributes.mercenaryNotoriety).toBe(Rival.NOTORIETY_PER_NPC_ROB_WIN);
+        expect(addAttributes.mercenaryNotoriety).toBe(CORNER_STORE.notorietyPerWin);
     });
 
     test('a whiff adds no mercenaryNotoriety at all', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction();
+        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // guarantees a whiff
         try {
             await callback({}, interaction);

@@ -180,22 +180,37 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
 // by the caller (rob-npc.js) the same way work.js's callback computes them for a real
 // /work call, kept as params here rather than fetched internally so this stays testable
 // without mocking dynamoHandler.getCachedServerTotal for every case.
-async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
+//
+// heistTierKey selects which RobNpc.TIERS entry to run (a required `heist-type` option on
+// /rob-npc — see robNpc.js), defaulting to Tier I ('corner_store') so every pre-existing
+// call site keeps behaving exactly as it did before roadmap #50's Heist Ladder rework: a
+// whiff-only, no-penalty, 5,000-cap attempt with the same rank-scaled odds it always had.
+async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heistTierKey = RobNpc.TIERS[0].key) {
+    const tier = RobNpc.TIERS.find(t => t.key === heistTierKey);
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     // Simplified 2026-08-23, direct instruction — this used to read a separate,
     // /rob-npc-only npcRobChanceFlat perk. Now shares the same robChanceFlat perk real
     // /rob's own bonus already uses (Barn Owl/Elder Rootbeard/Yukon) — the base chance
     // formula below still stays its own flat/rank-based thing, not wealth-ratio-based like
-    // real /rob's calculateRobChance, only the bonus source is now shared.
+    // real /rob's calculateRobChance, only the bonus source is now shared. Since the Heist
+    // Ladder rework, the base/perRank/cap numbers themselves come from the picked tier
+    // rather than a single shared RobNpc.BASE_CHANCE/CHANCE_PER_RANK/MAX_CHANCE.
     const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
     const successChance = Math.min(
-        RobNpc.BASE_CHANCE + RobNpc.CHANCE_PER_RANK * (rankInfo.rank - 1),
-        RobNpc.MAX_CHANCE
+        tier.baseChance + tier.chancePerRank * (rankInfo.rank - 1),
+        tier.maxChance
     ) + npcRobChanceBonus;
     const won = Math.random() < successChance;
 
-    const result = { won, successChance, rankInfo, amount: 0 };
+    const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null };
     if (!won) {
+        // Tier I stays whiff-only (hasPenalty: false) — the safe, always-available intro
+        // action with zero regression from before this tier system existed. Tiers II-IV
+        // carry a real loss on a whiff instead, half that tier's own payoutCap with the
+        // same +/-20% variance every other reward/penalty pair in this game rolls.
+        if (tier.hasPenalty) {
+            result.penaltyAmount = Math.round(tier.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * getRandomFromInterval(.8, 1.2));
+        }
         return result;
     }
 
@@ -204,6 +219,9 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
     // Yukon's bountyRewardPercent (Rank's benefit to /rob-npc is entirely on the odds side
     // above; Bounty's Rank/Yukon benefit is entirely on the reward-size side — keeping each
     // lever on one axis only avoids the two actions' benefits compounding into one another).
+    // PAYOUT_MULTIPLIER stays shared across every tier — only the cap (tier.payoutCap)
+    // varies — see RobNpc's own comment in constants.js for why that's still enough
+    // differentiation between tiers at real server wealth.
     const userMultiplier = userDetails.workMultiplierAmount;
     const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 — a mercenary can never be guilded
     const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
@@ -211,7 +229,14 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
     const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
     const multiplier = getRandomFromInterval(.8, 1.2);
 
-    result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, RobNpc.MAX_NPC_ROB_PAYOUT, multiplier, effectiveMultiplier, userDetails);
+    result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, multiplier, effectiveMultiplier, userDetails);
+
+    // The Big Score's one distinguishing extra — see RobNpc.TIERS' own comment in
+    // constants.js. 0 for every other tier, so this is a no-op everywhere else.
+    if (tier.statGrantChanceOnWin > 0 && Math.random() < tier.statGrantChanceOnWin) {
+        result.statReward = pickStatGrant('I', userDetails);
+    }
+
     return result;
 }
 

@@ -1,6 +1,9 @@
+const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { RobNpc, Work, Rival } = require("../../utils/constants");
+const { RobNpc, Work } = require("../../utils/constants");
+const { RaidFactory } = require("../../utils/raidFactory");
+const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -8,14 +11,26 @@ const embedFactory = new EmbedFactory();
 // A solo-only heist attempt against a fictional target — no real player involved, no
 // social risk, and (per direct instruction) a SEPARATE 30-minute cooldown (npcRobTimer)
 // from both real /rob's robTimer (3600s) and Bounty's own bountyTimer (also 3600s), so
-// spamming one action never locks out either of the other two. No Mercenary Rank gate at
-// all (available from Rank 1) — see systems/mercenary-bounties.md.
+// spamming one action never locks out either of the other two. That cooldown is shared
+// across all 4 heist tiers below (roadmap #50) — picking a bigger score doesn't buy a
+// longer wait, just bigger stakes on the same clock. See systems/mercenary-bounties.md.
 module.exports = {
     name: "rob-npc",
     description: "Attempt a solo heist against a fictional target — no real player involved",
     devOnly: false,
     deleted: false,
-    options: [],
+    options: [
+        {
+            name: 'heist-type',
+            description: 'Which heist to attempt',
+            required: true,
+            type: ApplicationCommandOptionType.String,
+            // All 4 tiers always listed (same "show every option, reject a locked pick with
+            // the reason" pattern /start-raid's own raid-select uses for Elite/Legendary)
+            // rather than hiding tiers the invoking user hasn't unlocked yet.
+            choices: RobNpc.TIERS.map(tier => ({ name: tier.label, value: tier.key }))
+        }
+    ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
@@ -25,6 +40,14 @@ module.exports = {
 
         if (!userDetails.isMercenary) {
             interaction.editReply(`${userDisplayName}, you're not a mercenary — run /become-mercenary first (you can't be in a guild).`);
+            return;
+        }
+
+        const heistTierKey = interaction.options.get('heist-type')?.value;
+        const tier = RobNpc.TIERS.find(t => t.key === heistTierKey);
+        const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+        if (rankInfo.rank < tier.rankRequired) {
+            interaction.editReply(`${userDisplayName}, ${tier.label} unlocks at Mercenary Rank ${tier.rankRequired} — you're currently Rank ${rankInfo.rank}. Win more bounties to rank up (check /bounty-board).`);
             return;
         }
 
@@ -40,25 +63,41 @@ module.exports = {
         const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
         const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
 
-        const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus);
+        const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, heistTierKey);
 
         const setAttributes = { npcRobTimer: Date.now() };
         const addAttributes = {};
         if (result.won && result.amount > 0) {
             setAttributes.potatoes = userDetails.potatoes + result.amount;
             setAttributes.totalEarnings = userDetails.totalEarnings + result.amount;
+        } else if (!result.won && result.penaltyAmount > 0) {
+            // Tiers II-IV only — Tier I stays whiff-only, so penaltyAmount is always 0 there.
+            setAttributes.potatoes = userDetails.potatoes - result.penaltyAmount;
+            setAttributes.totalLosses = userDetails.totalLosses - result.penaltyAmount;
         }
-        // Rival Bounty Hunters — Notoriety accrual on a win, same one-line constant-lookup
-        // shape takeBounty.js uses (not a mercenaryFactory.js function). See
+        // Rival Bounty Hunters — Notoriety accrual on a win, same one-line lookup shape
+        // takeBounty.js uses (not a mercenaryFactory.js function), now reading the picked
+        // tier's own notorietyPerWin instead of a single flat constant. See
         // systems/mercenary-bounties.md#rival-bounty-hunters.
         if (result.won) {
-            addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_NPC_ROB_WIN;
+            addAttributes.mercenaryNotoriety = tier.notorietyPerWin;
         }
-        // Whiff-only failure — no loss, npcRobTimer resets on both outcomes the same as
-        // every other cooldown-gated action in this bot.
+        // npcRobTimer resets on every outcome the same as every other cooldown-gated action
+        // in this bot, win, whiff, or loss alike.
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
-        const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result);
+        // The Big Score's rare stat-grant branch — reuses raidFactory.handleStatSplit (a
+        // 1-person "raidList") for the actual write, same precedent takeBounty.js's own
+        // rare stat-reward branch already set. The amount handed in is already the
+        // fully-resolved final delta (see mercenaryFactory.pickStatGrant), not a raw
+        // multiplier.
+        if (result.won && result.statReward) {
+            for (const grant of result.statReward) {
+                await raidFactory.handleStatSplit([{ id: userId, username }], grant.type, grant.amount);
+            }
+        }
+
+        const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier);
         interaction.editReply({ embeds: [embed] });
     }
 }
