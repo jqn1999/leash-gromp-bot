@@ -67,16 +67,16 @@ module.exports = {
             };
             raidMemberList.push(user);
         }
-        // Same average-plus-headcount-bonus formula /start-raid actually rolls against
-        // (see raidFactory.js's getEffectiveRaidPower) — kept in sync so this preview
-        // never shows a different number than what a real raid attempt would use. The
-        // breakdown (not just the final number) is passed to the embed so players can see
-        // what the Total Multiplier is actually made of — average raider power plus a
-        // headcount bonus — instead of an opaque single figure.
+        // Same rank-weighted-teamPower-plus-headcount-bonus formula /start-raid actually
+        // rolls against (see raidFactory.js's getEffectiveRaidPower) — kept in sync so
+        // this preview never shows a different number than what a real raid attempt
+        // would use. The breakdown (not just the final number) is passed to the embed so
+        // players can see what the Total Multiplier is actually made of — rank-weighted
+        // team power plus a headcount bonus — instead of an opaque single figure.
         const powerBreakdown = getEffectiveRaidPowerBreakdown(raidMemberDetails);
         const totalMultiplier = powerBreakdown.effectivePower;
 
-        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown);
+        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown, guild.raidSplitMode);
 
         // Only offer the Start Raid button once the cooldown has actually elapsed —
         // clicking it before then would just hit runStartRaidFlow's own cooldown

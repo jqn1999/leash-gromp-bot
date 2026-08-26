@@ -1223,6 +1223,13 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         // stored array needed leave.js/kick.js to explicitly prune a departing member
         // and neither did, so a departed member could linger in a raid indefinitely.
         guildBuff: "workMulti",
+        // Which of raidFactory.js's two reward-splitting helpers a guild's raid rewards
+        // route through when a reward/penalty doesn't fully fit in the guild bank —
+        // 'even' (handlePotatoSplit, today's behavior) or 'share' (handlePotatoSplitByShare,
+        // contribution-weighted by each raider's own raw raid power). Defaults to 'even'
+        // for every guild (new or pre-existing, healed in via findGuildById) so nothing
+        // changes silently for anyone who doesn't opt in via /set-raid-split.
+        raidSplitMode: "even",
         guildVersion: 0,
         guildContract: {                  // see systems/guild-contracts.md
             templateId: null,

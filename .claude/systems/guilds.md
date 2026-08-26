@@ -114,6 +114,34 @@ gracefully rather than crashing anything that reads it.
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
 
+## Raid reward split mode
+
+[setRaidSplit.js](../../src/commands/guilds/setRaidSplit.js) — Co-Leader/Leader picks how a raid
+reward/penalty that doesn't fully fit in the guild bank gets split among raiders, stored as
+`guild.raidSplitMode` (`"even"` | `"share"`). Same permission tier and self-healed-default pattern
+as `guildBuff`/`set-buff` above — added 2026-08-26 alongside the raid power formula rework (see
+[raids-and-world-events.md](raids-and-world-events.md#effective-raid-power)), as an opt-in toggle
+rather than a forced replacement so nothing changes silently for a guild that doesn't touch it.
+
+- `"even"` (default for every guild, new or pre-existing) — `raidFactory.handlePotatoSplit`, today's
+  behavior: the leftover amount divided equally across every active raider.
+- `"share"` — `raidFactory.handlePotatoSplitByShare` (the same helper World Raids already use, reused
+  as-is), weighted by each raider's own raw `getMemberRaidPower` (workMultiplierAmount + live rebirth
+  + companion `workMultiplierPercent` perk) relative to the roster's plain power sum — deliberately
+  NOT the rank-decayed `teamPower` used for success-chance, since a per-person reward share should
+  reflect that person's own raw strength, undiluted by how the team combines.
+
+Only the "what doesn't fit in the guild bank, split it among members" branch of
+`addToBankOrPurse`/`removeFromBankOrPurse` in `startRaid.js` branches on this — the bank-first
+absorption logic itself is unchanged either way. `statRaidScenarios`' flat per-head buy-in
+(`Raid.REGULAR_STAT_RAID_COST * raidList.length`, charged unconditionally win-or-lose) always uses
+the even path regardless of the guild's setting — it's a flat cost, not a contribution-weighted
+reward/penalty. `handleStatSplit` (Metal King's permanent stat rewards) is likewise untouched by this
+toggle — it's an identical flat grant per winner, never a divisible pool.
+
+Default `raidSplitMode` on guild creation (and self-healed onto every pre-existing guild via
+`findGuildById`) is `"even"`.
+
 ## Guild level
 
 `guild.level` and the guild's raid reward multiplier used to be stored fields, both permanently

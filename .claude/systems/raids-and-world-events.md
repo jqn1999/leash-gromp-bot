@@ -49,8 +49,9 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   sync with what a real raid attempt would use. (The guild buff that used to boost this total
   directly — `raidMulti` — was retired; see [systems/guilds.md](guilds.md#guild-buffs).) The Total
   Multiplier in the title is no longer just an opaque number — the description spells out what it's
-  made of, e.g. "1.75x average raider power + 3% headcount bonus (2 raiders)", via
-  `raidFactory.getEffectiveRaidPowerBreakdown` (a `{averagePower, headcountBonus, effectivePower}`
+  made of, e.g. "12.50x team power (top raider counted fully, each next-strongest counted at 50% of
+  the rank above them) + 3% headcount bonus (2 raiders)", via
+  `raidFactory.getEffectiveRaidPowerBreakdown` (a `{teamPower, headcountBonus, effectivePower}`
   breakdown `getEffectiveRaidPower` itself is now a thin wrapper over, so both stay byte-identical).
   Once
   `raidTimer` has elapsed, the reply also carries a Start Raid button. Clicking it reveals a row of
@@ -62,7 +63,8 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   in every respect (permission check, cooldown, roster, preview + confirm, scenario roll) to typing
   the slash command. No separate elder/co-leader/leader check is needed on the button path itself —
   only the original invoker's own clicks are ever processed, and `runStartRaidFlow`'s internal role
-  check is authoritative either way.
+  check is authoritative either way. The roster embed also shows a one-line reward-split-mode
+  indicator (see "Reward split mode" in [guilds.md](guilds.md#raid-reward-split-mode)).
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
   value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
@@ -92,38 +94,88 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
 
 ### Effective raid power
 
-`totalMultiplier` (the value success chance is actually computed against) is no longer a raw sum of
+`totalMultiplier` (the value success chance is actually computed against) is a rank-weighted sum of
 raider stats — `raidFactory.js`'s `getEffectiveRaidPower`:
 
 ```
 memberPower = workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultiplierPercent)   // getMemberRaidPower
-averagePower = mean(memberPower across the roster)
+sortedPowers = [memberPower, ...] sorted descending
+teamPower = sum(sortedPowers[rank] * RAID_TEAM_DECAY^rank)   // rank 0 = strongest raider
 headcountBonus = min(RAID_HEADCOUNT_BONUS_CAP, RAID_HEADCOUNT_BONUS_PER_MEMBER * (rosterSize - 1))
-effectiveRaidPower = averagePower * (1 + headcountBonus)
+effectiveRaidPower = teamPower * (1 + headcountBonus)
 ```
 
-Three changes from the old flat sum:
-- **Rebirth is folded in.** Previously only raw `workMultiplierAmount` counted, silently ignoring a
-  rebirther's live rebirth bonus (up to +100%, +140% with Mochi — see `rebirthFactory.js`'s
-  `getLiveRebirthPercent`) even though it applies everywhere else.
-- **The equipped companion's `workMultiplierPercent` perk is folded in too (2026-08-24).** Previously
-  `getMemberRaidPower` didn't read companion perks at all, even though `/work`'s own reward formula
-  and Bounty's reward-side formulas already did — a player-reported gap where Sprout/Firefly/
-  Spudsprite/Mochi's work-multiplier perk visibly moved reward size but not raid/Bounty success
-  chance. Additive alongside rebirth on the same base, not a second multiplicative layer.
-- **Average + capped per-member headcount bonus, not a straight sum.** A straight sum let any guild
-  trivialize difficulty by fielding more raiders regardless of their individual strength (difficulty
-  numbers are flat, never divided by roster size) — a straight average alone removes that but then
-  gives zero incentive to recruit more raiders at all. `RAID_HEADCOUNT_BONUS_PER_MEMBER` (3%) per
-  raider beyond the first, capped at `RAID_HEADCOUNT_BONUS_CAP` (50%, reached around a 17-person
-  roster — the same shape `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` already uses elsewhere),
-  splits the difference: bigger roster still helps, but can't substitute for actual member strength.
+- **Rebirth is folded in.** Rebirth's live bonus (up to +100%, +140% with Mochi — see
+  `rebirthFactory.js`'s `getLiveRebirthPercent`) applies to raid power the same as everywhere else.
+- **The equipped companion's `workMultiplierPercent` perk is folded in too (2026-08-24).** Additive
+  alongside rebirth on the same base, not a second multiplicative layer — so Sprout/Firefly/
+  Spudsprite/Mochi's work-multiplier perk moves raid/Bounty success chance the same way it moves
+  `/work` reward size.
+- **Rank-weighted `teamPower`, not an arithmetic mean (2026-08-26 rework).** Sort the roster by each
+  member's own power descending; the strongest raider counts at full weight, each next-strongest
+  counts at `RAID_TEAM_DECAY` (50%) of the rank above them — geometric, not harmonic. This replaced a
+  straight average, which had a real, player-diagnosed bug: adding a below-average roster member could
+  drag the average down by MORE than the capped `+3%/member` headcount bonus could offset, making the
+  single strongest guild member soloing every raid (via `/join-raid`'s `autoJoinRaids` toggle)
+  strictly dominant over real multi-member participation — worse, since the reward was always split
+  evenly regardless of contribution (see "Reward split mode" below), every additional member who
+  joined also diluted the strong raider's own payout, compounding the incentive to solo.
+  `RAID_HEADCOUNT_BONUS_PER_MEMBER`/`RAID_HEADCOUNT_BONUS_CAP` (3%/member, capped 50% around a
+  17-person roster — same shape `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` uses) are **unchanged**,
+  now applied on top of `teamPower` instead of the old average.
+
+**Correctness guarantee, not just a usually-true heuristic**: for geometric weights `w_i = r^i`
+(`0 < r < 1`), inserting a new member at ANY power `p_new >= 0` at its correctly-sorted rank `k`
+changes `teamPower` by exactly `p_new * r^n >= 0` (`n` = roster size before insertion) — every
+existing member at rank `>= k` gets demoted one slot and loses `p_i * r^i * (1-r)`, but since
+insertion at rank `k` requires `p_new >= p_i` for every demoted member, the total loss is bounded
+above by the gain. So adding any active roster member can never lower `teamPower` — independent of
+`RAID_TEAM_DECAY`'s actual value, which is a pure balance knob (fuzz-tested numerically in
+`raidFactory.test.js`, 0 violations across thousands of random trials).
+
+`getEffectiveRaidPowerBreakdown` returns `{ teamPower, headcountBonus, effectivePower }` (not just the
+final number) so `current-raid`'s embed can show what the Total Multiplier is made of.
+`getEffectiveRaidPower` is a thin wrapper over it returning just `.effectivePower`. **n=1 is an exact
+identity with the old formula** (`teamPower = power_0 * r^0 = power_0`, `headcountBonus = 0`), so
+Bounty's solo "roster" (`mercenaryFactory.js`'s `getEffectiveRaidPower([userDetails])`) needed zero
+changes and produces byte-identical numbers to before. The geometric shape converges to a hard
+ceiling of `1/(1-RAID_TEAM_DECAY) = 2.0x` the top raider's own power as roster size grows, regardless
+of how high `memberCap` gets upgraded (`guildBuy.js`'s `memberCap` shop) — at the extreme (a
+maxed-`memberCap`, all-equal-power 25-member roster), `effectivePower` reaches `3.0x` a single
+raider's own power (`2.0x` `teamPower` ceiling × `1.5x` `headcountBonus` ceiling), vs. the old
+formula's `1.5x` ceiling for the same roster.
+
+Every `*_RAID_DIFFICULTY`/`METAL_KING_DIFFICULTY` constant is **unchanged** by this rework — solo
+calibration is untouched (the n=1 identity above), and `getMinGuildLevelForTier`'s Elite/Legendary
+breakeven gate depends only on `penaltyMult`/`maxSuccessRate`, never on `totalMultiplier`, so it stays
+valid unchanged too. The higher achievable `totalMultiplier` only shows up for genuinely multi-member
+rosters — closing a gap the 2026-08-23 "Guild raids full-scope audit" balance-audit entry already
+flagged (T2/T3 deeply negative EV for typical multi-member rosters under the old averaging formula)
+rather than opening a new one. See the 2026-08-26 balance-audit entry for computed before/after
+success-chance and EV numbers across every tier and mode, and a documented, consciously-accepted
+finding: a strong/skewed multi-member roster can now push Regular mode's T1/T2/T3 to the same capped
+90% success rate together (T4 and Metal King stay clearly harder) — this wasn't fixable via
+`RAID_TEAM_DECAY` alone without undercutting the fix's own purpose, and is left to the existing,
+still-open "Guild Raid: T2/T3/`stat`-Mode Eligibility Gating" roadmap item rather than patched here.
 
 Firefly-style `guildRaidMultiplierPercent` companion perk (best among the roster, not summed) is
 still applied multiplicatively on top of `effectiveRaidPower` in `startRaid.js` — a separate
 mechanism from the `workMultiplierPercent` fold-in above, since it depends on which specific perk is
 active among raiders rather than each member's own power. Currently dormant (no companion grants it
 right now, see `companions.md`).
+
+### Reward split mode
+
+Which of `raidFactory.js`'s two reward-splitting helpers a guild's raid rewards route through when a
+reward/penalty doesn't fully fit in the guild bank — a per-guild opt-in toggle
+(`guild.raidSplitMode`, `/set-raid-split`, Co-Leader/Leader only), **not** a forced replacement of
+today's behavior. Full writeup in [guilds.md](guilds.md#raid-reward-split-mode); the short version:
+`"even"` (default for every guild) keeps today's `handlePotatoSplit` equal split, `"share"` switches
+to `handlePotatoSplitByShare` weighted by each raider's own raw `getMemberRaidPower` (not the
+rank-decayed `teamPower` above — a personal reward share should reflect personal strength, undiluted
+by the team-combination weighting). Only the bank-overflow branch of `startRaid.js`'s
+`addToBankOrPurse`/`removeFromBankOrPurse` branches on it; `statRaidScenarios`' flat per-head cost and
+`handleStatSplit`'s flat per-winner stat grants are both unaffected regardless of the guild's setting.
 
 ### Success chance & tiers
 

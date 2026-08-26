@@ -176,21 +176,77 @@ describe('getMemberRaidPower', () => {
     });
 });
 
+// 2026-08-26 rework: replaces the arithmetic-mean averagePower with a rank-weighted
+// teamPower (sort descending, weight each rank by RAID_TEAM_DECAY^rank) — see
+// raidFactory.js's getEffectiveRaidPowerBreakdown comment for the full proof. This fixes
+// the bug where adding a below-average member could lower effective power by more than
+// the headcount bonus could offset, making the single strongest guild member soloing
+// every raid strictly dominant over real multi-member participation.
 describe('getEffectiveRaidPower', () => {
     test('a solo raider (headcount bonus 0) is just their own power', () => {
         expect(getEffectiveRaidPower([{ workMultiplierAmount: 40, rebirthCount: 0 }])).toBeCloseTo(40);
     });
 
-    test('averages across the roster rather than summing', () => {
+    // n=1 identity: byte-identical to the OLD average-based formula's own output for a
+    // solo roster (mean of one value is that value, decay^0 is 1) — Bounty's solo
+    // "roster" in mercenaryFactory.js needs zero changes because of this.
+    test('n=1 is an exact identity with the old average-based formula', () => {
+        const soloRoster = [{ workMultiplierAmount: 73, rebirthCount: 0 }];
+        expect(getEffectiveRaidPower(soloRoster)).toBeCloseTo(73);
+    });
+
+    test('rank-weights the roster rather than averaging — the top raider dominates, not diluted by a weaker member', () => {
         const roster = [
             { workMultiplierAmount: 100, rebirthCount: 0 },
             { workMultiplierAmount: 0, rebirthCount: 0 },
         ];
-        // Average is 50, headcount bonus for 2 members is +3% (RAID_HEADCOUNT_BONUS_PER_MEMBER * 1)
-        expect(getEffectiveRaidPower(roster)).toBeCloseTo(50 * 1.03);
+        // teamPower = 100*decay^0 + 0*decay^1 = 100, headcount bonus for 2 members is +3%
+        expect(getEffectiveRaidPower(roster)).toBeCloseTo(100 * (1 + Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER));
     });
 
-    test('more raiders of the same average strength still raises effective power via the headcount bonus', () => {
+    // The exact bug this rework fixes: under the old arithmetic mean, adding a
+    // below-average (even zero-power) member could lower effective power by more than
+    // the +3%/member headcount bonus could offset, making a lone strong raider strictly
+    // dominant over recruiting real teammates.
+    test('adding a below-average (even zero-power) new member never decreases effective power', () => {
+        const solo = [{ workMultiplierAmount: 100, rebirthCount: 0 }];
+        const soloPower = getEffectiveRaidPower(solo);
+
+        const withWeakMember = [...solo, { workMultiplierAmount: 1, rebirthCount: 0 }];
+        expect(getEffectiveRaidPower(withWeakMember)).toBeGreaterThanOrEqual(soloPower);
+
+        const withZeroPowerMember = [...solo, { workMultiplierAmount: 0, rebirthCount: 0 }];
+        expect(getEffectiveRaidPower(withZeroPowerMember)).toBeGreaterThanOrEqual(soloPower);
+    });
+
+    test('monotonic non-decrease across a few concrete rosters as members are added one at a time, in any strength order', () => {
+        const powersToAdd = [80, 5, 60, 1, 40, 0, 200];
+        let roster = [];
+        let previousPower = 0;
+        powersToAdd.forEach(power => {
+            roster = [...roster, { workMultiplierAmount: power, rebirthCount: 0 }];
+            const currentPower = getEffectiveRaidPower(roster);
+            expect(currentPower).toBeGreaterThanOrEqual(previousPower);
+            previousPower = currentPower;
+        });
+    });
+
+    // Fuzz-tested (per the architect's own correctness proof, which is independent of
+    // RAID_TEAM_DECAY's actual value): inserting a new member at ANY power into a
+    // correctly-sorted roster can never decrease teamPower. 2,000 trials mirrors the
+    // scale the architect's own numeric fuzz-check used.
+    test('fuzz: inserting a new member at a random power never decreases teamPower, across many random rosters', () => {
+        for (let trial = 0; trial < 2000; trial++) {
+            const size = 1 + Math.floor(Math.random() * 12);
+            const roster = Array.from({ length: size }, () => ({ workMultiplierAmount: Math.random() * 500, rebirthCount: 0 }));
+            const before = getEffectiveRaidPowerBreakdown(roster).teamPower;
+            const withNewMember = [...roster, { workMultiplierAmount: Math.random() * 500, rebirthCount: 0 }];
+            const after = getEffectiveRaidPowerBreakdown(withNewMember).teamPower;
+            expect(after).toBeGreaterThanOrEqual(before - 1e-9);
+        }
+    });
+
+    test('more raiders of the same strength still raises effective power via both teamPower growth and the headcount bonus', () => {
         const twoMembers = [{ workMultiplierAmount: 50, rebirthCount: 0 }, { workMultiplierAmount: 50, rebirthCount: 0 }];
         const fiveMembers = Array.from({ length: 5 }, () => ({ workMultiplierAmount: 50, rebirthCount: 0 }));
         expect(getEffectiveRaidPower(fiveMembers)).toBeGreaterThan(getEffectiveRaidPower(twoMembers));
@@ -198,7 +254,31 @@ describe('getEffectiveRaidPower', () => {
 
     test('the headcount bonus caps rather than growing without bound for a huge roster', () => {
         const hugeRoster = Array.from({ length: 100 }, () => ({ workMultiplierAmount: 50, rebirthCount: 0 }));
-        expect(getEffectiveRaidPower(hugeRoster)).toBeCloseTo(50 * (1 + Raid.RAID_HEADCOUNT_BONUS_CAP));
+        // teamPower for a huge equal-power roster converges to the geometric ceiling:
+        // power * 1/(1 - RAID_TEAM_DECAY).
+        const teamPowerCeiling = 50 * (1 / (1 - Raid.RAID_TEAM_DECAY));
+        expect(getEffectiveRaidPower(hugeRoster)).toBeCloseTo(teamPowerCeiling * (1 + Raid.RAID_HEADCOUNT_BONUS_CAP));
+    });
+
+    // The geometric (not harmonic) shape converges to a hard ceiling of
+    // 1/(1-RAID_TEAM_DECAY) = 2.0x the top raider's own power regardless of how large the
+    // roster gets — this holds no matter how high memberCap is upgraded via guildBuy.js.
+    test('the geometric ceiling: a large equal-power roster approaches but never exceeds 1/(1-RAID_TEAM_DECAY)x the top raider\'s own power', () => {
+        const ceiling = 1 / (1 - Raid.RAID_TEAM_DECAY);
+        const power = 50;
+        const bigRoster = Array.from({ length: 40 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
+        const { teamPower } = getEffectiveRaidPowerBreakdown(bigRoster);
+        expect(teamPower).toBeLessThan(power * ceiling);
+        expect(teamPower).toBeCloseTo(power * ceiling, 2);
+    });
+
+    // The documented extreme case from the design: a maxed-memberCap (25), all-equal-power
+    // roster reaches ~3.0x a single raider's own power (2.0x teamPower ceiling * 1.5x
+    // headcount bonus ceiling) — a sane reward for that level of investment, not a runaway.
+    test('at the documented extreme (25-member maxed roster, equal power), effectivePower reaches ~3.0x a single raider\'s power', () => {
+        const power = 100;
+        const roster = Array.from({ length: 25 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
+        expect(getEffectiveRaidPower(roster)).toBeCloseTo(power * 3.0, 1);
     });
 
     test('an empty roster is 0, not NaN from a division by zero', () => {
@@ -216,25 +296,40 @@ describe('getEffectiveRaidPowerBreakdown', () => {
         expect(getEffectiveRaidPowerBreakdown(roster).effectivePower).toBeCloseTo(getEffectiveRaidPower(roster));
     });
 
-    test('averagePower and headcountBonus combine to produce effectivePower', () => {
+    test('teamPower and headcountBonus combine to produce effectivePower', () => {
         const roster = [
             { workMultiplierAmount: 100, rebirthCount: 0 },
             { workMultiplierAmount: 0, rebirthCount: 0 },
         ];
         const breakdown = getEffectiveRaidPowerBreakdown(roster);
-        expect(breakdown.averagePower).toBeCloseTo(50);
+        // Sorted desc [100, 0]: teamPower = 100*decay^0 + 0*decay^1 = 100
+        expect(breakdown.teamPower).toBeCloseTo(100);
         expect(breakdown.headcountBonus).toBeCloseTo(Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER);
-        expect(breakdown.effectivePower).toBeCloseTo(breakdown.averagePower * (1 + breakdown.headcountBonus));
+        expect(breakdown.effectivePower).toBeCloseTo(breakdown.teamPower * (1 + breakdown.headcountBonus));
     });
 
-    test('a solo raider has a 0 headcount bonus', () => {
+    test('teamPower is a rank-weighted sum, not an average, for an unequal multi-member roster', () => {
+        const roster = [
+            { workMultiplierAmount: 40, rebirthCount: 0 },
+            { workMultiplierAmount: 100, rebirthCount: 0 }, // out of order on purpose — sorting is the function's job
+            { workMultiplierAmount: 10, rebirthCount: 0 },
+        ];
+        const breakdown = getEffectiveRaidPowerBreakdown(roster);
+        // Sorted desc [100, 40, 10]: teamPower = 100 + 40*decay + 10*decay^2
+        const expectedTeamPower = 100 + 40 * Raid.RAID_TEAM_DECAY + 10 * Math.pow(Raid.RAID_TEAM_DECAY, 2);
+        expect(breakdown.teamPower).toBeCloseTo(expectedTeamPower);
+        // Never equal to the old arithmetic mean (50) for this genuinely unequal roster.
+        expect(breakdown.teamPower).not.toBeCloseTo(50);
+    });
+
+    test('a solo raider has a 0 headcount bonus and teamPower equal to their own power', () => {
         const breakdown = getEffectiveRaidPowerBreakdown([{ workMultiplierAmount: 40, rebirthCount: 0 }]);
         expect(breakdown.headcountBonus).toBe(0);
-        expect(breakdown.averagePower).toBeCloseTo(40);
+        expect(breakdown.teamPower).toBeCloseTo(40);
     });
 
     test('an empty roster returns all zeros, not NaN', () => {
-        expect(getEffectiveRaidPowerBreakdown([])).toEqual({ averagePower: 0, headcountBonus: 0, effectivePower: 0 });
+        expect(getEffectiveRaidPowerBreakdown([])).toEqual({ teamPower: 0, headcountBonus: 0, effectivePower: 0 });
     });
 });
 

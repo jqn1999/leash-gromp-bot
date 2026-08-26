@@ -84,23 +84,41 @@ function getMemberRaidPower(userDetails) {
     return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails) + companionWorkMultiplierPercent);
 }
 
-// The effective raid power a roster rolls against, broken into its two components —
-// average per-member power (see getMemberRaidPower, which folds in each member's own
+// The effective raid power a roster rolls against, broken into its two components — a
+// rank-weighted teamPower (see getMemberRaidPower, which folds in each member's own
 // workMultiplierPercent companion perk alongside rebirth) and a headcount bonus for
 // bringing more raiders — same per-member % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER
-// already uses, capped so a max-size roster doesn't spiral. A straight average alone gives
-// zero incentive to recruit more raiders; a straight sum lets any guild trivialize
-// difficulty by fielding more bodies regardless of their individual strength — this splits
-// the difference. Returns the breakdown (not just the final number) so currentRaid.js's
-// embed can show players what the total multiplier is actually made of, not just the
-// opaque result — see getEffectiveRaidPower below for callers that only need the number.
+// already uses, capped so a max-size roster doesn't spiral. Returns the breakdown (not
+// just the final number) so currentRaid.js's embed can show players what the total
+// multiplier is actually made of, not just the opaque result — see getEffectiveRaidPower
+// below for callers that only need the number.
+//
+// teamPower replaces a straight arithmetic mean (2026-08-26 rework): sort raiders by
+// their own power descending, the top raider counts at full weight, each next-strongest
+// raider counts at Raid.RAID_TEAM_DECAY (50%) of the rank above them —
+// teamPower = sum(power_i * RAID_TEAM_DECAY^rank). A straight average gave zero
+// incentive to recruit more raiders and, worse, let a below-average new member drag the
+// average down by MORE than the headcount bonus could offset — making the single
+// strongest guild member soloing every raid strictly dominant over real multi-member
+// participation (the bug this rework fixes). This geometric shape is provably
+// non-decreasing: for weights w_i = r^i (0 < r < 1), inserting a new member at ANY power
+// p_new >= 0 at its correctly-sorted rank k changes teamPower by exactly p_new * r^n >= 0
+// (n = roster size before insertion) — every existing member at rank >= k gets demoted
+// one slot and loses p_i * r^i * (1-r), but since insertion at rank k requires
+// p_new >= p_i for every demoted member, the total loss is bounded above by the gain.
+// This is a correctness guarantee of the formula shape itself (fuzz-tested numerically in
+// raidFactory.test.js), independent of RAID_TEAM_DECAY's actual value, which is a pure
+// balance knob. n=1 is an exact identity with the old formula: teamPower = power_0 * r^0
+// = power_0, headcountBonus = 0 — so getEffectiveRaidPower([single]) (Bounty's solo
+// "roster" in mercenaryFactory.js) is byte-identical to before.
 function getEffectiveRaidPowerBreakdown(memberDetailsList) {
     if (memberDetailsList.length === 0) {
-        return { averagePower: 0, headcountBonus: 0, effectivePower: 0 };
+        return { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
     }
-    const averagePower = memberDetailsList.reduce((sum, m) => sum + getMemberRaidPower(m), 0) / memberDetailsList.length;
+    const powers = memberDetailsList.map(getMemberRaidPower).sort((a, b) => b - a);
+    const teamPower = powers.reduce((sum, power, rank) => sum + power * Math.pow(Raid.RAID_TEAM_DECAY, rank), 0);
     const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
-    return { averagePower, headcountBonus, effectivePower: averagePower * (1 + headcountBonus) };
+    return { teamPower, headcountBonus, effectivePower: teamPower * (1 + headcountBonus) };
 }
 
 // Shared by startRaid.js's actual roll, currentRaid.js's preview display, and Bounty's

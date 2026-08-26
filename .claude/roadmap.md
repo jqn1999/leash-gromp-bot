@@ -2250,6 +2250,77 @@ and needs its own balance pass.
   Sprout-plus-new-Yukon pair, and was updated to expect 2 Yukon instances in the final write.
   Full suite green (544/544, up from 540).
 
+- [x] **60. Guild Raid Rework — Rank-Weighted Team Power + Opt-In Reward-Split Mode** — M — **Done**
+  What: Two-part fix. (1) `raidFactory.js`'s `getEffectiveRaidPowerBreakdown` replaces the
+  arithmetic-mean `averagePower` with a rank-weighted `teamPower`: sort raiders by their own power
+  descending, the strongest counts fully, each next-strongest counts at new constant
+  `Raid.RAID_TEAM_DECAY` (0.5, geometric not harmonic) of the rank above them — `headcountBonus`
+  stays completely unchanged, now applied on top of `teamPower` instead of the old average. This is
+  provably non-decreasing (proof in `raidFactory.js`'s own comment, fuzz-tested 0 violations across
+  thousands of trials in `raidFactory.test.js`): adding any active roster member at any power can
+  never lower effective raid power, closing the exact bug reported — n=1 is an exact identity with
+  the old formula (`teamPower = power_0`, `headcountBonus = 0`), so Bounty's solo raid-power math
+  (`mercenaryFactory.js`) needed zero changes. (2) New `guild.raidSplitMode` field (`"even"` default
+  for every guild / `"share"`) and new command `/set-raid-split` (Leader/Co-Leader only, mirrors
+  `/set-buff`'s shape exactly) — a per-guild **opt-in toggle**, not a forced switch, between today's
+  `raidFactory.handlePotatoSplit` even split and the already-existing `handlePotatoSplitByShare`
+  (reused as-is from World Raids, unmodified signature) weighted by each raider's own raw
+  `getMemberRaidPower` — deliberately NOT the rank-decayed `teamPower`, since a personal reward share
+  should reflect personal raw strength, undiluted by how the team combines for success-chance
+  purposes. `startRaid.js`'s `addToBankOrPurse`/`removeFromBankOrPurse` branch on `raidSplitMode`
+  only at their existing "what doesn't fit in the bank, split it among members" call site — the
+  bank-first absorption logic itself is untouched; all 15 scenario-action closures across
+  `regularRaidScenarios`/`eliteRaidScenarios`/`legendaryRaidScenarios` (`babyRaidScenarios` reuses
+  Regular's own T1 entry, no separate closure) thread `raidSplitMode`/`raidListByMulti` straight
+  through. `statRaidScenarios`' flat per-head buy-in (charged unconditionally win-or-lose) explicitly
+  always passes `'even', []` regardless of the guild's setting — it's a flat cost, not a
+  contribution-weighted reward/penalty. `embedFactory.js`'s `createRaidEmbed` branches on
+  `Array.isArray(splitRaidReward)` to show a per-member contribution-split breakdown (using each
+  entry's own `raidSplitAmount` from `handlePotatoSplitByShare`, not recomputed, so bank absorption
+  is respected); `createRaidMemberListEmbed`/`createRaidPreviewEmbed` both gained a one-line
+  split-mode indicator, threaded from `currentRaid.js`/`startRaid.js`.
+  Why: direct user diagnosis — "Users are just having their highest work multi user raiding since
+  it's the highest % chance of success since average brings them down even with % headcount
+  increase," confirmed direction "Fix both" (the formula AND the always-even reward split that
+  compounded it by diluting a strong raider's own payout every time someone else joined). Follow-up
+  correction, same session: "Instead of strictly % based, make it a guild option they can do evenly
+  split, or contribution % based" — turning what was initially scoped as a forced split-mode
+  replacement into a guild-chosen toggle instead, defaulting to today's behavior for every guild.
+  Notable: mid-implementation verification (requested by the user before sign-off, not something the
+  architect's brief itself flagged) found the new formula's larger `totalMultiplier` for multi-member
+  rosters causes real, computed tier compression within Regular/Elite mode — a strong-but-realistic
+  5-member roster at T3's own documented per-member landmark (`WMA=350`) now hits T1/T2/T3 at the
+  *same* capped 90% success rate together (previously only T1/T2 capped together, T3 sat at 65%);
+  T4/Metal King stay clearly harder in every case tested. Swept `RAID_TEAM_DECAY` from 0.5 down to
+  0.1 against both an idealized equal-power roster and two realistic unequal ones
+  (`[600,50,50,50,50]`, `[600,400,300,200,250]`) before concluding it's the wrong lever: softening
+  decay only meaningfully helps the idealized equal-power case, while for realistic skewed rosters —
+  the far more common real shape — even `decay=0.1` (near "only the top raider matters") stays fully
+  capped, because that compression is driven by the (unchanged) headcount bonus stacking on a single
+  strong member's now-correctly-undiluted power, not by how much credit weaker teammates get; lowering
+  decay further actively shrinks the team-beats-solo recruiting margin the whole rework exists to
+  restore (+20.8% at decay=0.5 vs. only +13% at decay=0.1 for the skewed example). Left
+  `RAID_TEAM_DECAY` at 0.5 and per-tier difficulty constants untouched (both explicitly in-scope
+  decisions per the architect's brief), documenting the compression as a real, verified, and
+  consciously-accepted finding pointing at the existing (separately gated, needs its own
+  product/architect call) roadmap item "Guild Raid: T2/T3/`stat`-Mode Eligibility Gating" as the
+  correct follow-up venue rather than silently re-tuning the raid-power formula to chase it. Full
+  computed before/after success-chance/EV tables (every tier, every mode, three representative
+  rosters) in `balance-audit.md`'s new 2026-08-26 entry, which explicitly supersedes (without editing)
+  the 2026-08-23 "Guild raids full-scope audit" entry's multi-member EV claims.
+  22 new/updated tests: `raidFactory.test.js`'s `getEffectiveRaidPower`/`getEffectiveRaidPowerBreakdown`
+  blocks rewritten for `teamPower` (n=1 identity, below-average-member-never-decreases-power
+  regression case, monotonic non-decrease across concrete rosters, a 2,000-trial fuzz check, the
+  geometric ceiling, the documented 25-member/3.0x extreme); new `setRaidSplit.test.js` (permission
+  gate, self-healed-default respect, raw-value-write-through); new `startRaidSplitMode.test.js`
+  (`'share'` routes through `handlePotatoSplitByShare` not `handlePotatoSplit` and vice versa for
+  `'even'`/self-healed-default, `statRaidScenarios` always uses the even path regardless of the
+  guild's own setting) — RaidFactory's class methods mocked the same way `worldFactory.test.js`
+  already established, every other `raidFactory.js` export left real so the actual dispatch/roster
+  logic is exercised end-to-end. Also manually verified `findGuildById`'s self-healing backfills
+  `raidSplitMode: "even"` onto a pre-existing guild record at the `DocumentClient` mock layer. Full
+  suite green (562/562, up from 544).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -2270,6 +2341,17 @@ and needs its own balance pass.
      write a negative personal `potatoes` balance (no `Math.max(0, ...)` anywhere in that path,
      unlike `rob.js`'s self-limiting percentage-of-target design). A correctness fix worth making
      regardless of which direction the gating fix above takes.
+
+  **Update, 2026-08-26 (item 60's raid-power rework)**: this item became *more* relevant, not less.
+  The rank-weighted `teamPower` fix (item 60) makes a strong multi-member roster's `totalMultiplier`
+  meaningfully bigger, which — computed and verified, see `balance-audit.md`'s 2026-08-26 entry —
+  now pushes Regular/Elite's T1/T2/T3 to the *same* capped success rate together for a
+  strong-but-realistic roster at T3's own documented landmark (previously only T1/T2 capped
+  together). Softening `Raid.RAID_TEAM_DECAY` was tried and rejected as a fix (it only helps an
+  idealized equal-power roster, not realistic unequal ones, and actively undercuts item 60's own
+  core fix if pushed low enough to matter) — a roster-power-keyed eligibility gate (finding 1 above)
+  remains the correct venue for addressing this specific flatness, now with a second, independently
+  verified motivating case on top of the original 2026-08-23 one.
 
 - [x] **Rival Bounty Hunters (Notoriety → confrontation)** — M — **Shipped 2026-08-23**, built
   directly off the architect's technical design at the end of this entry — see

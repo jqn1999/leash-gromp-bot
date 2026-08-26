@@ -1016,14 +1016,30 @@ const Raid = {
     METAL_KING_PENALTY: 0,
     METAL_KING_DIFFICULTY: 2000,
 
-    // Headcount bonus on top of the roster's AVERAGE effectiveRaidPower — a straight
-    // average alone gives zero incentive to recruit more raiders (bigger roster, same
-    // per-capita difficulty), and a straight SUM lets any guild trivialize difficulty by
-    // just fielding more bodies regardless of their individual strength. This splits the
-    // difference: same shape as Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (flat % per
-    // member), capped so a max-roster guild doesn't spiral.
+    // Headcount bonus on top of the roster's rank-weighted teamPower (see
+    // RAID_TEAM_DECAY below) — a straight average alone gives zero incentive to recruit
+    // more raiders (bigger roster, same per-capita difficulty), and a straight SUM lets
+    // any guild trivialize difficulty by just fielding more bodies regardless of their
+    // individual strength. This splits the difference: same shape as
+    // Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (flat % per member), capped so a
+    // max-roster guild doesn't spiral.
     RAID_HEADCOUNT_BONUS_PER_MEMBER: 0.03,
     RAID_HEADCOUNT_BONUS_CAP: 0.50,
+
+    // Sort raiders by their own power (getMemberRaidPower) descending; the top raider
+    // counts at full weight, each next-strongest raider counts at RAID_TEAM_DECAY (50%)
+    // of the rank above them (geometric, not harmonic) — teamPower = sum(power_i *
+    // RAID_TEAM_DECAY^rank). Replaces a straight arithmetic mean, which let a below-average
+    // new member drag the roster's average down by more than RAID_HEADCOUNT_BONUS_PER_MEMBER
+    // could offset, making the single strongest guild member soloing every raid strictly
+    // dominant over real multi-member participation. This shape guarantees adding any
+    // member at any power never decreases teamPower (see raidFactory.js's
+    // getEffectiveRaidPowerBreakdown for the proof) and converges to a hard ceiling of
+    // 1/(1-RAID_TEAM_DECAY) = 2.0x the top raider's own power as roster size grows,
+    // regardless of how high memberCap gets upgraded (see guildBuy.js's memberCap shop) —
+    // n=1 is an exact identity with the old formula (teamPower = power_0, headcountBonus
+    // = 0), so solo Bounty math (mercenaryFactory.js) is completely unaffected.
+    RAID_TEAM_DECAY: 0.5,
 
     // A deliberate alternate path to T3/T4-caliber effective power: pay a flat upfront
     // potato cost (win or lose) instead of grinding toward the shop/regrade currency

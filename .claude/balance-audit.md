@@ -1309,3 +1309,161 @@ completeness/symmetry with the other two exit paths.
   last 24h and applies uniformly across the whole economy, not specifically to the new systems —
   flagged for awareness, not re-scored as a new finding, since exploiting it requires firing two
   genuinely concurrent interactions (sub-second timing), not just replaying a stale command.
+
+---
+
+## 2026-08-26 — Guild raid rework: rank-weighted `teamPower` + opt-in reward-split mode
+
+Implementation-time verification for the guild-raid rework shipped this session (see
+`roadmap.md`'s item #60): (1) replaced `getEffectiveRaidPowerBreakdown`'s arithmetic-mean
+`averagePower` with a rank-weighted `teamPower` so adding any active roster member can never lower
+effective raid power (the bug: a below-average new member could drag the average down by more than
+the capped headcount bonus could offset, making the single strongest guild member soloing every raid
+strictly dominant over real multi-member participation); (2) added `guild.raidSplitMode`, a per-guild
+opt-in toggle (`"even"` default / `"share"`) between today's even reward split and a new
+contribution-weighted split. Full design in the architect's brief; this entry is the verification
+pass the user asked for before calling it done, specifically: does the new formula's larger
+`totalMultiplier` for multi-member rosters distort the tier/mode difficulty ladder (compress
+easier/harder brackets toward the same success rate), and if so, is `Raid.RAID_TEAM_DECAY` the right
+lever to fix it.
+
+**This entry supersedes, for multi-member rosters, the 2026-08-23 "Guild raids full-scope audit"
+entry's qualitative claim that T2/T3 are "deeply negative EV for typical multi-member rosters" — that
+claim was computed against the OLD averaging formula and is the exact thing this rework targets. The
+2026-08-23 entry is left unedited as a historical record of what was true under the formula in place
+at the time; do not read its EV table as still describing current behavior for multi-member rosters.**
+
+### Method
+
+Computed directly via `node -e` against the real `constants.js` values (script not checked in, formula
+mirrors `raidFactory.js`/`startRaid.js` exactly) — not estimated by hand. Three representative
+rosters, matching the architect's own examples: a fresh 2-founder roster (`WMA=1` each, checking the
+low end isn't now trivial), a "5 members `WMA=50`" roster (late/unmaxed-shop landmark), and a
+"5 members `WMA=350`" roster (T3's own documented per-member landmark). All at guild level 1
+(`raidRewardMultiplier=1.00`). Success chance via `min(totalMultiplier/difficulty, maxSuccessRate)`;
+EV via `chance*reward - (1-chance)*penalty` (reward/penalty already include each mode's own
+`DIFFICULTY_MULTIPLIER`/`penaltyMult`, per `startRaid.js`).
+
+### `totalMultiplier`: old (average) vs. new (rank-weighted `teamPower`) formula
+
+| Roster | old `totalMultiplier` | new `totalMultiplier` | ratio |
+|---|---|---|---|
+| 2 founders, `WMA=1` | 1.03 | 1.54 | 1.50x |
+| 5 members, `WMA=50` | 56.00 | 108.50 | 1.94x |
+| 5 members, `WMA=350` (T3 landmark) | 392.00 | 759.50 | 1.94x |
+
+Matches the architect's own stated examples (56.0→~108.5, 392→~759.5) exactly.
+
+### Success chance / EV, every tier, every mode (`Raid.RAID_TEAM_DECAY = 0.5`)
+
+**2 founders, `WMA=1` (fresh/early — confirming the low end isn't now trivial either):**
+
+| Mode | Tier | OLD chance / EV | NEW chance / EV |
+|---|---|---|---|
+| baby/regular | T1 | 10.3% / -79,400 | 15.4% / -69,100 |
+| regular | T2 | 1.2% / -487,882 | 1.8% / -481,824 |
+| regular | T3 | 0.2% / -4,982,833 | 0.3% / -4,974,250 |
+| regular | T4 | 0.1% / -14,969,100 | 0.2% / -14,953,650 |
+| regular | Metal King | 0.1% / +5,150 | 0.1% / +7,725 |
+| stat | Standard (flat -600,000 cost) | 0.3% success | 0.4% success |
+
+Still deeply negative EV across every real bracket — the fix doesn't trivialize early game. Confirmed.
+
+**5 members, `WMA=50` (late/unmaxed-shop landmark):**
+
+| Mode | Tier | OLD chance / EV | NEW chance / EV |
+|---|---|---|---|
+| regular | T1 | 90.0% (cap) / +80,000 | 90.0% (cap) / +80,000 |
+| regular | T2 | 65.9% / +158,824 | 90.0% (cap) / +400,000 |
+| regular | T3 | 9.3% / -4,066,667 | 18.1% / -3,191,667 |
+| regular | T4 | 5.6% / -13,320,000 | 10.9% / -11,745,000 |
+| regular | Metal King | 2.8% / +280,000 | 5.4% / +542,500 |
+| elite | T1/T2/T3/T4/MK | 75.0%(cap)/29.3%/6.2%/2.8%/0.9% | 75.0%(cap)/56.7%/12.1%/5.4%/1.8% |
+| legendary | T1/T2/T3/T4/MK | 60.0%(cap)/16.5%/3.1%/1.4%/0.5% | 60.0%(cap)/31.9%/6.0%/2.7%/0.9% |
+| stat | Standard (flat -1,500,000 cost) | 16.0% success | 31.0% success |
+
+T2 joins T1 at Regular's 90% cap here — already near-dominant under the old formula (65.9%), this
+just finishes the job. T3/T4 clearly still harder (18-19%/11%), no cap collision. Elite/Legendary
+gradients (T2 > T3 > T4 > MK) fully intact at every mode.
+
+**5 members, `WMA=350` (T3's own documented per-member landmark — the case that actually matters):**
+
+| Mode | Tier | OLD chance / EV | NEW chance / EV |
+|---|---|---|---|
+| regular | T1 | 90.0%(cap) / +80,000 | 90.0%(cap) / +80,000 |
+| regular | T2 | 90.0%(cap) / +400,000 | 90.0%(cap) / +400,000 |
+| regular | T3 | 65.3% / +1,533,333 | **90.0%(cap)** / +4,000,000 |
+| regular | T4 | 39.2% / -3,240,000 | 76.0% / +7,785,000 |
+| regular | Metal King | 19.6% / +1,960,000 | 38.0% / +3,797,500 |
+| elite | T1/T2/T3/T4/MK | 75.0%(cap)/75.0%(cap)/43.6%/19.6%/6.5% | 75.0%(cap)/75.0%(cap)/**75.0%(cap)**/38.0%/12.7% |
+| legendary | T1/T2/T3/T4/MK | 60.0%(cap)/60.0%(cap)/21.8%/9.8%/3.3% | 60.0%(cap)/60.0%(cap)/42.2%/19.0%/6.3% |
+| stat | Standard (flat cost, already capped pre-rework) | 50.0%(cap) | 50.0%(cap) — unchanged, already saturated |
+
+### Finding: real, verified tier compression at this exact landmark — but `RAID_TEAM_DECAY` is not the fix
+
+**Regular mode's T1/T2/T3 all reach the identical 90% cap together** for this roster (bolded above);
+Elite's T3 also joins its own T1/T2 cap (75%). This is genuine flattening at precisely the roster this
+codebase's own docs use to define T3's difficulty ("shop maxed + regrade halfway" landmark, meant to
+land T3 at ~65% of cap, not 100%). **T4 and Metal King are NOT flattened** in any mode/roster tested
+(Regular T4 76.0% vs. T1-T3's 90% cap; Legendary T3 42.2% vs. its own 60% cap, still a real gradient)
+— the ladder's top end holds.
+
+Tested whether softening `RAID_TEAM_DECAY` (the architect's own preferred lever) fixes this, per
+direct instruction, before touching anything else. Swept 0.5 down to 0.1 against the T3-landmark
+roster and two more realistic **unequal** rosters (`[600,50,50,50,50]` — one strong founder + four
+weak members; `[600,400,300,200,250]` — a mixed team averaging ~350):
+
+| `RAID_TEAM_DECAY` | Equal `5×350`, T3 chance | `[600,50,50,50,50]`, T3 chance | `[600,400,300,200,250]`, T3 chance |
+|---|---|---|---|
+| 0.5 (shipped) | 90.0% (capped) | 90.0% (capped) | 90.0% (capped) |
+| 0.3 | 90.0% (capped) | 90.0% (capped) | 90.0% (capped) |
+| 0.2 | 81.6% | 90.0% (capped) | 90.0% (capped) |
+| 0.1 | 72.6% | 90.0% (capped) | 90.0% (capped) |
+
+Lowering decay only measurably helps the **idealized perfectly-equal-power roster**, and even then
+needs to drop to ~0.15-0.2 (ceiling 1.18-1.25x, down from 2.0x) before T3 clears the cap by any real
+margin. For the two **realistic, unequal** rosters — the far more common real-guild shape — even
+`RAID_TEAM_DECAY=0.1` (near "only the top raider's own power matters") stays fully capped, because
+their compression is driven almost entirely by the (unchanged) headcount bonus stacking on top of a
+single very strong member's power once the fix correctly stops averaging that member down — not by
+how much credit weaker teammates get. Confirmed by checking recruiting incentive directly: at
+`decay=0.5`, a 5-person team built around one `WMA=600` founder plus four `WMA=50` members reaches
+`totalMultiplier=725` vs. that founder soloing alone (`600`, n=1, no headcount bonus) — team beats
+solo by +20.8%, the fix working as intended. At `decay=0.1` the same team only reaches `678` — team
+still beats solo, but the margin shrinks to +13%, i.e. lowering decay measurably **weakens** the
+exact incentive-to-recruit this whole rework exists to restore, for the exact roster shape (skewed,
+not perfectly equal) most guilds actually have.
+
+**Decision: `RAID_TEAM_DECAY` stays at 0.5 (unchanged from the architect's design).** Softening it
+doesn't fix the compression for realistic unequal rosters (the case that matters most) and directly
+undercuts the core fix for the rosters most in need of it, for a benefit that only shows up in an
+idealized equal-power edge case. Per-tier `*_RAID_DIFFICULTY` recalibration was explicitly out of
+scope for this ticket (architect's brief, confirmed by the user) and touching it wasn't attempted.
+The compression that IS real — Regular/Elite's T1-T3 (not T4/MK) capping together for a strong
+multi-member roster — is the same class of gap the still-open roadmap item **"Guild Raid:
+T2/T3/`stat`-Mode Eligibility Gating"** already exists to address (gate brackets by actual roster
+power, not guild level), and is the correct venue for a follow-up fix if the felt "T1≈T2≈T3" flatness
+is judged worth addressing — that's a product/architect call on tier-gating design, not something to
+patch by re-tuning the raid-power formula itself.
+
+### Mode-level check (baby/regular/elite/legendary/stat, same roster) — no cross-mode compression found
+
+Each mode's own `maxSuccessRate` cap (`.9`/`.75`/`.6`/`.5` for regular/elite/legendary/stat) is
+independent of `totalMultiplier`, so Elite/Legendary/stat remain properly harder than Regular for
+every roster tested regardless of how large `totalMultiplier` grows — e.g. for the `WMA=350` roster,
+T1 success is 90%/75%/60% across regular/elite/legendary respectively, both old and new formula,
+completely unchanged ordering. `baby` mode mirrors Regular's own T1 bracket exactly (by construction,
+reused by reference), so it stays the guaranteed-safe on-ramp it's meant to be. `stat` mode's
+"Standard" success chance grows sensibly with the new formula (16%→31% for the `WMA=50` roster) without
+ever threatening to exceed its own 50% cap for any tested roster; the `WMA=350` roster was already at
+that cap under the OLD formula too (50.0% both before and after — no change, already saturated
+pre-rework). No mode-level flattening found at any decay value tested.
+
+### Checked, no issues found (this pass)
+
+- **n=1 solo identity**: `getEffectiveRaidPower([single])` produces byte-identical output to the old
+  formula for every tested power value — Bounty's math (`mercenaryFactory.js`) is untouched.
+- **`getMinGuildLevelForTier`'s Elite/Legendary gate**: depends only on `penaltyMult`/`maxSuccessRate`,
+  never `totalMultiplier` — re-confirmed unaffected by this rework.
+- **`handlePotatoSplitByShare` reuse for `raidSplitMode: 'share'`**: identical function World Raids
+  already use, unmodified signature — no drift risk between the two callers.
