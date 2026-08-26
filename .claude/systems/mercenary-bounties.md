@@ -283,12 +283,12 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
 
 **The 4 tiers** (`RobNpc.TIERS`):
 
-| Tier | Rank | Base / +per-rank / cap | Payout cap | On a whiff | Notoriety/win | Extra |
+| Tier | Rank | Base / +per-rank / cap | Payout cap | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|
 | Corner Store | 1+ | 30% / +10% / 80% | 5,000 | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Payroll Truck | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2])` = 4,000-6,000 lost | +2 | — |
-| Armored Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 lost | +3 | — |
-| The Big Score | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 lost | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Payroll Truck | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
+| Armored Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 baseline | +3 | — |
+| The Big Score | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
 defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
@@ -299,10 +299,36 @@ whiff-only — it stays the safe, always-available intro action with zero regres
 anyone who only ever ran the single flat `/rob-npc` this replaced. Real stakes only start
 at Tier II: a whiff there (and on every tier above it) costs `RobNpc.PENALTY_PERCENT_OF_CAP`
 (half) of that tier's own `payoutCap`, scaled by the same `getRandomFromInterval(.8, 1.2)`
-variance roll every other reward/penalty pair in this game uses — subtracted straight from
-potatoes unclamped, same precedent `takeBounty.js`/`confrontRival.js` already set (a loss
-CAN put a player negative — a known, already-flagged gap shared with Guild Raid's own
-T2/T3 entry on the roadmap, not a new one introduced here).
+variance roll every other reward/penalty pair in this game uses, further scaled by
+`lossScale` (see below) — subtracted straight from potatoes unclamped, same precedent
+`takeBounty.js`/`confrontRival.js` already set (a loss CAN put a player negative — a known,
+already-flagged gap shared with Guild Raid's own T2/T3 entry on the roadmap, not a new one
+introduced here).
+
+**Loss scaling (`RobNpc.LOSS_MULTIPLIER_SCALING`)**, added as a direct-instruction
+follow-up right after the ladder shipped: "heists are affected in reward by multi right?
+losses should scale up slightly to reflect that." The win side already scaled fully with
+the player's own developed power (`workMultiplierAmount` + companion/rebirth bonuses —
+`calculateGainAmount` multiplies straight through by it), but the loss side used to be
+completely flat regardless of multiplier — unlike every other reward/loss pair in this
+codebase, where at minimum the WIN scales and the loss stays a flat anchor (Bounty's own
+loss formula, deliberately not scaled by rank, is the closest precedent). Rather than
+mirror the win side's full 1:1 scaling — which would make a heavily-developed player's loss
+balloon to rival their own win — a `lossScale` factor applies only a fraction of it:
+```
+developedMultiplier = workMultiplierAmount + guildMultiplier(always 0) + companionMultiplier + rebirthMultiplier
+lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1)
+penaltyAmount = round(payoutCap * PENALTY_PERCENT_OF_CAP * [.8-1.2] * lossScale)
+```
+At **15%**, a brand-new player (1x) sees zero change from the flat baseline table above; a
+5.4x player's loss grows ~1.66x; a heavily-invested 90x player's loss grows ~14.4x — but
+checked against a live reported server total (~19.7M potatoes), that scaled-up loss still
+lands at only ~7-10% of that same player's own win at the same tier, so losses stay
+proportionate to wins without ever threatening to match them. Deliberately reads off
+`developedMultiplier`, NOT the catch-up-boosted `effectiveMultiplier` the reward side
+uses — catch-up exists to help an underperforming player keep pace with a maturing economy,
+so a catch-up-boosted player shouldn't also take a bigger loss because of the same boost
+meant to help them.
 
 `PAYOUT_MULTIPLIER` stays **shared** across every tier rather than scaling per-tier — only
 the cap differs. Verified at implementation against a live reported server total

@@ -392,14 +392,14 @@ describe('resolveNpcRob', () => {
     // Tiers II-IV carry real stakes — a whiff costs half that tier's own payoutCap. This is
     // the central new mechanic the Heist Ladder rework (roadmap #50) adds over the old
     // single flat /rob-npc.
-    test('a Tier II+ whiff costs half that tier\'s own payoutCap, scaled by the usual +/-20% roll', async () => {
+    test('a Tier II+ whiff at 1x multiplier costs exactly half that tier\'s own payoutCap, scaled by the usual +/-20% roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999) // win check -> whiff
             .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
         let result;
         try {
             result = await mercenaryFactory.resolveNpcRob(
-                baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired }),
+                baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 1 }),
                 1000, 0, 'payroll_truck'
             );
         } finally {
@@ -407,7 +407,54 @@ describe('resolveNpcRob', () => {
         }
         expect(result.won).toBe(false);
         expect(result.amount).toBe(0);
+        // 1x developedMultiplier means the loss-scaling factor's own (developedMultiplier - 1)
+        // term is 0, so this is the pure unscaled baseline every higher multiplier scales up from.
         expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8));
+    });
+
+    // Direct instruction, added after the ladder shipped: "heists are affected in reward by
+    // multi right? losses should scale up slightly to reflect that." The win side already
+    // scales fully with the player's own developed power — this locks in that the loss side
+    // now does too, just at LOSS_MULTIPLIER_SCALING's own fraction of that scaling, never
+    // the full 1:1 the reward side gets.
+    test('a Tier II+ whiff at a higher multiplier costs proportionally more, scaled by LOSS_MULTIPLIER_SCALING', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.999999) // win check -> whiff
+            .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
+        let result;
+        try {
+            result = await mercenaryFactory.resolveNpcRob(
+                baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 5.4 }),
+                1000, 0, 'payroll_truck'
+            );
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (5.4 - 1);
+        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8 * lossScale));
+        expect(result.penaltyAmount).toBeGreaterThan(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8));
+    });
+
+    // Catch-up is meant to help an underperforming player keep pace, not double as a reason
+    // their own losses get bigger — the loss-scaling multiplier deliberately reads off the
+    // player's own developed power (workMultiplierAmount + companion/rebirth bonuses), not
+    // the catch-up-boosted effectiveMultiplier the reward side uses.
+    test('catchUpBonus does not affect the loss-scaling factor', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.999999) // win check -> whiff
+            .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
+        let result;
+        try {
+            result = await mercenaryFactory.resolveNpcRob(
+                baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 5.4 }),
+                1000, 5, // a large catchUpBonus — must have zero effect on the penalty
+                'payroll_truck'
+            );
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (5.4 - 1);
+        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8 * lossScale));
     });
 
     test('a hit pays a positive amount, capped by the picked tier\'s own payoutCap before the player\'s own multiplier scales it', async () => {

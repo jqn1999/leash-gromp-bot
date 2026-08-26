@@ -202,14 +202,35 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     ) + npcRobChanceBonus;
     const won = Math.random() < successChance;
 
+    // Computed either way now (win or loss) — the loss side scales gently off the same
+    // developed-power number the win side scales off fully, see the penalty branch below.
+    // Deliberately excludes applyCatchUp's bonus (added only for the reward side further
+    // down) — catch-up exists to help an underperforming player keep pace with a maturing
+    // economy, so a catch-up-boosted player shouldn't also take a BIGGER loss because of
+    // the same boost meant to help them.
+    const userMultiplier = userDetails.workMultiplierAmount;
+    const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 — a mercenary can never be guilded
+    const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+    const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier;
+
     const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null };
     if (!won) {
         // Tier I stays whiff-only (hasPenalty: false) — the safe, always-available intro
         // action with zero regression from before this tier system existed. Tiers II-IV
         // carry a real loss on a whiff instead, half that tier's own payoutCap with the
         // same +/-20% variance every other reward/penalty pair in this game rolls.
+        //
+        // Direct instruction: since the win side scales FULLY with the player's own
+        // developed power (calculateGainAmount below multiplies straight through by
+        // effectiveMultiplier), a loss should reflect that too — just gently, not 1:1, so
+        // a heavily-progressed player's loss stays well under their own win at the same
+        // tier rather than mirroring it. LOSS_MULTIPLIER_SCALING (15%) applies only a
+        // fraction of developedMultiplier's excess over 1x; a brand-new player (1x) sees no
+        // change from the flat pre-scaling baseline at all.
         if (tier.hasPenalty) {
-            result.penaltyAmount = Math.round(tier.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * getRandomFromInterval(.8, 1.2));
+            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1);
+            result.penaltyAmount = Math.round(tier.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * getRandomFromInterval(.8, 1.2) * lossScale);
         }
         return result;
     }
@@ -222,11 +243,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // PAYOUT_MULTIPLIER stays shared across every tier — only the cap (tier.payoutCap)
     // varies — see RobNpc's own comment in constants.js for why that's still enough
     // differentiation between tiers at real server wealth.
-    const userMultiplier = userDetails.workMultiplierAmount;
-    const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 — a mercenary can never be guilded
-    const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
-    const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-    const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+    const effectiveMultiplier = applyCatchUp(developedMultiplier, catchUpBonus);
     const multiplier = getRandomFromInterval(.8, 1.2);
 
     result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, multiplier, effectiveMultiplier, userDetails);

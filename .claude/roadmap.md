@@ -1877,6 +1877,22 @@ and needs its own balance pass.
   option and assert against the picked tier's own `notorietyPerWin`. Full suite green
   (508/508, up from 504).
 
+  **Follow-up, same day, direct instruction**: "Heists are affected in reward by multi
+  right? Losses should scale up slightly to reflect that." The win side already scaled
+  fully with the player's own developed power (`workMultiplierAmount` + companion/rebirth
+  bonuses), but the loss side (Tiers II-IV) was completely flat regardless of multiplier.
+  Added `RobNpc.LOSS_MULTIPLIER_SCALING` (15%) — `resolveNpcRob` now computes a
+  `developedMultiplier` before the win/loss fork and applies `lossScale = 1 +
+  LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1)` to the penalty, a deliberately
+  gentler fraction of the win side's full 1:1 scaling (so a heavily-developed player's loss
+  never balloons to rival their own win — checked at a 90x multiplier against a live
+  reported server total, the scaled loss lands at only ~7-10% of that same player's win).
+  Deliberately reads off `developedMultiplier`, not the catch-up-boosted
+  `effectiveMultiplier` the reward side uses, so a catch-up-boosted underdog doesn't also
+  take a bigger loss from the same boost meant to help them. 3 new tests (1x baseline
+  unchanged, higher-multiplier scaling, catch-up has zero effect on the penalty). Full
+  suite green (510/510).
+
 - [x] **51. Sellable Companion Duplicates — Real Spares Instead of Auto-Potato Payout** — M/L — **Done**
   What: `applyCompanionAward`'s duplicate branch now bumps a new `quantity` field (1 for
   a normal single copy) on the owned entry by 1, alongside the existing `workCount` bump

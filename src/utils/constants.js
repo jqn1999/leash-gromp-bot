@@ -1264,6 +1264,23 @@ const RobNpc = {
     // uses (getRandomFromInterval(.8, 1.2)), same shape resolveRivalConfrontation's own
     // loss formula and Bounty's scaled-down loss already use.
     PENALTY_PERCENT_OF_CAP: 0.5,
+    // Direct instruction, added after the ladder above shipped: "heists are affected in
+    // reward by multi right? losses should scale up slightly to reflect that." The WIN
+    // side already scales fully with the player's own developed power (workMultiplierAmount
+    // + companion/rebirth bonuses — mercenaryFactory.resolveNpcRob's calculateGainAmount
+    // call multiplies straight through by it), but the loss side used to be completely
+    // flat, unlike every other reward/loss pair in this codebase where at least the WIN
+    // scales and losses stay a flat anchor (see Bounty's own loss formula, deliberately
+    // NOT scaled by rank). Rather than mirror the win side's full 1:1 scaling (which would
+    // make a heavily-developed player's loss balloon to rival their own win, undermining
+    // "risk/reward genuinely improves with progression"), this applies only a fraction of
+    // that scaling: lossScale = 1 + LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1).
+    // At 15%, a fresh player (1x) sees zero change from the pre-scaling flat baseline; a
+    // 5.4x player's loss grows ~1.66x; a heavily-invested 90x player's loss grows ~14.4x —
+    // still only ~7-10% of that same player's own win at the same tier (checked against a
+    // live reported server total, ~19.7M potatoes), so losses stay proportionate to wins
+    // without ever threatening to match them.
+    LOSS_MULTIPLIER_SCALING: 0.15,
     TIERS: [
         {
             key: 'corner_store',
