@@ -2229,6 +2229,27 @@ and needs its own balance pass.
   discount still floors at 1); `mercenaryCompanionLeveling.test.js`'s existing grant
   constants updated to fold in the discount. Full suite green (540/540, up from 538).
 
+  **Follow-up, same day, direct instruction**: "Can we make it only yukon specific" — asked
+  after confirming the leveling applied to whichever companion happened to be equipped, not
+  just Yukon. `levelActiveCompanion(companions, workCountGained, restrictToCompanionId =
+  null)` gained a third optional param: when set, it resolves the equipped instance's `id`
+  and no-ops (same object reference back, same convention the unequipped no-op already uses)
+  unless it matches `restrictToCompanionId`, before doing any leveling work. `takeBounty.js`
+  and `robNpc.js` now both pass `'yukon'`; `work.js`'s own call site is untouched and stays
+  2-arg/unrestricted, so `/work` still levels whatever's equipped. Thematically, Yukon is the
+  one companion actually tied to the Mercenary track at all — a Bounty-exclusive drop, never
+  obtainable from `/work` — so only Yukon trains off a mercenary's own signature actions now;
+  any other equipped companion is a no-op through `/take-bounty`/`/rob-npc` specifically,
+  still leveling normally through `/work` or Scavenging as always. `companionFactory.test.js`
+  gained a `restrictToCompanionId` describe block (2 tests: no-op on mismatch, levels
+  normally on match); `mercenaryCompanionLeveling.test.js`'s `baseUser()` fixture now equips
+  Yukon by default (the companion these two commands actually level), with a new
+  `sproutUser()` helper and explicit tests confirming a non-Yukon equipped companion doesn't
+  level through either command; its pre-existing same-turn Yukon-composition test now
+  necessarily covers a DUPLICATE Yukon pull (Yukon is already equipped) rather than a
+  Sprout-plus-new-Yukon pair, and was updated to expect 2 Yukon instances in the final write.
+  Full suite green (544/544, up from 540).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

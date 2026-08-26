@@ -138,10 +138,16 @@ equipped instance too, unconditionally on win/loss — scaled against `/work`'s 
 much longer that action's cooldown is (see
 [mercenary-bounties.md#mercenary-companion-leveling](mercenary-bounties.md#mercenary-companion-leveling)
 for the full formula), so a companion levels at the same real-time RATE regardless of whether a
-mercenary spends their time on `/work`, Bounty, or Heist. `companionFactory.levelActiveCompanion`
-is the shared function all three (`/work` included, refactored onto it) now call — Scavenging
-still has its own separate leveling path (`resolveScavengeReward`, below) since it's the one
-action that levels a *benched*, not equipped, instance.
+mercenary spends their time on `/work`, Bounty, or Heist. **Restricted to Yukon specifically**
+(same-day follow-up) — Bounty/Heist only level the equipped instance if it's Yukon, the one
+companion actually tied to the Mercenary track (a Bounty-exclusive drop); any other equipped
+companion is a no-op through those two commands, though it still levels normally through
+`/work` or Scavenging. `companionFactory.levelActiveCompanion` is the shared function all three
+(`/work` included, refactored onto it) now call, via its optional `restrictToCompanionId`
+argument — `/work`'s own call site omits it and stays unrestricted, so it's the one path that
+still levels whatever's equipped. Scavenging still has its own separate leveling path
+(`resolveScavengeReward`, below) since it's the one action that levels a *benched*, not
+equipped, instance.
 
 This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
 spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a

@@ -93,9 +93,13 @@ module.exports = {
         // assumes a player hits /work back-to-back the instant its cooldown clears — 4x,
         // direct instruction. Shared across all 4 heist tiers, same as the cooldown itself,
         // since every tier costs the same real time regardless of which one was picked.
+        // Restricted to Yukon specifically (direct follow-up instruction) — any other
+        // equipped companion is a no-op here, since Yukon is the one companion actually
+        // tied to the Mercenary track.
         setAttributes.companions = companionFactory.levelActiveCompanion(
             userDetails.companions,
-            companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)
+            companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
+            'yukon'
         );
         // npcRobTimer resets on every outcome the same as every other cooldown-gated action
         // in this bot, win, whiff, or loss alike.

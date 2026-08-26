@@ -98,10 +98,13 @@ module.exports = {
         // companionFactory.getCooldownScaledWorkCountGrant), then pulled back by
         // CompanionLeveling.REALISTIC_PLAY_DISCOUNT since the pure ratio (12x) assumes a
         // player hits /work back-to-back the instant its cooldown clears — 8x, direct
-        // instruction.
+        // instruction. Restricted to Yukon specifically (direct follow-up instruction) —
+        // any other equipped companion is a no-op here, since Yukon is the one companion
+        // actually tied to the Mercenary track.
         let leveledCompanions = companionFactory.levelActiveCompanion(
             userDetails.companions,
-            companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)
+            companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
+            'yukon'
         );
 
         // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty

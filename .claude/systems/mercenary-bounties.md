@@ -461,13 +461,26 @@ regardless of which scenario resolved. A Bounty or Heist attempt is a genuine TI
 investment either way (see [systems/companions.md](companions.md)'s Leveling section), not
 an outcome-based reward layered on top of winning.
 
-`companionFactory.levelActiveCompanion(companions, workCountGained)` is the shared write-side
-function both commands (and `/work`, refactored onto the same helper) call — resolves the
-currently-equipped INSTANCE (not companion id), bumps its `workCount`, and folds in
-`applyMaxLevelTracking` automatically so a companion crossing into max level via Bounty/Heist
-gets the exact same [Max-Level capstone](companions.md#max-level--full-roster-capstones)
+`companionFactory.levelActiveCompanion(companions, workCountGained, restrictToCompanionId)` is
+the shared write-side function both commands (and `/work`, refactored onto the same helper)
+call — resolves the currently-equipped INSTANCE (not companion id), bumps its `workCount`, and
+folds in `applyMaxLevelTracking` automatically so a companion crossing into max level via
+Bounty/Heist gets the exact same [Max-Level capstone](companions.md#max-level--full-roster-capstones)
 treatment a `/work`- or Scavenging-leveled crossing gets. No-op (same object reference back)
 if nothing is currently equipped.
+
+**Restricted to Yukon only** — same-day follow-up, direct instruction: "Can we make it only
+yukon specific" (after confirming the first version leveled whichever companion happened to be
+equipped). `takeBounty.js` and `robNpc.js` now pass `'yukon'` as the third argument,
+`restrictToCompanionId`: when set, the function first resolves the equipped instance's `id`
+and no-ops (same object reference back) unless it equals `restrictToCompanionId`, before doing
+any leveling work. Thematically, Yukon is the one companion actually tied to the Mercenary
+track at all — a Bounty-exclusive drop, never obtainable from `/work` — so only Yukon trains
+off a mercenary's own signature actions; any other equipped companion is a no-op through
+`/take-bounty`/`/rob-npc` specifically, and still levels normally through `/work` or
+Scavenging as always. `/work`'s own call site stays 2-arg/unrestricted
+(`restrictToCompanionId` defaults to `null`), so it's the one path that still levels whatever
+happens to be equipped.
 
 **Composition with Yukon's same-turn award** (`/take-bounty` only): a winning Bounty attempt
 can grant Yukon in the same resolution the companion-leveling bump applies to. Since

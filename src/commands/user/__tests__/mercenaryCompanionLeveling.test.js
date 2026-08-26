@@ -4,13 +4,18 @@
 // should give the companion." Before this, a mercenary's equipped companion only leveled
 // through /work or Scavenging; /take-bounty and /rob-npc granted nothing.
 //
+// Same-day follow-up, direct instruction: "Can we make it only yukon specific" (after
+// confirming the first version leveled whichever companion happened to be equipped) — so
+// these two commands now only level Yukon specifically; any other equipped companion is a
+// no-op through them (still levels normally through /work or Scavenging as always).
+//
 // The actual grant math (companionFactory.getCooldownScaledWorkCountGrant/
-// levelActiveCompanion) is unit-tested directly in companionFactory.test.js — this file
-// drives each real command callback end-to-end against a minimal mocked
-// interaction/dynamoHandler (same "mock at the boundary this command actually touches"
-// approach rivalNotorietyAccrual.test.js already uses) to lock in that both commands
-// actually call it, unconditionally on win/loss, and compose correctly with Yukon's own
-// same-turn companion write.
+// levelActiveCompanion, including the restrictToCompanionId gate) is unit-tested directly
+// in companionFactory.test.js — this file drives each real command callback end-to-end
+// against a minimal mocked interaction/dynamoHandler (same "mock at the boundary this
+// command actually touches" approach rivalNotorietyAccrual.test.js already uses) to lock
+// in that both commands actually call it correctly, unconditionally on win/loss, restricted
+// to Yukon, and composing correctly with Yukon's own same-turn companion-award write.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -51,10 +56,18 @@ function baseUser(overrides = {}) {
         passiveAmount: 100000,
         bankCapacity: 1000000,
         guildId: 0,
-        companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 },
+        // Yukon equipped by default — the one companion these two commands actually level.
+        companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 10 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 1 },
         achievements: [],
         ...overrides,
     };
+}
+
+function sproutUser(overrides = {}) {
+    return baseUser({
+        companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 },
+        ...overrides,
+    });
 }
 
 beforeEach(() => {
@@ -65,10 +78,10 @@ beforeEach(() => {
     dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
 });
 
-describe('/take-bounty levels the active companion, cooldown-scaled against /work, on win or loss', () => {
+describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, on win or loss', () => {
     const { callback } = require('../takeBounty');
 
-    test('a win bumps the active companion by the Bounty-scaled grant', async () => {
+    test('a win bumps Yukon by the Bounty-scaled grant', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ tier: 'I' });
@@ -77,7 +90,7 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
             .mockReturnValueOnce(0)    // scenario index
             .mockReturnValueOnce(0)    // reward rangeRoll
             .mockReturnValueOnce(0.99) // stat-reward miss
-            .mockReturnValueOnce(0.99); // yukon miss
+            .mockReturnValueOnce(0.99); // yukon miss (already owned/equipped — this is the drop roll, not the leveling)
         try {
             await callback({}, interaction);
         } finally {
@@ -88,7 +101,7 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
         expect(setAttributes.companions.owned[0].workCount).toBe(10 + BOUNTY_GRANT);
     });
 
-    test('a loss still bumps the active companion by the same grant — unconditional on outcome', async () => {
+    test('a loss still bumps Yukon by the same grant — unconditional on outcome', async () => {
         const user = baseUser({ workMultiplierAmount: 0.1 }); // near-zero success chance
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ tier: 'I' });
@@ -104,6 +117,28 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
 
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setAttributes.companions.owned[0].workCount).toBe(10 + BOUNTY_GRANT);
+    });
+
+    // The actual point of the follow-up instruction: any OTHER equipped companion is a
+    // no-op through this command now, even though it still levels normally through /work.
+    test('a non-Yukon equipped companion does not level at all', async () => {
+        const user = sproutUser();
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ tier: 'I' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10);
     });
 
     test('does nothing to companions when nothing is equipped', async () => {
@@ -128,9 +163,10 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
     // Regression coverage for a real composition bug this feature had to avoid: Yukon's own
     // award write and the companion-leveling write both touch `companions`, which is always
     // a full SET, never a deep merge — writing them separately would let whichever lands
-    // last silently erase the other. Both effects (leveled active instance + new Yukon
-    // instance) must land in the SAME final companions object.
-    test('a same-turn Yukon pull composes with the leveling bump instead of overwriting it', async () => {
+    // last silently erase the other. Both effects (leveled active Yukon + a brand-new
+    // second Yukon instance from the drop roll) must land in the SAME final companions
+    // object.
+    test('a same-turn duplicate Yukon pull composes with the leveling bump instead of overwriting it', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ tier: 'I' });
@@ -139,7 +175,7 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
             .mockReturnValueOnce(0)    // scenario index
             .mockReturnValueOnce(0)    // reward rangeRoll
             .mockReturnValueOnce(0.99) // stat-reward miss
-            .mockReturnValueOnce(0);   // yukon HIT
+            .mockReturnValueOnce(0);   // yukon HIT (duplicate — already owned)
         try {
             await callback({}, interaction);
         } finally {
@@ -147,20 +183,21 @@ describe('/take-bounty levels the active companion, cooldown-scaled against /wor
         }
 
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
-        // The pre-existing Sprout is still there, leveled...
-        const sprout = setAttributes.companions.owned.find(c => c.id === 'sprout');
-        expect(sprout.workCount).toBe(10 + BOUNTY_GRANT);
-        // ...and a brand-new Yukon instance is ALSO present in that same write.
-        const yukon = setAttributes.companions.owned.find(c => c.id === 'yukon');
-        expect(yukon).toBeDefined();
-        expect(yukon.workCount).toBe(0);
+        // The original, equipped Yukon is still there, leveled...
+        expect(setAttributes.companions.owned).toHaveLength(2);
+        const equippedYukon = setAttributes.companions.owned.find(c => c.instanceId === 'yukon-a');
+        expect(equippedYukon.workCount).toBe(10 + BOUNTY_GRANT);
+        // ...and a brand-new second Yukon instance is ALSO present in that same write.
+        const newYukon = setAttributes.companions.owned.find(c => c.instanceId !== 'yukon-a');
+        expect(newYukon).toBeDefined();
+        expect(newYukon.workCount).toBe(0);
     });
 });
 
-describe('/rob-npc levels the active companion, cooldown-scaled against /work, on any outcome', () => {
+describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on any outcome', () => {
     const { callback } = require('../robNpc');
 
-    test('a win bumps the active companion by the Heist-scaled grant', async () => {
+    test('a win bumps Yukon by the Heist-scaled grant', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
@@ -175,7 +212,7 @@ describe('/rob-npc levels the active companion, cooldown-scaled against /work, o
         expect(setAttributes.companions.owned[0].workCount).toBe(10 + HEIST_GRANT);
     });
 
-    test('a whiff still bumps the active companion by the same grant — unconditional on outcome', async () => {
+    test('a whiff still bumps Yukon by the same grant — unconditional on outcome', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
@@ -188,6 +225,21 @@ describe('/rob-npc levels the active companion, cooldown-scaled against /work, o
 
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setAttributes.companions.owned[0].workCount).toBe(10 + HEIST_GRANT);
+    });
+
+    test('a non-Yukon equipped companion does not level at all', async () => {
+        const user = sproutUser();
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10);
     });
 
     // Every tier shares the same cooldown (RobNpc.NPC_ROB_TIMER_SECONDS) — the leveling

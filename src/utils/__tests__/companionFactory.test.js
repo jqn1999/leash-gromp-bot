@@ -674,6 +674,21 @@ describe('levelActiveCompanion', () => {
         expect(result.owned[0].hasReachedMaxLevel).toBe(true);
         expect(result.maxLevelCount).toBe(1);
     });
+
+    // restrictToCompanionId (Bounty/Heist's Yukon-only follow-up instruction) — /work's own
+    // call site never passes this, so it stays unrestricted (covered above).
+    describe('restrictToCompanionId', () => {
+        test('is a no-op (same reference back) when the equipped companion does not match', () => {
+            const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a' };
+            expect(levelActiveCompanion(companions, 12, 'yukon')).toBe(companions);
+        });
+
+        test('levels normally when the equipped companion does match', () => {
+            const companions = { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 10 }], active: 'yukon-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+            const result = levelActiveCompanion(companions, 12, 'yukon');
+            expect(result.owned[0].workCount).toBe(22);
+        });
+    });
 });
 
 describe('migrateOwnedToInstances', () => {

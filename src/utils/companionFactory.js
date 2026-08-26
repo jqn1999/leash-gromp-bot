@@ -269,10 +269,24 @@ function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor =
 // Unconditional on win/loss — same as /work's own per-call leveling bump, which happens
 // regardless of which scenario resolved. This is a genuine TIME investment, not an
 // outcome-based reward (see systems/companions.md's Leveling section).
-function levelActiveCompanion(companions, workCountGained) {
+//
+// restrictToCompanionId (default null, i.e. unrestricted — what /work still uses):
+// direct instruction, after confirming Bounty/Heist leveled whichever companion happened
+// to be equipped — "Can we make it only yukon specific." Thematically, Yukon is the one
+// companion actually tied to the Mercenary track at all (a Bounty-exclusive drop, never
+// obtainable from /work); Bounty/Heist now pass `'yukon'` here so only Yukon trains from a
+// mercenary's own signature actions — any other equipped companion is a no-op through
+// these two commands (still levels normally through /work or Scavenging as always).
+function levelActiveCompanion(companions, workCountGained, restrictToCompanionId = null) {
     const activeInstanceId = companions?.active;
     if (!activeInstanceId) {
         return companions;
+    }
+    if (restrictToCompanionId) {
+        const activeEntry = (companions.owned ?? []).find(c => c.instanceId === activeInstanceId);
+        if (activeEntry?.id !== restrictToCompanionId) {
+            return companions;
+        }
     }
     const leveledOwned = (companions.owned ?? []).map(o =>
         o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained } : o
