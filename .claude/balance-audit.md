@@ -1636,3 +1636,88 @@ reward multiplier:
 - **Metal King's own numeric values (Elite/Legendary)**: byte-identical to what the removed
   `DIFFICULTY_MULTIPLIER` (×3/×6) already produced — this rework changed only how the numbers are
   stored, not what they are.
+
+---
+
+## 2026-08-26 (same-day follow-up) — Reward-efficiency retune: deliberate per-mode ramp
+
+Direct instruction, immediately following the static-ladder rework above (after the user asked how
+reward scales per tier and whether it "feels worth it" — see that discussion): **"Make regular
+smoothed out 10-20k, elite 20-30k, legendary 30-50k per point."** The static rework just above left
+every Elite/Legendary bracket at a flat ~15,000 potatoes-per-point-of-difficulty ("efficiency"), and
+Regular's own T1-T4 efficiency was uneven (5,882-15,000/pt, inherited unchanged from the original
+hand-tuned constants) — flat/uneven efficiency meant there was no reward-side reason to prefer one
+tier over another within a mode, and no reward-side signal that Elite/Legendary are meaningfully
+bigger investments than Regular. This retune makes reward/difficulty a deliberate ramp instead.
+
+**Difficulty is completely unchanged from the static-ladder rework above** — only `T2-T4_RAID_REWARD/
+PENALTY`, all 4 `ELITE_T*_REWARD/PENALTY`, and all 4 `LEGENDARY_T*_REWARD/PENALTY` moved. `T1_RAID_
+REWARD` (100,000) was already exactly on the new band's floor and needed no change. Metal King (every
+mode) is explicitly excluded from this retune too, same as it was excluded from the difficulty ladder.
+
+**Method**: efficiency(tier `i`, 0-indexed T1-T4) = `low + (high - low) * i / 3` per mode's band, reward
+`= round(efficiency * difficulty / 1000) * 1000`, penalty `= reward * 1` (Regular, matching its
+existing 1:1 convention) or `× ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` (Elite/Legendary,
+same as the static-ladder rework). This produces exact continuity at both mode boundaries by
+construction — Regular T4's efficiency (20,000/pt) lands exactly on Elite T1's (20,000/pt), and Elite
+T4's (30,000/pt) lands exactly on Legendary T1's (30,000/pt) — the same "no cliff at the seam"
+property the difficulty ladder itself has, just applied to the reward axis.
+
+### Full retuned table
+
+| Bracket | Difficulty (unchanged) | Reward | Penalty | Efficiency |
+|---|---|---|---|---|
+| Regular T1 | 10 | 100,000 (unchanged) | -100,000 (unchanged) | 10,000/pt |
+| Regular T2 | 85 | 1,133,000 (was 500,000) | -1,133,000 | 13,329/pt |
+| Regular T3 | 600 | 10,000,000 (was 5,000,000) | -10,000,000 | 16,667/pt |
+| Regular T4 | 1,000 | 20,000,000 (was 15,000,000) | -20,000,000 | 20,000/pt |
+| Elite T1 | 1,189 | 23,780,000 (was 17,838,000) | -35,670,000 | 20,000/pt |
+| Elite T2 | 1,414 | 32,993,000 (was 21,213,000) | -49,490,000 | 23,333/pt |
+| Elite T3 | 1,682 | 44,853,000 (was 25,227,000) | -67,280,000 | 26,666/pt |
+| Elite T4 | 2,000 | 60,000,000 (was 30,000,000) | -90,000,000 | 30,000/pt |
+| Legendary T1 | 2,378 | 71,340,000 (was 35,676,000) | -142,680,000 | 30,000/pt |
+| Legendary T2 | 2,828 | 103,693,000 (was 42,426,000) | -207,386,000 | 36,667/pt |
+| Legendary T3 | 3,364 | 145,773,000 (was 50,454,000) | -291,546,000 | 43,333/pt |
+| Legendary T4 | 4,000 | 200,000,000 (was 60,000,000) | -400,000,000 | 50,000/pt |
+
+Every mode's own T1→T4 efficiency is now strictly increasing (verified — regression test added, see
+below), and the two mode boundaries land within rounding of each other (20,000/pt, 30,000/pt) rather
+than the flat ~15,000/pt every Elite/Legendary bracket shared before this pass.
+
+### EV sanity check, each bracket's own success-rate cap, at each mode's own unlock guild level
+
+Same method as the static-ladder entry above (`raidRewardMultiplier`: Regular/Elite unlock at guild
+level 1, RRM 1.00x; Legendary unlocks at level 3, RRM 1.70x):
+
+| Bracket | EV @ cap | vs. pre-retune EV |
+|---|---|---|
+| Regular T1 | 80,000 | unchanged |
+| Regular T2 | 906,400 | up from 400,000 |
+| Regular T3 | 8,000,000 | up from 4,000,000 |
+| Regular T4 | 16,000,000 | up from 12,000,000 |
+| Elite T1 | 8,917,500 | up from 6,689,250 |
+| Elite T2 | 12,372,250 | up from 7,954,750 |
+| Elite T3 | 16,819,750 | up from 9,460,000 |
+| Elite T4 | 22,500,000 | up from 11,250,000 |
+| Legendary T1 | 15,694,800 | up from 7,848,720 |
+| Legendary T2 | 22,812,460 | up from 9,333,720 |
+| Legendary T3 | 32,070,060 | up from 11,099,880 |
+| Legendary T4 | 44,000,000 | up from 13,200,000 |
+
+Every bracket is more positive-EV than before at its own unlock level, none went negative, and EV
+still grows monotonically within each mode — the ramp raised the ceiling without reopening the
+"barely crosses breakeven at unlock" trap the static-ladder rework was careful to preserve.
+
+### Checked, no issues found (this pass)
+
+- **Test suite**: 36 suites / 580 tests passing (up from 579 — one hardcoded-value assertion in
+  `raidFactory.test.js`'s static-ladder describe block updated to reflect that Elite/Legendary T4's
+  REWARD/PENALTY are no longer byte-identical to the original static-rework values, since this retune
+  intentionally moved them; a new regression test added confirming the per-mode efficiency ramp is
+  monotonic and continuous across both mode boundaries).
+- **`buildRaidPreview`/`startRaidStaticRewards.test.js`/`mercenaryFactory.test.js`**: all read
+  `Raid.*` constants symbolically, no hardcoded reward/penalty literals anywhere outside
+  `constants.js` itself (confirmed via grep) — no other test file needed updating.
+- **`getMinGuildLevelForTier`'s gate levels**: unaffected — still reads only
+  `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` (both unchanged), never the per-bracket
+  reward/penalty constants this retune touched.

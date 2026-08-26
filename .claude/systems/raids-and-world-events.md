@@ -216,30 +216,43 @@ non-Metal-King brackets now sit on one continuous **geometric difficulty ladder*
 T4 (4,000, unchanged — already the live value pre-rework, since Elite T4 was already anchored at 2x
 Regular T4 and Legendary T4 at 2x Elite T4):
 
-| Bracket | Difficulty | Reward | Penalty |
-|---|---|---|---|
-| Regular T1 | 10 | 100,000 | -100,000 |
-| Regular T2 | 85 | 500,000 | -500,000 |
-| Regular T3 | 600 | 5,000,000 | -5,000,000 |
-| Regular T4 | 1,000 | 15,000,000 | -15,000,000 |
-| Elite T1 | 1,189 | 17,838,000 | -26,757,000 |
-| Elite T2 | 1,414 | 21,213,000 | -31,820,000 |
-| Elite T3 | 1,682 | 25,227,000 | -37,841,000 |
-| Elite T4 | 2,000 | 30,000,000 | -45,000,000 |
-| Legendary T1 | 2,378 | 35,676,000 | -71,352,000 |
-| Legendary T2 | 2,828 | 42,426,000 | -84,852,000 |
-| Legendary T3 | 3,364 | 50,454,000 | -100,908,000 |
-| Legendary T4 | 4,000 | 60,000,000 | -120,000,000 |
+| Bracket | Difficulty | Reward | Penalty | Efficiency (reward/difficulty) |
+|---|---|---|---|---|
+| Regular T1 | 10 | 100,000 | -100,000 | 10,000/pt |
+| Regular T2 | 85 | 1,133,000 | -1,133,000 | 13,329/pt |
+| Regular T3 | 600 | 10,000,000 | -10,000,000 | 16,667/pt |
+| Regular T4 | 1,000 | 20,000,000 | -20,000,000 | 20,000/pt |
+| Elite T1 | 1,189 | 23,780,000 | -35,670,000 | 20,000/pt |
+| Elite T2 | 1,414 | 32,993,000 | -49,490,000 | 23,333/pt |
+| Elite T3 | 1,682 | 44,853,000 | -67,280,000 | 26,666/pt |
+| Elite T4 | 2,000 | 60,000,000 | -90,000,000 | 30,000/pt |
+| Legendary T1 | 2,378 | 71,340,000 | -142,680,000 | 30,000/pt |
+| Legendary T2 | 2,828 | 103,693,000 | -207,386,000 | 36,667/pt |
+| Legendary T3 | 3,364 | 145,773,000 | -291,546,000 | 43,333/pt |
+| Legendary T4 | 4,000 | 200,000,000 | -400,000,000 | 50,000/pt |
 
-Difficulty, reward, AND penalty are now all monotonically increasing across the full 12-bracket
-ladder end-to-end (fuzz-free, hand-verified and asserted in `raidFactory.test.js`) — including T4,
-which the 2026-08-23 halving pass below had left out of its own smoothing. Reward follows the
-identical ratio, anchored the same way (Regular T4 reward 15,000,000 → Legendary T4 60,000,000, both
-unchanged); penalty = reward × `Raid.ELITE_PENALTY_INCREASE`/`Raid.LEGENDARY_PENALTY_INCREASE` (1.5x/
-2.0x, same constants as before, just baked into the static value instead of applied at roll time).
-Metal King's difficulty/reward/stat-rewards are the exact same numeric values the old
-`DIFFICULTY_MULTIPLIER` (Elite ×3, Legendary ×6) already produced — made static rather than
-recalculated, so nothing about Metal King's own balance changed, only how it's stored.
+Difficulty and penalty magnitude are monotonically increasing across the full 12-bracket ladder
+end-to-end (hand-verified and asserted in `raidFactory.test.js`) — including T4, which the 2026-08-23
+halving pass below had left out of its own smoothing. Metal King's difficulty/reward/stat-rewards are
+the exact same numeric values the old `DIFFICULTY_MULTIPLIER` (Elite ×3, Legendary ×6) already
+produced — made static rather than recalculated, so nothing about Metal King's own balance changed,
+only how it's stored.
+
+**Reward efficiency (reward/difficulty) is a deliberate per-mode ramp, not flat (same-day
+follow-up, direct instruction: *"Make regular smoothed out 10-20k, elite 20-30k, legendary 30-50k
+per point."*)** The table above already reflects this — it superseded an intermediate state (still
+part of the same 2026-08-26 rework day) where reward followed the identical geometric ratio as
+difficulty, landing every Elite/Legendary bracket at a flat ~15,000/pt uniformly. That flat efficiency
+gave no reward-side reason to prefer one tier over another within a mode. Now each mode's own T1→T4
+efficiency climbs deliberately within its own band — Regular 10,000→20,000/pt, Elite
+20,000→30,000/pt, Legendary 30,000→50,000/pt — and, same "no cliff at the seam" property the
+difficulty ladder itself has, both mode boundaries land on the exact same efficiency value by
+construction: Regular T4 = Elite T1 = 20,000/pt, Elite T4 = Legendary T1 = 30,000/pt. Difficulty is
+completely untouched by this reward retune; penalty still derives as reward × 1 (Regular's existing
+1:1 convention) or × `Raid.ELITE_PENALTY_INCREASE`/`Raid.LEGENDARY_PENALTY_INCREASE` (Elite/Legendary,
+unchanged constants — same role-narrowing described below still applies). See `balance-audit.md`'s
+2026-08-26 (same-day follow-up) entry for the full EV-at-cap comparison against the pre-retune flat
+numbers — every bracket ended up more positive-EV at its own unlock guild level, none went negative.
 
 `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stay in `constants.js`, values unchanged**,
 but their role narrows to exactly one thing: `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)`
@@ -309,27 +322,28 @@ breakeven in isolation. At guild level 1 (`raidRewardMultiplier=1.00`):
 | Elite | 47.4% / 40.0% / 12.6% | ≈1,106 (pre-2026-08-23 tuning) |
 | Legendary | 26.4% / 49.5% / 24.2% | never, at guild level 1's reward multiplier (pre-2026-08-23 tuning) |
 
-**Recomputed under the 2026-08-26 static-ladder constants** (same method, same odds — only the
-per-bracket difficulty/reward/penalty values changed), still evaluated at guild level 1's
-`raidRewardMultiplier=1.00`:
+**Recomputed under the 2026-08-26 static-ladder constants, INCLUDING the same-day reward-efficiency
+retune** (same method, same odds — only the per-bracket difficulty/reward/penalty values changed),
+evaluated at each mode's own unlock guild level:
 
-| Mode | Aggregate breakeven `totalMultiplier` (post-2026-08-26) |
+| Mode | Aggregate breakeven `totalMultiplier` |
 |---|---|
-| Regular | ≈135 (unchanged) |
-| Elite | ≈805 |
-| Legendary | never converges at level 1's 1.00x reward multiplier — the weighted T1/T2/T3 EV at Legendary's own 60% success-rate cap is still negative (≈-8.5M) until the reward multiplier itself grows enough to flip it |
+| Regular (guild level 1, RRM 1.00x) | ≈158 |
+| Elite (guild level 1, RRM 1.00x) | ≈815 |
+| Legendary (guild level 1, RRM 1.00x) | never converges — weighted T1/T2/T3 EV at Legendary's own 60% cap is still negative (≈-21.1M) |
+| Legendary (guild level 3, RRM 1.70x — its own unlock level) | ≈1,596; weighted EV at cap turns positive (≈+23.2M) |
 
-Elite's aggregate breakeven roughly **halved** (≈1,106 pre-2026-08-23 → ≈805 post-2026-08-26,
-against the same odds) even though Elite's own brackets got individually *harder* in absolute
-difficulty terms (1,189-2,000 vs. the old 30-200-ish effective range) — because reward grew on the
-same geometric ratio as difficulty, the EV-per-unit-of-`totalMultiplier` improved even as the raw
-difficulty numbers rose, which is exactly the intended effect of anchoring reward to the same ladder
-instead of leaving it flat. Legendary still doesn't converge purely off `totalMultiplier` at guild
-level 1 — same structural property as before the rework, not a regression: `getMinGuildLevelForTier`
-already gates Legendary to guild level 3, and at level 3's `1.7x` reward multiplier the same
-weighted-EV-at-cap calculation turns positive (≈+9.4M) — so Legendary still needs the guild-level-
-driven reward multiplier to carry it into profitability, exactly the same design property the
-2026-08-23 pass's own comment already called out, just verified fresh against the new numbers.
+Both Regular's and Elite's aggregate breakeven moved up slightly from the flat-15,000/pt intermediate
+state (Regular ≈135→≈158, Elite ≈1,106 pre-2026-08-23→≈805 post-static-ladder→≈815 after the reward
+ramp) — the reward ramp gives T1 relatively LESS reward-per-point than T2-T4 now (10,000/pt vs. up to
+20,000/pt within Regular), so a roster leaning on cheap, easy-to-hit brackets needs marginally more
+power to break even than under the flat-efficiency version, in exchange for materially bigger payouts
+once it can reliably clear the harder brackets in the same mode. Legendary still doesn't converge
+purely off `totalMultiplier` at guild level 1 — same structural property as every prior version of
+this ladder, not a regression: `getMinGuildLevelForTier` already gates Legendary to guild level 3, and
+at level 3's own `1.7x` reward multiplier the weighted-EV-at-cap calculation turns solidly positive —
+so Legendary still needs the guild-level-driven reward multiplier to carry it into profitability,
+exactly the same design property the 2026-08-23 pass's own comment already called out.
 
 This is what actually drove the 2026-08-23 softening above — computed the same way at each mode's
 now-proposed guild-level band boundary (Regular Lv1-3, Elite Lv3-7, Legendary Lv7-10, using each

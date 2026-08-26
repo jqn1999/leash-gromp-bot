@@ -2384,6 +2384,29 @@ and needs its own balance pass.
   `startRaid.js`'s `module.exports` for direct unit testing, same convention `runStartRaidFlow`
   already established. Full suite green (579/579, up from 562).
 
+  **Follow-up, same day, direct instruction**: "Make regular smoothed out 10-20k, elite 20-30k,
+  legendary 30-50k per point" — asked right after this session discussed how reward scales per
+  tier and whether it "feels worth it." The static-ladder rework above left every Elite/Legendary
+  bracket at a flat ~15,000 potatoes-per-point-of-difficulty ("efficiency" = reward/difficulty),
+  and Regular's own T1-T4 was uneven (5,882-15,000/pt, inherited unchanged) — no reward-side
+  reason to prefer one tier over another, and no signal that Elite/Legendary are bigger
+  investments than Regular. Retuned `T2-4_RAID_REWARD/PENALTY` and all 8 `ELITE_T*`/`LEGENDARY_T*`
+  `REWARD`/`PENALTY` constants (difficulty completely untouched; `T1_RAID_REWARD` already sat
+  exactly on the new band's floor and needed no change) so each mode's own T1→T4 efficiency ramps
+  deliberately within its target band — Regular 10,000→20,000/pt, Elite 20,000→30,000/pt,
+  Legendary 30,000→50,000/pt — with both mode boundaries landing on the exact same efficiency
+  value by construction (Regular T4 = Elite T1 = 20,000/pt; Elite T4 = Legendary T1 = 30,000/pt),
+  the same "no cliff at the seam" property the difficulty ladder itself has, now applied to
+  reward too. Penalty still derives as reward × 1 (Regular's existing 1:1 convention) or ×
+  `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` (unchanged constants). Metal King
+  excluded from this retune too, same as it's excluded from the difficulty ladder. Full recomputed
+  reward/penalty/efficiency table and an EV-at-cap comparison against the pre-retune numbers
+  (every bracket ended up MORE positive-EV at its own unlock guild level, none went negative) in
+  `balance-audit.md`'s new 2026-08-26 (same-day follow-up) entry. 1 test updated (a hardcoded
+  Elite/Legendary T4 reward/penalty assertion that predated this retune), 1 new regression test
+  added confirming the per-mode efficiency ramp is monotonic and continuous across both mode
+  boundaries. Full suite green (580/580, up from 579).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

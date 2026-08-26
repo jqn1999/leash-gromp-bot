@@ -997,20 +997,28 @@ const Raid = {
     T1_RAID_PENALTY: -100000,
     T1_RAID_DIFFICULTY: 10,
 
-    T2_RAID_REWARD: 500000,
-    T2_RAID_PENALTY: -500000,
+    // T1-T4 reward efficiency (reward/difficulty) is now a deliberate 10,000->20,000
+    // potatoes-per-point ramp across the tier ladder (2026-08-26, direct instruction —
+    // "make regular smoothed out 10-20k, elite 20-30k, legendary 30-50k per point"),
+    // continuous into Elite's own 20,000-30,000/pt band below (Regular T4 and Elite T1
+    // land on the exact same 20,000/pt boundary). T1 (10,000/pt) is unchanged from
+    // before this pass; T2-T4 are retuned. Penalty stays a 1:1 magnitude match to
+    // reward, same convention Regular has always used (no separate PENALTY_INCREASE
+    // constant at this mode — that's an Elite/Legendary-only concept).
+    T2_RAID_REWARD: 1133000,
+    T2_RAID_PENALTY: -1133000,
     T2_RAID_DIFFICULTY: 85,
 
-    T3_RAID_REWARD: 5000000,
-    T3_RAID_PENALTY: -5000000,
+    T3_RAID_REWARD: 10000000,
+    T3_RAID_PENALTY: -10000000,
     T3_RAID_DIFFICULTY: 600,
 
     // Ultra-late-game bracket — shop AND regrade fully maxed, meaningfully pushed past
     // by rebirth stacking. Gated separately behind guild level (see
     // RAID_T4_MIN_LEVEL_TARGET_WINS below) on top of its own steep difficulty, since
     // guild-level progression and individual stat power are only loosely correlated.
-    T4_RAID_REWARD: 15000000,
-    T4_RAID_PENALTY: -15000000,
+    T4_RAID_REWARD: 20000000,
+    T4_RAID_PENALTY: -20000000,
     T4_RAID_DIFFICULTY: 1000,
 
     // T4 unlocks at whichever guild level's winsRequired is closest to this target —
@@ -1035,36 +1043,43 @@ const Raid = {
     // than the previous mode's own T3/T4 — a cliff, not a ramp, between modes; (2) T4
     // was left out of the old smoothing pass and needed including this time.
     //
-    // All 12 non-Metal-King brackets (Regular T1-T4 unchanged, Elite T1-T4, Legendary
-    // T1-T4) now sit on one continuous geometric difficulty ladder, ratio r = 2^(1/4) ≈
-    // 1.1892, spanning 8 steps from Regular's own T4 (1,000, unchanged) up to
-    // Legendary's own T4 (4,000, unchanged — already the live value pre-rework, since
-    // Elite T4 was already anchored at 2x Regular T4 and Legendary T4 at 2x Elite T4).
-    // Reward follows the identical ratio, anchored the same way (Regular T4 reward
-    // 15,000,000 -> Legendary T4 60,000,000, both unchanged); penalty = reward *
-    // ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (1.5x/2.0x, same constants as
-    // before, just baked into the static value here instead of applied at roll time) —
-    // see raidFactory.test.js for a regression assertion tying each bracket's
+    // All 12 non-Metal-King brackets (Regular T1-T4, Elite T1-T4, Legendary T1-T4) sit
+    // on one continuous geometric DIFFICULTY ladder, ratio r = 2^(1/4) ≈ 1.1892, spanning
+    // 8 steps from Regular's own T4 (1,000) up to Legendary's own T4 (4,000) — unchanged
+    // by the reward retune below.
+    //
+    // REWARD followed that same difficulty ratio at first (so every Elite/Legendary
+    // bracket paid ~15,000/pt uniformly) until a same-day follow-up, direct instruction:
+    // "make regular smoothed out 10-20k, elite 20-30k, legendary 30-50k per point" — so
+    // reward/difficulty ("efficiency") is now its own deliberate ramp, independent of the
+    // difficulty ladder's own ratio: Regular climbs 10,000/pt (T1) -> 20,000/pt (T4),
+    // Elite continues the same ramp 20,000/pt (T1) -> 30,000/pt (T4), Legendary
+    // 30,000/pt (T1) -> 50,000/pt (T4) — each mode boundary landing on the exact same
+    // efficiency value (Regular T4 = Elite T1 = 20,000/pt; Elite T4 = Legendary T1 =
+    // 30,000/pt), continuous the same way the difficulty ladder itself is. Penalty =
+    // reward * ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (1.5x/2.0x, same
+    // constants as before, baked into the static value here instead of applied at roll
+    // time) — see raidFactory.test.js for a regression assertion tying each bracket's
     // penalty/reward ratio back to its mode's PENALTY_INCREASE constant, since that
     // relationship is now a documented convention rather than something the code
-    // structurally guarantees. Metal King's difficulty/reward/stat-rewards are the exact
-    // same numeric values the old DIFFICULTY_MULTIPLIER (Elite x3, Legendary x6) already
-    // produced — made static rather than recalculated.
+    // structurally guarantees. Metal King is deliberately NOT part of either ramp (still
+    // excluded from the smoothed ladder per direct instruction — "not including metal
+    // king") — its difficulty/reward/stat-rewards are untouched by this reward retune.
     ELITE_T1_DIFFICULTY: 1189,
-    ELITE_T1_REWARD: 17838000,
-    ELITE_T1_PENALTY: -26757000,
+    ELITE_T1_REWARD: 23780000,
+    ELITE_T1_PENALTY: -35670000,
 
     ELITE_T2_DIFFICULTY: 1414,
-    ELITE_T2_REWARD: 21213000,
-    ELITE_T2_PENALTY: -31820000,
+    ELITE_T2_REWARD: 32993000,
+    ELITE_T2_PENALTY: -49490000,
 
     ELITE_T3_DIFFICULTY: 1682,
-    ELITE_T3_REWARD: 25227000,
-    ELITE_T3_PENALTY: -37841000,
+    ELITE_T3_REWARD: 44853000,
+    ELITE_T3_PENALTY: -67280000,
 
     ELITE_T4_DIFFICULTY: 2000,
-    ELITE_T4_REWARD: 30000000,
-    ELITE_T4_PENALTY: -45000000,
+    ELITE_T4_REWARD: 60000000,
+    ELITE_T4_PENALTY: -90000000,
 
     ELITE_METAL_KING_DIFFICULTY: 6000,
     ELITE_METAL_KING_REWARD: 30000000,
@@ -1074,20 +1089,20 @@ const Raid = {
     ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
 
     LEGENDARY_T1_DIFFICULTY: 2378,
-    LEGENDARY_T1_REWARD: 35676000,
-    LEGENDARY_T1_PENALTY: -71352000,
+    LEGENDARY_T1_REWARD: 71340000,
+    LEGENDARY_T1_PENALTY: -142680000,
 
     LEGENDARY_T2_DIFFICULTY: 2828,
-    LEGENDARY_T2_REWARD: 42426000,
-    LEGENDARY_T2_PENALTY: -84852000,
+    LEGENDARY_T2_REWARD: 103693000,
+    LEGENDARY_T2_PENALTY: -207386000,
 
     LEGENDARY_T3_DIFFICULTY: 3364,
-    LEGENDARY_T3_REWARD: 50454000,
-    LEGENDARY_T3_PENALTY: -100908000,
+    LEGENDARY_T3_REWARD: 145773000,
+    LEGENDARY_T3_PENALTY: -291546000,
 
     LEGENDARY_T4_DIFFICULTY: 4000,
-    LEGENDARY_T4_REWARD: 60000000,
-    LEGENDARY_T4_PENALTY: -120000000,
+    LEGENDARY_T4_REWARD: 200000000,
+    LEGENDARY_T4_PENALTY: -400000000,
 
     LEGENDARY_METAL_KING_DIFFICULTY: 12000,
     LEGENDARY_METAL_KING_REWARD: 60000000,

@@ -591,13 +591,12 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         });
     });
 
-    // Elite/Legendary T4 and Metal King are explicitly called out as unchanged numeric
-    // values (same as pre-rework, just now stored as static constants instead of derived
-    // via DIFFICULTY_MULTIPLIER at roll time).
-    test('Elite/Legendary T4 and Metal King numeric values are byte-identical to the pre-rework live values', () => {
+    // Elite/Legendary T4's DIFFICULTY and every mode's Metal King numbers are explicitly
+    // called out as unchanged since the original 2026-08-26 static-per-bracket rework —
+    // T4's own REWARD/PENALTY moved in the SAME-DAY follow-up reward-efficiency retune
+    // (see the next test), so only difficulty and Metal King stay byte-identical here.
+    test('Elite/Legendary T4 difficulty and every Metal King bracket are byte-identical to the original static-rework values', () => {
         expect(Raid.ELITE_T4_DIFFICULTY).toBe(2000);
-        expect(Raid.ELITE_T4_REWARD).toBe(30000000);
-        expect(Raid.ELITE_T4_PENALTY).toBe(-45000000);
         expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(6000);
         expect(Raid.ELITE_METAL_KING_REWARD).toBe(30000000);
         expect(Raid.ELITE_METAL_KING_MULTIPLIER_REWARD).toBe(6.0);
@@ -605,13 +604,44 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(30000000);
 
         expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(4000);
-        expect(Raid.LEGENDARY_T4_REWARD).toBe(60000000);
-        expect(Raid.LEGENDARY_T4_PENALTY).toBe(-120000000);
         expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(12000);
         expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(60000000);
         expect(Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD).toBe(12.0);
         expect(Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD).toBe(6000000);
         expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000);
+    });
+
+    // Same-day follow-up, direct instruction: "make regular smoothed out 10-20k, elite
+    // 20-30k, legendary 30-50k per point" — reward/difficulty efficiency now ramps
+    // deliberately within each mode instead of sitting flat at ~15,000/pt everywhere,
+    // with each mode boundary landing on the same efficiency value as a continuous ramp
+    // (Regular T4 = Elite T1 = 20,000/pt; Elite T4 = Legendary T1 = 30,000/pt).
+    test('reward/difficulty efficiency ramps within each mode\'s target band and is continuous across mode boundaries', () => {
+        const efficiency = (reward, difficulty) => reward / difficulty;
+
+        const regular = [Raid.T1_RAID_REWARD, Raid.T2_RAID_REWARD, Raid.T3_RAID_REWARD, Raid.T4_RAID_REWARD]
+            .map((r, i) => efficiency(r, [Raid.T1_RAID_DIFFICULTY, Raid.T2_RAID_DIFFICULTY, Raid.T3_RAID_DIFFICULTY, Raid.T4_RAID_DIFFICULTY][i]));
+        const elite = [Raid.ELITE_T1_REWARD, Raid.ELITE_T2_REWARD, Raid.ELITE_T3_REWARD, Raid.ELITE_T4_REWARD]
+            .map((r, i) => efficiency(r, [Raid.ELITE_T1_DIFFICULTY, Raid.ELITE_T2_DIFFICULTY, Raid.ELITE_T3_DIFFICULTY, Raid.ELITE_T4_DIFFICULTY][i]));
+        const legendary = [Raid.LEGENDARY_T1_REWARD, Raid.LEGENDARY_T2_REWARD, Raid.LEGENDARY_T3_REWARD, Raid.LEGENDARY_T4_REWARD]
+            .map((r, i) => efficiency(r, [Raid.LEGENDARY_T1_DIFFICULTY, Raid.LEGENDARY_T2_DIFFICULTY, Raid.LEGENDARY_T3_DIFFICULTY, Raid.LEGENDARY_T4_DIFFICULTY][i]));
+
+        // Each mode's own T1->T4 efficiency is monotonically increasing (a ramp, not flat).
+        [regular, elite, legendary].forEach(band => {
+            for (let i = 1; i < band.length; i++) {
+                expect(band[i]).toBeGreaterThan(band[i - 1]);
+            }
+        });
+
+        // Each mode sits within its own target band.
+        regular.forEach(e => expect(e).toBeGreaterThanOrEqual(10000) && expect(e).toBeLessThanOrEqual(20000));
+        elite.forEach(e => expect(e).toBeGreaterThanOrEqual(20000) && expect(e).toBeLessThanOrEqual(30000));
+        legendary.forEach(e => expect(e).toBeGreaterThanOrEqual(30000) && expect(e).toBeLessThanOrEqual(50000));
+
+        // Continuous across mode boundaries — Regular's own top efficiency matches
+        // Elite's own starting efficiency, and likewise Elite's top matches Legendary's start.
+        expect(regular[3]).toBeCloseTo(elite[0], -2);
+        expect(elite[3]).toBeCloseTo(legendary[0], -2);
     });
 
     // Explicit "must not move" requirement from the design: removing DIFFICULTY_MULTIPLIER
