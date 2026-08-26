@@ -981,6 +981,15 @@ const Raid = {
     // start-raid button) needed the same numbers getMinGuildLevelForTier already keyed
     // off of, rather than either duplicating the magic numbers a second place or reaching
     // for startRaid.js's implicit global from a different file.
+    //
+    // Role narrowed 2026-08-26: no longer applied at roll time anywhere in
+    // startRaid.js's scenario closures — every Elite/Legendary bracket's penalty is now
+    // a static constant with this ratio already baked in (see the ELITE_T*/LEGENDARY_T*
+    // block below). These two constants stay alive for exactly one thing:
+    // getMinGuildLevelForTier(penaltyMult, maxSuccessRate) below and its two call sites
+    // (raidFactory.js's getUnlockedRaidModes, startRaid.js's own gate check in
+    // runStartRaidFlow) — both still read these directly, gate levels unchanged (Elite
+    // level 1, Legendary level 3).
     ELITE_PENALTY_INCREASE: 1.5,
     LEGENDARY_PENALTY_INCREASE: 2,
 
@@ -1015,6 +1024,77 @@ const Raid = {
     METAL_KING_CAPACITY_REWARD: 10000000,
     METAL_KING_PENALTY: 0,
     METAL_KING_DIFFICULTY: 2000,
+
+    // Elite/Legendary difficulty-reward-redesign (2026-08-26) — replaces the old
+    // DIFFICULTY_MULTIPLIER indirection (a single per-tier number scaling Regular's own
+    // T1-T4/Metal King constants at runtime) with a fully static constant per bracket.
+    // Direct instruction: "We can remove difficulty multipliers and the reward
+    // multipliers and stuff and statically set those numbers for every raid and tier."
+    // Prompted by two player complaints: (1) Elite's own T1 (old effective difficulty
+    // 30) and Legendary's own T1 (old effective difficulty 50) were drastically EASIER
+    // than the previous mode's own T3/T4 — a cliff, not a ramp, between modes; (2) T4
+    // was left out of the old smoothing pass and needed including this time.
+    //
+    // All 12 non-Metal-King brackets (Regular T1-T4 unchanged, Elite T1-T4, Legendary
+    // T1-T4) now sit on one continuous geometric difficulty ladder, ratio r = 2^(1/4) ≈
+    // 1.1892, spanning 8 steps from Regular's own T4 (1,000, unchanged) up to
+    // Legendary's own T4 (4,000, unchanged — already the live value pre-rework, since
+    // Elite T4 was already anchored at 2x Regular T4 and Legendary T4 at 2x Elite T4).
+    // Reward follows the identical ratio, anchored the same way (Regular T4 reward
+    // 15,000,000 -> Legendary T4 60,000,000, both unchanged); penalty = reward *
+    // ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (1.5x/2.0x, same constants as
+    // before, just baked into the static value here instead of applied at roll time) —
+    // see raidFactory.test.js for a regression assertion tying each bracket's
+    // penalty/reward ratio back to its mode's PENALTY_INCREASE constant, since that
+    // relationship is now a documented convention rather than something the code
+    // structurally guarantees. Metal King's difficulty/reward/stat-rewards are the exact
+    // same numeric values the old DIFFICULTY_MULTIPLIER (Elite x3, Legendary x6) already
+    // produced — made static rather than recalculated.
+    ELITE_T1_DIFFICULTY: 1189,
+    ELITE_T1_REWARD: 17838000,
+    ELITE_T1_PENALTY: -26757000,
+
+    ELITE_T2_DIFFICULTY: 1414,
+    ELITE_T2_REWARD: 21213000,
+    ELITE_T2_PENALTY: -31820000,
+
+    ELITE_T3_DIFFICULTY: 1682,
+    ELITE_T3_REWARD: 25227000,
+    ELITE_T3_PENALTY: -37841000,
+
+    ELITE_T4_DIFFICULTY: 2000,
+    ELITE_T4_REWARD: 30000000,
+    ELITE_T4_PENALTY: -45000000,
+
+    ELITE_METAL_KING_DIFFICULTY: 6000,
+    ELITE_METAL_KING_REWARD: 30000000,
+    ELITE_METAL_KING_PENALTY: 0,
+    ELITE_METAL_KING_MULTIPLIER_REWARD: 6.0,
+    ELITE_METAL_KING_PASSIVE_REWARD: 3000000,
+    ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
+
+    LEGENDARY_T1_DIFFICULTY: 2378,
+    LEGENDARY_T1_REWARD: 35676000,
+    LEGENDARY_T1_PENALTY: -71352000,
+
+    LEGENDARY_T2_DIFFICULTY: 2828,
+    LEGENDARY_T2_REWARD: 42426000,
+    LEGENDARY_T2_PENALTY: -84852000,
+
+    LEGENDARY_T3_DIFFICULTY: 3364,
+    LEGENDARY_T3_REWARD: 50454000,
+    LEGENDARY_T3_PENALTY: -100908000,
+
+    LEGENDARY_T4_DIFFICULTY: 4000,
+    LEGENDARY_T4_REWARD: 60000000,
+    LEGENDARY_T4_PENALTY: -120000000,
+
+    LEGENDARY_METAL_KING_DIFFICULTY: 12000,
+    LEGENDARY_METAL_KING_REWARD: 60000000,
+    LEGENDARY_METAL_KING_PENALTY: 0,
+    LEGENDARY_METAL_KING_MULTIPLIER_REWARD: 12.0,
+    LEGENDARY_METAL_KING_PASSIVE_REWARD: 6000000,
+    LEGENDARY_METAL_KING_CAPACITY_REWARD: 60000000,
 
     // Headcount bonus on top of the roster's rank-weighted teamPower (see
     // RAID_TEAM_DECAY below) — a straight average alone gives zero incentive to recruit

@@ -2321,6 +2321,69 @@ and needs its own balance pass.
   `raidSplitMode: "even"` onto a pre-existing guild record at the `DocumentClient` mock layer. Full
   suite green (562/562, up from 544).
 
+- [x] **61. Elite/Legendary Raid Difficulty/Reward Redesign — Static Per-Bracket Ladder** — M — **Done**
+  What: Removed `startRaid.js`'s `DIFFICULTY_MULTIPLIER` runtime indirection entirely — every one of
+  the 10 Elite/Legendary scenario-action closures (`eliteRaidScenarios`/`legendaryRaidScenarios`,
+  T1-T4 + Metal King each) previously declared a local `const DIFFICULTY_MULTIPLIER = N` and derived
+  its live difficulty/reward/penalty by multiplying Regular's own `T{n}_RAID_*`/`METAL_KING_*`
+  constants against it at roll time. Replaced with 24 new independently-set static constants in
+  `constants.js`'s `Raid` object (`ELITE_T1-4_DIFFICULTY/REWARD/PENALTY`, `ELITE_METAL_KING_*`
+  including its stat-reward fields, and the identical `LEGENDARY_` shape) — every bracket now has its
+  own number, no shared multiplier left to reason about. All 12 non-Metal-King brackets (Regular T1-4
+  unchanged, Elite T1-4, Legendary T1-4) sit on one continuous geometric ladder (ratio `2^(1/4) ≈
+  1.1892`) from Regular's own T4 (1,000, unchanged) through Legendary's own T4 (4,000, unchanged);
+  reward follows the identical ratio (Regular T4 15,000,000 → Legendary T4 60,000,000, both
+  unchanged); penalty = reward × the existing (unchanged-value) `ELITE_PENALTY_INCREASE`/
+  `LEGENDARY_PENALTY_INCREASE` constants, baked into the static value instead of applied at roll
+  time. `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` themselves stay alive in
+  `constants.js`, but their only remaining consumer is `getMinGuildLevelForTier` (`raidFactory.js`)
+  and its two call sites — gate levels unchanged (Elite level 1, Legendary level 3). Regular's own
+  `T1_RAID_*`…`T4_RAID_*`/`METAL_KING_*` constant names deliberately left unrenamed (values also
+  unchanged) since `mercenaryFactory.js`'s Bounty tiers do a dynamic string-keyed lookup against them
+  a rename would have silently broken.
+  Why: direct user diagnosis — "difficulties for some feel very easy to hit... confusing for guilds
+  to know what they should realistically farm." Under the old multiplier-derived values, Elite's own
+  T1 (effective difficulty 30) and Legendary's own T1 (effective difficulty 50) were drastically
+  *easier* than the previous mode's own T3/T4 (Regular T3=600/T4=1,000, Elite T3=900/T4=2,000) — a
+  cliff at the bottom of each mode's own table, distinct from the mode-to-mode transition cliff the
+  2026-08-23 pass already fixed. Explicit follow-up asks folded into the same rework: include T4 in
+  the smoothing (T4 was excluded from the 2026-08-23 halving pass); "we can remove difficulty
+  multipliers and the reward multipliers and stuff and statically set those numbers for every raid
+  and tier" — the direct instruction behind dropping `DIFFICULTY_MULTIPLIER` entirely rather than
+  just re-tuning its values again.
+  Notable: mid-implementation verification found and fixed a real pre-existing bug as a side effect,
+  not scope creep — `startRaid.js`'s `buildRaidPreview` (the pre-confirm preview embed) had its own
+  **second**, independent per-tier multiplier table (`mult: {t4,t3,t2,t1}`, `penaltyMult`) that was
+  never updated during the 2026-08-23 halving pass (Elite's live scenario closures moved T1-T3 from
+  ×6/×4.5/×3 to ×3/×2.25/×1.5 that day; the preview table stayed at the old values), so the preview
+  embed had been showing roughly double the correct difficulty/reward/penalty for Elite T1-T3 (and a
+  smaller distortion for Legendary T1-T3) for that entire window — confirmed via grep before this
+  rework began, not hypothetical. Removing the multiplier concept entirely closes it structurally:
+  `buildRaidPreview` now reads the exact same static `Raid.ELITE_T*`/`LEGENDARY_T*` constants the
+  live scenario closures roll against, so there's exactly one source of truth left. Also cleaned up a
+  now-inaccurate code comment near the Elite Metal King closure/`buildRaidPreview` claiming Metal
+  King "scales with the same multiplier as this tier's T3 bracket" — stale since the 2026-08-23 T3
+  halving, corrected to describe the static-constant model. Full geometric-ladder derivation,
+  recomputed EV-at-cap table (all 12 brackets), and recomputed aggregate mode-level breakeven
+  (Elite's own aggregate breakeven roughly halved, ≈1,106 → ≈805, even though its absolute difficulty
+  numbers rose, because reward now scales on the identical ratio) in `balance-audit.md`'s new
+  2026-08-26 (follow-up) entry.
+  27 new tests: `raidFactory.test.js` gained a `static Elite/Legendary difficulty ladder` describe
+  block (12-bracket monotonic difficulty/reward/penalty-magnitude ladder, the T1-harder-than-previous-
+  mode's-T4 cliff-fix assertion, per-bracket penalty/reward-ratio regression tied to
+  `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE`, Elite/Legendary T4/Metal King byte-identical-
+  to-pre-rework-values check, `getMinGuildLevelForTier` gate-level-unchanged check); new
+  `buildRaidPreview.test.js` (elite/legendary T1-T3 read the new static constants directly, T4
+  unlock-gating still works, Elite Metal King preview text uses the static stat-reward constants,
+  Regular mode unaffected, and a direct byte-identical assertion between the preview's Elite T1
+  success chance and what the live scenario closure would compute — the stale-preview-bug regression
+  guard); new `startRaidStaticRewards.test.js` (exercises the real `runStartRaidFlow` end-to-end with
+  a pinned `Math.random()` to force deterministic bracket rolls, confirming the live Elite/Legendary
+  T2 penalty branches and the Elite Metal King zero-cost-failure branch pay out exactly the new
+  static constants with no leftover multiplier factor). `buildRaidPreview` exported from
+  `startRaid.js`'s `module.exports` for direct unit testing, same convention `runStartRaidFlow`
+  already established. Full suite green (579/579, up from 562).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -517,3 +517,109 @@ describe('getUnlockedRaidModes', () => {
         expect(getUnlockedRaidModes(3).legendary).toBe(true);
     });
 });
+
+// Regression coverage for the 2026-08-26 static per-bracket difficulty/reward/penalty
+// redesign (see constants.js's own comment on the ELITE_T1_DIFFICULTY block and
+// balance-audit.md's 2026-08-26 entry for the full derivation). This replaced a runtime
+// DIFFICULTY_MULTIPLIER indirection — startRaid.js's scenario closures previously
+// computed `Raid.T{n}_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER` (and the equivalent for
+// reward/penalty) at roll time, which structurally guaranteed difficulty/reward/penalty
+// all scaled together. Now every bracket is an independent static constant, so that
+// relationship is a documented convention rather than something the code enforces —
+// these tests exist so a future dev retuning one bracket's reward without symmetrically
+// retuning its penalty gets caught here instead of silently breaking
+// getMinGuildLevelForTier's gate math (which only reads ELITE_PENALTY_INCREASE/
+// LEGENDARY_PENALTY_INCREASE directly, never the per-bracket constants).
+describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () => {
+    test('the 12-bracket difficulty ladder (Regular T1-T4, Elite T1-T4, Legendary T1-T4) is strictly monotonically increasing end-to-end', () => {
+        const ladder = [
+            Raid.T1_RAID_DIFFICULTY, Raid.T2_RAID_DIFFICULTY, Raid.T3_RAID_DIFFICULTY, Raid.T4_RAID_DIFFICULTY,
+            Raid.ELITE_T1_DIFFICULTY, Raid.ELITE_T2_DIFFICULTY, Raid.ELITE_T3_DIFFICULTY, Raid.ELITE_T4_DIFFICULTY,
+            Raid.LEGENDARY_T1_DIFFICULTY, Raid.LEGENDARY_T2_DIFFICULTY, Raid.LEGENDARY_T3_DIFFICULTY, Raid.LEGENDARY_T4_DIFFICULTY,
+        ];
+        for (let i = 1; i < ladder.length; i++) {
+            expect(ladder[i]).toBeGreaterThan(ladder[i - 1]);
+        }
+    });
+
+    test('reward is also strictly monotonically increasing across the same 12-bracket ladder', () => {
+        const ladder = [
+            Raid.T1_RAID_REWARD, Raid.T2_RAID_REWARD, Raid.T3_RAID_REWARD, Raid.T4_RAID_REWARD,
+            Raid.ELITE_T1_REWARD, Raid.ELITE_T2_REWARD, Raid.ELITE_T3_REWARD, Raid.ELITE_T4_REWARD,
+            Raid.LEGENDARY_T1_REWARD, Raid.LEGENDARY_T2_REWARD, Raid.LEGENDARY_T3_REWARD, Raid.LEGENDARY_T4_REWARD,
+        ];
+        for (let i = 1; i < ladder.length; i++) {
+            expect(ladder[i]).toBeGreaterThan(ladder[i - 1]);
+        }
+    });
+
+    test('penalty magnitude is also strictly monotonically increasing across the same 12-bracket ladder', () => {
+        const ladder = [
+            Raid.T1_RAID_PENALTY, Raid.T2_RAID_PENALTY, Raid.T3_RAID_PENALTY, Raid.T4_RAID_PENALTY,
+            Raid.ELITE_T1_PENALTY, Raid.ELITE_T2_PENALTY, Raid.ELITE_T3_PENALTY, Raid.ELITE_T4_PENALTY,
+            Raid.LEGENDARY_T1_PENALTY, Raid.LEGENDARY_T2_PENALTY, Raid.LEGENDARY_T3_PENALTY, Raid.LEGENDARY_T4_PENALTY,
+        ].map(p => Math.abs(p));
+        for (let i = 1; i < ladder.length; i++) {
+            expect(ladder[i]).toBeGreaterThan(ladder[i - 1]);
+        }
+    });
+
+    // Elite's own T1 used to be drastically easier than Regular's own T3/T4 (the exact
+    // player complaint that prompted this rework) — confirm that cliff is gone: Elite's
+    // easiest bracket (T1) is now harder than Regular's hardest (T4), and Legendary's
+    // easiest (T1) is harder than Elite's hardest (T4).
+    test('a mode\'s easiest tier (T1) is now harder than the previous mode\'s hardest tier (T4) — the cliff this rework fixes', () => {
+        expect(Raid.ELITE_T1_DIFFICULTY).toBeGreaterThan(Raid.T4_RAID_DIFFICULTY);
+        expect(Raid.LEGENDARY_T1_DIFFICULTY).toBeGreaterThan(Raid.ELITE_T4_DIFFICULTY);
+    });
+
+    // Every Elite bracket's penalty/reward ratio should match Raid.ELITE_PENALTY_INCREASE
+    // (1.5x) — this is no longer code-enforced (see this describe block's own comment),
+    // so it's asserted here directly per-bracket with a small tolerance for the
+    // architect's own rounded-to-nearest-thousand derivation.
+    test('every Elite bracket\'s penalty/reward ratio matches Raid.ELITE_PENALTY_INCREASE', () => {
+        ['ELITE_T1', 'ELITE_T2', 'ELITE_T3', 'ELITE_T4'].forEach(prefix => {
+            const ratio = Math.abs(Raid[`${prefix}_PENALTY`]) / Raid[`${prefix}_REWARD`];
+            expect(ratio).toBeCloseTo(Raid.ELITE_PENALTY_INCREASE, 2);
+        });
+    });
+
+    test('every Legendary bracket\'s penalty/reward ratio matches Raid.LEGENDARY_PENALTY_INCREASE', () => {
+        ['LEGENDARY_T1', 'LEGENDARY_T2', 'LEGENDARY_T3', 'LEGENDARY_T4'].forEach(prefix => {
+            const ratio = Math.abs(Raid[`${prefix}_PENALTY`]) / Raid[`${prefix}_REWARD`];
+            expect(ratio).toBeCloseTo(Raid.LEGENDARY_PENALTY_INCREASE, 2);
+        });
+    });
+
+    // Elite/Legendary T4 and Metal King are explicitly called out as unchanged numeric
+    // values (same as pre-rework, just now stored as static constants instead of derived
+    // via DIFFICULTY_MULTIPLIER at roll time).
+    test('Elite/Legendary T4 and Metal King numeric values are byte-identical to the pre-rework live values', () => {
+        expect(Raid.ELITE_T4_DIFFICULTY).toBe(2000);
+        expect(Raid.ELITE_T4_REWARD).toBe(30000000);
+        expect(Raid.ELITE_T4_PENALTY).toBe(-45000000);
+        expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(6000);
+        expect(Raid.ELITE_METAL_KING_REWARD).toBe(30000000);
+        expect(Raid.ELITE_METAL_KING_MULTIPLIER_REWARD).toBe(6.0);
+        expect(Raid.ELITE_METAL_KING_PASSIVE_REWARD).toBe(3000000);
+        expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(30000000);
+
+        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(4000);
+        expect(Raid.LEGENDARY_T4_REWARD).toBe(60000000);
+        expect(Raid.LEGENDARY_T4_PENALTY).toBe(-120000000);
+        expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(12000);
+        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(60000000);
+        expect(Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD).toBe(12.0);
+        expect(Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD).toBe(6000000);
+        expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000);
+    });
+
+    // Explicit "must not move" requirement from the design: removing DIFFICULTY_MULTIPLIER
+    // from the runtime math must not change getMinGuildLevelForTier's gate levels, since
+    // ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (the only inputs it reads) are
+    // themselves unchanged by this rework.
+    test('getMinGuildLevelForTier gate levels for Elite/Legendary are unchanged by the redesign (still 1 and 3)', () => {
+        expect(getMinGuildLevelForTier(Raid.ELITE_PENALTY_INCREASE, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
+        expect(getMinGuildLevelForTier(Raid.LEGENDARY_PENALTY_INCREASE, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(3);
+    });
+});

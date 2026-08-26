@@ -19,13 +19,34 @@ changes without this knowledge base being updated alongside it.
 | `Give` | `/give` tax rates — potatoes vs. the cheaper starches rate | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Rob` | `/rob` cooldown, penalty amounts, work-timer penalty on failure | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Bet` | Betting base-amount seed formula | [systems/betting-and-games.md](../systems/betting-and-games.md) |
-| `Raid` | Guild raid tiers, difficulty/reward/penalty per mob, success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
+| `Raid` | Guild raid tiers, difficulty/reward/penalty per mob (Regular T1-T4/Metal King, plus 24 static `ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` constants — see below), success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
 | `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `Rival`, `RivalMercenaries` | Rival Bounty Hunters — Notoriety accrual/threshold, weighted scenario roll + per-scenario success-chance range, capped-base reward/penalty factors, the 6-entry named rival roster | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `GuildRoles` | Role name strings (`Leader`, `Co-Leader`, `Elder`, `Member`) | [systems/guilds.md](../systems/guilds.md) |
 | `shops` | Personal shop tiers (`workShop`, `passiveIncomeShop`, `bankShop`, `starchShop`) — item costs/amounts | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/starch-trading.md](../systems/starch-trading.md) |
 | `metalKingRaidBoss`, `metalPotatoSuccess`/`Failure`, `regularStatRaidMobs`, `regularWorkMobs`, `largePotato`, `sweetPotato`, `taroTrader`, `poisonPotato`, `goldenPotato` | Flavor text + thumbnail URLs for each encounter/mob — cosmetic, no gameplay values | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md) |
 | `awsConfigurations` | DynamoDB table names, AWS credential wiring (from `.env`), `testServer`/`clientId`, `devs` allowlist | [architecture/data-model.md](../architecture/data-model.md) |
+
+### `Raid.ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` (2026-08-26 static per-bracket redesign)
+
+24 new constants, replacing the old `DIFFICULTY_MULTIPLIER` runtime indirection (a single
+per-tier number that scaled Regular's own `T1-4_RAID_*`/`METAL_KING_*` constants at roll
+time). Each bracket now has its own independently-set `_DIFFICULTY`/`_REWARD`/`_PENALTY`
+(Metal King additionally has `_MULTIPLIER_REWARD`/`_PASSIVE_REWARD`/`_CAPACITY_REWARD`):
+
+- `ELITE_T1_DIFFICULTY/REWARD/PENALTY` … `ELITE_T4_DIFFICULTY/REWARD/PENALTY`
+- `ELITE_METAL_KING_DIFFICULTY/REWARD/PENALTY/MULTIPLIER_REWARD/PASSIVE_REWARD/CAPACITY_REWARD`
+- `LEGENDARY_T1_DIFFICULTY/REWARD/PENALTY` … `LEGENDARY_T4_DIFFICULTY/REWARD/PENALTY`
+- `LEGENDARY_METAL_KING_DIFFICULTY/REWARD/PENALTY/MULTIPLIER_REWARD/PASSIVE_REWARD/CAPACITY_REWARD`
+
+All 12 non-Metal-King brackets (Regular T1-4 unchanged, Elite T1-4, Legendary T1-4) sit on one
+continuous geometric ladder (ratio `2^(1/4)`) from Regular's own T4 (1,000) through
+Legendary's own T4 (4,000, unchanged). `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE`
+(1.5/2.0, unchanged values) are baked into each bracket's static `_PENALTY` rather than
+applied at roll time — they're still live, but only for `getMinGuildLevelForTier`'s gate math
+(Elite unlocks at guild level 1, Legendary at level 3, both unchanged). Full derivation:
+[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#success-chance--tiers),
+[balance-audit.md](../balance-audit.md)'s 2026-08-26 entry.
 
 ### `Raid.RAID_TEAM_DECAY` (0.5)
 

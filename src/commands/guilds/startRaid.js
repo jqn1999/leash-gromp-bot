@@ -373,35 +373,32 @@ const regularRaidScenarios = [
 // roster can stomach an occasional T2/T3 roll.
 const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]];
 
-// Softened 2026-08-23 (2 -> 1.5) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below,
-// per balance-audit.md's guild-raid mode-breakeven pass — see that entry for the full
-// derivation. Direct instruction: "soften penalties... it's ok if elite's starting
-// difficulty is higher than regular's start" — the old 6x/4.5x/3x DIFFICULTY_MULTIPLIER
-// combined with a 2x penalty premium meant a guild unlocking Elite right at Regular's own
-// Lv3 breakeven point needed ~12.8x more roster power to break even on Elite, a cliff
-// rather than a ramp. Halving DIFFICULTY_MULTIPLIER and softening this to 1.5 brings that
-// down to ~4.6x — still clearly a harder mode, no longer a wall.
-// ELITE_PENALTY_INCREASE moved to constants.js's Raid object 2026-08-24 — was a bare,
-// undeclared module-scope assignment (an implicit global) until raidFactory.js needed the
-// same number too. Every reference below now reads Raid.ELITE_PENALTY_INCREASE.
+// Static per-bracket difficulty/reward/penalty redesign (2026-08-26) — replaces the old
+// DIFFICULTY_MULTIPLIER indirection (a single per-tier number scaling Regular's own
+// T1-T4/Metal King constants at runtime) entirely. Every bracket below now reads its own
+// independently-chosen Raid.ELITE_* constant directly; see constants.js's own comment on
+// the ELITE_T1_DIFFICULTY block for the full geometric-ladder derivation (ratio r =
+// 2^(1/4), spanning Regular's own T4 through Legendary's own T4) and the balance-audit.md
+// entry for the worked cliff-vs-ramp comparison this was built to fix. The old 2026-08-23
+// halving pass (DIFFICULTY_MULTIPLIER 6x/4.5x/3x -> 3x/2.25x/1.5x) is now moot — there's no
+// runtime multiplier left to halve, the static constants already have that history baked
+// in via the ladder anchoring.
+// ELITE_PENALTY_INCREASE still lives in constants.js's Raid object, but is no longer read
+// anywhere in this file — every bracket's penalty is a static constant with the ratio
+// already applied. It remains load-bearing for getMinGuildLevelForTier's gate math only
+// (see runStartRaidFlow below and raidFactory.js's getUnlockedRaidModes).
 const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            // Metal King previously paid the exact same reward at the exact same
-            // difficulty regardless of tier, making Elite/Legendary strictly worse than
-            // Regular for the identical 1% shot (lower success cap, nothing gained for
-            // it). Scaled the same way T3 already is for this tier — bigger jackpot,
-            // matching harder difficulty.
-            const DIFFICULTY_MULTIPLIER = 3;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
-            const workMultiReward = Raid.METAL_KING_MULTIPLIER_REWARD * DIFFICULTY_MULTIPLIER;
-            const passiveReward = Raid.METAL_KING_PASSIVE_REWARD * DIFFICULTY_MULTIPLIER;
-            const capacityReward = Raid.METAL_KING_CAPACITY_REWARD * DIFFICULTY_MULTIPLIER;
+            const workMultiReward = Raid.ELITE_METAL_KING_MULTIPLIER_REWARD;
+            const passiveReward = Raid.ELITE_METAL_KING_PASSIVE_REWARD;
+            const capacityReward = Raid.ELITE_METAL_KING_CAPACITY_REWARD;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.ELITE_METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
@@ -426,20 +423,19 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 2;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[3]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T4_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_T4_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T4_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.ELITE_T4_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = ultimateRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.ELITE_T4_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = ultimateRaidMob.failureDescription;
             }
@@ -453,20 +449,19 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 1.5; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_T3_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.ELITE_T3_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.ELITE_T3_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -479,20 +474,19 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 2.25; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_T2_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.ELITE_T2_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.ELITE_T2_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -505,20 +499,19 @@ const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see Raid.ELITE_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_T1_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.ELITE_T1_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.ELITE_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.ELITE_T1_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -530,36 +523,24 @@ const eliteRaidScenarios = [
     }
 ]
 
-// Softened 2026-08-23 (3 -> 2) alongside the T1-T3 DIFFICULTY_MULTIPLIER halving below —
-// same pass and reasoning as Raid.ELITE_PENALTY_INCREASE's comment above. Doesn't fully remove
-// a structural property the old 3x tuning had, just eases it: breakeven success rate
-// (penaltyMult / (1 + penaltyMult)) was 75% at 3x, above Legendary's own 60% success-rate
-// cap — meaning raw roster power (totalMultiplier) alone could never make it profitable,
-// only the guild-level-driven raidRewardMultiplier could, by boosting the reward side of
-// the equation. At 2x the breakeven rate drops to ~66.7%, still above the 60% cap, so this
-// is still true — Legendary still needs guild level to carry it into profitability, not
-// roster power alone. That's fine: it's exactly what getMinGuildLevelForTier's existing
-// gate already checks and enforces (unaffected by this change), and is arguably correct
-// design for the top mode — the softening here is about how HARSH that requirement is
-// (breakeven totalMultiplier at guild level 7-10, worked out in balance-audit.md), not
-// about removing the "needs guild level, not just stats" property entirely.
-// LEGENDARY_PENALTY_INCREASE moved to constants.js's Raid object 2026-08-24, same reason
-// as ELITE_PENALTY_INCREASE above.
+// Static per-bracket difficulty/reward/penalty redesign (2026-08-26) — same rework as
+// eliteRaidScenarios above; see that block's comment and constants.js's own comment on the
+// ELITE_T1_DIFFICULTY block for the full derivation. LEGENDARY_PENALTY_INCREASE still lives
+// in constants.js's Raid object but, like ELITE_PENALTY_INCREASE, is no longer read
+// anywhere in this file — only getMinGuildLevelForTier's gate math (below, and
+// raidFactory.js's getUnlockedRaidModes) still depends on it.
 const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            // Same reasoning as the Elite Metal King branch — matches T3's multiplier
-            // for this tier so Legendary is the best (and hardest) Metal King shot.
-            const DIFFICULTY_MULTIPLIER = 6;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
-            const workMultiReward = Raid.METAL_KING_MULTIPLIER_REWARD * DIFFICULTY_MULTIPLIER;
-            const passiveReward = Raid.METAL_KING_PASSIVE_REWARD * DIFFICULTY_MULTIPLIER;
-            const capacityReward = Raid.METAL_KING_CAPACITY_REWARD * DIFFICULTY_MULTIPLIER;
+            const workMultiReward = Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD;
+            const passiveReward = Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD;
+            const capacityReward = Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
@@ -584,20 +565,19 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 4;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[3]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T4_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_T4_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T4_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T4_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = ultimateRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T4_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = ultimateRaidMob.failureDescription;
             }
@@ -611,20 +591,19 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 3; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T3_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_T3_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T3_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T3_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = hardRaidMob.failureDescription;
             }
@@ -637,20 +616,19 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 4; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T2_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_T2_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T2_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T2_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = mediumRaidMob.failureDescription;
             }
@@ -663,20 +641,19 @@ const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
-            const DIFFICULTY_MULTIPLIER = 5; // halved 2026-08-23, see Raid.LEGENDARY_PENALTY_INCREASE's comment above
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
-            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
+            const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_T1_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
-                totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier * DIFFICULTY_MULTIPLIER);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T1_REWARD * randomMultiplier * raidRewardMultiplier);
                 raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
-                totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier * DIFFICULTY_MULTIPLIER * Raid.LEGENDARY_PENALTY_INCREASE);
+                totalRaidSplit = Math.round(Raid.LEGENDARY_T1_PENALTY * randomMultiplier);
                 raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
                 raidResultDescription = regularRaidMob.failureDescription;
             }
@@ -806,41 +783,67 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, 
         ];
     }
 
+    // Every mode's numbers now come straight off its own static Raid.* constants — no
+    // separate mult/penaltyMult scaling table. Previously this preview built its own
+    // parallel per-tier multiplier table (mult: {t4, t3, t2, t1}, penaltyMult) that had to
+    // be hand-kept in sync with eliteRaidScenarios/legendaryRaidScenarios' own DIFFICULTY_
+    // MULTIPLIER values above — it drifted stale after the 2026-08-23 T1-T3 halving pass
+    // (elite 6/4.5/3 -> 3/2.25/1.5 in the live scenarios, never updated here), so the
+    // preview embed was showing wrong odds/reward/penalty for Elite/Legendary T1-T3 right
+    // up until this rework. Reading the same static constants the live roll uses removes
+    // the second table entirely, so there's exactly one source of truth for both.
     const tierConfig = {
-        regular: { scenarios: regularRaidScenarios, maxRate: Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 1, t3: 1, t2: 1, t1: 1 }, penaltyMult: 1 },
-        elite: { scenarios: eliteRaidScenarios, maxRate: Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 2, t3: 3, t2: 4.5, t1: 6 }, penaltyMult: Raid.ELITE_PENALTY_INCREASE },
-        legendary: { scenarios: legendaryRaidScenarios, maxRate: Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE, mult: { t4: 4, t3: 6, t2: 8, t1: 10 }, penaltyMult: Raid.LEGENDARY_PENALTY_INCREASE },
+        regular: {
+            scenarios: regularRaidScenarios, maxRate: Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE,
+            metalKing: { difficulty: Raid.METAL_KING_DIFFICULTY, reward: Raid.METAL_KING_REWARD, multiplierReward: Raid.METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.METAL_KING_PASSIVE_REWARD, capacityReward: Raid.METAL_KING_CAPACITY_REWARD },
+            tiers: [
+                { key: 't4', label: 'Tier 4', reward: Raid.T4_RAID_REWARD, penalty: Raid.T4_RAID_PENALTY, difficulty: Raid.T4_RAID_DIFFICULTY },
+                { key: 't3', label: 'Tier 3', reward: Raid.T3_RAID_REWARD, penalty: Raid.T3_RAID_PENALTY, difficulty: Raid.T3_RAID_DIFFICULTY },
+                { key: 't2', label: 'Tier 2', reward: Raid.T2_RAID_REWARD, penalty: Raid.T2_RAID_PENALTY, difficulty: Raid.T2_RAID_DIFFICULTY },
+                { key: 't1', label: 'Tier 1', reward: Raid.T1_RAID_REWARD, penalty: Raid.T1_RAID_PENALTY, difficulty: Raid.T1_RAID_DIFFICULTY },
+            ],
+        },
+        elite: {
+            scenarios: eliteRaidScenarios, maxRate: Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE,
+            metalKing: { difficulty: Raid.ELITE_METAL_KING_DIFFICULTY, reward: Raid.ELITE_METAL_KING_REWARD, multiplierReward: Raid.ELITE_METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.ELITE_METAL_KING_PASSIVE_REWARD, capacityReward: Raid.ELITE_METAL_KING_CAPACITY_REWARD },
+            tiers: [
+                { key: 't4', label: 'Tier 4', reward: Raid.ELITE_T4_REWARD, penalty: Raid.ELITE_T4_PENALTY, difficulty: Raid.ELITE_T4_DIFFICULTY },
+                { key: 't3', label: 'Tier 3', reward: Raid.ELITE_T3_REWARD, penalty: Raid.ELITE_T3_PENALTY, difficulty: Raid.ELITE_T3_DIFFICULTY },
+                { key: 't2', label: 'Tier 2', reward: Raid.ELITE_T2_REWARD, penalty: Raid.ELITE_T2_PENALTY, difficulty: Raid.ELITE_T2_DIFFICULTY },
+                { key: 't1', label: 'Tier 1', reward: Raid.ELITE_T1_REWARD, penalty: Raid.ELITE_T1_PENALTY, difficulty: Raid.ELITE_T1_DIFFICULTY },
+            ],
+        },
+        legendary: {
+            scenarios: legendaryRaidScenarios, maxRate: Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE,
+            metalKing: { difficulty: Raid.LEGENDARY_METAL_KING_DIFFICULTY, reward: Raid.LEGENDARY_METAL_KING_REWARD, multiplierReward: Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD, capacityReward: Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD },
+            tiers: [
+                { key: 't4', label: 'Tier 4', reward: Raid.LEGENDARY_T4_REWARD, penalty: Raid.LEGENDARY_T4_PENALTY, difficulty: Raid.LEGENDARY_T4_DIFFICULTY },
+                { key: 't3', label: 'Tier 3', reward: Raid.LEGENDARY_T3_REWARD, penalty: Raid.LEGENDARY_T3_PENALTY, difficulty: Raid.LEGENDARY_T3_DIFFICULTY },
+                { key: 't2', label: 'Tier 2', reward: Raid.LEGENDARY_T2_REWARD, penalty: Raid.LEGENDARY_T2_PENALTY, difficulty: Raid.LEGENDARY_T2_DIFFICULTY },
+                { key: 't1', label: 'Tier 1', reward: Raid.LEGENDARY_T1_REWARD, penalty: Raid.LEGENDARY_T1_PENALTY, difficulty: Raid.LEGENDARY_T1_DIFFICULTY },
+            ],
+        },
     }[raidSelection];
 
     // T4 isn't shown/rollable at all below its unlock level — see getEligibleScenarios.
     const eligibleScenarios = getEligibleScenarios(tierConfig.scenarios, guildLevel);
     const t4Unlocked = eligibleScenarios.length === tierConfig.scenarios.length;
     const odds = bracketOdds(eligibleScenarios);
-    // Metal King scales with the same multiplier as this tier's T3 bracket — bigger
-    // jackpot and permanent stats, matching harder difficulty, instead of the old flat
-    // reward that made Elite/Legendary strictly worse than Regular for the same 1% shot.
-    const metalKingMult = tierConfig.mult.t3;
+    const mk = tierConfig.metalKing;
     const brackets = [{
         name: 'Metal King',
         odds: odds[0],
-        successChance: calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY * metalKingMult, tierConfig.maxRate),
-        rewardText: `+${Math.round(Raid.METAL_KING_REWARD * raidRewardMultiplier * metalKingMult).toLocaleString()} potatoes, plus permanent stats (${metalKingMult}x Work Multiplier/Passive/Bank Capacity rewards)`,
+        successChance: calculateRaidSuccessChance(totalMultiplier, mk.difficulty, tierConfig.maxRate),
+        rewardText: `+${Math.round(mk.reward * raidRewardMultiplier).toLocaleString()} potatoes, plus permanent stats (+${mk.multiplierReward.toFixed(1)} work multiplier, +${mk.passiveReward.toLocaleString()} passive, +${mk.capacityReward.toLocaleString()} bank capacity)`,
         penaltyText: `Nothing — this bracket costs nothing win or lose`,
     }];
 
-    const tiers = [
-        ...(t4Unlocked ? [{ key: 't4', label: 'Tier 4', reward: Raid.T4_RAID_REWARD, penalty: Raid.T4_RAID_PENALTY, difficulty: Raid.T4_RAID_DIFFICULTY }] : []),
-        { key: 't3', label: 'Tier 3', reward: Raid.T3_RAID_REWARD, penalty: Raid.T3_RAID_PENALTY, difficulty: Raid.T3_RAID_DIFFICULTY },
-        { key: 't2', label: 'Tier 2', reward: Raid.T2_RAID_REWARD, penalty: Raid.T2_RAID_PENALTY, difficulty: Raid.T2_RAID_DIFFICULTY },
-        { key: 't1', label: 'Tier 1', reward: Raid.T1_RAID_REWARD, penalty: Raid.T1_RAID_PENALTY, difficulty: Raid.T1_RAID_DIFFICULTY },
-    ];
+    const tiers = tierConfig.tiers.filter(tier => tier.key !== 't4' || t4Unlocked);
 
     tiers.forEach((tier, index) => {
-        const mult = tierConfig.mult[tier.key];
-        const difficulty = tier.difficulty * mult;
-        const successChance = calculateRaidSuccessChance(totalMultiplier, difficulty, tierConfig.maxRate);
-        const [rewardMin, rewardMax] = midRange(tier.reward * mult * raidRewardMultiplier);
-        const [penaltyMin, penaltyMax] = midRange(Math.abs(tier.penalty) * mult * tierConfig.penaltyMult);
+        const successChance = calculateRaidSuccessChance(totalMultiplier, tier.difficulty, tierConfig.maxRate);
+        const [rewardMin, rewardMax] = midRange(tier.reward * raidRewardMultiplier);
+        const [penaltyMin, penaltyMax] = midRange(Math.abs(tier.penalty));
         brackets.push({
             name: tier.label,
             odds: odds[index + 1],
@@ -1090,5 +1093,9 @@ module.exports = {
         const raidSelection = interaction.options.get('raid-select')?.value;
         await runStartRaidFlow(interaction, raidSelection);
     },
-    runStartRaidFlow
+    runStartRaidFlow,
+    // Exported for direct unit testing of the preview embed's numbers (see
+    // buildRaidPreview.test.js) — same convention runStartRaidFlow above already
+    // established for exporting an otherwise-internal function for test coverage.
+    buildRaidPreview
 }

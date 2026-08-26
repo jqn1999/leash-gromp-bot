@@ -1467,3 +1467,172 @@ pre-rework). No mode-level flattening found at any decay value tested.
   never `totalMultiplier` — re-confirmed unaffected by this rework.
 - **`handlePotatoSplitByShare` reuse for `raidSplitMode: 'share'`**: identical function World Raids
   already use, unmodified signature — no drift risk between the two callers.
+
+## 2026-08-26 (follow-up) — Elite/Legendary static difficulty ladder redesign
+
+Prompted by a direct user complaint, distinct from and unrelated to the `RAID_TEAM_DECAY`/reward-
+split rework earlier the same day: *"difficulties for some feel very easy to hit... confusing for
+guilds to know what they should realistically farm."* Two explicit follow-up asks: include T4 in
+whatever smoothing pass this becomes (T4 was excluded from the 2026-08-23 halving pass below), and
+*"we can remove difficulty multipliers and the reward multipliers and stuff and statically set those
+numbers for every raid and tier"* — drop the `DIFFICULTY_MULTIPLIER` runtime indirection entirely.
+
+### The cliff this fixes
+
+Under the pre-rework live values (`Raid.T{n}_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER`, computed at
+roll time in `startRaid.js`'s scenario closures), Elite's own T1 sat at effective difficulty `30`
+(`T1_RAID_DIFFICULTY(10) * DIFFICULTY_MULTIPLIER(3)`) and Legendary's own T1 at `50` (`10 * 5`) —
+both drastically *easier* than the previous mode's own T3/T4:
+
+| | Regular T3 | Regular T4 | Elite T1 (old) | | Elite T3 | Elite T4 | Legendary T1 (old) |
+|---|---|---|---|---|---|---|---|
+| Difficulty | 600 | 1,000 | **30** | | 900 | 2,000 | **50** |
+
+A guild that had just cleared Regular's own T3/T4 band would find Elite's own T1 *trivial* by
+comparison — a cliff at the bottom of each mode's own table (not the mode-to-mode transition cliff
+the 2026-08-23 pass below already fixed), which is exactly the "confusing... what to realistically
+farm" complaint: within a single mode, the tiers didn't form a coherent ramp against the previous
+mode's own ceiling.
+
+### The fix: one continuous geometric ladder, difficulty AND reward together
+
+Verified via `node` (not hand-derived): ratio `r = 2^(1/4) ≈ 1.189207115`, applied across 8 steps from
+Regular's own T4 (1,000, unchanged) through Legendary's own T4 (4,000, unchanged — already the live
+value pre-rework, since Elite T4 was already anchored at `2× Regular T4` and Legendary T4 at
+`2× Elite T4`):
+
+```
+r^0=1000, r^1=1189.21, r^2=1414.21, r^3=1681.79, r^4=2000, r^5=2378.41, r^6=2828.43, r^7=3363.59, r^8=4000
+```
+
+Rounded to the nearest thousand for the difficulty AND reward columns (`Math.round(v/1000)*1000`),
+reward anchored the same way at Regular T4=15,000,000 → Legendary T4=60,000,000 (unchanged),
+penalty = `Math.round(reward * PENALTY_INCREASE)` (Elite ×1.5, Legendary ×2.0, both unchanged
+constants):
+
+| Bracket | Difficulty | Reward | Penalty | Penalty/Reward ratio |
+|---|---|---|---|---|
+| Regular T1 | 10 | 100,000 | -100,000 | 1.0 (unchanged) |
+| Regular T2 | 85 | 500,000 | -500,000 | 1.0 (unchanged) |
+| Regular T3 | 600 | 5,000,000 | -5,000,000 | 1.0 (unchanged) |
+| Regular T4 | 1,000 | 15,000,000 | -15,000,000 | 1.0 (unchanged) |
+| Elite T1 | 1,189 | 17,838,000 | -26,757,000 | 1.500000 |
+| Elite T2 | 1,414 | 21,213,000 | -31,820,000 | 1.500024 |
+| Elite T3 | 1,682 | 25,227,000 | -37,841,000 | 1.500020 |
+| Elite T4 | 2,000 | 30,000,000 | -45,000,000 | 1.5 (unchanged) |
+| Legendary T1 | 2,378 | 35,676,000 | -71,352,000 | 2.0 |
+| Legendary T2 | 2,828 | 42,426,000 | -84,852,000 | 2.0 |
+| Legendary T3 | 3,364 | 50,454,000 | -100,908,000 | 2.0 |
+| Legendary T4 | 4,000 | 60,000,000 | -120,000,000 | 2.0 (unchanged) |
+
+Verified end-to-end monotonicity across all 12 brackets in `node` and re-asserted permanently in
+`raidFactory.test.js` (`static Elite/Legendary difficulty ladder` describe block): difficulty,
+reward, and `|penalty|` are each strictly increasing Regular T1 → Legendary T4 with zero exceptions.
+The two off-nominal ratios (Elite T2/T3 landing at 1.500024/1.500020 instead of exactly 1.5) are a
+rounding artifact of rounding reward to the nearest thousand *before* deriving penalty from it, not a
+tuning error — well within the test's tolerance (`toBeCloseTo(..., 2)`) and immaterial to
+`getMinGuildLevelForTier`'s gate math, which never reads the per-bracket constants at all (see below).
+
+Elite's own T1 (1,189) is now *harder* than Regular's own T4 (1,000); Legendary's own T1 (2,378) is
+harder than Elite's own T4 (2,000) — the exact cliff from the complaint is gone, verified directly
+(also asserted as a permanent regression test).
+
+### `DIFFICULTY_MULTIPLIER` removal
+
+Every one of the 10 non-baby/non-stat scenario closures in `startRaid.js` (`eliteRaidScenarios`
+T1-T4 + Metal King, `legendaryRaidScenarios` T1-T4 + Metal King) previously declared a local
+`const DIFFICULTY_MULTIPLIER = N` and computed `Raid.T{n}_RAID_DIFFICULTY * DIFFICULTY_MULTIPLIER`
+for difficulty, `Raid.T{n}_RAID_REWARD * randomMultiplier * raidRewardMultiplier *
+DIFFICULTY_MULTIPLIER` for reward, and `Raid.T{n}_RAID_PENALTY * randomMultiplier *
+DIFFICULTY_MULTIPLIER * {ELITE,LEGENDARY}_PENALTY_INCREASE` for penalty — all removed, replaced with
+direct reads of the new static `Raid.ELITE_T{n}_*`/`Raid.LEGENDARY_T{n}_*` constants and no runtime
+multiplication beyond the pre-existing `randomMultiplier` (±20% roll) and `raidRewardMultiplier`
+(guild-level reward bonus, win-side only — unchanged, still doesn't touch penalties).
+`ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` stay in `constants.js`, values unchanged
+(1.5/2.0), but are no longer read anywhere in `startRaid.js` — their only remaining consumer is
+`getMinGuildLevelForTier` (`raidFactory.js`) and its two call sites, both unaffected by this rework
+(confirmed: Elite still unlocks at guild level 1, Legendary still at level 3 — re-asserted in
+`raidFactory.test.js`). Regular's own `T1_RAID_*`…`T4_RAID_*`/`METAL_KING_*` constant names were
+deliberately left unrenamed (values also unchanged) — `mercenaryFactory.js`'s Bounty tiers do a
+dynamic string-keyed lookup (`` Raid[`T${tierNum}_RAID_DIFFICULTY`] ``) that a rename would have
+silently broken (reads `undefined` at runtime, no parse-time error), and `mercenaryFactory.test.js`
+asserts against these exact names directly — both re-verified still green.
+
+### Pre-existing bug fixed as a side effect: stale `buildRaidPreview` multiplier table
+
+`startRaid.js`'s `buildRaidPreview` (the pre-confirm preview embed) had its own **separate**
+per-tier multiplier table (`mult: {t4, t3, t2, t1}`, `penaltyMult`) that was never updated during the
+2026-08-23 halving pass below — Elite's live scenario closures moved T1/T2/T3 from
+`×6/×4.5/×3` to `×3/×2.25/×1.5` that day, but the preview table stayed at the old `×6/×4.5/×3`
+values. Confirmed via grep before this rework began: the preview embed had been showing roughly
+**double** the correct difficulty/reward/penalty for Elite T1-T3 (and a smaller but still-wrong
+distortion for Legendary T1-T3) for the entire window between 2026-08-23 and this fix — a real,
+live, player-facing display bug, not a hypothetical one. Removing the multiplier concept entirely
+closes it structurally: `buildRaidPreview` now reads the exact same static `Raid.ELITE_T*`/
+`LEGENDARY_T*` constants the live scenario closures roll against, so there's exactly one source of
+truth left and no second table that can drift out of sync again. Regression-tested in the new
+`buildRaidPreview.test.js` (asserts the preview's Elite T1 success chance is byte-identical to what
+the live closure would compute).
+
+### Recomputed EV table at each bracket's own success-rate cap
+
+Verified via `node`, `EV = cap*(reward*raidRewardMultiplier) - (1-cap)*|penalty|`. Regular/Elite at
+guild level 1 (`raidRewardMultiplier=1.00`, both legally raidable from level 1); Legendary shown both
+at level 1 (illustrative only — not actually selectable that low) and at its real unlock level 3
+(`raidRewardMultiplier=1.70`):
+
+| Bracket | Cap | EV @ mult=1.00 | EV @ mult=1.70 (Legendary's actual unlock level) |
+|---|---|---|---|
+| Regular T1 | 90% | +80,000 | — |
+| Regular T2 | 90% | +400,000 | — |
+| Regular T3 | 90% | +4,000,000 | — |
+| Regular T4 | 90% | +12,000,000 | — |
+| Elite T1 | 75% | +6,689,250 | — |
+| Elite T2 | 75% | +7,954,750 | — |
+| Elite T3 | 75% | +9,460,000 | — |
+| Elite T4 | 75% | +11,250,000 | — |
+| Legendary T1 | 60% | -7,135,200 | +7,848,720 |
+| Legendary T2 | 60% | -8,485,200 | +9,333,720 |
+| Legendary T3 | 60% | -10,090,800 | +11,099,880 |
+| Legendary T4 | 60% | -12,000,000 | +13,200,000 |
+
+Regular and Elite are already positive-EV at their own success-rate cap from their first legally
+raidable guild level (1) — expected, since both unlock at level 1. Legendary stays negative-EV at
+its own cap under a level-1 reward multiplier (which a guild could never actually have while
+Legendary is selectable, since it's gated to level 3) but turns solidly positive at level 3's own
+1.7x multiplier — confirming the same structural property the 2026-08-23 pass's own comment already
+documented (Legendary needs the guild-level-driven reward multiplier to carry it into profitability,
+not roster power alone) still holds under the new static numbers, unchanged in kind even though every
+underlying number changed.
+
+### Aggregate mode-level breakeven, recomputed (see raids-and-world-events.md's own "Mode-level
+breakeven" section for the full table)
+
+Same method as the 2026-08-23 audit below (weighted T1/T2/T3 EV, renormalized odds, solved
+numerically for the `totalMultiplier` where the weighted average crosses zero), same roll odds
+(unchanged by this rework — only bracket magnitudes changed), evaluated at guild level 1's 1.00x
+reward multiplier:
+
+- Regular: ≈135 `totalMultiplier` (unchanged — Regular's own constants weren't touched).
+- Elite: ≈805 (down from ≈1,106 pre-2026-08-23 tuning) — roughly **halved** even though Elite's own
+  absolute difficulty numbers are now higher (1,189-2,000 vs. the old ~30-200 effective range),
+  because reward scales on the identical geometric ratio as difficulty, so EV-per-unit-of-
+  `totalMultiplier` actually improved.
+- Legendary: still never converges purely off `totalMultiplier` at level 1's multiplier (weighted EV
+  at Legendary's own 60% cap is ≈-8.5M) — same structural property as before, resolved the same way
+  (guild-level-driven reward multiplier, not roster power, is what's meant to carry Legendary into
+  profitability; confirmed positive at level 3's 1.7x above).
+
+### Checked, no issues found (this pass)
+
+- **Test suite**: 36 suites / 579 tests passing (up from 34 suites / 562 tests pre-rework — added
+  `raidFactory.test.js`'s static-ladder describe block, `buildRaidPreview.test.js`, and
+  `startRaidStaticRewards.test.js`, all new).
+- **`mercenaryFactory.test.js`**: unaffected, re-run green — Regular's own T1-T3 constants this suite
+  asserts against directly were never touched.
+- **`getMinGuildLevelForTier`'s gate levels**: re-verified unchanged (Elite level 1, Legendary
+  level 3) — this function never reads the per-bracket constants, only
+  `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE`, both unchanged.
+- **Metal King's own numeric values (Elite/Legendary)**: byte-identical to what the removed
+  `DIFFICULTY_MULTIPLIER` (×3/×6) already produced — this rework changed only how the numbers are
+  stored, not what they are.
