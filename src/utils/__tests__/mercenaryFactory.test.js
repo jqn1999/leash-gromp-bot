@@ -195,7 +195,7 @@ describe('resolveBountyAttempt', () => {
     test('the starch-flavored win formula folds in the equipped companion\'s workMultiplierPercent perk, same as resolveNpcRob', async () => {
         const user = baseUser({
             workMultiplierAmount: 90,
-            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
@@ -228,7 +228,7 @@ describe('resolveBountyAttempt', () => {
         const withoutCompanion = baseUser({ workMultiplierAmount: 5 }); // T1 difficulty 10 -> 0.5 raw, well under the .9 cap
         const withCompanion = baseUser({
             workMultiplierAmount: 5,
-            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // force a loss branch in both cases so we only need 3 rolls
         let resultWithout, resultWith;
@@ -344,7 +344,7 @@ describe('resolveNpcRob', () => {
         try {
             const userWithYukon = baseUser({
                 mercenaryBountyWinCount: 0,
-                companions: { owned: [{ id: 'yukon', workCount: 0 }], active: 'yukon', ownedCount: 1, mythicOwnedCount: 1 },
+                companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 0 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 1 },
             });
             const result = await mercenaryFactory.resolveNpcRob(userWithYukon, 1000, 0);
             expect(result.successChance).toBeCloseTo(RobNpc.BASE_CHANCE + 0.12);
@@ -384,28 +384,31 @@ describe('resolveYukonAward', () => {
         const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(true);
         expect(result.potatoesGained).toBeUndefined();
-        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 0, quantity: 1 }]);
+        expect(result.companions.owned).toHaveLength(1);
+        expect(result.companions.owned[0]).toMatchObject({ id: 'yukon', workCount: 0 });
     });
 
-    // 2026-08-25: the old potato consolation (scaled off CompanionDuplicateReward.legendary)
-    // was removed by direct instruction ("do the code changes for sellable companion
-    // duplicates") — a duplicate Yukon now grants a real, sellable spare instead, same as
-    // any other duplicate companion pull.
-    test('a duplicate pull grants a spare instead of a potato consolation', () => {
-        const user = baseUser({ workMultiplierAmount: 1, companions: { owned: [{ id: 'yukon', workCount: 5, quantity: 1 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+    // Since 2026-08-25's instance rework (direct instruction — duplicate companions must be
+    // genuinely separate, independently-leveled copies), a duplicate Yukon adds a brand-new
+    // instance starting fresh at level 1 — no bonus workCount to the existing copy, no
+    // potato consolation, no spare count.
+    test('a duplicate pull adds a separate new instance, leaving the existing one untouched', () => {
+        const user = baseUser({ workMultiplierAmount: 1, companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 5 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
         const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(false);
         expect(result.potatoesGained).toBeUndefined();
-        expect(result.spareCount).toBe(1);
-        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
+        expect(result.companions.owned).toHaveLength(2);
+        expect(result.companions.owned[0]).toEqual({ instanceId: 'yukon-a', id: 'yukon', workCount: 5 });
+        expect(result.companions.owned[1]).toMatchObject({ id: 'yukon', workCount: 0 });
+        expect(result.companions.owned[1].instanceId).not.toBe('yukon-a');
     });
 
     // Regression coverage for a player concern raised alongside the drop-rate buff above:
     // does pulling a duplicate Yukon while the owned one is out scavenging still count as a
-    // real duplicate (adding to its workCount) rather than something going wrong? isNew is
-    // driven purely by companionFactory.ownsCompanion's `owned` array membership —
-    // isScavenging (companions.scavenging.companionId) never removes the entry from `owned`
-    // (see companionFactory.applyCompanionAward's own comment on this), so this needs no
+    // real duplicate rather than something going wrong? isNew is driven purely by
+    // companionFactory.ownsCompanion's `owned` array membership — isScavenging
+    // (companions.scavenging.instanceId) never removes the entry from `owned` (see
+    // companionFactory.applyCompanionAward's own comment on this), so this needs no
     // special-casing: the duplicate branch above already fires exactly the same way whether
     // or not the owned copy happens to be out scavenging right now. This test pins that down
     // explicitly with a live `companions.scavenging` record set, so a future change to
@@ -414,16 +417,17 @@ describe('resolveYukonAward', () => {
         const user = baseUser({
             workMultiplierAmount: 1,
             companions: {
-                owned: [{ id: 'yukon', workCount: 5 }],
+                owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 5 }],
                 active: null,
                 ownedCount: 1,
                 mythicOwnedCount: 0,
-                scavenging: { companionId: 'yukon', rarity: 'legendary', returnsAt: Date.now() + 100000 },
+                scavenging: { instanceId: 'yukon-a', rarity: 'legendary', returnsAt: Date.now() + 100000 },
             },
         });
         const result = mercenaryFactory.resolveYukonAward(user);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'yukon', workCount: 5 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
+        expect(result.companions.owned).toHaveLength(2);
+        expect(result.companions.owned[0]).toEqual({ instanceId: 'yukon-a', id: 'yukon', workCount: 5 });
         // The scavenging record itself must survive untouched — applyCompanionAward only
         // ever rebuilds `owned`, spreading the rest of `companions` through unchanged.
         expect(result.companions.scavenging).toEqual(user.companions.scavenging);
@@ -686,7 +690,7 @@ describe('resolveRivalConfrontation', () => {
             .mockReturnValueOnce(0);       // penalty variance roll
         const userWithYukon = baseUser({
             workMultiplierAmount: 90,
-            companions: { owned: [{ id: 'yukon', workCount: 0 }], active: 'yukon', ownedCount: 1, mythicOwnedCount: 1 },
+            companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 0 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 1 },
         });
         let result;
         try {

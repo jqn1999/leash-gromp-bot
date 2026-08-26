@@ -29,10 +29,7 @@ async function loadOwnListings(userId) {
 
 // The actual cancel — re-fetches the market state fresh at click time (the embed can sit
 // open for a while before a button is pressed) rather than trusting whatever was on-page
-// when it was rendered. Everything past that point is exactly today's /companion-cancel
-// logic, unchanged: workCount restoration, the already-reacquired-merge edge case, and
-// the "achievements never regress" reasoning on why this deliberately does NOT go through
-// applyCompanionAward. Returns a message (no userDisplayName prefix — the caller adds
+// when it was rendered. Returns a message (no userDisplayName prefix — the caller adds
 // that) rather than replying itself, so it can be exercised directly in tests without
 // mocking discord.js's button-click machinery.
 async function attemptCancelListing(userId, username, listingId) {
@@ -60,33 +57,18 @@ async function attemptCancelListing(userId, username, listingId) {
     // removal never decremented them in the first place (achievements never regress —
     // see companionMarketFactory.removeFromOwned), so a normal cancel restoring the same
     // companion must never touch those counters either, or they'd double-count this one
-    // acquisition. Still has to merge rather than blindly push, though — the seller could
-    // have re-acquired this exact companion while the listing was up (another /work pull,
-    // or buying it off someone else's listing), and pushing a second owned entry for the
-    // same id would break everything else that assumes at most one.
-    //
-    // quantity handling (added 2026-08-25 alongside sellable duplicates): a cancel always
-    // gives back exactly the one unit this listing escrowed. If the entry still exists
-    // (alreadyReacquired — whether because listing a spare only ever decremented quantity
-    // rather than removing the entry, or because the seller genuinely got another copy in
-    // the meantime), that's a spare coming back, so quantity goes up by 1. If the entry
-    // is gone entirely (their only copy was listed, escrow removed it outright), this
-    // recreates it at quantity 1, mirroring removeFromOwned's own two-branch shape.
-    const alreadyReacquired = freshUserDetails.companions.owned.some(c => c.id === listing.companionId);
-    const updatedOwned = alreadyReacquired
-        ? freshUserDetails.companions.owned.map(c =>
-            c.id === listing.companionId ? { ...c, workCount: (c.workCount || 0) + (listing.workCount || 0), quantity: (c.quantity || 1) + 1 } : c
-          )
-        : [...freshUserDetails.companions.owned, { id: listing.companionId, workCount: listing.workCount || 0, quantity: 1 }];
+    // acquisition. Since 2026-08-25's instance rework, every owned copy is its own
+    // independent instance — there's no shared entry to merge into anymore, so this always
+    // just pushes a brand-new instance back onto `owned` with a freshly generated
+    // instanceId, at exactly the workCount this listing escrowed.
+    const restoredInstanceId = companionFactory.generateInstanceId(listing.companionId);
+    const updatedOwned = [...freshUserDetails.companions.owned, { instanceId: restoredInstanceId, id: listing.companionId, workCount: listing.workCount || 0 }];
 
     await dynamoHandler.updateUserFields(userId, {
         companions: { ...freshUserDetails.companions, owned: updatedOwned }
     });
 
-    const message = alreadyReacquired
-        ? `your listing has been cancelled — you'd already gotten another ${companionFactory.getCompanionById(listing.companionId)?.name ?? 'copy'} in the meantime, so its training combined with this one's.`
-        : `your listing has been cancelled and the companion is back in your collection.`;
-    return { ok: true, message };
+    return { ok: true, message: `your listing has been cancelled and the companion is back in your collection.` };
 }
 
 // Up to 5 cancel buttons per page, one per listing shown — labeled with the companion's

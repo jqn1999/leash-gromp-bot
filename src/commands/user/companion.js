@@ -18,14 +18,16 @@ function chunkArray(array, size) {
 }
 
 // Resolves userDetails.companions.owned into full companion objects (roster entry +
-// that owner's own workCount) and chunks them into pages — pulled into its own function
-// since the equip flow needs to rebuild this fresh after every click (workCount/active/
-// scavenging can all have changed), not just once at command invocation.
+// that owned instance's own instanceId/workCount) and chunks them into pages — pulled
+// into its own function since the equip flow needs to rebuild this fresh after every
+// click (workCount/active/scavenging can all have changed), not just once at command
+// invocation. Since 2026-08-25's instance rework, each owned instance is its own row —
+// two independently-leveled copies of the same companion both appear, one per instance.
 function buildOwnedPages(userDetails) {
     const ownedCompanions = (userDetails.companions?.owned ?? [])
         .map(o => {
             const companion = companionFactory.getCompanionById(o.id);
-            return companion ? { ...companion, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false, spareCount: companionFactory.getSpareCount(userDetails, o.id) } : null;
+            return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false } : null;
         })
         .filter(Boolean);
     return { pages: chunkArray(ownedCompanions, PAGE_SIZE), totalOwned: ownedCompanions.length };
@@ -39,21 +41,24 @@ function buildOwnedPages(userDetails) {
 // (see companionFactory.js's comment on isScavenging) — nothing here is contested the
 // way a market listing is, so no lock is needed.
 //
-// Clicking the already-active companion's own button toggles it off (active: null)
+// Clicking the already-active instance's own button toggles it off (active: null)
 // instead of re-equipping it — the only other way to reach "nothing active" is owning a
-// second companion to switch to, which stranded a player's only companion permanently
+// second instance to switch to, which stranded a player's only companion permanently
 // equipped: they couldn't send it scavenging (which requires it not be the active one)
-// with no other companion to switch to first.
+// with no other instance to switch to first. equipId is an instanceId, not a companion
+// id, since 2026-08-25's instance rework — a companion id alone can no longer identify
+// which specific owned copy to equip.
 async function attemptEquip(userId, username, equipId) {
     const freshUserDetails = await dynamoHandler.findUser(userId, username);
     if (!freshUserDetails) {
         return { ok: false, message: `could not be looked up due to a database error, please try again!`, userDetails: null };
     }
-    if (!companionFactory.ownsCompanion(freshUserDetails, equipId)) {
+    const ownedEntry = companionFactory.getOwnedEntry(freshUserDetails, equipId);
+    if (!ownedEntry) {
         return { ok: false, message: `you don't own that companion yet!`, userDetails: freshUserDetails };
     }
 
-    const companion = companionFactory.getCompanionById(equipId);
+    const companion = companionFactory.getCompanionById(ownedEntry.id);
 
     if (freshUserDetails.companions?.active === equipId) {
         const updatedCompanions = { ...freshUserDetails.companions, active: null };
@@ -71,22 +76,23 @@ async function attemptEquip(userId, username, equipId) {
     return { ok: true, message: `${companion.name} is now your active companion!`, userDetails: { ...freshUserDetails, companions: updatedCompanions } };
 }
 
-// Up to 5 equip buttons for whichever companions are shown on this page — the active
-// companion's own button stays enabled (clicking it again unequips, see attemptEquip)
-// and is styled Success to mark which one it is; every other button is disabled only if
-// that companion is out scavenging, so it's always visible why it can't be equipped right
-// now rather than it just silently not being an option. Labeled with the companion's own
-// name (each page has at most 5, matching the 5 fields above it 1:1) rather than a
-// generic "Equip" on every button, since a row of identical labels wouldn't tell you
-// which button does what.
+// Up to 5 equip buttons for whichever owned instances are shown on this page — the
+// active instance's own button stays enabled (clicking it again unequips, see
+// attemptEquip) and is styled Success to mark which one it is; every other button is
+// disabled only if that instance is out scavenging, so it's always visible why it can't
+// be equipped right now rather than it just silently not being an option. customId keys
+// off instanceId (not companion id) since 2026-08-25's instance rework — a player can own
+// several independently-leveled copies of the same companion, each its own button.
+// Labeled with the companion's name plus its level so two copies of the same companion
+// are distinguishable on the same page.
 function buildEquipRow(pageItems, userDetails) {
     if (!pageItems.length) return null;
     const activeId = userDetails.companions?.active ?? null;
     const buttons = pageItems.map(companion => new ButtonBuilder()
-        .setCustomId(`${EQUIP_PREFIX}${companion.id}`)
-        .setLabel(companion.name.slice(0, 80))
-        .setStyle(companion.id === activeId ? ButtonStyle.Success : ButtonStyle.Primary)
-        .setDisabled(companion.id !== activeId && companionFactory.isScavenging(userDetails, companion.id))
+        .setCustomId(`${EQUIP_PREFIX}${companion.instanceId}`)
+        .setLabel(`${companion.name} (Lv. ${companionFactory.getCompanionLevel(companion.workCount)})`.slice(0, 80))
+        .setStyle(companion.instanceId === activeId ? ButtonStyle.Success : ButtonStyle.Primary)
+        .setDisabled(companion.instanceId !== activeId && companionFactory.isScavenging(userDetails, companion.instanceId))
     );
     return new ActionRowBuilder().addComponents(buttons);
 }

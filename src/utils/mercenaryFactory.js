@@ -216,24 +216,16 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0) {
 }
 
 // Yukon's duplicate-pull outcome — mirrors workFactory.js's handleCompanionEncounter
-// duplicate branch exactly, since applyCompanionAward itself only builds the post-roll
-// companions object and every caller decides what else happens on top (see
-// companionFactory.applyCompanionAward's own comment). Removed 2026-08-25, direct
-// instruction ("do the code changes for sellable companion duplicates"): the old
-// CompanionDuplicateReward-scaled potato consolation — a duplicate Yukon now grants a
-// real spare (applyCompanionAward's quantity bump) the player can sell, exactly like any
-// other duplicate companion. No longer takes workGainAmount/catchUpBonus — both were only
-// ever used to compute that removed payout.
+// exactly, since applyCompanionAward itself only builds the post-roll companions object
+// and every caller decides what else happens on top (see
+// companionFactory.applyCompanionAward's own comment). Since 2026-08-25's instance
+// rework, a duplicate Yukon is a genuinely separate copy starting fresh at level 1 — no
+// spare count to report, no bonus workCount to any existing copy.
 function resolveYukonAward(userDetails) {
     const yukon = companionFactory.getCompanionById('yukon');
     const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, yukon);
 
-    if (isNew) {
-        return { isNew: true, companion: yukon, companions };
-    }
-
-    const spareCount = companionFactory.getSpareCount({ companions }, yukon.id);
-    return { isNew: false, companion: yukon, companions, spareCount };
+    return { isNew, companion: yukon, companions };
 }
 
 // Rival-only: picks 2 DISTINCT tracks (not Bounty's own single-pick shape) from

@@ -126,7 +126,7 @@ describe('getLiveRebirthPercent', () => {
     test('Mochi active amplifies the live percent by +20%, recomputed fresh (not tied to a "moment of rebirth")', () => {
         const user = maxedUser({
             rebirthCount: 1,
-            companions: { owned: [{ id: 'mochi', level: 1 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 }
+            companions: { owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }], active: 'mochi-a', ownedCount: 1, mythicOwnedCount: 1 }
         });
         expect(getLiveRebirthPercent(user)).toBeCloseTo(0.05 * 1.20);
     });

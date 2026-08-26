@@ -303,17 +303,19 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);
     if (updatedUserDetails) {
         // Companion leveling — every real /work resolution (including auto-chained ones
-        // from a workCooldownSkipChance hit) counts toward the ACTIVE companion's
+        // from a workCooldownSkipChance hit) counts toward the ACTIVE instance's
         // workCount, a genuine time investment rather than a currency sink (see
         // companionFactory.getCompanionLevel). Reads off updatedUserDetails, not the
         // pre-scenario userDetails above, since the scenario that just ran may have
-        // already written a new workCount itself (a Wandering Companion duplicate pull
-        // bumps it directly, see companionFactory.applyCompanionAward) — incrementing
-        // off stale data here would silently overwrite that bonus instead of adding to it.
-        const activeCompanionId = updatedUserDetails.companions?.active;
-        if (activeCompanionId) {
+        // already written its own companions object (a Wandering Companion pull appends a
+        // new owned instance, see companionFactory.applyCompanionAward) — incrementing off
+        // stale data here would silently clobber that write instead of building on it.
+        // `active` is an instanceId (since 2026-08-25's instance rework), not a companion
+        // id — matched against each owned entry's own `instanceId`, not `id`.
+        const activeInstanceId = updatedUserDetails.companions?.active;
+        if (activeInstanceId) {
             const leveledOwned = updatedUserDetails.companions.owned.map(o =>
-                o.id === activeCompanionId ? { ...o, workCount: (o.workCount || 0) + 1 } : o
+                o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + 1 } : o
             );
             await dynamoHandler.updateUserFields(userId, {
                 companions: { ...updatedUserDetails.companions, owned: leveledOwned }

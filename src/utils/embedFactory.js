@@ -246,7 +246,7 @@ class EmbedFactory {
             // show the base (level 1) perk text while the bonuses folded in above it are
             // already the real leveled amount, understating what's actually being applied.
             const activeCompanionLevel = activeCompanion
-                ? companionFactory.getCompanionLevel(companionFactory.getOwnedEntry(userDetails, activeCompanion.id)?.workCount)
+                ? companionFactory.getCompanionLevel(companionFactory.getActiveInstance(userDetails)?.workCount)
                 : 1;
             fields.push({
                 name: "Active Companion:",
@@ -1245,46 +1245,32 @@ class EmbedFactory {
         return embed;
     }
 
-    // result: { isNew, companion, workCountBefore, workCountAfter, spareCount } from
-    // workFactory.handleCompanionEncounter. A brand-new companion shows its perk and a
-    // reminder to equip it via /companion (won, not auto-equipped — equipping stays a
-    // deliberate choice); a duplicate pull shows the spare it just granted instead — see
-    // systems/companions.md#sellable-duplicates for why this replaced the old flat potato
-    // consolation.
+    // result: { isNew, companion } from workFactory.handleCompanionEncounter. A brand-new
+    // companion shows its perk and a reminder to equip it via /companion (won, not
+    // auto-equipped — equipping stays a deliberate choice). Since 2026-08-25's instance
+    // rework, a duplicate pull is a genuinely separate copy starting fresh at level 1 —
+    // no bonus workCount to any existing copy — so it gets the same "go equip it" framing
+    // rather than a before/after progress readout. See
+    // systems/companions.md#duplicate-companions-are-real-separate-instances.
     createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null) {
-        const { isNew, companion, workCountBefore, workCountAfter, spareCount } = result;
+        const { isNew, companion } = result;
         let fields = [{
             name: `Work Count:`,
             value: `${newWorkCount.toLocaleString()}`,
             inline: true,
         }];
 
+        fields.push({
+            name: `Perk:`,
+            value: formatCompanionPerks(companion),
+            inline: true,
+        });
+
         let description, footerText = "Made by Beggar";
         if (isNew) {
-            fields.push({
-                name: `Perk:`,
-                value: formatCompanionPerks(companion),
-                inline: true,
-            });
             description = `${companion.description}\n\nRun \`/companion\` and use its equip button to make ${companion.name} your active companion!`;
         } else {
-            fields.push({
-                name: `Spare ${companion.name}:`,
-                value: `${spareCount} on hand — sell with /companion-sell or /companion-sell-npc, or just keep it`,
-                inline: true,
-            });
-            // The duplicate's own workCount also bumps (see workFactory.js's
-            // handleCompanionEncounter) — surfaced explicitly rather than silently applied.
-            const levelBefore = companionFactory.getCompanionLevel(workCountBefore);
-            const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
-            fields.push({
-                name: `${companion.name} Progress:`,
-                value: levelAfter > levelBefore
-                    ? `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})\nLv. ${levelBefore} → Lv. ${levelAfter}! 🎉`
-                    : `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})`,
-                inline: true,
-            });
-            description = `${companion.description}\n\nYou already have a ${companion.name} — it gains experience from the encounter and you now hold a spare copy too.`;
+            description = `${companion.description}\n\nYou already have a ${companion.name} — this is a separate copy, starting fresh at level 1. Run \`/companion\` to see and equip it individually, or sell it with /companion-sell or /companion-sell-npc.`;
         }
 
         if (cooldownSkippedByCompanion) {
@@ -1512,7 +1498,7 @@ class EmbedFactory {
                 name: yukonAward.isNew ? '🤠 A new companion joins you!' : '🤠 Yukon, the Highwayman (already owned)',
                 value: yukonAward.isNew
                     ? `You've earned the loyalty of Yukon, the Highwayman — a Legendary companion found only through Mercenary Bounties!`
-                    : `You already have Yukon's loyalty — instead, this haul includes a spare Yukon (${yukonAward.spareCount} on hand now) you can sell with /companion-sell or /companion-sell-npc.`,
+                    : `You already have Yukon's loyalty — instead, this haul includes a separate Yukon starting fresh at level 1. Run /companion to see and equip it individually, or sell it with /companion-sell or /companion-sell-npc.`,
                 inline: false,
             });
         }
@@ -1747,23 +1733,26 @@ class EmbedFactory {
         return embed;
     }
 
-    // pageItems: full companion objects (owned ids already resolved to roster entries),
-    // each carrying its own workCount (see companion.js) for the level shown here. Paginated
-    // exactly like createAchievementsPageEmbed/createQuestsPageEmbed. scavenging (optional):
-    // the live userDetails.companions.scavenging record ({ companionId, rarity, returnsAt })
-    // or null — powers the third status branch below (see systems/companions.md#scavenging).
+    // pageItems: full companion objects (owned instances resolved to roster entries),
+    // each carrying its own instanceId/workCount (see companion.js) for the level shown
+    // here — since 2026-08-25's instance rework, several independently-leveled copies of
+    // the same companion can each appear as their own row. Paginated exactly like
+    // createAchievementsPageEmbed/createQuestsPageEmbed. activeId/scavenging are keyed by
+    // instanceId, not companion id — scavenging (optional) is the live
+    // userDetails.companions.scavenging record ({ instanceId, rarity, returnsAt }) or
+    // null — powers the third status branch below (see systems/companions.md#scavenging).
     createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned, scavenging = null, canEquip = true) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
             let status;
-            if (companion.id === activeId) {
+            if (companion.instanceId === activeId) {
                 status = '✅ Active';
-            } else if (scavenging && companion.id === scavenging.companionId) {
+            } else if (scavenging && companion.instanceId === scavenging.instanceId) {
                 const remainingSeconds = Math.max(0, Math.ceil((scavenging.returnsAt - Date.now()) / 1000));
                 status = remainingSeconds > 0
                     ? `🧭 Scavenging — returns in ${convertSecondstoMinutes(remainingSeconds)}`
                     : `🧭 Scavenging — ready! Use /companion-scavenge-collect`;
             } else {
-                status = companion.id;
+                status = 'Not equipped';
             }
             const workCount = companion.workCount || 0;
             const level = companionFactory.getCompanionLevel(workCount);
@@ -1778,14 +1767,8 @@ class EmbedFactory {
             // than on the write side.
             const isUpperRarity = companion.rarity === CompanionRarity.LEGENDARY || companion.rarity === CompanionRarity.MYTHIC;
             const scoutTag = (companion.hasScavenged && isUpperRarity) ? ' 🗺️ Seasoned Scout' : '';
-            // Spares (extra copies beyond the one that equips/levels — see
-            // companionFactory.getSpareCount) are sellable via /companion-sell and
-            // /companion-sell-npc without touching this actual copy. Only shown once
-            // there's at least one, so a companion with no spares reads exactly as it did
-            // before this existed.
-            const spareTag = companion.spareCount > 0 ? ` (+${companion.spareCount} spare${companion.spareCount == 1 ? '' : 's'})` : '';
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}${spareTag}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}`,
                 value: `${formatCompanionPerks(companion, level)}\n${progress}\n${status}`,
                 inline: false,
             };

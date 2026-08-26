@@ -15,31 +15,38 @@ async function getMarketState() {
     };
 }
 
-function validateListingRequest(userDetails, companionId, price) {
-    const companion = companionFactory.getCompanionById(companionId);
+// instanceId (not companionId — since 2026-08-25's instance rework, see
+// companionFactory.migrateOwnedToInstances) identifies exactly WHICH owned copy is being
+// listed, since a player can own several independently-leveled copies of the same
+// companion. Returns the owned entry too so buildListing doesn't need a second lookup.
+function validateListingRequest(userDetails, instanceId, price) {
+    const ownedEntry = companionFactory.getOwnedEntry(userDetails, instanceId);
+    if (!ownedEntry) {
+        return { valid: false, error: "You don't own that companion." };
+    }
+    const companion = companionFactory.getCompanionById(ownedEntry.id);
     if (!companion) {
         return { valid: false, error: "That's not a real companion." };
     }
-    if (!companionFactory.ownsCompanion(userDetails, companionId)) {
-        return { valid: false, error: "You don't own that companion." };
-    }
-    if (companionFactory.isScavenging(userDetails, companionId)) {
+    if (companionFactory.isScavenging(userDetails, instanceId)) {
         return { valid: false, error: "That companion is out scavenging — it can't be listed until it returns (or you cancel the scavenge)." };
     }
     const minimumPrice = CompanionMarket.MINIMUM_PRICE[companion.rarity];
     if (!Number.isFinite(price) || price < minimumPrice) {
         return { valid: false, error: `That companion's tier requires an asking price of at least ${minimumPrice.toLocaleString()} potatoes.` };
     }
-    return { valid: true, companion };
+    return { valid: true, companion, ownedEntry };
 }
 
 // Captures the seller's own owned-entry workCount at listing time — leveling
 // investment is a real, tradeable part of the companion's worth (a maxed-level
 // companion is worth more than a fresh one, and sellers can price accordingly; no
 // change needed to CompanionMarket.MINIMUM_PRICE itself since it's just a floor), so
-// selling was deliberately NOT made to reset a companion back to level 1.
-function buildListing(userDetails, companion, price) {
-    const ownedEntry = companionFactory.getOwnedEntry(userDetails, companion.id);
+// selling was deliberately NOT made to reset a companion back to level 1. ownedEntry is
+// passed in (from validateListingRequest, which already looked it up by instanceId)
+// rather than re-derived here from a companion id — a companion id alone can no longer
+// identify a specific copy now that duplicates are separate instances.
+function buildListing(userDetails, companion, price, ownedEntry) {
     return {
         listingId: `${userDetails.userId}-${companion.id}-${Date.now()}`,
         sellerId: userDetails.userId,
@@ -51,35 +58,20 @@ function buildListing(userDetails, companion, price) {
     };
 }
 
-// Escrow removal for selling/listing ONE unit of a companion. Quantity-aware (added
-// 2026-08-25, direct instruction — "do the code changes for sellable companion
-// duplicates"): if the owned entry has spares (quantity > 1, see
-// companionFactory.getSpareCount), this only decrements quantity by 1 — the entry stays
-// in `owned`, still equipped/leveling exactly as before, since a spare sale should never
-// touch the player's actual copy. Only once quantity would hit 0 (the player's last/only
-// copy) does this fall back to the original behavior: pull the entry out of `owned`
-// entirely, unequipping it first if it was active, so it physically can't be equipped,
-// re-listed, or duplicated while for sale. Deliberately does NOT decrement
-// ownedCount/mythicOwnedCount either way: those are lifetime achievement counters (see
-// Achievements' companion entries), and selling a companion you already earned credit
-// for shouldn't claw an achievement back.
-function removeFromOwned(userDetails, companionId) {
+// Escrow removal for listing/selling one specific owned instance — pulls that exact copy
+// out of `owned` entirely (unequipping it first if it was active) so it physically can't
+// be equipped, re-listed, or duplicated while for sale. Deliberately does NOT decrement
+// ownedCount/mythicOwnedCount: those are lifetime achievement counters (see Achievements'
+// companion entries), and selling a companion you already earned credit for shouldn't
+// claw an achievement back. Simplified 2026-08-25 (instance rework) from an earlier
+// same-day "decrement quantity, or remove if this was the last copy" version — with
+// every copy now its own independent instance, there's no shared-quantity state left to
+// juggle, this just removes the one instance asked for.
+function removeFromOwned(userDetails, instanceId) {
     const companions = userDetails.companions;
-    const existing = companions.owned.find(c => c.id === companionId);
-    const currentQuantity = existing?.quantity || 1;
-
-    if (currentQuantity > 1) {
-        return {
-            owned: companions.owned.map(c => c.id === companionId ? { ...c, quantity: currentQuantity - 1 } : c),
-            active: companions.active,
-            ownedCount: companions.ownedCount,
-            mythicOwnedCount: companions.mythicOwnedCount
-        };
-    }
-
     return {
-        owned: companions.owned.filter(c => c.id !== companionId),
-        active: companions.active === companionId ? null : companions.active,
+        owned: companions.owned.filter(c => c.instanceId !== instanceId),
+        active: companions.active === instanceId ? null : companions.active,
         ownedCount: companions.ownedCount,
         mythicOwnedCount: companions.mythicOwnedCount
     };
@@ -111,19 +103,21 @@ function rollNpcSalePrice(companion, level) {
     return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-function validateNpcSaleRequest(userDetails, companionId) {
-    const companion = companionFactory.getCompanionById(companionId);
+// instanceId-keyed the same way validateListingRequest is — see that function's own
+// comment.
+function validateNpcSaleRequest(userDetails, instanceId) {
+    const ownedEntry = companionFactory.getOwnedEntry(userDetails, instanceId);
+    if (!ownedEntry) {
+        return { valid: false, error: "You don't own that companion." };
+    }
+    const companion = companionFactory.getCompanionById(ownedEntry.id);
     if (!companion) {
         return { valid: false, error: "That's not a real companion." };
     }
-    if (!companionFactory.ownsCompanion(userDetails, companionId)) {
-        return { valid: false, error: "You don't own that companion." };
-    }
-    if (companionFactory.isScavenging(userDetails, companionId)) {
+    if (companionFactory.isScavenging(userDetails, instanceId)) {
         return { valid: false, error: "That companion is out scavenging — it can't be sold until it returns (or you cancel the scavenge)." };
     }
-    const ownedEntry = companionFactory.getOwnedEntry(userDetails, companionId);
-    const level = companionFactory.getCompanionLevel(ownedEntry?.workCount);
+    const level = companionFactory.getCompanionLevel(ownedEntry.workCount);
     return { valid: true, companion, level };
 }
 

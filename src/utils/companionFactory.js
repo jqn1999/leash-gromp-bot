@@ -41,25 +41,53 @@ function getCompanionById(id) {
 // backfilled by findUser's self-healing pattern, but plenty of call sites (unit test
 // fixtures, code paths that build a userDetails object by hand) don't carry it, and
 // "no companions field" should behave exactly like "no companion active" rather than
-// throwing.
+// throwing. Checks by companion TYPE, not instance — true if the player owns at least
+// one copy, regardless of how many.
 function ownsCompanion(userDetails, companionId) {
     return (userDetails.companions?.owned ?? []).some(c => c.id === companionId);
 }
 
-function getActiveCompanion(userDetails) {
-    const activeId = userDetails.companions?.active;
-    if (!activeId) {
+// A unique id for one specific owned copy of a companion — since 2026-08-25's instance
+// rework (see systems/companions.md#duplicate-companions-are-real-separate-instances), a
+// player can own several independently-leveled copies of the same companion type, so
+// `id` (the companion TYPE) alone can no longer identify a specific owned copy the way it
+// used to. Not cryptographically unique, just collision-resistant enough for a per-user
+// array of at most a few dozen entries.
+function generateInstanceId(companionId) {
+    return `${companionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// The specific owned instance currently equipped — `companions.active` stores an
+// INSTANCE id (not a companion id) for exactly this reason: with multiple independently-
+// leveled copies of the same companion possible, "which Sprout is equipped" needs more
+// than the companion id to answer. Returns the raw owned-entry object (carries workCount,
+// the leveling source of truth) rather than the roster definition — see getActiveCompanion
+// for that.
+function getActiveInstance(userDetails) {
+    const activeInstanceId = userDetails.companions?.active;
+    if (!activeInstanceId) {
         return null;
     }
-    return getCompanionById(activeId);
+    return (userDetails.companions?.owned ?? []).find(c => c.instanceId === activeInstanceId) || null;
+}
+
+// The roster definition (perks, name, rarity) of whichever instance is currently
+// equipped — most callers only need this, not the raw owned-entry workCount (see
+// getActiveInstance for that).
+function getActiveCompanion(userDetails) {
+    const activeInstance = getActiveInstance(userDetails);
+    if (!activeInstance) {
+        return null;
+    }
+    return getCompanionById(activeInstance.id);
 }
 
 // The specific owned-companion record (carries workCount, the leveling source of truth)
-// for a given companion id — distinct from getCompanionById, which only returns the
-// static roster definition. Null if not owned (shouldn't happen for the active
-// companion, but stays defensive the same way every other lookup here does).
-function getOwnedEntry(userDetails, companionId) {
-    return (userDetails.companions?.owned ?? []).find(c => c.id === companionId) || null;
+// for a given owned INSTANCE — distinct from getCompanionById, which only returns the
+// static roster definition, and keyed by instanceId (not companion id) since a player can
+// own several independently-leveled copies of the same companion type. Null if not owned.
+function getOwnedEntry(userDetails, instanceId) {
+    return (userDetails.companions?.owned ?? []).find(c => c.instanceId === instanceId) || null;
 }
 
 // Threshold lookup, same exact shape/pattern as guildBuffFactory.getGuildLevel off
@@ -99,8 +127,8 @@ function getGuineaPigRebate(userDetails, rebateBasePercent) {
     if (!active || active.id !== 'guinea_pig') {
         return null;
     }
-    const owned = getOwnedEntry(userDetails, active.id);
-    const level = getCompanionLevel(owned?.workCount);
+    const activeInstance = getActiveInstance(userDetails);
+    const level = getCompanionLevel(activeInstance?.workCount);
     const multiplier = getLevelMultiplier(level);
     return {
         level,
@@ -114,9 +142,9 @@ function getGuineaPigRebate(userDetails, rebateBasePercent) {
 // mirrors getGuildWorkMulti's "one active modifier computed fresh at the usage site"
 // shape. Returns 0 if nothing is equipped or the active companion doesn't carry that
 // perk type, so every call site can just add/multiply this in unconditionally. Scales
-// the base perk value by the active companion's OWN level (getOwnedEntry's workCount) —
-// this is the one place that scaling needs to happen for it to reach every existing
-// perk application site for free, with zero changes needed anywhere else.
+// the base perk value by the active INSTANCE's own level (its own workCount) — this is
+// the one place that scaling needs to happen for it to reach every existing perk
+// application site for free, with zero changes needed anywhere else.
 function getActivePerkValue(userDetails, perkType) {
     const active = getActiveCompanion(userDetails);
     if (!active) {
@@ -126,8 +154,8 @@ function getActivePerkValue(userDetails, perkType) {
     if (!perk) {
         return 0;
     }
-    const owned = getOwnedEntry(userDetails, active.id);
-    const level = getCompanionLevel(owned?.workCount);
+    const activeInstance = getActiveInstance(userDetails);
+    const level = getCompanionLevel(activeInstance?.workCount);
     return perk.value * getLevelMultiplier(level);
 }
 
@@ -135,81 +163,45 @@ function getActivePerkValue(userDetails, perkType) {
 // Does not auto-equip a newly-won companion — equipping stays a deliberate choice via
 // /companion equip, same as every other "pick one" mechanic in this bot.
 //
-// Two independent amounts, since "new" and "already owned" are genuinely different
-// situations that call for different numbers:
-// - initialWorkCount: the starting workCount IF this turns out to be a brand-new
-//   acquisition. Defaults to 0 (a genuine /work pull starts fresh) — companionBuy.js
-//   passes the listing's workCount instead, so buying a leveled companion doesn't reset
-//   it to level 1, and companionCancel.js does the same when a cancelled listing is
-//   being returned to an owner who doesn't currently hold it.
-// - duplicateWorkCountBonus: how much to ADD to the existing entry if this companion is
-//   already owned, rather than creating a second owned entry for the same id (which the
-//   rest of this codebase assumes never happens — getOwnedEntry, market listing/sale,
-//   etc. all expect at most one owned ENTRY per id — see getSpareCount below for the
-//   quantity dimension that represents multiple copies within that one entry). Defaults
-//   to CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS (a genuine /work duplicate pull is
-//   real, if modest, luck). companionBuy.js and companionCancel.js both pass the same
-//   workCount value for both params, since either branch firing should credit that
-//   specific amount of training either way — buying (or getting back) a companion you
-//   already own combines the levels rather than being blocked or silently discarding the
-//   leveled one.
+// Redesigned 2026-08-25 (direct instruction — "duplicate companions are separate,
+// independently-leveled copies, each shown/equipped separately") from an earlier
+// same-day design where a duplicate pull merged into one shared-level entry with a
+// `quantity` counter. That's gone: every acquisition — new or duplicate — now ALWAYS
+// appends a brand-new owned instance (its own instanceId, own workCount), never merges
+// into an existing one. The only thing that still depends on "is this a genuinely new
+// companion TYPE" is the `isNew` return value and the `ownedCount`/`mythicOwnedCount`
+// achievement counters, which only ever count distinct TYPES ever unlocked, not total
+// copies collected — those still only bump the first time a given companion id is ever
+// owned, exactly as before.
 //
-// Every owned entry carries a `quantity` (added 2026-08-25, direct instruction — "do the
-// code changes for sellable companion duplicates") — 1 for a normal single copy, bumped
-// by 1 whenever the duplicate branch below fires, regardless of source (a /work
-// duplicate pull, buying a companion you already own, or a cancelled listing being
-// merged back in — every one of those paths already funnels through this function or,
-// for companionCancel.js's own inline restore logic, mirrors it). A missing `quantity`
-// on an older entry reads as 1 everywhere it's consumed (getSpareCount below) rather
-// than needing an eager DB migration. The extra copies beyond the first ("spares") are
-// what /companion-sell and /companion-sell-npc can now sell without touching the
-// player's actual equipped/leveling copy — see companionMarketFactory.removeFromOwned.
-//
-// workFactory.js's handleCompanionEncounter already writes back whatever `companions`
-// this returns unconditionally, so the duplicate branch needed no caller-side changes to
-// start taking effect when leveling (and now quantity) first shipped.
-function applyCompanionAward(userDetails, companion, initialWorkCount = 0, duplicateWorkCountBonus = CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS) {
+// workCount is the one thing callers now explicitly choose, since "new" and "duplicate"
+// no longer need different numbers: a genuine /work pull (new OR duplicate) passes the
+// default 0 — a duplicate is no longer worth automatic bonus training, it's simply
+// another copy starting at level 1, same as if it were the first. Market purchases
+// (companionMarket.js's attemptBuy) and listing cancels (companionCancel.js) pass the
+// real captured `listing.workCount` instead, since those transactions are moving a
+// SPECIFIC already-leveled instance, not rolling a fresh one — the level you're buying
+// (or getting back) is the level you paid for either way.
+function applyCompanionAward(userDetails, companion, workCount = 0) {
     const companions = userDetails.companions;
     const isNew = !ownsCompanion(userDetails, companion.id);
-
-    if (!isNew) {
-        const owned = companions.owned.map(c =>
-            c.id === companion.id
-                ? { ...c, workCount: (c.workCount || 0) + duplicateWorkCountBonus, quantity: (c.quantity || 1) + 1 }
-                : c
-        );
-        return { isNew, companions: { ...companions, owned } };
-    }
+    const instanceId = generateInstanceId(companion.id);
 
     return {
         isNew,
-        // Spread `companions` first (same as the duplicate branch above) rather than
-        // listing out only the fields this branch cares about — a real bug shipped here:
-        // the old version built { owned, active, ownedCount, mythicOwnedCount } from
-        // scratch, silently dropping `scavenging`. Since updateUserFields does a full SET
-        // on the `companions` field (not a deep merge), that meant finding a genuinely new
-        // companion while another one was out scavenging wiped the scavenge out from under
-        // the player — reported as "encountering a new companion ends my scavenging run".
+        // Spread `companions` first rather than listing out only the fields this cares
+        // about — a real bug shipped here once: an earlier version built
+        // { owned, active, ownedCount, mythicOwnedCount } from scratch, silently dropping
+        // `scavenging`. Since updateUserFields does a full SET on the `companions` field
+        // (not a deep merge), that meant finding a companion while a different one was out
+        // scavenging wiped the scavenge out from under the player.
         companions: {
             ...companions,
-            owned: [...companions.owned, { id: companion.id, workCount: initialWorkCount, quantity: 1 }],
-            ownedCount: companions.ownedCount + 1,
-            mythicOwnedCount: companions.mythicOwnedCount + (companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
+            owned: [...companions.owned, { instanceId, id: companion.id, workCount }],
+            ownedCount: companions.ownedCount + (isNew ? 1 : 0),
+            mythicOwnedCount: companions.mythicOwnedCount + (isNew && companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
         }
     };
-}
-
-// How many EXTRA copies of a companion the player holds beyond their first (the one
-// that equips/levels) — the sellable count /companion-sell and /companion-sell-npc now
-// offer alongside the option to sell the companion outright. 0 for an unowned companion
-// or a normal single copy; a missing `quantity` on an older owned entry (from before
-// this field existed) reads as 1 (a single copy, 0 spares), not undefined/NaN.
-function getSpareCount(userDetails, companionId) {
-    const owned = getOwnedEntry(userDetails, companionId);
-    if (!owned) {
-        return 0;
-    }
-    return Math.max(0, (owned.quantity || 1) - 1);
 }
 
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
@@ -220,17 +212,22 @@ function getSpareCount(userDetails, companionId) {
 // still needs to show up in `owned` (for /companion's list display and workCount
 // bookkeeping) the whole time it's away, which removal would break. Guards against
 // userDetails.companions being absent the same way ownsCompanion/getActiveCompanion do.
-function isScavenging(userDetails, companionId) {
-    return userDetails.companions?.scavenging?.companionId === companionId;
+// Keyed by INSTANCE id (since 2026-08-25's instance rework) — a player can own several
+// copies of the same companion, and only one specific copy is ever the one out
+// scavenging, not "the Sprout" generically.
+function isScavenging(userDetails, instanceId) {
+    return userDetails.companions?.scavenging?.instanceId === instanceId;
 }
 
-// The { companionId, rarity, returnsAt } record /companion-scavenge writes on dispatch.
-// rarity is denormalized straight onto the record (not re-derived from companionId at
-// collect/cancel time) purely so those two commands don't need a second getCompanionById
-// lookup to know which CompanionScavenging row applies.
-function buildScavengeDispatch(companion) {
+// The { instanceId, rarity, returnsAt } record /companion-scavenge writes on dispatch —
+// instanceId (not companionId) identifies exactly which owned copy is away, since a
+// player can own more than one of the same companion. rarity is denormalized straight
+// onto the record (not re-derived from the instance's companion id at collect/cancel
+// time) purely so those two commands don't need a second getCompanionById lookup to know
+// which CompanionScavenging row applies.
+function buildScavengeDispatch(companion, instanceId) {
     return {
-        companionId: companion.id,
+        instanceId,
         rarity: companion.rarity,
         returnsAt: Date.now() + CompanionScavenging.DURATION_SECONDS[companion.rarity] * 1000
     };
@@ -280,7 +277,7 @@ function rollWorkCountMultiplierTier() {
 // Does not touch `scavenging` itself or userDetails.starches — the caller clears/credits
 // those as part of its own write.
 function resolveScavengeReward(userDetails) {
-    const { companionId, rarity } = userDetails.companions.scavenging;
+    const { instanceId, rarity } = userDetails.companions.scavenging;
 
     const { min: workMin, max: workMax } = CompanionScavenging.WORK_COUNT_RANGE[rarity];
     const baseWorkCount = workMin + Math.floor(Math.random() * (workMax - workMin + 1));
@@ -292,7 +289,7 @@ function resolveScavengeReward(userDetails) {
     const starchesGained = Math.floor(baseStarches * multiplierTier.multiplier);
 
     const owned = userDetails.companions.owned.map(c =>
-        c.id === companionId
+        c.instanceId === instanceId
             ? { ...c, workCount: (c.workCount || 0) + workCountGained, hasScavenged: true }
             : c
     );
@@ -307,15 +304,75 @@ function resolveScavengeReward(userDetails) {
     return { owned, starchesGained, workCountGained, multiplierTier: multiplierTier.name, scavengeReturnsByRarity };
 }
 
+// One-time live-data migration (2026-08-25) — see
+// systems/companions.md#duplicate-companions-are-real-separate-instances. Every owned
+// entry from before this rework is one of two shapes: the original `{id, workCount}`
+// (a single implicit copy), or the same-day-earlier `{id, workCount, quantity}` (N
+// copies stacked into one entry, all sharing that one workCount/level). Both expand here
+// into N genuinely separate `{instanceId, id, workCount}` entries — each new instance
+// keeps the SAME workCount the stacked entry had, so no player loses any leveling
+// progress in the migration; it just becomes real, separately-selectable copies at
+// whatever level they already were.
+//
+// Idempotent by construction: an owned array where every entry already carries an
+// instanceId is detected up front and the exact same `companions` object reference is
+// returned untouched, so a caller can cheaply skip a write with `result === companions`
+// instead of needing a separate dirty flag. Safe to call on every single findUser lookup
+// forever — once an account is migrated, every subsequent call is a no-op.
+//
+// `active`/`scavenging` both used to identify a companion by its TYPE id, which stops
+// being enough once a type can have more than one instance — both are re-pointed at
+// whichever specific new instance ends up first for that old entry (arbitrary but
+// deterministic; which physical instance keeps the "equipped"/"scavenging" state doesn't
+// matter since every instance from one stacked entry starts out identical).
+function migrateOwnedToInstances(companions) {
+    const owned = companions.owned ?? [];
+    const needsMigration = owned.some(c => !c.instanceId);
+    if (!needsMigration) {
+        return companions;
+    }
+
+    let newActive = companions.active ?? null;
+    let newScavenging = companions.scavenging ? { ...companions.scavenging } : null;
+    const newOwned = [];
+
+    for (const entry of owned) {
+        if (entry.instanceId) {
+            newOwned.push(entry);
+            continue;
+        }
+
+        const copyCount = Math.max(1, entry.quantity || 1);
+        const { quantity, ...rest } = entry;
+        const newInstanceIds = [];
+        for (let i = 0; i < copyCount; i++) {
+            const instanceId = generateInstanceId(entry.id);
+            newInstanceIds.push(instanceId);
+            newOwned.push({ ...rest, instanceId });
+        }
+
+        if (companions.active === entry.id) {
+            newActive = newInstanceIds[0];
+        }
+        if (companions.scavenging && !companions.scavenging.instanceId && companions.scavenging.companionId === entry.id) {
+            const { companionId, ...scavengingRest } = newScavenging;
+            newScavenging = { ...scavengingRest, instanceId: newInstanceIds[0] };
+        }
+    }
+
+    return { ...companions, owned: newOwned, active: newActive, scavenging: newScavenging };
+}
+
 module.exports = {
     rollRarity,
     getCompanionsByRarity,
     rollCompanion,
     getCompanionById,
     ownsCompanion,
+    generateInstanceId,
+    getActiveInstance,
     getActiveCompanion,
     getOwnedEntry,
-    getSpareCount,
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,
@@ -325,5 +382,6 @@ module.exports = {
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,
+    migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 }

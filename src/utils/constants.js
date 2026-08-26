@@ -478,11 +478,13 @@ const PoisonMitigation = {
 // Rolling a companion you already own used to pay out a flat potato consolation off
 // this table (maxGain caps fed into workFactory's calculateGainAmount, same shape as
 // Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO) instead of granting anything
-// real. Removed 2026-08-25, direct instruction ("do the code changes for sellable
-// companion duplicates") — a duplicate pull now grants a genuine second copy (a "spare",
-// tracked via each owned entry's own `quantity` field) instead of an automatic payout;
-// the player decides whether to sell it (NPC or player market) or just hold it. See
-// companionFactory.applyCompanionAward and systems/companions.md#sellable-duplicates.
+// real. Removed 2026-08-25 in two steps, both direct instruction: first replaced with a
+// genuine second copy sharing the original's level ("do the code changes for sellable
+// companion duplicates"), then — once asked "why would new duplicate companions not be
+// separated" — reworked again into a fully independent instance starting at level 1. The
+// player decides whether to sell it (NPC or player market) or just hold it. See
+// companionFactory.applyCompanionAward and
+// systems/companions.md#duplicate-companions-are-real-separate-instances.
 
 // Each owned companion tracks its own `workCount` — cumulative /work resolutions while
 // that specific companion was the ACTIVE one (see companionFactory.getCompanionLevel and
@@ -498,10 +500,6 @@ const CompanionLeveling = {
     // doesn't replace the rarity/luck axis the balance pass already tuned (see
     // systems/companions.md).
     PERK_BONUS_PER_LEVEL: 0.05,
-    // A duplicate pull is real, rare luck (rolling a companion you already own) — worth
-    // meaningfully more than one more /work call would have, but nowhere close to
-    // instantly maxing a companion out.
-    DUPLICATE_WORK_COUNT_BONUS: 10,
     THRESHOLDS: [
         { level: 1, workCountRequired: 0 },
         { level: 2, workCountRequired: 15 },

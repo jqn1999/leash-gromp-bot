@@ -58,13 +58,9 @@ module.exports = {
         }
 
         const { fee, sellerReceives } = companionMarketFactory.computeSaleSplit(listing.price);
-        // Carries the seller's workCount over either way — buying a leveled companion
-        // shouldn't reset its level to 1 (see companionMarketFactory.buildListing).
-        // Already owning one (e.g. a duplicate /work pull landed while this was up for
-        // sale) combines the levels instead of being blocked or discarding the purchase:
-        // passing the listing's workCount for BOTH params means either branch
-        // applyCompanionAward takes credits the same amount of training either way.
-        const { companions: buyerCompanions } = companionFactory.applyCompanionAward(userDetails, companion, listing.workCount || 0, listing.workCount || 0);
+        // Carries the seller's workCount over — buying a leveled companion shouldn't
+        // reset its level to 1 (see companionMarketFactory.buildListing).
+        const { companions: buyerCompanions } = companionFactory.applyCompanionAward(userDetails, companion, listing.workCount || 0);
 
         await Promise.all([
             dynamoHandler.updateUserFields(userId, {

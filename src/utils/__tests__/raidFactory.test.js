@@ -159,7 +159,7 @@ describe('getMemberRaidPower', () => {
         const user = {
             workMultiplierAmount: 100,
             rebirthCount: 0,
-            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         };
         // Sprout's workMultiplierPercent is 0.05 at level 1 (workCount 0)
         expect(getMemberRaidPower(user)).toBeCloseTo(105);
@@ -169,7 +169,7 @@ describe('getMemberRaidPower', () => {
         const user = {
             workMultiplierAmount: 100,
             rebirthCount: 1,
-            companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         };
         // rebirthCount 1 -> +5%, Sprout -> +5%, both additive on the base: 100 * 1.10
         expect(getMemberRaidPower(user)).toBeCloseTo(110);

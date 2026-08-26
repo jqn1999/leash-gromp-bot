@@ -218,7 +218,11 @@ const updateIfNewRecord = async function (userId, fieldName, newValue) {
 // let this land if that specific companion is still the one out scavenging" as the guard.
 // Dispatch itself is NOT run through this — see companion-scavenge.js's own comment for why
 // that race is low/no-stakes and left unconditional, same as /companion equip.
-const resolveScavenge = async function (userId, companionId, setAttributes = {}) {
+// instanceId (not companionId — renamed 2026-08-25 alongside the instance rework, see
+// companionFactory.migrateOwnedToInstances) — a player can own several copies of the
+// same companion, so only a specific instance id can identify which one is actually out
+// scavenging.
+const resolveScavenge = async function (userId, instanceId, setAttributes = {}) {
     const { expression, names, values } = buildUpdateExpression(setAttributes);
     if (!expression) return false;
 
@@ -228,9 +232,9 @@ const resolveScavenge = async function (userId, companionId, setAttributes = {})
             userId: userId,
         },
         UpdateExpression: expression,
-        ConditionExpression: "companions.scavenging.companionId = :companionId",
+        ConditionExpression: "companions.scavenging.instanceId = :instanceId",
         ExpressionAttributeNames: names,
-        ExpressionAttributeValues: { ...values, ":companionId": companionId },
+        ExpressionAttributeValues: { ...values, ":instanceId": instanceId },
         ReturnValues: "ALL_NEW",
     };
 
@@ -412,11 +416,11 @@ function getDefaultUserFields(userId, username) {
         // MercenaryRank/RaidLevel already use) — see safehouseFactory.js.
         safehouses: [],
         companions: {                // see systems/companions.md
-            owned: [],               // array of { id, level } — level static at 1 for now
-            active: null,            // companion id currently equipped, or null
+            owned: [],               // array of { instanceId, id, workCount } — each owned copy is its own independently-leveled instance
+            active: null,            // INSTANCE id currently equipped, or null — not a companion id, since a companion type can have multiple owned copies
             ownedCount: 0,
             mythicOwnedCount: 0,
-            scavenging: null,        // { companionId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
+            scavenging: null,        // { instanceId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
             scavengeReturnsByRarity: { legendary: 0, mythic: 0 } // backs the Legendary Legwork/Mythic Milestones achievements — see companionScavengeCollect.js
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
@@ -524,6 +528,24 @@ const findUser = async function (userId, username) {
                 if (Object.keys(healedFields).length > 0) {
                     console.log(`findUser healed fields for ${userId}: ${Object.keys(healedFields).join(', ')}`);
                     user = { ...user, ...healedFields };
+                }
+            }
+
+            // One-time companion-instance migration (2026-08-25) — see
+            // companionFactory.migrateOwnedToInstances's own comment for the full
+            // rationale/idempotency guarantee. Separate from the generic missingFields
+            // loop above since that only ever heals a top-level field (or one level of
+            // plain-object sub-keys) that's entirely MISSING — this instead reshapes an
+            // ARRAY field that's already present but in an older shape, which the generic
+            // loop has no concept of.
+            const migratedCompanions = companionFactory.migrateOwnedToInstances(user.companions || getDefaultUserFields(userId, username).companions);
+            if (migratedCompanions !== user.companions) {
+                const migrated = await updateUserFields(userId, { companions: migratedCompanions });
+                if (migrated) {
+                    console.log(`findUser migrated companions to per-instance shape for ${userId}`);
+                    user = { ...user, companions: migratedCompanions };
+                } else {
+                    console.log(`findUser could not migrate companions to per-instance shape for ${userId} — leaving unmigrated`);
                 }
             }
 

@@ -4,9 +4,10 @@ const {
     rollCompanion,
     getCompanionById,
     ownsCompanion,
+    generateInstanceId,
+    getActiveInstance,
     getActiveCompanion,
     getOwnedEntry,
-    getSpareCount,
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,
@@ -15,6 +16,7 @@ const {
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,
+    migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 } = require('../companionFactory');
 const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require('../constants');
@@ -88,43 +90,76 @@ describe('ownsCompanion', () => {
     });
 
     test('true once owned', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-1', id: 'sprout', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
         expect(ownsCompanion(user, 'sprout')).toBe(true);
     });
 });
 
-describe('getActiveCompanion / getActivePerkValue', () => {
+describe('generateInstanceId', () => {
+    test('embeds the companion id and produces distinct ids across calls', () => {
+        const first = generateInstanceId('sprout');
+        const second = generateInstanceId('sprout');
+        expect(first).toContain('sprout');
+        expect(first).not.toBe(second);
+    });
+});
+
+describe('getOwnedEntry / getActiveInstance / getActiveCompanion / getActivePerkValue', () => {
     test('null/0 when nothing is equipped', () => {
         const user = freshUser();
+        expect(getActiveInstance(user)).toBeNull();
         expect(getActiveCompanion(user)).toBeNull();
         expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(0);
     });
 
-    test('resolves the equipped companion and reads its perk value', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+    test('getOwnedEntry is keyed by instanceId, not companion id', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+        expect(getOwnedEntry(user, 'sprout-a')?.id).toBe('sprout');
+        expect(getOwnedEntry(user, 'sprout')).toBeNull();
+    });
+
+    test('resolves the equipped instance and reads its perk value', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 } });
+        expect(getActiveInstance(user).instanceId).toBe('sprout-a');
         expect(getActiveCompanion(user).id).toBe('sprout');
         expect(getActivePerkValue(user, 'workMultiplierPercent')).toBe(0.05);
     });
 
     test('0 when the equipped companion does not carry the requested perk type', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 } });
         expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0);
     });
 
     test('reads both of Mochi\'s dual perks', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'mochi', workCount: 0 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 } });
+        const user = freshUser({ companions: { owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }], active: 'mochi-a', ownedCount: 1, mythicOwnedCount: 1 } });
         expect(getActivePerkValue(user, 'passiveIncomePercent')).toBe(0.06);
         expect(getActivePerkValue(user, 'rebirthBonusPercent')).toBe(0.20);
+    });
+
+    test('owning multiple independently-leveled instances of the same companion resolves the specific active one', () => {
+        const user = freshUser({
+            companions: {
+                owned: [
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+                    { instanceId: 'sprout-b', id: 'sprout', workCount: 99999 }
+                ],
+                active: 'sprout-b', ownedCount: 1, mythicOwnedCount: 0
+            }
+        });
+        expect(getActiveInstance(user).instanceId).toBe('sprout-b');
+        expect(getActiveInstance(user).workCount).toBe(99999);
     });
 });
 
 describe('applyCompanionAward', () => {
-    test('a new companion is added to owned at quantity 1 and bumps ownedCount', () => {
+    test('a new companion is added to owned as its own instance and bumps ownedCount', () => {
         const user = freshUser();
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(true);
-        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 0, quantity: 1 }]);
+        expect(result.companions.owned).toHaveLength(1);
+        expect(result.companions.owned[0]).toMatchObject({ id: 'sprout', workCount: 0 });
+        expect(typeof result.companions.owned[0].instanceId).toBe('string');
         expect(result.companions.ownedCount).toBe(1);
         expect(result.companions.mythicOwnedCount).toBe(0);
     });
@@ -137,45 +172,25 @@ describe('applyCompanionAward', () => {
         expect(result.companions.mythicOwnedCount).toBe(1);
     });
 
-    test('a duplicate pull bumps the existing entry\'s workCount and quantity instead of adding a new owned entry', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 20 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+    // Since 2026-08-25's instance rework, a duplicate pull is always a genuinely separate
+    // instance — no merging into (or bonus workCount for) an existing copy.
+    test('a duplicate pull adds a brand-new separate instance, leaving the existing one untouched', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 20 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 } });
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'sprout', workCount: 20 + CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 }]);
+        expect(result.companions.owned).toHaveLength(2);
+        expect(result.companions.owned[0]).toEqual({ instanceId: 'sprout-a', id: 'sprout', workCount: 20 });
+        expect(result.companions.owned[1]).toMatchObject({ id: 'sprout', workCount: 0 });
+        expect(result.companions.owned[1].instanceId).not.toBe('sprout-a');
         expect(result.companions.ownedCount).toBe(1);
     });
 
-    // A missing quantity on the pre-existing entry (an account from before this field
-    // existed) reads as 1, so the first duplicate pull after this shipped still lands on
-    // exactly 2, not NaN or 1.
-    test('a second duplicate pull on the same companion bumps quantity again, off the already-bumped value', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 20, quantity: 2 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
-        const sprout = getCompanionById('sprout');
-        const result = applyCompanionAward(user, sprout);
-        expect(result.companions.owned[0].quantity).toBe(3);
-    });
-
-    test('a duplicate pull on a companion that is not the active one still bumps its workCount and quantity', () => {
-        const user = freshUser({
-            companions: {
-                owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 5 }],
-                active: 'mole', ownedCount: 2, mythicOwnedCount: 0
-            }
-        });
-        const sprout = getCompanionById('sprout');
-        const result = applyCompanionAward(user, sprout);
-        expect(result.companions.owned).toEqual([
-            { id: 'sprout', workCount: CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS, quantity: 2 },
-            { id: 'mole', workCount: 5 },
-        ]);
-    });
-
     test('does not mutate the active slot when a new companion is won', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 } });
         const mole = getCompanionById('mole');
         const result = applyCompanionAward(user, mole);
-        expect(result.companions.active).toBe('sprout');
+        expect(result.companions.active).toBe('sprout-a');
     });
 
     // Regression coverage for a real bug: a genuinely new companion used to be built from a
@@ -185,9 +200,9 @@ describe('applyCompanionAward', () => {
     // finding a new companion while a different one was out scavenging wiped the scavenge —
     // reported by a player as "encountering a new companion ends my scavenging run".
     test('winning a genuinely new companion does not clear an in-progress scavenge', () => {
-        const scavenging = { companionId: 'mole', rarity: CompanionRarity.RARE, returnsAt: Date.now() + 60000 };
+        const scavenging = { instanceId: 'mole-a', rarity: CompanionRarity.RARE, returnsAt: Date.now() + 60000 };
         const user = freshUser({
-            companions: { owned: [{ id: 'mole', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging }
+            companions: { owned: [{ instanceId: 'mole-a', id: 'mole', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging }
         });
         const sprout = getCompanionById('sprout');
         const result = applyCompanionAward(user, sprout);
@@ -199,46 +214,21 @@ describe('applyCompanionAward', () => {
         const user = freshUser();
         const firefly = getCompanionById('firefly');
         const result = applyCompanionAward(user, firefly, 42);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 42, quantity: 1 }]);
+        expect(result.companions.owned).toHaveLength(1);
+        expect(result.companions.owned[0]).toMatchObject({ id: 'firefly', workCount: 42 });
     });
 
-    // Buying a companion you already own goes through this same duplicate branch, so it
-    // grants a spare too (quantity 2), not just combined workCount — a market purchase of
-    // a companion you already have shouldn't behave any differently than any other
-    // duplicate-acquisition path.
-    test('buying a companion you already own combines workCount and grants a spare, instead of being blocked or discarded', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 100 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
+    // Buying a companion you already own goes through this same "always a new instance"
+    // path, so it lands as its own separate, independently-leveled copy — not merged into
+    // whichever instance you already had.
+    test('buying a companion you already own adds a separate new instance at the listing workCount', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'firefly-a', id: 'firefly', workCount: 100 }], active: 'firefly-a', ownedCount: 1, mythicOwnedCount: 0 } });
         const firefly = getCompanionById('firefly');
-        // companionBuy.js passes the listing's workCount for BOTH params — whichever
-        // branch fires should credit the same amount either way.
-        const result = applyCompanionAward(user, firefly, 275, 275);
+        const result = applyCompanionAward(user, firefly, 275);
         expect(result.isNew).toBe(false);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 100 + 275, quantity: 2 }]);
+        expect(result.companions.owned).toHaveLength(2);
+        expect(result.companions.owned[1]).toMatchObject({ id: 'firefly', workCount: 275 });
         expect(result.companions.ownedCount).toBe(1);
-    });
-
-    test('duplicateWorkCountBonus overrides the default DUPLICATE_WORK_COUNT_BONUS', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'firefly', workCount: 0 }], active: 'firefly', ownedCount: 1, mythicOwnedCount: 0 } });
-        const firefly = getCompanionById('firefly');
-        const result = applyCompanionAward(user, firefly, 0, 999);
-        expect(result.companions.owned).toEqual([{ id: 'firefly', workCount: 999, quantity: 2 }]);
-    });
-});
-
-describe('getSpareCount', () => {
-    test('0 for an unowned companion', () => {
-        const user = freshUser();
-        expect(getSpareCount(user, 'sprout')).toBe(0);
-    });
-
-    test('0 for a single owned copy, whether quantity is explicit or missing (older accounts)', () => {
-        expect(getSpareCount(freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0, quantity: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } }), 'sprout')).toBe(0);
-        expect(getSpareCount(freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } }), 'sprout')).toBe(0);
-    });
-
-    test('quantity - 1 once there are extra copies', () => {
-        const user = freshUser({ companions: { owned: [{ id: 'sprout', workCount: 0, quantity: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 } });
-        expect(getSpareCount(user, 'sprout')).toBe(2);
     });
 });
 
@@ -282,7 +272,7 @@ describe('companion leveling', () => {
     test('getActivePerkValue scales the base perk value by the active companion\'s own level', () => {
         const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
         const user = freshUser({
-            companions: { owned: [{ id: 'sprout', workCount: maxWorkCount }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         });
         const sprout = getCompanionById('sprout');
         const baseValue = sprout.perks.find(p => p.type === 'workMultiplierPercent').value;
@@ -292,7 +282,7 @@ describe('companion leveling', () => {
 
     test('getActivePerkValue treats a missing workCount as 0 (level 1, unscaled)', () => {
         const user = freshUser({
-            companions: { owned: [{ id: 'sprout' }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 }
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout' }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         });
         const sprout = getCompanionById('sprout');
         const baseValue = sprout.perks.find(p => p.type === 'workMultiplierPercent').value;
@@ -303,40 +293,40 @@ describe('companion leveling', () => {
 describe('isScavenging', () => {
     test('false when nothing is scavenging', () => {
         const user = freshUser();
-        expect(isScavenging(user, 'sprout')).toBe(false);
+        expect(isScavenging(user, 'sprout-a')).toBe(false);
     });
 
-    test('false when a DIFFERENT companion is scavenging', () => {
+    test('false when a DIFFERENT instance is scavenging', () => {
         const user = freshUser({
-            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: Date.now() } }
+            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: Date.now() } }
         });
-        expect(isScavenging(user, 'sprout')).toBe(false);
+        expect(isScavenging(user, 'sprout-a')).toBe(false);
     });
 
-    test('true for the exact companion currently scavenging', () => {
+    test('true for the exact instance currently scavenging', () => {
         const user = freshUser({
-            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() } }
+            companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { instanceId: 'sprout-a', rarity: 'common', returnsAt: Date.now() } }
         });
-        expect(isScavenging(user, 'sprout')).toBe(true);
+        expect(isScavenging(user, 'sprout-a')).toBe(true);
     });
 
     test('does not throw when userDetails.companions is entirely absent', () => {
-        expect(isScavenging({}, 'sprout')).toBe(false);
+        expect(isScavenging({}, 'sprout-a')).toBe(false);
     });
 });
 
 describe('buildScavengeDispatch', () => {
-    test('carries the companion\'s own id and rarity onto the record', () => {
+    test('carries the given instance id and the companion\'s own rarity onto the record', () => {
         const mole = getCompanionById('mole'); // rare
-        const record = buildScavengeDispatch(mole);
-        expect(record.companionId).toBe('mole');
+        const record = buildScavengeDispatch(mole, 'mole-a');
+        expect(record.instanceId).toBe('mole-a');
         expect(record.rarity).toBe(CompanionRarity.RARE);
     });
 
     test('returnsAt is now + that rarity\'s own DURATION_SECONDS', () => {
         const before = Date.now();
         const mochi = getCompanionById('mochi'); // mythic
-        const record = buildScavengeDispatch(mochi);
+        const record = buildScavengeDispatch(mochi, 'mochi-a');
         const after = Date.now();
         const expectedMin = before + CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] * 1000;
         const expectedMax = after + CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] * 1000;
@@ -376,27 +366,27 @@ describe('rollWorkCountMultiplierTier', () => {
 });
 
 describe('resolveScavengeReward', () => {
-    function userWithScavenge(companionId, rarity, ownedOverrides = [], scavengeReturnsByRarity = { legendary: 0, mythic: 0 }) {
+    function userWithScavenge(instanceId, rarity, ownedOverrides = [], scavengeReturnsByRarity = { legendary: 0, mythic: 0 }) {
         return {
             companions: {
                 owned: ownedOverrides,
                 active: null,
                 ownedCount: ownedOverrides.length,
                 mythicOwnedCount: 0,
-                scavenging: { companionId, rarity, returnsAt: Date.now() - 1000 },
+                scavenging: { instanceId, rarity, returnsAt: Date.now() - 1000 },
                 scavengeReturnsByRarity
             }
         };
     }
 
-    test('a "normal" tier roll bumps the scavenging companion\'s own workCount by the base range roll, leaving others untouched, and sets hasScavenged', () => {
+    test('a "normal" tier roll bumps the scavenging instance\'s own workCount by the base range roll, leaving others untouched, and sets hasScavenged', () => {
         jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0) // base range roll -> minimum
             .mockReturnValueOnce(0) // tier roll -> 'normal' (1x)
             .mockReturnValueOnce(0); // starch roll
-        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [
-            { id: 'sprout', workCount: 10 },
-            { id: 'mole', workCount: 5 }
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 10 },
+            { instanceId: 'mole-a', id: 'mole', workCount: 5 }
         ]);
         const { owned, workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
@@ -407,19 +397,19 @@ describe('resolveScavengeReward', () => {
         expect(workCountGained).toBe(min);
         expect(starchesGained).toBe(starchMin); // 1x multiplier -> unscaled base roll
         expect(owned).toEqual([
-            { id: 'sprout', workCount: 10 + min, hasScavenged: true },
-            { id: 'mole', workCount: 5 }
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 10 + min, hasScavenged: true },
+            { instanceId: 'mole-a', id: 'mole', workCount: 5 }
         ]);
     });
 
     test('treats a missing workCount on the owned entry as 0', () => {
         jest.spyOn(Math, 'random').mockReturnValue(0);
-        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout' }]);
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout' }]);
         const { owned } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
         const { min } = CompanionScavenging.WORK_COUNT_RANGE[CompanionRarity.COMMON];
-        expect(owned).toEqual([{ id: 'sprout', workCount: min, hasScavenged: true }]);
+        expect(owned).toEqual([{ instanceId: 'sprout-a', id: 'sprout', workCount: min, hasScavenged: true }]);
     });
 
     test('a "great" tier roll multiplies both the base workCount and starch rolls by 1.5x', () => {
@@ -427,7 +417,7 @@ describe('resolveScavengeReward', () => {
             .mockReturnValueOnce(0)   // base range roll -> minimum
             .mockReturnValueOnce(0.8) // tier roll -> 'great'
             .mockReturnValueOnce(0);  // starch roll
-        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
         const { workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
@@ -443,7 +433,7 @@ describe('resolveScavengeReward', () => {
             .mockReturnValueOnce(0)    // base range roll -> minimum
             .mockReturnValueOnce(0.99) // tier roll -> 'incredible'
             .mockReturnValueOnce(0);   // starch roll
-        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
         const { workCountGained, starchesGained, multiplierTier } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
@@ -457,7 +447,7 @@ describe('resolveScavengeReward', () => {
     test('workCountGained varies across rolls — the range roll and the multiplier tier both introduce real variance', () => {
         const seen = new Set();
         for (let i = 0; i < 500; i++) {
-            const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+            const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
             const { workCountGained } = resolveScavengeReward(user);
             seen.add(workCountGained);
         }
@@ -469,7 +459,7 @@ describe('resolveScavengeReward', () => {
         const maxPossibleMultiplier = Math.max(...CompanionScavenging.WORK_COUNT_MULTIPLIER_TIERS.map(t => t.multiplier));
         const seen = new Set();
         for (let i = 0; i < 500; i++) {
-            const user = userWithScavenge('mochi', CompanionRarity.MYTHIC, [{ id: 'mochi', workCount: 0 }]);
+            const user = userWithScavenge('mochi-a', CompanionRarity.MYTHIC, [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }]);
             const { starchesGained } = resolveScavengeReward(user);
             expect(starchesGained).toBeGreaterThanOrEqual(min);
             expect(starchesGained).toBeLessThanOrEqual(Math.floor(max * maxPossibleMultiplier));
@@ -478,10 +468,10 @@ describe('resolveScavengeReward', () => {
         expect(seen.size).toBeGreaterThan(1);
     });
 
-    test('workCountGained is NOT scaled by the scavenging companion\'s own current level', () => {
+    test('workCountGained is NOT scaled by the scavenging instance\'s own current level', () => {
         jest.spyOn(Math, 'random').mockReturnValue(0);
         const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
-        const user = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: maxWorkCount }]);
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }]);
         const { workCountGained } = resolveScavengeReward(user);
         Math.random.mockRestore();
 
@@ -502,23 +492,88 @@ describe('resolveScavengeReward', () => {
     });
 
     test('bumps scavengeReturnsByRarity for Legendary/Mythic returns, leaves it alone for Common/Rare', () => {
-        const legendaryUser = userWithScavenge('rootcarver', CompanionRarity.LEGENDARY, [{ id: 'rootcarver', workCount: 0 }]);
+        const legendaryUser = userWithScavenge('rootcarver-a', CompanionRarity.LEGENDARY, [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }]);
         expect(resolveScavengeReward(legendaryUser).scavengeReturnsByRarity).toEqual({ legendary: 1, mythic: 0 });
 
-        const mythicUser = userWithScavenge('mochi', CompanionRarity.MYTHIC, [{ id: 'mochi', workCount: 0 }]);
+        const mythicUser = userWithScavenge('mochi-a', CompanionRarity.MYTHIC, [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }]);
         expect(resolveScavengeReward(mythicUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 1 });
 
-        const commonUser = userWithScavenge('sprout', CompanionRarity.COMMON, [{ id: 'sprout', workCount: 0 }]);
+        const commonUser = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
         expect(resolveScavengeReward(commonUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
 
-        const rareUser = userWithScavenge('mole', CompanionRarity.RARE, [{ id: 'mole', workCount: 0 }]);
+        const rareUser = userWithScavenge('mole-a', CompanionRarity.RARE, [{ instanceId: 'mole-a', id: 'mole', workCount: 0 }]);
         expect(resolveScavengeReward(rareUser).scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
     });
 
     test('does not mutate the caller\'s existing scavengeReturnsByRarity counts', () => {
-        const user = userWithScavenge('rootcarver', CompanionRarity.LEGENDARY, [{ id: 'rootcarver', workCount: 0 }], { legendary: 4, mythic: 9 });
+        const user = userWithScavenge('rootcarver-a', CompanionRarity.LEGENDARY, [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], { legendary: 4, mythic: 9 });
         const { scavengeReturnsByRarity } = resolveScavengeReward(user);
         expect(scavengeReturnsByRarity).toEqual({ legendary: 5, mythic: 9 });
         expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 4, mythic: 9 });
+    });
+});
+
+describe('migrateOwnedToInstances', () => {
+    test('returns the same object reference, unchanged, when every owned entry already has an instanceId', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 5 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 };
+        expect(migrateOwnedToInstances(companions)).toBe(companions);
+    });
+
+    test('expands a very old {id, workCount} entry (implicit single copy) into one instance, preserving workCount and active', () => {
+        const companions = { owned: [{ id: 'sprout', workCount: 42 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 };
+        const migrated = migrateOwnedToInstances(companions);
+        expect(migrated.owned).toHaveLength(1);
+        expect(migrated.owned[0]).toMatchObject({ id: 'sprout', workCount: 42 });
+        expect(typeof migrated.owned[0].instanceId).toBe('string');
+        expect(migrated.active).toBe(migrated.owned[0].instanceId);
+    });
+
+    test('expands a quantity-stacked entry into that many separate instances, each preserving the same workCount', () => {
+        const companions = { owned: [{ id: 'sprout', workCount: 10, quantity: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 };
+        const migrated = migrateOwnedToInstances(companions);
+        expect(migrated.owned).toHaveLength(3);
+        for (const entry of migrated.owned) {
+            expect(entry).toMatchObject({ id: 'sprout', workCount: 10 });
+            expect(entry.quantity).toBeUndefined();
+        }
+        const instanceIds = migrated.owned.map(e => e.instanceId);
+        expect(new Set(instanceIds).size).toBe(3);
+        expect(instanceIds).toContain(migrated.active);
+    });
+
+    test('re-points scavenging from a companion id to one of the freshly-minted instance ids', () => {
+        const companions = {
+            owned: [{ id: 'mole', workCount: 5, quantity: 2 }],
+            active: null, ownedCount: 1, mythicOwnedCount: 0,
+            scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: 12345 }
+        };
+        const migrated = migrateOwnedToInstances(companions);
+        const instanceIds = migrated.owned.map(e => e.instanceId);
+        expect(instanceIds).toContain(migrated.scavenging.instanceId);
+        expect(migrated.scavenging.companionId).toBeUndefined();
+        expect(migrated.scavenging.rarity).toBe('rare');
+        expect(migrated.scavenging.returnsAt).toBe(12345);
+    });
+
+    test('is idempotent — migrating an already-migrated shape produces the same reference', () => {
+        const companions = { owned: [{ id: 'sprout', workCount: 10, quantity: 2 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 };
+        const once = migrateOwnedToInstances(companions);
+        const twice = migrateOwnedToInstances(once);
+        expect(twice).toBe(once);
+    });
+
+    test('leaves already-migrated entries untouched while still migrating unmigrated ones in the same array', () => {
+        const companions = {
+            owned: [
+                { instanceId: 'mole-a', id: 'mole', workCount: 7 },
+                { id: 'sprout', workCount: 3 }
+            ],
+            active: 'sprout', ownedCount: 2, mythicOwnedCount: 0
+        };
+        const migrated = migrateOwnedToInstances(companions);
+        expect(migrated.owned).toHaveLength(2);
+        expect(migrated.owned[0]).toEqual({ instanceId: 'mole-a', id: 'mole', workCount: 7 });
+        expect(migrated.owned[1]).toMatchObject({ id: 'sprout', workCount: 3 });
+        expect(migrated.active).toBe(migrated.owned[1].instanceId);
     });
 });

@@ -262,19 +262,11 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        if (isNew) {
-            return { isNew: true, companion };
-        }
-
-        // applyCompanionAward already bumps the duplicate's own workCount by
-        // CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS and the entry's quantity by 1 (a
-        // new spare) — surfaced here so the embed can show both instead of silently
-        // applying them. See systems/companions.md for the full writeup.
-        const workCountBefore = userDetails.companions.owned.find(c => c.id === companion.id)?.workCount || 0;
-        const workCountAfter = companions.owned.find(c => c.id === companion.id)?.workCount || 0;
-        const spareCount = companionFactory.getSpareCount({ companions }, companion.id);
-
-        return { isNew: false, companion, workCountBefore, workCountAfter, spareCount };
+        // Since 2026-08-25's instance rework, a duplicate pull is just a second
+        // independent instance starting at level 1/workCount 0 — no bonus workCount to an
+        // existing copy, no "spare count" to report. isNew is the only thing the embed
+        // needs to tell a first-time unlock apart from "you found another one."
+        return { isNew, companion };
     }
 
     async handleTaroTrader(userDetails, catchUpBonus = 0) {

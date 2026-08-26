@@ -296,7 +296,7 @@ describe('handlePoisonPotato', () => {
     describe('with Guinea Pig equipped', () => {
         function guineaPigUser(overrides = {}) {
             return baseUser({
-                companions: { owned: [{ id: 'guinea_pig', level: 1 }], active: 'guinea_pig' },
+                companions: { owned: [{ instanceId: 'guinea_pig-a', id: 'guinea_pig', workCount: 0 }], active: 'guinea_pig-a' },
                 ...overrides,
             });
         }
@@ -348,7 +348,7 @@ describe('handlePoisonPotato', () => {
             const level1User = guineaPigUser({ userId: 'lvl1', workMultiplierAmount: 50 });
             const maxLevelUser = guineaPigUser({
                 userId: 'lvl10', workMultiplierAmount: 50,
-                companions: { owned: [{ id: 'guinea_pig', workCount: 3725 }], active: 'guinea_pig' },
+                companions: { owned: [{ instanceId: 'guinea_pig-a', id: 'guinea_pig', workCount: 3725 }], active: 'guinea_pig-a' },
             });
 
             const level1Poison = await workFactory.handlePoisonPotato(level1User, 1000, 1);
@@ -546,34 +546,31 @@ describe('handleTaroTrader', () => {
     });
 });
 
-// Regression coverage for a real bug: a duplicate companion pull already bumps the
-// companion's own workCount (applyCompanionAward's !isNew branch) — but
-// handleCompanionEncounter's return value used to only carry `potatoesGained`, so the
-// /work embed had no way to show that gain. workCountBefore/workCountAfter surface that
-// so the embed (createCompanionEncounterEmbed) can show it truthfully. 2026-08-25: the
-// potato consolation itself was removed entirely (direct instruction — "do the code
-// changes for sellable companion duplicates") in favor of a real, sellable spare —
-// spareCount now surfaces that the same way workCountBefore/workCountAfter do.
+// Since 2026-08-25's instance rework (direct instruction — duplicate companions must be
+// genuinely separate, independently-leveled copies, not a shared-level counter), a
+// duplicate pull no longer bumps any existing copy's workCount or grants a "spare" —
+// applyCompanionAward always appends a brand-new instance starting at workCount 0.
+// handleCompanionEncounter's return shape is now identical for a new vs. duplicate pull
+// except for `isNew` itself.
 describe('handleCompanionEncounter (duplicate pull)', () => {
-    test('reports the companion\'s own workCount gain and the new spare, no potato payout', async () => {
+    test('a duplicate pull adds a separate new instance, leaving the existing one untouched, no potato payout', async () => {
         const userDetails = baseUser({
             workMultiplierAmount: 2,
-            companions: { owned: [{ id: 'sprout', workCount: 5, quantity: 1 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 5 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
         });
         const result = await workFactory.handleCompanionEncounter(userDetails, 'sprout');
 
         expect(result.isNew).toBe(false);
         expect(result.potatoesGained).toBeUndefined();
-        expect(result.workCountBefore).toBe(5);
-        expect(result.workCountAfter).toBeGreaterThan(result.workCountBefore);
-        expect(result.spareCount).toBe(1);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.companions.owned[0].workCount).toBe(result.workCountAfter);
-        expect(setFields.companions.owned[0].quantity).toBe(2);
+        expect(setFields.companions.owned).toHaveLength(2);
+        expect(setFields.companions.owned[0]).toEqual({ instanceId: 'sprout-a', id: 'sprout', workCount: 5 });
+        expect(setFields.companions.owned[1]).toMatchObject({ id: 'sprout', workCount: 0 });
+        expect(setFields.companions.owned[1].instanceId).not.toBe('sprout-a');
     });
 
-    test('a brand-new companion is granted with no potato payout, and no workCount/spare gain reported', async () => {
+    test('a brand-new companion is granted with no potato payout', async () => {
         const userDetails = baseUser({
             companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: null },
         });
@@ -581,8 +578,6 @@ describe('handleCompanionEncounter (duplicate pull)', () => {
 
         expect(result.isNew).toBe(true);
         expect(result.potatoesGained).toBeUndefined();
-        expect(result.workCountBefore).toBeUndefined();
-        expect(result.spareCount).toBeUndefined();
     });
 });
 

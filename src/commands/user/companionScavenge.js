@@ -2,7 +2,6 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
-const { Companions } = require("../../utils/constants");
 
 module.exports = {
     name: "companion-scavenge",
@@ -20,11 +19,12 @@ module.exports = {
     ],
     // Same reasoning as companionSell.js/companionSellNpc.js's autocomplete — a static
     // `choices` list showed every companion in the roster to every player regardless of
-    // ownership. Filtered to what the invoking user owns and isn't currently equipping
-    // (the callback below rejects the active companion too — this just keeps it off the
-    // suggestion list in the first place). Not filtered on "already scavenging", since
-    // that's a global one-slot check independent of which companion is picked, not a
-    // per-companion eligibility check the way owning/equipping is.
+    // ownership. Since 2026-08-25's instance rework, one choice per independently-leveled
+    // owned instance (value = instanceId), excluding whichever instance is currently
+    // equipped (the callback below rejects the active instance too — this just keeps it
+    // off the suggestion list in the first place). Not filtered on "already scavenging",
+    // since that's a global one-slot check independent of which instance is picked, not a
+    // per-instance eligibility check the way owning/equipping is.
     autocomplete: async (client, interaction) => {
         const focused = (interaction.options.getFocused() || '').toLowerCase();
         const userId = interaction.user.id;
@@ -36,40 +36,45 @@ module.exports = {
             return;
         }
 
-        const activeId = userDetails.companions?.active ?? null;
-        const choices = Companions
-            .filter(c => companionFactory.ownsCompanion(userDetails, c.id))
-            .filter(c => c.id !== activeId)
-            .filter(c => c.name.toLowerCase().includes(focused))
+        const activeInstanceId = userDetails.companions?.active ?? null;
+        const choices = (userDetails.companions?.owned ?? [])
+            .filter(entry => entry.instanceId !== activeInstanceId)
+            .map(entry => ({ entry, companion: companionFactory.getCompanionById(entry.id) }))
+            .filter(({ companion }) => companion && companion.name.toLowerCase().includes(focused))
             .slice(0, 25)
-            .map(c => ({ name: c.name, value: c.id }));
+            .map(({ entry, companion }) => ({
+                name: `${companion.name} (Lv. ${companionFactory.getCompanionLevel(entry.workCount)})`,
+                value: entry.instanceId
+            }));
 
         await interaction.respond(choices);
     },
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const companionId = interaction.options.get('companion')?.value;
+        const instanceId = interaction.options.get('companion')?.value;
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const companion = companionFactory.getCompanionById(companionId);
+        const ownedEntry = companionFactory.getOwnedEntry(userDetails, instanceId);
+        if (!ownedEntry) {
+            interaction.editReply(`${userDisplayName}, you don't own that companion.`);
+            return;
+        }
+        const companion = companionFactory.getCompanionById(ownedEntry.id);
         if (!companion) {
             interaction.editReply(`${userDisplayName}, that's not a real companion.`);
             return;
         }
-        if (!companionFactory.ownsCompanion(userDetails, companionId)) {
-            interaction.editReply(`${userDisplayName}, you don't own that companion.`);
-            return;
-        }
-        if (userDetails.companions?.active === companionId) {
+        if (userDetails.companions?.active === instanceId) {
             interaction.editReply(`${userDisplayName}, ${companion.name} is your active companion — equip a different one first (or leave it equipped) before sending it scavenging.`);
             return;
         }
         const existingScavenge = userDetails.companions?.scavenging;
         if (existingScavenge) {
-            const scavengingCompanion = companionFactory.getCompanionById(existingScavenge.companionId);
+            const scavengingEntry = companionFactory.getOwnedEntry(userDetails, existingScavenge.instanceId);
+            const scavengingCompanion = scavengingEntry ? companionFactory.getCompanionById(scavengingEntry.id) : null;
             const scavengingName = scavengingCompanion?.name ?? 'A companion';
             if (existingScavenge.returnsAt <= Date.now()) {
                 interaction.editReply(`${userDisplayName}, ${scavengingName} is already out scavenging and is ready to come home — run /companion-scavenge-collect first!`);
@@ -85,7 +90,7 @@ module.exports = {
         // whichever write lands last persists; no reward can be double-granted and no
         // companion is ever orphaned by it. See dynamoHandler.resolveScavenge's own
         // comment for the guarded collect/cancel writes this deliberately does NOT need.
-        const scavenging = companionFactory.buildScavengeDispatch(companion);
+        const scavenging = companionFactory.buildScavengeDispatch(companion, instanceId);
         await dynamoHandler.updateUserFields(userId, {
             companions: { ...userDetails.companions, scavenging }
         });

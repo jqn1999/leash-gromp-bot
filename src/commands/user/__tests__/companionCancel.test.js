@@ -1,11 +1,9 @@
-// Regression coverage for a player concern raised alongside Yukon's drop-rate buff: if a
-// listed companion is re-obtained (e.g. a fresh Bounty win) while its listing is still up,
-// does cancelling that listing correctly merge back into the reacquired copy's workCount,
-// instead of creating a second `owned` entry for the same companion id? This is general
-// market-escrow reconciliation logic (companionMarketFactory.removeFromOwned pulls a listed
-// companion out of `owned` entirely — see its own comment — so re-pulling while listed is
-// seen as a fresh acquisition until the listing resolves), not Yukon-specific, but this
-// exercises it with Yukon since that's the case that prompted the check.
+// Since 2026-08-25's instance rework (direct instruction — duplicate companions must be
+// genuinely separate, independently-leveled copies), every owned copy is its own
+// independent instance — there's no shared entry to merge a cancelled listing back into
+// anymore. Cancelling a listing always restores it as a brand-new instance at exactly the
+// workCount the listing captured, regardless of whether the seller reacquired another copy
+// of the same companion in the meantime.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -30,7 +28,7 @@ beforeEach(() => {
 });
 
 describe('attemptCancelListing', () => {
-    test('restores the exact listed workCount when the seller has no other copy', async () => {
+    test('restores the exact listed workCount as a new instance when the seller has no other copy', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue(marketDoc([LISTING]));
         dynamoHandler.updateStatFieldsWithLock.mockResolvedValue(true);
         dynamoHandler.findUser.mockResolvedValue({
@@ -42,34 +40,38 @@ describe('attemptCancelListing', () => {
         const result = await attemptCancelListing('seller-1', 'Seller', 'listing-1');
 
         expect(result.ok).toBe(true);
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('seller-1', {
-            companions: expect.objectContaining({ owned: [{ id: 'yukon', workCount: 20, quantity: 1 }] }),
-        });
+        const [, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledFields.companions.owned).toHaveLength(1);
+        expect(calledFields.companions.owned[0]).toMatchObject({ id: 'yukon', workCount: 20 });
+        expect(typeof calledFields.companions.owned[0].instanceId).toBe('string');
     });
 
     // The exact scenario the drop-rate buff conversation raised: the seller pulled a
     // brand-new Yukon (via a Bounty win) while their original was still listed. Cancelling
-    // must merge the listed workCount into the reacquired copy's, not push a second entry.
-    test('merges into the reacquired copy instead of duplicating the owned entry', async () => {
+    // now just adds the restored listing back as its own separate instance — it does NOT
+    // merge into the reacquired copy, since every copy is independently leveled.
+    test('adds the restored listing as a separate instance, leaving the reacquired copy untouched', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue(marketDoc([LISTING]));
         dynamoHandler.updateStatFieldsWithLock.mockResolvedValue(true);
         dynamoHandler.findUser.mockResolvedValue({
             userId: 'seller-1',
             username: 'Seller',
-            companions: { owned: [{ id: 'yukon', workCount: 3 }], active: null, ownedCount: 2, mythicOwnedCount: 2 },
+            companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 3 }], active: null, ownedCount: 2, mythicOwnedCount: 2 },
         });
 
         const result = await attemptCancelListing('seller-1', 'Seller', 'listing-1');
 
         expect(result.ok).toBe(true);
-        expect(result.message).toMatch(/already gotten another/i);
         const [, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        // Exactly one owned entry for yukon, workCount summed (3 + 20), not two entries —
-        // and ownedCount/mythicOwnedCount stay untouched (escrow removal never decremented
-        // them, so a cancel restoring the same acquisition must not touch them either).
-        // quantity bumps to 2 — the listing being cancelled comes back as a spare, since
-        // the seller already holds a (re-acquired) copy of their own.
-        expect(calledFields.companions.owned).toEqual([{ id: 'yukon', workCount: 23, quantity: 2 }]);
+        // The reacquired instance survives untouched, and the cancelled listing comes back
+        // as its own separate second instance at the listing's own workCount (20, not
+        // combined with the reacquired copy's 3) — and ownedCount/mythicOwnedCount stay
+        // untouched (escrow removal never decremented them, so a cancel restoring the same
+        // acquisition must not touch them either).
+        expect(calledFields.companions.owned).toHaveLength(2);
+        expect(calledFields.companions.owned[0]).toEqual({ instanceId: 'yukon-a', id: 'yukon', workCount: 3 });
+        expect(calledFields.companions.owned[1]).toMatchObject({ id: 'yukon', workCount: 20 });
+        expect(calledFields.companions.owned[1].instanceId).not.toBe('yukon-a');
         expect(calledFields.companions.ownedCount).toBe(2);
         expect(calledFields.companions.mythicOwnedCount).toBe(2);
     });

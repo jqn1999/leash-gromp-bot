@@ -30,13 +30,13 @@ module.exports = {
             return;
         }
 
-        const companion = companionFactory.getCompanionById(scavenging.companionId);
-        const ownedEntryBefore = companionFactory.getOwnedEntry(userDetails, scavenging.companionId);
+        const ownedEntryBefore = companionFactory.getOwnedEntry(userDetails, scavenging.instanceId);
+        const companion = companionFactory.getCompanionById(ownedEntryBefore?.id);
         const workCountBefore = ownedEntryBefore?.workCount || 0;
 
         const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity } = companionFactory.resolveScavengeReward(userDetails);
 
-        const written = await dynamoHandler.resolveScavenge(userId, scavenging.companionId, {
+        const written = await dynamoHandler.resolveScavenge(userId, scavenging.instanceId, {
             companions: { ...userDetails.companions, owned, scavenging: null, scavengeReturnsByRarity },
             starches: (userDetails.starches || 0) + starchesGained
         });

@@ -67,7 +67,7 @@ async function attemptBuy(client, userId, username, listingId) {
     }
 
     const { fee, sellerReceives } = companionMarketFactory.computeSaleSplit(listing.price);
-    const { companions: buyerCompanions } = companionFactory.applyCompanionAward(freshUserDetails, companion, listing.workCount || 0, listing.workCount || 0);
+    const { companions: buyerCompanions } = companionFactory.applyCompanionAward(freshUserDetails, companion, listing.workCount || 0);
 
     await Promise.all([
         dynamoHandler.updateUserFields(userId, {

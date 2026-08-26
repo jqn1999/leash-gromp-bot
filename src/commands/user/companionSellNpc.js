@@ -3,7 +3,6 @@ const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow } =
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
-const { Companions } = require("../../utils/constants");
 
 module.exports = {
     name: "companion-sell-npc",
@@ -20,7 +19,8 @@ module.exports = {
         }
     ],
     // Same reasoning as companionSell.js's autocomplete — filters to what the invoking
-    // user actually owns and isn't scavenging. Unlike /companion-sell, a companion
+    // user actually owns and isn't scavenging, one choice per independently-leveled owned
+    // instance (value = instanceId, not companionId). Unlike /companion-sell, a companion
     // already listed on the market is NOT excluded here (validateNpcSaleRequest doesn't
     // check the market either) — this command sells straight to an NPC, so an active
     // listing isn't a relevant conflict the way it is for creating a second listing.
@@ -35,24 +35,27 @@ module.exports = {
             return;
         }
 
-        const choices = Companions
-            .filter(c => companionFactory.ownsCompanion(userDetails, c.id))
-            .filter(c => !companionFactory.isScavenging(userDetails, c.id))
-            .filter(c => c.name.toLowerCase().includes(focused))
+        const choices = (userDetails.companions?.owned ?? [])
+            .filter(entry => !companionFactory.isScavenging(userDetails, entry.instanceId))
+            .map(entry => ({ entry, companion: companionFactory.getCompanionById(entry.id) }))
+            .filter(({ companion }) => companion && companion.name.toLowerCase().includes(focused))
             .slice(0, 25)
-            .map(c => ({ name: c.name, value: c.id }));
+            .map(({ entry, companion }) => ({
+                name: `${companion.name} (Lv. ${companionFactory.getCompanionLevel(entry.workCount)})`,
+                value: entry.instanceId
+            }));
 
         await interaction.respond(choices);
     },
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const companionId = interaction.options.get('companion')?.value;
+        const instanceId = interaction.options.get('companion')?.value;
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const validation = companionMarketFactory.validateNpcSaleRequest(userDetails, companionId);
+        const validation = companionMarketFactory.validateNpcSaleRequest(userDetails, instanceId);
         if (!validation.valid) {
             interaction.editReply(`${userDisplayName}, ${validation.error}`);
             return;
@@ -60,17 +63,8 @@ module.exports = {
         const { companion, level } = validation;
         const { min, max } = companionMarketFactory.getNpcSaleRange(companion, level);
 
-        // Selling always gives up exactly one unit — companionMarketFactory.removeFromOwned
-        // decrements a spare first if there is one, only pulling the actual owned entry
-        // (and unequipping it) once there's nothing left but the last copy. Spelled out
-        // here so the confirmation is honest about which outcome this particular sale is.
-        const spareCount = companionFactory.getSpareCount(userDetails, companionId);
-        const consequence = spareCount > 0
-            ? `You have ${spareCount} spare${spareCount == 1 ? '' : 's'} — this sells one of them, your equipped/leveling copy is untouched.`
-            : `This is your only copy — it will leave your owned companions entirely, no refunds.`;
-
         const reply = await interaction.editReply({
-            content: `${userDisplayName}, sell ${companion.name} (level ${level}) to an NPC for somewhere between **${min.toLocaleString()}** and **${max.toLocaleString()}** potatoes (rolled when you confirm)? This is well under what it could fetch on /companion-sell — only do this if you don't want to wait for a buyer. ${consequence}`,
+            content: `${userDisplayName}, sell ${companion.name} (level ${level}) to an NPC for somewhere between **${min.toLocaleString()}** and **${max.toLocaleString()}** potatoes (rolled when you confirm)? This is well under what it could fetch on /companion-sell — only do this if you don't want to wait for a buyer. It will leave your owned companions entirely, no refunds.`,
             components: [buildConfirmCancelRow('companion_sell_npc', 'Sell it')]
         });
 
@@ -88,14 +82,14 @@ module.exports = {
         // be owned (not sold/listed elsewhere) right before it's removed. Level is
         // re-derived fresh too, in case more /work happened with it active in the meantime.
         const freshUserDetails = await dynamoHandler.findUser(userId, username);
-        const revalidation = companionMarketFactory.validateNpcSaleRequest(freshUserDetails, companionId);
+        const revalidation = companionMarketFactory.validateNpcSaleRequest(freshUserDetails, instanceId);
         if (!revalidation.valid) {
             await interaction.editReply({ content: `${userDisplayName}, ${revalidation.error}`, components: [] });
             return;
         }
 
         const salePrice = companionMarketFactory.rollNpcSalePrice(revalidation.companion, revalidation.level);
-        const updatedCompanions = companionMarketFactory.removeFromOwned(freshUserDetails, companionId);
+        const updatedCompanions = companionMarketFactory.removeFromOwned(freshUserDetails, instanceId);
 
         await dynamoHandler.updateUserFields(userId, {
             potatoes: freshUserDetails.potatoes + salePrice,

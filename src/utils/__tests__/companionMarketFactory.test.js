@@ -19,60 +19,71 @@ function userWith(companionsOverrides = {}) {
 }
 
 describe('validateListingRequest', () => {
-    test('rejects an unknown companion id', () => {
+    test('rejects an unknown instance id', () => {
         const result = validateListingRequest(userWith(), 'not-real', 5000000);
         expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/not a real companion/);
+        expect(result.error).toMatch(/don't own/);
     });
 
-    test('rejects listing a companion the seller does not own', () => {
-        const result = validateListingRequest(userWith(), 'sprout', 5000000);
+    test('rejects listing an instance the seller does not own', () => {
+        const result = validateListingRequest(userWith(), 'sprout-a', 5000000);
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/don't own/);
     });
 
     test('rejects a price below the rarity tier floor', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }] });
-        const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common - 1);
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }] });
+        const result = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common - 1);
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/at least/);
     });
 
     test('accepts a price at or above the rarity tier floor', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }] });
-        const atFloor = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }] });
+        const atFloor = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common);
         expect(atFloor.valid).toBe(true);
         expect(atFloor.companion.id).toBe('sprout');
+        expect(atFloor.ownedEntry.instanceId).toBe('sprout-a');
 
-        const aboveFloor = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common * 10);
+        const aboveFloor = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common * 10);
         expect(aboveFloor.valid).toBe(true);
     });
 
-    test('rejects listing a companion that is currently out scavenging', () => {
+    test('rejects listing an instance that is currently out scavenging', () => {
         const user = userWith({
-            owned: [{ id: 'sprout', workCount: 0 }],
-            scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() + 10000 }
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }],
+            scavenging: { instanceId: 'sprout-a', rarity: 'common', returnsAt: Date.now() + 10000 }
         });
-        const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
+        const result = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common);
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/scavenging/);
     });
 
-    test('does not block listing a DIFFERENT owned companion while another one scavenges', () => {
+    test('does not block listing a DIFFERENT owned instance while another one scavenges', () => {
         const user = userWith({
-            owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }],
-            scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: Date.now() + 10000 }
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 0 }],
+            scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: Date.now() + 10000 }
         });
-        const result = validateListingRequest(user, 'sprout', CompanionMarket.MINIMUM_PRICE.common);
+        const result = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common);
         expect(result.valid).toBe(true);
+    });
+
+    test('two independently-leveled instances of the same companion are addressed separately', () => {
+        const user = userWith({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'sprout-b', id: 'sprout', workCount: 999999 }]
+        });
+        const lowLevel = validateListingRequest(user, 'sprout-a', CompanionMarket.MINIMUM_PRICE.common);
+        const highLevel = validateListingRequest(user, 'sprout-b', CompanionMarket.MINIMUM_PRICE.common);
+        expect(lowLevel.ownedEntry.workCount).toBe(0);
+        expect(highLevel.ownedEntry.workCount).toBe(999999);
     });
 });
 
 describe('buildListing', () => {
-    test('captures seller, companion, price, and the seller\'s own workCount', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 275 }] });
+    test('captures seller, companion, price, and the passed-in owned entry\'s workCount', () => {
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 275 }] });
         const companion = { id: 'sprout', name: 'Sprout' };
-        const listing = buildListing(user, companion, 6000000);
+        const listing = buildListing(user, companion, 6000000, { instanceId: 'sprout-a', id: 'sprout', workCount: 275 });
         expect(listing.sellerId).toBe('seller-1');
         expect(listing.sellerUsername).toBe('Seller');
         expect(listing.companionId).toBe('sprout');
@@ -82,70 +93,51 @@ describe('buildListing', () => {
         expect(listing.listingId).toContain('sprout');
     });
 
-    test('defaults to 0 workCount if the owned entry somehow has none', () => {
-        const user = userWith({ owned: [{ id: 'sprout' }] });
+    test('defaults to 0 workCount if no owned entry is passed, or it has none', () => {
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout' }] });
         const companion = { id: 'sprout', name: 'Sprout' };
-        const listing = buildListing(user, companion, 6000000);
-        expect(listing.workCount).toBe(0);
+        expect(buildListing(user, companion, 6000000, { instanceId: 'sprout-a', id: 'sprout' }).workCount).toBe(0);
+        expect(buildListing(user, companion, 6000000, null).workCount).toBe(0);
     });
 });
 
 describe('removeFromOwned', () => {
-    test('pulls the companion out of owned', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }], ownedCount: 2 });
-        const result = removeFromOwned(user, 'sprout');
-        expect(result.owned).toEqual([{ id: 'mole', workCount: 0 }]);
+    test('pulls the exact instance out of owned', () => {
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 0 }], ownedCount: 2 });
+        const result = removeFromOwned(user, 'sprout-a');
+        expect(result.owned).toEqual([{ instanceId: 'mole-a', id: 'mole', workCount: 0 }]);
     });
 
-    test('unequips the companion if it was active', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }], active: 'sprout', ownedCount: 1 });
-        const result = removeFromOwned(user, 'sprout');
+    test('unequips the instance if it was active', () => {
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1 });
+        const result = removeFromOwned(user, 'sprout-a');
         expect(result.active).toBeNull();
     });
 
-    test('leaves the active slot alone if a different companion is active', () => {
-        const user = userWith({ owned: [{ id: 'sprout', workCount: 0 }, { id: 'mole', workCount: 0 }], active: 'mole', ownedCount: 2 });
-        const result = removeFromOwned(user, 'sprout');
-        expect(result.active).toBe('mole');
+    test('leaves the active slot alone if a different instance is active', () => {
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 0 }], active: 'mole-a', ownedCount: 2 });
+        const result = removeFromOwned(user, 'sprout-a');
+        expect(result.active).toBe('mole-a');
     });
 
     test('does not decrement ownedCount/mythicOwnedCount — achievements never regress', () => {
-        const user = userWith({ owned: [{ id: 'mochi', workCount: 0 }], active: 'mochi', ownedCount: 1, mythicOwnedCount: 1 });
-        const result = removeFromOwned(user, 'mochi');
+        const user = userWith({ owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }], active: 'mochi-a', ownedCount: 1, mythicOwnedCount: 1 });
+        const result = removeFromOwned(user, 'mochi-a');
         expect(result.ownedCount).toBe(1);
         expect(result.mythicOwnedCount).toBe(1);
     });
 
-    // Sellable duplicates (2026-08-25, direct instruction): selling/listing one unit of a
-    // companion with spares only decrements quantity — the entry stays in `owned`, still
-    // equipped/leveling exactly as before, since a spare sale must never touch the
-    // player's actual copy.
-    describe('with spares (quantity > 1)', () => {
-        test('decrements quantity instead of removing the entry', () => {
-            const user = userWith({ owned: [{ id: 'sprout', workCount: 40, quantity: 3 }], active: 'sprout', ownedCount: 1 });
-            const result = removeFromOwned(user, 'sprout');
-            expect(result.owned).toEqual([{ id: 'sprout', workCount: 40, quantity: 2 }]);
+    // Since 2026-08-25's instance rework, every owned copy is its own independent
+    // instance — removing one never touches any other instance of the same companion, and
+    // there's no quantity counter left to decrement.
+    test('leaves a second, different instance of the same companion untouched', () => {
+        const user = userWith({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 40 }, { instanceId: 'sprout-b', id: 'sprout', workCount: 0 }],
+            active: 'sprout-a', ownedCount: 1
         });
-
-        test('does not unequip the active companion when a spare is sold', () => {
-            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 2 }], active: 'sprout', ownedCount: 1 });
-            const result = removeFromOwned(user, 'sprout');
-            expect(result.active).toBe('sprout');
-        });
-
-        test('selling the last spare (quantity 2 -> 1) still leaves the actual copy owned', () => {
-            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 2 }], active: 'sprout', ownedCount: 1 });
-            const result = removeFromOwned(user, 'sprout');
-            expect(result.owned).toEqual([{ id: 'sprout', workCount: 0, quantity: 1 }]);
-            expect(result.active).toBe('sprout');
-        });
-
-        test('a SECOND sale once quantity is back to 1 falls back to full removal', () => {
-            const user = userWith({ owned: [{ id: 'sprout', workCount: 0, quantity: 1 }], active: 'sprout', ownedCount: 1 });
-            const result = removeFromOwned(user, 'sprout');
-            expect(result.owned).toEqual([]);
-            expect(result.active).toBeNull();
-        });
+        const result = removeFromOwned(user, 'sprout-a');
+        expect(result.owned).toEqual([{ instanceId: 'sprout-b', id: 'sprout', workCount: 0 }]);
+        expect(result.active).toBeNull();
     });
 });
 
@@ -200,39 +192,39 @@ describe('getNpcSaleRange / rollNpcSalePrice', () => {
 });
 
 describe('validateNpcSaleRequest', () => {
-    test('rejects an unknown companion id', () => {
+    test('rejects an unknown instance id', () => {
         const result = validateNpcSaleRequest(userWith(), 'not-real');
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/not a real companion/);
-    });
-
-    test('rejects a companion the seller does not own', () => {
-        const result = validateNpcSaleRequest(userWith(), 'sprout');
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/don't own/);
     });
 
-    test('accepts an owned companion and reports its current level', () => {
+    test('rejects an instance the seller does not own', () => {
+        const result = validateNpcSaleRequest(userWith(), 'sprout-a');
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/don't own/);
+    });
+
+    test('accepts an owned instance and reports its current level', () => {
         const maxWorkCount = 999999;
-        const user = userWith({ owned: [{ id: 'sprout', workCount: maxWorkCount }] });
-        const result = validateNpcSaleRequest(user, 'sprout');
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }] });
+        const result = validateNpcSaleRequest(user, 'sprout-a');
         expect(result.valid).toBe(true);
         expect(result.companion.id).toBe('sprout');
         expect(result.level).toBe(10);
     });
 
     test('treats a missing workCount as level 1', () => {
-        const user = userWith({ owned: [{ id: 'sprout' }] });
-        const result = validateNpcSaleRequest(user, 'sprout');
+        const user = userWith({ owned: [{ instanceId: 'sprout-a', id: 'sprout' }] });
+        const result = validateNpcSaleRequest(user, 'sprout-a');
         expect(result.level).toBe(1);
     });
 
-    test('rejects selling a companion that is currently out scavenging', () => {
+    test('rejects selling an instance that is currently out scavenging', () => {
         const user = userWith({
-            owned: [{ id: 'sprout', workCount: 0 }],
-            scavenging: { companionId: 'sprout', rarity: 'common', returnsAt: Date.now() + 10000 }
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }],
+            scavenging: { instanceId: 'sprout-a', rarity: 'common', returnsAt: Date.now() + 10000 }
         });
-        const result = validateNpcSaleRequest(user, 'sprout');
+        const result = validateNpcSaleRequest(user, 'sprout-a');
         expect(result.valid).toBe(false);
         expect(result.error).toMatch(/scavenging/);
     });

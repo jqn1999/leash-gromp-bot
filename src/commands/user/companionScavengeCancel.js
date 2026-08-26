@@ -22,7 +22,8 @@ module.exports = {
             return;
         }
 
-        const companion = companionFactory.getCompanionById(scavenging.companionId);
+        const scavengingEntry = companionFactory.getOwnedEntry(userDetails, scavenging.instanceId);
+        const companion = scavengingEntry ? companionFactory.getCompanionById(scavengingEntry.id) : null;
         const companionName = companion?.name ?? 'Your companion';
         const remainingSeconds = Math.max(0, Math.ceil((scavenging.returnsAt - Date.now()) / 1000));
         const remainingText = remainingSeconds > 0 ? `${convertSecondstoMinutes(remainingSeconds)} remaining` : "already ready to collect";
@@ -48,12 +49,12 @@ module.exports = {
         // record must still be live right before the guarded write below.
         const freshUserDetails = await dynamoHandler.findUser(userId, username);
         const freshScavenging = freshUserDetails.companions?.scavenging;
-        if (!freshScavenging || freshScavenging.companionId !== scavenging.companionId) {
+        if (!freshScavenging || freshScavenging.instanceId !== scavenging.instanceId) {
             await interaction.editReply({ content: `${userDisplayName}, that scavenge was already collected (or cancelled) elsewhere.`, components: [] });
             return;
         }
 
-        const written = await dynamoHandler.resolveScavenge(userId, scavenging.companionId, {
+        const written = await dynamoHandler.resolveScavenge(userId, scavenging.instanceId, {
             companions: { ...freshUserDetails.companions, scavenging: null }
         });
         if (!written) {

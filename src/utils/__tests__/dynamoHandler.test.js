@@ -177,7 +177,10 @@ describe('findUser', () => {
             Count: 1,
             Items: [{
                 userId: 'u7', username: 'name7',
-                companions: { owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0 },
+                // Already-migrated owned shape (instanceId present) so this test's write
+                // assertions stay focused on the scavenging/scavengeReturnsByRarity heal
+                // rather than also tripping the separate per-instance migration step below.
+                companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 },
             }],
         }));
         docClient.update.mockReturnValue(resolved({}));
@@ -187,15 +190,15 @@ describe('findUser', () => {
         expect(user.companions.scavenging).toBeNull();
         expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
         // Existing sub-fields must survive the heal untouched.
-        expect(user.companions.owned).toEqual([{ id: 'sprout', workCount: 3 }]);
-        expect(user.companions.active).toBe('sprout');
+        expect(user.companions.owned).toEqual([{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }]);
+        expect(user.companions.active).toBe('sprout-a');
 
         const companionsWrite = docClient.update.mock.calls.find(
             ([params]) => Object.values(params.ExpressionAttributeNames).includes('companions')
         );
         expect(companionsWrite).toBeDefined();
         const writtenValue = Object.values(companionsWrite[0].ExpressionAttributeValues)[0];
-        expect(writtenValue).toEqual({ owned: [{ id: 'sprout', workCount: 3 }], active: 'sprout', ownedCount: 1, mythicOwnedCount: 0, scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 } });
+        expect(writtenValue).toEqual({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0, scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 } });
     });
 
     test('does not touch a companions object that already has every sub-key', async () => {
@@ -203,7 +206,7 @@ describe('findUser', () => {
             Count: 1,
             Items: [{
                 userId: 'u8', username: 'name8',
-                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { companionId: 'mole', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 } },
+                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 } },
             }],
         }));
         docClient.update.mockReturnValue(resolved({}));
@@ -271,21 +274,21 @@ describe('findUser', () => {
 // ConditionExpression-on-the-write shape as claimDailyStreak/updateIfNewRecord, so two
 // near-simultaneous collect/cancel calls for the same scavenge can't both land.
 describe('resolveScavenge', () => {
-    test('conditions the write on companions.scavenging.companionId matching the caller-supplied id', async () => {
+    test('conditions the write on companions.scavenging.instanceId matching the caller-supplied id', async () => {
         docClient.update.mockReturnValue(resolved({}));
-        const result = await dynamoHandler.resolveScavenge('u1', 'sprout', { starches: 42 });
+        const result = await dynamoHandler.resolveScavenge('u1', 'sprout-a', { starches: 42 });
 
         expect(result).toBe(true);
         const params = docClient.update.mock.calls[0][0];
-        expect(params.ConditionExpression).toBe('companions.scavenging.companionId = :companionId');
-        expect(params.ExpressionAttributeValues[':companionId']).toBe('sprout');
+        expect(params.ConditionExpression).toBe('companions.scavenging.instanceId = :instanceId');
+        expect(params.ExpressionAttributeValues[':instanceId']).toBe('sprout-a');
         expect(params.Key).toEqual({ userId: 'u1' });
     });
 
     test('writes every setAttributes field passed in', async () => {
         docClient.update.mockReturnValue(resolved({}));
-        await dynamoHandler.resolveScavenge('u1', 'sprout', {
-            companions: { owned: [{ id: 'sprout', workCount: 18 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
+        await dynamoHandler.resolveScavenge('u1', 'sprout-a', {
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 18 }], active: null, ownedCount: 1, mythicOwnedCount: 0, scavenging: null },
             starches: 100
         });
 
@@ -425,7 +428,7 @@ describe('calculateWorkTimerValue', () => {
     // this exercises the actual companionFactory.getActivePerkValue/getActiveCompanion
     // lookups, not a stand-in.
     const userWithFieldmouse = () => ({
-        companions: { owned: [{ id: 'fieldmouse', workCount: 0 }], active: 'fieldmouse' }
+        companions: { owned: [{ instanceId: 'fieldmouse-a', id: 'fieldmouse', workCount: 0 }], active: 'fieldmouse-a' }
     });
 
     afterEach(() => {

@@ -26,73 +26,89 @@ Common 65% / Rare 25% / Legendary 8% / Mythic 2%) and then uniformly among that 
 integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't subject to JS's
 integer-key reordering trap; `Object.keys` already preserves ascending threshold order here.
 
-- **New companion**: added to `owned` at `workCount: 0, quantity: 1` (level 1), not auto-equipped
-  (equipping stays a deliberate choice). Bumps `companions.ownedCount` (and `mythicOwnedCount` for a
-  Mythic) — the achievement counters.
-- **Duplicate** (already owned): bumps that specific companion's `workCount` by
-  `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS`, regardless of whether it's currently equipped or
-  benched (see Leveling below), *and* bumps its `quantity` by 1 — a genuine second copy ("spare"),
-  sellable via `/companion-sell`/`/companion-sell-npc` without touching the actual equipped/leveling
-  copy. See Sellable Duplicates below for the full mechanic; this used to instead pay a flat potato
-  consolation (`CompanionDuplicateReward[rarity]`), removed 2026-08-25.
-  `handleCompanionEncounter` returns `workCountBefore`/`workCountAfter`/`spareCount` for the
-  duplicate (not `potatoesGained` anymore), and the embed shows a `<Companion> Progress:` field
-  (before → after, plus a level-up callout, same shape `createScavengeReturnEmbed` already uses)
-  alongside a `Spare <Companion>:` field.
+- **New companion**: added to `owned` as its own instance at `workCount: 0` (level 1), not
+  auto-equipped (equipping stays a deliberate choice). Bumps `companions.ownedCount` (and
+  `mythicOwnedCount` for a Mythic) — the achievement counters.
+- **Duplicate** (already owned): adds a brand-new, fully independent instance at `workCount: 0`
+  (level 1) — it does **not** touch any existing copy's `workCount`, and there's nothing to merge.
+  See Duplicate Companions Are Real, Separate Instances below for the full mechanic and its history
+  (this went through two designs the same day before landing here). `handleCompanionEncounter`
+  returns the same `{ isNew, companion }` shape for a duplicate as for a brand-new pull — the only
+  difference the embed shows is the framing text ("you found another one, starting fresh at level
+  1" vs. "here's a new companion").
 
-## Sellable Duplicates
+## Duplicate Companions Are Real, Separate Instances
 
-Added 2026-08-25, direct instruction ("do the code changes for sellable companion duplicates").
-Every `owned` entry now carries a `quantity` (1 for a normal single copy) alongside its existing
-`workCount` — `{ id, workCount, quantity }`. A missing `quantity` on an older entry (from before
-this field existed) reads as 1 everywhere it's consumed rather than needing an eager DB migration,
-the same "compute the default at the read site" precedent `getCompanionLevel`/`getMemberRaidPower`
-already use elsewhere in this codebase, rather than `findUser`'s own top-level-field healing (which
-only handles plain-object sub-keys one level deep, not per-item fields inside an array).
+Every owned copy of a companion — including duplicates — is its own independent entry:
+`{ instanceId, id, workCount }`. `instanceId` (`companionFactory.generateInstanceId`, `` `${companionId}-${Date.now()}-${random}` ``,
+collision-resistant not cryptographically unique — same precedent as the market's own
+`listingId`) is what every other system now addresses a specific owned copy by; `id` is still the
+roster companion id, shared across every instance of the same companion. A player can own several
+Sprouts at several different levels simultaneously, each shown, equipped, scavenged, and sold as
+its own thing.
 
-- **`companionFactory.getSpareCount(userDetails, companionId)`** — `quantity - 1`, floored at 0. The
-  "extra" copies beyond the one that equips/levels; 0 for an unowned companion or a normal single
-  copy.
-- **Granting a spare** (`companionFactory.applyCompanionAward`'s duplicate branch) — every path that
-  can produce a duplicate acquisition funnels through this one function (a `/work` Wandering
-  Companion duplicate, buying a companion you already own off the market, a duplicate Yukon pull —
-  see [mercenary-bounties.md](mercenary-bounties.md)), so `quantity` tracking needed zero
-  caller-side changes to take effect, same "one shared function, no special-casing per caller"
-  property `workCount` bumping already had.
-- **Selling a spare** (`companionMarketFactory.removeFromOwned`, used by both
-  `/companion-sell-npc`'s instant sale and `/companion-sell`'s market listing escrow) — quantity-aware:
-  if the entry has spares (`quantity > 1`), this only decrements `quantity` by 1 — the entry stays in
-  `owned`, still equipped/leveling exactly as before. Only once `quantity` would hit 0 (the player's
-  last/only copy) does this fall back to the original behavior: pull the entry out of `owned`
-  entirely, unequipping it first if active. **Deliberately still allows selling your only copy** —
-  this is additive to the existing sell commands, not a new restriction; nothing about "you can
-  liquidate a companion you don't want at all anymore" changed. Both sell commands' confirmation
-  text now spells out which outcome a given sale is ("You have N spares — this sells one of them,
-  your equipped/leveling copy is untouched" vs. "This is your only copy — it will leave your owned
-  companions entirely").
-- **Cancelling a listing** (`companionCancel.js`'s `attemptCancelListing`, inline logic, deliberately
-  not routed through `applyCompanionAward` — see Marketplace below for why) mirrors
-  `removeFromOwned`'s two-branch shape in reverse: if the entry still exists (the listed unit was a
-  spare, or the seller re-acquired the companion some other way while the listing was up), the
-  cancelled listing comes back as a spare (`quantity` +1, `workCount` merged in as before). If the
-  entry is gone entirely (their only copy was listed), this recreates it at `quantity: 1`.
-- **Display**: `/companion`'s list embed shows spare count as a `(+N spares)` tag on each entry's
-  title, only when there's at least one — a companion with no spares reads exactly as it did before
-  this existed. `companion.js`'s `buildOwnedPages` computes `spareCount` per entry via
-  `getSpareCount` so the embed never needs to reach back into `userDetails.companions.owned` itself.
-- **`CompanionDuplicateReward` removed entirely** — the potato-consolation constant table it fed
-  (`workFactory.handleCompanionEncounter` and `mercenaryFactory.resolveYukonAward`, mirrored
-  exactly) had no other callers, so both were updated together rather than leaving one converted to
-  spares and the other still auto-paying potatoes (the two were already documented as intentional
-  mirrors of each other — see mercenary-bounties.md).
+This is the *second* design for duplicates, both shipped the same day (2026-08-25), both direct
+instruction:
+1. **First**: a duplicate bumped a shared `quantity` counter on one entry — every copy stacked
+   under one `workCount`, so a "spare" was just an extra unit of the same level as your main copy.
+   Simple to build on top of the pre-existing single-entry-per-companion shape, but when asked
+   directly *why* duplicates weren't separated, there was no real design reason — it was purely
+   an implementation shortcut.
+2. **Current**: asked point-blank "why would new duplicate companions not be separated," the
+   answer was "yes, that's what I want" — so `quantity` was retired entirely and every owned copy
+   became its own instance. `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (the old duplicate-pull
+   XP bonus to an existing copy) was removed outright — a duplicate pull grants **zero** bonus to
+   any existing copy now; the new copy simply starts at level 1 and levels up on its own merits
+   like any other companion.
+
+**Mechanics:**
+- **`companionFactory.applyCompanionAward(userDetails, companion, workCount = 0)`** — always
+  appends a brand-new `{ instanceId, id, workCount }` to `owned`, whether or not the companion type
+  is already owned. `isNew` (still computed via `ownsCompanion`) only gates the
+  `ownedCount`/`mythicOwnedCount` achievement counters, which track distinct companion **types**
+  ever unlocked, not total copies — unchanged behavior from before this rework. Every acquisition
+  path funnels through this one function (a `/work` Wandering Companion pull, buying a companion
+  off the market, a Yukon Bounty pull — see [mercenary-bounties.md](mercenary-bounties.md)), so the
+  "always a new instance" rule needed zero caller-side special-casing to take effect.
+- **Equipping** (`companion.js`) — `companions.active` now stores an **instance id**, not a
+  companion id, since a companion id alone can no longer identify which specific owned copy is
+  equipped. `/companion`'s list shows every owned instance as its own row/equip button (e.g.
+  "Sprout (Lv. 5)" and "Sprout (Lv. 1)" both listed and equipped independently) rather than one row
+  per companion **type** with a spare-count tag.
+- **Scavenging** (`companionFactory.buildScavengeDispatch`/`isScavenging`,
+  `dynamoHandler.resolveScavenge`) — `companions.scavenging` now carries an `instanceId` instead of
+  a `companionId`, for the same reason: only one specific owned copy can be the one out scavenging.
+- **Selling** (`companionMarketFactory.validateListingRequest`/`validateNpcSaleRequest`/
+  `removeFromOwned`, `/companion-sell`/`/companion-sell-npc`) — every function is keyed by
+  `instanceId`, not companion id. Autocomplete lists one choice per owned instance
+  (`"<Companion> (Lv. N)"`), so the player picks the exact copy to sell directly — no more
+  "spare"-vs-"main copy" distinction to reason about, and no quantity-aware branching in
+  `removeFromOwned`: selling/listing an instance always just removes that one entry from `owned`.
+- **Cancelling a listing** (`companionCancel.js`'s `attemptCancelListing`) — simplified back down
+  from the quantity-system's two-branch merge to always pushing the restored companion back as a
+  brand-new instance (a freshly generated `instanceId`) at the listing's own `workCount`. There's
+  no existing entry to merge into anymore, even if the seller reacquired another copy of the same
+  companion while the listing was up — that reacquired copy is a separate instance and stays
+  untouched.
+- **Live-data migration** (`companionFactory.migrateOwnedToInstances`, called from
+  `dynamoHandler.findUser` right after the generic top-level `missingFields` heal) — expands every
+  pre-instance `owned` entry into real instances the first time an account is loaded after this
+  shipped: a very old `{ id, workCount }` entry (implicit single copy) becomes one instance; a
+  `quantity`-stacked entry from the first duplicates design becomes that many separate instances,
+  **each preserving the exact same `workCount`** the stacked entry had — no player loses leveling
+  progress in the migration, they just get real, independently-selectable copies at whatever level
+  they already had. `active`/`scavenging` are re-pointed from the old companion-id reference to one
+  of the newly-minted instance ids for that companion (arbitrarily but deterministically the first
+  one created, since every instance freshly split out of one stacked entry starts identical
+  anyway). Idempotent by reference equality: if no entry is missing an `instanceId`, the function
+  returns the exact same object reference unchanged, so `findUser` can cheaply skip the write-back
+  (`result !== companions`) with no separate dirty-flag bookkeeping.
 
 Companions can also be acquired directly via the marketplace (see below) — a market purchase of a
 companion the buyer doesn't already own bumps the same achievement counters a `/work` win would,
 since `applyCompanionAward` is the single code path both routes go through. Buying a companion you
-*already* own doesn't waste the purchase or get blocked — it combines the levels: `companionBuy.js`
-passes the listing's `workCount` as both of `applyCompanionAward`'s amount params (`initialWorkCount`
-if this turns out new, `duplicateWorkCountBonus` — added to the existing entry — if it doesn't), so
-either branch credits the buyer the same amount of training either way.
+*already* own doesn't waste the purchase or get blocked — it just adds another independent
+instance at the listing's own `workCount`, exactly like any other duplicate acquisition.
 
 ## Unequipping
 
@@ -108,12 +124,14 @@ at click time either way, same discipline as every other button handler in this 
 
 ## Leveling
 
-Every owned companion tracks its own `workCount` (`companions.owned[].workCount`) — cumulative
-`/work` resolutions performed while that *specific* companion was the active one, including
+Every owned instance tracks its own `workCount` (`companions.owned[].workCount`) — cumulative
+`/work` resolutions performed while that *specific instance* was the active one, including
 auto-chained resolutions from a `workCooldownSkipChance` hit. `work.js`'s `performWork` increments
 it once per resolution, reading off the freshly re-fetched `updatedUserDetails` (not the
-pre-scenario `userDetails`) specifically so it can't clobber a duplicate-pull bonus the scenario
-that just ran may have already written to the same field.
+pre-scenario `userDetails`) specifically so it can't clobber whatever companions write the scenario
+that just ran may have already made (e.g. a Wandering Companion pull appending a new owned
+instance) — and matches the active entry by its `instanceId`, not its companion `id`, since two
+owned instances can share the same `id`.
 
 This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
 spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a
@@ -455,12 +473,15 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 
 ## Viewing and equipping
 
-`/companion` — no args shows a paginated (5/page) list of the invoking user's own owned companions,
-perk text, and which one is active (or, since Scavenging shipped, currently out scavenging — see
-below). Equipping is button-driven, not a command argument: each page shows up to 5 buttons, one per
-listed companion, labeled with that companion's own name; clicking one equips it, clicking the
-already-active one again unequips it (`companion.js`'s `attemptEquip`). Rejected if the caller
-doesn't own that companion or it's currently out scavenging.
+`/companion` — no args shows a paginated (5/page) list of the invoking user's own owned **instances**
+(since 2026-08-25's duplicate rework, two independently-leveled copies of the same companion each
+get their own row/button — not one row per companion type with a spare tag), perk text, and which
+one is active (or, since Scavenging shipped, currently out scavenging — see below). Equipping is
+button-driven, not a command argument: each page shows up to 5 buttons, one per listed instance,
+labeled with that companion's name plus its level (so two copies of the same companion are
+distinguishable); clicking one equips it, clicking the already-active one again unequips it
+(`companion.js`'s `attemptEquip`, keyed by `instanceId`). Rejected if the caller doesn't own that
+instance or it's currently out scavenging.
 
 An optional `target-user` (Mentionable, same option shape `/profile`'s own target-user uses) views
 **another** user's companion list instead — read-only: no equip buttons are rendered at all for
@@ -476,16 +497,19 @@ guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-con
 on the same `listings` array.
 
 - **`/companion-sell <companion> <price>`** — `companion` is an autocomplete option (not a static
-  `choices` list, which would show all 13 companions to everyone regardless of ownership):
-  filtered per-keystroke, per-invoking-user to what they actually own, isn't out scavenging, and
-  isn't already listed on the market. Rejected server-side too (autocomplete only narrows the
-  dropdown, the callback still re-validates) if `price` is below that rarity's floor
+  `choices` list, which would show all 13 companions to everyone regardless of ownership): one
+  choice per owned **instance** (`"<Companion> (Lv. N)"`, value = `instanceId`), filtered
+  per-keystroke, per-invoking-user to what they actually own and isn't out scavenging. No
+  "already listed" filter needed anymore (unlike before the instance rework) — listing escrows
+  (removes) the instance from `owned` immediately, so a listed instance simply stops appearing in
+  autocomplete on its own. Rejected server-side too (autocomplete only narrows the dropdown, the
+  callback still re-validates) if `price` is below that rarity's floor
   (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 / Legendary 1,000,000 /
   Mythic 5,000,000 — cut another 10x from the original post-launch floors, since even the reduced
   Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then
-  **escrow removal**: the companion is pulled out of `owned` entirely (unequipped first if it was
-  active) rather than just balance-checked at purchase time — there's no window where it could be
-  equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
+  **escrow removal**: the exact instance is pulled out of `owned` entirely (unequipped first if it
+  was active) rather than just balance-checked at purchase time — there's no window where it could
+  be equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
   decrement `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a
   companion you already earned credit for shouldn't claw the achievement back.
 - **`/companion-market`** — **not ephemeral**, so other players in the channel can see current
@@ -504,13 +528,14 @@ on the same `listings` array.
   when the embed was first rendered (it can sit open for a while before a button is pressed).
   Deducts the price from the buyer (rejected if they can't afford it), credits the seller minus
   `CompanionMarket.TAX_PERCENT` (5%, same shape as `Bank`'s deposit tax — a real sink without being
-  punitive), the fee goes to the house account, and adds the companion to the buyer's `owned` via
-  the same `applyCompanionAward` path a `/work` win uses, passing `listing.workCount` for *both* of
-  `applyCompanionAward`'s amount params so a leveled companion doesn't reset to level 1 on sale —
-  deliberate, since sellers can price a leveled companion above `MINIMUM_PRICE` accordingly (the
-  floor itself doesn't scale with level). Buying a companion the buyer already owns isn't blocked —
-  it combines the levels (the existing entry's `workCount` plus the listing's) rather than adding a
-  second owned entry for the same id. **Race safety**: the listing is removed via
+  punitive), the fee goes to the house account, and adds the companion to the buyer's `owned` as a
+  brand-new instance via the same `applyCompanionAward` path a `/work` win uses, passing
+  `listing.workCount` so a leveled companion doesn't reset to level 1 on sale — deliberate, since
+  sellers can price a leveled companion above `MINIMUM_PRICE` accordingly (the floor itself doesn't
+  scale with level). Buying a companion the buyer already owns isn't blocked — it just adds another
+  independent instance at the listing's own level, exactly like any other duplicate acquisition
+  (see Duplicate Companions Are Real, Separate Instances above), rather than merging into whichever
+  instance the buyer already had. **Race safety**: the listing is removed via
   `dynamoHandler.updateStatFieldsWithLock` (real DynamoDB `ConditionExpression` on the market doc's
   `version`) *before* the potato/companion transfer — if two buyers click "buy" on the same listing
   within the same window, only the write that still matches the last-read version lands; the loser
@@ -522,12 +547,13 @@ on the same `listings` array.
   (5/page), each with a per-page cancel button row (labeled with the companion's own name, one
   button per listing on that page). Clicking re-fetches the market state fresh at click time before
   removing the listing, same "don't trust page-render-time data" discipline as the buy button.
-  Seller-only by construction (the page only ever lists the viewer's own listings), no fee,
-  companion returns to `owned` at the exact `workCount` captured when it was listed
-  (`companionMarketFactory.buildListing`) — cancelling gives back the same companion, not a fresh
-  level-1 one. If the seller re-acquired the exact same companion while the listing was up (another
-  `/work` pull, or buying it off someone else's listing), the restored `workCount` is added to that
-  existing entry instead of creating a second one — deliberately *not* routed through
+  Seller-only by construction (the page only ever lists the viewer's own listings), no fee, the
+  companion returns to `owned` as a brand-new instance (freshly generated `instanceId`) at the
+  exact `workCount` captured when it was listed (`companionMarketFactory.buildListing`) —
+  cancelling gives back the same companion at the same level, not a fresh level-1 one. Since
+  2026-08-25's instance rework, this is unconditional: even if the seller reacquired another copy
+  of the same companion while the listing was up, that copy is its own separate instance and stays
+  untouched — there's no shared entry left to merge into. Deliberately *not* routed through
   `applyCompanionAward` here, since that function bumps `ownedCount`/`mythicOwnedCount` for a "new"
   acquisition and escrow removal never decremented them in the first place (achievements never
   regress); a normal cancel restoring the same companion must never touch those counters, or they'd
@@ -560,18 +586,19 @@ roles (one equipped, one scavenging) regardless of roster size, the same "one ac
 discipline the rest of this system already enforces, rather than letting every idle companion farm
 value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
 
-- **`/companion-scavenge <companion>`** — dispatch. `companion` is an autocomplete option, same
-  reasoning as `/companion-sell`'s: filtered per-invoking-user to what they own and excluding
-  whichever companion is currently active (can't be sent scavenging), rather than a static
-  `choices` list showing all 13 companions to everyone. No confirm prompt (nothing is lost by starting
-  one, same immediacy as `/companion`'s equip buttons). Rejects if: not owned; currently the equipped/active
-  companion; or another companion is already scavenging (states which one and, if it's already
-  return-ready, tells the player to `/companion-scavenge-collect` it first — dispatch deliberately
-  never auto-collects a ready-and-waiting scavenge). On success, writes `companions.scavenging = {
-  companionId, rarity, returnsAt }` via a plain unconditional `updateUserFields` call — same
-  no-race-guard shape `/companion`'s equip buttons already use. A raced double-dispatch just means whichever
-  write lands last persists; no reward can be double-granted and no companion is ever orphaned by
-  it, so it wasn't worth a conditional-write helper.
+- **`/companion-scavenge <companion>`** — dispatch. `companion` is an autocomplete option, one
+  choice per owned **instance** (`"<Companion> (Lv. N)"`, value = `instanceId`) — same reasoning as
+  `/companion-sell`'s — excluding whichever instance is currently active (can't be sent
+  scavenging), rather than a static `choices` list showing all 13 companions to everyone. No
+  confirm prompt (nothing is lost by starting one, same immediacy as `/companion`'s equip
+  buttons). Rejects if: not owned; currently the equipped/active instance; or another instance is
+  already scavenging (states which one and, if it's already return-ready, tells the player to
+  `/companion-scavenge-collect` it first — dispatch deliberately never auto-collects a
+  ready-and-waiting scavenge). On success, writes `companions.scavenging = { instanceId, rarity,
+  returnsAt }` via a plain unconditional `updateUserFields` call — same no-race-guard shape
+  `/companion`'s equip buttons already use. A raced double-dispatch just means whichever write
+  lands last persists; no reward can be double-granted and no instance is ever orphaned by it, so
+  it wasn't worth a conditional-write helper.
 - **`/companion-scavenge-collect`** (no args — only one slot exists). Rejects if nothing is
   scavenging, or if `returnsAt` is still in the future (states the remaining time). On success:
   bumps that companion's `workCount` by a randomized per-rarity amount
@@ -593,26 +620,26 @@ value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
   cost). The companion is immediately equippable/listable again since it never left `owned`.
 
 Both collect and cancel are guarded against a double-fire race by
-`dynamoHandler.resolveScavenge(userId, companionId, setAttributes)` — same
+`dynamoHandler.resolveScavenge(userId, instanceId, setAttributes)` — same
 `ConditionExpression`-on-the-write shape as `claimDailyStreak`/`updateIfNewRecord`
-(`companions.scavenging.companionId = :companionId`), so two near-simultaneous collect-collect or
+(`companions.scavenging.instanceId = :instanceId`), so two near-simultaneous collect-collect or
 collect-cancel calls can't both fire; the loser's write is rejected, not silently reapplied.
 
 **Escrow is a guard-check, not physical removal.** Unlike the marketplace's escrow (which pulls a
-listed companion out of `owned` entirely), a scavenging companion **stays in `owned`** the whole
+listed instance out of `owned` entirely), a scavenging instance **stays in `owned`** the whole
 time — removing it would break `/companion`'s list display and orphan the mid-flight `workCount`
 tracking (nothing would be there to show "scavenging, returns in Xh" against). Instead,
-`companionFactory.isScavenging(userDetails, companionId)` (`userDetails.companions?.scavenging
-?.companionId === companionId`) is checked at every risk site alongside the existing `ownsCompanion`
-check: `companion.js`'s `equip` branch, `companionMarketFactory.validateListingRequest` (used by
-`/companion-sell`), and `companionMarketFactory.validateNpcSaleRequest` (used by
+`companionFactory.isScavenging(userDetails, instanceId)` (`userDetails.companions?.scavenging
+?.instanceId === instanceId`) is checked at every risk site alongside the existing `ownsCompanion`/
+`getOwnedEntry` check: `companion.js`'s `equip` branch, `companionMarketFactory.validateListingRequest`
+(used by `/companion-sell`), and `companionMarketFactory.validateNpcSaleRequest` (used by
 `/companion-sell-npc`) — plus dispatch's own self-check for the one-slot cap. This is the one
-genuinely new pattern Scavenging introduces to the companion system: a *third* companion state
+genuinely new pattern Scavenging introduces to the companion system: a *third* instance state
 (owned-and-idle / owned-and-equipped / owned-and-scavenging) enforced by a guard at each risk site
 rather than by removal from a collection. `ownsCompanion`/`getOwnedEntry`/`getActivePerkValue` are
-untouched — a scavenging companion is still validly "owned" (it can't be the *active* one, since
-dispatch already requires it not be equipped) and still needs `getOwnedEntry` to resolve for the
-list display and for collect/cancel to read/write its `workCount`.
+untouched by Scavenging itself — a scavenging instance is still validly "owned" (it can't be the
+*active* one, since dispatch already requires it not be equipped) and still needs `getOwnedEntry`
+to resolve for the list display and for collect/cancel to read/write its `workCount`.
 
 **A fourth risk site, not a guard-check one — `workFactory.js`'s Wandering Companion encounter
 (`handleCompanionEncounter`).** Finding a companion during `/work` calls
@@ -732,17 +759,26 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 
 ## Persistence
 
-`userDetails.companions: { owned: [{ id, workCount }], active: id|null, ownedCount, mythicOwnedCount,
-scavenging: { companionId, rarity, returnsAt } | null }`, backfilled onto existing accounts by
-`findUser`'s self-healing pattern like every other field. Untouched by `/rebirth`'s reset, same
-"survives a prestige reset" precedent `sweetPotatoBuffs`/achievements/records/starches already set.
-`workCount` (originally shipped as a static `level: 1` field nothing read) was repurposed by
-Companion Leveling (#13 on the roadmap) into a cumulative `/work`-resolution counter that drives
-each companion's level — see the Leveling section above for the full mechanic. `scavenging` was
-added by Companion Scavenging (#17) alongside the other four keys — since `companions` was already
-a plain object on every existing account, `findUser`'s existing one-level-deep nested-object healing
-backfills the new `scavenging: null` sub-key with zero new healing code, the same mechanism that
-already backfilled `workScenarioCounts.companion` onto pre-existing accounts. `rarity` is
-denormalized onto the `scavenging` record itself (not re-derived from `companionId`) purely so
+`userDetails.companions: { owned: [{ instanceId, id, workCount }], active: instanceId|null,
+ownedCount, mythicOwnedCount, scavenging: { instanceId, rarity, returnsAt } | null }`, backfilled
+onto existing accounts by `findUser`'s self-healing pattern like every other field. Untouched by
+`/rebirth`'s reset, same "survives a prestige reset" precedent
+`sweetPotatoBuffs`/achievements/records/starches already set. `workCount` (originally shipped as a
+static `level: 1` field nothing read) was repurposed by Companion Leveling (#13 on the roadmap)
+into a cumulative `/work`-resolution counter that drives each companion's level — see the Leveling
+section above for the full mechanic. `scavenging` was added by Companion Scavenging (#17) alongside
+the other four keys — since `companions` was already a plain object on every existing account,
+`findUser`'s existing one-level-deep nested-object healing backfills the new `scavenging: null`
+sub-key with zero new healing code, the same mechanism that already backfilled
+`workScenarioCounts.companion` onto pre-existing accounts. `rarity` is denormalized onto the
+`scavenging` record itself (not re-derived from the instance's own companion id) purely so
 collect/cancel don't need a second `getCompanionById` lookup to know which `CompanionScavenging` row
 applies — cheap and harmless since the roster is static.
+
+`instanceId` (on `owned` entries, and what `active`/`scavenging` now store instead of a bare
+companion id) was added 2026-08-25 by the duplicate-instance rework above. Unlike `scavenging`,
+this one **couldn't** go through `findUser`'s generic shallow-heal (that mechanism only backfills
+missing plain-object sub-keys one level deep, not per-item shape changes inside an array) — it
+needed a dedicated migration step (`companionFactory.migrateOwnedToInstances`, called from
+`findUser` right after the generic heal) to actually rewrite existing accounts' `owned` arrays in
+place. See Duplicate Companions Are Real, Separate Instances above for the full migration mechanic.

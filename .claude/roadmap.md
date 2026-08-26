@@ -2027,6 +2027,72 @@ and needs its own balance pass.
   switch cooldown active/elapsed, no invite, race-lost write). Full suite green
   (502/502).
 
+- [x] **57. Duplicate Companions Rework — Real, Independently-Leveled Instances (Supersedes #51)**
+  — M/L — **Done**
+  What: Replaces #51's `quantity`-counter design (shipped hours earlier the same day) with
+  genuinely separate owned instances. Every owned entry is now `{ instanceId, id, workCount }` —
+  `instanceId` (`companionFactory.generateInstanceId`, collision-resistant, same precedent as the
+  market's own `listingId`) uniquely identifies one specific copy; `id` is still the shared roster
+  companion id. `applyCompanionAward` dropped from a 4-arg function with separate new/duplicate
+  workCount-merging logic down to `(userDetails, companion, workCount = 0)`, which now *always*
+  appends a new instance regardless of whether the type is already owned — `isNew` still gates the
+  `ownedCount`/`mythicOwnedCount` achievement counters (unchanged: those track distinct types ever
+  unlocked, not total copies). `CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` (the old +10 workCount
+  a duplicate pull gave an existing copy) and `getSpareCount` are both removed entirely — a
+  duplicate pull now grants zero bonus to any existing copy; the new copy just starts at level 1 and
+  levels on its own. `companions.active`/`companions.scavenging` were re-scoped from storing a bare
+  companion id to storing a specific instance id, since a companion id alone can no longer identify
+  which owned copy is equipped or scavenging — every consumer updated to match: `getActiveInstance`
+  (new)/`getActiveCompanion`/`getOwnedEntry`/`isScavenging`/`buildScavengeDispatch`/
+  `resolveScavengeReward`/`getGuineaPigRebate`/`getActivePerkValue` in `companionFactory.js`;
+  `resolveScavenge`'s `ConditionExpression` in `dynamoHandler.js`; every function in
+  `companionMarketFactory.js`; `/companion`'s equip buttons and list rows (one row per instance now,
+  not one row per type with a spare tag); `/companion-sell`, `/companion-sell-npc`, and
+  `/companion-scavenge`'s autocomplete (one choice per owned instance, `"<Companion> (Lv. N)"`,
+  value = `instanceId`); `/companion-scavenge-collect`/`-cancel`; `companionCancel.js`'s
+  `attemptCancelListing` (simplified from a two-branch merge back down to always pushing a fresh
+  instance, since there's no shared entry left to merge into); `companionMarket.js`/`companionBuy.js`
+  (dropped the now-redundant 4th `applyCompanionAward` arg); `workFactory.handleCompanionEncounter`
+  and `mercenaryFactory.resolveYukonAward` (both simplified to return `{ isNew, companion }` only —
+  no more before/after workCount or spare count to report); `embedFactory.js`'s
+  `createCompanionEncounterEmbed`/`createCompanionListEmbed`/`createBountyResultEmbed`'s Yukon
+  branch/the profile embed's active-companion level lookup. **Live-data migration**
+  (`companionFactory.migrateOwnedToInstances`, wired into `dynamoHandler.findUser` right after the
+  existing generic `missingFields` heal, since that generic healer only backfills missing
+  plain-object sub-keys one level deep, not per-item array shape changes) expands every pre-instance
+  `owned` entry — whether the very old `{id, workCount}` shape or the just-shipped
+  `{id, workCount, quantity: N}` shape from #51 — into N separate instances, each preserving the
+  exact same `workCount` (no player loses leveling progress), and re-points `active`/`scavenging`
+  to one of the freshly-minted instance ids. Idempotent by reference equality: if no entry is
+  missing an `instanceId`, it returns the same object reference unchanged, so `findUser` can skip
+  the write-back cheaply. Also fixed a real bug caught during this rework, not part of the original
+  ask: `work.js`'s ordinary companion-leveling write (every non-Wandering-Companion `/work`
+  resolution bumping the active companion's own `workCount`) still matched `o.id === active`, which
+  would have silently stopped leveling any active companion the moment `active` became an instance
+  id instead of a companion id — fixed to match `o.instanceId === active`.
+  Why: direct instruction. The user asked "why in that world would that be how its made, why would
+  new duplicate companions not be separated" about #51's shared-`quantity` design — the honest
+  answer was that it was an implementation-simplicity call on my part, not a deliberate design
+  tradeoff, kept from the pre-existing "duplicate feeds the one copy" mental model rather than
+  building full separate-instance leveling. Confirmed with "yes that is what i want," then two
+  `AskUserQuestion` calls locked in the two open design forks — "New copy starts at level 1, no
+  bonus XP to your main one" and "Each copy shown and equipped separately" — both the recommended
+  option. Final go-ahead ("yes") came after explicitly flagging the scope and risk of migrating live
+  production data before touching anything.
+  Notable: this is a same-day supersession of #51, not a bug fix to it — #51's `quantity` design
+  was fully working and shipped to `main` before this was requested. All of #51's test coverage
+  (`companionFactory.test.js`, `companionMarketFactory.test.js`, `companionCancel.test.js`,
+  `workFactory.test.js`, `mercenaryFactory.test.js`) was rewritten rather than incrementally patched,
+  since the contracts under test changed shape (companion-id-keyed → instance-id-keyed) rather than
+  just their values; also fixed several existing tests elsewhere (`raidFactory.test.js`,
+  `rebirthFactory.test.js`, `dynamoHandler.test.js`, `companion.test.js`) whose hand-built
+  `userDetails` fixtures set `active` to a bare companion id with no matching `instanceId` on the
+  owned entry — harmless under the old contract, silently wrong under the new one. Added a new
+  `migrateOwnedToInstances` describe block (6 tests) covering all three input shapes and
+  idempotency. See
+  [systems/companions.md#duplicate-companions-are-real-separate-instances](systems/companions.md#duplicate-companions-are-real-separate-instances)
+  for the full writeup. Full suite green (504/504, up from 502).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
