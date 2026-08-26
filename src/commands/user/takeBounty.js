@@ -5,6 +5,7 @@ const { Bounty, Rival } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -90,6 +91,34 @@ module.exports = {
             setAttributes.totalLosses = userTotalLosses;
         }
 
+        // Companion leveling (roadmap #59, direct instruction — "have it level during
+        // heists and bounties... account for the longer cooldown"). Unconditional on
+        // win/loss, same as /work's own per-call bump — a Bounty attempt is a real time
+        // investment either way. Cooldown-scaled against /work's own 300s baseline (see
+        // companionFactory.getCooldownScaledWorkCountGrant) so the equipped companion
+        // levels at the same real-time rate through Bounty as it would through /work,
+        // rather than 12x slower just because Bounty's cooldown happens to be 12x longer.
+        let leveledCompanions = companionFactory.levelActiveCompanion(
+            userDetails.companions,
+            companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS)
+        );
+
+        // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty
+        // resolution only (dropSource "bounty", never the normal /work roll — see
+        // companionFactory.getCompanionsByRarity). Always resolved unconditionally on a
+        // hit; resolveYukonAward already handles the "already own it" duplicate case
+        // correctly (grants a sellable spare instead of a potato payout). Built off
+        // leveledCompanions (not the original userDetails.companions) so the leveling bump
+        // above and a same-turn Yukon pull compose into ONE final companions object rather
+        // than the second write clobbering the first — `companions` is always a full SET,
+        // never a deep merge, so these can't be two separate writes.
+        let yukonAward = null;
+        if (result.won && result.yukonHit) {
+            yukonAward = mercenaryFactory.resolveYukonAward({ ...userDetails, companions: leveledCompanions });
+            leveledCompanions = yukonAward.companions;
+        }
+        setAttributes.companions = leveledCompanions;
+
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
         if (result.won && result.currency === 'potato' && result.rewardAmount > 0) {
@@ -105,17 +134,6 @@ module.exports = {
             for (const grant of result.statReward) {
                 await raidFactory.handleStatSplit([{ id: userId, username }], grant.type, grant.amount);
             }
-        }
-
-        // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty
-        // resolution only (dropSource "bounty", never the normal /work roll — see
-        // companionFactory.getCompanionsByRarity). Always resolved unconditionally on a
-        // hit; resolveYukonAward already handles the "already own it" duplicate case
-        // correctly (grants a sellable spare instead of a potato payout).
-        let yukonAward = null;
-        if (result.won && result.yukonHit) {
-            yukonAward = mercenaryFactory.resolveYukonAward(userDetails);
-            await dynamoHandler.updateUserFields(userId, { companions: yukonAward.companions });
         }
 
         const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward);

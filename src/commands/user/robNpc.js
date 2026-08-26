@@ -5,8 +5,11 @@ const { RobNpc, Work } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
+const companionFactory = require("../../utils/companionFactory");
+const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const achievementFactory = new AchievementFactory();
 
 // A solo-only heist attempt against a fictional target — no real player involved, no
 // social risk, and (per direct instruction) a SEPARATE 30-minute cooldown (npcRobTimer)
@@ -82,6 +85,16 @@ module.exports = {
         if (result.won) {
             addAttributes.mercenaryNotoriety = tier.notorietyPerWin;
         }
+        // Companion leveling (roadmap #59, direct instruction — "have it level during
+        // heists and bounties... account for the longer cooldown"). Unconditional on
+        // win/loss, same as /work's own per-call bump. Cooldown-scaled against /work's own
+        // 300s baseline (see companionFactory.getCooldownScaledWorkCountGrant) — shared
+        // across all 4 heist tiers, same as the cooldown itself, since every tier costs the
+        // same real time regardless of which one was picked.
+        setAttributes.companions = companionFactory.levelActiveCompanion(
+            userDetails.companions,
+            companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS)
+        );
         // npcRobTimer resets on every outcome the same as every other cooldown-gated action
         // in this bot, win, whiff, or loss alike.
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
@@ -99,5 +112,18 @@ module.exports = {
 
         const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier);
         interaction.editReply({ embeds: [embed] });
+
+        // Achievement check — /rob-npc never had one before at all. Re-fetches (same
+        // "don't trust in-memory state after other writes just landed" discipline
+        // take-bounty.js's own check already uses) so this sees the companion leveling
+        // write above, including a same-turn Max-Level capstone crossing.
+        const updatedUserDetails = await dynamoHandler.findUser(userId, username);
+        if (updatedUserDetails) {
+            const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
+            if (newlyUnlocked.length > 0) {
+                const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
+                interaction.followUp({ embeds: achievementEmbeds });
+            }
+        }
     }
 }

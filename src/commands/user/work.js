@@ -310,20 +310,14 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         // already written its own companions object (a Wandering Companion pull appends a
         // new owned instance, see companionFactory.applyCompanionAward) — incrementing off
         // stale data here would silently clobber that write instead of building on it.
-        // `active` is an instanceId (since 2026-08-25's instance rework), not a companion
-        // id — matched against each owned entry's own `instanceId`, not `id`.
-        const activeInstanceId = updatedUserDetails.companions?.active;
-        if (activeInstanceId) {
-            const leveledOwned = updatedUserDetails.companions.owned.map(o =>
-                o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + 1 } : o
-            );
-            // Max-Level capstone (Option A, cosmetic-only) — marks this instance once its
-            // workCount first crosses max level and bumps the lifetime maxLevelCount/
-            // mythicMaxLevelCount counters those achievements read.
-            const trackedCompanions = companionFactory.applyMaxLevelTracking(
-                { ...updatedUserDetails.companions, owned: leveledOwned },
-                activeInstanceId
-            );
+        // companionFactory.levelActiveCompanion is the shared helper — also used by
+        // Bounty/Heist attempts now (roadmap #59) — that resolves the active INSTANCE (not
+        // companion id, since 2026-08-25's instance rework) and folds in the Max-Level
+        // capstone's tracking automatically. /work's own grant stays flat 1 per call — it
+        // IS the baseline every other action's grant scales against (see
+        // companionFactory.getCooldownScaledWorkCountGrant).
+        if (updatedUserDetails.companions?.active) {
+            const trackedCompanions = companionFactory.levelActiveCompanion(updatedUserDetails.companions, 1);
             await dynamoHandler.updateUserFields(userId, { companions: trackedCompanions });
             // Mirrors this block's own DB write back onto the in-memory object immediately
             // — the achievement check just below reads updatedUserDetails directly, and

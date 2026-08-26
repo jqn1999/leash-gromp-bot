@@ -2172,6 +2172,48 @@ and needs its own balance pass.
   `dynamoHandler.test.js`'s existing healing tests updated for the two new default sub-keys. Full
   suite green (522/522, up from 510).
 
+- [x] **59. Mercenary Companion Leveling — Bounty/Heist Grant workCount Too, Cooldown-Scaled** — S/M
+  — **Done**
+  What: A mercenary's equipped companion instance used to only level through ordinary `/work` or
+  Scavenging — `/take-bounty` and `/rob-npc` granted nothing, even though both are real,
+  deliberate time investments a mercenary makes instead of `/work`. New
+  `companionFactory.getCooldownScaledWorkCountGrant(actionCooldownSeconds) = max(1,
+  round(actionCooldownSeconds / Work.WORK_TIMER_SECONDS))` scales the grant so a companion
+  levels at the same real-time RATE regardless of which action feeds it, not the same flat
+  amount per action (which would level 12x/6x slower through Bounty/Heist purely because
+  their cooldowns are 12x/6x longer than `/work`'s 300s) — Bounty's 3600s cooldown grants 12,
+  `/rob-npc`'s shared 1800s cooldown (identical across all 4 Heist Ladder tiers, since Bounty
+  tiers also share one cooldown) grants 6. New `companionFactory.levelActiveCompanion(companions,
+  workCountGained)` is the shared write-side function — resolves the active INSTANCE, bumps
+  `workCount`, and folds in `applyMaxLevelTracking` (item 58) automatically; `work.js`'s own
+  leveling block was refactored onto this same helper (grant 1, unchanged behavior) instead of
+  keeping a third copy of the same "find active instance, bump workCount" logic. Both grants are
+  **unconditional on win/loss** — same as `/work`'s own per-call bump, which happens regardless
+  of outcome. `/rob-npc` also gained an achievement check it never had before at all (mirroring
+  `take-bounty.js`'s own re-fetch + `checkAndUnlock` pattern), so a Max-Level capstone crossing
+  triggered by a Heist attempt actually unlocks.
+  Why: direct instruction — "Need you to work on merc companion and how it levels via Merc stuff
+  now. Have it level during heists and bounties. Also account for the longer cooldown of bounties
+  and heists and how much experience it should give the companion."
+  Notable: caught and fixed a real composition bug while wiring `/take-bounty` — Yukon's own
+  same-turn award write and the new companion-leveling write both touch `companions`, which is
+  always a full `SET`, never a deep merge, so writing them separately would let whichever landed
+  last silently erase the other's effect. Fixed by building `leveledCompanions` first, then (on a
+  Yukon hit) calling `resolveYukonAward` against `{ ...userDetails, companions: leveledCompanions
+  }` instead of the original `userDetails`, so the Yukon-instance append composes on top of the
+  already-leveled state and both effects land in ONE write. Also fixed unrelated stale doc content
+  discovered adjacent to this change: `mercenary-bounties.md`'s Yukon section still described the
+  pre-instance-rework `quantity`/`spareCount` duplicate-handling shape (removed by item 57).
+  16 new tests: `companionFactory.test.js` gained `getCooldownScaledWorkCountGrant` (4 tests) and
+  `levelActiveCompanion` (4 tests, including a Max-Level-capstone-crosses-via-Bounty/Heist case)
+  describe blocks; new `mercenaryCompanionLeveling.test.js` drives both `/take-bounty` and
+  `/rob-npc`'s real callbacks end-to-end (win/loss unconditional grant, no-op when unequipped,
+  identical grant across every Heist tier, and the Yukon-composition regression case) against a
+  mocked interaction/dynamoHandler, same approach `rivalNotorietyAccrual.test.js` already
+  established. See
+  [systems/mercenary-bounties.md#mercenary-companion-leveling](systems/mercenary-bounties.md#mercenary-companion-leveling)
+  for the full writeup. Full suite green (538/538, up from 522).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

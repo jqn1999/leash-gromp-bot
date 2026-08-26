@@ -1,4 +1,4 @@
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require("../utils/constants");
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, Work } = require("../utils/constants");
 
 // Cumulative — same shape as workScenarios' chance field and starchFactory's
 // PROBABILITY_MATRIX. CompanionRarityOdds is keyed by rarity *strings*
@@ -229,6 +229,48 @@ function applyMaxLevelTracking(companions, instanceId) {
     };
 }
 
+// Mercenary Companion Leveling (roadmap #59) — direct instruction: "work on merc companion
+// and how it levels via Merc stuff now. Have it level during heists and bounties. Also
+// account for the longer cooldown of bounties and heists and how much experience it
+// should give the companion." Before this, a mercenary's equipped companion only leveled
+// through ordinary /work or Scavenging — Bounty (/take-bounty) and Heist (/rob-npc)
+// attempts granted nothing, even though both are real, deliberate time investments a
+// mercenary makes instead of /work.
+//
+// Rather than a flat "+1 per attempt" (which would level a companion far SLOWER through
+// Bounty/Heist than through /work, since both run on much longer cooldowns than /work's
+// 300s), this scales the grant so a companion levels at the same real-time RATE no matter
+// which action is feeding it: a cooldown N times longer than /work's grants N times the
+// workCount /work would have granted across that same stretch of real time. Reads the
+// action's own live cooldown constant directly (Bounty.BOUNTY_TIMER_SECONDS,
+// RobNpc.NPC_ROB_TIMER_SECONDS) rather than a hardcoded ratio, so this stays correct
+// automatically if either cooldown ever changes. Floored at 1 so a hypothetical
+// cooldown shorter than /work's could never round down to 0.
+function getCooldownScaledWorkCountGrant(actionCooldownSeconds) {
+    return Math.max(1, Math.round(actionCooldownSeconds / Work.WORK_TIMER_SECONDS));
+}
+
+// Levels the currently-EQUIPPED instance by workCountGained and folds in
+// applyMaxLevelTracking automatically, so every caller gets the Max-Level capstone for
+// free without a separate call. No-op (returns the exact same `companions` reference,
+// same no-op-by-reference-equality convention migrateOwnedToInstances/applyMaxLevelTracking
+// already use) if nothing is currently equipped — mirrors work.js's own
+// `if (activeInstanceId) {...}` guard, just centralized here so Bounty/Heist (below) don't
+// each need their own copy of the "find the active entry, bump its workCount" logic.
+// Unconditional on win/loss — same as /work's own per-call leveling bump, which happens
+// regardless of which scenario resolved. This is a genuine TIME investment, not an
+// outcome-based reward (see systems/companions.md's Leveling section).
+function levelActiveCompanion(companions, workCountGained) {
+    const activeInstanceId = companions?.active;
+    if (!activeInstanceId) {
+        return companions;
+    }
+    const leveledOwned = (companions.owned ?? []).map(o =>
+        o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained } : o
+    );
+    return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
+}
+
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
 // third owned-companion state (owned-and-idle / owned-and-equipped / owned-and-scavenging)
 // enforced by this guard check at each risk site (companion.js's equip branch,
@@ -416,6 +458,8 @@ module.exports = {
     getGuineaPigRebate,
     applyCompanionAward,
     applyMaxLevelTracking,
+    getCooldownScaledWorkCountGrant,
+    levelActiveCompanion,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,

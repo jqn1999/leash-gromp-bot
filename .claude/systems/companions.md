@@ -133,6 +133,16 @@ that just ran may have already made (e.g. a Wandering Companion pull appending a
 instance) — and matches the active entry by its `instanceId`, not its companion `id`, since two
 owned instances can share the same `id`.
 
+Since 2026-08-26 (roadmap #59), a Mercenary's `/take-bounty` and `/rob-npc` attempts level the
+equipped instance too, unconditionally on win/loss — scaled against `/work`'s own grant by how
+much longer that action's cooldown is (see
+[mercenary-bounties.md#mercenary-companion-leveling](mercenary-bounties.md#mercenary-companion-leveling)
+for the full formula), so a companion levels at the same real-time RATE regardless of whether a
+mercenary spends their time on `/work`, Bounty, or Heist. `companionFactory.levelActiveCompanion`
+is the shared function all three (`/work` included, refactored onto it) now call — Scavenging
+still has its own separate leveling path (`resolveScavengeReward`, below) since it's the one
+action that levels a *benched*, not equipped, instance.
+
 This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
 spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a
 level (1-10) via `CompanionLeveling.THRESHOLDS`, the exact same shape/lookup pattern

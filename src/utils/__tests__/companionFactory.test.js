@@ -14,13 +14,15 @@ const {
     getActivePerkValue,
     applyCompanionAward,
     applyMaxLevelTracking,
+    getCooldownScaledWorkCountGrant,
+    levelActiveCompanion,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,
     migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 } = require('../companionFactory');
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging } = require('../constants');
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, Work, Bounty, RobNpc } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -603,6 +605,61 @@ describe('applyMaxLevelTracking', () => {
         const result = applyMaxLevelTracking(companions, 'sprout-a');
         expect(result.maxLevelCount).toBe(1);
         expect(result.mythicMaxLevelCount).toBe(0);
+    });
+});
+
+describe('getCooldownScaledWorkCountGrant', () => {
+    test('a cooldown equal to /work\'s own timer grants exactly 1', () => {
+        expect(getCooldownScaledWorkCountGrant(Work.WORK_TIMER_SECONDS)).toBe(1);
+    });
+
+    test('Bounty\'s cooldown grants proportionally more, matching how many /work-lengths it spans', () => {
+        expect(getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS))
+            .toBe(Math.round(Bounty.BOUNTY_TIMER_SECONDS / Work.WORK_TIMER_SECONDS));
+    });
+
+    test('the Heist Ladder\'s shared cooldown grants proportionally more too', () => {
+        expect(getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS))
+            .toBe(Math.round(RobNpc.NPC_ROB_TIMER_SECONDS / Work.WORK_TIMER_SECONDS));
+    });
+
+    test('never rounds down to 0 even for a cooldown shorter than /work\'s own', () => {
+        expect(getCooldownScaledWorkCountGrant(1)).toBe(1);
+    });
+});
+
+describe('levelActiveCompanion', () => {
+    test('bumps the active instance\'s workCount by the given amount', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        const result = levelActiveCompanion(companions, 12);
+        expect(result.owned[0].workCount).toBe(22);
+    });
+
+    test('is a no-op (same reference back) when nothing is equipped', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: null };
+        expect(levelActiveCompanion(companions, 12)).toBe(companions);
+    });
+
+    test('leaves every other owned instance untouched', () => {
+        const companions = {
+            owned: [
+                { instanceId: 'sprout-a', id: 'sprout', workCount: 10 },
+                { instanceId: 'mole-a', id: 'mole', workCount: 5 }
+            ],
+            active: 'sprout-a'
+        };
+        const result = levelActiveCompanion(companions, 12);
+        expect(result.owned[1]).toEqual({ instanceId: 'mole-a', id: 'mole', workCount: 5 });
+    });
+
+    // The Max-Level capstone must fire from this path too — a companion leveled through
+    // Bounty/Heist can cross into max level exactly the same way a /work-leveled one can.
+    test('folds in applyMaxLevelTracking automatically when the grant crosses max level', () => {
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount - 1 }], active: 'sprout-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        const result = levelActiveCompanion(companions, 12);
+        expect(result.owned[0].hasReachedMaxLevel).toBe(true);
+        expect(result.maxLevelCount).toBe(1);
     });
 });
 

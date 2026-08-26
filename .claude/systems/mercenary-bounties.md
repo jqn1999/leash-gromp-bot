@@ -405,17 +405,72 @@ correctly, with no special-casing needed:
 
 On a hit, `mercenaryFactory.resolveYukonAward(userDetails)` always calls
 `companionFactory.applyCompanionAward` unconditionally — no ownership check needed first,
-since that function already handles the "already own it" case (bumps `workCount` by
-`CompanionLeveling.DUPLICATE_WORK_COUNT_BONUS` and `quantity` by 1). A duplicate pull used
-to also pay a potato consolation here (mirroring `workFactory.handleCompanionEncounter`'s
-own duplicate branch exactly — same `CompanionDuplicateReward.legendary` maxGain, same
-`calculateGainAmount` shape); removed 2026-08-25 alongside
-[systems/companions.md](companions.md#sellable-duplicates)'s sellable-duplicates rework —
-a duplicate Yukon now grants a real, sellable spare (`resolveYukonAward`'s returned
-`spareCount`) instead, exactly like any other duplicate companion. Both call sites were
-updated together specifically because they were already documented as intentional mirrors
-of each other; leaving one on the old potato-payout behavior while the other moved to
-spares would have broken that.
+since 2026-08-25's instance rework made every acquisition (new or duplicate) the same
+"always append a brand-new owned instance" call (see
+[systems/companions.md#duplicate-companions-are-real-separate-instances](companions.md#duplicate-companions-are-real-separate-instances)).
+A duplicate Yukon pull is therefore a genuinely separate, independently-leveled second
+Yukon starting at level 1 — no bonus workCount to the existing copy, no potato consolation
+(that used to exist, mirroring `workFactory.handleCompanionEncounter`'s own duplicate
+branch exactly, removed 2026-08-25 by direct instruction before the instance rework
+replaced it again). Both call sites stay intentional mirrors of each other — `resolveYukonAward`
+and `handleCompanionEncounter` are still documented as calling `applyCompanionAward` the
+exact same way.
+
+## Mercenary Companion Leveling
+
+Added 2026-08-26, direct instruction: "work on merc companion and how it levels via Merc
+stuff now. Have it level during heists and bounties. Also account for the longer cooldown
+of bounties and heists and how much experience it should give the companion." Before this,
+a mercenary's equipped companion only leveled through ordinary `/work` or Scavenging —
+`/take-bounty` and `/rob-npc` (both real, deliberate time investments a mercenary makes
+*instead of* `/work`) granted the equipped companion nothing at all.
+
+Rather than a flat "+1 per attempt" (which would level a companion far SLOWER through
+Bounty/Heist than through `/work`, since both run on much longer cooldowns), the grant is
+scaled so a companion levels at the same real-time RATE no matter which action is feeding
+it — an action with a cooldown N times longer than `/work`'s (`Work.WORK_TIMER_SECONDS`,
+300s) grants N times the workCount a single `/work` call would across that same stretch of
+real time:
+
+```
+companionFactory.getCooldownScaledWorkCountGrant(actionCooldownSeconds) =
+    max(1, round(actionCooldownSeconds / Work.WORK_TIMER_SECONDS))
+```
+
+- **`/take-bounty`**: `getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS)` = 12
+  (3600s / 300s) — same grant regardless of tier (all three share `BOUNTY_TIMER_SECONDS`).
+- **`/rob-npc`**: `getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS)` = 6
+  (1800s / 300s) — same grant regardless of which Heist Ladder tier is picked (all 4 share
+  the one `NPC_ROB_TIMER_SECONDS` cooldown).
+- Reads the action's own live cooldown constant directly rather than a hardcoded ratio, so
+  this stays correct automatically if either cooldown ever changes.
+
+**Unconditional on win/loss** — same as `/work`'s own per-call leveling bump, which happens
+regardless of which scenario resolved. A Bounty or Heist attempt is a genuine TIME
+investment either way (see [systems/companions.md](companions.md)'s Leveling section), not
+an outcome-based reward layered on top of winning.
+
+`companionFactory.levelActiveCompanion(companions, workCountGained)` is the shared write-side
+function both commands (and `/work`, refactored onto the same helper) call — resolves the
+currently-equipped INSTANCE (not companion id), bumps its `workCount`, and folds in
+`applyMaxLevelTracking` automatically so a companion crossing into max level via Bounty/Heist
+gets the exact same [Max-Level capstone](companions.md#max-level--full-roster-capstones)
+treatment a `/work`- or Scavenging-leveled crossing gets. No-op (same object reference back)
+if nothing is currently equipped.
+
+**Composition with Yukon's same-turn award** (`/take-bounty` only): a winning Bounty attempt
+can grant Yukon in the same resolution the companion-leveling bump applies to. Since
+`companions` is always written as a full `SET`, never a deep merge, these two effects have to
+land in ONE final companions object or whichever write happens last would silently erase the
+other. `takeBounty.js` builds `leveledCompanions` first via `levelActiveCompanion`, then (if
+Yukon hits) calls `resolveYukonAward` against `{ ...userDetails, companions: leveledCompanions }`
+instead of the original `userDetails` — so the Yukon-instance append lands on top of the
+already-leveled state, and both effects reach the database in the same single write.
+
+`/rob-npc` also gained an achievement check it never had before at all (mirroring
+`take-bounty.js`'s own re-fetch + `checkAndUnlock` pattern) — needed so a Max-Level capstone
+crossing (or any other companion-driven achievement) triggered by a Heist attempt actually
+unlocks and shows its embed, the same way it already did for `/work`, Scavenging, and Bounty.
 
 ## Commands
 
