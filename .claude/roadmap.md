@@ -1970,6 +1970,63 @@ and needs its own balance pass.
   raider has a 0 bonus; empty roster returns all zeros, not `NaN`). Full suite green
   (476/476, up from 472).
 
+- [x] **55. Fix: Autocomplete Silently Broken After Sync-on-Startup Skipped It** — S — **Done**
+  What: `areCommandsDifferent.js`'s per-option diff (used by `01registerCommands.js`'s
+  sync-on-startup to decide whether to push an updated option definition to Discord) never
+  compared the `autocomplete` flag — only `description`/`type`/`required`/`choices`. Discord
+  only ever sends an autocomplete interaction for an option if the *live registered*
+  command has `autocomplete: true` on it; the bot's own local command file having it isn't
+  enough on its own. So if a `guild-name`-style option was ever registered on Discord
+  before `autocomplete: true` was added to it locally (or the flag changed either
+  direction), the startup sync saw "no difference" and never called
+  `applicationCommands.edit(...)` — the option stayed a plain text field on Discord's side
+  indefinitely, even though `/join-guild`/`/guild`/`/guild-members` all had real, working
+  `autocomplete` handler functions in code the whole time. Fixed by adding
+  `(localOption.autocomplete || false) !== (existingOption.autocomplete || false)` to the
+  diff check, so the next bot restart correctly re-syncs any option whose autocomplete
+  flag doesn't match Discord's live copy.
+  Why: direct player report — "add auto fill for joining guilds and looking up guilds by
+  name (is that possible?)" followed by "it doesnt seem to autopopulate though," after
+  confirming the autocomplete code itself was already fully implemented and correct on
+  all three commands.
+  Notable: this is a one-time sync gap, not a recurring bug — once a bot restart pushes
+  the corrected option definition to Discord, the flag matches on both sides going
+  forward and won't need re-syncing again unless it changes a second time. 8 new tests in
+  a new `areCommandsDifferent.test.js` (identical/changed description, adding/removing
+  autocomplete, autocomplete unset on both sides not a false positive, required flag,
+  added option, changed choice value). Full suite green (494/494 at the time, before item
+  56 below added more).
+
+- [x] **56. `/join-guild` No-Args View — Buttons for Every Pending Invite** — S — **Done**
+  What: `guild-name` is now optional (was required) on `/join-guild`. Typing a name still
+  joins directly, unchanged (autocomplete scoped to your own invites, per item 55 above —
+  now actually working). Omitting it instead shows a new paginated embed
+  (`embedFactory.createGuildInviteListEmbed`, 5/page, same 👑 leader / 👥 member-count
+  field shape `createGuildLeaderboardEmbed` already uses) listing every guild the
+  invoking user currently has a pending invite to, with one Join button per guild
+  (labeled with the guild's own name, keyed by `guildId` in the customId rather than the
+  name itself so arbitrary guild-name characters can't break it). The actual join logic
+  was extracted into a shared, exported `attemptJoinGuild(userId, username,
+  userDisplayName, guildName)` — every validation step (member cap, already-in-a-guild,
+  mercenary/switch-cooldown mutual exclusion, invite-list membership, the
+  `updateGuildFieldsWithLock` race guard) is now identical and shared between the typed
+  path and the button-click path, so neither can drift out of sync with the other. A
+  successful join ends the browsing session (clears embeds/components — a guild member
+  can't join anywhere else); a failed click (guild filled up, invite revoked, etc. since
+  the page was rendered) re-fetches the invite list and re-renders instead of ending the
+  whole session over one bad click, so the player can just try a different guild on the
+  list.
+  Why: direct instruction, following the autocomplete investigation above — "how about
+  reworking how the guild join one works, it can be an embed with buttons for every guild
+  ur invited to."
+  Notable: collector/pagination structure mirrors `companionCancel.js`'s own
+  list-with-per-item-action-buttons pattern exactly (`buildPaginationRow`,
+  `awaitMessageComponent` loop, invoker-only collector filter), rather than inventing a
+  new UI pattern. 10 new tests in a new `joinGuild.test.js` covering `attemptJoinGuild`'s
+  every branch (success, unknown guild, at cap, already in this/another guild, mercenary,
+  switch cooldown active/elapsed, no invite, race-lost write). Full suite green
+  (502/502).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

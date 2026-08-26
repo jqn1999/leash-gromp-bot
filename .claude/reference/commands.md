@@ -54,7 +54,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `guildBank.js` | `/guild-bank` | Deposit (taxed, any member) / withdraw (Co-Leader+, untaxed) |
 | `guildBuy.js` | `/guild-upgrade` | Spends guild bank potatoes on bank-capacity or member-cap tier upgrades |
 | `invite.js` | `/invite` | Elder+ invites a user to the guild |
-| `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap — `guild-name` has autocomplete scoped to guilds you're actually invited to |
+| `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap — `guild-name` is now optional (autocomplete scoped to guilds you're actually invited to); omit it to get a paginated embed with one join button per pending invite instead |
 | `leave.js` | `/leave` | Non-Leader member leaves the guild |
 | `kick.js` | `/kick` | Co-Leader/Leader removes a member (role-gated) |
 | `promote.js` | `/promote` | Raise a member's role (role-gated) |

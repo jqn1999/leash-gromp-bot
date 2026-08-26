@@ -483,6 +483,35 @@ class EmbedFactory {
         return embed;
     }
 
+    // /join-guild's no-args view — every guild the invoking user currently has a pending
+    // invite to, one field per guild, same 👑/👥 field-value shape createGuildLeaderboardEmbed
+    // already uses for a familiar look. Paginated exactly like createAchievementsPageEmbed/
+    // createQuestsPageEmbed; pageItems is already-sliced guild objects for the current page.
+    createGuildInviteListEmbed(pageItems, pageIndex, totalPages, totalInvites) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        const fields = pageItems.length > 0 ? pageItems.map(guild => {
+            const leader = guild.memberList.find((currentMember) => currentMember.role == GuildRoles.LEADER);
+            const leaderName = leader ? leader.username : 'Unknown';
+            return {
+                name: guild.guildName,
+                value: `👑 ${leaderName} • 👥 ${guild.memberList.length}/${guild.memberCap} members`,
+                inline: false,
+            };
+        }) : [{ name: 'No pending invites', value: 'Ask a guild\'s Elder, Co-Leader, or Leader to invite you, or run /join-guild <guild-name> if you already know which one.', inline: false }];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🏰 Guilds You're Invited To`)
+            .setDescription(totalInvites > 0
+                ? `${totalInvites.toLocaleString()} pending invite${totalInvites == 1 ? '' : 's'} — click a button below to join.${totalPages > 1 ? ` Page ${pageIndex + 1} / ${totalPages}.` : ''}`
+                : `You have no pending guild invites right now.`)
+            .setColor("Gold")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Paginated exactly like createAchievementsPageEmbed/createQuestsPageEmbed — shop
     // item lists (up to 10 entries) made for a very long single embed otherwise.
     // `progress`, when passed, is { shopId, baseValue, potatoes } — the user's own tier
