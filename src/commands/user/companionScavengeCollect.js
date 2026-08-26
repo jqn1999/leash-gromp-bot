@@ -34,10 +34,10 @@ module.exports = {
         const companion = companionFactory.getCompanionById(ownedEntryBefore?.id);
         const workCountBefore = ownedEntryBefore?.workCount || 0;
 
-        const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity } = companionFactory.resolveScavengeReward(userDetails);
+        const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount } = companionFactory.resolveScavengeReward(userDetails);
 
         const written = await dynamoHandler.resolveScavenge(userId, scavenging.instanceId, {
-            companions: { ...userDetails.companions, owned, scavenging: null, scavengeReturnsByRarity },
+            companions: { ...userDetails.companions, owned, scavenging: null, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount },
             starches: (userDetails.starches || 0) + starchesGained
         });
         if (!written) {
@@ -48,13 +48,13 @@ module.exports = {
         const embed = embedFactory.createScavengeReturnEmbed(userDisplayName, companion, workCountBefore, workCountBefore + workCountGained, starchesGained, multiplierTier);
         interaction.editReply({ embeds: [embed] });
 
-        // Legendary Legwork / Mythic Milestones — checked against the just-written counts
-        // rather than re-fetching, same "build the post-write shape locally" shortcut
-        // work.js's own achievement check takes.
+        // Legendary Legwork / Mythic Milestones / Max-Level capstone — checked against the
+        // just-written counts rather than re-fetching, same "build the post-write shape
+        // locally" shortcut work.js's own achievement check takes.
         const newlyUnlocked = await achievementFactory.checkAndUnlock({
             userId,
             achievements: userDetails.achievements,
-            companions: { ...userDetails.companions, scavengeReturnsByRarity }
+            companions: { ...userDetails.companions, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount }
         });
         if (newlyUnlocked.length > 0) {
             const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);

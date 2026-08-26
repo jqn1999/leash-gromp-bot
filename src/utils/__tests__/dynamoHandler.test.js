@@ -172,7 +172,7 @@ describe('findUser', () => {
     // active/ownedCount/mythicOwnedCount), so the top-level `user[key] === undefined`
     // check never fires for it; only the one-level-deep nested-object heal catches the
     // missing `scavenging` sub-key.
-    test('shallow-heals a pre-existing companions object missing the new scavenging/scavengeReturnsByRarity sub-keys', async () => {
+    test('shallow-heals a pre-existing companions object missing the new scavenging/scavengeReturnsByRarity/maxLevelCount/mythicMaxLevelCount sub-keys', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,
             Items: [{
@@ -189,6 +189,8 @@ describe('findUser', () => {
 
         expect(user.companions.scavenging).toBeNull();
         expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 0, mythic: 0 });
+        expect(user.companions.maxLevelCount).toBe(0);
+        expect(user.companions.mythicMaxLevelCount).toBe(0);
         // Existing sub-fields must survive the heal untouched.
         expect(user.companions.owned).toEqual([{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }]);
         expect(user.companions.active).toBe('sprout-a');
@@ -198,7 +200,10 @@ describe('findUser', () => {
         );
         expect(companionsWrite).toBeDefined();
         const writtenValue = Object.values(companionsWrite[0].ExpressionAttributeValues)[0];
-        expect(writtenValue).toEqual({ owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0, scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 } });
+        expect(writtenValue).toEqual({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0,
+            scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 }, maxLevelCount: 0, mythicMaxLevelCount: 0
+        });
     });
 
     test('does not touch a companions object that already has every sub-key', async () => {
@@ -206,7 +211,11 @@ describe('findUser', () => {
             Count: 1,
             Items: [{
                 userId: 'u8', username: 'name8',
-                companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0, scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 } },
+                companions: {
+                    owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0,
+                    scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 },
+                    maxLevelCount: 0, mythicMaxLevelCount: 0
+                },
             }],
         }));
         docClient.update.mockReturnValue(resolved({}));

@@ -744,11 +744,70 @@ companion find on a Rare/Legendary/Mythic return, and a one-time milestone-gated
 a player's first-ever Legendary/Mythic collect. See `roadmap.md`'s 2026-08-23 entry for the full
 option writeup if picked up later.
 
+## Max-Level & Full-Roster Capstones
+
+Added 2026-08-26, direct instruction: "For companion max level and full rosters just
+cosmetic with tag and flavor line and achievement is fine" — Option A from the
+architect-drafted option groups (cosmetic-only: a permanent tag, a flavor line, and an
+achievement), explicitly turning down the bounded-mechanical-reward Option B alternatives
+(a Scavenging duration cut for a maxed companion, a one-time graduation payout, a
+market-tax discount for a full roster) for now.
+
+- **Max-Level tag** — once a specific owned INSTANCE's `workCount` crosses
+  `CompanionLeveling.THRESHOLDS`' top entry (level 10), it permanently reads " ⭐ Bonded"
+  next to its name in `/companion`'s list (alongside the existing 🗺️ Seasoned Scout tag),
+  plus a one-line flavor sentence in that entry's own field
+  (`createCompanionListEmbed`). The equip confirmation message gets the same flavor line
+  when equipping an already-maxed instance (`companion.js`'s `attemptEquip`). The
+  celebratory moment itself — the exact scavenge return that crosses into max level — gets
+  a dedicated "⭐ Bonded!" field on `createScavengeReturnEmbed`, firing only on that one
+  crossing return, not on every later return from an already-maxed companion. There's no
+  equivalent celebratory moment wired into ordinary `/work` leveling (unlike Scavenging's
+  own embed) — the achievement-unlock embed (below) is what surfaces that moment for a
+  `/work`-leveled crossing instead.
+- **Full-Roster flourish** — once `companions.ownedCount >= Companions.length` (13,
+  matching `full_roster`'s own threshold exactly), `/companion`'s list description gets a
+  "🏆 Menagerie Complete" line, and `/profile`'s title gets a " 🏆Menagerie Complete" suffix
+  (same title-flourish precedent " 🌱Rebirth N" already sets on that same embed). Purely
+  cosmetic — the underlying `full_roster` achievement already existed and is unchanged;
+  this just makes the milestone visible in-line rather than only on `/achievements`.
+- **`companionFactory.applyMaxLevelTracking(companions, instanceId)`** — the shared
+  write-side logic behind the tag. Marks one owned instance `hasReachedMaxLevel: true` the
+  first time it's found at max level and bumps `companions.maxLevelCount` (any rarity) /
+  `mythicMaxLevelCount` (Mythic only) exactly once per instance — mirrors
+  `resolveScavengeReward`'s own `hasScavenged` "write once, read forever" flag shape, and is
+  itself idempotent by reference equality (a no-op returns the exact same object) the same
+  way `migrateOwnedToInstances` already is. Called from **both** places a companion's
+  `workCount` can grow: `work.js`'s ordinary per-`/work` leveling write (mutates
+  `updatedUserDetails.companions` back in place immediately afterward so the achievement
+  check just below it sees the fresh count — the same "build the post-write shape locally"
+  shortcut `companionScavengeCollect.js`'s own achievement check already takes) and
+  `companionFactory.resolveScavengeReward` itself (a companion can reach max level entirely
+  through Scavenging, benched, without ever being the active one).
+- **New achievements** — read the new counters through the existing generic
+  `statPath`-threshold checker, no new checking code needed (see the Achievements table
+  below). `mythic_max_level_companion` is the harder of the two on purpose: only one
+  companion is ever equipped at a time, so maxing a Mythic means either main-lining your
+  best companion for a long stretch or patiently Scavenging it in the background — a real,
+  deliberate commitment either way, not something that falls out of ordinary play.
+
+**Why cosmetic-only, not a mechanical reward**: both the architect's option write-up and
+the balance-audit's own finding #2 (leveling's 1.45x cap can already invert rarity ordering
+on some perk axes) argue against layering more raw value onto an already-flagged-strong
+lever, and the "exactly two roles" Scavenging-slot discipline explicitly exists to keep
+owning/leveling more companions a matter of *optionality*, not compounding *standing
+value* — a mechanical reward risked reopening that exact tension. Cosmetic-only sidesteps
+both concerns entirely while still giving a maxed companion and a complete collection a
+real, visible moment. The bounded Option B ideas (Scavenging duration cut, one-time
+graduation payout, market-tax discount) remain on the roadmap as a possible later
+follow-up, not rejected outright — just not built this round.
+
 ## Achievements
 
 New `Achievements` entries (see [achievements.md](achievements.md)) read the same
-`companions.ownedCount`/`companions.mythicOwnedCount` counters through the existing generic
-`statPath`-threshold checker — no new checking code needed:
+`companions.ownedCount`/`companions.mythicOwnedCount`/`companions.maxLevelCount`/
+`companions.mythicMaxLevelCount` counters through the existing generic `statPath`-threshold
+checker — no new checking code needed:
 
 | id | Name | Threshold |
 |---|---|---|
@@ -756,12 +815,20 @@ New `Achievements` entries (see [achievements.md](achievements.md)) read the sam
 | `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
 | `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 13` (all of them, including Yukon — bumped 10→12 when Guinea Pig/Prospector shipped, then 12→13 when Yukon shipped with Mercenary Bounties; `ownedCount` increments on ANY new companion acquisition regardless of `dropSource`, so this needed the same mechanical bump both times) |
 | `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
+| `first_max_level_companion` | Bonded for Life | `companions.maxLevelCount >= 1` |
+| `mythic_max_level_companion` | Legend in Full Bloom | `companions.mythicMaxLevelCount >= 1` |
 
 ## Persistence
 
-`userDetails.companions: { owned: [{ instanceId, id, workCount }], active: instanceId|null,
-ownedCount, mythicOwnedCount, scavenging: { instanceId, rarity, returnsAt } | null }`, backfilled
-onto existing accounts by `findUser`'s self-healing pattern like every other field. Untouched by
+`userDetails.companions: { owned: [{ instanceId, id, workCount, hasReachedMaxLevel? }], active:
+instanceId|null, ownedCount, mythicOwnedCount, scavenging: { instanceId, rarity, returnsAt } | null,
+maxLevelCount, mythicMaxLevelCount }`, backfilled onto existing accounts by `findUser`'s self-healing
+pattern like every other field. `maxLevelCount`/`mythicMaxLevelCount` (added 2026-08-26 by the
+Max-Level capstone above) went through the same generic one-level-deep nested-object heal
+`scavenging` did — zero new healing code, same mechanism — while `hasReachedMaxLevel` on an owned
+entry is write-once by `companionFactory.applyMaxLevelTracking` itself (absent until an instance
+first reaches max level, same shape `hasScavenged` already uses) rather than backfilled at all.
+Untouched by
 `/rebirth`'s reset, same "survives a prestige reset" precedent
 `sweetPotatoBuffs`/achievements/records/starches already set. `workCount` (originally shipped as a
 static `level: 1` field nothing read) was repurposed by Companion Leveling (#13 on the roadmap)

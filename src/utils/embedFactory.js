@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -61,6 +61,10 @@ const COMPANION_RARITY_LABEL = {
     [CompanionRarity.LEGENDARY]: 'Legendary',
     [CompanionRarity.MYTHIC]: 'Mythic'
 };
+// The top of CompanionLeveling.THRESHOLDS — used by the Max-Level capstone's cosmetic
+// tag/flavor line (see createCompanionListEmbed/createScavengeReturnEmbed) to detect a
+// companion instance at max level without duplicating the threshold table's own shape.
+const MAX_COMPANION_LEVEL = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
 
 const PERK_LABELS = {
     workMultiplierPercent: value => `+${(value * 100).toFixed(1)}% Work Multiplier`,
@@ -159,6 +163,11 @@ class EmbedFactory {
         // rebirthed doesn't get a "Rebirth 0" tag cluttering every profile.
         if (userDetails.rebirthCount > 0) {
             title += ` 🌱Rebirth ${userDetails.rebirthCount}`;
+        }
+        // Full-Roster capstone (Option A, cosmetic-only) — same threshold the full_roster
+        // achievement checks (Companions.length, currently 13, includes Yukon).
+        if ((userDetails.companions?.ownedCount || 0) >= Companions.length) {
+            title += ` 🏆Menagerie Complete`;
         }
         // Loose `!= 0` treats a genuinely unset guildId (undefined) as "has a guild" —
         // undefined != 0 is true — calling findGuildById(undefined) and crashing on
@@ -1337,6 +1346,18 @@ class EmbedFactory {
             incredible: '💥 Incredible haul! (3x) — ',
         };
 
+        // Max-Level capstone (Option A, cosmetic-only) — only fires the celebratory
+        // callout on the exact return that crosses into max level, not on every later
+        // return from an already-maxed companion (same "the moment it happens" framing the
+        // level-up 🎉 above already uses).
+        if (levelBefore < MAX_COMPANION_LEVEL && levelAfter === MAX_COMPANION_LEVEL) {
+            fields.push({
+                name: `⭐ Bonded!`,
+                value: `${companion.name} has reached its full potential and now stands proudly by your side.`,
+                inline: false,
+            });
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`${tierCallouts[multiplierTier] || ''}${userDisplayName}, ${companion.name} is back from scavenging!`)
             .setDescription(companion.scavengeFlavor || companion.description)
@@ -1778,6 +1799,7 @@ class EmbedFactory {
             }
             const workCount = companion.workCount || 0;
             const level = companionFactory.getCompanionLevel(workCount);
+            const isMaxLevel = level === MAX_COMPANION_LEVEL;
             const nextThreshold = companionFactory.getNextLevelThreshold(workCount);
             const progress = nextThreshold
                 ? `${workCount.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
@@ -1789,16 +1811,29 @@ class EmbedFactory {
             // than on the write side.
             const isUpperRarity = companion.rarity === CompanionRarity.LEGENDARY || companion.rarity === CompanionRarity.MYTHIC;
             const scoutTag = (companion.hasScavenged && isUpperRarity) ? ' 🗺️ Seasoned Scout' : '';
+            // Max-Level capstone (Option A, cosmetic-only — see
+            // companionFactory.applyMaxLevelTracking). A permanent tag once this specific
+            // instance has ever crossed max level, plus a one-line flourish — reads off
+            // level directly rather than the write-once hasReachedMaxLevel flag so it shows
+            // correctly even for an instance maxed before this feature existed.
+            const bondedTag = isMaxLevel ? ' ⭐ Bonded' : '';
+            const bondedFlavor = isMaxLevel ? '\nThis companion has reached its full potential and stands proudly by your side.' : '';
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}`,
-                value: `${formatCompanionPerks(companion, level)}\n${progress}\n${status}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}${bondedTag}`,
+                value: `${formatCompanionPerks(companion, level)}\n${progress}${bondedFlavor}\n${status}`,
                 inline: false,
             };
         }) : [{ name: 'No companions yet', value: 'Keep working — Wandering Companion encounters can happen on any /work!', inline: false }];
 
+        // Full-Roster capstone (Option A, cosmetic-only, same direct instruction as the
+        // Max-Level tag above) — a one-line flourish once every companion in the roster is
+        // owned, matching the existing full_roster achievement's own threshold exactly
+        // (Companions.length, currently 13 — includes Yukon, the Highwayman).
+        const menagerieComplete = totalOwned >= Companions.length ? '\n🏆 Menagerie Complete — every companion, collected.' : '';
+
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Companions`)
-            .setDescription(`${totalOwned} / ${Companions.length} collected\nPage ${pageIndex + 1} / ${totalPages}${canEquip ? `\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.` : ''}`)
+            .setDescription(`${totalOwned} / ${Companions.length} collected${menagerieComplete}\nPage ${pageIndex + 1} / ${totalPages}${canEquip ? `\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.` : ''}`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

@@ -14,8 +14,11 @@ Each achievement is a plain data record, not a function:
 
 `statPath` is dot-notation into the user record (e.g. `"workScenarioCounts.golden"`,
 `"regrades.workMulti.regradeAmount"`), resolved by `getStatValue` in `achievementFactory.js`. An
-achievement unlocks the first time that value reaches `threshold`. 39 achievements ship as of this
-writing. **Names are potato-punned to match the game's tone** (Spud of Steel, Root Cellar
+achievement unlocks the first time that value reaches `threshold`. 57 achievements ship as of this
+writing (updated 2026-08-26 — the "39" this line previously read, and the 17/15/7 category
+breakdown just below, were both already stale by the time this was noticed; the category counts
+haven't been re-audited against the live list, only the total). **Names are potato-punned to match
+the game's tone** (Spud of Steel, Root Cellar
 Architect, Fort Spudnox, Tater Tower Titan, etc. — see the full list live via `Achievements` in
 `constants.js`); `id` is the only field that's ever persisted per-user (in `userDetails.achievements`),
 so renaming `name`/`description` later is always safe and never needs a migration — only changing an

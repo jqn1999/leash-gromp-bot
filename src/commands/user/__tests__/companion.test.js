@@ -87,4 +87,26 @@ describe('attemptEquip', () => {
         expect(result.ok).toBe(true);
         expect(result.userDetails.companions.active).toBe('sprout-b');
     });
+
+    // Max-Level capstone (Option A, cosmetic-only) — a flavor callout on the confirmation
+    // message when equipping an instance that's already reached max level.
+    test('equipping a max-level instance adds the Bonded flavor line', async () => {
+        const maxWorkCount = require('../../../utils/constants').CompanionLeveling.THRESHOLDS.slice(-1)[0].workCountRequired;
+        dynamoHandler.findUser.mockResolvedValue(userWith({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }]
+        }));
+
+        const result = await attemptEquip('user-1', 'User', 'sprout-a');
+
+        expect(result.ok).toBe(true);
+        expect(result.message).toMatch(/Bonded/);
+    });
+
+    test('equipping a non-max-level instance has no Bonded flavor line', async () => {
+        dynamoHandler.findUser.mockResolvedValue(userWith());
+
+        const result = await attemptEquip('user-1', 'User', 'sprout-a');
+
+        expect(result.message).not.toMatch(/Bonded/);
+    });
 });

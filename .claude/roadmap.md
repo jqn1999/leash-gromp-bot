@@ -2127,6 +2127,51 @@ and needs its own balance pass.
   [systems/companions.md#duplicate-companions-are-real-separate-instances](systems/companions.md#duplicate-companions-are-real-separate-instances)
   for the full writeup. Full suite green (504/504, up from 502).
 
+- [x] **58. Companion Max-Level & Full-Roster Capstones — Cosmetic Tag/Flavor/Achievement (Option A)**
+  — S — **Done**
+  What: Two related capstones, both cosmetic-only. **Max-Level**: once a specific owned INSTANCE's
+  `workCount` crosses `CompanionLeveling.THRESHOLDS`' top entry (level 10), it permanently reads
+  " ⭐ Bonded" next to its name in `/companion`'s list plus a one-line flavor sentence, the equip
+  confirmation gets the same flavor line, and the exact scavenge return that crosses into max level
+  gets a dedicated "⭐ Bonded!" celebratory field (fires once, on the crossing return only). **Full
+  Roster**: once `ownedCount >= Companions.length` (13, matching the existing `full_roster`
+  achievement's own threshold), `/companion`'s list gets a "🏆 Menagerie Complete" description line
+  and `/profile`'s title gets a " 🏆Menagerie Complete" suffix (same flourish precedent
+  " 🌱Rebirth N" already sets there). New `companionFactory.applyMaxLevelTracking(companions,
+  instanceId)` is the shared write-side logic: marks one owned instance `hasReachedMaxLevel: true`
+  the first time it's found at max level and bumps `companions.maxLevelCount`/`mythicMaxLevelCount`
+  exactly once per instance (mirrors `hasScavenged`'s own write-once flag shape; itself idempotent
+  by reference equality like `migrateOwnedToInstances`). Wired into BOTH places a companion's
+  `workCount` can grow: `work.js`'s ordinary per-`/work` leveling write (mutates
+  `updatedUserDetails.companions` back in place immediately so the achievement check right after it
+  sees the fresh count — same "build the post-write shape locally" shortcut
+  `companionScavengeCollect.js`'s own achievement check already took) and
+  `companionFactory.resolveScavengeReward` itself (a benched companion can reach max level purely
+  through Scavenging). Two new achievements read the new counters through the existing generic
+  `statPath`-threshold checker: `first_max_level_companion` ("Bonded for Life",
+  `companions.maxLevelCount >= 1`) and `mythic_max_level_companion` ("Legend in Full Bloom",
+  `companions.mythicMaxLevelCount >= 1`). `dynamoHandler.js`'s default `companions` shape grew the
+  two new counters, backfilled onto existing accounts by the same generic one-level-deep
+  nested-object heal `scavenging` already goes through — zero new healing code.
+  Why: direct instruction, following up on an `AskUserQuestion`-style consolidated list of every
+  open decision point across this item and the still-undecided Distinct Scavenging Rewards item —
+  "For companion max level and full rosters just cosmetic with tag and flavor line and achievement
+  is fine. Hold off on other ask." Explicitly declines the bounded-mechanical Option B alternatives
+  (a Scavenging duration cut for a maxed companion, a one-time graduation payout, a full-roster
+  market-tax discount) — those remain on the roadmap as a possible later follow-up, not rejected
+  outright.
+  Notable: caught and corrected a stale doc claim before implementing — this item's own original
+  write-up (further down this file) asserted `full_roster`'s live threshold was `12`; the actual
+  live value in `constants.js` is `13` (Yukon was added after that write-up was drafted). Verified
+  directly against source rather than trusting the note, and used `Companions.length` (13) as the
+  live threshold everywhere rather than hardcoding either stale or current number. 15 new tests:
+  `companionFactory.test.js` gained a standalone `applyMaxLevelTracking` describe block (7 tests —
+  no-op cases, marks-once behavior, Mythic bump, leaves other instances untouched, missing-counter
+  default) plus 3 new `resolveScavengeReward` cases for the max-level-via-Scavenging path;
+  `companion.test.js` gained 2 tests for the equip-confirmation Bonded flavor line;
+  `dynamoHandler.test.js`'s existing healing tests updated for the two new default sub-keys. Full
+  suite green (522/522, up from 510).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -3508,7 +3553,17 @@ and needs its own balance pass.
   might just *be* the Achievements & Titles system above rather than a separate system), a Discord
   role? Worth revisiting once item 1 exists, since there's likely a lot of overlap.
 
-- [ ] **Companion Max-Level & Full-Roster Capstone Rewards** — S/M once a direction is picked — two
+- [x] **Companion Max-Level & Full-Roster Capstone Rewards** — S/M — **Done, Option A (cosmetic-only)
+  — see #58 below for the full implementation writeup.** Direct instruction: "For companion max
+  level and full rosters just cosmetic with tag and flavor line and achievement is fine." The
+  bounded Option B ideas below (Scavenging duration cut, one-time graduation payout, market-tax
+  discount) were explicitly turned down for now, not built. Note: this entry's own "`full_roster`'s
+  live threshold... is already correctly `12`" claim below turned out to be stale by the time this
+  was picked up — the live threshold is `13` (includes Yukon, added by Mercenary Bounties after this
+  entry was originally drafted) — verified directly against `constants.js` before implementing
+  rather than trusting this note. Rest of this entry kept as-drafted for the option analysis/
+  reasoning history.
+
   related but separable asks: (1) a moment/benefit for a companion actually reaching level 10 (today
   leveling just silently stops scaling — `getLevelMultiplier` caps at 1.45x with no distinct payoff
   for crossing the line), and (2) a benefit for owning the full 12-companion roster at once (today

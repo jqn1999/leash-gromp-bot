@@ -204,6 +204,31 @@ function applyCompanionAward(userDetails, companion, workCount = 0) {
     };
 }
 
+// Max-Level capstone (Option A — cosmetic-only, direct instruction: "just cosmetic with
+// tag and flavor line and achievement is fine"). Marks one owned INSTANCE as having
+// reached max level the first time its workCount crosses the top CompanionLeveling.THRESHOLDS
+// entry, and bumps companions.maxLevelCount (any rarity) / mythicMaxLevelCount (Mythic
+// only) exactly once per instance — mirrors resolveScavengeReward's own hasScavenged
+// "write once, read forever" flag shape. Idempotent by construction: a no-op (returns the
+// exact same object reference) once the instance is already flagged or hasn't reached max
+// level yet, so every caller (work.js's ordinary leveling write, resolveScavengeReward
+// below) can run this unconditionally after any workCount bump without pre-checking level
+// itself first — same "cheap to skip a write" pattern migrateOwnedToInstances already uses.
+function applyMaxLevelTracking(companions, instanceId) {
+    const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
+    const entry = (companions.owned ?? []).find(c => c.instanceId === instanceId);
+    if (!entry || entry.hasReachedMaxLevel || getCompanionLevel(entry.workCount) < maxLevel) {
+        return companions;
+    }
+    const companion = getCompanionById(entry.id);
+    return {
+        ...companions,
+        owned: companions.owned.map(c => c.instanceId === instanceId ? { ...c, hasReachedMaxLevel: true } : c),
+        maxLevelCount: (companions.maxLevelCount || 0) + 1,
+        mythicMaxLevelCount: (companions.mythicMaxLevelCount || 0) + (companion?.rarity === CompanionRarity.MYTHIC ? 1 : 0)
+    };
+}
+
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
 // third owned-companion state (owned-and-idle / owned-and-equipped / owned-and-scavenging)
 // enforced by this guard check at each risk site (companion.js's equip branch,
@@ -288,10 +313,17 @@ function resolveScavengeReward(userDetails) {
     const baseStarches = starchMin + Math.floor(Math.random() * (starchMax - starchMin + 1));
     const starchesGained = Math.floor(baseStarches * multiplierTier.multiplier);
 
-    const owned = userDetails.companions.owned.map(c =>
+    const leveledOwned = userDetails.companions.owned.map(c =>
         c.instanceId === instanceId
             ? { ...c, workCount: (c.workCount || 0) + workCountGained, hasScavenged: true }
             : c
+    );
+    // Max-Level capstone — a companion can reach max level via Scavenging alone (leveling
+    // a benched companion in parallel with an equipped one), not just ordinary /work, so
+    // this needs the same tracking call work.js's leveling write makes.
+    const { owned, maxLevelCount, mythicMaxLevelCount } = applyMaxLevelTracking(
+        { ...userDetails.companions, owned: leveledOwned },
+        instanceId
     );
 
     const scavengeReturnsByRarity = { ...userDetails.companions.scavengeReturnsByRarity };
@@ -301,7 +333,11 @@ function resolveScavengeReward(userDetails) {
         scavengeReturnsByRarity.mythic = (scavengeReturnsByRarity.mythic || 0) + 1;
     }
 
-    return { owned, starchesGained, workCountGained, multiplierTier: multiplierTier.name, scavengeReturnsByRarity };
+    return {
+        owned, starchesGained, workCountGained, multiplierTier: multiplierTier.name, scavengeReturnsByRarity,
+        maxLevelCount: maxLevelCount ?? (userDetails.companions.maxLevelCount || 0),
+        mythicMaxLevelCount: mythicMaxLevelCount ?? (userDetails.companions.mythicMaxLevelCount || 0)
+    };
 }
 
 // One-time live-data migration (2026-08-25) — see
@@ -379,6 +415,7 @@ module.exports = {
     getActivePerkValue,
     getGuineaPigRebate,
     applyCompanionAward,
+    applyMaxLevelTracking,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,

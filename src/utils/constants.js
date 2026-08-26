@@ -158,6 +158,17 @@ const Achievements = [
     { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 13 companions", statPath: "companions.ownedCount", threshold: 13 },
     { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 },
 
+    // Max-Level capstone (Option A, cosmetic-only — direct instruction: "just cosmetic
+    // with tag and flavor line and achievement is fine"). Off new companions.maxLevelCount/
+    // mythicMaxLevelCount counters, bumped once per owned INSTANCE the first time it
+    // crosses CompanionLeveling.THRESHOLDS' top entry (level 10) — see
+    // companionFactory.applyMaxLevelTracking. mythic_max_level_companion is the harder of
+    // the two on purpose: only one companion is ever equipped at a time, so maxing a
+    // Mythic means either main-lining your best companion for a long time or patiently
+    // Scavenging it in the background — a real, deliberate commitment either way.
+    { id: "first_max_level_companion", name: "Bonded for Life", description: "Get any companion to max level", statPath: "companions.maxLevelCount", threshold: 1 },
+    { id: "mythic_max_level_companion", name: "Legend in Full Bloom", description: "Get a Mythic-tier companion to max level", statPath: "companions.mythicMaxLevelCount", threshold: 1 },
+
     // Added 2026-08-23 per the Scavenging cosmetic brainstorm's Option A2 — off a new
     // rarity-keyed counter (companions.scavengeReturnsByRarity), bumped on collect in
     // companionScavengeCollect.js the same denormalized-counter shape workScenarioCounts.*

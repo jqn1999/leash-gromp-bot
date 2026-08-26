@@ -317,9 +317,21 @@ async function performWork(interaction, userId, username, userDisplayName, workG
             const leveledOwned = updatedUserDetails.companions.owned.map(o =>
                 o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + 1 } : o
             );
-            await dynamoHandler.updateUserFields(userId, {
-                companions: { ...updatedUserDetails.companions, owned: leveledOwned }
-            });
+            // Max-Level capstone (Option A, cosmetic-only) — marks this instance once its
+            // workCount first crosses max level and bumps the lifetime maxLevelCount/
+            // mythicMaxLevelCount counters those achievements read.
+            const trackedCompanions = companionFactory.applyMaxLevelTracking(
+                { ...updatedUserDetails.companions, owned: leveledOwned },
+                activeInstanceId
+            );
+            await dynamoHandler.updateUserFields(userId, { companions: trackedCompanions });
+            // Mirrors this block's own DB write back onto the in-memory object immediately
+            // — the achievement check just below reads updatedUserDetails directly, and
+            // without this a companion crossing into max level here would never actually
+            // unlock first_max_level_companion/mythic_max_level_companion from ordinary
+            // /work play (same "build the post-write shape locally" shortcut
+            // companionScavengeCollect.js's own achievement check already takes).
+            updatedUserDetails.companions = trackedCompanions;
         }
 
         const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);

@@ -2,12 +2,16 @@ const { ButtonBuilder, ActionRowBuilder, ButtonStyle, ApplicationCommandOptionTy
 const { getUserInteractionDetails, requireUserDetails, buildPaginationRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
+const { CompanionLeveling } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 const PAGE_SIZE = 5;
 const PAGE_PREFIX = 'companion';
 const EQUIP_PREFIX = 'companion_equip_';
+// Max-Level capstone (Option A, cosmetic-only) — the top of CompanionLeveling.THRESHOLDS,
+// same lookup embedFactory.js's own MAX_COMPANION_LEVEL uses.
+const MAX_COMPANION_LEVEL = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
 
 function chunkArray(array, size) {
     const chunks = [];
@@ -73,7 +77,13 @@ async function attemptEquip(userId, username, equipId) {
     const updatedCompanions = { ...freshUserDetails.companions, active: equipId };
     await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-    return { ok: true, message: `${companion.name} is now your active companion!`, userDetails: { ...freshUserDetails, companions: updatedCompanions } };
+    // Max-Level capstone (Option A, cosmetic-only) — a one-line flavor callout when the
+    // just-equipped instance has already reached max level, mirroring the same "⭐ Bonded"
+    // framing /companion's list and the scavenge-return embed use.
+    const bondedFlavor = companionFactory.getCompanionLevel(ownedEntry.workCount) === MAX_COMPANION_LEVEL
+        ? ` ⭐ Bonded — it's reached its full potential.`
+        : '';
+    return { ok: true, message: `${companion.name} is now your active companion!${bondedFlavor}`, userDetails: { ...freshUserDetails, companions: updatedCompanions } };
 }
 
 // Up to 5 equip buttons for whichever owned instances are shown on this page — the

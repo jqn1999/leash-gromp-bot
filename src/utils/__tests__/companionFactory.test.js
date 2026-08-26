@@ -13,6 +13,7 @@ const {
     getLevelMultiplier,
     getActivePerkValue,
     applyCompanionAward,
+    applyMaxLevelTracking,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,
@@ -510,6 +511,98 @@ describe('resolveScavengeReward', () => {
         const { scavengeReturnsByRarity } = resolveScavengeReward(user);
         expect(scavengeReturnsByRarity).toEqual({ legendary: 5, mythic: 9 });
         expect(user.companions.scavengeReturnsByRarity).toEqual({ legendary: 4, mythic: 9 });
+    });
+
+    // Max-Level capstone (Option A, cosmetic-only) — a companion can reach max level via
+    // Scavenging alone, not just ordinary /work, so this needs the same tracking a plain
+    // /work leveling write gets.
+    test('marks the instance and bumps maxLevelCount when a scavenge return crosses max level', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount - 1 }]);
+        const { owned, maxLevelCount, mythicMaxLevelCount } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        expect(owned.find(c => c.instanceId === 'sprout-a').hasReachedMaxLevel).toBe(true);
+        expect(maxLevelCount).toBe(1);
+        expect(mythicMaxLevelCount).toBe(0);
+    });
+
+    test('bumps mythicMaxLevelCount too when the maxed instance is Mythic-rarity', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const user = userWithScavenge('mochi-a', CompanionRarity.MYTHIC, [{ instanceId: 'mochi-a', id: 'mochi', workCount: maxWorkCount - 1 }]);
+        const { maxLevelCount, mythicMaxLevelCount } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        expect(maxLevelCount).toBe(1);
+        expect(mythicMaxLevelCount).toBe(1);
+    });
+
+    test('leaves maxLevelCount/mythicMaxLevelCount at their existing values when nothing crosses max level', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        const user = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
+        user.companions.maxLevelCount = 2;
+        user.companions.mythicMaxLevelCount = 1;
+        const { maxLevelCount, mythicMaxLevelCount } = resolveScavengeReward(user);
+        Math.random.mockRestore();
+
+        expect(maxLevelCount).toBe(2);
+        expect(mythicMaxLevelCount).toBe(1);
+    });
+});
+
+describe('applyMaxLevelTracking', () => {
+    const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+
+    test('is a no-op (same reference back) when the instance has not reached max level', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        expect(applyMaxLevelTracking(companions, 'sprout-a')).toBe(companions);
+    });
+
+    test('is a no-op when the instance is already flagged, even though it is still at max level', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount, hasReachedMaxLevel: true }], maxLevelCount: 1, mythicMaxLevelCount: 0 };
+        expect(applyMaxLevelTracking(companions, 'sprout-a')).toBe(companions);
+    });
+
+    test('is a no-op for an unknown instanceId', () => {
+        const companions = { owned: [], maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        expect(applyMaxLevelTracking(companions, 'not-owned')).toBe(companions);
+    });
+
+    test('marks the instance and bumps maxLevelCount exactly once for a Common companion at max level', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }], maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        const result = applyMaxLevelTracking(companions, 'sprout-a');
+        expect(result).not.toBe(companions);
+        expect(result.owned[0].hasReachedMaxLevel).toBe(true);
+        expect(result.maxLevelCount).toBe(1);
+        expect(result.mythicMaxLevelCount).toBe(0);
+    });
+
+    test('also bumps mythicMaxLevelCount for a Mythic companion at max level', () => {
+        const companions = { owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: maxWorkCount }], maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        const result = applyMaxLevelTracking(companions, 'mochi-a');
+        expect(result.maxLevelCount).toBe(1);
+        expect(result.mythicMaxLevelCount).toBe(1);
+    });
+
+    test('leaves every other owned instance untouched', () => {
+        const companions = {
+            owned: [
+                { instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount },
+                { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            ],
+            maxLevelCount: 0, mythicMaxLevelCount: 0
+        };
+        const result = applyMaxLevelTracking(companions, 'sprout-a');
+        expect(result.owned[1]).toEqual({ instanceId: 'mole-a', id: 'mole', workCount: 0 });
+    });
+
+    test('treats a missing maxLevelCount/mythicMaxLevelCount (an older account) as 0', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: maxWorkCount }] };
+        const result = applyMaxLevelTracking(companions, 'sprout-a');
+        expect(result.maxLevelCount).toBe(1);
+        expect(result.mythicMaxLevelCount).toBe(0);
     });
 });
 
