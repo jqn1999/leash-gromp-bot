@@ -76,7 +76,7 @@ module.exports = {
         const powerBreakdown = getEffectiveRaidPowerBreakdown(raidMemberDetails);
         const totalMultiplier = powerBreakdown.effectivePower;
 
-        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown, guild.raidSplitMode);
+        const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown, guild.raidSplitMode, guild.raidPayoutMode);
 
         // Only offer the Start Raid button once the cooldown has actually elapsed —
         // clicking it before then would just hit runStartRaidFlow's own cooldown

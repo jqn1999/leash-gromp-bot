@@ -839,8 +839,11 @@ class EmbedFactory {
     // other caller of this embed that hasn't been updated to pass it yet still renders
     // without throwing. raidSplitMode: guild.raidSplitMode ('even'/'share') — shown as a
     // one-line indicator so players checking the roster before a raid starts know which
-    // reward-split mode is active.
-    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown = null, raidSplitMode = 'even') {
+    // reward-split mode is active. raidPayoutMode: guild.raidPayoutMode ('bank'/'direct',
+    // see setRaidPayout.js) — same reasoning, shown alongside the split mode since split
+    // mode alone doesn't say whether it currently matters (it only ever mattered once the
+    // bank was full, until 'direct' payout was added).
+    async createRaidMemberListEmbed(guild, raidList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown = null, raidSplitMode = 'even', raidPayoutMode = 'bank') {
         if (!guild.thumbnailUrl) {
             guild.thumbnailUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         }
@@ -856,10 +859,11 @@ class EmbedFactory {
             ? ` — ${powerBreakdown.teamPower.toFixed(2)}x team power (top raider counted fully, each next-strongest counted at ${(Raid.RAID_TEAM_DECAY * 100).toFixed(0)}% of the rank above them)${powerBreakdown.headcountBonus > 0 ? ` + ${(powerBreakdown.headcountBonus * 100).toFixed(0)}% headcount bonus (${raidList.length} raider${raidList.length == 1 ? '' : 's'})` : ''}`
             : '';
         const splitModeLabel = raidSplitMode === 'share' ? 'Contribution-based (bigger raid power = bigger share)' : 'Even split (equal share for everyone)';
+        const payoutModeLabel = raidPayoutMode === 'direct' ? 'Direct-to-Raiders (bank skipped entirely)' : 'Bank-First (bank fills before anything spills to raiders)';
 
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName} (Total Multiplier: ${totalMultiplier.toFixed(2)}x)\nRaid Timer: ${raidTime}`)
-            .setDescription(`Below is the list of the current raid members for '${guild.guildName}'${multiplierExplainer}\nReward split mode: **${splitModeLabel}** (change with /set-raid-split)`)
+            .setDescription(`Below is the list of the current raid members for '${guild.guildName}'${multiplierExplainer}\nReward payout mode: **${payoutModeLabel}** (change with /set-raid-payout)\nReward split mode: **${splitModeLabel}** (change with /set-raid-split)`)
             .setColor("Orange")
             .setThumbnail(guild.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -873,7 +877,7 @@ class EmbedFactory {
     // preview like /rob has; instead this breaks down every bracket you could land in
     // along with its own odds, success chance, and stakes, so whoever's starting it (and
     // committing the whole roster's raid list) isn't picking blind.
-    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode = 'even') {
+    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode = 'even', raidPayoutMode = 'bank') {
         const fields = brackets.map(bracket => ({
             name: `${bracket.name} (${(bracket.odds * 100).toFixed(0)}% odds of this bracket)`,
             value: `${(bracket.successChance * 100).toFixed(1)}% success chance\n✅ ${bracket.rewardText}\n❌ ${bracket.penaltyText}`,
@@ -884,13 +888,14 @@ class EmbedFactory {
         // in — this line just makes it visible why, instead of leaving players to infer
         // it from the raw numbers.
         const levelNote = guildLevel > 1 ? ` Guild Level ${guildLevel} (${raidRewardMultiplier.toFixed(2)}x reward multiplier) is already applied below.` : '';
-        const splitModeNote = raidSplitMode === 'share'
-            ? ' Reward split: **Contribution-based** — any reward that spills out of the guild bank splits by each raider\'s own raid power, not evenly.'
-            : ' Reward split: **Even** — any reward that spills out of the guild bank splits equally across every raider.';
+        const splitPhrase = raidSplitMode === 'share' ? 'by each raider\'s own raid power, not evenly' : 'equally across every raider';
+        const payoutNote = raidPayoutMode === 'direct'
+            ? ` Reward payout: **Direct-to-Raiders** — the guild bank is skipped entirely; the full reward pays out ${splitPhrase}.`
+            : ` Reward payout: **Bank-First** — the guild bank fills up to capacity first; only what doesn't fit spills out, split ${splitPhrase}.`;
 
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}, start a ${raidSelection} raid?`)
-            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x effective raid power (top raider's own power counted fully, each next-strongest counted at ${(Raid.RAID_TEAM_DECAY * 100).toFixed(0)}% of the rank above them, plus a headcount bonus for roster size).${levelNote}${splitModeNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
+            .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x effective raid power (top raider's own power counted fully, each next-strongest counted at ${(Raid.RAID_TEAM_DECAY * 100).toFixed(0)}% of the rank above them, plus a headcount bonus for roster size).${levelNote}${payoutNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
             .setColor("Yellow")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

@@ -1230,6 +1230,17 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         // for every guild (new or pre-existing, healed in via findGuildById) so nothing
         // changes silently for anyone who doesn't opt in via /set-raid-split.
         raidSplitMode: "even",
+        // Whether a raid REWARD fills the guild bank up to capacity first ('bank', today's
+        // behavior — the split mode above only ever mattered once the bank was already
+        // full) or is paid straight to raiders every time, bypassing the bank entirely
+        // regardless of remaining space ('direct' — makes raidSplitMode matter on every
+        // single raid, not just once the bank happens to be full). Deliberately
+        // rewards-only — raid PENALTIES still drain the bank first under both modes, so
+        // a full bank stays meaningfully protective even for a guild on 'direct' payout.
+        // Defaults to 'bank' for every guild (new or pre-existing, healed in via
+        // findGuildById) so nothing changes silently for anyone who doesn't opt in via
+        // /set-raid-payout.
+        raidPayoutMode: "bank",
         guildVersion: 0,
         guildContract: {                  // see systems/guild-contracts.md
             templateId: null,

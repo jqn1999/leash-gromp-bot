@@ -142,6 +142,40 @@ toggle — it's an identical flat grant per winner, never a divisible pool.
 Default `raidSplitMode` on guild creation (and self-healed onto every pre-existing guild via
 `findGuildById`) is `"even"`.
 
+## Raid reward payout mode
+
+[setRaidPayout.js](../../src/commands/guilds/setRaidPayout.js) — Co-Leader/Leader picks whether a
+raid REWARD fills the guild bank up to capacity first, or is paid straight to raiders every time
+regardless of remaining bank space, stored as `guild.raidPayoutMode` (`"bank"` | `"direct"`). Same
+permission tier and self-healed-default pattern as `raidSplitMode` above — added 2026-08-27, direct
+instruction ("Raid loot distribution doesn't matter right now until a guild has a full guild bank...
+add another setting to guilds so they can switch between filling the guild bank or paying members
+directly even when the bank isn't full so that raid loot settings matter"). Before this,
+`raidSplitMode` only ever changed anything once the bank happened to be completely full — every
+guild below that point saw 100% of every reward silently absorbed into the bank regardless of its
+split-mode choice.
+
+- `"bank"` (default for every guild, new or pre-existing) — today's behavior:
+  `addToBankOrPurse` fills the bank up to capacity first, only spilling whatever doesn't fit to the
+  split-mode path.
+- `"direct"` — `addToBankOrPurse` is called with the bank's remaining space forced to `0` before the
+  reward is computed, so the full reward always takes the "excess" branch and pays out to raiders via
+  the guild's existing `raidSplitMode` choice (even or contribution-based) — the bank itself is never
+  touched by a reward under this mode.
+
+**Rewards only — raid PENALTIES are untouched by this setting under either mode.** A confirmed design
+choice: `removeFromBankOrPurse` still drains the bank first regardless of `raidPayoutMode`, so a full
+bank stays meaningfully protective for a guild that's opted into direct-to-raiders rewards, rather
+than that guild also taking every raid loss straight out of members' pockets. Implemented as a single
+one-line override in `startRaid.js`'s `runStartRaidFlow` — `remainingBankSpace` is zeroed out right
+after `raidPayoutMode` is read from the guild record, before it's threaded into any scenario, so
+`addToBankOrPurse` itself needed no new parameter or branch at all.
+
+Default `raidPayoutMode` on guild creation (and self-healed onto every pre-existing guild via
+`findGuildById`) is `"bank"`. Shown alongside `raidSplitMode` on both `/current-raid`'s roster embed
+and `/start-raid`'s pre-roll preview embed, since the split mode's own display doesn't say whether it
+currently matters.
+
 ## Guild level
 
 `guild.level` and the guild's raid reward multiplier used to be stored fields, both permanently

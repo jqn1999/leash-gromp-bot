@@ -2598,6 +2598,37 @@ and needs its own balance pass.
   every `src/commands/user/__tests__` file, confirming no regression in adjacent companion/mercenary
   command tests).
 
+- [x] **65. Raid Reward Payout Mode — Direct-to-Raiders Opt-In** — S — **Done**
+  What: a new per-guild toggle, `guild.raidPayoutMode` (`"bank"` default / `"direct"`), set via
+  `/set-raid-payout.js` (Co-Leader/Leader only, mirrors `/set-raid-split`'s exact shape). `"bank"`
+  keeps today's behavior (`addToBankOrPurse` fills the guild bank to capacity first, only the
+  leftover spills to raiders). `"direct"` pays the FULL reward straight to raiders every raid,
+  bypassing the bank regardless of remaining space — implemented as a single one-line override in
+  `startRaid.js`'s `runStartRaidFlow` (`remainingBankSpace` forced to `0` right after
+  `raidPayoutMode` is read, before being threaded into any scenario), so `addToBankOrPurse` itself
+  needed no new parameter or branch. Shown on both `/current-raid`'s roster embed and
+  `/start-raid`'s pre-roll preview embed alongside `raidSplitMode`.
+  Why: direct instruction — "Raid loot distribution doesn't matter right now until a guild has a
+  full guild bank. Can you add another setting to guilds so they can switch between filling the
+  guild bank or paying members directly even when the bank isn't full so that raid loot settings
+  matter." Before this, `raidSplitMode` (roadmap #60) only ever changed anything once the bank
+  happened to be completely full — a guild below that point had 100% of every reward silently
+  absorbed regardless of its even/contribution split choice, making the setting cosmetic for most
+  guilds most of the time.
+  Notable design points: product-confirmed scope, asked via AskUserQuestion before implementation —
+  **rewards only, not penalties**. `removeFromBankOrPurse` is completely untouched by this setting
+  under either payout mode; a raid loss still drains the bank first regardless, so a full bank stays
+  meaningfully protective even for a guild that's opted into direct-to-raiders rewards. Default
+  `"bank"` lives in `dynamoHandler.js`'s `getDefaultGuildFields`, self-healed onto every pre-existing
+  guild the same way `raidSplitMode` already is — no guild's behavior changes silently.
+  New tests: `src/commands/guilds/__tests__/setRaidPayout.test.js` (mirrors `setRaidSplit.test.js`'s
+  shape exactly — permission gate, self-healed default, raw-value passthrough); new
+  `startRaidPayoutMode.test.js` (mirrors `startRaidSplitMode.test.js`'s shape) confirms `"direct"`
+  routes the full reward through the split path even with a mostly-empty bank having plenty of
+  remaining space, `"bank"` (and the pre-healing missing-field default) still fills the bank first,
+  `"direct"` composes correctly with `raidSplitMode: "share"`, and a raid loss still drains the bank
+  under `"direct"` payout. Full suite green: 643/643 (up from 631/631 before this item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

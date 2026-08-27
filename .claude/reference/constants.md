@@ -149,6 +149,17 @@ lives in `dynamoHandler.js`'s `getDefaultGuildFields`, self-healed onto pre-exis
 same way `guildBuff` already is. Full writeup:
 [systems/guilds.md](../systems/guilds.md#raid-reward-split-mode).
 
+### `guild.raidPayoutMode` (not in `constants.js` — a persisted guild field, default `"bank"`)
+
+Per-guild opt-in toggle for whether a raid REWARD fills the guild bank up to capacity first
+(`"bank"`, default) or pays raiders directly every time, bypassing the bank regardless of remaining
+space (`"direct"`) — closes the gap where `raidSplitMode` above only ever mattered once the bank
+happened to be full. Rewards only; penalties still drain the bank first under either mode. Set via
+`/set-raid-payout` (Co-Leader/Leader only, `src/commands/guilds/setRaidPayout.js`); default value
+lives in `dynamoHandler.js`'s `getDefaultGuildFields`, self-healed onto pre-existing guild records the
+same way `raidSplitMode` already is. Full writeup:
+[systems/guilds.md](../systems/guilds.md#raid-reward-payout-mode).
+
 ## Not in `constants.js`
 
 Some tunables live elsewhere because they're specific to one subsystem's internal file rather than

@@ -209,6 +209,10 @@ async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRa
 // Same fix, mirrored for rewards: fills the bank up to capacity first, only spilling the
 // excess that doesn't fit to members directly, instead of the whole reward bypassing the
 // bank the moment it's even slightly larger than the remaining space.
+// A guild on raidPayoutMode: 'direct' (see setRaidPayout.js) is handled entirely by its
+// caller passing remainingBankSpace: 0 in — that alone forces every reward through the
+// "excess" branch below with excess == the full reward, so this function itself needs no
+// separate direct-mode branch or parameter.
 async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode = 'even', raidListByMulti = []) {
     let raidSplit = null;
     if (remainingBankSpace >= totalRaidSplit) {
@@ -986,12 +990,25 @@ async function runStartRaidFlow(interaction, raidSelection) {
     });
     const raidSplitMode = guild.raidSplitMode === 'share' ? 'share' : 'even';
 
+    // raidPayoutMode: guild's opt-in toggle (see setRaidPayout.js/guild.raidPayoutMode) for
+    // whether a raid REWARD fills the bank first ('bank', default) or is paid straight to
+    // raiders every time, bypassing the bank regardless of remaining space ('direct').
+    // Rewards only — implemented entirely by zeroing out remainingBankSpace before it's
+    // threaded into every scenario below; addToBankOrPurse's "excess" branch then handles
+    // the full reward exactly like today's "reward bigger than remaining space" case.
+    // removeFromBankOrPurse (penalties) is untouched — a full bank still absorbs raid
+    // losses first under both payout modes.
+    const raidPayoutMode = guild.raidPayoutMode === 'direct' ? 'direct' : 'bank';
+    if (raidPayoutMode === 'direct') {
+        remainingBankSpace = 0;
+    }
+
     // Which difficulty bracket (Metal King/T4/T3/T2/T1) gets rolled is random, so
     // show every bracket's odds and stakes up front — this commits the whole
     // roster's raid list on one roll, previously with zero preview of what that
     // meant. T4 is only shown once the guild's level has unlocked it.
     const brackets = buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, guildLevel);
-    const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode);
+    const previewEmbed = embedFactory.createRaidPreviewEmbed(guildName, raidSelection, raidList.length, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode, raidPayoutMode);
     const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('raid', 'Start the raid', 'Not yet')] });
 
     const collectorFilter = i => i.user.id === interaction.user.id;
