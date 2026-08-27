@@ -2653,6 +2653,49 @@ and needs its own balance pass.
   other companions field) survives via the spread rather than needing to be named explicitly. Full
   suite green: 645/645 (up from 643/643 before this item).
 
+- [x] **67. Fix: Bounty Tier II/III Difficulty Drifted Stale After Regular's Ladder Smoothing** — S — **Done**
+  What: when Mercenary Bounty was decoupled from Guild Raid's own constants (roadmap #61's
+  follow-up, same day as the Regular ladder smoothing), Bounty Tier II/III's difficulty was
+  deliberately left at the OLD pre-smoothing raw values (85/600) on the theory that this kept
+  solo Bounty's own odds "unaffected" by the decoupling. That reasoning missed that Regular
+  Guild Raid's own T2/T3 difficulty moved in the SAME retune (46/215) — pinning Bounty's
+  difficulty to the stale values meant Tier II/III silently stopped tracking what "T2"/"T3"
+  means anywhere else in the game. Verified via live-constant computation (breakeven power — the
+  effective power at which EV crosses zero): Guild's own breakeven is always 50% of its own
+  difficulty; Bounty's is `1/(1 + that tier's own unlock-rank reward multiplier)` of its own
+  difficulty. At the stale values, Tier II needed +34% more power than Guild's own T2 to break
+  even, and Tier III needed +103% (over double) — a fully-ranked (525-win) mercenary still
+  couldn't reliably profit at Tier III. Fixed: **`BOUNTY_T2_DIFFICULTY: 85→58`,
+  `BOUNTY_T3_DIFFICULTY: 600→297`** (Tier I untouched, already matching Regular's own unchanged
+  T1=10) — solved so each tier's breakeven power lands ~17.5% above Guild's own matching tier,
+  restoring the original decoupling's own stated ~17.4-17.7% guild-ahead target (just restated
+  as a breakeven-power margin, computed from live constants, rather than the original's flat
+  realized-reward worked-example method). REWARD/PENALTY were never the stale part and are
+  unchanged.
+  Why: direct request — "can you also check the mercenary bounty difficulty and rewards
+  compared to the guild side now and see if its behind/on par for a solo player compared to a
+  4-5 man guild raid?" Investigated by computing solo Bounty EV and 4-5 person guild per-member
+  EV directly from live constants across a range of matched per-member power levels (not
+  trusting the existing "~17.4-17.7% guild-ahead" comment, which predates the ladder smoothing)
+  — found Tier II/III dramatically behind the intended margin; Tier I unaffected (Regular's own
+  T1 never moved).
+  Notable design points: a naive 1:1 difficulty match to Guild's new 46/215 was considered and
+  rejected — since Tier II/III can never be attempted before their own >1.00x unlock-rank reward
+  multiplier already applies, exact difficulty matching would hand them a slight EDGE over guild
+  at unlock instead of the intended modest guild edge (the multiplier tilt needs difficulty
+  slightly above guild's own to offset it). One asymmetry intentionally left alone: at FULL
+  investment (both sides at the .9 success cap), EV is driven by reward/penalty magnitude, not
+  difficulty, and a maxed-rank (1.75x) solo mercenary pulls ahead of a guild member's per-member
+  share there — the same already-accepted "veteran mercenary reward" shape Tier I has always
+  had; this fix's job was only to make Tier II/III share that shape consistently with Tier I,
+  not eliminate it.
+  New tests: `mercenaryFactory.test.js` gained a breakeven-margin regression describe block,
+  computed entirely from live constants (not hardcoded literals) so it self-corrects if either
+  ladder is retuned again — confirms Tier II/III's breakeven sits 10-25% above Guild Regular's
+  own (catching both a relapse to the old stale values and an overcorrection), and confirms
+  Tier I's breakeven still matches Guild Regular T1 exactly at Tier I's own unlock rank. Full
+  suite green: 648/648 (up from 645/645 before this item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

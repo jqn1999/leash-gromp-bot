@@ -82,14 +82,20 @@ string-keyed lookup in `mercenaryFactory.resolveBountyAttempt`/`bountyBoard.js` 
 Regular Guild Raid's own T1-T3 silently retuned Bounty too. Decoupled the same day Regular's own
 ladder above got smoothed, so the two systems' numbers can now move independently (explicit
 design goal: Guild Raiding should land modestly ahead of Bounty at the equivalent tier, not just
-avoid an accidental coupling bug). `BOUNTY_T{1,2,3}_DIFFICULTY` (10/85/600) are unchanged in
-value from what Bounty already effectively read — solo Bounty odds are unaffected by this
-decoupling. `BOUNTY_T{1,2,3}_REWARD` (142,000/755,000/4,261,000) and the matching `_PENALTY`
-(same magnitude, negative) are freshly chosen so a solo mercenary's realized reward (after
-`SOLO_BOUNTY_REWARD_SHARE`/rank multiplier) lands at ≈85% of an equivalently-progressed small
-guild's own realized per-member payout at each tier's own unlock rank. Still shares
-`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single flat shared concept,
-deliberately left coupled). Full derivation:
+avoid an accidental coupling bug). `BOUNTY_T{1,2,3}_DIFFICULTY` (10/85/600) were initially left
+unchanged from what Bounty already effectively read, on the theory that leaving them alone kept
+solo Bounty odds "unaffected" by the decoupling. **That didn't hold** — Regular's own T2/T3
+difficulty moved (`46`/`215`) the same day, so pinning Bounty's difficulty to the OLD raw values
+just meant Tier II/III silently stopped tracking what "T2"/"T3" means anywhere else in the game
+(Tier II needed 1.85x the power Guild's own T2 needs for the same odds; Tier III needed 2.79x).
+Found and fixed later the same day: **`BOUNTY_T2_DIFFICULTY: 85→58`, `BOUNTY_T3_DIFFICULTY:
+600→297`** (Tier I untouched — it already matched Regular's own unchanged T1=10). `BOUNTY_T{1,2,3}_REWARD`
+(142,000/755,000/4,261,000) and the matching `_PENALTY` (same magnitude, negative) are unchanged
+by either pass — they were freshly chosen at decoupling time so a solo mercenary's realized reward
+(after `SOLO_BOUNTY_REWARD_SHARE`/rank multiplier) lands at ≈85% of an equivalently-progressed
+small guild's own realized per-member payout at each tier's own unlock rank, and that target still
+holds. Still shares `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single
+flat shared concept, deliberately left coupled). Full derivation:
 [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
 
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)

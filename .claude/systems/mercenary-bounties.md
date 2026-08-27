@@ -118,12 +118,13 @@ success-chance cap — that single flat cap is a deliberate, low-risk exception 
 `Raid`, since it's a shared *concept* ("Bounty tiers are Regular-mode-equivalent, not
 Elite/Legendary-equivalent"), not a per-tier magnitude Regular's ladder-smoothing touched.
 
-**Difficulty is unchanged in value** (`BOUNTY_T1_DIFFICULTY=10`, `BOUNTY_T2_DIFFICULTY=85`,
-`BOUNTY_T3_DIFFICULTY=600` — the exact numbers Bounty already effectively read pre-decoupling,
-now diverging from Regular's own newly-smoothed `T2=46`/`T3=215`). A solo mercenary's own
-success-chance/odds are therefore **completely unaffected** by this decoupling — only the
-reward/penalty side changed, and only because it was deliberately re-picked (next section), not
-as a side effect of picking new constants.
+**Difficulty was initially left unchanged in value** (`BOUNTY_T1_DIFFICULTY=10`,
+`BOUNTY_T2_DIFFICULTY=85`, `BOUNTY_T3_DIFFICULTY=600` — the exact numbers Bounty already
+effectively read pre-decoupling) on the theory that a solo mercenary's own success-chance/odds
+should stay **completely unaffected** by the decoupling itself. **This didn't hold up** — see the
+"Tier II/III difficulty retuned" follow-up below, found the same day during a later balance check.
+Difficulty for Tier II/III has since moved to `58`/`297`; only the reasoning in this section (why
+they were initially left alone) is preserved as historical context.
 
 ### Reward/penalty re-picked so Guild Raiding comes out modestly ahead
 
@@ -174,21 +175,60 @@ is anchored at each tier's own unlock rank specifically, mirroring how Elite/Leg
 guild-level gates are documented against their own unlock levels elsewhere in this codebase, not
 against every possible rank/level pairing.
 
-Bounty's own internal reward-per-difficulty-point efficiency (using the *unchanged* difficulty
-constants above) is no longer a rising ramp the way Regular's own ladder is (`142,000/10=14,200/pt`
-→ `755,000/85=8,882/pt` → `4,261,000/600=7,100/pt`, actually *declining*) — a cosmetic side effect
-of anchoring rewards to Regular's own newly-compressed T2/T3 rather than to Bounty's own
-(unchanged, much wider) difficulty spacing, not a fairness problem: realized reward still
-escalates sharply tier to tier (21,300 → 130,238 → 862,853), which is what a player actually
-experiences. Left as-is rather than re-smoothing Bounty's own difficulty ladder to match, since
-that wasn't asked for and would change Bounty's live success-chance odds, which this decoupling
-was explicitly designed NOT to touch.
+(The reward-per-difficulty-point efficiency paragraph that used to sit here, about Bounty's
+ramp declining rather than rising against its *unchanged* difficulty, is superseded by the
+follow-up retune directly below — difficulty is no longer unchanged, so that specific
+efficiency-ratio observation no longer applies as described.)
+
+### Follow-up (2026-08-27, later same day): Tier II/III difficulty retuned — "unchanged odds" turned out to be the wrong frame
+
+The reasoning above ("leave difficulty alone so Bounty's own odds stay untouched by the
+decoupling") missed that Regular Guild Raid's own T2/T3 difficulty had ALSO moved that same day
+(the ladder-smoothing pass, `T2: 85→46`, `T3: 600→215` — see raids-and-world-events.md). Leaving
+Bounty's difficulty pinned to the OLD raw values didn't keep Bounty's odds "unaffected" in any
+sense that mattered — it just meant Bounty silently stopped tracking what "T2"/"T3" means anywhere
+else in the game. Found via a direct request to compare solo Bounty-hunting against a 4-5 person
+guild raid, verified with live constants via `breakeven power` (the effective power at which EV
+crosses zero for each side, derived from each side's own reward/penalty ratio — see
+`mercenaryFactory.test.js`'s regression test for the exact formulas):
+
+| Tier | Guild breakeven power | Bounty breakeven (pre-fix, stale) | Bounty breakeven (post-fix) |
+|---|---|---|---|
+| II | 23.0 (50% of 46) | 30.9 at max rank (**+34%** over guild) | 27.0 at unlock rank (**+17%**) |
+| III | 107.5 (50% of 215) | 218.2 at max rank (**+103%**, over 2x) | 126.4 at unlock rank (**+18%**) |
+
+At the STALE values, a fully-ranked (525-win) mercenary needed roughly double the effective power
+a guild needed to break even at "the same" Tier III — realistically unplayable-profitably for
+almost anyone, not the intended "guild modestly ahead."
+
+**Fix: `BOUNTY_T2_DIFFICULTY: 85→58`, `BOUNTY_T3_DIFFICULTY: 600→297`** (Tier I, already matching
+Regular's own unchanged T1=10, was untouched). Derived from the SAME breakeven-power lens rather
+than the realized-reward-table method the original decoupling used (that method's own ~17.4-17.7%
+figures, recomputed above, are what the new difficulty values target): Guild Regular's breakeven
+is always exactly 50% of its own difficulty (reward/penalty share equal magnitude, no rank-
+multiplier tilt); Bounty's breakeven is `1/(1 + tier's own UNLOCK-rank reward multiplier)` of ITS
+difficulty (a tier can never be attempted before its own unlock rank — Rank2/1.15x for Tier II,
+Rank3/1.35x for Tier III). Solving for the Bounty difficulty that lands its breakeven ~17.5% above
+Guild's own gives 58/297. REWARD/PENALTY were untouched — they were never the stale part.
+
+**A naive 1:1 difficulty match to Guild's new 46/215 was considered and rejected** — since neither
+Tier II nor III can be attempted before their own >1.00x unlock-rank multiplier already applies,
+matching difficulty exactly would hand Tier II/III a slight EDGE over guild at unlock (the same
+shape Tier I only reaches once a mercenary has ranked well past its own 1.00x unlock point) rather
+than the intended modest guild edge.
+
+**One asymmetry intentionally left alone:** at FULL investment (both sides already at the .9
+success cap), the EV comparison is driven entirely by reward/penalty magnitude, not difficulty —
+and a solo mercenary at max rank (1.75x) pulls ahead of a guild member's per-member share there,
+for every tier including Tier I. This is the SAME already-accepted "veteran mercenary reward"
+shape Tier I has always had (see the higher-rank comparison earlier in this doc) — this retune's
+job was only to make Tier II/III share that shape consistently with Tier I, not to eliminate it.
 
 ### Success chance
 
 ```
 effectiveBountyPower = raidFactory.getEffectiveRaidPower([userDetails])
-difficulty           = Bounty.BOUNTY_T{n}_DIFFICULTY   // Bounty's own constant since 2026-08-27 (was Raid.T{n}_RAID_DIFFICULTY) — same numeric values as before, just no longer aliased to Regular Guild Raid's own (now-diverged) T2/T3
+difficulty           = Bounty.BOUNTY_T{n}_DIFFICULTY   // Bounty's own constant since 2026-08-27 — Tier I unchanged (10, matches Regular T1); Tier II/III retuned same day (58/297) to restore a bounded margin above Regular's own post-smoothing T2/T3 (46/215) — see the follow-up above
 successChance         = min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
 

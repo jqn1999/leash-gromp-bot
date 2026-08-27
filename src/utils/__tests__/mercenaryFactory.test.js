@@ -308,6 +308,45 @@ describe('resolveBountyAttempt', () => {
     });
 });
 
+// Regression for the 2026-08-27 Bounty Tier II/III difficulty retune — Tier II/III's
+// difficulty had drifted stale (pinned to Regular Guild Raid's pre-smoothing values,
+// 85/600) after Regular's own T2/T3 difficulty was smoothed to 46/215 the same day,
+// making solo Bounty need roughly double the effective power a guild needed to break
+// even at "the same tier." Computed entirely from live constants (not hardcoded
+// literals) so this self-corrects if either ladder is retuned again, same convention
+// raidFactory.test.js's own penalty/reward-ratio regression uses.
+describe('Bounty Tier II/III difficulty tracks a bounded margin above Guild Regular\'s own ladder', () => {
+    // Breakeven power fraction (of that side's own difficulty) at which EV crosses zero:
+    // Guild Regular's is always exactly 50% (reward/penalty share equal magnitude, no
+    // rank-multiplier tilt); Bounty's is 1/(1 + that tier's own UNLOCK-rank reward
+    // multiplier), since a tier can never be attempted before its own unlock rank.
+    function guildBreakEvenPower(difficulty) {
+        return 0.5 * difficulty;
+    }
+    function bountyBreakEvenPower(difficulty, unlockRankMultiplier) {
+        return (1 / (1 + unlockRankMultiplier)) * difficulty;
+    }
+
+    test.each([
+        ['II', 2, Raid.T2_RAID_DIFFICULTY],
+        ['III', 3, Raid.T3_RAID_DIFFICULTY],
+    ])('Tier %s breakeven power sits modestly (10-25%%) above Guild Regular T%i\'s own breakeven, not 2x+ like the stale pre-fix values', (tierLetter, tierNum, guildDifficulty) => {
+        const unlockRank = MercenaryRank.THRESHOLDS.find(t => t.unlocksTier === tierNum);
+        const bountyDifficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
+        const guildBreakEven = guildBreakEvenPower(guildDifficulty);
+        const bountyBreakEven = bountyBreakEvenPower(bountyDifficulty, unlockRank.rewardMultiplier);
+        const marginRatio = bountyBreakEven / guildBreakEven;
+        expect(marginRatio).toBeGreaterThan(1.10);
+        expect(marginRatio).toBeLessThan(1.25);
+    });
+
+    test('Tier I is unaffected by this retune — its breakeven margin stays an exact match to Guild Regular T1 at Tier I\'s own unlock rank (Rank 1, 1.00x, no tilt)', () => {
+        const guildBreakEven = guildBreakEvenPower(Raid.T1_RAID_DIFFICULTY);
+        const bountyBreakEven = bountyBreakEvenPower(Bounty.BOUNTY_T1_DIFFICULTY, 1.00);
+        expect(bountyBreakEven).toBeCloseTo(guildBreakEven, 5);
+    });
+});
+
 describe('resolveNpcRob', () => {
     const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'corner_store');
     const PAYROLL_TRUCK = RobNpc.TIERS.find(t => t.key === 'payroll_truck');

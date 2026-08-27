@@ -1272,15 +1272,32 @@ const MercenaryRank = {
 // 2026-08-27 carry their own fully independent BOUNTY_T{1,2,3}_* constants below rather
 // than reading Raid.T{1,2,3}_RAID_* dynamically (see mercenaryFactory.resolveBountyAttempt
 // and bountyBoard.js's preview) — Part 1's Regular-ladder retune would otherwise have
-// silently retuned Bounty Tier II/III too. Difficulty is numerically unchanged from what
-// Bounty always effectively read (10/85/600); only reward/penalty actually moved, per
-// direct instruction that Guild Raiding should land a bit ahead of solo Bounty-hunting at
-// the equivalent tier ("i do want guilds to generally be a bit better anyway"). Sized so
-// Bounty's REALIZED reward (after SOLO_BOUNTY_REWARD_SHARE (0.15) x that tier's own
-// unlock-rank reward multiplier — Rank1=1.00x for Tier I, Rank2=1.15x for Tier II,
-// Rank3=1.35x for Tier III) lands at 85% of a reference guild's own realized per-member
-// reward at a comparable investment level — a uniform ~17.4-17.7% guild-ahead margin
-// across all three tiers, computed on realized reward (post-multipliers on both sides).
+// silently retuned Bounty Tier II/III too.
+//
+// DIFFICULTY retuned again, same day, later pass: pinning Tier II/III's difficulty to
+// the OLD pre-smoothing raw values (85/600) meant they silently stopped tracking what
+// "T2"/"T3" now means once Regular's own ladder was smoothed to 46/215 a few hours
+// earlier — Tier II ended up needing 1.85x the power Guild Regular's own T2 needs for
+// the same success chance, Tier III needed 2.79x. Confirmed via a live comparison
+// (breakeven power — the power level at which EV crosses zero, computed from each
+// side's own reward/penalty ratio): Guild Regular's breakeven is always exactly 50% of
+// its own difficulty (reward/penalty share equal magnitude, no rank multiplier tilt);
+// Bounty's breakeven is 1/(1 + tier's own UNLOCK-rank reward multiplier) of ITS
+// difficulty (Rank2=1.15x for Tier II, Rank3=1.35x for Tier III — the earliest rank at
+// which each tier is even reachable). Solving for the difficulty that makes Bounty's
+// breakeven power land ~17.5% ABOVE Guild Regular's own breakeven (matching this
+// constant's original ~17.4-17.7% guild-ahead target, restated as a breakeven-power
+// margin rather than a flat realized-reward margin) gives BOUNTY_T2_DIFFICULTY=58,
+// BOUNTY_T3_DIFFICULTY=297 — down from the stale 85/600, up from a naive 1:1 match to
+// Guild's new 46/215 (which would have handed Tier II/III a slight EDGE over guild
+// instead, since neither tier can be attempted before its own >1.0x unlock-rank
+// multiplier already applies). REWARD/PENALTY below are unchanged by this pass — they
+// were never the stale part. Note: at FULL investment (both sides already at the .9
+// success cap), the EV comparison is driven entirely by reward/penalty magnitude, not
+// difficulty, and a solo mercenary at max rank (1.75x) does pull ahead of a guild
+// member's per-member share there — same already-accepted "veteran mercenary reward"
+// shape Tier I already has today (unchanged by this pass), now shared consistently by
+// all three tiers instead of being uniquely severe for II/III.
 const Bounty = {
     BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
 
@@ -1288,11 +1305,11 @@ const Bounty = {
     BOUNTY_T1_REWARD: 142000,
     BOUNTY_T1_PENALTY: -142000,
 
-    BOUNTY_T2_DIFFICULTY: 85,
+    BOUNTY_T2_DIFFICULTY: 58,
     BOUNTY_T2_REWARD: 755000,
     BOUNTY_T2_PENALTY: -755000,
 
-    BOUNTY_T3_DIFFICULTY: 600,
+    BOUNTY_T3_DIFFICULTY: 297,
     BOUNTY_T3_REWARD: 4261000,
     BOUNTY_T3_PENALTY: -4261000,
     // Central risk-mitigation number, grounded against this roadmap entry's own worked
