@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -125,6 +125,159 @@ describe('getEligibleScenarios', () => {
     test('a guild right at the unlock level sees the bracket included', () => {
         const scenarios = [scenario('MK', .01), scenario('T4', .03, 8), scenario('T1', 1)];
         expect(getEligibleScenarios(scenarios, 8).map(s => s.tag)).toEqual(['MK', 'T4', 'T1']);
+    });
+});
+
+// 2026-08-27 dynamic roster-power-weighted tier rolling — replaces regular/elite/
+// legendary's fixed roll table with weight_i = (min(M,d_i)/max(M,d_i))^SHARPNESS,
+// normalized among eligible tiers, so which bracket a roster is likely to roll now
+// tracks how close its own totalMultiplier (M) sits to each tier's own difficulty
+// (d_i). Fixture numbers below are freshly recomputed via a real node -e script against
+// the live Raid.RAID_TIER_WEIGHT_SHARPNESS/T*_DIFFICULTY constants (not hand-derived
+// placeholders) — see systems/raids-and-world-events.md's "Dynamic tier weighting"
+// section for the full derivation these fixtures are anchored to.
+describe('getDynamicTierWeights', () => {
+    // Regular's own T1-T4 difficulty ladder (10/85/600/1000) — not part of the
+    // geometric-ratio ladder Elite/Legendary sit on above Regular T4, so its spacing is
+    // uneven, unlike Elite/Legendary's uniform 2^(1/4) spacing below.
+    function regularTiers() {
+        return [
+            { name: 'T4', difficulty: Raid.T4_RAID_DIFFICULTY, minGuildLevel: 8 },
+            { name: 'T3', difficulty: Raid.T3_RAID_DIFFICULTY },
+            { name: 'T2', difficulty: Raid.T2_RAID_DIFFICULTY },
+            { name: 'T1', difficulty: Raid.T1_RAID_DIFFICULTY },
+        ];
+    }
+
+    test('weights always normalize to sum to 1 among eligible tiers, across a wide range of totalMultiplier', () => {
+        [1, 10, 50, 85, 150, 250, 300, 500, 600, 900, 1000, 5000].forEach(M => {
+            const weighted = getDynamicTierWeights(regularTiers(), 100, M);
+            const total = weighted.reduce((sum, t) => sum + t.weight, 0);
+            expect(total).toBeCloseTo(1);
+        });
+    });
+
+    test('a totalMultiplier of exactly 0 (or negative) is guarded to a tiny epsilon rather than producing NaN', () => {
+        [0, -50].forEach(M => {
+            const weighted = getDynamicTierWeights(regularTiers(), 100, M);
+            weighted.forEach(t => expect(Number.isNaN(t.weight)).toBe(false));
+            expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
+            // At M ~ 0, T1 (the smallest difficulty) should overwhelmingly dominate.
+            expect(weighted.find(t => t.name === 'T1').weight).toBeGreaterThan(0.99);
+        });
+    });
+
+    test('T4 excluded below its unlock guild level still redistributes correctly among T1-T3, and the fixture values match a fresh node -e computation', () => {
+        const M = 150;
+        const weighted = getDynamicTierWeights(regularTiers(), /*guildLevel*/ 1, M);
+        expect(weighted.map(t => t.name)).toEqual(['T3', 'T2', 'T1']); // T4 excluded, order preserved
+        expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
+
+        // Freshly recomputed via node -e against the live constants (SHARPNESS=4,
+        // Regular T1=10/T2=85/T3=600, T4 excluded from the normalization entirely since
+        // it's below its own unlock level here) — use as a regression anchor.
+        const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
+        expect(byName.T1).toBeCloseTo(0.0001845421444518053, 6);
+        expect(byName.T2).toBeCloseTo(0.9633215279224518, 6);
+        expect(byName.T3).toBeCloseTo(0.03649392993309626, 6);
+    });
+
+    test('at a higher totalMultiplier (300), weight shifts decisively toward T3, still summing to 1 among T1-T3', () => {
+        const weighted = getDynamicTierWeights(regularTiers(), 1, 300);
+        const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
+        expect(byName.T1).toBeCloseTo(0.000017906365377147226, 6);
+        expect(byName.T2).toBeCloseTo(0.09347234641654459, 5);
+        expect(byName.T3).toBeCloseTo(0.9065097472180783, 5);
+    });
+
+    // The "one global SHARPNESS constant works for both a wide, uneven ladder (Regular)
+    // AND a tight, uniform one (Elite/Legendary, ratio 2^(1/4) apart)" claim — verified
+    // with a real assertion, not eyeballed: at Elite's own T1 exactly, weight should be
+    // non-degenerate (T1 clearly dominant but every other tier retains real presence),
+    // not collapsed onto a single tier the way an overly sharp exponent would.
+    test('the same global SHARPNESS produces a real multi-tier blend (not a near-monopoly) for Elite\'s tight, uniform spacing at exactly its own T1', () => {
+        const eliteTiers = [
+            { name: 'T4', difficulty: Raid.ELITE_T4_DIFFICULTY },
+            { name: 'T3', difficulty: Raid.ELITE_T3_DIFFICULTY },
+            { name: 'T2', difficulty: Raid.ELITE_T2_DIFFICULTY },
+            { name: 'T1', difficulty: Raid.ELITE_T1_DIFFICULTY },
+        ];
+        const weighted = getDynamicTierWeights(eliteTiers, 100, Raid.ELITE_T1_DIFFICULTY);
+        const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
+
+        // Freshly recomputed via node -e: T1 dominant but every tier keeps real,
+        // non-trivial (>5%) presence — not a near-monopoly.
+        expect(byName.T1).toBeCloseTo(0.5334558268219247, 6);
+        expect(byName.T2).toBeCloseTo(0.26670321061489966, 6);
+        expect(byName.T3).toBeCloseTo(0.13320542601315358, 6);
+        expect(byName.T4).toBeCloseTo(0.06663553655002198, 6);
+        Object.values(byName).forEach(w => {
+            expect(w).toBeGreaterThan(0.05);
+            expect(w).toBeLessThan(0.95);
+        });
+    });
+
+    // And for Regular's own wide, uneven spacing, the same SHARPNESS still produces a
+    // real blend near a tier boundary (M=150, between T2=85 and T3=600) rather than
+    // snapping to exactly one tier — same "no degenerate near-monopoly" property,
+    // confirmed for the OTHER regime the "one global constant" claim needs to hold for.
+    test('the same global SHARPNESS also avoids a degenerate near-monopoly for Regular\'s wide, uneven spacing near a tier boundary', () => {
+        const weighted = getDynamicTierWeights(regularTiers(), 100, 150);
+        const t2 = weighted.find(t => t.name === 'T2').weight;
+        const t3 = weighted.find(t => t.name === 'T3').weight;
+        // T2 dominates (roster sits much closer to T2's own difficulty) but T3 still
+        // retains a real, non-negligible presence rather than being weighted to ~0.
+        expect(t2).toBeGreaterThan(0.5);
+        expect(t3).toBeGreaterThan(0.01);
+    });
+});
+
+describe('getWeightedScenarios', () => {
+    function scenarios(guildLevel) {
+        return [
+            { name: 'MK', chance: .01 },
+            { name: 'T4', chance: .03, minGuildLevel: 8, difficulty: Raid.T4_RAID_DIFFICULTY },
+            { name: 'T3', chance: .08, difficulty: Raid.T3_RAID_DIFFICULTY },
+            { name: 'T2', chance: .28, difficulty: Raid.T2_RAID_DIFFICULTY },
+            { name: 'T1', chance: 1, difficulty: Raid.T1_RAID_DIFFICULTY },
+        ];
+    }
+
+    test('Metal King\'s own mass is byte-identical to scenarios[0].chance before and after — completely untouched by dynamic weighting', () => {
+        const original = scenarios(1);
+        const result = getWeightedScenarios(original, 1, 150);
+        expect(result[0].chance).toBe(original[0].chance);
+        expect(result[0]).toBe(original[0]); // same reference, not even a shallow copy
+    });
+
+    test('cumulative chance always ends at exactly 1', () => {
+        [1, 8, 20].forEach(guildLevel => {
+            [1, 150, 1000, 5000].forEach(M => {
+                const result = getWeightedScenarios(scenarios(guildLevel), guildLevel, M);
+                expect(result[result.length - 1].chance).toBeCloseTo(1);
+            });
+        });
+    });
+
+    test('T4 excluded below its unlock level, included at/above it, preserving array order', () => {
+        const below = getWeightedScenarios(scenarios(1), 1, 150);
+        expect(below.map(s => s.name)).toEqual(['MK', 'T3', 'T2', 'T1']);
+
+        const atUnlock = getWeightedScenarios(scenarios(8), 8, 150);
+        expect(atUnlock.map(s => s.name)).toEqual(['MK', 'T4', 'T3', 'T2', 'T1']);
+    });
+
+    test('a totalMultiplier <= 0 does not produce NaN anywhere in the resulting cumulative chances', () => {
+        const result = getWeightedScenarios(scenarios(1), 1, 0);
+        result.forEach(s => expect(Number.isNaN(s.chance)).toBe(false));
+        expect(result[result.length - 1].chance).toBeCloseTo(1);
+    });
+
+    test('bracketOdds-equivalent (raw per-bracket probability) still sums to 1 across the whole table, not just the T1-T4 slice', () => {
+        const result = getWeightedScenarios(scenarios(1), 1, 300);
+        let previous = 0;
+        const oddsSum = result.reduce((sum, s) => { const odds = s.chance - previous; previous = s.chance; return sum + odds; }, 0);
+        expect(oddsSum).toBeCloseTo(1);
     });
 });
 

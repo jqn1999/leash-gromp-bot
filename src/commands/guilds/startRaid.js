@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -282,8 +282,14 @@ const regularRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
+        // chance is vestigial now — getWeightedScenarios (see runStartRaidFlow/
+        // buildRaidPreview below) computes a fresh cumulative chance for every T1-T4
+        // bracket from `difficulty` and the roster's own totalMultiplier at roll time.
+        // Kept in place rather than deleted, same "superseded but correct" convention
+        // DIFFICULTY_MULTIPLIER's removal already established.
         chance: .03,
-        minGuildLevel: T4_MIN_LEVEL
+        minGuildLevel: T4_MIN_LEVEL,
+        difficulty: Raid.T4_RAID_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -308,7 +314,9 @@ const regularRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .08
+        // chance is vestigial — see the T4 entry's comment above.
+        chance: .08,
+        difficulty: Raid.T3_RAID_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -333,7 +341,9 @@ const regularRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .28
+        // chance is vestigial — see the T4 entry's comment above.
+        chance: .28,
+        difficulty: Raid.T2_RAID_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -358,7 +368,9 @@ const regularRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: 1
+        // chance is vestigial — see the T4 entry's comment above.
+        chance: 1,
+        difficulty: Raid.T1_RAID_DIFFICULTY
     }
 ]
 
@@ -443,8 +455,10 @@ const eliteRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .05,
-        minGuildLevel: T4_MIN_LEVEL
+        minGuildLevel: T4_MIN_LEVEL,
+        difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -469,7 +483,9 @@ const eliteRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .17
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: .17,
+        difficulty: Raid.ELITE_T3_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -494,7 +510,9 @@ const eliteRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .55
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: .55,
+        difficulty: Raid.ELITE_T2_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -519,7 +537,9 @@ const eliteRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: 1
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: 1,
+        difficulty: Raid.ELITE_T1_DIFFICULTY
     }
 ]
 
@@ -585,8 +605,10 @@ const legendaryRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .09,
-        minGuildLevel: T4_MIN_LEVEL
+        minGuildLevel: T4_MIN_LEVEL,
+        difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -611,7 +633,9 @@ const legendaryRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .31
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: .31,
+        difficulty: Raid.LEGENDARY_T3_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -636,7 +660,9 @@ const legendaryRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: .76
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: .76,
+        difficulty: Raid.LEGENDARY_T2_DIFFICULTY
     },
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
@@ -661,7 +687,9 @@ const legendaryRaidScenarios = [
             interaction.editReply({ embeds: [embed], components: [] });
             return totalRaidSplit;
         },
-        chance: 1
+        // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
+        chance: 1,
+        difficulty: Raid.LEGENDARY_T1_DIFFICULTY
     }
 ]
 
@@ -825,8 +853,13 @@ function buildRaidPreview(raidSelection, totalMultiplier, raidRewardMultiplier, 
         },
     }[raidSelection];
 
-    // T4 isn't shown/rollable at all below its unlock level — see getEligibleScenarios.
-    const eligibleScenarios = getEligibleScenarios(tierConfig.scenarios, guildLevel);
+    // T4 isn't shown/rollable at all below its unlock level. Which of the remaining
+    // T1-T3 (or T1-T4 once unlocked) actually gets weighted toward is now a function of
+    // the roster's own totalMultiplier too — see raidFactory.js's getWeightedScenarios,
+    // the SAME function runStartRaidFlow's own roll loop below calls, off the SAME
+    // tierConfig.scenarios array reference, so preview and live roll can never drift
+    // out of sync (see systems/raids-and-world-events.md's "Dynamic tier weighting").
+    const eligibleScenarios = getWeightedScenarios(tierConfig.scenarios, guildLevel, totalMultiplier);
     const t4Unlocked = eligibleScenarios.length === tierConfig.scenarios.length;
     const odds = bracketOdds(eligibleScenarios);
     const mk = tierConfig.metalKing;
@@ -992,7 +1025,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
         guildTotalEarnings += potatoesGained;
         await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
     } else if (raidSelection == 'regular') {
-        for (const scenario of getEligibleScenarios(regularRaidScenarios, guildLevel)) {
+        for (const scenario of getWeightedScenarios(regularRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
                 break;
@@ -1001,7 +1034,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
         guildTotalEarnings += potatoesGained;
         await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
     } else if (raidSelection == 'elite') {
-        for (const scenario of getEligibleScenarios(eliteRaidScenarios, guildLevel)) {
+        for (const scenario of getWeightedScenarios(eliteRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
                 break;
@@ -1010,7 +1043,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
         guildTotalEarnings += potatoesGained;
         await dynamoHandler.updateGuildDatabase(guildId, 'totalEarnings', guildTotalEarnings);
     } else if (raidSelection == 'legendary') {
-        for (const scenario of getEligibleScenarios(legendaryRaidScenarios, guildLevel)) {
+        for (const scenario of getWeightedScenarios(legendaryRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
                 potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
                 break;

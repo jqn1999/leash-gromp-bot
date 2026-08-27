@@ -150,6 +150,14 @@ function getGuildLevelClosestToWins(targetWins) {
 // can't actually attempt. A no-op (returns the original array as-is) once every bracket
 // is unlocked. bracketOdds converts cumulative chance -> raw per-bracket probability;
 // this is that operation run in reverse after filtering.
+//
+// Superseded by getWeightedScenarios below for regular/elite/legendary mode as of the
+// 2026-08-27 dynamic-tier-weighting rework (which tier gets rolled now also depends on
+// the roster's own power, not just a fixed table proportionally rescaled by guild-level
+// eligibility) — kept here as a still-correct, generically reusable utility for any
+// scenario table that only needs static-odds eligibility filtering (same "keep
+// superseded-but-correct code with a documenting comment" treatment DIFFICULTY_MULTIPLIER's
+// removal already got).
 function getEligibleScenarios(scenarios, guildLevel) {
     const isUnlocked = s => !s.minGuildLevel || guildLevel >= s.minGuildLevel;
     if (scenarios.every(isUnlocked)) return scenarios;
@@ -170,6 +178,43 @@ function getEligibleScenarios(scenarios, guildLevel) {
         cumulative += eligibleOdds[i] / totalOdds;
         return { ...s, chance: cumulative };
     });
+}
+
+// Pure T1-T4 weighting by roster power — see systems/raids-and-world-events.md's
+// "Dynamic tier weighting" section for the full derivation and worked examples.
+// tiers: scenario objects carrying {difficulty, minGuildLevel?} (T4->T1 order, Metal
+// King NOT included). weight_i = (min(M,d_i)/max(M,d_i))^RAID_TIER_WEIGHT_SHARPNESS,
+// normalized to sum to 1 among eligible tiers. totalMultiplier<=0 is guarded to
+// Number.EPSILON rather than passed straight into the ratio, so a brand-new roster with
+// 0 power still gets a well-defined (heavily T1-favoring) weight split instead of NaN
+// from a 0/0 ratio at M=d_i=0 or divide-by-zero elsewhere.
+function getDynamicTierWeights(tiers, guildLevel, totalMultiplier) {
+    const isUnlocked = t => !t.minGuildLevel || guildLevel >= t.minGuildLevel;
+    const eligible = tiers.filter(isUnlocked);
+    const m = totalMultiplier > 0 ? totalMultiplier : Number.EPSILON;
+    const rawWeights = eligible.map(t =>
+        Math.pow(Math.min(m, t.difficulty) / Math.max(m, t.difficulty), Raid.RAID_TIER_WEIGHT_SHARPNESS));
+    const totalWeight = rawWeights.reduce((sum, w) => sum + w, 0);
+    return eligible.map((t, i) => ({ ...t, weight: rawWeights[i] / totalWeight }));
+}
+
+// Combines Metal King's own untouched flat chance (scenarios[0].chance) with
+// dynamically-weighted T1-T4 into one cumulative-chance array — same shape/order the
+// old fully-static getEligibleScenarios output had, so the roll loop and bracketOdds
+// need no further changes beyond calling this instead. scenarios[0] MUST be Metal King,
+// same convention every mode's table already follows. Metal King's own entry is
+// returned by reference, completely untouched — its mass is carved out FIRST, before
+// the remaining probability mass is split among whichever T1-T4 tiers are eligible.
+function getWeightedScenarios(scenarios, guildLevel, totalMultiplier) {
+    const [metalKing, ...tiers] = scenarios;
+    const weightedTiers = getDynamicTierWeights(tiers, guildLevel, totalMultiplier);
+    const remainingMass = 1 - metalKing.chance;
+    let cumulative = metalKing.chance;
+    const tieredWithChance = weightedTiers.map(t => {
+        cumulative += t.weight * remainingMass;
+        return { ...t, chance: cumulative };
+    });
+    return [metalKing, ...tieredWithChance];
 }
 
 class RaidFactory {
@@ -268,6 +313,8 @@ module.exports = {
     getLiveRaidRoster,
     getGuildLevelClosestToWins,
     getEligibleScenarios,
+    getDynamicTierWeights,
+    getWeightedScenarios,
     getMemberRaidPower,
     getEffectiveRaidPower,
     getEffectiveRaidPowerBreakdown

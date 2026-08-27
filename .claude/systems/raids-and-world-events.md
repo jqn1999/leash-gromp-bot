@@ -184,14 +184,21 @@ by the team-combination weighting). Only the bank-overflow branch of `startRaid.
 `LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE=.6`, `MAXIMUM_STAT_RAID_SUCCESS_RATE=.5`.
 
 Each tier rolls one `Math.random()` against a cumulative weighted table. The **roll odds** below
-(which bracket you land in, given a mode) are unchanged by the 2026-08-26 rework described next —
-only the difficulty/reward/penalty magnitude of each bracket changed, not how often it's rolled.
+(which bracket you land in, given a mode) were unchanged by the 2026-08-26 rework described next —
+only the difficulty/reward/penalty magnitude of each bracket changed there, not how often it was
+rolled. **This table is now historical** — as of the 2026-08-27 "Dynamic tier weighting" rework
+below, which of T1-T4 gets rolled also depends on the roster's own `totalMultiplier`, so there is no
+longer a single fixed odds table independent of roster power. Metal King's own flat 1% is the one
+number here that's still exactly correct and untouched.
 
 | Tier | Metal King | T4 | T3 | T2 | T1 (remainder) |
 |---|---|---|---|---|---|
 | Regular | 1% | 2% | 5% | 20% | 72% |
 | Elite | 1% | 4% | 12% | 38% | 45% |
 | Legendary | 1% | 8% | 22% | 45% | 24% |
+
+(Historical, pre-2026-08-27 fixed table — kept for context on where the old per-bracket static
+`chance` fields, now vestigial in `startRaid.js`, originally came from.)
 
 **Static per-bracket difficulty/reward/penalty (2026-08-26 rework) — replaces the old
 `DIFFICULTY_MULTIPLIER` runtime indirection entirely.** Every non-Metal-King bracket (Regular T1-4,
@@ -295,10 +302,103 @@ heavily-invested members could otherwise reach T4-caliber `effectiveRaidPower` w
 has any real raiding track record. `raidFactory.js`'s `getGuildLevelClosestToWins(3000)` resolves to
 whichever `RaidLevel.THRESHOLDS` level's `winsRequired` is closest to 3,000 (level 8, exactly, today)
 — derived rather than hardcoded so it tracks the curve if it ever changes. Below that level, T4 isn't
-in the roll table at all: `getEligibleScenarios` strips it out and proportionally redistributes its
-probability mass across whatever brackets *are* unlocked (not dumped onto whichever bracket happens
-to be next), so the remaining odds still sum to 100% and nothing is silently unreachable. The preview
-embed only shows T4 once it's actually rollable.
+in the roll table at all: for `regular`/`elite`/`legendary` mode, `getWeightedScenarios` (see
+"Dynamic tier weighting" below) strips it out via the same `minGuildLevel` tag before computing
+weights for the remaining eligible tiers, so the remaining odds still sum to 100% and nothing is
+silently unreachable (`getEligibleScenarios` — the pre-2026-08-27 static-odds equivalent of this
+same exclusion — is still exported and still used for anything that only needs level-gated static
+odds with no roster-power weighting on top). The preview embed only shows T4 once it's actually
+rollable.
+
+### Dynamic tier weighting
+
+**Which of a mode's own T1-T4 gets rolled (2026-08-27 rework) is no longer independent of the
+roster's own power.** Previously a maxed Regular-mode guild still mostly rolled T1 (the fixed table
+above), and a brand-new guild could still occasionally get thrown into Regular's rare-but-brutal T4.
+Direct user request: *"I don't want a guild at the top end of regular to get consistently T1 regular
+raids, and I don't want baby guilds just starting to have a chance of getting absolutely murdered by
+the top end of regular T4 raids. Ideally it would increase likelihood of whatever raid tier they are
+closest to or between the two closest with lower chance of the other ends."*
+
+`raidFactory.js`'s `getDynamicTierWeights(tiers, guildLevel, totalMultiplier)`:
+
+```
+weight_i = (min(M, d_i) / max(M, d_i)) ^ Raid.RAID_TIER_WEIGHT_SHARPNESS
+```
+
+normalized to sum to 1 among whichever T1-T4 tiers are currently eligible (`M` = `totalMultiplier`,
+`d_i` = tier `i`'s own difficulty constant, same `minGuildLevel` exclusion T4 already used).
+`getWeightedScenarios(scenarios, guildLevel, totalMultiplier)` combines this with Metal King's own
+untouched flat `chance` (carved out first, before the remaining probability mass is split among
+eligible T1-T4) into the same cumulative-`chance` shape `getEligibleScenarios` used to produce, so
+the roll loop and `bracketOdds` need no further changes beyond calling it. `runStartRaidFlow`'s three
+roll-loop calls and `buildRaidPreview`'s own call both switched from `getEligibleScenarios` to
+`getWeightedScenarios`, off the exact same live scenario array reference — preserving the "one source
+of truth for preview and live roll" invariant the 2026-08-26 rework above hardened (see that
+rework's own "bug fixed as a side effect" note).
+
+This is a plain-ratio expression of a log-space exponential falloff on distance from each tier's own
+difficulty (`(min/max)^p = exp(-p·|ln M − ln d_i|)`) that needs no `Math.log`/`Math.exp` calls and no
+epsilon-guard against `log(0)` — `totalMultiplier <= 0` is instead guarded to `Number.EPSILON` before
+the ratio, so a brand-new roster still gets a well-defined (heavily T1-favoring) split rather than
+`NaN`. Regular/Elite/Legendary's own T4/T3/T2/T1 scenario entries in `startRaid.js` each carry a new
+`difficulty: Raid.X_DIFFICULTY` field (reusing the exact same constant each entry's own closure
+already referenced for its success-chance roll, so there's no risk of a mismatched number); the old
+static `.chance` fields on those 12 entries are now vestigial (kept in place with a comment rather
+than deleted, same "superseded but correct" treatment `DIFFICULTY_MULTIPLIER`'s removal got — see
+above). `getEligibleScenarios` itself is untouched, still exported, and still the right tool for
+anything that only needs static-odds level-gating with no roster-power weighting (`baby`/`stat` mode
+don't use either function and are unaffected by this rework).
+
+**`Raid.RAID_TIER_WEIGHT_SHARPNESS = 4` — a real tuning pass, not an arbitrary pick.** The
+architect's originally-proposed value (1.5) was independently re-verified via `node -e` computation
+before shipping and found to have a genuine EV regression: a roster sitting between Regular's T2 (85)
+and T3 (600) — `totalMultiplier` ≈ 150-300 — picks up enough T3/T4 weight at sharpness 1.5 that the
+weighted-average EV per raid attempt at that power band goes sharply negative, WORSE than the OLD
+fixed-table odds gave the same roster (e.g. -1,675,451 at `totalMultiplier`=150 vs. -294,061 under
+the old table), because T3/T4's stakes are vastly bigger than T1/T2's. A sharpness sweep (1.5 through
+20) found the worst-case weighted EV in that dead zone bottoms out around sharpness 6-8 (~-1.37M) and
+gets WORSE again above that (weighting becomes a near-binary 50/50 T2/T3 snap right at the tier
+boundary) — **this dead zone can NOT be fully eliminated by sharpness alone**, since Regular's own
+T2→T3 is a ~7x difficulty jump but a much larger jump in reward/penalty magnitude, a structural
+asymmetry in Regular's own historically uneven tuning this rework doesn't touch (fixing it would mean
+touching Regular's actual reward numbers, out of scope here). `SHARPNESS=4` was chosen (confirmed by
+the product owner after seeing these real numbers) as the best value that still gives a genuine
+multi-tier blend — not a near-binary snap — while cutting the worst-case dead-zone EV by ~39%
+relative to the 1.5 proposal (-2,660,463 → -1,629,449, both at `totalMultiplier`≈248). Full sharpness
+sweep table and EV derivation: [balance-audit.md](../balance-audit.md)'s 2026-08-27 entry.
+
+**This residual dead zone is the same structural gap the "Guild Raid: T2/T3/`stat`-Mode Eligibility
+Gating" roadmap item already tracks** (see `roadmap.md`'s 2026-08-27 update note on that item) —
+de-weighting T1-T4 by roster power softens the "level-1 guild rolls Regular's T3 and gets crushed"
+problem this section's own "Still open, not yet fixed" note below describes, but doesn't eliminate
+it, since a heavily de-weighted bracket is still reachable at low, non-zero probability. Only a real
+eligibility gate on T2/T3 (excluding them outright below some roster-power threshold, the same
+treatment T4/Elite/Legendary already get) closes that gap completely — this rework reduces it, by
+design, rather than closing it.
+
+**Worked examples** (`SHARPNESS=4`, recomputed via `node -e`, all 4 tiers eligible unless noted):
+
+Regular (T1=10, T2=85, T3=600, T4=1000), weights as T1/T2/T3/T4:
+
+| `totalMultiplier` | T1 | T2 | T3 | T4 |
+|---|---|---|---|---|
+| 1 | 99.9808% | 0.0192% | 0.0000% | 0.0000% |
+| 50 | 1.3181% | 98.6370% | 0.0397% | 0.0051% |
+| 85 | 0.0191% | 99.9354% | 0.0403% | 0.0052% |
+| 150 | 0.0184% | 95.8787% | 3.6322% | 0.4707% |
+| 250 | 0.0054% | 28.1850% | 63.5708% | 8.2388% |
+| 300 | 0.0016% | 8.3645% | 81.1206% | 10.5132% |
+| 600 | 0.0000% | 0.0356% | 88.4954% | 11.4690% |
+| 900 | 0.0000% | 0.0093% | 23.1379% | 76.8528% |
+| 1000 | 0.0000% | 0.0046% | 11.4726% | 88.5228% |
+
+Elite/Legendary's own 4 tiers span only a 1.68x difficulty range (`2^(1/4)` ratio apart, from the
+geometric ladder above) — confirms the SAME global `SHARPNESS` works for both Regular's wide/uneven
+spacing and Elite/Legendary's tight/uniform spacing without any per-mode tuning: at `totalMultiplier`
+= Elite's own T1 (1,189) exactly, weights are T1/T2/T3/T4 = 53.3456% / 26.6703% / 13.3205% / 6.6636%
+— T1 clearly dominant but every other tier retains real, non-trivial presence, not a near-monopoly.
+Legendary at its own T1 (2,378) produces the byte-identical percentage split (same relative spacing).
 
 ### Mode-level breakeven
 

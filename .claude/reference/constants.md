@@ -19,7 +19,7 @@ changes without this knowledge base being updated alongside it.
 | `Give` | `/give` tax rates — potatoes vs. the cheaper starches rate | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Rob` | `/rob` cooldown, penalty amounts, work-timer penalty on failure | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Bet` | Betting base-amount seed formula | [systems/betting-and-games.md](../systems/betting-and-games.md) |
-| `Raid` | Guild raid tiers, difficulty/reward/penalty per mob (Regular T1-T4/Metal King, plus 24 static `ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` constants — see below), success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
+| `Raid` | Guild raid tiers, difficulty/reward/penalty per mob (Regular T1-T4/Metal King, plus 24 static `ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` constants — see below), success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below), `RAID_TIER_WEIGHT_SHARPNESS` (dynamic roster-power-weighted tier rolling exponent, 4 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
 | `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `Rival`, `RivalMercenaries` | Rival Bounty Hunters — Notoriety accrual/threshold, weighted scenario roll + per-scenario success-chance range, capped-base reward/penalty factors, the 6-entry named rival roster | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `GuildRoles` | Role name strings (`Leader`, `Co-Leader`, `Elder`, `Member`) | [systems/guilds.md](../systems/guilds.md) |
@@ -59,6 +59,20 @@ for the full bug/fix writeup and the correctness proof that adding any roster me
 `1/(1-RAID_TEAM_DECAY) = 2.0x` the top raider's own power as roster size grows. `n=1` is an exact
 identity with the old formula (`teamPower = power_0`), so Bounty's solo raid-power math
 (`mercenaryFactory.js`) is unaffected.
+
+### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (4, 2026-08-27 dynamic tier weighting)
+
+The exponent in `raidFactory.js`'s `getDynamicTierWeights`/`getWeightedScenarios`:
+`weight_i = (min(M, d_i) / max(M, d_i)) ^ RAID_TIER_WEIGHT_SHARPNESS`, normalized to sum to 1
+among eligible T1-T4 tiers (`M` = `totalMultiplier`, `d_i` = tier `i`'s own difficulty). Replaces
+regular/elite/legendary mode's fixed per-bracket roll odds with weighting keyed to how close the
+roster's own power sits to each tier's own difficulty — Metal King's own flat chance is untouched.
+Tuned from an originally-proposed 1.5 up to 4 after a `node -e` sharpness sweep found a real EV
+dead zone around Regular's own T2→T3 boundary that bottoms out around sharpness 6-8 and can't be
+fully eliminated by this knob alone (a structural asymmetry in Regular's own T2/T3 reward/penalty
+tuning). Full derivation, sharpness sweep, and worked examples:
+[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting),
+[balance-audit.md](../balance-audit.md)'s 2026-08-27 entry.
 
 ### `guild.raidSplitMode` (not in `constants.js` — a persisted guild field, default `"even"`)
 

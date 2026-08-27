@@ -1111,6 +1111,39 @@ const Raid = {
     LEGENDARY_METAL_KING_PASSIVE_REWARD: 6000000,
     LEGENDARY_METAL_KING_CAPACITY_REWARD: 60000000,
 
+    // Dynamic roster-power-weighted tier rolling (2026-08-27) — which of a mode's own
+    // T1-T4 gets rolled is no longer a fixed table independent of the roster's own
+    // power; raidFactory.js's getDynamicTierWeights weights each eligible tier by
+    // (min(M, d_i) / max(M, d_i)) ^ RAID_TIER_WEIGHT_SHARPNESS (M = totalMultiplier,
+    // d_i = that tier's own difficulty constant), normalized to sum to 1. This is a
+    // plain-ratio expression of a log-space exponential falloff on distance from each
+    // tier's own difficulty (exp(-p·|ln M − ln d_i|)) that needs no Math.log/Math.exp
+    // and no epsilon-guard against log(0). Direct user request: a guild at the top end
+    // of Regular shouldn't keep rolling mostly T1, and a fresh guild shouldn't have a
+    // real chance of being thrown into the top end of Regular's T4 — the roll should
+    // favor whichever tier(s) the roster's own power is actually closest to. Metal
+    // King's own flat chance is carved out first and is completely untouched by this.
+    //
+    // Sharpness was tuned from an initially-proposed 1.5 up to 4 after computing real
+    // EV consequences, not chosen arbitrarily: at 1.5, a roster sitting between
+    // Regular's T2 (85) and T3 (600) — totalMultiplier ≈ 150-300 — picked up enough
+    // T3/T4 weight that the weighted-average EV per raid attempt at that power band
+    // went sharply negative (worse than the old fixed-table odds gave the same roster),
+    // because T3/T4's stakes are vastly bigger than T1/T2's. A sharpness sweep (see
+    // balance-audit.md's 2026-08-27 entry for the full table) found the worst-case EV
+    // in that dead zone bottoms out around sharpness 6-8 and gets WORSE again above
+    // that (weighting becomes a near-binary 50/50 snap right at the tier boundary) — it
+    // can NOT be fully eliminated by sharpness alone, since T2→T3 is a ~7x difficulty
+    // jump but a much larger jump in reward/penalty magnitude, a structural asymmetry
+    // in Regular's own tuning this rework doesn't touch. 4 was chosen as the best value
+    // that still gives a real multi-tier blend (not a near-binary snap) while cutting
+    // the worst-case dead-zone EV by ~39% (-2.66M at 1.5 -> -1.63M at 4, both at
+    // totalMultiplier≈248). See systems/raids-and-world-events.md's "Dynamic tier
+    // weighting" section for the full derivation, worked examples, and the pointer to
+    // the still-open "Guild Raid: T2/T3/stat-Mode Eligibility Gating" roadmap item that
+    // this residual dead zone motivates as the true structural fix.
+    RAID_TIER_WEIGHT_SHARPNESS: 4,
+
     // Headcount bonus on top of the roster's rank-weighted teamPower (see
     // RAID_TEAM_DECAY below) — a straight average alone gives zero incentive to recruit
     // more raiders (bigger roster, same per-capita difficulty), and a straight SUM lets

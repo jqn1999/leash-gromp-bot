@@ -18,7 +18,7 @@ jest.mock('../../../utils/dynamoHandler');
 
 const { buildRaidPreview } = require('../startRaid');
 const { Raid } = require('../../../utils/constants');
-const { getMinGuildLevelForTier } = require('../../../utils/raidFactory');
+const { getMinGuildLevelForTier, getWeightedScenarios, getGuildLevelClosestToWins } = require('../../../utils/raidFactory');
 
 describe('buildRaidPreview', () => {
     test('elite T1/T2/T3 (guild level below T4 unlock) reads the new static ELITE_T* constants directly — no separate multiplier table', () => {
@@ -108,5 +108,62 @@ describe('buildRaidPreview', () => {
         const t1 = brackets.find(b => b.name === 'Tier 1');
         const liveSuccessChance = Math.min(totalMultiplier / Raid.ELITE_T1_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
         expect(t1.successChance).toBe(liveSuccessChance);
+    });
+});
+
+// 2026-08-27 dynamic tier weighting: buildRaidPreview (shown before a raid is
+// committed) and runStartRaidFlow's own roll loop (see startRaid.js) both call
+// getWeightedScenarios against the exact same live scenario array reference
+// (tierConfig.scenarios IS regularRaidScenarios/eliteRaidScenarios/legendaryRaidScenarios,
+// not a copy) — the same "one source of truth for preview and live roll" invariant
+// hardened earlier this session (see this file's own top-of-file comment on the bug
+// that invariant was built to prevent). This describe block confirms buildRaidPreview's
+// reported per-bracket odds are byte-identical to independently computing
+// getWeightedScenarios/getDynamicTierWeights against the real live Raid.* constants —
+// the same formula and constants the roll loop itself reads — rather than trusting
+// buildRaidPreview's internals by inspection alone.
+describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', () => {
+    const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
+
+    // Reconstructs the exact per-bracket odds getWeightedScenarios would produce for a
+    // given mode/guildLevel/totalMultiplier, off the same live Raid.* constants
+    // eliteRaidScenarios/legendaryRaidScenarios/regularRaidScenarios' own closures read
+    // — NOT a second hand-derived table, just this test's own call into the real
+    // exported formula.
+    function expectedOdds(mode, guildLevel, totalMultiplier) {
+        // Regular's own T1-T4 constants have no mode prefix at all (T1_RAID_DIFFICULTY,
+        // not REGULAR_T1_DIFFICULTY) — only Elite/Legendary got a prefixed name in the
+        // 2026-08-26 static rework, so this mirrors that naming quirk rather than
+        // assuming a uniform prefix.
+        const diff = tier => mode === 'regular' ? Raid[`${tier}_RAID_DIFFICULTY`] : Raid[`${mode.toUpperCase()}_${tier}_DIFFICULTY`];
+        const metalKing = { name: 'Metal King', chance: .01 };
+        const tiers = [
+            { name: 'Tier 4', difficulty: diff('T4'), minGuildLevel: T4_MIN_LEVEL },
+            { name: 'Tier 3', difficulty: diff('T3') },
+            { name: 'Tier 2', difficulty: diff('T2') },
+            { name: 'Tier 1', difficulty: diff('T1') },
+        ];
+        const weighted = getWeightedScenarios([metalKing, ...tiers], guildLevel, totalMultiplier);
+        let previous = 0;
+        const byName = {};
+        weighted.forEach(s => { byName[s.name] = s.chance - previous; previous = s.chance; });
+        return byName;
+    }
+
+    test.each([
+        ['regular', 1, 150],
+        ['regular', 8, 900],
+        ['elite', 1, 1189],
+        ['elite', 1, 2000],
+        ['legendary', 3, 3000],
+        ['legendary', 8, 4000],
+    ])('%s mode at guild level %i, totalMultiplier %i: preview odds match an independent getWeightedScenarios computation exactly', (mode, guildLevel, totalMultiplier) => {
+        const brackets = buildRaidPreview(mode, totalMultiplier, 1.0, guildLevel);
+        const expected = expectedOdds(mode, guildLevel, totalMultiplier);
+
+        expect(brackets.length).toBe(Object.keys(expected).length);
+        brackets.forEach(bracket => {
+            expect(bracket.odds).toBeCloseTo(expected[bracket.name], 10);
+        });
     });
 });

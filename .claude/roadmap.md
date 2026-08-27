@@ -2407,6 +2407,69 @@ and needs its own balance pass.
   added confirming the per-mode efficiency ramp is monotonic and continuous across both mode
   boundaries. Full suite green (580/580, up from 579).
 
+- [x] **62. Dynamic Roster-Power-Weighted Raid Tier Rolling** — M — **Done**
+  What: which of a mode's own T1-T4 gets rolled on `/start-raid` is no longer a fixed table
+  independent of the roster's own power — `raidFactory.js`'s new `getDynamicTierWeights`/
+  `getWeightedScenarios` weight each eligible tier by `weight_i = (min(M, d_i) / max(M, d_i)) ^
+  Raid.RAID_TIER_WEIGHT_SHARPNESS` (`M` = `totalMultiplier`, `d_i` = that tier's own difficulty),
+  normalized to sum to 1, favoring whichever tier(s) the roster's power sits closest to. Metal
+  King's own flat chance (`scenarios[0].chance`) is carved out first and is completely untouched.
+  12 one-line `difficulty: Raid.X_DIFFICULTY` additions across `regularRaidScenarios`/
+  `eliteRaidScenarios`/`legendaryRaidScenarios`' own T4/T3/T2/T1 entries (reusing each closure's
+  own already-referenced constant, so no risk of a mismatched number); the old static `.chance`
+  fields on those 12 entries are now vestigial (kept in place with a comment, not deleted — same
+  "superseded but correct" treatment `DIFFICULTY_MULTIPLIER`'s removal got). `runStartRaidFlow`'s
+  three roll-loop calls and `buildRaidPreview`'s own call both switched from `getEligibleScenarios`
+  to `getWeightedScenarios`, off the exact same live scenario array reference, preserving the "one
+  source of truth for preview and live roll" invariant hardened in item 61 above.
+  `getEligibleScenarios` itself is untouched and still exported, now documented as superseded for
+  regular/elite/legendary mode but kept as a generically reusable utility (`baby`/`stat` modes
+  don't use either function and are unaffected).
+  Why: direct user request — "I don't want a guild at the top end of regular to get consistently
+  T1 regular raids, and I don't want baby guilds just starting to have a chance of getting
+  absolutely murdered by the top end of regular T4 raids... increase likelihood of whatever raid
+  tier they are closest to or between the two closest with lower chance of the other ends."
+  Notable: **`Raid.RAID_TIER_WEIGHT_SHARPNESS` went through a real tuning pass, not a guess** — the
+  architect's original proposal (1.5) was independently re-verified via `node -e` computation
+  before shipping and found to have a genuine EV regression: a roster sitting between Regular's T2
+  (85) and T3 (600) — `totalMultiplier` ≈ 150-300 — picked up enough T3/T4 weight at sharpness 1.5
+  that the weighted-average EV per raid attempt went sharply negative in that band (e.g. -1,675,451
+  at `totalMultiplier`=150, vs. -294,061 under the OLD fixed-table odds at the same power — worse,
+  not better), since T3/T4's stakes are vastly bigger than T1/T2's. A sharpness sweep (1.5 through
+  20) found the worst-case EV in that dead zone bottoms out around sharpness 6-8 (~-1.37M) and gets
+  WORSE again above that (weighting becomes a near-binary 50/50 snap right at the tier boundary) —
+  **this dead zone can NOT be fully eliminated by sharpness alone**, since Regular's own T2→T3 is a
+  ~7x difficulty jump but a much larger jump in reward/penalty magnitude, a structural asymmetry in
+  Regular's own tuning this rework doesn't touch. `SHARPNESS=4` was chosen (confirmed by the
+  product owner after seeing the real numbers) as the best value that still gives a genuine
+  multi-tier blend (not a near-binary snap) while cutting the worst-case dead-zone EV by ~39%
+  (-2,660,463 at 1.5 → -1,629,449 at 4, both at `totalMultiplier`≈248 — independently reproduced via
+  `node -e`, matching the architect's own sweep exactly). This residual dead zone is the same gap
+  the "Guild Raid: T2/T3/`stat`-Mode Eligibility Gating" item below already tracks — see that item's
+  new update note — de-weighting T2/T3 for an underpowered roster helps, but only a real eligibility
+  gate (excluding them outright, not just down-weighting) fully closes it. Full sharpness-sweep
+  table, EV dead-zone finding, and worked weight examples recomputed fresh via `node -e` (not
+  copy-pasted from the design doc) in `balance-audit.md`'s new 2026-08-27 entry and
+  `systems/raids-and-world-events.md`'s new "Dynamic tier weighting" subsection.
+  17 new/changed tests (597/597 total, up from 580): `raidFactory.test.js` gained
+  `getDynamicTierWeights`/`getWeightedScenarios` describe blocks (weights always normalize to 1,
+  `totalMultiplier<=0` guarded to a tiny epsilon rather than NaN, T4 exclusion below guild level
+  redistributes correctly among T1-T3 with fixture values pinned to a fresh `node -e` computation,
+  Metal King's own mass byte-identical before/after, and a direct assertion that the SAME global
+  `SHARPNESS` produces a real non-degenerate multi-tier blend for both Regular's wide/uneven
+  spacing and Elite's tight/uniform 2^(1/4) spacing); `buildRaidPreview.test.js` gained a
+  preview/live-roll odds-parity describe block (`test.each` across regular/elite/legendary at
+  several guild-level/`totalMultiplier` combinations, asserting the preview's per-bracket odds are
+  byte-identical to an independent `getWeightedScenarios` computation against the same live
+  `Raid.*` constants); `startRaidStaticRewards.test.js`'s two `Math.random()=0.5` tests were
+  rewritten (their old hardcoded "lands in T2" assertion and comment were true only under the OLD
+  static-odds mechanism — under dynamic weighting the same roll now lands in T1 for this fixture's
+  low-power roster) to derive the expected bracket by calling the real `getWeightedScenarios`
+  function directly against the fixture's own `totalMultiplier`, plus a new assertion cross-checking
+  that `buildRaidPreview` reports a strictly positive odds for whichever bracket the live mocked
+  roll actually lands on. `buildRaidPreview.test.js`/`startRaidSplitMode.test.js`'s existing tests
+  confirmed unaffected (neither asserts on numeric roll odds tied to the old fixed table).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -2438,6 +2501,17 @@ and needs its own balance pass.
   core fix if pushed low enough to matter) — a roster-power-keyed eligibility gate (finding 1 above)
   remains the correct venue for addressing this specific flatness, now with a second, independently
   verified motivating case on top of the original 2026-08-23 one.
+
+  **Update, 2026-08-27 (item 62's dynamic tier weighting)**: item 62 shipped a roster-power-keyed
+  DE-WEIGHTING of T1-T4 within regular/elite/legendary mode (favoring whichever tier the roster's
+  own `totalMultiplier` sits closest to), which meaningfully softens finding 1 above but does
+  **not** fully close it — a `node -e`-verified sharpness sweep found a residual EV dead zone right
+  around Regular's own T2→T3 boundary (`totalMultiplier`≈248) that bottoms out around -1.37M and
+  cannot be tuned away by the weighting formula's own sharpness knob alone (see item 62's own
+  balance-audit.md entry for the full sweep). De-weighting a bracket still leaves it reachable at
+  low, non-zero probability; only an actual eligibility gate (excluding T2/T3 outright for a roster
+  far below their difficulty, the same treatment T4/Elite/Legendary already get) closes finding 1
+  completely. `stat` mode remains fully ungated either way — item 62 didn't touch it at all.
 
 - [x] **Rival Bounty Hunters (Notoriety → confrontation)** — M — **Shipped 2026-08-23**, built
   directly off the architect's technical design at the end of this entry — see
