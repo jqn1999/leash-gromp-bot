@@ -67,13 +67,25 @@ function buildListing(userDetails, companion, price, ownedEntry) {
 // same-day "decrement quantity, or remove if this was the last copy" version — with
 // every copy now its own independent instance, there's no shared-quantity state left to
 // juggle, this just removes the one instance asked for.
+//
+// Spreads `companions` first (fixed 2026-08-27 — reported by a player as "sold an NPC
+// companion and my scavenge got messed up") rather than hand-listing fields, so
+// `scavenging`/`scavengeReturnsByRarity`/any future field carries forward untouched. This
+// is a plain SET write via updateUserFields (not a deep merge), so the old
+// `{ owned, active, ownedCount, mythicOwnedCount }` shape silently erased `scavenging`
+// whenever ANY companion was sold (via /companion-sell or /companion-sell-npc) while a
+// DIFFERENT companion was out scavenging — the scavenging instance itself was already
+// blocked from being sold directly (see validateListingRequest/validateNpcSaleRequest's
+// own isScavenging checks), but selling an unrelated companion still clobbered the
+// in-progress scavenge on the write. Same root-cause class, and the same spread-first fix,
+// as applyCompanionAward's own "new companion" branch (see systems/companions.md's
+// Scavenging section, "A fourth risk site" note).
 function removeFromOwned(userDetails, instanceId) {
     const companions = userDetails.companions;
     return {
+        ...companions,
         owned: companions.owned.filter(c => c.instanceId !== instanceId),
-        active: companions.active === instanceId ? null : companions.active,
-        ownedCount: companions.ownedCount,
-        mythicOwnedCount: companions.mythicOwnedCount
+        active: companions.active === instanceId ? null : companions.active
     };
 }
 

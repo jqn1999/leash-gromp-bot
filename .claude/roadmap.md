@@ -2629,6 +2629,30 @@ and needs its own balance pass.
   `"direct"` composes correctly with `raidSplitMode: "share"`, and a raid loss still drains the bank
   under `"direct"` payout. Full suite green: 643/643 (up from 631/631 before this item).
 
+- [x] **66. Fix: Selling a Companion Clobbered an Unrelated In-Progress Scavenge** — S — **Done**
+  What: `companionMarketFactory.removeFromOwned` (the escrow-removal step shared by
+  `/companion-sell` and `/companion-sell-npc`) built its returned `companions` object from just
+  `{ owned, active, ownedCount, mythicOwnedCount }`, silently dropping `scavenging`. Since
+  `dynamoHandler.updateUserFields` writes `companions` as a plain `SET` (not a deep merge), selling
+  ANY companion — market listing or NPC sale — while a DIFFERENT companion was out scavenging wiped
+  the scavenge out from under the player, regardless of how much time was left on it. The scavenging
+  instance itself was already correctly blocked from being sold directly (pre-existing
+  `isScavenging` checks in `validateListingRequest`/`validateNpcSaleRequest`) — the gap was only the
+  unrelated-companion-sale case. Fixed by spreading `companions` first and overriding only
+  `owned`/`active`, same shape `applyCompanionAward` was already fixed to use (roadmap's Scavenging
+  section, "fourth risk site" — same root cause, same fix, different call site that was missed the
+  first time).
+  Why: player report — "someone sold an npc [companion] the other day and their scavenge got messed
+  up." Investigated by re-checking every companion buy/sell/equip/cancel write site
+  (`companionMarket.js`'s buy flow via `applyCompanionAward` — already fixed; `companion.js`'s
+  equip/unequip — already spreads correctly; `companionCancel.js`'s listing restore — already
+  spreads correctly) — `removeFromOwned` was the one remaining site still using the old
+  hand-built-object shape.
+  New tests: `companionMarketFactory.test.js` gained two `removeFromOwned` cases — an unrelated
+  in-progress `scavenging` record survives a sale unchanged, and `scavengeReturnsByRarity` (or any
+  other companions field) survives via the spread rather than needing to be named explicitly. Full
+  suite green: 645/645 (up from 643/643 before this item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

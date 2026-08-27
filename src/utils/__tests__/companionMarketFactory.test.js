@@ -139,6 +139,34 @@ describe('removeFromOwned', () => {
         expect(result.owned).toEqual([{ instanceId: 'sprout-b', id: 'sprout', workCount: 0 }]);
         expect(result.active).toBeNull();
     });
+
+    // Regression: selling any companion (via /companion-sell or /companion-sell-npc)
+    // used to silently wipe out an unrelated in-progress scavenge, since the returned
+    // object was hand-built from just { owned, active, ownedCount, mythicOwnedCount } and
+    // updateUserFields writes it as a plain SET (not a deep merge) — reported by a player
+    // as "sold an NPC companion and my scavenge got messed up." The scavenging instance
+    // itself is already blocked from being sold directly (see validateListingRequest/
+    // validateNpcSaleRequest's own isScavenging checks) — this covers the unrelated-sale case.
+    test('preserves an unrelated in-progress scavenge when a different companion is sold', () => {
+        const scavenging = { instanceId: 'mole-a', rarity: 'rare', returnsAt: 123456 };
+        const user = userWith({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 10 }],
+            ownedCount: 2,
+            scavenging
+        });
+        const result = removeFromOwned(user, 'sprout-a');
+        expect(result.scavenging).toEqual(scavenging);
+        expect(result.owned).toEqual([{ instanceId: 'mole-a', id: 'mole', workCount: 10 }]);
+    });
+
+    test('preserves scavengeReturnsByRarity and any other companions field via spread, not just the ones explicitly named', () => {
+        const user = userWith({
+            owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }],
+            scavengeReturnsByRarity: { legendary: 3, mythic: 1 }
+        });
+        const result = removeFromOwned(user, 'sprout-a');
+        expect(result.scavengeReturnsByRarity).toEqual({ legendary: 3, mythic: 1 });
+    });
 });
 
 describe('computeSaleSplit', () => {

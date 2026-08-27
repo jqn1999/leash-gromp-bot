@@ -730,6 +730,20 @@ regardless of how much time was left on it. Fixed by spreading `companions` firs
 same as the duplicate branch already did — regression-tested in `companionFactory.test.js`
 (`applyCompanionAward` preserves an in-progress `scavenging` record across a new-companion award).
 
+**A fifth risk site, same root cause, found 2026-08-27 — `companionMarketFactory.removeFromOwned`
+(the escrow-removal step shared by `/companion-sell` and `/companion-sell-npc`).** Same exact bug
+shape as the fourth risk site above: the returned `companions` object was hand-built from just
+`{ owned, active, ownedCount, mythicOwnedCount }`, omitting `scavenging`. Reported by a player as
+"sold an NPC companion and my scavenge got messed up" — confirmed exactly right: selling ANY
+companion (market listing or NPC sale) while a DIFFERENT companion was out scavenging silently wiped
+the scavenge, since `updateUserFields` writes `companions` as a plain `SET`. The scavenging instance
+itself was already correctly blocked from being sold directly (`validateListingRequest`/
+`validateNpcSaleRequest`'s own `isScavenging` checks predate this fix) — the gap was only ever the
+*unrelated*-companion-sale case. Fixed the same way as the fourth site: spread `companions` first,
+override only `owned`/`active` — regression-tested in `companionMarketFactory.test.js`
+(`removeFromOwned` preserves an unrelated in-progress `scavenging` record, and
+`scavengeReturnsByRarity`, across a sale).
+
 **Numbers** (`CompanionScavenging` in `constants.js`, rarity-keyed):
 
 | Rarity | Duration | `WORK_COUNT_RANGE` | `STARCH_RANGE` |
