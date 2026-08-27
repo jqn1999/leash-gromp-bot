@@ -2493,6 +2493,24 @@ and needs its own balance pass.
   This directly mitigates (without fully closing) finding 1 of the "Guild Raid: T2/T3/`stat`-Mode
   Eligibility Gating" item below — see that item's own updated note.
 
+  **Same-day follow-up: `RAID_TIER_WEIGHT_SHARPNESS` softened 4→3.** Direct instruction: "with the
+  sharpness as what it is now it might be too sharp, test sharpness numbers against the new
+  smoothed raids." A full sweep (sharpness 1-6, `totalMultiplier` 5-1200 in 0.5 steps) against
+  every tier crossover point (each sitting at the geometric mean of its two neighbors' own
+  difficulty — T1/T2≈21.4, T2/T3≈99.4, T3/T4≈463.7, a property of the formula independent of
+  sharpness) found the EV dead zone fully closes starting at sharpness 3 (worst point relocates to
+  an inconsequential `totalMultiplier≈5` edge case, -5,238) — every value below 3 still leaves a
+  real dead zone at a reachable power level (2.5: -63,606 at the T2/T3 crossover; 1.5: -621,522).
+  3 was chosen as the softest value that still fully closes the dead zone, giving a meaningfully
+  fuller blend than 4 (far-tier weight at a crossover: ~0.5% at sharpness 3 vs. ~0.1% at 4) —
+  closer to the original ask's "lower chance of the other ends," not "near-zero chance." Test
+  fixtures in `raidFactory.test.js`'s `getDynamicTierWeights` describe block (which read
+  `Raid.RAID_TIER_WEIGHT_SHARPNESS` live, not a hardcoded value) recomputed and updated for
+  sharpness 3; one epsilon-guard threshold (`totalMultiplier≈0`, T1's dominance) softened from
+  `>0.99` to `>0.98` to match the slightly wider tail a lower sharpness gives even at that extreme.
+  Full suite green (597/597, no count change). Full sweep table and worked examples:
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md#dynamic-tier-weighting).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -1143,25 +1143,27 @@ const Raid = {
     // favor whichever tier(s) the roster's own power is actually closest to. Metal
     // King's own flat chance is carved out first and is completely untouched by this.
     //
-    // Sharpness was tuned from an initially-proposed 1.5 up to 4 after computing real
-    // EV consequences, not chosen arbitrarily: at 1.5, a roster sitting between
-    // Regular's T2 (85) and T3 (600) — totalMultiplier ≈ 150-300 — picked up enough
-    // T3/T4 weight that the weighted-average EV per raid attempt at that power band
-    // went sharply negative (worse than the old fixed-table odds gave the same roster),
-    // because T3/T4's stakes are vastly bigger than T1/T2's. A sharpness sweep (see
-    // balance-audit.md's 2026-08-27 entry for the full table) found the worst-case EV
-    // in that dead zone bottoms out around sharpness 6-8 and gets WORSE again above
-    // that (weighting becomes a near-binary 50/50 snap right at the tier boundary) — it
-    // can NOT be fully eliminated by sharpness alone, since T2→T3 is a ~7x difficulty
-    // jump but a much larger jump in reward/penalty magnitude, a structural asymmetry
-    // in Regular's own tuning this rework doesn't touch. 4 was chosen as the best value
-    // that still gives a real multi-tier blend (not a near-binary snap) while cutting
-    // the worst-case dead-zone EV by ~39% (-2.66M at 1.5 -> -1.63M at 4, both at
-    // totalMultiplier≈248). See systems/raids-and-world-events.md's "Dynamic tier
-    // weighting" section for the full derivation, worked examples, and the pointer to
-    // the still-open "Guild Raid: T2/T3/stat-Mode Eligibility Gating" roadmap item that
-    // this residual dead zone motivates as the true structural fix.
-    RAID_TIER_WEIGHT_SHARPNESS: 4,
+    // History: sharpness was originally tuned from 1.5 up to 4, against the OLD, wildly
+    // uneven Regular T1-T4 ladder (10/85/600/1000) — at 1.5 a roster between T2/T3 picked
+    // up enough T3/T4 weight to go sharply EV-negative, since T3/T4's stakes vastly
+    // outweighed T1/T2's on that ladder. Once Regular's own ladder was smoothed to even
+    // geometric spacing (2026-08-27, T1=10/T2=46/T3=215/T4=1000), that specific problem's
+    // root cause went away, and a fresh sharpness sweep against the SMOOTHED ladder (same
+    // day, follow-up) found 4 had become needlessly sharp — the EV dead zone, now sitting
+    // at each tier's own crossover point (the geometric mean of its two neighbors' own
+    // difficulty — e.g. T2/T3's crossover ≈99.4), fully disappears (down to a negligible
+    // -5,238 edge-case artifact at totalMultiplier≈5, the near-zero-power boundary) at
+    // sharpness 3 already; only sharpness values BELOW 3 still carry a real, non-trivial
+    // dead zone at realistic power levels (e.g. 2.5 still leaves -63,606 at the T2/T3
+    // crossover, 1.5 leaves -621,522). 3 was chosen over 4 specifically because it's the
+    // softest value that fully closes that dead zone — giving noticeably more "blend
+    // between the two closest tiers, with a real (if small, ~0.5%) chance of reaching a
+    // third" than 4's near-zero (~0.1%) far-tier bleed, closer to the original ask
+    // ("increase likelihood of whatever tier they're closest to, or between the two
+    // closest, with LOWER (not zero) chance of the other ends") without reopening the
+    // EV problem. See systems/raids-and-world-events.md's "Dynamic tier weighting"
+    // section for the full sweep table and worked examples.
+    RAID_TIER_WEIGHT_SHARPNESS: 3,
 
     // Headcount bonus on top of the roster's rank-weighted teamPower (see
     // RAID_TEAM_DECAY below) — a straight average alone gives zero incentive to recruit

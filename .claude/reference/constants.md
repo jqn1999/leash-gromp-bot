@@ -91,26 +91,30 @@ guild's own realized per-member payout at each tier's own unlock rank. Still sha
 deliberately left coupled). Full derivation:
 [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
 
-### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (4, 2026-08-27 dynamic tier weighting)
+### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)
 
 The exponent in `raidFactory.js`'s `getDynamicTierWeights`/`getWeightedScenarios`:
 `weight_i = (min(M, d_i) / max(M, d_i)) ^ RAID_TIER_WEIGHT_SHARPNESS`, normalized to sum to 1
 among eligible T1-T4 tiers (`M` = `totalMultiplier`, `d_i` = tier `i`'s own difficulty). Replaces
 regular/elite/legendary mode's fixed per-bracket roll odds with weighting keyed to how close the
 roster's own power sits to each tier's own difficulty — Metal King's own flat chance is untouched.
-Tuned from an originally-proposed 1.5 up to 4 after a `node -e` sharpness sweep found a real EV
-dead zone around Regular's own T2→T3 boundary that bottomed out around sharpness 6-8 and couldn't
-be fully eliminated by this knob alone — traced to a structural asymmetry in Regular's own T1-T4
-internal spacing, since fixed directly (see the T1-4 ladder-smoothing entry above). **Confirmed
-`SHARPNESS=4` should stay, not revert toward 1.5**, even after that ladder fix: making Regular's
-own T1-T3 spacing even relocated (rather than removed) the risk to the T3→T4 boundary, whose
-relative gap widened from 1.67x to ~4.64x as a direct consequence of T3 moving down — a fresh
-check at `totalMultiplier≈98-130` found `SHARPNESS=4` still solidly positive there, while
-`SHARPNESS=1.5` reintroduces a new dead zone (worst -621,490 at `totalMultiplier=98`) at that
-exact boundary. Full
-derivation, sharpness sweep, and worked examples:
-[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting),
-[balance-audit.md](../balance-audit.md)'s 2026-08-27 entry.
+
+History, same day: tuned from an originally-proposed 1.5 up to **4** after a sweep found a real EV
+dead zone around Regular's own T2→T3 boundary (bottomed out around sharpness 6-8, couldn't be
+fully eliminated by this knob alone — traced to Regular's own uneven T1-T4 spacing); confirmed 4
+should stay, not revert to 1.5, even after Regular's own ladder was smoothed to even geometric
+spacing (that fix relocated the risk to the T3→T4 boundary rather than removing it, and 1.5 still
+failed there). **Then softened 4→3, same day, direct instruction** ("it might be too sharp, test
+sharpness numbers against the new smoothed raids") — a full sweep (1 through 6) against every tier
+crossover (each sitting at the geometric mean of its neighbors' difficulty, e.g. T2/T3≈99.4,
+independent of sharpness) found the dead zone fully closes (worst point relocates to an
+inconsequential `totalMultiplier≈5` edge case) starting at sharpness 3, with every value below 3
+still leaving a real dead zone at a reachable power level (e.g. 2.5 leaves -63,606 at the T2/T3
+crossover; 1.5 leaves -621,522). 3 was chosen as the softest value that still fully closes the
+dead zone — meaningfully more "blend between the two closest tiers, real if small chance of a
+third" (~0.5% far-tier weight at a crossover) than 4's near-zero (~0.1%), without regressing the
+EV fix. Full derivation, sharpness sweep, and worked examples:
+[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting).
 
 ### `guild.raidSplitMode` (not in `constants.js` — a persisted guild field, default `"even"`)
 

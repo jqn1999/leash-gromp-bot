@@ -162,8 +162,11 @@ describe('getDynamicTierWeights', () => {
             const weighted = getDynamicTierWeights(regularTiers(), 100, M);
             weighted.forEach(t => expect(Number.isNaN(t.weight)).toBe(false));
             expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
-            // At M ~ 0, T1 (the smallest difficulty) should overwhelmingly dominate.
-            expect(weighted.find(t => t.name === 'T1').weight).toBeGreaterThan(0.99);
+            // At M ~ 0, T1 (the smallest difficulty) should overwhelmingly dominate —
+            // threshold softened from 0.99 to 0.98 when SHARPNESS dropped 4->3
+            // (2026-08-27, same day): a lower sharpness gives every tier a slightly
+            // wider tail even at this extreme, so T1's share here is ~0.9897, not >0.99.
+            expect(weighted.find(t => t.name === 'T1').weight).toBeGreaterThan(0.98);
         });
     });
 
@@ -173,22 +176,23 @@ describe('getDynamicTierWeights', () => {
         expect(weighted.map(t => t.name)).toEqual(['T3', 'T2', 'T1']); // T4 excluded, order preserved
         expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
 
-        // Freshly recomputed via node -e against the live constants (SHARPNESS=4,
-        // Regular's own T1-T4 ladder retuned 2026-08-27 to be evenly geometrically
-        // spaced — T1=10/T2=46/T3=215, T4 excluded from the normalization entirely since
-        // it's below its own unlock level here) — use as a regression anchor.
+        // Freshly recomputed via node -e against the live constants (SHARPNESS=3,
+        // softened from 4 on 2026-08-27 (same day) once the smoothed ladder made 4
+        // needlessly sharp — Regular's own T1-T4 ladder is evenly geometrically spaced
+        // — T1=10/T2=46/T3=215, T4 excluded from the normalization entirely since it's
+        // below its own unlock level here) — use as a regression anchor.
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.000080365940129892, 6);
-        expect(byName.T2).toBeCloseTo(0.035983496083022565, 6);
-        expect(byName.T3).toBeCloseTo(0.9639361379768476, 6);
+        expect(byName.T1).toBeCloseTo(0.0008035604165325501, 6);
+        expect(byName.T2).toBeCloseTo(0.0782153567036123, 6);
+        expect(byName.T3).toBeCloseTo(0.9209810828798551, 6);
     });
 
     test('at a higher totalMultiplier (300), weight shifts decisively toward T3, still summing to 1 among T1-T3', () => {
         const weighted = getDynamicTierWeights(regularTiers(), 1, 300);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.000004670195289694177, 6);
-        expect(byName.T2).toBeCloseTo(0.0020910593921012926, 6);
-        expect(byName.T3).toBeCloseTo(0.997904270412609, 5);
+        expect(byName.T1).toBeCloseTo(0.00009963423276808508, 6);
+        expect(byName.T2).toBeCloseTo(0.009697997680714327, 6);
+        expect(byName.T3).toBeCloseTo(0.9902023680865176, 5);
     });
 
     // The "one global SHARPNESS constant works for both a wide, uneven ladder (Regular)
@@ -206,12 +210,12 @@ describe('getDynamicTierWeights', () => {
         const weighted = getDynamicTierWeights(eliteTiers, 100, Raid.ELITE_T1_DIFFICULTY);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
 
-        // Freshly recomputed via node -e: T1 dominant but every tier keeps real,
-        // non-trivial (>5%) presence — not a near-monopoly.
-        expect(byName.T1).toBeCloseTo(0.5334558268219247, 6);
-        expect(byName.T2).toBeCloseTo(0.26670321061489966, 6);
-        expect(byName.T3).toBeCloseTo(0.13320542601315358, 6);
-        expect(byName.T4).toBeCloseTo(0.06663553655002198, 6);
+        // Freshly recomputed via node -e (SHARPNESS=3): T1 dominant but every tier keeps
+        // real, non-trivial (>5%) presence — not a near-monopoly.
+        expect(byName.T1).toBeCloseTo(0.46341035149422743, 6);
+        expect(byName.T2).toBeCloseTo(0.2755263037913236, 6);
+        expect(byName.T3).toBeCloseTo(0.16369421068582993, 6);
+        expect(byName.T4).toBeCloseTo(0.09736913402861906, 6);
         Object.values(byName).forEach(w => {
             expect(w).toBeGreaterThan(0.05);
             expect(w).toBeLessThan(0.95);

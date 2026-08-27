@@ -477,16 +477,55 @@ T3/T4 boundary under the new ladder (`totalMultiplier≈110-130`, all 4 tiers el
   level leaks in at a high enough weight to drag the blend negative, the same mechanism that
   broke the old T2/T3 boundary, now relocated.
 
-**Recommendation: keep `SHARPNESS=4`, do not revert toward 1.5.** The product owner's own
-speculation that a lower sharpness "even works... now that the root asymmetry is fixed" does not
-hold once the T3/T4 boundary is actually checked under the new ladder — smoothing Regular's own
+**Recommendation at the time: keep `SHARPNESS=4`, do not revert toward 1.5.** The product owner's
+own speculation that a lower sharpness "even works... now that the root asymmetry is fixed" did not
+hold once the T3/T4 boundary was actually checked under the new ladder — smoothing Regular's own
 T1-T3 spacing made the T3→T4 gap relatively *wider*, not narrower, so the same low-sharpness
-failure mode simply moved rather than disappeared. `SHARPNESS=4` was already independently
-re-verified to handle Elite/Legendary's own tight, uniform 1.68x spacing correctly (see the worked
-example below, unaffected by any of today's changes since Elite/Legendary's own constants didn't
-move) — it now also handles Regular's newly-uniform ~4.64x internal spacing correctly at every
-boundary checked. There is no evidence a different sharpness would improve on this, and real
-evidence (above) that a lower one would regress it.
+failure mode simply moved rather than disappeared. This recommendation was specifically about NOT
+reverting to 1.5 — it did not rule out a value between 1.5 and 4.
+
+**Follow-up, same day: softened to `SHARPNESS=3` after a full sweep.** Direct instruction ("with
+the sharpness as what it is now it might be too sharp, test sharpness numbers against the new
+smoothed raids") prompted a proper sweep (0.5 increments, `totalMultiplier` 5-1200) across
+sharpness 1 through 6, against every tier crossover point (each one sitting at the geometric mean
+of its two neighbors' own difficulty — T1/T2≈21.4, T2/T3≈99.4, T3/T4≈463.7 — a mathematical
+property of the `(min/max)^p` formula independent of `p` itself), for both the T1-T3-only case
+(guild level &lt;8) and the full T1-T4 case (level ≥8):
+
+| Sharpness | Worst EV, T1-T3 only | Worst EV, T1-T4 |
+|---|---|---|
+| 1.0 | -259,942 (at 21) | -1,317,805 (at 100) |
+| 1.5 | -117,083 (at 21) | -621,522 (at 98.5) |
+| 2.0 | -46,134 (at 20.5) | -249,298 (at 96.5) |
+| 2.5 | -12,199 (at 20.5) | -63,606 (at 96) |
+| **3.0** | **-5,218 (at 5)** | **-5,238 (at 5)** |
+| 3.5 | -2,361 (at 5) | -2,363 (at 5) |
+| 4.0 (previous) | -1,085 (at 5) | -1,085 (at 5) |
+
+Below sharpness 3, the worst point sits at a real, reachable power level right at a tier crossover
+— a genuine dead zone. At sharpness 3 and above, the worst point relocates entirely to
+`totalMultiplier≈5` (an extreme near-zero-power edge case, not a real gameplay concern) and stays
+small. **3 is the softest value that fully closes the dead zone** — softer than 4, but not so soft
+that the dead zone reopens.
+
+The practical difference is how much weight reaches a THIRD tier at a crossover (the split between
+the two closest tiers is always ~50/50 at their own crossover, invariant to sharpness — only the
+far-tier bleed changes):
+
+| Sharpness | Far-tier weight at a crossover |
+|---|---|
+| 1.5 | ~4.5-4.7% |
+| 2.0 | ~2.2% |
+| 2.5 | ~1.0% |
+| **3.0** | **~0.5%** |
+| 4.0 (previous) | ~0.1% |
+
+`Raid.RAID_TIER_WEIGHT_SHARPNESS` is now **3** — closer to the original ask ("increase likelihood
+of whatever tier they're closest to, or between the two closest, with LOWER chance of the other
+ends" — not zero chance) while keeping the same "dead zone fully closed" property 4 had. Elite's
+own worked example below (T1/T2/T3/T4 = 46.3%/27.6%/16.4%/9.7% at Elite's own T1 exactly) was
+recomputed at sharpness 3 and confirmed to still be a real, non-degenerate 4-tier blend (every
+tier &gt;5%, &lt;95%), same as it was at sharpness 4.
 
 **Worked examples, historical (`SHARPNESS=4`, pre-2026-08-27 ladder smoothing — Regular column
 below reflects the OLD `T2=85`/`T3=600` values, kept for context on the dead zone this session's
