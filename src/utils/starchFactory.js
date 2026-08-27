@@ -20,6 +20,38 @@ function isStarchBuyingWindow(date = new Date()) {
     return false;
 }
 
+const WEEKDAY_ORDER = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// The next weekday (strictly after `weekday`, wrapping) that a buying window opens on —
+// Monday or Thursday, whichever comes first. Only meaningful when NOT already inside a
+// buying window (see describeNextStarchEvent below); doesn't itself check the current hour.
+function nextBuyWeekday(weekday) {
+    const startIndex = WEEKDAY_ORDER.indexOf(weekday);
+    for (let offset = 1; offset <= 7; offset++) {
+        const candidate = WEEKDAY_ORDER[(startIndex + offset) % 7];
+        if (candidate === 'Monday' || candidate === 'Thursday') return candidate;
+    }
+}
+
+// What's coming next for starch trading — used by starchEvents.js's market-update
+// announcements (see systems/starch-trading.md) to tell players WHICH window opens next
+// without revealing what its price will be (that's the whole point of announcing "next
+// event" instead of just restating the current number). Currently inside a buying window
+// -> next is selling, which always closes that same window at 10pm EST the same day.
+// Otherwise -> next is buying, opening at the next Monday or Thursday 10am EST (today
+// itself, if today IS a buy day but it's still before 10am).
+function describeNextStarchEvent(date = new Date()) {
+    const { weekday, hour } = getESTWeekdayAndHour(date);
+    const isBuyDay = weekday === 'Monday' || weekday === 'Thursday';
+    if (isBuyDay && hour >= 10 && hour <= 21) {
+        return { type: 'sell', label: 'Selling period', opensText: 'tonight at 10pm EST' };
+    }
+    if (isBuyDay && hour < 10) {
+        return { type: 'buy', label: 'Buying period', opensText: 'later today at 10am EST' };
+    }
+    return { type: 'buy', label: 'Buying period', opensText: `next ${nextBuyWeekday(weekday)} at 10am EST` };
+}
+
 class starchFactory {
 
     constructor() { }
@@ -403,5 +435,6 @@ const PROBABILITY_MATRIX = {
 module.exports = {
     starchFactory,
     isStarchBuyingWindow,
+    describeNextStarchEvent,
     STARCH_PRICE_COUNT_BY_RESET_DAY
 }

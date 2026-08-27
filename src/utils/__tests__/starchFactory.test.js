@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { starchFactory, isStarchBuyingWindow } = require('../starchFactory');
+const { starchFactory, isStarchBuyingWindow, describeNextStarchEvent } = require('../starchFactory');
 
 const factory = new starchFactory();
 
@@ -43,6 +43,47 @@ describe('isStarchBuyingWindow', () => {
 
     test('closed on an ordinary day (Wednesday)', () => {
         expect(isStarchBuyingWindow(new Date('2026-08-19T18:00:00Z'))).toBe(false); // Wed 14:00 EDT
+    });
+});
+
+// Backs starchEvents.js's market-update announcements — deliberately never returns a
+// price for the upcoming window, only which type (buy/sell) and roughly when.
+describe('describeNextStarchEvent', () => {
+    test('inside Monday\'s buying window -> next is selling, closing that same window tonight', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-17T18:00:00Z'))) // Mon 14:00 EDT
+            .toEqual({ type: 'sell', label: 'Selling period', opensText: 'tonight at 10pm EST' });
+    });
+
+    test('inside Thursday\'s buying window -> same "tonight" shape as Monday', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-20T18:00:00Z'))) // Thu 14:00 EDT
+            .toEqual({ type: 'sell', label: 'Selling period', opensText: 'tonight at 10pm EST' });
+    });
+
+    test('Monday before 10am -> next buying window is later today', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-17T13:00:00Z'))) // Mon 09:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'later today at 10am EST' });
+    });
+
+    test('Tuesday (day after Monday\'s window closed) -> next buying window is Thursday', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-18T18:00:00Z'))) // Tue 14:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'next Thursday at 10am EST' });
+    });
+
+    test('Wednesday -> next buying window is still Thursday', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-19T18:00:00Z'))) // Wed 14:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'next Thursday at 10am EST' });
+    });
+
+    test('Friday (day after Thursday\'s window closed) -> next buying window wraps to Monday', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-21T18:00:00Z'))) // Fri 14:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'next Monday at 10am EST' });
+    });
+
+    test('Saturday/Sunday -> next buying window is still the upcoming Monday', () => {
+        expect(describeNextStarchEvent(new Date('2026-08-22T18:00:00Z'))) // Sat 14:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'next Monday at 10am EST' });
+        expect(describeNextStarchEvent(new Date('2026-08-23T18:00:00Z'))) // Sun 14:00 EDT
+            .toEqual({ type: 'buy', label: 'Buying period', opensText: 'next Monday at 10am EST' });
     });
 });
 

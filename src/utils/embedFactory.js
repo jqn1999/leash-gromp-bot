@@ -2510,6 +2510,25 @@ class EmbedFactory {
         return embed;
     }
 
+    // Server-wide announcement for starchEvents.js's market-update cron jobs — distinct
+    // from createStarchEmbed above (that one's a personal /starch reply, scoped to one
+    // player's own potatoes/starches; this one has no player context at all, it's the
+    // same "the market just changed" message for everyone). nextEvent is
+    // starchFactory.describeNextStarchEvent()'s own return shape ({ type, label,
+    // opensText }) — deliberately never shown with a price, only WHICH window opens next
+    // and roughly when, so the announcement can't spoil what that window's own number
+    // will be before it's actually revealed.
+    createStarchMarketUpdateEmbed(currentType, currentPrice, nextEvent) {
+        const color = currentType == 'buy' ? 'Green' : 'Orange';
+        const embed = new EmbedBuilder()
+            .setTitle(`🥔 Starch market update!`)
+            .setDescription(`Starches can currently be **${currentType === 'buy' ? 'bought' : 'sold'} for ${currentPrice.toLocaleString()} potatoes**.\nNext up: **${nextEvent.label}** — opens ${nextEvent.opensText}.`)
+            .setColor(color)
+            .setFooter({ text: "Made by izmattk" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const color = increaseAmount > 0 ? 'Green' : 'Red';

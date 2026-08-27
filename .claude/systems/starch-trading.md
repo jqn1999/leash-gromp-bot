@@ -102,6 +102,44 @@ actually broken (NaN) every week from Sunday night until Monday's reset regenera
 `shiftNextSellPrice()` in `starchEvents.js` now also guards against shifting an empty queue
 defensively, holding the last known `starch_sell` instead of writing `NaN` if this ever recurs.
 
+## Market-update announcements (2026-08-27)
+
+Every real `starch_buy`/`starch_sell` write above now also posts a server-wide announcement —
+direct instruction, reusing the same channel/role pair `adminTriggerEvent.js`/
+`adminTriggerWorldBoss.js` already announce special events and world bosses into (`<@&1207117686526582865>`
+in `#1188525931346792498`, both hardcoded locally in `starchEvents.js` the same way the other two
+files already do it — no shared constant, matching this codebase's existing per-file convention for
+these two IDs). `starchEvents.js`'s `announceStarchMarketUpdate(client, currentType, currentPrice)`
+builds `embedFactory.createStarchMarketUpdateEmbed(currentType, currentPrice, nextEvent)` and sends
+it followed by the bare role mention, same two-message shape (`channel.send({embeds:[...]})` then
+`channel.send(mention)`) `adminTriggerWorldBoss.js` already uses.
+
+Fires from all 3 price-changing jobs:
+- Monday/Thursday 10am EST (buy window opens, `starch_buy` set) — announces `currentType: 'buy'`.
+- Daily 10pm EST and 10am EST (minus Mon/Thu) shift jobs — `shiftNextSellPrice()` now **returns**
+  the new sell price (or `null` on its existing empty-queue skip, previously a bare early `return`)
+  so the caller can tell a real update from a no-op; only a non-null return announces
+  `currentType: 'sell'`. A skipped shift (queue already drained) stays silent — nothing changed, so
+  nothing gets announced.
+
+**Shows the current number, never the upcoming one.** The embed states whichever of buy/sell is
+live RIGHT NOW (`${currentPrice} potatoes`) plus a `nextEvent` line — `starchFactory.js`'s new
+`describeNextStarchEvent(date = new Date())` — that names only the type and rough timing of what's
+coming (`"Buying period"`/`"Selling period"`, `"opens tonight at 10pm EST"` /
+`"opens next Thursday at 10am EST"` etc.), deliberately never a number: the whole point of a
+"what's next" line is to build anticipation without spoiling that window's own price before it's
+actually revealed by its own scheduled job. State machine: currently inside a buying window (Mon/Thu
+10:00-21:59 EST) → next is always selling, closing that same window at 10pm EST later the same day;
+otherwise → next is buying, opening at the next Monday or Thursday 10am EST (a new
+`nextBuyWeekday(weekday)` helper walks the weekday order to find whichever comes first, wrapping
+Sun→Mon). Regression-tested in `starchFactory.test.js` against the same fixed EST-boundary UTC
+instants `isStarchBuyingWindow`'s own tests already use, covering both buy-window weekdays and
+every non-buy weekday (including the Sun→Mon wrap).
+
+`createStarchMarketUpdateEmbed` (`embedFactory.js`) is a new, separate embed from the existing
+`createStarchEmbed` — that one is a personal `/starch` reply scoped to one player's own
+potatoes/starches; this one has no player context, it's the same message for the whole server.
+
 ## Price pattern generation (`makeStarchPrices`)
 
 Picks one of seven weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX`, keyed by the

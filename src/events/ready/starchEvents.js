@@ -1,6 +1,31 @@
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
 const starchFactory = require("../../utils/starchFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
+
+// Same channel/role pair adminTriggerEvent.js/adminTriggerWorldBoss.js already announce
+// special events into — starch market updates ride the same "special event" role players
+// already opted into, rather than inventing a second role for a second kind of alert.
+const STARCH_EVENT_CHANNEL_ID = '1188525931346792498';
+const STARCH_EVENT_ROLE_ID = '1207117686526582865';
+
+// Fired after every real starch_buy/starch_sell write below (the 3 jobs the market
+// actually changes in) — never on a skipped/no-op run (see shiftNextSellPrice's own
+// empty-queue guard). Deliberately shows only the CURRENT number (whichever of buy/sell
+// is live right now) and a same-day-vs-next-week label for what's coming next — never the
+// upcoming price, which starchFactory.describeNextStarchEvent() doesn't even compute.
+async function announceStarchMarketUpdate(client, currentType, currentPrice) {
+    const nextEvent = starchFactory.describeNextStarchEvent();
+    const embed = embedFactory.createStarchMarketUpdateEmbed(currentType, currentPrice, nextEvent);
+    try {
+        const channel = await client.channels.fetch(STARCH_EVENT_CHANNEL_ID);
+        await channel.send({ embeds: [embed] });
+        await channel.send(`<@&${STARCH_EVENT_ROLE_ID}>`);
+    } catch (err) {
+        console.log(err);
+    }
+}
 
 module.exports = async (client) => {
     // All 3 jobs below pin tz: 'America/New_York' explicitly (2026-08-24) — previously a
@@ -43,17 +68,25 @@ module.exports = async (client) => {
         const prices = await sF.makeStarchPrices(buy, past, priceCount)
 
         await dynamoHandler.updateStatDatabase("starch", "starch_values", prices)
+
+        await announceStarchMarketUpdate(client, 'buy', buy);
     });
 
     // 10PM: LOAD NEXT SELL PRICE — every day, since Monday and Thursday both close their
     // buying window at 10pm and every other day is selling all day anyway.
     schedule.scheduleJob({ rule: '0 22 * * *', tz: 'America/New_York' }, async function () {
-        await shiftNextSellPrice();
+        const sell = await shiftNextSellPrice();
+        if (sell !== null) {
+            await announceStarchMarketUpdate(client, 'sell', sell);
+        }
     });
 
     // 10AM (minus Mon/Thu, when 10am opens a buying window instead): LOAD NEXT SELL PRICE
     schedule.scheduleJob({ rule: '0 10 * * 2,3,5,6,7', tz: 'America/New_York' }, async function () {
-        await shiftNextSellPrice();
+        const sell = await shiftNextSellPrice();
+        if (sell !== null) {
+            await announceStarchMarketUpdate(client, 'sell', sell);
+        }
     });
 }
 
@@ -64,13 +97,15 @@ module.exports = async (client) => {
 // `undefined`, and `Math.floor(undefined)` is `NaN`, which used to get written straight
 // into starch_sell. An empty queue now just skips the update — starch_sell holds at
 // whatever it last was until the next reset regenerates a fresh, correctly-sized queue.
+// Returns the new sell price on a real update, or `null` when skipped — callers use that
+// to decide whether there's actually a market change worth announcing.
 async function shiftNextSellPrice() {
     const details = await dynamoHandler.getStatDatabase("starch")
     let vals = details.starch_values
 
     if (!vals || vals.length === 0) {
         console.log('starch_values is empty — skipping sell price update until the next reset')
-        return;
+        return null;
     }
 
     console.log(vals)
@@ -78,4 +113,5 @@ async function shiftNextSellPrice() {
     console.log(vals)
     await dynamoHandler.updateStatDatabase("starch", "starch_sell", sell)
     await dynamoHandler.updateStatDatabase("starch", "starch_values", vals)
+    return sell;
 }

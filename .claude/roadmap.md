@@ -2696,6 +2696,37 @@ and needs its own balance pass.
   Tier I's breakeven still matches Guild Regular T1 exactly at Tier I's own unlock rank. Full
   suite green: 648/648 (up from 645/645 before this item).
 
+- [x] **68. Starch Market Update Announcements** — S — **Done**
+  What: every real `starch_buy`/`starch_sell` price change in `starchEvents.js` now posts a
+  server-wide announcement to the same channel/role the special-event/world-boss announcements
+  already use (`adminTriggerEvent.js`/`adminTriggerWorldBoss.js`'s own `<@&1207117686526582865>`
+  in `#1188525931346792498`) — a new `embedFactory.createStarchMarketUpdateEmbed(currentType,
+  currentPrice, nextEvent)` showing the CURRENT live price (whichever of buy/sell is active right
+  now) and a "next up" line naming only the type and rough timing of the next window (`"Buying
+  period"`/`"Selling period"`, `"opens tonight at 10pm EST"` / `"opens next Thursday at 10am
+  EST"`), never that window's own price. Fires from all 3 price-changing jobs: the Mon/Thu 10am
+  buy-window-open job, and both daily sell-price shift jobs (10pm, and 10am minus Mon/Thu) —
+  `shiftNextSellPrice()` now returns the new price (or `null` on its existing empty-queue skip,
+  previously a bare `return`) so its two callers can tell a real update from a no-op and only
+  announce the former.
+  Why: direct instruction — reuse the existing special-event role, tag it whenever the starch
+  market changes, show the current number and the next upcoming event type without exposing its
+  price.
+  Notable design points: new `starchFactory.describeNextStarchEvent(date = new Date())` is the
+  actual "what's next" logic — inside a buying window (Mon/Thu 10:00-21:59 EST) next is always
+  selling, closing that window at 10pm EST later the same day; otherwise next is buying, opening
+  at the next Monday or Thursday 10am EST (a new `nextBuyWeekday` helper walks the weekday order
+  to find whichever comes first, wrapping Sunday→Monday). `createStarchMarketUpdateEmbed` is a
+  new, separate embed from the existing `createStarchEmbed` — that one is a personal `/starch`
+  reply scoped to one player's own potatoes/starches; this one has no player context, same
+  message for the whole server. Channel/role IDs hardcoded locally in `starchEvents.js`, matching
+  `adminTriggerEvent.js`/`adminTriggerWorldBoss.js`'s own existing per-file convention rather than
+  introducing a new shared constant.
+  New tests: `starchFactory.test.js` gained a `describeNextStarchEvent` describe block against
+  the same fixed EST-boundary UTC instants `isStarchBuyingWindow`'s own tests use — both buy-window
+  weekdays, every non-buy weekday, and the Sunday→Monday wrap. Full suite green: 655/655 (up from
+  648/648 before this item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
