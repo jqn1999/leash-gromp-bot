@@ -129,6 +129,16 @@ cooldown to scale against — both instead scale by the resource VALUE MOVED in 
 sold, or regrade cost paid relative to that track's own cheapest tier). Full derivation:
 [systems/companions.md#leveling](../systems/companions.md#leveling).
 
+### `CompanionScavenging.SPEED_BONUS_PER_LEVEL`/`SPEED_BONUS_MAX_LEVEL` (scavenging duration scales with level)
+
+`companionFactory.getScavengeSpeedBonus(level)` — a two-part curve applied to `buildScavengeDispatch`'s
+duration: levels 1–9 ramp linearly at `SPEED_BONUS_PER_LEVEL` (0.025) per level, capping level 9 at
+20%; max level (read dynamically off `CompanionLeveling.THRESHOLDS`, currently 10) jumps straight to
+`SPEED_BONUS_MAX_LEVEL` (0.30) rather than the 22.5% a smooth continuation would give — same
+Max-Level-capstone discontinuity pattern used elsewhere in this system. Only duration scales;
+`WORK_COUNT_RANGE`/`STARCH_RANGE` per-trip payouts stay level-unscaled, same as before. Full writeup:
+[systems/companions.md#scavenging](../systems/companions.md#scavenging).
+
 ### `guild.raidSplitMode` (not in `constants.js` — a persisted guild field, default `"even"`)
 
 Per-guild opt-in toggle for how a raid reward/penalty that overflows the guild bank splits among

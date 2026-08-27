@@ -364,17 +364,40 @@ function isScavenging(userDetails, instanceId) {
     return userDetails.companions?.scavenging?.instanceId === instanceId;
 }
 
+// Fraction to shave off a scavenge's base duration for a companion at this level — see
+// CompanionScavenging.SPEED_BONUS_PER_LEVEL/SPEED_BONUS_MAX_LEVEL's own comment for the
+// full two-part-curve derivation. Reads the max level off CompanionLeveling.THRESHOLDS
+// itself (its last entry) rather than hardcoding 10, so this stays correct if the
+// leveling curve ever grows/shrinks.
+function getScavengeSpeedBonus(level) {
+    const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
+    if (level >= maxLevel) {
+        return CompanionScavenging.SPEED_BONUS_MAX_LEVEL;
+    }
+    return (level - 1) * CompanionScavenging.SPEED_BONUS_PER_LEVEL;
+}
+
 // The { instanceId, rarity, returnsAt } record /companion-scavenge writes on dispatch —
 // instanceId (not companionId) identifies exactly which owned copy is away, since a
 // player can own more than one of the same companion. rarity is denormalized straight
 // onto the record (not re-derived from the instance's companion id at collect/cancel
 // time) purely so those two commands don't need a second getCompanionById lookup to know
 // which CompanionScavenging row applies.
-function buildScavengeDispatch(companion, instanceId) {
+//
+// workCount (the dispatched INSTANCE's own, not the roster definition's) drives
+// getScavengeSpeedBonus — direct instruction: scavenging duration scales down with the
+// companion's own level, up to 30% faster at max level. Defaults to undefined so any
+// existing 2-arg caller (none left in this codebase, but kept defensive) still resolves
+// getCompanionLevel(undefined) -> level 1 -> 0% bonus, i.e. today's unchanged baseline
+// duration, rather than throwing.
+function buildScavengeDispatch(companion, instanceId, workCount) {
+    const level = getCompanionLevel(workCount);
+    const speedBonus = getScavengeSpeedBonus(level);
+    const durationSeconds = Math.round(CompanionScavenging.DURATION_SECONDS[companion.rarity] * (1 - speedBonus));
     return {
         instanceId,
         rarity: companion.rarity,
-        returnsAt: Date.now() + CompanionScavenging.DURATION_SECONDS[companion.rarity] * 1000
+        returnsAt: Date.now() + durationSeconds * 1000
     };
 }
 
@@ -541,6 +564,7 @@ module.exports = {
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     isScavenging,
+    getScavengeSpeedBonus,
     buildScavengeDispatch,
     resolveScavengeReward,
     migrateOwnedToInstances,

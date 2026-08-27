@@ -618,7 +618,22 @@ const CompanionScavenging = {
         [CompanionRarity.RARE]: { min: 10, max: 20 },
         [CompanionRarity.LEGENDARY]: { min: 28, max: 52 },
         [CompanionRarity.MYTHIC]: { min: 70, max: 130 }
-    }
+    },
+    // Scavenging duration scales DOWN with the dispatched companion's own level — direct
+    // instruction: "scale companion scavenging time down with level, say up to 30% faster
+    // scavenging with the max level providing a jump from 20% to 30%." Two-part curve,
+    // same "smooth per-level ramp, then a discontinuous Max-Level capstone on top" shape
+    // this codebase already uses for the Max-Level cosmetic capstone
+    // (applyMaxLevelTracking) — see companionFactory.getScavengeSpeedBonus:
+    // - Levels 1-9: linear ramp, (level-1) * SPEED_BONUS_PER_LEVEL, reaching exactly 20%
+    //   at level 9 (8 * 0.025 = 0.20). Level 1 (a freshly-dispatched, unleveled companion)
+    //   gets 0% — no change from today's baseline duration.
+    // - Level 10 (max): NOT a continuation of the same per-level rate (which would only
+    //   reach 22.5%) — a deliberate capstone jump straight to SPEED_BONUS_MAX_LEVEL (30%),
+    //   matching the requested "jump from 20% to 30%" rather than a smooth 2.5%-per-level
+    //   finish.
+    SPEED_BONUS_PER_LEVEL: 0.025,
+    SPEED_BONUS_MAX_LEVEL: 0.30
 }
 
 // perks: an array so a companion can carry more than one — Legendary tier introduces

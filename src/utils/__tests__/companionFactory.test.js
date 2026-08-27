@@ -19,6 +19,7 @@ const {
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     isScavenging,
+    getScavengeSpeedBonus,
     buildScavengeDispatch,
     resolveScavengeReward,
     migrateOwnedToInstances,
@@ -337,6 +338,55 @@ describe('buildScavengeDispatch', () => {
         const expectedMax = after + CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] * 1000;
         expect(record.returnsAt).toBeGreaterThanOrEqual(expectedMin);
         expect(record.returnsAt).toBeLessThanOrEqual(expectedMax);
+    });
+
+    // Level-scaled scavenge speed (direct instruction: "scale companion scavenging time
+    // down with level, say up to 30% faster scavenging with the max level providing a
+    // jump from 20% to 30%") — a smooth per-level ramp to 20% at level 9, then a
+    // deliberate capstone jump to 30% at level 10 (max), not a continuation of the same
+    // per-level rate (which would only reach 22.5%).
+    describe('getScavengeSpeedBonus', () => {
+        test('level 1 (freshly dispatched, unleveled) gets no bonus', () => {
+            expect(getScavengeSpeedBonus(1)).toBe(0);
+        });
+
+        test('ramps linearly at 2.5%/level through level 9', () => {
+            expect(getScavengeSpeedBonus(5)).toBeCloseTo(0.10);
+            expect(getScavengeSpeedBonus(9)).toBeCloseTo(0.20);
+        });
+
+        test('level 10 (max) jumps to 30%, not the 22.5% a smooth continuation would give', () => {
+            expect(getScavengeSpeedBonus(10)).toBe(0.30);
+        });
+    });
+
+    test('a dispatched companion\'s own level (via workCount) shortens returnsAt by the matching speed bonus', () => {
+        const mole = getCompanionById('mole'); // rare, base duration CompanionScavenging.DURATION_SECONDS.rare
+        const baseDuration = CompanionScavenging.DURATION_SECONDS[CompanionRarity.RARE];
+
+        // Level 9 threshold (workCountRequired: 2425) -> 20% off.
+        const beforeL9 = Date.now();
+        const recordL9 = buildScavengeDispatch(mole, 'mole-a', 2425);
+        const afterL9 = Date.now();
+        const expectedDurationL9 = Math.round(baseDuration * 0.80) * 1000;
+        expect(recordL9.returnsAt).toBeGreaterThanOrEqual(beforeL9 + expectedDurationL9);
+        expect(recordL9.returnsAt).toBeLessThanOrEqual(afterL9 + expectedDurationL9);
+
+        // Level 10 threshold (workCountRequired: 3725, max level) -> 30% off, the capstone jump.
+        const beforeL10 = Date.now();
+        const recordL10 = buildScavengeDispatch(mole, 'mole-a', 3725);
+        const afterL10 = Date.now();
+        const expectedDurationL10 = Math.round(baseDuration * 0.70) * 1000;
+        expect(recordL10.returnsAt).toBeGreaterThanOrEqual(beforeL10 + expectedDurationL10);
+        expect(recordL10.returnsAt).toBeLessThanOrEqual(afterL10 + expectedDurationL10);
+
+        // A level-1 dispatch (workCount 0) matches the pre-existing, un-leveled baseline
+        // exactly — confirms this feature doesn't change anything for a fresh companion.
+        const beforeL1 = Date.now();
+        const recordL1 = buildScavengeDispatch(mole, 'mole-a', 0);
+        const afterL1 = Date.now();
+        expect(recordL1.returnsAt).toBeGreaterThanOrEqual(beforeL1 + baseDuration * 1000);
+        expect(recordL1.returnsAt).toBeLessThanOrEqual(afterL1 + baseDuration * 1000);
     });
 
     test('every rarity produces a distinct, longer-than-the-last duration', () => {

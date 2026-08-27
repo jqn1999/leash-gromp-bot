@@ -2573,6 +2573,31 @@ and needs its own balance pass.
   `companionFactory.test.js`, 17 end-to-end tests across the three commands in
   `nonWorkCompanionLeveling.test.js`).
 
+- [x] **64. Scavenging Duration Scales Down With Level (up to 30% Faster)** — S — **Done**
+  What: a benched companion that's been leveled up now completes scavenging trips faster, not just
+  the same duration at every level. `companionFactory.getScavengeSpeedBonus(level)` — levels 1–9
+  ramp linearly at `CompanionScavenging.SPEED_BONUS_PER_LEVEL` (0.025) per level, level 9 landing at
+  20% faster; max level (read dynamically off `CompanionLeveling.THRESHOLDS`, currently 10) jumps
+  straight to `SPEED_BONUS_MAX_LEVEL` (0.30) rather than the 22.5% a smooth continuation of the same
+  ramp would give — same discontinuous Max-Level-capstone pattern already used elsewhere in this
+  system (roadmap #Companion Max-Level & Full-Roster Capstone Rewards). `buildScavengeDispatch`
+  gained a 3rd optional parameter, `workCount` (already available at the `/companion-scavenge` call
+  site via the existing `getOwnedEntry` lookup), computes that instance's own level via
+  `getCompanionLevel`, and applies `durationSeconds = Math.round(baseDuration * (1 - speedBonus))`;
+  omitting the argument resolves to level 1 / 0% bonus, so no other caller's behavior changes.
+  Why: direct instruction ("scale companion scavenging time down with level, say up to 30% faster
+  scavenging with the max level providing a jump from 20% to 30%").
+  Notable design points: deliberately only duration scales, not `WORK_COUNT_RANGE`/`STARCH_RANGE` —
+  those stay level-unscaled by design (level-scaling the very counter that determines level would be
+  a self-reinforcing compounding formula, per this system's existing precedent); duration is a cost,
+  not the generated value, so shortening it as a companion levels up doesn't reopen that trap.
+  New tests: `companionFactory.test.js` gained a `getScavengeSpeedBonus` describe block (level 1 →
+  0%, level 5/9 → linear ramp, level 10 → 30% capstone, not 22.5%) plus a `buildScavengeDispatch`
+  test verifying the duration reduction end-to-end at levels 1/9/10 using Mole (Rare, 21,600s base)
+  as the fixture. Full suite green: 165/165 in the touched test files (`companionFactory.test.js` +
+  every `src/commands/user/__tests__` file, confirming no regression in adjacent companion/mercenary
+  command tests).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

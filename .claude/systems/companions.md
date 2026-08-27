@@ -819,6 +819,33 @@ companion find on a Rare/Legendary/Mythic return, and a one-time milestone-gated
 a player's first-ever Legendary/Mythic collect. See `roadmap.md`'s 2026-08-23 entry for the full
 option writeup if picked up later.
 
+**Duration now shrinks with the scavenging companion's own level (2026-08-27, direct instruction:
+"scale companion scavenging time down with level, say up to 30% faster scavenging with the max
+level providing a jump from 20% to 30%").** Unlike `WORK_COUNT_RANGE`/`STARCH_RANGE` above — which
+stay deliberately unscaled by level to avoid a self-reinforcing compounding formula — duration isn't
+the value being generated, it's the cost of generating it, so shortening it as a companion levels up
+doesn't create the same snowball: a higher-level companion still earns the same per-trip
+`WORK_COUNT_RANGE`/`STARCH_RANGE`, it just completes trips faster. `companionFactory.getScavengeSpeedBonus(level)`
+reads the roster's own max level dynamically off `CompanionLeveling.THRESHOLDS` rather than
+hardcoding 10, and returns a two-part curve:
+- **Levels 1–9: linear ramp**, `(level - 1) * CompanionScavenging.SPEED_BONUS_PER_LEVEL` (0.025/level)
+  — level 9 lands at 20% faster.
+- **Level 10 (max): a discontinuous capstone jump straight to `SPEED_BONUS_MAX_LEVEL` (30%)**,
+  not the 22.5% a smooth continuation of the same ramp would give — mirroring the same
+  Max-Level-capstone pattern already used elsewhere in this file (see Max-Level & Full-Roster
+  Capstones below), so hitting max level feels like a distinct payoff rather than just one more
+  linear tick.
+
+`buildScavengeDispatch(companion, instanceId, workCount)` takes the dispatched instance's own
+`workCount` (already available at the `/companion-scavenge` call site via `getOwnedEntry`) as an
+optional third argument, computes that instance's level via the existing `getCompanionLevel`, and
+applies `durationSeconds = Math.round(baseDuration * (1 - speedBonus))` — a level-1/undetermined
+`workCount` resolves to 0% bonus, so any caller that omits the argument keeps the old, unscaled
+duration unchanged. `WORK_COUNT_RANGE`/`STARCH_RANGE` payouts per trip are untouched; only how often
+a player has to redispatch changes, so a benched companion that's been leveled up (via scavenging
+itself, or having been the equipped companion earlier) turns trips around faster without payout
+inflation.
+
 ## Max-Level & Full-Roster Capstones
 
 Added 2026-08-26, direct instruction: "For companion max level and full rosters just

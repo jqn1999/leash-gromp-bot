@@ -90,7 +90,7 @@ module.exports = {
         // whichever write lands last persists; no reward can be double-granted and no
         // companion is ever orphaned by it. See dynamoHandler.resolveScavenge's own
         // comment for the guarded collect/cancel writes this deliberately does NOT need.
-        const scavenging = companionFactory.buildScavengeDispatch(companion, instanceId);
+        const scavenging = companionFactory.buildScavengeDispatch(companion, instanceId, ownedEntry.workCount);
         await dynamoHandler.updateUserFields(userId, {
             companions: { ...userDetails.companions, scavenging }
         });
