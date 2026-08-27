@@ -360,14 +360,17 @@ ungated), keyed on actual roster power rather than guild level — guild level w
 be a weak proxy for roster strength, which is why T4 needed a *second*, separate gate on top of
 Elite/Legendary's own. See `balance-audit.md`'s 2026-08-23 entries for the full derivation.
 
-Regular's reward/penalty/difficulty (from `constants.js` `Raid`, unchanged by the 2026-08-26 rework):
+Regular's reward/penalty/difficulty (from `constants.js` `Raid` — difficulty unchanged by the
+2026-08-26 rework, but T2-T4's reward/penalty moved in the same-day reward-efficiency retune; see
+the geometric ladder table and "reward efficiency" note above for the current numbers, reproduced
+here for convenience):
 
 | Mob | Reward | Penalty | Difficulty |
 |---|---|---|---|
 | T1 | 100,000 | -100,000 | 10 |
-| T2 | 500,000 | -500,000 | 85 |
-| T3 | 5,000,000 | -5,000,000 | 600 |
-| T4 | 15,000,000 | -15,000,000 | 1,000 |
+| T2 | 1,133,000 | -1,133,000 | 85 |
+| T3 | 10,000,000 | -10,000,000 | 600 |
+| T4 | 20,000,000 | -20,000,000 | 1,000 |
 | Metal King | 10,000,000 (+2.0× work multi, +1,000,000 passive, +10,000,000 bank capacity, split across raiders) | none | 2,000 |
 
 Elite and Legendary each have their own independent static Metal King entry now (see the geometric
