@@ -174,20 +174,21 @@ describe('getDynamicTierWeights', () => {
         expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
 
         // Freshly recomputed via node -e against the live constants (SHARPNESS=4,
-        // Regular T1=10/T2=85/T3=600, T4 excluded from the normalization entirely since
+        // Regular's own T1-T4 ladder retuned 2026-08-27 to be evenly geometrically
+        // spaced — T1=10/T2=46/T3=215, T4 excluded from the normalization entirely since
         // it's below its own unlock level here) — use as a regression anchor.
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.0001845421444518053, 6);
-        expect(byName.T2).toBeCloseTo(0.9633215279224518, 6);
-        expect(byName.T3).toBeCloseTo(0.03649392993309626, 6);
+        expect(byName.T1).toBeCloseTo(0.000080365940129892, 6);
+        expect(byName.T2).toBeCloseTo(0.035983496083022565, 6);
+        expect(byName.T3).toBeCloseTo(0.9639361379768476, 6);
     });
 
     test('at a higher totalMultiplier (300), weight shifts decisively toward T3, still summing to 1 among T1-T3', () => {
         const weighted = getDynamicTierWeights(regularTiers(), 1, 300);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.000017906365377147226, 6);
-        expect(byName.T2).toBeCloseTo(0.09347234641654459, 5);
-        expect(byName.T3).toBeCloseTo(0.9065097472180783, 5);
+        expect(byName.T1).toBeCloseTo(0.000004670195289694177, 6);
+        expect(byName.T2).toBeCloseTo(0.0020910593921012926, 6);
+        expect(byName.T3).toBeCloseTo(0.997904270412609, 5);
     });
 
     // The "one global SHARPNESS constant works for both a wide, uneven ladder (Regular)
@@ -217,12 +218,17 @@ describe('getDynamicTierWeights', () => {
         });
     });
 
-    // And for Regular's own wide, uneven spacing, the same SHARPNESS still produces a
-    // real blend near a tier boundary (M=150, between T2=85 and T3=600) rather than
+    // And for Regular's own (now evenly geometrically spaced, ~4.64x/step) ladder, the
+    // same SHARPNESS still produces a real blend near a tier boundary rather than
     // snapping to exactly one tier — same "no degenerate near-monopoly" property,
     // confirmed for the OTHER regime the "one global constant" claim needs to hold for.
+    // M=70 sits between T1=10 and T2=46, closer to T2 — under the OLD uneven ladder this
+    // fixture used M=150 (between T2=85 and T3=600), but after the 2026-08-27 retune that
+    // totalMultiplier lands T3 as the dominant tier instead (T3 now sits close enough to
+    // 150 to flip the near-monopoly to T3, not T2), so M=70 was picked instead to keep
+    // this test's own claim (T2 dominant, T3 still real-and-non-negligible) true.
     test('the same global SHARPNESS also avoids a degenerate near-monopoly for Regular\'s wide, uneven spacing near a tier boundary', () => {
-        const weighted = getDynamicTierWeights(regularTiers(), 100, 150);
+        const weighted = getDynamicTierWeights(regularTiers(), 100, 70);
         const t2 = weighted.find(t => t.name === 'T2').weight;
         const t3 = weighted.find(t => t.name === 'T3').weight;
         // T2 dominates (roster sits much closer to T2's own difficulty) but T3 still

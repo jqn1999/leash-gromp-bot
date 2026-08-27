@@ -97,9 +97,9 @@ function rollBountyStatReward(tierLetter, userDetails) {
 // labor raidFactory.js's own handlePotatoSplit-vs-startRaid.js split already uses.
 async function resolveBountyAttempt(userDetails, tierLetter) {
     const tierNum = TIER_NUMBER[tierLetter];
-    const difficulty = Raid[`T${tierNum}_RAID_DIFFICULTY`];
-    const rewardBase = Raid[`T${tierNum}_RAID_REWARD`];
-    const penaltyBase = Raid[`T${tierNum}_RAID_PENALTY`];
+    const difficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
+    const rewardBase = Bounty[`BOUNTY_T${tierNum}_REWARD`];
+    const penaltyBase = Bounty[`BOUNTY_T${tierNum}_PENALTY`];
 
     // A 1-person "roster" run through the exact same formula a guild raid uses —
     // getEffectiveRaidPower is already generic over an array of userDetails, not

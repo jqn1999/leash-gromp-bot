@@ -20,7 +20,7 @@ changes without this knowledge base being updated alongside it.
 | `Rob` | `/rob` cooldown, penalty amounts, work-timer penalty on failure | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Bet` | Betting base-amount seed formula | [systems/betting-and-games.md](../systems/betting-and-games.md) |
 | `Raid` | Guild raid tiers, difficulty/reward/penalty per mob (Regular T1-T4/Metal King, plus 24 static `ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` constants — see below), success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below), `RAID_TIER_WEIGHT_SHARPNESS` (dynamic roster-power-weighted tier rolling exponent, 4 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
-| `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, `BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` (Bounty's own dedicated tier ladder, decoupled from `Raid` 2026-08-27 — see below), per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `Rival`, `RivalMercenaries` | Rival Bounty Hunters — Notoriety accrual/threshold, weighted scenario roll + per-scenario success-chance range, capped-base reward/penalty factors, the 6-entry named rival roster | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `GuildRoles` | Role name strings (`Leader`, `Co-Leader`, `Elder`, `Member`) | [systems/guilds.md](../systems/guilds.md) |
 | `shops` | Personal shop tiers (`workShop`, `passiveIncomeShop`, `bankShop`, `starchShop`) — item costs/amounts | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/starch-trading.md](../systems/starch-trading.md) |
@@ -60,6 +60,37 @@ for the full bug/fix writeup and the correctness proof that adding any roster me
 identity with the old formula (`teamPower = power_0`), so Bounty's solo raid-power math
 (`mercenaryFactory.js`) is unaffected.
 
+### Regular's own `T1-4_RAID_DIFFICULTY/REWARD/PENALTY` ladder smoothed (2026-08-27)
+
+`T2_RAID_DIFFICULTY`/`T3_RAID_DIFFICULTY` moved from `85`/`600` to `46`/`215` (`T1`=10 and
+`T4`=1,000 are fixed anchors, unchanged) — a 3-step geometric ladder, `r=(1000/10)^(1/3)≈4.6416`,
+replacing the old wildly uneven internal spacing (ratios 8.5x/7.06x/1.67x). Reward/penalty
+re-derived off the same 10,000→20,000/pt efficiency-ramp target the 2026-08-26 rework
+established, against the new difficulty values: `T2_RAID_REWARD/PENALTY` 1,133,000→613,000,
+`T3_RAID_REWARD/PENALTY` 10,000,000→3,583,000 (magnitude only; sign per Regular's 1:1
+reward=|penalty| convention). `T1`/`T4`/Metal King and every Elite/Legendary constant are
+unchanged. Fixed a real EV dead zone the 2026-08-27 dynamic-tier-weighting rework below had
+surfaced (worst case `-1,629,449` at `totalMultiplier≈248`, now `≈+93,000` to `+95,000` at
+`totalMultiplier≈99-100`) — full derivation:
+[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting).
+
+### `Bounty.BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` (new, 2026-08-27 — decoupled from `Raid`)
+
+Mercenary Bounty Tiers I/II/III previously read `Raid.T1/T2/T3_RAID_*` directly via a dynamic
+string-keyed lookup in `mercenaryFactory.resolveBountyAttempt`/`bountyBoard.js` — any retune of
+Regular Guild Raid's own T1-T3 silently retuned Bounty too. Decoupled the same day Regular's own
+ladder above got smoothed, so the two systems' numbers can now move independently (explicit
+design goal: Guild Raiding should land modestly ahead of Bounty at the equivalent tier, not just
+avoid an accidental coupling bug). `BOUNTY_T{1,2,3}_DIFFICULTY` (10/85/600) are unchanged in
+value from what Bounty already effectively read — solo Bounty odds are unaffected by this
+decoupling. `BOUNTY_T{1,2,3}_REWARD` (142,000/755,000/4,261,000) and the matching `_PENALTY`
+(same magnitude, negative) are freshly chosen so a solo mercenary's realized reward (after
+`SOLO_BOUNTY_REWARD_SHARE`/rank multiplier) lands at ≈85% of an equivalently-progressed small
+guild's own realized per-member payout at each tier's own unlock rank. Still shares
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single flat shared concept,
+deliberately left coupled). Full derivation:
+[systems/mercenary-bounties.md](../systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
+
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (4, 2026-08-27 dynamic tier weighting)
 
 The exponent in `raidFactory.js`'s `getDynamicTierWeights`/`getWeightedScenarios`:
@@ -68,9 +99,16 @@ among eligible T1-T4 tiers (`M` = `totalMultiplier`, `d_i` = tier `i`'s own diff
 regular/elite/legendary mode's fixed per-bracket roll odds with weighting keyed to how close the
 roster's own power sits to each tier's own difficulty — Metal King's own flat chance is untouched.
 Tuned from an originally-proposed 1.5 up to 4 after a `node -e` sharpness sweep found a real EV
-dead zone around Regular's own T2→T3 boundary that bottoms out around sharpness 6-8 and can't be
-fully eliminated by this knob alone (a structural asymmetry in Regular's own T2/T3 reward/penalty
-tuning). Full derivation, sharpness sweep, and worked examples:
+dead zone around Regular's own T2→T3 boundary that bottomed out around sharpness 6-8 and couldn't
+be fully eliminated by this knob alone — traced to a structural asymmetry in Regular's own T1-T4
+internal spacing, since fixed directly (see the T1-4 ladder-smoothing entry above). **Confirmed
+`SHARPNESS=4` should stay, not revert toward 1.5**, even after that ladder fix: making Regular's
+own T1-T3 spacing even relocated (rather than removed) the risk to the T3→T4 boundary, whose
+relative gap widened from 1.67x to ~4.64x as a direct consequence of T3 moving down — a fresh
+check at `totalMultiplier≈98-130` found `SHARPNESS=4` still solidly positive there, while
+`SHARPNESS=1.5` reintroduces a new dead zone (worst -621,490 at `totalMultiplier=98`) at that
+exact boundary. Full
+derivation, sharpness sweep, and worked examples:
 [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting),
 [balance-audit.md](../balance-audit.md)'s 2026-08-27 entry.
 

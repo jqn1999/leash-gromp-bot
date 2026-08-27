@@ -34,7 +34,7 @@ module.exports = {
 
         const tiers = ['I', 'II', 'III'].map(tier => {
             const tierNum = mercenaryFactory.TIER_NUMBER[tier];
-            const difficulty = Raid[`T${tierNum}_RAID_DIFFICULTY`];
+            const difficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
             const successChance = Math.min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
             const unlocksAtRank = MercenaryRank.THRESHOLDS.find(r => r.unlocksTier >= tierNum).rank;
             return {

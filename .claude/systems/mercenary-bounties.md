@@ -93,20 +93,102 @@ same status `Achievements`' names already have: Spud Recruit → Tater Tracker �
 Rank also gates how many [Safehouses](safehouses.md) a mercenary can own — one slot unlocks per
 Rank tier, each a separately-purchased, separately-balanced stash of extra bank capacity.
 
-## Bounty tiers I/II/III — reuse `Raid.T1/T2/T3_RAID_*` directly
+## Bounty tiers I/II/III — own dedicated `Bounty.BOUNTY_T1/T2/T3_*` constants (decoupled 2026-08-27)
 
-Bounty tiers map 1:1 onto Regular-mode Guild Raid's T1/T2/T3 — there is **no separate
-Bounty-owned difficulty/reward/penalty table**. `mercenaryFactory.resolveBountyAttempt`
-reads `Raid.T{n}_RAID_REWARD`/`Raid.T{n}_RAID_PENALTY`/`Raid.T{n}_RAID_DIFFICULTY` straight
-off the existing `Raid` object, `n` = 1/2/3 for tier I/II/III. All three tiers share
-`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (.9) as their success-chance cap — Bounty tiers
-are Regular-mode-equivalent, not Elite/Legendary-equivalent.
+**Previously** Bounty tiers read `Raid.T{n}_RAID_REWARD`/`Raid.T{n}_RAID_PENALTY`/
+`Raid.T{n}_RAID_DIFFICULTY` straight off the `Raid` object via a dynamic string-keyed lookup
+in `mercenaryFactory.resolveBountyAttempt` (`n` = 1/2/3 for tier I/II/III) — there was no
+separate Bounty-owned table at all. This meant any retune of Regular Guild Raid's own T1/T2/T3
+constants silently retuned Bounty Tier I/II/III too, whether or not that was intended.
+
+**Decoupled 2026-08-27**, direct instruction, prompted by Regular's own T1-T4 internal-ladder
+smoothing pass (see [raids-and-world-events.md](raids-and-world-events.md)) — rather than prove
+that smoothing pass doesn't accidentally break Bounty's live balance, Bounty now has its own
+constants (`Bounty.BOUNTY_T1_DIFFICULTY/REWARD/PENALTY` through `BOUNTY_T3_*`), and the two
+systems' numbers are chosen independently going forward. Explicit design goal behind the
+split (direct quote): *"we could separate their values if it makes it easier, i do want guilds
+to generally be a bit better anyway"* — Guild Raiding is meant to come out **modestly** ahead of
+solo Mercenary Bounty-hunting at the equivalent tier, not just avoid an accidental coupling bug.
+
+`mercenaryFactory.resolveBountyAttempt` and `bountyBoard.js`'s live success-chance preview both
+read `Bounty.BOUNTY_T{n}_DIFFICULTY/REWARD/PENALTY` now, `n` = 1/2/3 for tier I/II/III — the
+same dynamic string-keyed lookup shape as before, just against the `Bounty` object instead of
+`Raid`. All three tiers still share `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (.9) as their
+success-chance cap — that single flat cap is a deliberate, low-risk exception left coupled to
+`Raid`, since it's a shared *concept* ("Bounty tiers are Regular-mode-equivalent, not
+Elite/Legendary-equivalent"), not a per-tier magnitude Regular's ladder-smoothing touched.
+
+**Difficulty is unchanged in value** (`BOUNTY_T1_DIFFICULTY=10`, `BOUNTY_T2_DIFFICULTY=85`,
+`BOUNTY_T3_DIFFICULTY=600` — the exact numbers Bounty already effectively read pre-decoupling,
+now diverging from Regular's own newly-smoothed `T2=46`/`T3=215`). A solo mercenary's own
+success-chance/odds are therefore **completely unaffected** by this decoupling — only the
+reward/penalty side changed, and only because it was deliberately re-picked (next section), not
+as a side effect of picking new constants.
+
+### Reward/penalty re-picked so Guild Raiding comes out modestly ahead
+
+Target: at each tier's own natural "just unlocked" comparison point, a solo mercenary's
+**realized** reward (after `SOLO_BOUNTY_REWARD_SHARE` and `rankInfo.rewardMultiplier` — not
+the raw base constant) should land at **≈85% of an equivalently-progressed small guild's own
+realized per-member payout** for the matching tier (after the guild's own `raidRewardMultiplier`
+and roster split) — a deliberate, quantified ~15-18% guild edge: real, but not a landslide.
+
+Guild-side reference points (same "modest small-to-mid guild" method the original
+`SOLO_BOUNTY_REWARD_SHARE` rationale below used, recomputed against Regular's own
+2026-08-27-smoothed T1-T3 numbers):
+
+| Tier | Guild scenario | Per-member realized |
+|---|---|---|
+| I (↔ Regular T1) | Level 1 (RRM 1.00x), 4-person roster, `T1_RAID_REWARD` 100,000 | 100,000 × 1.00 / 4 = **25,000** |
+| II (↔ Regular T2) | Level 1 (RRM 1.00x), 4-person roster, `T2_RAID_REWARD` 613,000 | 613,000 × 1.00 / 4 = **153,250** |
+| III (↔ Regular T3) | Level 3 (RRM 1.70x, Regular's own analogue of "just clearing a real breakeven band"), 6-person roster, `T3_RAID_REWARD` 3,583,000 | 3,583,000 × 1.70 / 6 = **1,015,183** |
+
+Bounty's realized win formula is `round(BOUNTY_T{n}_REWARD * rangeRoll(.8-1.2) *
+SOLO_BOUNTY_REWARD_SHARE(0.15) * rankInfo.rewardMultiplier * (1 + yukonBonus))` — solving for
+`BOUNTY_T{n}_REWARD` at `rangeRoll=1.0` (average roll), `yukonBonus=0` (baseline, no companion),
+and each tier's own unlock rank (Tier I → Rank 1, 1.00x; Tier II → Rank 2, 1.15x; Tier III →
+Rank 3, 1.35x — the same "compare at the mode/tier's own unlock point" convention Elite/Legendary's
+own guild-level gates already use elsewhere in this codebase) so realized ≈ 85% of the guild
+figure above, rounded to the nearest 1,000:
+
+| Tier | `BOUNTY_T{n}_REWARD` | Realized (unlock rank, avg roll) | vs. guild per-member | Guild edge |
+|---|---|---|---|---|
+| I | 142,000 | 142,000 × 0.15 × 1.00 = **21,300** | 25,000 | guild +17.4% |
+| II | 755,000 | 755,000 × 0.15 × 1.15 = **130,238** | 153,250 | guild +17.7% |
+| III | 4,261,000 | 4,261,000 × 0.15 × 1.35 = **862,853** | 1,015,183 | guild +17.6% |
+
+`BOUNTY_T{n}_PENALTY` stays reward's exact magnitude (Regular's own 1:1 convention, reused here
+too): `BOUNTY_T1_PENALTY=-142,000`, `BOUNTY_T2_PENALTY=-755,000`, `BOUNTY_T3_PENALTY=-4,261,000`.
+This preserves the existing "a loss lands in roughly the same range as a Rank-1 potato win at
+that tier" invariant exactly (`|penalty| * 0.15 average == reward * 0.15 * 1.00 average`, since
+neither side of that comparison depends on which specific reward number was chosen — see the loss
+formula below).
+
+**A comparison point at a HIGHER mercenary rank than a tier's own unlock rank, against the SAME
+"modest guild" reference, will show Bounty pulling ahead of guild** (e.g. a maxed Rank 6, 1.75x,
+mercenary's Tier I realized reward is `142,000*0.15*1.75=37,275`, above the level-1-guild
+reference's 25,000) — this is a deliberate, pre-existing design property, not a gap this rework
+introduces: comparing a fully-committed solo endgame (525 wins) against a guild that's still at
+its own unlock level was never the claim being made. The "guild comes out modestly ahead" target
+is anchored at each tier's own unlock rank specifically, mirroring how Elite/Legendary's own
+guild-level gates are documented against their own unlock levels elsewhere in this codebase, not
+against every possible rank/level pairing.
+
+Bounty's own internal reward-per-difficulty-point efficiency (using the *unchanged* difficulty
+constants above) is no longer a rising ramp the way Regular's own ladder is (`142,000/10=14,200/pt`
+→ `755,000/85=8,882/pt` → `4,261,000/600=7,100/pt`, actually *declining*) — a cosmetic side effect
+of anchoring rewards to Regular's own newly-compressed T2/T3 rather than to Bounty's own
+(unchanged, much wider) difficulty spacing, not a fairness problem: realized reward still
+escalates sharply tier to tier (21,300 → 130,238 → 862,853), which is what a player actually
+experiences. Left as-is rather than re-smoothing Bounty's own difficulty ladder to match, since
+that wasn't asked for and would change Bounty's live success-chance odds, which this decoupling
+was explicitly designed NOT to touch.
 
 ### Success chance
 
 ```
 effectiveBountyPower = raidFactory.getEffectiveRaidPower([userDetails])
-difficulty           = Raid.T{n}_RAID_DIFFICULTY
+difficulty           = Bounty.BOUNTY_T{n}_DIFFICULTY   // Bounty's own constant since 2026-08-27 (was Raid.T{n}_RAID_DIFFICULTY) — same numeric values as before, just no longer aliased to Regular Guild Raid's own (now-diverged) T2/T3
 successChance         = min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
 
@@ -127,7 +209,7 @@ On a **win**, for a potato-flavored scenario:
 rangeRoll  = getRandomFromInterval(.8, 1.2)
 rankInfo   = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
 yukonBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent")   // 0 if not equipped
-reward = round(Raid.T{n}_RAID_REWARD * rangeRoll * Bounty.SOLO_BOUNTY_REWARD_SHARE * rankInfo.rewardMultiplier * (1 + yukonBonus))
+reward = round(Bounty.BOUNTY_T{n}_REWARD * rangeRoll * Bounty.SOLO_BOUNTY_REWARD_SHARE * rankInfo.rewardMultiplier * (1 + yukonBonus))
 ```
 
 For a starch-flavored scenario (reuses Taro Trader's own shape, scaled by
@@ -148,20 +230,22 @@ other Taro-shaped reward. `companionMultiplier` = `workFactory.js`'s `getCompani
 the equipped companion's `workMultiplierPercent` perk in their identically-shaped reward
 formulas but this branch didn't. Scoped to the starch branch only, which already had this
 multiplier-based shape to extend — the potato-flavored branch above stays a fixed
-`Raid.T{n}_RAID_REWARD` base by design, matching Regular Guild Raid's own fixed T1-T3
+`Bounty.BOUNTY_T{n}_REWARD` base by design, matching Regular Guild Raid's own fixed T1-T3
 rewards, so it was left alone.)
 
 On a **loss** (regardless of which scenario currency was drawn — the penalty always
 denominates in potatoes, representing the physical risk of the attempt itself):
 
 ```
-penalty = round(Raid.T{n}_RAID_PENALTY * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE)   // independent roll from the reward-side one
+penalty = round(Bounty.BOUNTY_T{n}_PENALTY * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE)   // independent roll from the reward-side one
 ```
 
-Scaled down 2026-08-23, direct instruction, after a live report of a 16k win vs. an 83k
-loss at the same tier — `Raid.T{n}_RAID_PENALTY` carries the exact same raw magnitude as
-`Raid.T{n}_RAID_REWARD` (e.g. Tier I is ±100,000), but only the reward side had ever been
-discounted by `SOLO_BOUNTY_REWARD_SHARE`. Now both sides share that discount, so a loss
+Scaled down 2026-08-23, direct instruction (against the then-live `Raid.T{n}_RAID_PENALTY`-
+sourced numbers, pre-decoupling), after a live report of a 16k win vs. an 83k loss at the same
+tier — `BOUNTY_T{n}_PENALTY` carries the exact same raw magnitude as `BOUNTY_T{n}_REWARD` (e.g.
+Tier I is ±142,000 as of the 2026-08-27 decoupling), continuing the same convention: only the
+reward side had ever been discounted by `SOLO_BOUNTY_REWARD_SHARE` before that 2026-08-23 fix.
+Now both sides share that discount, so a loss
 lands in roughly the same range as a Rank-1 potato win at that tier. Still deliberately NOT
 reduced further by `rankInfo.rewardMultiplier` or Yukon's `bountyRewardPercent` — those
 stay reward-side-only perks — so as a mercenary ranks up, wins keep growing while losses
@@ -169,6 +253,14 @@ stay flat: the risk/reward ratio genuinely improves with progression instead of 
 always mirroring a win at a worse rate.
 
 ### Balance rationale (`SOLO_BOUNTY_REWARD_SHARE`)
+
+**Historical rationale for why this discount exists at all** — kept for the original reasoning,
+but its own worked numbers below (100,000/5,000,000 guild bases) predate both the 2026-08-26
+reward-efficiency retune and the 2026-08-27 ladder-smoothing + Bounty decoupling, so they're
+stale as exact figures. See "Reward/penalty re-picked so Guild Raiding comes out modestly ahead"
+above for the current, numerically-accurate version of this same comparison — this section is
+the "why a discount factor exists" story, that section is the "here's today's actual numbers"
+story.
 
 A naive "run the guild raid formula solo, full reward, no split" design would be a
 dominant-strategy trap: Guild Raid rewards/penalties are the same flat base amount

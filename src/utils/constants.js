@@ -1005,13 +1005,32 @@ const Raid = {
     // before this pass; T2-T4 are retuned. Penalty stays a 1:1 magnitude match to
     // reward, same convention Regular has always used (no separate PENALTY_INCREASE
     // constant at this mode — that's an Elite/Legendary-only concept).
-    T2_RAID_REWARD: 1133000,
-    T2_RAID_PENALTY: -1133000,
-    T2_RAID_DIFFICULTY: 85,
+    // Retuned 2026-08-27 — Regular's own T1-T4 internal ladder (10/85/600/1000, ratios
+    // 8.5x/7.06x/1.67x) was wildly uneven compared to Elite/Legendary's already-even
+    // geometric spacing, and the dynamic tier-weighting rework above (SHARPNESS=4)
+    // exposed a real EV dead zone around the T2->T3 boundary (worst -1,629,449 at
+    // totalMultiplier~=248) as a direct consequence. Fixed by making T1-T4 evenly
+    // geometrically spaced, holding T1 (10) and T4 (1000) fixed — both load-bearing
+    // elsewhere (T1 is a universal newbie landmark referenced everywhere; T4 anchors
+    // Elite's ladder at 2x and Legendary's at 4x) — ratio r = (1000/10)^(1/3) ~= 4.6416.
+    // Reward derived at the same 10,000->20,000/pt efficiency ramp above, applied to the
+    // rounded new difficulty values, rounded to the nearest 1,000 (T2: 13,333/pt * 46 ~=
+    // 613,000; T3: 16,667/pt * 215 ~= 3,583,000). Verified fix: scanning totalMultiplier
+    // 5-1200 at SHARPNESS=4 against this new ladder, the worst weighted-average EV per
+    // attempt is -1,085 at totalMultiplier=5 (an edge-case near-zero-power roster, not a
+    // real dead zone) — down from -1,629,449 under the old ladder. Do NOT lower
+    // RAID_TIER_WEIGHT_SHARPNESS back to 1.5 against this new ladder — smoothing T1-T3
+    // widened the T3->T4 gap to the same ~4.64x magnitude as every other step, and at
+    // SHARPNESS=1.5 that opens a NEW dead zone at the T3/T4 boundary instead (worst
+    // -621,490 at totalMultiplier=98); SHARPNESS=4 keeps that region solidly positive
+    // (+402,652 at totalMultiplier=120).
+    T2_RAID_REWARD: 613000,
+    T2_RAID_PENALTY: -613000,
+    T2_RAID_DIFFICULTY: 46,
 
-    T3_RAID_REWARD: 10000000,
-    T3_RAID_PENALTY: -10000000,
-    T3_RAID_DIFFICULTY: 600,
+    T3_RAID_REWARD: 3583000,
+    T3_RAID_PENALTY: -3583000,
+    T3_RAID_DIFFICULTY: 215,
 
     // Ultra-late-game bracket — shop AND regrade fully maxed, meaningfully pushed past
     // by rebirth stacking. Gated separately behind guild level (see
@@ -1172,9 +1191,16 @@ const Raid = {
     // A deliberate alternate path to T3/T4-caliber effective power: pay a flat upfront
     // potato cost (win or lose) instead of grinding toward the shop/regrade currency
     // directly, in exchange for permanent stat gains at a real, capped success rate.
-    // Difficulty sits between T2 (85) and T3 (600) on purpose — the tradeoff is meant to
-    // help a guild bridge toward being ready for T3/T4 raids, not to trivialize reaching
-    // them, so it's deliberately never as easy as T2 nor as hard as T3.
+    // Difficulty was originally sized to sit between T2 (85) and T3 (600) on purpose — the
+    // tradeoff was meant to help a guild bridge toward being ready for T3/T4 raids, not to
+    // trivialize reaching them, so it was deliberately never as easy as T2 nor as hard as
+    // T3. FLAGGED STALE by the 2026-08-27 Regular T1-T4 internal-ladder smoothing pass:
+    // Regular's own T2/T3 moved to 46/215, so this constant (350, left untouched — not
+    // part of that pass's scope, and not called out in its own "confirmed unaffected"
+    // list) is now numerically ABOVE T3 instead of between T2 and T3, quietly inverting the
+    // "never as hard as T3" half of the design intent above. Not fixed here — changing this
+    // number is a balance/product call, not a mechanical side effect to silently correct;
+    // surfaced for the product owner/architect to decide on a follow-up retune.
     REGULAR_STAT_RAID_REWARD: 0.2,
     REGULAR_STAT_RAID_COST: -300000,
     REGULAR_STAT_RAID_DIFFICULTY: 350
@@ -1204,14 +1230,34 @@ const MercenaryRank = {
     ]
 }
 
-// Bounty tiers I/II/III map 1:1 onto Regular-mode Guild Raid's T1/T2/T3 — reward,
-// penalty, and difficulty are read straight off Raid.T{1,2,3}_RAID_* (see
-// mercenaryFactory.resolveBountyAttempt) rather than duplicated into a parallel table
-// here. All three tiers share Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.9) as their
-// success-chance cap — Bounty tiers are Regular-mode-equivalent, not Elite/Legendary-
-// equivalent.
+// Bounty tiers I/II/III are Regular-mode-equivalent (share
+// Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.9) as their success-chance cap), but as of
+// 2026-08-27 carry their own fully independent BOUNTY_T{1,2,3}_* constants below rather
+// than reading Raid.T{1,2,3}_RAID_* dynamically (see mercenaryFactory.resolveBountyAttempt
+// and bountyBoard.js's preview) — Part 1's Regular-ladder retune would otherwise have
+// silently retuned Bounty Tier II/III too. Difficulty is numerically unchanged from what
+// Bounty always effectively read (10/85/600); only reward/penalty actually moved, per
+// direct instruction that Guild Raiding should land a bit ahead of solo Bounty-hunting at
+// the equivalent tier ("i do want guilds to generally be a bit better anyway"). Sized so
+// Bounty's REALIZED reward (after SOLO_BOUNTY_REWARD_SHARE (0.15) x that tier's own
+// unlock-rank reward multiplier — Rank1=1.00x for Tier I, Rank2=1.15x for Tier II,
+// Rank3=1.35x for Tier III) lands at 85% of a reference guild's own realized per-member
+// reward at a comparable investment level — a uniform ~17.4-17.7% guild-ahead margin
+// across all three tiers, computed on realized reward (post-multipliers on both sides).
 const Bounty = {
     BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
+
+    BOUNTY_T1_DIFFICULTY: 10,
+    BOUNTY_T1_REWARD: 142000,
+    BOUNTY_T1_PENALTY: -142000,
+
+    BOUNTY_T2_DIFFICULTY: 85,
+    BOUNTY_T2_REWARD: 755000,
+    BOUNTY_T2_PENALTY: -755000,
+
+    BOUNTY_T3_DIFFICULTY: 600,
+    BOUNTY_T3_REWARD: 4261000,
+    BOUNTY_T3_PENALTY: -4261000,
     // Central risk-mitigation number, grounded against this roadmap entry's own worked
     // examples (a guild-level-1/4-person roster nets ~25% of a T1 raid's base reward per
     // member; a guild-level-3/6-person roster nets ~28.3% of T3's base per member — both

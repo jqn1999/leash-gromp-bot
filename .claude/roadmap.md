@@ -2470,6 +2470,29 @@ and needs its own balance pass.
   roll actually lands on. `buildRaidPreview.test.js`/`startRaidSplitMode.test.js`'s existing tests
   confirmed unaffected (neither asserts on numeric roll odds tied to the old fixed table).
 
+  **Same-day follow-up (2026-08-27): the EV dead zone above is fixed at its source, not just
+  reduced.** Direct user request after seeing the dead-zone writeup: *"see if you can work the
+  numbers across the board down in difficulty or adjusting win loss amounts to get the overall
+  smoothness from tier to tier feeling closer."* Regular's own internal T1-T4 ladder (previously
+  `10/85/600/1000`, ratios 8.5x/7.06x/1.67x) is now an even 3-step geometric ladder,
+  `r=(1000/10)^(1/3)≈4.6416` (`T1=10`/`T4=1000` fixed as load-bearing anchors, `T2=46`/`T3=215`
+  solved), with reward/penalty re-derived off the same 10,000→20,000/pt efficiency-ramp target
+  against the new difficulty values (`T2` 1,133,000→613,000, `T3` 10,000,000→3,583,000). Worst-case
+  weighted EV in the dead zone goes from **-1,629,449** to **≈+93,000 to +95,000** — solidly
+  positive, not just smaller. `SHARPNESS` re-checked against the new ladder rather than assumed
+  safe by default: making the internal spacing even widened the T3→T4 boundary's *relative* gap
+  (1.67x→4.64x), which at `SHARPNESS=1.5` reopens a **new** dead zone at that boundary (worst
+  -621,490 at `totalMultiplier=98`) — `SHARPNESS=4` stays solidly positive there and is kept
+  unchanged. **Mercenary Bounty Tiers I/II/III, which read `Raid.T1/T2/T3_RAID_*`
+  directly, were decoupled the same day** (explicit design goal: guild raiding should land
+  modestly, ~15-18%, ahead of the equivalent solo Bounty tier) — see
+  `Bounty.BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` in `constants.js` and
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
+  Full derivation: `balance-audit.md`'s 2026-08-27 (same-day follow-up) entry,
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md#dynamic-tier-weighting).
+  This directly mitigates (without fully closing) finding 1 of the "Guild Raid: T2/T3/`stat`-Mode
+  Eligibility Gating" item below — see that item's own updated note.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -2512,6 +2535,18 @@ and needs its own balance pass.
   low, non-zero probability; only an actual eligibility gate (excluding T2/T3 outright for a roster
   far below their difficulty, the same treatment T4/Elite/Legendary already get) closes finding 1
   completely. `stat` mode remains fully ungated either way — item 62 didn't touch it at all.
+
+  **Same-day follow-up, 2026-08-27 (Regular T1-T4 internal-ladder smoothing)**: the residual EV
+  dead zone the update directly above flagged is now fixed at its structural source — Regular's
+  own T2/T3 (`85`/`600`, a wildly uneven 7.06x/1.67x internal spacing) are now `46`/`215`, an even
+  3-step geometric ladder matching the same philosophy Elite/Legendary's own internal ladder
+  already used. Worst-case weighted EV in that dead zone moved from -1,629,449 to solidly positive
+  (≈+93,000 to +95,000). This is a genuine improvement to finding 1's severity, **not a
+  substitute** for the eligibility gate this item still recommends — a level-1 guild can still roll
+  T2/T3 (and `stat` mode) with no guardrail at all, it's just meaningfully less punishing when it
+  does now. `stat` mode is still completely untouched and still fully ungated. Full derivation:
+  the item-62 entry above's own "Same-day follow-up" note, `balance-audit.md`'s 2026-08-27
+  (same-day follow-up) entry.
 
 - [x] **Rival Bounty Hunters (Notoriety → confrontation)** — M — **Shipped 2026-08-23**, built
   directly off the architect's technical design at the end of this entry — see
@@ -3168,6 +3203,17 @@ and needs its own balance pass.
   module boundary, not a permanent test) that `/take-bounty`'s combined win + stat-reward + Yukon-hit
   write sequence lands on the exact right final `potatoes`/`totalEarnings`/`workMultiplierAmount`
   numbers across its three separate `updateUserFields` calls.
+
+  **Same-day-adjacent follow-up, 2026-08-27**: Bounty tiers I/II/III no longer reuse
+  `Raid.T1/T2/T3_RAID_*` directly — decoupled into their own `Bounty.BOUNTY_T1-3_DIFFICULTY/
+  REWARD/PENALTY` constants the same day Regular Guild Raid's own T1-T4 internal ladder got
+  smoothed (see item 62's own "Same-day follow-up" note above), so a future Regular retune no
+  longer silently retunes Bounty too. Difficulty values are unchanged (Bounty's own
+  success-chance odds are unaffected); reward/penalty were freshly picked so a solo mercenary's
+  realized payout lands modestly (~15-18%) behind an equivalently-progressed small guild's own
+  per-member payout at each tier's own unlock rank — an explicit design goal ("i do want guilds
+  to generally be a bit better anyway"), not just a mechanical side effect of the split. Full
+  derivation: [systems/mercenary-bounties.md](systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
 
   **What**: a personal, guild-independent alternative to Guild Raids — `/bounty-board` (read-only
   preview, mirrors `/current-raid`) shows the caller's own unlocked Bounty tiers (I/II/III, mapped 1:1

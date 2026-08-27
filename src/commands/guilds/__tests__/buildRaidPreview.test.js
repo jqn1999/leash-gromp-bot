@@ -88,7 +88,11 @@ describe('buildRaidPreview', () => {
         expect(metalKing.rewardText).toContain(`+${Raid.ELITE_METAL_KING_CAPACITY_REWARD.toLocaleString()} bank capacity`);
     });
 
-    test('regular mode preview is completely unaffected — still reads the unchanged base T1-T4/Metal King constants', () => {
+    // NOTE: T1's own constant is unaffected by the 2026-08-27 Regular T1-T4 ladder retune
+    // (T2/T3 DID change — see constants.js's comment on the new geometric spacing), so
+    // this only pins down that T1 specifically still reads the live constants directly —
+    // it is not a claim that Regular mode as a whole is untouched by that retune.
+    test('regular mode T1 preview still reads the live base T1_RAID_* constants directly', () => {
         const brackets = buildRaidPreview('regular', 700, 1.0, 8);
         const t1 = brackets.find(b => b.name === 'Tier 1');
         expect(t1.successChance).toBeCloseTo(Math.min(700 / Raid.T1_RAID_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));

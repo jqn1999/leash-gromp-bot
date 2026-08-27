@@ -212,6 +212,78 @@ tier."* Every bracket now reads its own independent static constant instead
 `LEGENDARY_T4_*`, plus `ELITE_METAL_KING_*`/`LEGENDARY_METAL_KING_*`) — see
 [reference/constants.md](../reference/constants.md) for the full 24-constant index.
 
+**Regular's own internal T1-T4 ladder smoothed 2026-08-27, on top of (not instead of) the
+static-per-bracket rework above.** This is a *separate* geometric ladder from the 8-step
+`2^(1/4)` one below (which spans Regular T4 → Legendary T4 and is untouched by this) —
+Regular's own T1-T4 previously sat on a wildly uneven internal spacing
+(`T1=10, T2=85, T3=600, T4=1000` — ratios 8.5x / 7.06x / 1.67x) inherited from the game's
+earliest tuning, never revisited when the rest of the ladder above went geometric. Direct
+user request, after a documented EV dead zone surfaced by the 2026-08-27 dynamic
+tier-weighting rework (see "Dynamic tier weighting" below): *"see if you can work the numbers
+across the board down in difficulty or adjusting win loss amounts to get the overall
+smoothness from tier to tier feeling closer."* `T1=10` and `T4=1000` are load-bearing anchors
+kept fixed — T1 is referenced everywhere as the universal newbie landmark, and T4=1000 is what
+the 8-step Elite/Legendary ladder above is itself anchored to. Solving for T2/T3 via
+`r = (T4/T1)^(1/3) = 100^(1/3) ≈ 4.6416`:
+
+```
+T1 = 10                         (unchanged)
+T2 = round(10 * r)    = 46      (was 85)
+T3 = round(10 * r^2)  = 215     (was 600)
+T4 = 1000                       (unchanged)
+```
+
+Reward re-derived off the same efficiency-ramp philosophy the same-day 2026-08-26 follow-up
+established (10,000/pt at T1 rising to 20,000/pt at T4, in three even ~3,333/pt steps), applied
+against the *new* difficulty values and rounded to the nearest 1,000 (same convention every
+other bracket's reward already uses):
+
+| Bracket | Difficulty | Reward | Penalty | Efficiency (reward/difficulty) |
+|---|---|---|---|---|
+| Regular T1 | 10 | 100,000 | -100,000 | 10,000/pt |
+| Regular T2 | 46 | 613,000 | -613,000 | ≈13,326/pt |
+| Regular T3 | 215 | 3,583,000 | -3,583,000 | ≈16,665/pt |
+| Regular T4 | 1,000 | 20,000,000 | -20,000,000 | 20,000/pt |
+
+Penalty stays reward's exact magnitude (Regular's existing 1:1 convention, unchanged). T1 and
+T4 are byte-identical to their pre-smoothing values by construction (both anchors); only T2/T3
+moved. Difficulty and reward are still each strictly increasing end-to-end, and efficiency still
+ramps 10,000→20,000/pt within Regular's own band, continuous with Elite T1's own 20,000/pt floor
+— both properties `raidFactory.test.js`'s existing "static Elite/Legendary difficulty ladder"
+describe block already asserts generically off live constants, so no new tests were needed there,
+though see the "Dead zone" and "Test impact" notes below for tests that DO need updating.
+
+**A structural side effect worth calling out**: T2/T3 are now substantially *easier* in absolute
+terms than before (T2's cap-success threshold drops from `M≥76.5` to `M≥41.4`; T3's from `M≥540`
+to `M≥193.5`), not just more evenly spaced. This directly mitigates — without fully closing — the
+"Still open, not yet fixed" gap flagged below (Regular T2/T3 having no eligibility gate at all): a
+low-power guild that rolls into T3 today faces a much less punishing difficulty than before, on
+top of the dynamic-weighting rework already reducing how *often* it rolls there in the first
+place. The "Guild Raid: T2/T3/`stat`-Mode Eligibility Gating" roadmap item is still open (a real
+gate is still the only complete fix), but the residual risk it's tracking is meaningfully smaller
+than when that item was written.
+
+**Dead zone confirmed fixed, not just reduced, by this smoothing** — independently
+re-verified via real `node -e` execution against the final rounded constants above (the prior
+draft of this note flagged its own hand-computation as unverified; that verification has now
+been done). Scanning `totalMultiplier` across the T1-T3 region (all four tiers eligible,
+`RAID_TIER_WEIGHT_SHARPNESS=4`, guild level 1's `raidRewardMultiplier=1.00`), the weighted-average
+EV per attempt in the T2/T3 interior bottoms out around `totalMultiplier≈99-100` (the new ladder's
+T2/T3 geometric midpoint, `sqrt(46*215)≈99.45`) at **+93,599 (M=99) to +94,433 (M=100)** — solidly
+positive, a complete reversal from the pre-smoothing worst case of **-1,629,449** at
+`totalMultiplier≈248` this same rework's own dynamic-weighting section documents. Spot-checks at
+`totalMultiplier` = 70, 85, 95, 100, 105, 110, 120, 130, 150, 300 all land solidly positive
+(e.g. +388,711 at 70, +692,914 at 130, +2,538,507 at 300).
+
+The true GLOBAL minimum across the full scanned range (5-1200) is actually further out at the
+bottom edge: **-1,085 at `totalMultiplier=5`** — an edge-case near-zero-power roster (a roster
+this weak clears none of T1-T4's success caps meaningfully), not a real dead zone in the sense
+the original T2/T3 boundary was (that one ran into the millions in magnitude; this one is a
+rounding-scale sliver next to reward sizes in the hundreds of thousands to tens of millions).
+**The root cause (an uneven ladder, not a bad `SHARPNESS` value) is resolved at the source** — the
+dynamic-weighting rework's own EV dead zone was a symptom of Regular's historically uneven T2/T3
+spacing, not a flaw in the weighting formula itself.
+
 **Why this rework happened**: direct user complaint — *"difficulties for some feel very easy to
 hit... confusing for guilds to know what they should realistically farm."* Under the old
 multiplier-derived values, Elite's own T1 (effective difficulty 30 = `T1_RAID_DIFFICULTY(10) *
@@ -223,11 +295,16 @@ non-Metal-King brackets now sit on one continuous **geometric difficulty ladder*
 T4 (4,000, unchanged — already the live value pre-rework, since Elite T4 was already anchored at 2x
 Regular T4 and Legendary T4 at 2x Elite T4):
 
+Regular's own T2/T3 rows below were retuned again the very next day by the internal-ladder-
+smoothing pass documented above this section — the table shows the CURRENT live values
+(difficulty 46/215, not the original 85/600 this 2026-08-26 rework shipped with); Elite/Legendary
+rows are unaffected and still reflect this rework's original numbers unchanged.
+
 | Bracket | Difficulty | Reward | Penalty | Efficiency (reward/difficulty) |
 |---|---|---|---|---|
 | Regular T1 | 10 | 100,000 | -100,000 | 10,000/pt |
-| Regular T2 | 85 | 1,133,000 | -1,133,000 | 13,329/pt |
-| Regular T3 | 600 | 10,000,000 | -10,000,000 | 16,667/pt |
+| Regular T2 | 46 | 613,000 | -613,000 | ≈13,326/pt |
+| Regular T3 | 215 | 3,583,000 | -3,583,000 | ≈16,665/pt |
 | Regular T4 | 1,000 | 20,000,000 | -20,000,000 | 20,000/pt |
 | Elite T1 | 1,189 | 23,780,000 | -35,670,000 | 20,000/pt |
 | Elite T2 | 1,414 | 32,993,000 | -49,490,000 | 23,333/pt |
@@ -368,16 +445,53 @@ multi-tier blend — not a near-binary snap — while cutting the worst-case dea
 relative to the 1.5 proposal (-2,660,463 → -1,629,449, both at `totalMultiplier`≈248). Full sharpness
 sweep table and EV derivation: [balance-audit.md](../balance-audit.md)'s 2026-08-27 entry.
 
-**This residual dead zone is the same structural gap the "Guild Raid: T2/T3/`stat`-Mode Eligibility
+**This residual dead zone was the same structural gap the "Guild Raid: T2/T3/`stat`-Mode Eligibility
 Gating" roadmap item already tracks** (see `roadmap.md`'s 2026-08-27 update note on that item) —
-de-weighting T1-T4 by roster power softens the "level-1 guild rolls Regular's T3 and gets crushed"
-problem this section's own "Still open, not yet fixed" note below describes, but doesn't eliminate
-it, since a heavily de-weighted bracket is still reachable at low, non-zero probability. Only a real
-eligibility gate on T2/T3 (excluding them outright below some roster-power threshold, the same
-treatment T4/Elite/Legendary already get) closes that gap completely — this rework reduces it, by
-design, rather than closing it.
+de-weighting T1-T4 by roster power softened the "level-1 guild rolls Regular's T3 and gets crushed"
+problem this section's own "Still open, not yet fixed" note below describes, but didn't eliminate
+it on its own, since a heavily de-weighted bracket was still reachable at low, non-zero probability.
+**Superseded same-day**: the "Regular's own internal T1-T4 ladder smoothed" note above fixes the
+dead zone at its actual source (the uneven ladder itself, not the weighting formula), rather than
+just reducing it — see that note for the confirmed post-smoothing numbers. The eligibility-gating
+roadmap item is still open and still the only *complete* structural fix (a heavily de-weighted
+bracket remains reachable at low, non-zero probability, and the dead-zone fix doesn't change that),
+but the EV-severity problem that made it urgent is now resolved.
 
-**Worked examples** (`SHARPNESS=4`, recomputed via `node -e`, all 4 tiers eligible unless noted):
+**`SHARPNESS` re-verified against the smoothed ladder, not just left alone.** Making the ladder
+even does not remove the need for a real sharpness value — it relocates where a badly-chosen one
+would hurt. The old wide ladder's dangerous gap sat at the T2→T3 boundary (the widest relative
+jump, 7.06x); the new ladder makes all three internal steps equally wide (~4.64x each, by
+construction), which shifts the T3→T4 boundary's *relative* gap from 1.67x (old T3=600 vs T4=1000)
+up to 4.64x (new T3=215 vs T4=1000) — the same order of magnitude as the other two steps now, not
+smaller. Re-running the same style of check the original sharpness sweep used, but this time at the
+T3/T4 boundary under the new ladder (`totalMultiplier≈110-130`, all 4 tiers eligible):
+
+- **At `SHARPNESS=4`** (current, unchanged): weighted EV stays solidly positive across this
+  region (e.g. +402,652 at `totalMultiplier=120`, independently re-verified via `node -e`) —
+  no new dead zone.
+- **At `SHARPNESS=1.5`** (the architect's original pre-tuning proposal, and what the product owner
+  speculated might now work "for a fuller blend" given the ladder fix): a **new** dead zone
+  reappears here, roughly **-300,000 to -621,000** across `totalMultiplier≈98-130` (worst
+  independently re-verified: **-621,490 at `totalMultiplier=98`**, also -531,412 at
+  `totalMultiplier=115`) — because at low sharpness, T4's very large negative EV at that power
+  level leaks in at a high enough weight to drag the blend negative, the same mechanism that
+  broke the old T2/T3 boundary, now relocated.
+
+**Recommendation: keep `SHARPNESS=4`, do not revert toward 1.5.** The product owner's own
+speculation that a lower sharpness "even works... now that the root asymmetry is fixed" does not
+hold once the T3/T4 boundary is actually checked under the new ladder — smoothing Regular's own
+T1-T3 spacing made the T3→T4 gap relatively *wider*, not narrower, so the same low-sharpness
+failure mode simply moved rather than disappeared. `SHARPNESS=4` was already independently
+re-verified to handle Elite/Legendary's own tight, uniform 1.68x spacing correctly (see the worked
+example below, unaffected by any of today's changes since Elite/Legendary's own constants didn't
+move) — it now also handles Regular's newly-uniform ~4.64x internal spacing correctly at every
+boundary checked. There is no evidence a different sharpness would improve on this, and real
+evidence (above) that a lower one would regress it.
+
+**Worked examples, historical (`SHARPNESS=4`, pre-2026-08-27 ladder smoothing — Regular column
+below reflects the OLD `T2=85`/`T3=600` values, kept for context on the dead zone this session's
+own ladder-smoothing note above fixed; recompute against the new `T2=46`/`T3=215` before relying
+on exact percentages here for anything Regular-specific going forward):
 
 Regular (T1=10, T2=85, T3=600, T4=1000), weights as T1/T2/T3/T4:
 
@@ -401,6 +515,19 @@ spacing and Elite/Legendary's tight/uniform spacing without any per-mode tuning:
 Legendary at its own T1 (2,378) produces the byte-identical percentage split (same relative spacing).
 
 ### Mode-level breakeven
+
+**This whole section's methodology (fixed, static `bracketOdds` per mode) predates the
+2026-08-27 dynamic tier-weighting rework above, and is now doubly historical for Regular** — its
+own T2/T3 no longer have fixed roll odds at all (they depend on `totalMultiplier` via
+`getDynamicTierWeights`), and Regular's own T2/T3 difficulty/reward also moved in the
+2026-08-27 ladder-smoothing pass. The numbers below (both the original and the 2026-08-26
+"recomputed" pass) are kept as a historical record of the fixed-odds-era methodology, not a
+live Regular-mode balance target — a proper post-dynamic-weighting equivalent would need to
+integrate weighted EV over `totalMultiplier` rather than solve a single static weighted-average
+breakeven, a different computation than this section performs. Elite/Legendary's own rows are
+unaffected by the 2026-08-27 change (their constants didn't move) but are still subject to the
+same "fixed-odds is now historical" caveat structurally, even though their own odds table hasn't
+been retuned since.
 
 `getMinGuildLevelForTier` only ever answers "is *this specific* tier's success-rate cap
 mathematically above breakeven" — it says nothing about whether a guild's actual roster is anywhere
@@ -460,16 +587,17 @@ ungated), keyed on actual roster power rather than guild level — guild level w
 be a weak proxy for roster strength, which is why T4 needed a *second*, separate gate on top of
 Elite/Legendary's own. See `balance-audit.md`'s 2026-08-23 entries for the full derivation.
 
-Regular's reward/penalty/difficulty (from `constants.js` `Raid` — difficulty unchanged by the
-2026-08-26 rework, but T2-T4's reward/penalty moved in the same-day reward-efficiency retune; see
-the geometric ladder table and "reward efficiency" note above for the current numbers, reproduced
-here for convenience):
+Regular's reward/penalty/difficulty (from `constants.js` `Raid` — T2/T3 difficulty AND reward/
+penalty moved again in the 2026-08-27 internal-ladder-smoothing pass documented above, on top of
+the 2026-08-26 reward-efficiency retune; T1/T4/Metal King are unchanged by both. See the "Regular's
+own internal T1-T4 ladder smoothed" note above for the derivation; current numbers reproduced here
+for convenience):
 
 | Mob | Reward | Penalty | Difficulty |
 |---|---|---|---|
 | T1 | 100,000 | -100,000 | 10 |
-| T2 | 1,133,000 | -1,133,000 | 85 |
-| T3 | 10,000,000 | -10,000,000 | 600 |
+| T2 | 613,000 | -613,000 | 46 |
+| T3 | 3,583,000 | -3,583,000 | 215 |
 | T4 | 20,000,000 | -20,000,000 | 1,000 |
 | Metal King | 10,000,000 (+2.0× work multi, +1,000,000 passive, +10,000,000 bank capacity, split across raiders) | none | 2,000 |
 
@@ -507,11 +635,17 @@ next raid automatically (see `join-raid`/`getLiveRaidRoster` above).
 **Stat raid** (`raid-select: stat`): costs `Raid.REGULAR_STAT_RAID_COST(-300,000)` potatoes per
 member upfront, difficulty `350`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for
 `+0.2` work multiplier for all participants, or a 1% chance to roll Metal King instead for double
-stat rewards. Difficulty is deliberately positioned between T2 (85) and T3 (600) — this is meant as
-a real alternate path to T3/T4-caliber `effectiveRaidPower` (pay a flat potato cost instead of
-grinding shop/regrade directly), not a shortcut that trivializes reaching them, so it's kept harder
-than T2 and easier than T3 on purpose rather than left at whatever difficulty happened to be
-convenient.
+stat rewards. Difficulty was originally positioned deliberately between T2 (85) and T3 (600) — a
+real alternate path to T3/T4-caliber `effectiveRaidPower` (pay a flat potato cost instead of
+grinding shop/regrade directly), kept harder than T2 and easier than T3 on purpose rather than left
+at whatever difficulty happened to be convenient.
+
+**Stale as of the 2026-08-27 Regular T1-T4 internal-ladder smoothing pass**: Regular's own T2/T3
+moved to 46/215 (see above), but `REGULAR_STAT_RAID_DIFFICULTY` (350) was left untouched — it was
+not part of that pass's scope and wasn't called out in its own "confirmed unaffected" list. 350 now
+sits ABOVE T3 (215) rather than between T2 and T3, quietly inverting half the original design
+intent ("never as hard as T3"). Not fixed as part of that pass — flagged here as an open,
+unresolved balance question for the product owner/architect, not silently corrected.
 
 ## World raids
 

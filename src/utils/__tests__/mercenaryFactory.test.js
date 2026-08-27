@@ -133,8 +133,8 @@ describe('resolveBountyAttempt', () => {
         expect(result.successChance).toBeCloseTo(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
         expect(result.currency).toBe('potato');
         expect(result.scenario).toBe(BountyScenarios.I[0]);
-        // reward = round(T1_RAID_REWARD * rangeRoll(.8) * SOLO_BOUNTY_REWARD_SHARE * rank1Multiplier(1) * (1 + 0 yukon))
-        const expected = Math.round(Raid.T1_RAID_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * 1 * 1);
+        // reward = round(BOUNTY_T1_REWARD * rangeRoll(.8) * SOLO_BOUNTY_REWARD_SHARE * rank1Multiplier(1) * (1 + 0 yukon))
+        const expected = Math.round(Bounty.BOUNTY_T1_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * 1 * 1);
         expect(result.rewardAmount).toBe(expected);
         expect(result.statReward).toBeNull();
         expect(result.yukonHit).toBe(false);
@@ -156,11 +156,11 @@ describe('resolveBountyAttempt', () => {
             randomSpy.mockRestore();
         }
 
-        const expected = Math.round(Raid.T1_RAID_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * maxRank.rewardMultiplier * 1);
+        const expected = Math.round(Bounty.BOUNTY_T1_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * maxRank.rewardMultiplier * 1);
         expect(result.rewardAmount).toBe(expected);
         // A maxed-rank mercenary's per-attempt reward must stay strictly below the full,
         // undiscounted base reward — the whole point of SOLO_BOUNTY_REWARD_SHARE existing.
-        expect(result.rewardAmount).toBeLessThan(Raid.T1_RAID_REWARD);
+        expect(result.rewardAmount).toBeLessThan(Bounty.BOUNTY_T1_REWARD);
     });
 
     test('a starch-flavored win formula reuses userMultiplier+guildMultiplier the same shape Taro Trader uses, scaled by STARCH_TIER_MULTIPLIER and rank', async () => {
@@ -239,7 +239,7 @@ describe('resolveBountyAttempt', () => {
             randomSpy.mockRestore();
         }
         expect(resultWith.successChance).toBeGreaterThan(resultWithout.successChance);
-        expect(resultWith.successChance).toBeCloseTo((5 * 1.05) / Raid.T1_RAID_DIFFICULTY);
+        expect(resultWith.successChance).toBeCloseTo((5 * 1.05) / Bounty.BOUNTY_T1_DIFFICULTY);
     });
 
     test('a loss pays the SOLO_BOUNTY_REWARD_SHARE-discounted penalty — same discount as a win, but no rank/Yukon discount on top', async () => {
@@ -258,7 +258,7 @@ describe('resolveBountyAttempt', () => {
         expect(result.won).toBe(false);
         expect(result.currency).toBe('potato');
         expect(result.rewardAmount).toBe(0);
-        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Raid.T1_RAID_PENALTY) * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE));
+        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Bounty.BOUNTY_T1_PENALTY) * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE));
     });
 
     test('success chance is capped at Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE even for an extremely overpowered mercenary', async () => {
