@@ -149,6 +149,65 @@ still levels whatever's equipped. Scavenging still has its own separate leveling
 (`resolveScavengeReward`, below) since it's the one action that levels a *benched*, not
 equipped, instance.
 
+**Non-work-focused companion leveling (`/rob`, `/sell-starch`, `/regrade`)** — direct
+instruction: companions whose perks aren't work-related (starch-sell boosters, rob-chance
+boosters) get their own thematic leveling path too, "similar to yukon having a specific
+leveling method." Product-confirmed design point that distinguishes this from Yukon's own
+mechanism above: the restriction is by **PERK TYPE**, not a hardcoded companion id — a command
+levels whichever equipped companion happens to carry the matching perk, not one specific
+companion. `levelActiveCompanion` gained a 4th parameter, `restrictToPerkType`, for this:
+checked against the ROSTER definition's own `perks` array (via `getCompanionById`), not the
+owned instance (which only carries `{ instanceId, id, workCount }`) — mirrors
+`getActivePerkValue`'s own lookup idiom. Takes a back seat to `restrictToCompanionId` if a
+caller somehow passed both (checked first); no real call site does, since the two mechanisms
+are mutually exclusive by design (Yukon's Bounty/Heist path uses one, these three commands use
+the other).
+
+- **`/rob`** — `robChanceFlat` (Barn Owl/Yukon/Elder Rootbeard). Reuses the existing
+  `getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)`
+  formula Bounty/Heist already use (`/rob`'s own 1hr cooldown lands on the same **8** grant as
+  Bounty's, since both share `REALISTIC_PLAY_DISCOUNT` against the same-length cooldown).
+  Unconditional on win/loss — computed once right after the confirm button resolves, before the
+  win/loss branch split — deliberately, since a FAILED rob costs the robber *more* than a win (a
+  25-50% liquid-potato fine plus an extra `/work` cooldown penalty on top of the normal
+  `robTimer` reset), so gating the grant on success would perversely under-reward the worse
+  outcome.
+- **`/sell-starch`** — `starchSellBonusPercent` (Mole/Rootcarver/Elder Rootbeard). Has no
+  cooldown to scale a grant against the way Bounty/Heist/`/rob` do, so
+  `companionFactory.getStarchSellWorkCountGrant(starches) = max(1, round(starches /
+  CompanionLeveling.STARCH_SELL_REFERENCE_YIELD))` scales by the resource VALUE MOVED in that
+  specific call instead — starches sold, not a flat per-call amount (product-confirmed design
+  point). `STARCH_SELL_REFERENCE_YIELD` (10) is calibrated so ~10 starches sold —
+  `workFactory.handleTaroTrader`'s own average yield (`round(uniform(8,12))` averages to 10) —
+  nets roughly the same grant a single `/work` call does; this is a size reference, **not** a
+  real-time-effort calibration (a player typically equips a work-multiplier companion while
+  grinding, then swaps to a starch-focused one just for the `/sell-starch` moment, so this reads
+  as "one sell action ≈ one work action, scaled by size" rather than "proportional to how long
+  it took to earn these starches"). Floored at 1 so even a tiny sell still trains the companion
+  a little.
+- **`/regrade`** — `regradeChanceFlat` (currently only Elder Rootbeard, wired generically by
+  perk type so it's future-proof for any later companion granting it). Also has no cooldown,
+  so `companionFactory.getRegradeWorkCountGrant(currentTierCost, cheapestTierCost) = max(1,
+  round(CompanionLeveling.REGRADE_BASE_GRANT * (currentTierCost / cheapestTierCost) ^
+  CompanionLeveling.REGRADE_GRANT_COST_EXPONENT))` scales by that attempt's cost, normalized
+  against that TRACK's own cheapest tier's cost (not an absolute potato figure) so this
+  self-corrects if a track's tier table is ever rebalanced. The `REGRADE_GRANT_COST_EXPONENT`
+  (0.5, i.e. sqrt) deliberately compresses the ~10x cost spread across
+  `workRegradeTiers`/`passiveRegradeTiers` (and ~6x across `bankRegradeTiers`) down to a much
+  gentler ~3x/~2.5x grant spread, instead of scaling naive-linear with the raw potato figure
+  (which would hand the top tier 10x the bottom tier's grant, trivializing early-game
+  regrade-leveling by comparison). `REGRADE_BASE_GRANT` (2, vs. starch-sell's 1) is bigger
+  since even the cheapest regrade attempt is a real 500,000,000-potato commitment with genuine
+  failure risk — closer in spirit to Bounty/Heist's cooldown-scaled multiple than to a costless
+  `/sell-starch` call, but pitched below Bounty/Heist's 8x/4x since the "investment" here is
+  capital risk, not a real-time lockout. Verified grant sequence (cost 500,000,000 to
+  5,000,000,000, 14 tiers, work/passive tracks): `[2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6]`;
+  bank track's own 9-tier schedule (500,000,000 to 3,000,000,000): `[2, 2, 3, 3, 3, 3, 4, 4,
+  5]`. Inserted right after each of the three tracks' own `addUserDatabase(userId, "potatoes",
+  -currentTier.cost)` line (the cost is a guaranteed sunk cost regardless of outcome, same as
+  `/rob`'s reasoning above), so it's unconditional on success/fail and fires once per attempt
+  in all three tracks.
+
 This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
 spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a
 level (1-10) via `CompanionLeveling.THRESHOLDS`, the exact same shape/lookup pattern

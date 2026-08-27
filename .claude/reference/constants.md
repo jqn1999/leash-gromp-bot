@@ -23,6 +23,7 @@ changes without this knowledge base being updated alongside it.
 | `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, `BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` (Bounty's own dedicated tier ladder, decoupled from `Raid` 2026-08-27 — see below), per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `Rival`, `RivalMercenaries` | Rival Bounty Hunters — Notoriety accrual/threshold, weighted scenario roll + per-scenario success-chance range, capped-base reward/penalty factors, the 6-entry named rival roster | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `GuildRoles` | Role name strings (`Leader`, `Co-Leader`, `Elder`, `Member`) | [systems/guilds.md](../systems/guilds.md) |
+| `CompanionRarity`, `CompanionRarityOdds`, `CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `Companions` | Companion rarity odds/roster, leveling thresholds/multiplier (incl. `STARCH_SELL_REFERENCE_YIELD`/`REGRADE_BASE_GRANT`/`REGRADE_GRANT_COST_EXPONENT` — see below), marketplace pricing/tax, scavenging duration/rewards | [systems/companions.md](../systems/companions.md) |
 | `shops` | Personal shop tiers (`workShop`, `passiveIncomeShop`, `bankShop`, `starchShop`) — item costs/amounts | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/starch-trading.md](../systems/starch-trading.md) |
 | `metalKingRaidBoss`, `metalPotatoSuccess`/`Failure`, `regularStatRaidMobs`, `regularWorkMobs`, `largePotato`, `sweetPotato`, `taroTrader`, `poisonPotato`, `goldenPotato` | Flavor text + thumbnail URLs for each encounter/mob — cosmetic, no gameplay values | [systems/economy-and-work.md](../systems/economy-and-work.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md) |
 | `awsConfigurations` | DynamoDB table names, AWS credential wiring (from `.env`), `testServer`/`clientId`, `devs` allowlist | [architecture/data-model.md](../architecture/data-model.md) |
@@ -115,6 +116,18 @@ dead zone — meaningfully more "blend between the two closest tiers, real if sm
 third" (~0.5% far-tier weight at a crossover) than 4's near-zero (~0.1%), without regressing the
 EV fix. Full derivation, sharpness sweep, and worked examples:
 [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting).
+
+### `CompanionLeveling.STARCH_SELL_REFERENCE_YIELD`/`REGRADE_BASE_GRANT`/`REGRADE_GRANT_COST_EXPONENT` (non-work-focused companion leveling)
+
+Power the three new perk-type-restricted leveling paths (`/rob`, `/sell-starch`, `/regrade` —
+`companionFactory.levelActiveCompanion`'s `restrictToPerkType` argument, `getStarchSellWorkCountGrant`/
+`getRegradeWorkCountGrant`). `/rob` reuses the existing `getCooldownScaledWorkCountGrant`/
+`REALISTIC_PLAY_DISCOUNT` (same formula Bounty/Heist already use, restricted to `robChanceFlat`
+instead of Yukon's companion id). `STARCH_SELL_REFERENCE_YIELD` (10) and `REGRADE_BASE_GRANT`/
+`REGRADE_GRANT_COST_EXPONENT` (2 / 0.5) size grants for `/sell-starch`/`/regrade`, which have no
+cooldown to scale against — both instead scale by the resource VALUE MOVED in that call (starches
+sold, or regrade cost paid relative to that track's own cheapest tier). Full derivation:
+[systems/companions.md#leveling](../systems/companions.md#leveling).
 
 ### `guild.raidSplitMode` (not in `constants.js` — a persisted guild field, default `"even"`)
 

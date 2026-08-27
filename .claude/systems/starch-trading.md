@@ -161,7 +161,10 @@ the rest), so every pattern below `SMALL_SPIKE` keeps its exact prior odds uncha
   Sells at `starch_sell`. Tracks `totalEarnings`/`totalLosses` based on
   `sellValue - buyValue`, where `buyValue` uses the **current cycle's** `starch_buy` as the basis —
   not the price the user actually paid when they originally bought. Don't assume per-lot cost
-  basis tracking exists; it doesn't.
+  basis tracking exists; it doesn't. Also levels the seller's equipped companion if it carries
+  `starchSellBonusPercent` (Mole/Rootcarver/Elder Rootbeard), scaled by starches sold this call
+  (no cooldown to scale against here, unlike Bounty/Heist/`/rob`) — see
+  [companions.md#leveling](companions.md#leveling).
 - [starchPrice.js](../../src/commands/starch/starchPrice.js) (`/starch`) — read-only display of the
   current buy or sell price (whichever window is active) plus the max amount the user could
   currently buy or sell.

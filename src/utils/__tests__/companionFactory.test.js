@@ -16,6 +16,8 @@ const {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    getStarchSellWorkCountGrant,
+    getRegradeWorkCountGrant,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,
@@ -688,6 +690,85 @@ describe('levelActiveCompanion', () => {
             const result = levelActiveCompanion(companions, 12, 'yukon');
             expect(result.owned[0].workCount).toBe(22);
         });
+    });
+
+    // restrictToPerkType (non-work-focused companion leveling paths — /rob, /sell-starch,
+    // /regrade) — product-confirmed: the restriction is by PERK TYPE, not a hardcoded
+    // companion id, so any equipped companion carrying the matching perk trains, not just
+    // one named companion. Checked against the ROSTER definition's own `perks` array (via
+    // getCompanionById), not the owned instance, which only carries { instanceId, id,
+    // workCount }.
+    describe('restrictToPerkType', () => {
+        test('is a no-op (same reference back) when the equipped companion does not carry the perk type', () => {
+            // Sprout only carries workMultiplierPercent, not robChanceFlat.
+            const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a' };
+            expect(levelActiveCompanion(companions, 8, null, 'robChanceFlat')).toBe(companions);
+        });
+
+        test('levels normally when the equipped companion carries the matching perk type', () => {
+            // Barn Owl carries robChanceFlat.
+            const companions = { owned: [{ instanceId: 'owl-a', id: 'barn_owl', workCount: 10 }], active: 'owl-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+            const result = levelActiveCompanion(companions, 8, null, 'robChanceFlat');
+            expect(result.owned[0].workCount).toBe(18);
+        });
+
+        test('is not restricted to one specific companion id — any companion carrying the perk type levels', () => {
+            // Elder Rootbeard also carries robChanceFlat, distinct from Barn Owl.
+            const companions = { owned: [{ instanceId: 'elder-a', id: 'elder_rootbeard', workCount: 10 }], active: 'elder-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+            const result = levelActiveCompanion(companions, 8, null, 'robChanceFlat');
+            expect(result.owned[0].workCount).toBe(18);
+        });
+
+        test('a different perk type check does not level a companion missing that specific perk, even if it carries other perks', () => {
+            // Mole carries starchSellBonusPercent, not regradeChanceFlat.
+            const companions = { owned: [{ instanceId: 'mole-a', id: 'mole', workCount: 10 }], active: 'mole-a' };
+            expect(levelActiveCompanion(companions, 2, null, 'regradeChanceFlat')).toBe(companions);
+        });
+
+        test('is a no-op when nothing is equipped', () => {
+            const companions = { owned: [], active: null };
+            expect(levelActiveCompanion(companions, 8, null, 'robChanceFlat')).toBe(companions);
+        });
+    });
+});
+
+describe('getStarchSellWorkCountGrant', () => {
+    // Verified via node -e execution: 10 starches -> 1, 25 -> 3, 80 -> 8, 3 -> floors at 1.
+    test.each([
+        [10, 1],
+        [25, 3],
+        [80, 8],
+        [3, 1],
+    ])('%i starches sold grants %i workCount', (starches, expectedGrant) => {
+        expect(getStarchSellWorkCountGrant(starches)).toBe(expectedGrant);
+    });
+});
+
+describe('getRegradeWorkCountGrant', () => {
+    // Verified sequences (node -e execution) against each track's own cheapest tier's cost.
+    const WORK_GRANT_SEQUENCE = [2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6];
+    const BANK_GRANT_SEQUENCE = [2, 2, 3, 3, 3, 3, 4, 4, 5];
+
+    test('matches the verified work/passive-track grant sequence (14 tiers, 500,000,000 to 5,000,000,000)', () => {
+        const { workRegradeTiers } = require('../constants');
+        const grants = workRegradeTiers.map(tier => getRegradeWorkCountGrant(tier.cost, workRegradeTiers[0].cost));
+        expect(grants).toEqual(WORK_GRANT_SEQUENCE);
+    });
+
+    test('matches passiveRegradeTiers\' identical cost schedule (mirrors workRegradeTiers\' cost/chance exactly)', () => {
+        const { passiveRegradeTiers } = require('../constants');
+        const grants = passiveRegradeTiers.map(tier => getRegradeWorkCountGrant(tier.cost, passiveRegradeTiers[0].cost));
+        expect(grants).toEqual(WORK_GRANT_SEQUENCE);
+    });
+
+    test('matches the verified bank-track grant sequence (9 tiers, 500,000,000 to 3,000,000,000) — its own, different sequence', () => {
+        const { bankRegradeTiers } = require('../constants');
+        const grants = bankRegradeTiers.map(tier => getRegradeWorkCountGrant(tier.cost, bankRegradeTiers[0].cost));
+        expect(grants).toEqual(BANK_GRANT_SEQUENCE);
+    });
+
+    test('floors at 1 for the cheapest tier of its own track', () => {
+        expect(getRegradeWorkCountGrant(500000000, 500000000)).toBe(2); // base grant, ratio 1 -> still 2, never below floor
     });
 });
 

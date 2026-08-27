@@ -2511,6 +2511,68 @@ and needs its own balance pass.
   Full suite green (597/597, no count change). Full sweep table and worked examples:
   [systems/raids-and-world-events.md](systems/raids-and-world-events.md#dynamic-tier-weighting).
 
+- [x] **63. Non-Work-Focused Companion Leveling (`/rob`, `/sell-starch`, `/regrade`)** — S — **Done**
+  What: companions whose perks aren't work-related (starch-sell boosters, rob-chance boosters)
+  now have their own thematic leveling path, "similar to yukon having a specific leveling
+  method" (roadmap #59) — before this, Barn Owl/Mole/Rootcarver/Elder Rootbeard/Yukon only
+  leveled through `/work` or Scavenging, never through the very actions their own perks boost.
+  `companionFactory.levelActiveCompanion` gained a 4th parameter, `restrictToPerkType` — checked
+  against the ROSTER definition's own `perks` array (via `getCompanionById`), not the owned
+  instance — so a command levels whichever equipped companion happens to carry the matching
+  perk, not one hardcoded companion the way Yukon's existing `restrictToCompanionId` is pinned.
+  - `/rob` — `robChanceFlat`. Reuses the existing `getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS,
+    CompanionLeveling.REALISTIC_PLAY_DISCOUNT)` formula Bounty/Heist already use — lands on **8**,
+    same as Bounty's own grant (same 1hr cooldown). Computed once right after the confirm button
+    resolves and applied unconditionally on win/loss, since a FAILED rob costs strictly more than
+    a win (a 25-50% liquid-potato fine plus an extra `/work` cooldown penalty on top of the
+    normal `robTimer` reset) — gating on success would under-reward the worse outcome.
+  - `/sell-starch` — `starchSellBonusPercent`. No cooldown to scale against, so
+    `companionFactory.getStarchSellWorkCountGrant(starches) = max(1, round(starches /
+    CompanionLeveling.STARCH_SELL_REFERENCE_YIELD))` scales by the resource VALUE MOVED in that
+    call instead (product-confirmed design point, not a flat per-call amount).
+    `STARCH_SELL_REFERENCE_YIELD` (10) is `workFactory.handleTaroTrader`'s own average yield, used
+    purely as a size reference ("one sell action ≈ one work action, scaled by size") — not a
+    real-time-effort calibration. Verified: 10 starches → 1, 25 → 3, 80 → 8, 3 → floors at 1.
+  - `/regrade` — `regradeChanceFlat` (currently only Elder Rootbeard, wired generically by perk
+    type). Also no cooldown, so `companionFactory.getRegradeWorkCountGrant(currentTierCost,
+    cheapestTierCost) = max(1, round(CompanionLeveling.REGRADE_BASE_GRANT *
+    (currentTierCost/cheapestTierCost) ^ CompanionLeveling.REGRADE_GRANT_COST_EXPONENT))` scales
+    by that attempt's cost normalized against that TRACK's own cheapest tier (self-corrects if a
+    tier table is ever rebalanced). `REGRADE_GRANT_COST_EXPONENT` (0.5, sqrt) compresses the
+    ~10x cost spread across work/passive tiers (~6x bank) down to a gentle ~3x/~2.5x grant
+    spread rather than scaling linearly with the raw potato figure. `REGRADE_BASE_GRANT` (2, vs.
+    starch-sell's 1) reflects that even the cheapest attempt is a real 500,000,000-potato
+    commitment with genuine failure risk. Inserted right after each track's own
+    `addUserDatabase(userId, "potatoes", -currentTier.cost)` line, so it fires once per attempt,
+    unconditional on success/fail (the cost is a guaranteed sunk cost either way). Verified
+    sequences (node -e execution): work/passive tracks (14 tiers, 500M→5B) →
+    `[2,2,3,3,3,3,4,4,5,5,6,6,6,6]`; bank track (9 tiers, 500M→3B) → `[2,2,3,3,3,3,4,4,5]`.
+  Why: direct user request. Product-confirmed design points before implementation: (1)
+  restriction is by PERK TYPE, not a hardcoded companion id; (2) for commands with no cooldown
+  to scale a grant against, the grant scales by the resource value moved in that specific call,
+  not a flat per-call amount.
+  Notable design points: `restrictToCompanionId` and `restrictToPerkType` are mutually
+  exclusive by design (checked in that order, `restrictToCompanionId` wins if both were somehow
+  passed) — no real call site passes both. Every existing `levelActiveCompanion` call site
+  (`/work`'s unrestricted 2-arg call, `takeBounty.js`/`robNpc.js`'s `'yukon'`-restricted calls)
+  is untouched since the new 4th parameter defaults to `null` and is purely additive — regression-
+  verified by re-running `mercenaryCompanionLeveling.test.js` completely unmodified. Elder
+  Rootbeard carries all three matching perk types (`robChanceFlat`/`starchSellBonusPercent`/
+  `regradeChanceFlat`) simultaneously — a dedicated combined test confirms the three per-command,
+  per-perk-type checks don't interfere with each other. New tests: `companionFactory.test.js`
+  gained a `restrictToPerkType` describe block (mirroring `restrictToCompanionId`'s own shape)
+  plus direct fixture tests for `getStarchSellWorkCountGrant`/`getRegradeWorkCountGrant`; a new
+  `src/commands/user/__tests__/nonWorkCompanionLeveling.test.js` drives `/rob`, `/sell-starch`,
+  and `/regrade`'s real callbacks end-to-end (mocking only `dynamoHandler`/`starchFactory`, same
+  "mock at the boundary the command actually touches" approach `mercenaryCompanionLeveling.test.js`
+  established) — equipped-with-matching-perk / equipped-without-the-perk (no-op) / nothing-
+  equipped (no-op) for each command, both outcomes (win/loss, success/fail) confirming
+  unconditional-on-outcome behavior, the full verified `/regrade` grant sequence for both the
+  work-multi and bank tracks, and the Elder Rootbeard cross-command combined test. Full suite
+  green: 627/627 (up from 597/597 before this item — 30 new tests: 13 direct unit tests in
+  `companionFactory.test.js`, 17 end-to-end tests across the three commands in
+  `nonWorkCompanionLeveling.test.js`).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -533,7 +533,27 @@ const CompanionLeveling = {
     // 2/3 lands exactly on both requested numbers (12 * 2/3 = 8, 6 * 2/3 = 4) while staying
     // a real, reusable "realistic play" discount rather than two independently hardcoded
     // numbers that would silently drift out of that same ratio if either cooldown changes.
-    REALISTIC_PLAY_DISCOUNT: 2 / 3
+    REALISTIC_PLAY_DISCOUNT: 2 / 3,
+    // Non-work-focused companion leveling paths (product-confirmed: restriction is by PERK
+    // TYPE, not a hardcoded companion id — see companionFactory.levelActiveCompanion's
+    // restrictToPerkType). /sell-starch and /regrade have no cooldown to scale a grant
+    // against the way Bounty/Heist do, so both instead scale by the resource VALUE MOVED in
+    // that specific call — starches sold, or regrade cost paid — see
+    // companionFactory.getStarchSellWorkCountGrant/getRegradeWorkCountGrant for the full
+    // derivations.
+    //
+    // STARCH_SELL_REFERENCE_YIELD: ~10 starches sold nets roughly one /work call's worth of
+    // grant — 10 is workFactory.handleTaroTrader's own average yield (round(uniform(8,12))
+    // averages to 10), used purely as a size reference, not a real-time-effort calibration.
+    STARCH_SELL_REFERENCE_YIELD: 10,
+    // REGRADE_BASE_GRANT / REGRADE_GRANT_COST_EXPONENT: grant = max(1, round(BASE *
+    // (currentTierCost / cheapestTierCost) ^ EXPONENT)) — sqrt (0.5) compresses each track's
+    // wide cost spread (~10x work/passive, ~6x bank) down to a gentle ~3x/~2.5x grant spread
+    // instead of scaling linearly with the raw potato figure. Base of 2 (vs. starch-sell's 1)
+    // since even the cheapest regrade attempt is a real 500,000,000-potato commitment with
+    // genuine failure risk.
+    REGRADE_BASE_GRANT: 2,
+    REGRADE_GRANT_COST_EXPONENT: 0.5
 }
 
 // Companion Scavenging (roadmap #17): a benched (owned, unequipped, not already

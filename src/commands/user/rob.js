@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Rob } = require("../../utils/constants");
+const { Rob, CompanionLeveling } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -160,6 +160,20 @@ module.exports = {
 
         const userSuccessfulRob = determineRobOutcome(robChance);
 
+        // Non-work-focused companion leveling (Barn Owl/Yukon/Elder Rootbeard's robChanceFlat)
+        // — computed once here, unconditional on win/loss, since a FAILED rob costs the player
+        // MORE than a win (a 25-50% liquid-potato fine plus an extra cooldown penalty on top of
+        // the normal robTimer reset — see calculateFailedRobPenalty/Rob.WORK_TIMER_INCREASE_MS
+        // below), so gating the grant on success would perversely under-reward the worse
+        // outcome. Restricted by PERK TYPE, not a specific companion id — any equipped
+        // companion carrying robChanceFlat trains here, not just one hardcoded companion.
+        const leveledCompanions = companionFactory.levelActiveCompanion(
+            userDetails.companions,
+            companionFactory.getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
+            null,
+            "robChanceFlat"
+        );
+
         // TODO: Move each of these into flows functions in future
         if (userSuccessfulRob) {
             const robAmount = calculateRobAmount(targetUserPotatoes);
@@ -172,7 +186,8 @@ module.exports = {
                 dynamoHandler.updateUserFields(userId, {
                     potatoes: userPotatoes,
                     totalEarnings: userTotalEarnings,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS,
+                    companions: leveledCompanions
                 }),
                 dynamoHandler.updateUserFields(targetUserId, {
                     potatoes: targetUserPotatoes,
@@ -194,7 +209,8 @@ module.exports = {
                     potatoes: userPotatoes,
                     totalLosses: userTotalLosses,
                     workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS,
+                    companions: leveledCompanions
                 })
             ]);
 

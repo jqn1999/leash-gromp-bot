@@ -345,6 +345,11 @@ Success chance decreases across tiers (from 50% down to 0.5%). Failures build a 
 (pity counter) that's added to the *next* attempt's chance — resets to 0 on success. This is the
 only progression path once a stat has exhausted its shop tiers.
 
+Also levels the player's equipped companion if it carries `regradeChanceFlat` (currently only
+Elder Rootbeard), scaled by this attempt's cost relative to that track's own cheapest tier and
+unconditional on success/fail (the cost is a guaranteed sunk cost regardless of outcome) — see
+[companions.md#leveling](companions.md#leveling).
+
 ## Rebirth (prestige reset)
 
 [rebirth.js](../../src/commands/buying/rebirth.js) +
@@ -445,3 +450,7 @@ chance: `.05 + (.2 - userPotatoes/total*.2)` (poorer robber vs. richer target �
 Failure fines the robber 25–50% of their own total wealth (or a flat `Rob.BASE_ROB_PENALTY(5000)`
 if their computed wealth is negative), plus adds `Rob.WORK_TIMER_INCREASE_MS(6,900,000ms ≈ 1h55m)`
 onto their `/work` cooldown as a penalty.
+
+Also levels the robber's equipped companion if it carries `robChanceFlat` (Barn Owl/Yukon/Elder
+Rootbeard), cooldown-scaled against `/work` and unconditional on win/loss — see
+[companions.md#leveling](companions.md#leveling).

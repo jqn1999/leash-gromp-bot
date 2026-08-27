@@ -81,6 +81,18 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBaseWorkMultiplier, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // — the cost above is a guaranteed sunk cost regardless of outcome, so this
+                    // grant is unconditional on success/fail too. Scales by this attempt's cost
+                    // relative to this TRACK's own cheapest tier. Restricted by PERK TYPE, not a
+                    // specific companion id.
+                    const leveledCompanions = companionFactory.levelActiveCompanion(
+                        userDetails.companions,
+                        companionFactory.getRegradeWorkCountGrant(currentTier.cost, workRegradeTiers[0].cost),
+                        null,
+                        "regradeChanceFlat"
+                    );
+                    await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     let failStack = userRegrades.workMulti.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.workMulti.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
@@ -108,6 +120,15 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBasePassiveIncome, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // — see the work-multi track above for the full rationale.
+                    const leveledCompanions = companionFactory.levelActiveCompanion(
+                        userDetails.companions,
+                        companionFactory.getRegradeWorkCountGrant(currentTier.cost, passiveRegradeTiers[0].cost),
+                        null,
+                        "regradeChanceFlat"
+                    );
+                    await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     let failStack = userRegrades.passiveAmount.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
@@ -135,6 +156,15 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBaseBankCapacity, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // — see the work-multi track above for the full rationale.
+                    const leveledCompanions = companionFactory.levelActiveCompanion(
+                        userDetails.companions,
+                        companionFactory.getRegradeWorkCountGrant(currentTier.cost, bankRegradeTiers[0].cost),
+                        null,
+                        "regradeChanceFlat"
+                    );
+                    await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     let failStack = userRegrades.bankCapacity.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {

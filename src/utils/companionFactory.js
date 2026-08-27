@@ -277,14 +277,33 @@ function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor =
 // obtainable from /work); Bounty/Heist now pass `'yukon'` here so only Yukon trains from a
 // mercenary's own signature actions — any other equipped companion is a no-op through
 // these two commands (still levels normally through /work or Scavenging as always).
-function levelActiveCompanion(companions, workCountGained, restrictToCompanionId = null) {
+//
+// restrictToPerkType (default null, added for the non-work-focused companion leveling
+// paths — /rob, /sell-starch, /regrade): unlike restrictToCompanionId, which pins the
+// grant to one specific companion, this pins it to whichever equipped companion happens to
+// carry a given PERK TYPE — direct instruction/product confirmation: the restriction is by
+// perk, not by a hardcoded companion id, so any current or future companion granting
+// robChanceFlat/starchSellBonusPercent/regradeChanceFlat trains from the matching command,
+// not just one named companion the way Yukon is pinned to Bounty/Heist. Checked against the
+// ROSTER definition's own `perks` array (via getCompanionById), not the owned instance —
+// perks live on the roster entry, an owned instance only carries { instanceId, id,
+// workCount }. Takes a back seat to restrictToCompanionId if a caller somehow passed both
+// (checked first, below) — no real call site does; the two are mutually exclusive by
+// design (Yukon's Bounty/Heist path uses one, the perk-type paths use the other).
+function levelActiveCompanion(companions, workCountGained, restrictToCompanionId = null, restrictToPerkType = null) {
     const activeInstanceId = companions?.active;
     if (!activeInstanceId) {
         return companions;
     }
+    const activeEntry = (companions.owned ?? []).find(c => c.instanceId === activeInstanceId);
     if (restrictToCompanionId) {
-        const activeEntry = (companions.owned ?? []).find(c => c.instanceId === activeInstanceId);
         if (activeEntry?.id !== restrictToCompanionId) {
+            return companions;
+        }
+    } else if (restrictToPerkType) {
+        const activeCompanion = activeEntry ? getCompanionById(activeEntry.id) : null;
+        const hasPerk = activeCompanion?.perks?.some(p => p.type === restrictToPerkType) ?? false;
+        if (!hasPerk) {
             return companions;
         }
     }
@@ -292,6 +311,42 @@ function levelActiveCompanion(companions, workCountGained, restrictToCompanionId
         o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained } : o
     );
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
+}
+
+// Starches sold this call -> companion XP grant, for whichever equipped companion carries
+// starchSellBonusPercent (Mole/Rootcarver/Elder Rootbeard) when /sell-starch runs. /sell-starch
+// has no cooldown to scale against the way Bounty/Heist do, so the grant instead scales by the
+// resource VALUE MOVED in this specific call (starches sold) — product-confirmed design:
+// "for commands with no cooldown to scale a grant against, the grant scales by the resource
+// value moved in that call, not a flat per-call amount." Calibrated so ~10 starches sold
+// (workFactory.handleTaroTrader's own average yield — round(uniform(8,12)) averages to 10)
+// nets roughly the same grant a single /work call does — NOT a real-time-effort calibration
+// (a player typically equips a work-multiplier companion while grinding, then swaps to a
+// starch-focused one just for the /sell-starch moment), so this reads as "one sell action ~
+// one work action, scaled by size" rather than "proportional to how long it took to earn
+// these starches." Floored at 1 so even a tiny sell still trains the companion a little.
+function getStarchSellWorkCountGrant(starches) {
+    return Math.max(1, Math.round(starches / CompanionLeveling.STARCH_SELL_REFERENCE_YIELD));
+}
+
+// Regrade attempt cost -> companion XP grant, for whichever equipped companion carries
+// regradeChanceFlat (currently only Elder Rootbeard, wired generically by perk type so it's
+// future-proof) when /regrade runs. Normalized against that TRACK's own cheapest tier's cost
+// (not an absolute potato figure), so this self-corrects if a track's tier table is ever
+// rebalanced, rather than needing a re-tune alongside it. sqrt on the cost ratio deliberately
+// compresses the ~10x cost spread across workRegradeTiers/passiveRegradeTiers (and ~6x across
+// bankRegradeTiers) down to a much gentler ~3x/~2.5x grant spread — a naive linear scale
+// against the raw potato figure would hand the top tier 10x the bottom tier's grant, making
+// early-game regrade-leveling trivial by comparison. Base grant of REGRADE_BASE_GRANT (2, vs.
+// starch-sell's 1) since even the cheapest regrade attempt is a real 500,000,000-potato
+// commitment with genuine failure risk — closer in spirit to Bounty/Heist's cooldown-scaled
+// multiple than to a costless /sell-starch call, but pitched below Bounty/Heist's 8x/4x since
+// the "investment" here is capital risk, not a real-time lockout. Floored at 1.
+function getRegradeWorkCountGrant(currentTierCost, cheapestTierCost) {
+    const costRatio = currentTierCost / cheapestTierCost;
+    return Math.max(1, Math.round(
+        CompanionLeveling.REGRADE_BASE_GRANT * Math.pow(costRatio, CompanionLeveling.REGRADE_GRANT_COST_EXPONENT)
+    ));
 }
 
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
@@ -483,6 +538,8 @@ module.exports = {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    getStarchSellWorkCountGrant,
+    getRegradeWorkCountGrant,
     isScavenging,
     buildScavengeDispatch,
     resolveScavengeReward,

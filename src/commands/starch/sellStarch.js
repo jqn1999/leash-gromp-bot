@@ -77,8 +77,23 @@ module.exports = {
 
         userPotatoes += sellValue
         userStarches -= starches
+
+        // Non-work-focused companion leveling (Mole/Rootcarver/Elder Rootbeard's
+        // starchSellBonusPercent) — /sell-starch has no cooldown to scale a grant against
+        // the way Bounty/Heist do, so the grant scales by the resource VALUE MOVED in this
+        // call (starches sold) instead of a flat per-call amount. Restricted by PERK TYPE,
+        // not a specific companion id — any equipped companion carrying
+        // starchSellBonusPercent trains here.
+        const leveledCompanions = companionFactory.levelActiveCompanion(
+            userDetails.companions,
+            companionFactory.getStarchSellWorkCountGrant(starches),
+            null,
+            "starchSellBonusPercent"
+        );
+
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
+        await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
         if (profitOrLoss > 0) {
             await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings + profitOrLoss);
         } else if (profitOrLoss < 0) {
