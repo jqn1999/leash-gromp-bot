@@ -1827,7 +1827,7 @@ class EmbedFactory {
     // instanceId, not companion id — scavenging (optional) is the live
     // userDetails.companions.scavenging record ({ instanceId, rarity, returnsAt }) or
     // null — powers the third status branch below (see systems/companions.md#scavenging).
-    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, totalOwned, scavenging = null, canEquip = true) {
+    createCompanionListEmbed(userDisplayName, pageItems, pageIndex, totalPages, activeId, uniqueOwnedCount, scavenging = null, canEquip = true) {
         const fields = pageItems.length > 0 ? pageItems.map(companion => {
             let status;
             if (companion.instanceId === activeId) {
@@ -1871,12 +1871,14 @@ class EmbedFactory {
         // Full-Roster capstone (Option A, cosmetic-only, same direct instruction as the
         // Max-Level tag above) — a one-line flourish once every companion in the roster is
         // owned, matching the existing full_roster achievement's own threshold exactly
-        // (Companions.length, currently 13 — includes Yukon, the Highwayman).
-        const menagerieComplete = totalOwned >= Companions.length ? '\n🏆 Menagerie Complete — every companion, collected.' : '';
+        // (Companions.length, currently 13 — includes Yukon, the Highwayman). Compared
+        // against uniqueOwnedCount (distinct types currently owned), not raw instance count —
+        // see companion.js's buildOwnedPages for why a duplicate must not push this over.
+        const menagerieComplete = uniqueOwnedCount >= Companions.length ? '\n🏆 Menagerie Complete — every companion, collected.' : '';
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Companions`)
-            .setDescription(`${totalOwned} / ${Companions.length} collected${menagerieComplete}\nPage ${pageIndex + 1} / ${totalPages}${canEquip ? `\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.` : ''}`)
+            .setDescription(`${uniqueOwnedCount} / ${Companions.length} collected${menagerieComplete}\nPage ${pageIndex + 1} / ${totalPages}${canEquip ? `\n\nUse the buttons below to equip a companion shown on this page — click your active companion's own button again to unequip it.` : ''}`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

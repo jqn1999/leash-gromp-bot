@@ -27,6 +27,20 @@ function chunkArray(array, size) {
 // click (workCount/active/scavenging can all have changed), not just once at command
 // invocation. Since 2026-08-25's instance rework, each owned instance is its own row —
 // two independently-leveled copies of the same companion both appear, one per instance.
+//
+// uniqueOwnedCount counts distinct companion TYPES currently owned (a duplicate instance
+// of one already-owned type doesn't add to it) — deliberately NOT the same number as
+// `ownedCompanions.length` (every instance, duplicates included), which is what pagination
+// itself still needs. Fixed 2026-08-28, direct instruction, after a player with 2 owned
+// instances of one companion type saw "15 / 13 collected" — the header/roster-complete line
+// was comparing raw instance count against Companions.length (13 distinct types), so any
+// duplicate pushed it over. Also deliberately NOT the same as userDetails.companions.ownedCount
+// (a lifetime, never-decrementing achievement counter — see companionFactory.applyCompanionAward)
+// — this instead recomputes live off currently-owned instances so it drops back down if a
+// player later sells away their only copy of a type, matching what the paginated list below
+// it actually shows right now. /profile's own "🏆 Menagerie Complete" title tag intentionally
+// stays on the lifetime ownedCount instead (see embedFactory.js's createUserEmbed) since that's
+// a permanent capstone, not a live collection count — the two are allowed to diverge.
 function buildOwnedPages(userDetails) {
     const ownedCompanions = (userDetails.companions?.owned ?? [])
         .map(o => {
@@ -34,7 +48,8 @@ function buildOwnedPages(userDetails) {
             return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false } : null;
         })
         .filter(Boolean);
-    return { pages: chunkArray(ownedCompanions, PAGE_SIZE), totalOwned: ownedCompanions.length };
+    const uniqueOwnedCount = new Set(ownedCompanions.map(c => c.id)).size;
+    return { pages: chunkArray(ownedCompanions, PAGE_SIZE), uniqueOwnedCount };
 }
 
 // The actual equip — re-fetches userDetails fresh at click time (same "don't trust
@@ -163,12 +178,12 @@ module.exports = {
         let userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        let { pages, totalOwned } = buildOwnedPages(userDetails);
+        let { pages, uniqueOwnedCount } = buildOwnedPages(userDetails);
         let pageIndex = 0;
 
         const renderPage = (idx) => embedFactory.createCompanionListEmbed(
             userDisplayName, pages[idx], idx, pages.length,
-            userDetails.companions?.active ?? null, totalOwned, userDetails.companions?.scavenging ?? null, canEquip
+            userDetails.companions?.active ?? null, uniqueOwnedCount, userDetails.companions?.scavenging ?? null, canEquip
         );
 
         const embed = renderPage(0);
@@ -207,7 +222,7 @@ module.exports = {
 
                 const rebuilt = buildOwnedPages(userDetails);
                 pages = rebuilt.pages;
-                totalOwned = rebuilt.totalOwned;
+                uniqueOwnedCount = rebuilt.uniqueOwnedCount;
                 if (pageIndex >= pages.length) {
                     pageIndex = Math.max(0, pages.length - 1);
                 }
@@ -224,5 +239,8 @@ module.exports = {
     // Exported for tests — the actual equip logic behind each button click, kept as a
     // standalone function so it can be exercised without needing to mock discord.js's
     // full component-collector machinery.
-    attemptEquip
+    attemptEquip,
+    // Exported for tests — covers uniqueOwnedCount's dedupe-by-type behavior directly,
+    // without needing to mock discord.js's interaction/collector machinery.
+    buildOwnedPages
 }

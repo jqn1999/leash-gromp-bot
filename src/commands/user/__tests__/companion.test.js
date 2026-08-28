@@ -2,7 +2,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 
 jest.mock('../../../utils/dynamoHandler');
 
-const { attemptEquip } = require('../companion');
+const { attemptEquip, buildOwnedPages } = require('../companion');
 
 function userWith(companionsOverrides = {}) {
     return {
@@ -108,5 +108,38 @@ describe('attemptEquip', () => {
         const result = await attemptEquip('user-1', 'User', 'sprout-a');
 
         expect(result.message).not.toMatch(/Bonded/);
+    });
+});
+
+describe('buildOwnedPages', () => {
+    // The bug this locks in: a player reported "15 / 13 collected" on /companion after
+    // picking up a second copy of an already-owned companion. uniqueOwnedCount must count
+    // distinct companion TYPES, not raw owned instances (duplicates included) — the total
+    // page count (every instance still gets its own row) is unaffected.
+    test('two owned instances of the same companion count once toward uniqueOwnedCount', () => {
+        const userDetails = userWith({
+            owned: [
+                { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+                { instanceId: 'sprout-b', id: 'sprout', workCount: 500 }
+            ]
+        });
+
+        const { pages, uniqueOwnedCount } = buildOwnedPages(userDetails);
+
+        expect(uniqueOwnedCount).toBe(1);
+        expect(pages.flat().length).toBe(2);
+    });
+
+    test('two different companion types both count toward uniqueOwnedCount', () => {
+        const userDetails = userWith({
+            owned: [
+                { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+                { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            ]
+        });
+
+        const { uniqueOwnedCount } = buildOwnedPages(userDetails);
+
+        expect(uniqueOwnedCount).toBe(2);
     });
 });
