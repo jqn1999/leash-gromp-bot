@@ -1,6 +1,6 @@
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
-const { Bounty, Raid, MercenaryRank } = require("../../utils/constants");
-const { getEffectiveRaidPower } = require("../../utils/raidFactory");
+const { Bounty, Raid } = require("../../utils/constants");
+const { getEffectiveRaidPower, getDynamicTierWeights } = require("../../utils/raidFactory");
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -9,9 +9,14 @@ const embedFactory = new EmbedFactory();
 // anything just by viewing. Ephemeral (personal view only) — direct instruction, since
 // this shows a player's own Rank/success-chance preview, not something worth broadcasting
 // to the channel. See systems/mercenary-bounties.md.
+//
+// Since the 12-Tier Bounty Ladder rework (2026-08-28), no tier is rank-locked anymore —
+// this shows every tier's live ROLL ODDS (how likely Regular Bounty is to land there,
+// given the mercenary's own current power) alongside its success chance, the same
+// bracket-odds shape /start-raid's own preview embed already uses for Guild Raid.
 module.exports = {
     name: "bounty-board",
-    description: "View your Mercenary Rank, unlocked Bounty tiers, and live success-chance preview",
+    description: "View your Mercenary Rank and a live odds/success-chance preview of every Bounty tier",
     devOnly: false,
     deleted: false,
     options: [],
@@ -32,23 +37,15 @@ module.exports = {
         // uses — see mercenaryFactory.resolveBountyAttempt's own comment.
         const effectiveBountyPower = getEffectiveRaidPower([userDetails]);
 
-        const tiers = ['I', 'II', 'III'].map(tier => {
-            const tierNum = mercenaryFactory.TIER_NUMBER[tier];
-            const difficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
-            const successChance = Math.min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
-            const unlocksAtRank = MercenaryRank.THRESHOLDS.find(r => r.unlocksTier >= tierNum).rank;
-            return {
-                tier,
-                unlocked: tierNum <= rankInfo.unlocksTier,
-                successChance,
-                unlocksAtRank
-            };
-        });
+        const weightedTiers = getDynamicTierWeights(Bounty.TIERS, 1, effectiveBountyPower).map(t => ({
+            ...t,
+            successChance: Math.min(effectiveBountyPower / t.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
+        }));
 
         const timeSinceLastBountyInSeconds = Math.floor((Date.now() - userDetails.bountyTimer) / 1000);
         const cooldownRemainingSeconds = Math.max(0, Bounty.BOUNTY_TIMER_SECONDS - timeSinceLastBountyInSeconds);
 
-        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, tiers, cooldownRemainingSeconds);
+        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds);
         interaction.editReply({ embeds: [embed] });
     }
 }

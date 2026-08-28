@@ -84,7 +84,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
     test('a win bumps Yukon by the Bounty-scaled grant', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
             .mockReturnValueOnce(0)    // scenario index
@@ -104,7 +104,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
     test('a loss still bumps Yukon by the same grant — unconditional on outcome', async () => {
         const user = baseUser({ workMultiplierAmount: 0.1 }); // near-zero success chance
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0)        // scenario index
@@ -124,7 +124,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
     test('a non-Yukon equipped companion does not level at all', async () => {
         const user = sproutUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(0)
@@ -144,7 +144,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
     test('does nothing to companions when nothing is equipped', async () => {
         const user = baseUser({ companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 } });
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999)
             .mockReturnValueOnce(0)
@@ -169,7 +169,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
     test('a same-turn duplicate Yukon pull composes with the leveling bump instead of overwriting it', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
             .mockReturnValueOnce(0)    // scenario index

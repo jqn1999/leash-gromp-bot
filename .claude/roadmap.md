@@ -2727,6 +2727,84 @@ and needs its own balance pass.
   weekdays, every non-buy weekday, and the Sunday→Monday wrap. Full suite green: 655/655 (up from
   648/648 before this item).
 
+- [x] **69. 12-Tier Bounty Ladder — Full Mercenary Bounty Rework** — L — **Done**
+  What: replaces the old 3-tier, rank-gated Bounty design entirely with a 12-tier ladder
+  matching Guild Raid's own 12-tier count, and simplifies player choice down to just two
+  modes. Direct instruction: *"there are currently 12 different raid tiers right? I want
+  to make bounties have an equivalent number of difficulty tiers. Scale it based on a solo
+  player's expected work multi from shop and regrades and sweet potato/companion buffs so
+  that it is a soloable experience. It should feel like meaningful progression and
+  meaningful rewards for each tier similar to guilds... Make it just two options for
+  bounties to keep it simple, baby bounty or regular bounty."*
+  - **`Bounty.TIERS`** (new, replaces `BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY`) — a 12-entry
+    `{ tier, difficulty, reward, penalty }` array. Difficulty is its own evenly
+    geometric-spaced ladder (10 → 2,000, ratio ≈1.619/tier), deliberately NOT Guild's raw
+    12 difficulty values — that was tried first and rejected: Guild's ladder is really
+    three separately-spaced 4-tier ladders (steep ~4.65x steps within Regular, tiny ~1.19x
+    steps within Elite/Legendary) that guilds never dynamically-weight together;
+    concatenating them into one pool for Bounty reopened a real EV dead zone at the
+    Regular/Elite seam (-1.1M), verified via a full sweep before switching to even spacing
+    (zero dead zones after, same sweep methodology). B1's difficulty (10) preserves
+    continuity with the old Tier I/Guild's own T1; B12 (2,000) matches Guild's Elite T4 as
+    a clean "true solo endgame" anchor — verified against live shop/regrade/rebirth/
+    companion constants: shop+regrade maxed alone = 600 power, +Mochi = 672, +rebirth 11
+    (the live-percent cap) = 1,272, so B12 sits just past even heavy rebirth-stacking,
+    reachable only via further permanent Sweet/Metal Potato accumulation.
+  - **Reward/penalty**: same efficiency-ramp convention Guild's ladder uses (10,000/pt at
+    B1 → 40,000/pt at B12, linear), penalty = `-reward` (Bounty's own 1:1 convention). No
+    guild-parity constraint this time — explicit product decision ("let it stand on its
+    own, no guild comparison"), retiring the old 3-tier design's ~17.4-17.7% guild-ahead
+    target rather than re-deriving it for 12 tiers.
+  - **`SOLO_BOUNTY_REWARD_SHARE` retired** — direct instruction to fold the old flat 0.15
+    discount directly into each tier's own stored reward/penalty instead of a separate
+    multiplication at roll time (mathematically identical realized numbers, e.g. B1's
+    15,000 = the pre-fold design's 100,000 × 0.15).
+  - **Dynamic tier selection, not manual choice** — new `raidFactory.rollWeightedTier`
+    (additive export, samples one tier from `getDynamicTierWeights`' output for a caller
+    with no Metal-King-style flat carve-out to combine it with first) rolls one of the 12
+    tiers on a Regular Bounty attempt, weighted by the mercenary's own current power —
+    reusing Guild Raid's exact dynamic-weighting math and `RAID_TIER_WEIGHT_SHARPNESS` as-is
+    (safe to share since the crossover math only depends on the ratio between adjacent
+    tiers, which both ladders now keep uniform).
+  - **Just two modes**: `/take-bounty`'s `tier` option (I/II/III) replaced with `mode`
+    (Baby Bounty / Regular Bounty), mirroring `/start-raid`'s own `raidSelection` shape.
+    Baby Bounty always resolves Tier 1 directly, guaranteed, zero risk of a harsher
+    roll — exact mirror of Baby Raid's role for new guilds.
+  - **Mercenary Rank loses tier-gating** (confirmed via AskUserQuestion) — `unlocksTier`
+    removed from `MercenaryRank.THRESHOLDS` entirely; Rank now only scales the reward
+    multiplier (1.00x-1.75x, unchanged). `/rob-npc`'s own separate rank-gated heist ladder
+    is untouched (it never read `unlocksTier` — always used its own `RobNpc.TIERS.
+    rankRequired`). Safehouse slot gating also untouched (reads `rankInfo.rank` directly).
+  - **Band-letter bridge to existing 3-band content** — new `mercenaryFactory.getBandLetter
+    (tierNum)` maps the rolled numeric 1-12 tier down to I/II/III (B1-4→I, B5-8→II,
+    B9-12→III) so `BountyScenarios` (flavor text + currency ratio), `BountyStatReward`
+    (rare permanent stat grants), `STARCH_TIER_MULTIPLIER`, `MercenaryCompanionDrop.
+    YUKON_CHANCE`, and `Rival.NOTORIETY_PER_BOUNTY_TIER` keep working unmodified — reused
+    rather than authoring 12 tiers' worth of fresh flavor content, since this rework was
+    explicitly scoped to difficulty/reward/penalty/tier-selection.
+  - `/bounty-board` and both Bounty embeds (`createBountyBoardEmbed`/
+    `createBountyResultEmbed`) reworked: the board now shows a compact roll-odds +
+    success-chance line per tier (no more locked/unlocked list) — one line per tier rather
+    than one embed field per tier, since a two-line-per-tier version measured out to
+    1,257 characters at a mid-power roster, over Discord's 1,024-char field value limit.
+  Why: direct instruction, confirmed via two AskUserQuestion rounds mid-design: (1) Rank
+  keeps only the reward-multiplier role, no tier-gating; (2) no guild-parity constraint on
+  the new ladder. Numbers independently verified via live `node -e` computation at every
+  step (solo power ceilings, EV dead-zone sweeps before/after rejecting Guild's raw
+  ladder, the 0.15-fold-in arithmetic) before implementation, matching this session's
+  established verification discipline.
+  New tests: `mercenaryFactory.test.js`'s `resolveBountyAttempt` block converted to the
+  new `mode` API (baby-mode tests keep the exact same random-call sequence the old
+  fixed-Tier-I tests used, since baby mode makes zero extra tier-roll random calls); new
+  `regular mode tier rolling` sub-block (dynamic roll resolves against the rolled tier's
+  own numbers, near-zero power never throws, high power weights toward Tier 12 regardless
+  of Rank 1/zero wins — confirming rank no longer gates access); old 3-tier guild-parity
+  regression block replaced with a `Bounty.TIERS ladder shape` block (even geometric
+  spacing, monotonic reward/penalty, B1 continuity, full EV-sweep no-dead-zone check via
+  the real `getDynamicTierWeights`). `mercenaryCompanionLeveling.test.js`/
+  `rivalNotorietyAccrual.test.js` updated from `{ tier: 'I' }` to `{ mode: 'baby' }`
+  fixtures. Full suite green: 659/659 (up from 655/655 before this item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

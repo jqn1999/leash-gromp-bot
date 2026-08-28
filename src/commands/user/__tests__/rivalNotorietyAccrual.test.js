@@ -60,7 +60,7 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
 
     test('a Tier I win adds NOTORIETY_PER_BOUNTY_TIER.I', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         // Same 5-call resolveBountyAttempt sequence mercenaryFactory.test.js's own
         // "comfortably-strong mercenary" win case uses: win check, scenario index, reward
         // rangeRoll, stat-reward miss, yukon miss.
@@ -82,7 +82,7 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
 
     test('a loss adds no mercenaryNotoriety at all', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: 0.1 })); // near-zero success chance
-        const interaction = fakeInteraction({ tier: 'I' });
+        const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0)        // scenario index

@@ -217,6 +217,27 @@ function getWeightedScenarios(scenarios, guildLevel, totalMultiplier) {
     return [metalKing, ...tieredWithChance];
 }
 
+// Rolls and returns ONE tier from a dynamically-weighted set, same weighting as
+// getDynamicTierWeights above — for a caller with no Metal-King-style flat carve-out to
+// combine it with first (see getWeightedScenarios), so there's no cumulative-chance array
+// to build across two different probability sources. Added for mercenaryFactory.js's
+// 12-Tier Bounty Ladder (2026-08-28) — Bounty has nothing analogous to Metal King, so its
+// own T1-T4-equivalent roll is exactly this: weight the whole tier set, then sample one.
+// Guild Raid's own three modes keep using getWeightedScenarios unchanged; this is purely
+// additive, not a replacement.
+function rollWeightedTier(tiers, guildLevel, totalMultiplier) {
+    const weighted = getDynamicTierWeights(tiers, guildLevel, totalMultiplier);
+    const roll = Math.random();
+    let cumulative = 0;
+    for (const tier of weighted) {
+        cumulative += tier.weight;
+        if (roll < cumulative) {
+            return tier;
+        }
+    }
+    return weighted[weighted.length - 1]; // floating-point safety net, mirrors every other cumulative-roll loop in this codebase
+}
+
 class RaidFactory {
     async handlePotatoSplit(raidList, totalRaidSplit) {
         const raidSplitAmount = await calculateRaidSplit(raidList, totalRaidSplit);
@@ -315,6 +336,7 @@ module.exports = {
     getEligibleScenarios,
     getDynamicTierWeights,
     getWeightedScenarios,
+    rollWeightedTier,
     getMemberRaidPower,
     getEffectiveRaidPower,
     getEffectiveRaidPowerBreakdown

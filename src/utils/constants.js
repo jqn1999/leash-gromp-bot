@@ -1254,84 +1254,108 @@ const Raid = {
 // win cadence (a real success-chance roll on a 3600s cooldown) is closer to that curve's
 // original design intent than RaidLevel's own curve, which is sized for a GUILD's
 // aggregate win count across many members over a long lifetime (up to 12,000 wins).
-// rewardMultiplier is capped at 1.75x deliberately — see Bounty.SOLO_BOUNTY_REWARD_SHARE's
-// own comment for the EV derivation this cap is load-bearing for.
+// rewardMultiplier is capped at 1.75x — a deliberate "veteran mercenary" reward that lets
+// realized reward keep growing with rank even though Bounty's own difficulty/reward ladder
+// (Bounty.TIERS below) no longer needs rank to gate anything.
+//
+// `unlocksTier` retired 2026-08-28 (12-Tier Bounty Ladder rework) — Bounty tier access is
+// no longer rank-gated at all; which of Bounty.TIERS' 12 tiers gets rolled is purely a
+// function of the mercenary's own current power via dynamic tier weighting, the same way
+// Guild Raid's own T1-T4 within Regular mode was never gated by guild level either. Rank
+// keeps exactly one job now: rewardMultiplier. (`/rob-npc`'s own separate heist ladder
+// still gates its 4 tiers by rank directly via RobNpc.TIERS' own `rankRequired` field —
+// untouched by this, it never read `unlocksTier` in the first place.)
 const MercenaryRank = {
     THRESHOLDS: [
-        { rank: 1, winsRequired: 0,   unlocksTier: 1, rewardMultiplier: 1.00 },
-        { rank: 2, winsRequired: 15,  unlocksTier: 2, rewardMultiplier: 1.15 },
-        { rank: 3, winsRequired: 50,  unlocksTier: 3, rewardMultiplier: 1.35 },
-        { rank: 4, winsRequired: 125, unlocksTier: 3, rewardMultiplier: 1.50 },
-        { rank: 5, winsRequired: 275, unlocksTier: 3, rewardMultiplier: 1.65 },
-        { rank: 6, winsRequired: 525, unlocksTier: 3, rewardMultiplier: 1.75 },  // max
+        { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00 },
+        { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15 },
+        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35 },
+        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50 },
+        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65 },
+        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75 },  // max
     ]
 }
 
-// Bounty tiers I/II/III are Regular-mode-equivalent (share
-// Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (.9) as their success-chance cap), but as of
-// 2026-08-27 carry their own fully independent BOUNTY_T{1,2,3}_* constants below rather
-// than reading Raid.T{1,2,3}_RAID_* dynamically (see mercenaryFactory.resolveBountyAttempt
-// and bountyBoard.js's preview) — Part 1's Regular-ladder retune would otherwise have
-// silently retuned Bounty Tier II/III too.
+// 12-Tier Bounty Ladder (2026-08-28 rework, direct instruction) — replaces the old
+// 3-tier, rank-gated Bounty design entirely. Direct instruction: "there are currently 12
+// different raid tiers right? I want to make bounties have an equivalent number of
+// difficulty tiers. Scale it based on a solo player's expected work multi from shop and
+// regrades and sweet potato/companion buffs so that it is a soloable experience... make
+// it just two options for bounties... baby bounty or regular bounty (which will have all
+// the difficulty/reward tiers)."
 //
-// DIFFICULTY retuned again, same day, later pass: pinning Tier II/III's difficulty to
-// the OLD pre-smoothing raw values (85/600) meant they silently stopped tracking what
-// "T2"/"T3" now means once Regular's own ladder was smoothed to 46/215 a few hours
-// earlier — Tier II ended up needing 1.85x the power Guild Regular's own T2 needs for
-// the same success chance, Tier III needed 2.79x. Confirmed via a live comparison
-// (breakeven power — the power level at which EV crosses zero, computed from each
-// side's own reward/penalty ratio): Guild Regular's breakeven is always exactly 50% of
-// its own difficulty (reward/penalty share equal magnitude, no rank multiplier tilt);
-// Bounty's breakeven is 1/(1 + tier's own UNLOCK-rank reward multiplier) of ITS
-// difficulty (Rank2=1.15x for Tier II, Rank3=1.35x for Tier III — the earliest rank at
-// which each tier is even reachable). Solving for the difficulty that makes Bounty's
-// breakeven power land ~17.5% ABOVE Guild Regular's own breakeven (matching this
-// constant's original ~17.4-17.7% guild-ahead target, restated as a breakeven-power
-// margin rather than a flat realized-reward margin) gives BOUNTY_T2_DIFFICULTY=58,
-// BOUNTY_T3_DIFFICULTY=297 — down from the stale 85/600, up from a naive 1:1 match to
-// Guild's new 46/215 (which would have handed Tier II/III a slight EDGE over guild
-// instead, since neither tier can be attempted before its own >1.0x unlock-rank
-// multiplier already applies). REWARD/PENALTY below are unchanged by this pass — they
-// were never the stale part. Note: at FULL investment (both sides already at the .9
-// success cap), the EV comparison is driven entirely by reward/penalty magnitude, not
-// difficulty, and a solo mercenary at max rank (1.75x) does pull ahead of a guild
-// member's per-member share there — same already-accepted "veteran mercenary reward"
-// shape Tier I already has today (unchanged by this pass), now shared consistently by
-// all three tiers instead of being uniquely severe for II/III.
+// DIFFICULTY: an evenly geometric-spaced 12-tier ladder from 10 (B1, unchanged from the
+// old Tier I — still the universal newbie landmark shared with Guild T1) up to 2,000 (B12
+// — same absolute number as Guild's own Elite T4, chosen as a clean anchor for "true
+// solo-endgame" power, NOT a literal reuse of Guild's raw tier numbers). Reusing Guild's
+// actual 12 difficulty values directly was tried first and rejected: Guild's ladder is
+// really three separately-spaced 4-tier ladders (huge ~4.65x steps within Regular, tiny
+// ~1.19x steps within Elite/Legendary) that guilds never dynamically-weight together —
+// concatenating them into one 12-slot pool reopened a real EV dead zone at the Regular/
+// Elite seam (-1.1M at the boundary). An evenly-spaced ladder (ratio ≈1.619/tier) avoids
+// that entirely — verified via a full EV sweep (power 1-2,500, both fresh Rank 1 and
+// maxed Rank 6) using the exact same dynamic tier weighting Guild Raid already uses
+// (raidFactory.getDynamicTierWeights, sharpness reused as-is from Raid.RAID_TIER_WEIGHT_
+// SHARPNESS — safe to share since the crossover math only depends on the RATIO between
+// adjacent tiers, which this ladder deliberately keeps uniform): zero dead zones, only
+// the same trivial near-zero-power edge case Guild's own ladder has.
+//
+// Solo power reference points computed live off shop/regrade/rebirth/companion constants
+// (getMemberRaidPower's own formula, workMultiplierAmount * (1 + rebirth% + companion%)):
+// shop+regrade maxed alone = 600; + Mochi (12%) = 672; + rebirth 3 (24%) = 816; + rebirth
+// 11 (100%, the cap) = 1,272. B12's 2,000 sits just past even that heavily-invested
+// ceiling — reachable only by further stacking permanent Sweet/Metal Potato bonuses
+// (uncapped, persist across rebirth) — an appropriately hard-won final tier, while B1-B9
+// (difficulty ≤471) cover the realistic single-cycle shop/regrade grind comfortably.
+//
+// REWARD follows the same "reward-per-difficulty-point efficiency ramp" convention
+// Guild's own ladder uses (10,000/pt at B1 -> 40,000/pt at B12, linear), rounded to the
+// nearest 1,000. PENALTY = |reward| (Bounty's own existing 1:1 convention, simpler than
+// Guild's Elite/Legendary penalty-increase ratio — never part of this rework's scope).
+//
+// No guild-ahead constraint (explicit product decision this time — "let it stand on its
+// own, no guild comparison") — this ladder was sized purely around solo progression feel,
+// not calibrated against Guild Raid's own numbers at all.
+//
+// SOLO_BOUNTY_REWARD_SHARE (the old flat 0.15 discount applied at roll time) is RETIRED —
+// direct instruction: "remove the 15% reward solo share and readjust all the numbers for
+// bounties to be 15%... exactly what it effectively is just without the extra math." The
+// REWARD/PENALTY values below already have that 15% folded in directly (e.g. B1's
+// 15,000 = the old design's 100,000 nominal * 0.15) — mathematically identical realized
+// numbers to the old two-step formula, just without a separate constant/multiplication at
+// roll time. mercenaryFactory.resolveBountyAttempt reads `reward`/`penalty` directly now.
 const Bounty = {
     BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
 
-    BOUNTY_T1_DIFFICULTY: 10,
-    BOUNTY_T1_REWARD: 142000,
-    BOUNTY_T1_PENALTY: -142000,
-
-    BOUNTY_T2_DIFFICULTY: 58,
-    BOUNTY_T2_REWARD: 755000,
-    BOUNTY_T2_PENALTY: -755000,
-
-    BOUNTY_T3_DIFFICULTY: 297,
-    BOUNTY_T3_REWARD: 4261000,
-    BOUNTY_T3_PENALTY: -4261000,
-    // Central risk-mitigation number, grounded against this roadmap entry's own worked
-    // examples (a guild-level-1/4-person roster nets ~25% of a T1 raid's base reward per
-    // member; a guild-level-3/6-person roster nets ~28.3% of T3's base per member — both
-    // realistic small-to-mid active-guild scenarios). At this value, a Rank 1 mercenary
-    // (1.00x) nets 15% of base — clearly below either guild scenario's per-member share —
-    // and a maxed Rank 6 mercenary (1.75x cap) nets 26.25%, narrowly UNDER the stronger
-    // guild scenario and roughly at the weaker one, so a fully-committed solo mercenary
-    // approaches but never quite beats even a modest, reasonably-organized guild's own
-    // per-member split. The guild side's penalty is also split across its roster on a
-    // loss, while a Bounty's penalty stays fully unscaled on one person — solo bears
-    // strictly more downside per unit of reward at every tier, reinforcing (not needing a
-    // second) discount. No tracked "average guild roster size" stat exists to calibrate
-    // against precisely — this is grounded against the roadmap's own worked examples, not
-    // measured server data; revisit once real Bounty usage exists.
-    SOLO_BOUNTY_REWARD_SHARE: 0.15,
+    // Rolled via raidFactory.rollWeightedTier for 'regular' mode (dynamic tier weighting,
+    // same math/sharpness as Guild Raid); 'baby' mode always resolves TIERS[0] directly,
+    // unconditionally — mirrors Baby Raid's own "guaranteed T1, no risk of a harsh roll"
+    // role for brand-new guilds. `tier` is a plain 1-12 number (no more Roman-numeral
+    // I/II/III letters) — mercenaryFactory.getBandLetter(tier) maps it down to the 3-band
+    // I/II/III shape BountyScenarios/BountyStatReward/STARCH_TIER_MULTIPLIER/
+    // MercenaryCompanionDrop.YUKON_CHANCE/Rival.NOTORIETY_PER_BOUNTY_TIER still use for
+    // flavor/rare-stat-reward/currency-ratio purposes (B1-4->I, B5-8->II, B9-12->III) —
+    // deliberately reused rather than authoring 12 tiers' worth of fresh flavor text.
+    TIERS: [
+        { tier: 1,  difficulty: 10,   reward: 15000,    penalty: -15000 },
+        { tier: 2,  difficulty: 16,   reward: 31000,    penalty: -31000 },
+        { tier: 3,  difficulty: 26,   reward: 60000,    penalty: -60000 },
+        { tier: 4,  difficulty: 42,   reward: 115000,   penalty: -115000 },
+        { tier: 5,  difficulty: 69,   reward: 216000,   penalty: -216000 },
+        { tier: 6,  difficulty: 111,  reward: 394000,   penalty: -394000 },
+        { tier: 7,  difficulty: 180,  reward: 712000,   penalty: -712000 },
+        { tier: 8,  difficulty: 291,  reward: 1270000,  penalty: -1270000 },
+        { tier: 9,  difficulty: 471,  reward: 2248000,  penalty: -2248000 },
+        { tier: 10, difficulty: 763,  reward: 3954000,  penalty: -3954000 },
+        { tier: 11, difficulty: 1236, reward: 6910000,  penalty: -6910000 },
+        { tier: 12, difficulty: 2000, reward: 12000000, penalty: -12000000 },
+    ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
-    // scaled by this per-tier multiplier — NOT discounted by SOLO_BOUNTY_REWARD_SHARE
-    // (that discount exists specifically to stop potato Bounties out-earning guild raids;
-    // guild raids never pay starches, so there's no analogous risk to guard against here).
+    // scaled by this per-BAND multiplier (see the banding note above) — unaffected by the
+    // SOLO_BOUNTY_REWARD_SHARE retirement above, since starch rewards were never
+    // discounted by it in the first place (guild raids never pay starches, so there was
+    // never an analogous "don't out-earn guild" risk to guard against here).
     STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 },
     // Added 2026-08-23, direct instruction — without this, a player could rapidly flip
     // guild <-> mercenary to double-dip both tracks' benefits in quick succession (e.g.
@@ -1641,6 +1665,10 @@ const MercenaryCompanionDrop = {
 // oversight. Yukon's rivalSuccessChanceFlat perk (see the Companions entry below) is the
 // one thing that DOES add to successChance, applied after the range roll.
 const Rival = {
+    // Keyed by BAND letter (I/II/III), not Bounty's own numeric 1-12 tier — since the
+    // 12-Tier Bounty Ladder rework, takeBounty.js looks this up via
+    // mercenaryFactory.getBandLetter(result.tier) (B1-4->I, B5-8->II, B9-12->III) rather
+    // than a tier letter the resolver itself no longer produces.
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
     // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
     // notorietyPerWin (1/2/3/4 for Corner Store/Payroll Truck/Armored Vault/The Big Score)

@@ -1,14 +1,21 @@
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
-const { getEffectiveRaidPower } = require("../utils/raidFactory");
+const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
 const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti } = require("../utils/workFactory");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 
-// Roman-numeral tier label <-> Raid.T{n}_RAID_* numeric suffix. Bounty tiers map 1:1 onto
-// Regular-mode Guild Raid's T1/T2/T3 — see constants.js's Bounty block for why there's no
-// separate Bounty-owned difficulty/reward/penalty table.
-const TIER_NUMBER = { I: 1, II: 2, III: 3 };
+// Maps Bounty.TIERS' own numeric 1-12 tier down to the 3-band I/II/III shape
+// BountyScenarios/BountyStatReward/STARCH_TIER_MULTIPLIER/MercenaryCompanionDrop.
+// YUKON_CHANCE/Rival.NOTORIETY_PER_BOUNTY_TIER all still use for flavor text, the rare
+// stat-reward roll, currency ratios, and notoriety — see constants.js's Bounty block for
+// why: reusing those 3 existing pools avoids authoring 12 tiers' worth of fresh flavor
+// text for a rework that was explicitly scoped to difficulty/reward/penalty/tier-selection.
+function getBandLetter(tierNum) {
+    if (tierNum <= 4) return 'I';
+    if (tierNum <= 8) return 'II';
+    return 'III';
+}
 
 // Threshold lookup, same exact shape/pattern as raidFactory.getRaidLevelInfo off
 // RaidLevel.THRESHOLDS — highest threshold not exceeded by winCount wins; computed live
@@ -21,7 +28,6 @@ function getMercenaryRankInfo(winCount) {
     const nextTier = sorted[tierIndex + 1];
     return {
         rank: tier.rank,
-        unlocksTier: tier.unlocksTier,
         rewardMultiplier: tier.rewardMultiplier,
         winsToNextRank: nextTier ? nextTier.winsRequired - wins : null
     };
@@ -91,30 +97,37 @@ function rollBountyStatReward(tierLetter, userDetails) {
     return pickStatGrant(tierLetter, userDetails);
 }
 
-// One function that returns everything /take-bounty's embed needs (success roll, scenario
-// draw, reward/penalty math, the stat-reward roll, the Yukon roll) — computation only, no
-// DB writes; the caller (take-bounty.js) owns persisting the result, same division of
-// labor raidFactory.js's own handlePotatoSplit-vs-startRaid.js split already uses.
-async function resolveBountyAttempt(userDetails, tierLetter) {
-    const tierNum = TIER_NUMBER[tierLetter];
-    const difficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
-    const rewardBase = Bounty[`BOUNTY_T${tierNum}_REWARD`];
-    const penaltyBase = Bounty[`BOUNTY_T${tierNum}_PENALTY`];
-
+// One function that returns everything /take-bounty's embed needs (success roll, tier
+// roll, scenario draw, reward/penalty math, the stat-reward roll, the Yukon roll) —
+// computation only, no DB writes; the caller (take-bounty.js) owns persisting the result,
+// same division of labor raidFactory.js's own handlePotatoSplit-vs-startRaid.js split
+// already uses. `mode` is 'baby' (always Bounty.TIERS[0], guaranteed — mirrors Baby
+// Raid's own role) or 'regular' (all 12 tiers, dynamically weighted by the mercenary's own
+// current power via raidFactory.rollWeightedTier — same math Guild Raid's own T1-T4 use,
+// with no rank-gating layered on top: which tier gets rolled is purely a function of
+// power now, see constants.js's Bounty.TIERS comment for the full 2026-08-28 rework).
+async function resolveBountyAttempt(userDetails, mode) {
     // A 1-person "roster" run through the exact same formula a guild raid uses —
     // getEffectiveRaidPower is already generic over an array of userDetails, not
     // guild-shaped (confirmed directly against raidFactory.js — no changes needed there
     // at all). The headcount bonus is 0 for a length-1 array by construction.
     const effectiveBountyPower = getEffectiveRaidPower([userDetails]);
+    const tierEntry = mode === 'baby'
+        ? Bounty.TIERS[0]
+        : rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
+    const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase } = tierEntry;
+    const bandLetter = getBandLetter(tierNum);
+
     const successChance = Math.min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
     const won = Math.random() < successChance;
 
-    const scenarioPool = BountyScenarios[tierLetter];
+    const scenarioPool = BountyScenarios[bandLetter];
     const scenario = scenarioPool[Math.floor(Math.random() * scenarioPool.length)];
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
 
     const result = {
-        tier: tierLetter,
+        tier: tierNum,
+        mode,
         won,
         successChance,
         scenario,
@@ -132,7 +145,7 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
 
         if (scenario.currency === 'potato') {
             const rangeRoll = getRandomFromInterval(.8, 1.2);
-            result.rewardAmount = Math.round(rewardBase * rangeRoll * Bounty.SOLO_BOUNTY_REWARD_SHARE * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
+            result.rewardAmount = Math.round(rewardBase * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
         } else {
             const userMultiplier = userDetails.workMultiplierAmount;
             const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 for a
@@ -150,26 +163,22 @@ async function resolveBountyAttempt(userDetails, tierLetter) {
                                                                                               // and resolveYukonAward
                                                                                               // both already include it
             const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier;
-            const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[tierLetter];
+            const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[bandLetter];
             result.rewardAmount = Math.round(base * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
         }
 
-        result.statReward = rollBountyStatReward(tierLetter, userDetails);
-        result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[tierLetter];
+        result.statReward = rollBountyStatReward(bandLetter, userDetails);
+        result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[bandLetter];
     } else {
-        // Scaled down 2026-08-23, direct instruction, after a live report of a 16k win vs.
-        // an 83k loss at the same tier — that gap was the direct, intended consequence of
-        // this branch's OLD "full, unscaled risk" design (penaltyBase carries the SAME raw
-        // magnitude as rewardBase — e.g. Tier I is +/-100,000 — but only the reward side
-        // was ever discounted by SOLO_BOUNTY_REWARD_SHARE). Now applies that same discount
-        // to the loss too, so a loss lands in roughly the SAME range as a Rank-1 potato win
-        // at that tier (both ~ tierBase * 0.15 * [.8-1.2]) — still an independent roll, and
-        // still deliberately NOT reduced further by rankInfo.rewardMultiplier or Yukon's
-        // bountyRewardPercent (those stay reward-side-only perks), so as a mercenary ranks
-        // up, wins keep growing while losses stay flat — the risk/reward ratio genuinely
-        // improves with progression instead of losses just being an always-worse mirror of
-        // gains.
-        result.penaltyAmount = Math.round(Math.abs(penaltyBase) * getRandomFromInterval(.8, 1.2) * Bounty.SOLO_BOUNTY_REWARD_SHARE);
+        // penaltyBase (Bounty.TIERS' own `penalty` field) already has the old
+        // SOLO_BOUNTY_REWARD_SHARE (0.15) folded directly into its stored value (see
+        // constants.js's Bounty.TIERS comment) — no separate discount multiplication needed
+        // here anymore. Still deliberately NOT reduced further by rankInfo.rewardMultiplier
+        // or Yukon's bountyRewardPercent (those stay reward-side-only perks), so as a
+        // mercenary ranks up, wins keep growing while losses stay flat — the risk/reward
+        // ratio genuinely improves with progression instead of losses just being an
+        // always-worse mirror of gains.
+        result.penaltyAmount = Math.round(Math.abs(penaltyBase) * getRandomFromInterval(.8, 1.2));
     }
 
     return result;
@@ -369,7 +378,7 @@ async function resolveRivalConfrontation(userDetails) {
 }
 
 module.exports = {
-    TIER_NUMBER,
+    getBandLetter,
     getMercenaryRankInfo,
     rollBountyStatReward,
     resolveBountyAttempt,

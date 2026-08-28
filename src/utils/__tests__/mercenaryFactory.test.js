@@ -1,6 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const mercenaryFactory = require('../mercenaryFactory');
+const raidFactory = require('../raidFactory');
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionLeveling, Rival, RivalMercenaries } = require('../constants');
 
 function baseUser(overrides = {}) {
@@ -23,16 +24,17 @@ function baseUser(overrides = {}) {
 
 describe('getMercenaryRankInfo', () => {
     test('starts at rank 1 with zero or missing wins', () => {
-        expect(mercenaryFactory.getMercenaryRankInfo(0)).toMatchObject({ rank: 1, unlocksTier: 1, rewardMultiplier: 1.00 });
+        expect(mercenaryFactory.getMercenaryRankInfo(0)).toMatchObject({ rank: 1, rewardMultiplier: 1.00 });
         expect(mercenaryFactory.getMercenaryRankInfo(undefined)).toMatchObject({ rank: 1 });
         expect(mercenaryFactory.getMercenaryRankInfo(null)).toMatchObject({ rank: 1 });
     });
 
-    test('every threshold resolves to its own rank/tier/multiplier exactly at the boundary', () => {
+    // unlocksTier retired 2026-08-28 (12-Tier Bounty Ladder rework) — Rank no longer
+    // gates tier access, only the reward multiplier.
+    test('every threshold resolves to its own rank/multiplier exactly at the boundary', () => {
         MercenaryRank.THRESHOLDS.forEach(tier => {
             const result = mercenaryFactory.getMercenaryRankInfo(tier.winsRequired);
             expect(result.rank).toBe(tier.rank);
-            expect(result.unlocksTier).toBe(tier.unlocksTier);
             expect(result.rewardMultiplier).toBe(tier.rewardMultiplier);
         });
     });
@@ -112,8 +114,12 @@ describe('rollBountyStatReward', () => {
 });
 
 describe('resolveBountyAttempt', () => {
-    test('a comfortably-strong mercenary rolling a potato win pays the discounted, rank-scaled reward formula exactly', async () => {
-        const user = baseUser({ workMultiplierAmount: 90 }); // effectiveBountyPower 90 / T1 difficulty 10 -> way past the .9 cap
+    // 'baby' mode always resolves Bounty.TIERS[0] (Tier 1) directly, with zero extra
+    // Math.random() calls for tier selection (unlike 'regular', which rolls one via
+    // raidFactory.rollWeightedTier — see the dedicated describe block below) — so these
+    // tests keep the exact same random-call sequence the old fixed-Tier-I tests used.
+    test('a comfortably-strong mercenary rolling a potato win pays the rank-scaled reward formula exactly', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 }); // effectiveBountyPower 90 / Tier 1 difficulty 10 -> way past the .9 cap
         // Sequence: win-check roll, scenario-index roll (0 -> BountyScenarios.I[0], a
         // potato scenario), reward rangeRoll, stat-reward roll-chance (miss), yukon roll (miss).
         const randomSpy = jest.spyOn(Math, 'random')
@@ -124,17 +130,21 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0.99); // yukon roll misses
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
 
         expect(result.won).toBe(true);
+        expect(result.tier).toBe(1);
+        expect(result.mode).toBe('baby');
         expect(result.successChance).toBeCloseTo(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
         expect(result.currency).toBe('potato');
         expect(result.scenario).toBe(BountyScenarios.I[0]);
-        // reward = round(BOUNTY_T1_REWARD * rangeRoll(.8) * SOLO_BOUNTY_REWARD_SHARE * rank1Multiplier(1) * (1 + 0 yukon))
-        const expected = Math.round(Bounty.BOUNTY_T1_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * 1 * 1);
+        // reward = round(TIERS[0].reward * rangeRoll(.8) * rank1Multiplier(1) * (1 + 0 yukon))
+        // — the old SOLO_BOUNTY_REWARD_SHARE (0.15) discount is now folded directly into
+        // Bounty.TIERS' own stored reward value, not a separate multiplication.
+        const expected = Math.round(Bounty.TIERS[0].reward * 0.8 * 1 * 1);
         expect(result.rewardAmount).toBe(expected);
         expect(result.statReward).toBeNull();
         expect(result.yukonHit).toBe(false);
@@ -151,16 +161,18 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0.99);
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
 
-        const expected = Math.round(Bounty.BOUNTY_T1_REWARD * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE * maxRank.rewardMultiplier * 1);
+        const expected = Math.round(Bounty.TIERS[0].reward * 0.8 * maxRank.rewardMultiplier * 1);
         expect(result.rewardAmount).toBe(expected);
-        // A maxed-rank mercenary's per-attempt reward must stay strictly below the full,
-        // undiscounted base reward — the whole point of SOLO_BOUNTY_REWARD_SHARE existing.
-        expect(result.rewardAmount).toBeLessThan(Bounty.BOUNTY_T1_REWARD);
+        // A maxed-rank mercenary's per-attempt reward is boosted ABOVE the flat base
+        // reward by the rank multiplier (>1.0x) — unlike the old share-discounted design,
+        // there's no separate "undiscounted base" ceiling to stay under anymore; the
+        // reward IS the base value now, and rank only ever scales it up from there.
+        expect(result.rewardAmount).toBeGreaterThan(Bounty.TIERS[0].reward);
     });
 
     test('a starch-flavored win formula reuses userMultiplier+guildMultiplier the same shape Taro Trader uses, scaled by STARCH_TIER_MULTIPLIER and rank', async () => {
@@ -175,7 +187,7 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0.99); // yukon miss
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
@@ -205,7 +217,7 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0.99); // yukon miss
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
@@ -225,7 +237,7 @@ describe('resolveBountyAttempt', () => {
     // now also folds in the equipped companion's workMultiplierPercent perk (see
     // raidFactory.test.js). This confirms that flows through end to end via resolveBountyAttempt.
     test('an equipped companion\'s workMultiplierPercent perk raises Bounty success chance too', async () => {
-        const withoutCompanion = baseUser({ workMultiplierAmount: 5 }); // T1 difficulty 10 -> 0.5 raw, well under the .9 cap
+        const withoutCompanion = baseUser({ workMultiplierAmount: 5 }); // Tier 1 difficulty 10 -> 0.5 raw, well under the .9 cap
         const withCompanion = baseUser({
             workMultiplierAmount: 5,
             companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
@@ -233,24 +245,24 @@ describe('resolveBountyAttempt', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // force a loss branch in both cases so we only need 3 rolls
         let resultWithout, resultWith;
         try {
-            resultWithout = await mercenaryFactory.resolveBountyAttempt(withoutCompanion, 'I');
-            resultWith = await mercenaryFactory.resolveBountyAttempt(withCompanion, 'I');
+            resultWithout = await mercenaryFactory.resolveBountyAttempt(withoutCompanion, 'baby');
+            resultWith = await mercenaryFactory.resolveBountyAttempt(withCompanion, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
         expect(resultWith.successChance).toBeGreaterThan(resultWithout.successChance);
-        expect(resultWith.successChance).toBeCloseTo((5 * 1.05) / Bounty.BOUNTY_T1_DIFFICULTY);
+        expect(resultWith.successChance).toBeCloseTo((5 * 1.05) / Bounty.TIERS[0].difficulty);
     });
 
-    test('a loss pays the SOLO_BOUNTY_REWARD_SHARE-discounted penalty — same discount as a win, but no rank/Yukon discount on top', async () => {
-        const user = baseUser({ workMultiplierAmount: 0.1 }); // effectiveBountyPower far below T1 difficulty -> near-zero success chance
+    test('a loss pays the flat penalty exactly (the old SOLO_BOUNTY_REWARD_SHARE discount is now folded into Bounty.TIERS\' own stored penalty)', async () => {
+        const user = baseUser({ workMultiplierAmount: 0.1 }); // effectiveBountyPower far below Tier 1 difficulty -> near-zero success chance
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.999999) // win check fails (successChance is tiny)
             .mockReturnValueOnce(0)        // scenario index (still drawn for flavor even on a loss)
             .mockReturnValueOnce(0);       // penalty rangeRoll -> .8
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
@@ -258,7 +270,7 @@ describe('resolveBountyAttempt', () => {
         expect(result.won).toBe(false);
         expect(result.currency).toBe('potato');
         expect(result.rewardAmount).toBe(0);
-        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Bounty.BOUNTY_T1_PENALTY) * 0.8 * Bounty.SOLO_BOUNTY_REWARD_SHARE));
+        expect(result.penaltyAmount).toBe(Math.round(Math.abs(Bounty.TIERS[0].penalty) * 0.8));
     });
 
     test('success chance is capped at Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE even for an extremely overpowered mercenary', async () => {
@@ -266,14 +278,14 @@ describe('resolveBountyAttempt', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
         expect(result.successChance).toBe(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
     });
 
-    test('yukonHit is only ever rolled on a win, and only clears MercenaryCompanionDrop.YUKON_CHANCE for that tier', async () => {
+    test('yukonHit is only ever rolled on a win, and only clears MercenaryCompanionDrop.YUKON_CHANCE for that tier\'s band', async () => {
         const user = baseUser({ workMultiplierAmount: 90 });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
@@ -283,7 +295,7 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0);   // yukon roll: 0 < YUKON_CHANCE.I -> hit
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
@@ -299,51 +311,115 @@ describe('resolveBountyAttempt', () => {
             .mockReturnValueOnce(0);       // penalty rangeRoll
         let result;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'I');
+            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
         expect(result.won).toBe(false);
         expect(result.yukonHit).toBe(false);
     });
+
+    // 'regular' mode rolls one of Bounty.TIERS' 12 tiers via raidFactory.rollWeightedTier
+    // (dynamic weighting by the mercenary's own power) BEFORE the win-check roll — one
+    // extra Math.random() call at the front of the sequence vs. 'baby' mode above.
+    describe('regular mode tier rolling', () => {
+        test('rolls a tier via dynamic weighting and resolves against that tier\'s own difficulty/reward/penalty', async () => {
+            const user = baseUser({ workMultiplierAmount: 90 }); // power=90*1.05(sprout not equipped, so just base)... plain 90
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0)    // tier roll: 0 -> lands on the first (lowest-difficulty) eligible tier in cumulative order
+                .mockReturnValueOnce(0)    // win check
+                .mockReturnValueOnce(0)    // scenario index
+                .mockReturnValueOnce(0)    // reward rangeRoll
+                .mockReturnValueOnce(0.99) // stat-reward miss
+                .mockReturnValueOnce(0.99); // yukon miss
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.mode).toBe('regular');
+            expect(Bounty.TIERS.map(t => t.tier)).toContain(result.tier);
+            const tierEntry = Bounty.TIERS.find(t => t.tier === result.tier);
+            expect(result.successChance).toBeCloseTo(Math.min(90 / tierEntry.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+        });
+
+        test('a near-zero-power mercenary on regular mode still resolves against a real tier (heavily weighted toward Tier 1), never throws', async () => {
+            const user = baseUser({ workMultiplierAmount: 0.001 });
+            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(Bounty.TIERS.map(t => t.tier)).toContain(result.tier);
+            expect(Number.isFinite(result.successChance)).toBe(true);
+        });
+
+        test('a maxed-power mercenary is weighted toward Tier 12 (the ladder\'s own top), not locked out of it by rank', async () => {
+            const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: 0 }); // Rank 1, zero wins -- confirms rank no longer gates tier access
+            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.tier).toBeGreaterThan(6); // comfortably into the upper half of the ladder at this power
+        });
+    });
 });
 
-// Regression for the 2026-08-27 Bounty Tier II/III difficulty retune — Tier II/III's
-// difficulty had drifted stale (pinned to Regular Guild Raid's pre-smoothing values,
-// 85/600) after Regular's own T2/T3 difficulty was smoothed to 46/215 the same day,
-// making solo Bounty need roughly double the effective power a guild needed to break
-// even at "the same tier." Computed entirely from live constants (not hardcoded
-// literals) so this self-corrects if either ladder is retuned again, same convention
-// raidFactory.test.js's own penalty/reward-ratio regression uses.
-describe('Bounty Tier II/III difficulty tracks a bounded margin above Guild Regular\'s own ladder', () => {
-    // Breakeven power fraction (of that side's own difficulty) at which EV crosses zero:
-    // Guild Regular's is always exactly 50% (reward/penalty share equal magnitude, no
-    // rank-multiplier tilt); Bounty's is 1/(1 + that tier's own UNLOCK-rank reward
-    // multiplier), since a tier can never be attempted before its own unlock rank.
-    function guildBreakEvenPower(difficulty) {
-        return 0.5 * difficulty;
-    }
-    function bountyBreakEvenPower(difficulty, unlockRankMultiplier) {
-        return (1 / (1 + unlockRankMultiplier)) * difficulty;
-    }
-
-    test.each([
-        ['II', 2, Raid.T2_RAID_DIFFICULTY],
-        ['III', 3, Raid.T3_RAID_DIFFICULTY],
-    ])('Tier %s breakeven power sits modestly (10-25%%) above Guild Regular T%i\'s own breakeven, not 2x+ like the stale pre-fix values', (tierLetter, tierNum, guildDifficulty) => {
-        const unlockRank = MercenaryRank.THRESHOLDS.find(t => t.unlocksTier === tierNum);
-        const bountyDifficulty = Bounty[`BOUNTY_T${tierNum}_DIFFICULTY`];
-        const guildBreakEven = guildBreakEvenPower(guildDifficulty);
-        const bountyBreakEven = bountyBreakEvenPower(bountyDifficulty, unlockRank.rewardMultiplier);
-        const marginRatio = bountyBreakEven / guildBreakEven;
-        expect(marginRatio).toBeGreaterThan(1.10);
-        expect(marginRatio).toBeLessThan(1.25);
+// Regression for the 2026-08-28 12-Tier Bounty Ladder rework — replaces the retired
+// 3-tier guild-ahead-margin regression above it (that whole design constraint was
+// explicitly dropped: "let it stand on its own, no guild comparison"). Covers the
+// properties that ARE load-bearing for this ladder: even geometric spacing (the reason
+// reusing Guild's own raw 12 tier values was rejected — Guild's ladder is really three
+// separately-spaced 4-tier ladders that reopen a real EV dead zone once concatenated
+// into one dynamically-weighted pool), and that dynamic tier weighting produces no dead
+// zone across the whole ladder. Computed entirely from live constants, same convention
+// this file's other regression blocks already use.
+describe('Bounty.TIERS ladder shape', () => {
+    test('difficulty is evenly geometric-spaced (constant ratio between every adjacent tier)', () => {
+        const ratios = [];
+        for (let i = 1; i < Bounty.TIERS.length; i++) {
+            ratios.push(Bounty.TIERS[i].difficulty / Bounty.TIERS[i - 1].difficulty);
+        }
+        const [first, ...rest] = ratios;
+        rest.forEach(r => expect(r).toBeCloseTo(first, 1));
     });
 
-    test('Tier I is unaffected by this retune — its breakeven margin stays an exact match to Guild Regular T1 at Tier I\'s own unlock rank (Rank 1, 1.00x, no tilt)', () => {
-        const guildBreakEven = guildBreakEvenPower(Raid.T1_RAID_DIFFICULTY);
-        const bountyBreakEven = bountyBreakEvenPower(Bounty.BOUNTY_T1_DIFFICULTY, 1.00);
-        expect(bountyBreakEven).toBeCloseTo(guildBreakEven, 5);
+    test('reward and |penalty| both increase monotonically with tier, and penalty always matches reward\'s exact magnitude', () => {
+        for (let i = 1; i < Bounty.TIERS.length; i++) {
+            expect(Bounty.TIERS[i].reward).toBeGreaterThan(Bounty.TIERS[i - 1].reward);
+        }
+        Bounty.TIERS.forEach(t => expect(t.penalty).toBe(-t.reward));
+    });
+
+    test('B1 (Baby Bounty\'s fixed tier) keeps the pre-rework Tier I difficulty (10) — continuity for the universal newbie landmark', () => {
+        expect(Bounty.TIERS[0].difficulty).toBe(10);
+    });
+
+    test('dynamic tier weighting (raidFactory.getDynamicTierWeights, reusing Guild Raid\'s own sharpness) produces no EV dead zone across a full power sweep', () => {
+        const CAP = Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE;
+        function weightedEV(power, rankMult) {
+            const weighted = raidFactory.getDynamicTierWeights(Bounty.TIERS, 1, power);
+            return weighted.reduce((total, t) => {
+                const successChance = Math.min(power / t.difficulty, CAP);
+                const realizedReward = t.reward * rankMult;
+                const realizedPenalty = Math.abs(t.penalty);
+                return total + t.weight * (successChance * realizedReward - (1 - successChance) * realizedPenalty);
+            }, 0);
+        }
+        let worst = Infinity;
+        for (let power = 5; power <= 2500; power += 5) {
+            worst = Math.min(worst, weightedEV(power, 1.00), weightedEV(power, 1.75));
+        }
+        // The only acceptable negative is the same trivial near-zero-power edge case
+        // Guild Raid's own ladder has (an almost-no-power roster rolling mostly Tier 1
+        // and still losing slightly on average) — never a real mid-ladder dead zone.
+        expect(worst).toBeGreaterThan(-200000);
     });
 });
 

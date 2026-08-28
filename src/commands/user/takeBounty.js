@@ -13,42 +13,40 @@ const achievementFactory = new AchievementFactory();
 
 // Resolves immediately, no confirm step — same precedent /start-raid already sets. See
 // systems/mercenary-bounties.md for the full reward/penalty formula.
+//
+// `mode` replaces the old `tier` (I/II/III) option — the 12-Tier Bounty Ladder rework
+// (2026-08-28) dropped manual tier selection entirely in favor of dynamic tier weighting
+// off the mercenary's own current power, the same way Guild Raid's own T1-T4 within
+// Regular mode are auto-rolled rather than player-picked. 'baby' always resolves the
+// easiest tier guaranteed (mirrors Baby Raid's role for new guilds); 'regular' rolls
+// across all 12 tiers, weighted toward whichever the player's own power is closest to.
 module.exports = {
     name: "take-bounty",
-    description: "Attempt a mercenary bounty at the given tier",
+    description: "Attempt a mercenary bounty",
     devOnly: false,
     deleted: false,
     options: [
         {
-            name: 'tier',
-            description: 'Which bounty tier to attempt',
+            name: 'mode',
+            description: 'Baby Bounty (guaranteed easiest tier) or Regular Bounty (all 12 tiers, auto-selected by your power)',
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [
-                { name: 'Tier I', value: 'I' },
-                { name: 'Tier II', value: 'II' },
-                { name: 'Tier III', value: 'III' },
+                { name: 'Baby Bounty', value: 'baby' },
+                { name: 'Regular Bounty', value: 'regular' },
             ]
         }
     ],
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
-        const tier = interaction.options.get('tier')?.value;
+        const mode = interaction.options.get('mode')?.value;
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
         if (!userDetails.isMercenary) {
             interaction.editReply(`${userDisplayName}, you're not a mercenary — run /become-mercenary first (you can't be in a guild).`);
-            return;
-        }
-
-        const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
-        const requestedTierNum = mercenaryFactory.TIER_NUMBER[tier];
-        if (requestedTierNum > rankInfo.unlocksTier) {
-            const highestUnlockedTier = ['I', 'II', 'III'][rankInfo.unlocksTier - 1];
-            interaction.editReply(`${userDisplayName}, Tier ${tier} isn't unlocked yet — you're Rank ${rankInfo.rank}, which unlocks up to Tier ${highestUnlockedTier}. Win more bounties to rank up (check /bounty-board).`);
             return;
         }
 
@@ -59,7 +57,7 @@ module.exports = {
             return;
         }
 
-        const result = await mercenaryFactory.resolveBountyAttempt(userDetails, tier);
+        const result = await mercenaryFactory.resolveBountyAttempt(userDetails, mode);
 
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
@@ -72,9 +70,11 @@ module.exports = {
             addAttributes.mercenaryBountyWinCount = 1;
             // Rival Bounty Hunters — Notoriety accrual is a one-line constant lookup, not a
             // mercenaryFactory.js function, matching mercenaryBountyWinCount's own "simple
-            // counter bumps live at the command call site" division of labor. See
+            // counter bumps live at the command call site" division of labor. Keyed by the
+            // 3-band letter (see mercenaryFactory.getBandLetter), not the numeric 1-12
+            // tier the 12-Tier Bounty Ladder rework introduced. See
             // systems/mercenary-bounties.md#rival-bounty-hunters.
-            addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_BOUNTY_TIER[tier];
+            addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_BOUNTY_TIER[mercenaryFactory.getBandLetter(result.tier)];
             if (result.currency === 'potato') {
                 userPotatoes += result.rewardAmount;
                 userTotalEarnings += result.rewardAmount;

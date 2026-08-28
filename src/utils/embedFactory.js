@@ -266,14 +266,15 @@ class EmbedFactory {
             // Mercenary Bounties — mutually exclusive with guild membership, so this only
             // ever shows for a non-guilded mercenary. Rank is computed live off
             // mercenaryBountyWinCount, same "never stored" precedent Guild Level already
-            // sets — see mercenaryFactory.getMercenaryRankInfo.
+            // sets — see mercenaryFactory.getMercenaryRankInfo. No more "Tier X unlocked"
+            // line since the 12-Tier Bounty Ladder rework (2026-08-28) — Rank no longer
+            // gates tier access at all, it only scales the reward multiplier now.
             if (userDetails.isMercenary) {
                 const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
                 const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
-                const highestTier = ['I', 'II', 'III'][rankInfo.unlocksTier - 1];
                 fields.push({
                     name: "Mercenary Rank:",
-                    value: `Rank ${rankInfo.rank} — ${title} (Tier ${highestTier} unlocked, ${(userDetails.mercenaryBountyWinCount || 0).toLocaleString()} wins)`,
+                    value: `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, ${(userDetails.mercenaryBountyWinCount || 0).toLocaleString()} wins)`,
                     inline: false,
                 });
             }
@@ -1458,28 +1459,45 @@ class EmbedFactory {
     }
 
     // Read-only preview, mirrors /current-raid's own shape — current Mercenary Rank +
-    // wins-to-next-rank, which tiers are unlocked, a live success-chance preview per
-    // unlocked tier, and bountyTimer remaining. `tiers` is precomputed by bounty-board.js
-    // (each { tier, unlocked, successChance, unlocksAtRank }).
-    createBountyBoardEmbed(userDisplayName, rankInfo, tiers, cooldownRemainingSeconds) {
+    // wins-to-next-rank (now also showing the live reward multiplier, since Rank no
+    // longer gates tier access — see mercenaryFactory.getMercenaryRankInfo), a live
+    // roll-odds + success-chance line per Bounty tier, and bountyTimer remaining.
+    // `weightedTiers` is bounty-board.js's own precomputed array — raidFactory.
+    // getDynamicTierWeights' output (each { tier, difficulty, reward, penalty, weight })
+    // with `successChance` added — one line per tier rather than one embed field per
+    // tier (12 separate fields would make this embed unwieldy the way /start-raid's own
+    // 4-bracket-max preview never has to worry about).
+    createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds) {
         const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
         const rankLine = rankInfo.winsToNextRank !== null
-            ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
-            : `Rank ${rankInfo.rank} — ${title} (max rank)`;
+            ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, ${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
+            : `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, max rank)`;
 
-        const fields = tiers.map(t => ({
-            name: `Tier ${t.tier}${t.unlocked ? '' : ' 🔒'}`,
-            value: t.unlocked
-                ? `${(t.successChance * 100).toFixed(1)}% success chance`
-                : `Unlocks at Rank ${t.unlocksAtRank}`,
-            inline: true,
-        }));
+        // One line per tier (not one embed field per tier, and not two lines per tier
+        // either) — a 12-tier, two-line-per-tier version measured out to 1,257 characters
+        // at a mid-power roster, over Discord's 1,024-char field value limit; this compact
+        // form stays comfortably under it (~700 chars) even at Tier 12's 8-digit numbers.
+        const tierLines = weightedTiers.map(t =>
+            `Tier ${t.tier}: ${(t.weight * 100).toFixed(1)}% odds, ${(t.successChance * 100).toFixed(1)}% success — ✅${t.reward.toLocaleString()} / ❌${Math.abs(t.penalty).toLocaleString()}`
+        ).join('\n');
 
-        fields.push({
-            name: 'Bounty Cooldown:',
-            value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
-            inline: false,
-        });
+        const fields = [
+            {
+                name: 'Regular Bounty — all 12 tiers, auto-selected by your current power:',
+                value: tierLines,
+                inline: false,
+            },
+            {
+                name: 'Baby Bounty:',
+                value: `Always Tier ${weightedTiers[0].tier} (guaranteed, no risk of a harder roll).`,
+                inline: false,
+            },
+            {
+                name: 'Bounty Cooldown:',
+                value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
+                inline: false,
+            }
+        ];
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Bounty Board`)
@@ -1497,7 +1515,7 @@ class EmbedFactory {
     // mercenaryFactory.resolveBountyAttempt's own return shape; `yukonAward` is
     // mercenaryFactory.resolveYukonAward's return shape, or null if Yukon didn't hit.
     createBountyResultEmbed(userDisplayName, result, yukonAward = null) {
-        const { tier, won, successChance, scenario, rankInfo, currency, rewardAmount, penaltyAmount, statReward } = result;
+        const { tier, mode, won, successChance, scenario, rankInfo, currency, rewardAmount, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
 
@@ -1554,8 +1572,9 @@ class EmbedFactory {
             inline: true,
         });
 
+        const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}`)
+            .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

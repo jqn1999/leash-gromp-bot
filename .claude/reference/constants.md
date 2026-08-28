@@ -20,7 +20,7 @@ changes without this knowledge base being updated alongside it.
 | `Rob` | `/rob` cooldown, penalty amounts, work-timer penalty on failure | [systems/economy-and-work.md](../systems/economy-and-work.md) |
 | `Bet` | Betting base-amount seed formula | [systems/betting-and-games.md](../systems/betting-and-games.md) |
 | `Raid` | Guild raid tiers, difficulty/reward/penalty per mob (Regular T1-T4/Metal King, plus 24 static `ELITE_T1-4`/`ELITE_METAL_KING`/`LEGENDARY_T1-4`/`LEGENDARY_METAL_KING` constants — see below), success-rate caps, Metal King boss stats, `RAID_TEAM_DECAY` (rank-weighted `teamPower` geometric falloff, 0.5 — see below), `RAID_TIER_WEIGHT_SHARPNESS` (dynamic roster-power-weighted tier rolling exponent, 4 — see below) | [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#effective-raid-power) |
-| `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier, tier cooldown/reward-share/starch scaling, `BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` (Bounty's own dedicated tier ladder, decoupled from `Raid` 2026-08-27 — see below), per-tier flavor scenarios, the rare permanent-stat-reward branch, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
+| `MercenaryRank`, `Bounty`, `BountyScenarios`, `BountyStatReward`, `RobNpc`, `MercenaryCompanionDrop` | Mercenary Bounties — rank thresholds/reward multiplier (no longer tier-gating), `Bounty.TIERS` (the 12-Tier Bounty Ladder, 2026-08-28 — see below), band-keyed flavor scenarios/rare-stat-reward branch/starch scaling, `/rob-npc`'s odds/payout, Yukon's drop chance | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md) |
 | `Rival`, `RivalMercenaries` | Rival Bounty Hunters — Notoriety accrual/threshold, weighted scenario roll + per-scenario success-chance range, capped-base reward/penalty factors, the 6-entry named rival roster | [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `GuildRoles` | Role name strings (`Leader`, `Co-Leader`, `Elder`, `Member`) | [systems/guilds.md](../systems/guilds.md) |
 | `CompanionRarity`, `CompanionRarityOdds`, `CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `Companions` | Companion rarity odds/roster, leveling thresholds/multiplier (incl. `STARCH_SELL_REFERENCE_YIELD`/`REGRADE_BASE_GRANT`/`REGRADE_GRANT_COST_EXPONENT` — see below), marketplace pricing/tax, scavenging duration/rewards | [systems/companions.md](../systems/companions.md) |
@@ -75,28 +75,45 @@ surfaced (worst case `-1,629,449` at `totalMultiplier≈248`, now `≈+93,000` t
 `totalMultiplier≈99-100`) — full derivation:
 [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#dynamic-tier-weighting).
 
-### `Bounty.BOUNTY_T1-3_DIFFICULTY/REWARD/PENALTY` (new, 2026-08-27 — decoupled from `Raid`)
+### `Bounty.TIERS` (12-Tier Bounty Ladder, replaces `BOUNTY_T1-3_*`, 2026-08-28)
 
-Mercenary Bounty Tiers I/II/III previously read `Raid.T1/T2/T3_RAID_*` directly via a dynamic
-string-keyed lookup in `mercenaryFactory.resolveBountyAttempt`/`bountyBoard.js` — any retune of
-Regular Guild Raid's own T1-T3 silently retuned Bounty too. Decoupled the same day Regular's own
-ladder above got smoothed, so the two systems' numbers can now move independently (explicit
-design goal: Guild Raiding should land modestly ahead of Bounty at the equivalent tier, not just
-avoid an accidental coupling bug). `BOUNTY_T{1,2,3}_DIFFICULTY` (10/85/600) were initially left
-unchanged from what Bounty already effectively read, on the theory that leaving them alone kept
-solo Bounty odds "unaffected" by the decoupling. **That didn't hold** — Regular's own T2/T3
-difficulty moved (`46`/`215`) the same day, so pinning Bounty's difficulty to the OLD raw values
-just meant Tier II/III silently stopped tracking what "T2"/"T3" means anywhere else in the game
-(Tier II needed 1.85x the power Guild's own T2 needs for the same odds; Tier III needed 2.79x).
-Found and fixed later the same day: **`BOUNTY_T2_DIFFICULTY: 85→58`, `BOUNTY_T3_DIFFICULTY:
-600→297`** (Tier I untouched — it already matched Regular's own unchanged T1=10). `BOUNTY_T{1,2,3}_REWARD`
-(142,000/755,000/4,261,000) and the matching `_PENALTY` (same magnitude, negative) are unchanged
-by either pass — they were freshly chosen at decoupling time so a solo mercenary's realized reward
-(after `SOLO_BOUNTY_REWARD_SHARE`/rank multiplier) lands at ≈85% of an equivalently-progressed
-small guild's own realized per-member payout at each tier's own unlock rank, and that target still
-holds. Still shares `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single
+Full rework, not a retune — Mercenary Bounty's old 3-tier, rank-gated design (each tier
+individually named `BOUNTY_T{1,2,3}_DIFFICULTY/REWARD/PENALTY`, decoupled from `Raid` on
+2026-08-27) is replaced entirely by `Bounty.TIERS`, a 12-entry array
+(`{ tier, difficulty, reward, penalty }`) matching Guild Raid's own 12-tier count. Direct
+instruction: scale Bounty to an equivalent 12 difficulty tiers, sized around a *solo*
+player's own achievable power (shop+regrade+rebirth+companion, not a guild's aggregate),
+and simplify player-facing choice down to just two modes (Baby/Regular Bounty, mirroring
+Baby Raid vs. Regular Raid). Difficulty is its own evenly geometric-spaced ladder (10 → 2,000,
+ratio ≈1.619/tier) — NOT a reuse of Guild's raw 12 values, which are really three unevenly-
+spaced 4-tier sub-ladders that reopen a real EV dead zone once blended into one
+dynamically-weighted pool (verified and rejected before settling on the even spacing).
+Reward follows the same efficiency-ramp convention Guild's ladder uses (10,000/pt → 40,000/pt,
+linear); penalty = `-reward` (Bounty's own existing 1:1 convention). No guild-parity
+constraint this time (explicit product decision — "let it stand on its own, no guild
+comparison"), unlike the retired 3-tier design's ~17.4-17.7% guild-ahead target.
+
+Tier is now selected dynamically, not player-picked: `raidFactory.rollWeightedTier` (new,
+additive export — samples one tier from `getDynamicTierWeights`' output, for callers with
+no Metal-King-style flat carve-out to combine it with first) rolls one of the 12 tiers,
+weighted by the mercenary's own current power, reusing Guild Raid's exact same dynamic
+tier weighting math and sharpness constant. `Raid.RAID_TIER_WEIGHT_SHARPNESS` (below) is
+shared as-is between both systems — safe to share since the crossover math only depends on
+the RATIO between adjacent tiers, which Bounty's ladder deliberately keeps uniform. Baby
+Bounty mode always resolves `Bounty.TIERS[0]` directly, no roll.
+
+`Bounty.SOLO_BOUNTY_REWARD_SHARE` (the old flat 0.15 discount applied at roll time) is
+**retired** — direct instruction to fold it directly into each tier's own stored
+reward/penalty instead of a separate multiplication (mathematically identical realized
+numbers, one less step). `mercenaryFactory.getBandLetter(tier)` maps the rolled numeric
+1-12 tier down to the pre-existing 3-band `I`/`II`/`III` shape (B1-4→I, B5-8→II, B9-12→III)
+that `BountyScenarios`/`BountyStatReward`/`STARCH_TIER_MULTIPLIER`/`MercenaryCompanionDrop.
+YUKON_CHANCE`/`Rival.NOTORIETY_PER_BOUNTY_TIER` all still key off, reused rather than
+authoring 12 tiers' worth of fresh flavor content. `MercenaryRank.THRESHOLDS` lost its
+`unlocksTier` field — Rank no longer gates tier access at all, only `rewardMultiplier`.
+Still shares `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single
 flat shared concept, deliberately left coupled). Full derivation:
-[systems/mercenary-bounties.md](../systems/mercenary-bounties.md#bounty-tiers-iiiiii--own-dedicated-bountybounty_t1t2t3_-constants-decoupled-2026-08-27).
+[systems/mercenary-bounties.md](../systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework).
 
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)
 
