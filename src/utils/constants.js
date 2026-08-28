@@ -1308,22 +1308,42 @@ const MercenaryRank = {
 // (uncapped, persist across rebirth) — an appropriately hard-won final tier, while B1-B9
 // (difficulty ≤471) cover the realistic single-cycle shop/regrade grind comfortably.
 //
-// REWARD follows the same "reward-per-difficulty-point efficiency ramp" convention
-// Guild's own ladder uses (10,000/pt at B1 -> 40,000/pt at B12, linear), rounded to the
-// nearest 1,000. PENALTY = |reward| (Bounty's own existing 1:1 convention, simpler than
-// Guild's Elite/Legendary penalty-increase ratio — never part of this rework's scope).
+// REWARD, second pass (2026-08-28, same day, later): re-calibrated AGAINST Guild Raid
+// after all, reversing the "no guild comparison" call above — direct instruction, prompted
+// by a live report that a modest 5-person guild (per-member multis 20/17/19/3/3, team
+// power ≈38.4) was routinely landing Regular T2 (96% roll odds at that power) and clearing
+// 700k-1.1M PER RAID at a realistic level-2 (1.3x) reward multiplier, while the
+// first-pass ladder above paid a comparably-powered solo Bounty attempt only ~92k-138k
+// (Tier 4 at that same power) — nowhere near the intended relationship once a REALISTIC
+// (not frozen-at-level-1) guild reward multiplier is actually accounted for. Target:
+// solo's reward at each tier should land at ~20% of a REALISTIC guild's own TOTAL raid
+// reward (not divided by roster size — "what a guild gets", matching how the live report
+// itself was framed) at that same difficulty.
 //
-// No guild-ahead constraint (explicit product decision this time — "let it stand on its
-// own, no guild comparison") — this ladder was sized purely around solo progression feel,
-// not calibrated against Guild Raid's own numbers at all.
+// Computed by building a continuous guild reward-per-difficulty-point curve from Guild
+// Raid's own real 12 (difficulty, efficiency) breakpoints — linearly interpolated in
+// ln(difficulty) between adjacent real tiers, since efficiency is already exactly linear
+// in tier index within each mode (10,000/pt->20,000/pt Regular, 20,000/pt->30,000/pt
+// Elite, 30,000/pt->50,000/pt Legendary) and mode boundaries are continuous (Regular T4 =
+// Elite T1 = 20,000/pt, etc.) — evaluated at each Bounty tier's OWN difficulty, times a
+// realistic Guild Level 2 multiplier (1.3x, RaidLevel.THRESHOLDS' own real value, grounded
+// directly in the reported roster rather than an invented number), times 20%, rounded to
+// the nearest 1,000: e.g. B1 (difficulty 10) -> guild base 100,000 * 1.3 * 0.20 = 26,000.
+// Result is roughly a 1.0x-1.7x bump across B1-B9 tapering to near-parity at B10-B11 (the
+// first-pass ladder happened to already sit close to this target there) and a further
+// bump at B12 (2,000 difficulty lands inside Guild's own Elite band, 30,000/pt) — verified
+// via a full EV sweep (power 1-2,500, Rank 1 and Rank 6) that this reshuffling introduces
+// no new dead zone: worst case is still the same trivial near-zero-power edge case Guild's
+// own ladder has, not a real mid-ladder dip. PENALTY stays |reward| (Bounty's own existing
+// 1:1 convention, unaffected by this pass).
 //
 // SOLO_BOUNTY_REWARD_SHARE (the old flat 0.15 discount applied at roll time) is RETIRED —
-// direct instruction: "remove the 15% reward solo share and readjust all the numbers for
-// bounties to be 15%... exactly what it effectively is just without the extra math." The
-// REWARD/PENALTY values below already have that 15% folded in directly (e.g. B1's
-// 15,000 = the old design's 100,000 nominal * 0.15) — mathematically identical realized
-// numbers to the old two-step formula, just without a separate constant/multiplication at
-// roll time. mercenaryFactory.resolveBountyAttempt reads `reward`/`penalty` directly now.
+// direct instruction from earlier the same day: "remove the 15% reward solo share and
+// readjust all the numbers for bounties to be 15%... exactly what it effectively is just
+// without the extra math." That fold-in is still true of the methodology (no separate
+// constant/multiplication happens at roll time — mercenaryFactory.resolveBountyAttempt
+// reads `reward`/`penalty` directly), it's just the REWARD/PENALTY values themselves that
+// moved again in this second pass, superseding the first pass's own numbers.
 const Bounty = {
     BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
 
@@ -1337,18 +1357,18 @@ const Bounty = {
     // flavor/rare-stat-reward/currency-ratio purposes (B1-4->I, B5-8->II, B9-12->III) —
     // deliberately reused rather than authoring 12 tiers' worth of fresh flavor text.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 15000,    penalty: -15000 },
-        { tier: 2,  difficulty: 16,   reward: 31000,    penalty: -31000 },
-        { tier: 3,  difficulty: 26,   reward: 60000,    penalty: -60000 },
-        { tier: 4,  difficulty: 42,   reward: 115000,   penalty: -115000 },
-        { tier: 5,  difficulty: 69,   reward: 216000,   penalty: -216000 },
-        { tier: 6,  difficulty: 111,  reward: 394000,   penalty: -394000 },
-        { tier: 7,  difficulty: 180,  reward: 712000,   penalty: -712000 },
-        { tier: 8,  difficulty: 291,  reward: 1270000,  penalty: -1270000 },
-        { tier: 9,  difficulty: 471,  reward: 2248000,  penalty: -2248000 },
-        { tier: 10, difficulty: 763,  reward: 3954000,  penalty: -3954000 },
-        { tier: 11, difficulty: 1236, reward: 6910000,  penalty: -6910000 },
-        { tier: 12, difficulty: 2000, reward: 12000000, penalty: -12000000 },
+        { tier: 1,  difficulty: 10,   reward: 26000,    penalty: -26000 },
+        { tier: 2,  difficulty: 16,   reward: 46000,    penalty: -46000 },
+        { tier: 3,  difficulty: 26,   reward: 82000,    penalty: -82000 },
+        { tier: 4,  difficulty: 42,   reward: 143000,   penalty: -143000 },
+        { tier: 5,  difficulty: 69,   reward: 255000,   penalty: -255000 },
+        { tier: 6,  difficulty: 111,  reward: 440000,   penalty: -440000 },
+        { tier: 7,  difficulty: 180,  reward: 762000,   penalty: -762000 },
+        { tier: 8,  difficulty: 291,  reward: 1311000,  penalty: -1311000 },
+        { tier: 9,  difficulty: 471,  reward: 2249000,  penalty: -2249000 },
+        { tier: 10, difficulty: 763,  reward: 3851000,  penalty: -3851000 },
+        { tier: 11, difficulty: 1236, reward: 6667000,  penalty: -6667000 },
+        { tier: 12, difficulty: 2000, reward: 15600000, penalty: -15600000 },
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),

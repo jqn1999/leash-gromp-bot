@@ -5,9 +5,9 @@ equivalent of Guild Raids/Guild Contracts/the Guild Bank/Guild Level — every o
 a solo player could already touch (Companions, Quests, `/rebirth`, `/rob`) worked
 identically whether or not they were guilded. Mercenary Bounties gives that player their
 own risk/reward progression track — since the 12-Tier Bounty Ladder rework (2026-08-28,
-see below), sized purely around solo progression feel rather than calibrated to stay
-behind guild raiding's own numbers (a deliberate change from the original design; see that
-section's own history for why).
+see below), deliberately calibrated so a solo player's expected winnings land at roughly
+20% of what a comparably-powered guild actually earns (see that section's own history for
+how this target evolved twice in one day).
 
 Full history of how this was scoped (product-owner concept, a refinement pass, and the
 architect's build-ready technical design) lives in
@@ -161,40 +161,82 @@ B12's 2,000 sits just past even the heavily-rebirth-stacked ceiling above — re
 by further accumulating permanent Sweet/Metal Potato bonuses (uncapped, persist across
 rebirth) on top, an appropriately hard-won final tier.
 
-### Reward/penalty: a fresh efficiency ramp, no guild-parity constraint
+### Reward/penalty: two passes the same day — first stood alone, then got tied back to Guild after all
 
-**Explicit product decision this time: "let it stand on its own, no guild comparison."**
-Unlike the old 3-tier design (which was deliberately calibrated to sit modestly behind
-Guild Raiding — see the retired history below), this ladder's reward/penalty numbers were
-picked purely around solo progression feel. REWARD follows the same "reward-per-
-difficulty-point efficiency ramp" convention Guild's own ladder uses (10,000/pt at B1 →
-40,000/pt at B12, linear), rounded to the nearest 1,000. PENALTY = `-reward` (Bounty's own
-existing 1:1 convention, simpler than Guild's Elite/Legendary penalty-increase ratio —
-never touched by this rework).
+**First pass, explicit product decision: "let it stand on its own, no guild comparison."**
+REWARD followed the same "reward-per-difficulty-point efficiency ramp" convention Guild's
+own ladder uses (10,000/pt at B1 → 40,000/pt at B12, linear), rounded to the nearest 1,000,
+picked purely around solo progression feel with no guild-parity target at all.
 
-| Tier | Difficulty | Reward | Penalty |
-|---|---|---|---|
-| B1 | 10 | 15,000 | -15,000 |
-| B2 | 16 | 31,000 | -31,000 |
-| B3 | 26 | 60,000 | -60,000 |
-| B4 | 42 | 115,000 | -115,000 |
-| B5 | 69 | 216,000 | -216,000 |
-| B6 | 111 | 394,000 | -394,000 |
-| B7 | 180 | 712,000 | -712,000 |
-| B8 | 291 | 1,270,000 | -1,270,000 |
-| B9 | 471 | 2,248,000 | -2,248,000 |
-| B10 | 763 | 3,954,000 | -3,954,000 |
-| B11 | 1,236 | 6,910,000 | -6,910,000 |
-| B12 | 2,000 | 12,000,000 | -12,000,000 |
+**Second pass, same day, reversed that call** — a live report that a modest 5-person guild
+(per-member multis 20/17/19/3/3, team power ≈38.4) was routinely landing Regular T2 (96%
+roll odds at that power) and clearing **700k-1.1M per raid** at a realistic Guild Level 2
+(1.3x reward multiplier), while the first-pass ladder paid a comparably-powered solo
+Bounty attempt only ~92k-138k (Tier 4 at that same power). Direct instruction: *"bump
+bounty ladder up across the board scaling similarly against guild gains... make it roughly
+20% of what a guild gets for a solo player's expected winnings."*
 
-**`SOLO_BOUNTY_REWARD_SHARE` (the old flat 0.15 discount applied at roll time) is retired**
-— direct instruction: *"remove the 15% reward solo share and readjust all the numbers for
-bounties to be 15%... exactly what it effectively is just without the extra math."* The
-table above already has that 15% folded directly into each tier's own stored
-`reward`/`penalty` (e.g. B1's `15,000` = the pre-fold design's `100,000` × `0.15`) —
-mathematically identical realized numbers to the old two-step formula, just without a
-separate constant/multiplication at roll time. See [Success chance](#success-chance) and
-[Reward/penalty formula](#rewardpenalty-formula) below for the current live formulas.
+**Why the first pass under-shot so badly**, and why an earlier informal comparison this
+same day was itself misleading: guild's `raidRewardMultiplier` scales with accumulated
+`raidCount` (win history) — a completely separate axis from raw member power. An earlier
+exploratory comparison had held that multiplier frozen at 1.0x (Level 1) across an entire
+power sweep, which implicitly modeled "a guild with strong members that has never actually
+won a raid" — unrealistic, and it made guild income look far smaller than it really is for
+any guild that's actually been playing. The corrected target treats "what a guild gets" as
+the guild's own **total** raid reward (not divided by roster size, matching how the live
+report itself was phrased) at a **realistic** reward multiplier, not the frozen Level-1
+baseline.
+
+**Derivation**: built a continuous "guild reward-per-difficulty-point" curve from Guild
+Raid's own real 12 (difficulty, efficiency) breakpoints, linearly interpolated in
+`ln(difficulty)` between adjacent real tiers (valid since efficiency is already exactly
+linear in tier index within each mode, and mode boundaries are continuous — Regular T4 =
+Elite T1 = 20,000/pt, Elite T4 = Legendary T1 = 30,000/pt). Evaluated at each Bounty tier's
+own difficulty, multiplied by Guild Level 2's real 1.3x multiplier (`RaidLevel.THRESHOLDS`
+— grounded directly in the reported roster, not an invented number) for "realistic guild
+total reward at this difficulty," then took 20% of that, rounded to the nearest 1,000:
+
+```
+guildBaseReward   = guildEfficiencyAt(tier.difficulty) * tier.difficulty
+guildRealistic    = guildBaseReward * 1.3   // Guild Level 2's own real multiplier
+reward            = round(guildRealistic * 0.20 / 1000) * 1000
+```
+
+| Tier | Difficulty | Reward | Penalty | vs. first pass |
+|---|---|---|---|---|
+| B1 | 10 | 26,000 | -26,000 | 1.73x |
+| B2 | 16 | 46,000 | -46,000 | 1.48x |
+| B3 | 26 | 82,000 | -82,000 | 1.37x |
+| B4 | 42 | 143,000 | -143,000 | 1.24x |
+| B5 | 69 | 255,000 | -255,000 | 1.18x |
+| B6 | 111 | 440,000 | -440,000 | 1.12x |
+| B7 | 180 | 762,000 | -762,000 | 1.07x |
+| B8 | 291 | 1,311,000 | -1,311,000 | 1.03x |
+| B9 | 471 | 2,249,000 | -2,249,000 | 1.00x |
+| B10 | 763 | 3,851,000 | -3,851,000 | 0.97x |
+| B11 | 1,236 | 6,667,000 | -6,667,000 | 0.96x |
+| B12 | 2,000 | 15,600,000 | -15,600,000 | 1.30x |
+
+A genuine bump across nearly the whole ladder — B10/B11 land within ~3-4% of the first
+pass's own numbers (the first pass happened to already sit close to the new target there),
+never a real decrease worth worrying about at "roughly 20%" tolerance. PENALTY still =
+`-reward` (Bounty's own existing 1:1 convention, untouched by either pass). Re-verified via
+a full EV sweep (power 1-2,500, Rank 1 and Rank 6) that this reshuffling introduces no new
+dead zone — worst case is still the same trivial near-zero-power edge case Guild's own
+ladder has. Regression-tested in `mercenaryFactory.test.js` (each tier's reward checked
+against a live-computed 15-30% band of the realistic-guild-total target, rather than an
+exact match, since rounding and the guild curve's own mode-boundary kinks drift the ratio
+a little tier to tier).
+
+**`SOLO_BOUNTY_REWARD_SHARE` (the old flat 0.15 discount applied at roll time) stayed
+retired through both passes** — direct instruction from earlier the same day: *"remove the
+15% reward solo share and readjust all the numbers for bounties to be 15%... exactly what
+it effectively is just without the extra math."* No separate constant/multiplication
+happens at roll time either way — `mercenaryFactory.resolveBountyAttempt` reads
+`reward`/`penalty` directly off `Bounty.TIERS` — it's only the stored values themselves
+that moved again in the second pass, superseding the first pass's own numbers. See
+[Success chance](#success-chance) and [Reward/penalty formula](#rewardpenalty-formula)
+below for the current live formulas.
 
 ### Retired: the old 3-tier design's guild-parity history
 
@@ -207,8 +249,10 @@ explicitly calibrated so realized reward landed at ≈85% of an equivalently-pro
 guild's own per-member payout (a ~17.4-17.7% guild-ahead margin). That calibration itself
 needed a same-day follow-up fix (Tier II/III's difficulty had been left pinned to Guild's
 OLD pre-smoothing values after Guild's own ladder moved, silently doubling the effective
-power gap) before being fully retired by the 12-tier rework above, which dropped the
-guild-parity design goal entirely rather than re-deriving it for 12 tiers.
+power gap) before being fully retired by the 12-tier rework's own first pass above, which
+initially dropped the guild-parity goal entirely — before the second pass (also above)
+reinstated a guild-comparison target in a different shape (~20% of a realistic guild's
+total reward, not 85% of a per-member share).
 
 ### Success chance
 

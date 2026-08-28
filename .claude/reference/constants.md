@@ -88,10 +88,18 @@ Baby Raid vs. Regular Raid). Difficulty is its own evenly geometric-spaced ladde
 ratio ≈1.619/tier) — NOT a reuse of Guild's raw 12 values, which are really three unevenly-
 spaced 4-tier sub-ladders that reopen a real EV dead zone once blended into one
 dynamically-weighted pool (verified and rejected before settling on the even spacing).
-Reward follows the same efficiency-ramp convention Guild's ladder uses (10,000/pt → 40,000/pt,
-linear); penalty = `-reward` (Bounty's own existing 1:1 convention). No guild-parity
-constraint this time (explicit product decision — "let it stand on its own, no guild
-comparison"), unlike the retired 3-tier design's ~17.4-17.7% guild-ahead target.
+**Reward went through two passes the same day.** First pass followed a flat efficiency-ramp
+convention Guild's ladder uses (10,000/pt → 40,000/pt, linear) with no guild-parity target
+at all ("let it stand on its own"). That was reversed hours later — a live report that a
+modest 5-person guild (team power ≈38.4) was clearing 700k-1.1M per raid at a realistic
+Guild Level 2 (1.3x) multiplier, while a comparably-powered solo attempt paid only
+~92k-138k under the first pass. Second pass retargets each tier's reward at ~20% of a
+REALISTIC guild's own TOTAL raid reward (not divided by roster size) at matching
+difficulty — built from Guild Raid's own real 12 (difficulty, efficiency) breakpoints,
+linearly interpolated in `ln(difficulty)`, times Guild Level 2's real 1.3x multiplier,
+times 0.20, rounded to the nearest 1,000. Net effect: roughly a 1.0x-1.7x bump across
+B1-B9, near-parity with the first pass at B10-B11, a further bump at B12. Penalty =
+`-reward` throughout (Bounty's own existing 1:1 convention, untouched by either pass).
 
 Tier is now selected dynamically, not player-picked: `raidFactory.rollWeightedTier` (new,
 additive export — samples one tier from `getDynamicTierWeights`' output, for callers with

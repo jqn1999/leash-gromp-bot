@@ -2805,6 +2805,46 @@ and needs its own balance pass.
   `rivalNotorietyAccrual.test.js` updated from `{ tier: 'I' }` to `{ mode: 'baby' }`
   fixtures. Full suite green: 659/659 (up from 655/655 before this item).
 
+- [x] **70. Bounty Reward Second Pass — Recalibrated to ~20% of Realistic Guild Income** — S — **Done**
+  What: same-day follow-up to #69, reversing that item's own "let it stand on its own, no
+  guild comparison" call. A live report showed a modest 5-person guild (per-member multis
+  20/17/19/3/3, team power ≈38.4) routinely clearing 700k-1.1M per raid at a realistic
+  Guild Level 2 (1.3x) reward multiplier — landing Regular T2 96% of the time at that
+  power — while the first-pass Bounty ladder paid a comparably-powered solo attempt only
+  ~92k-138k (Tier 4 at that power). Direct instruction: "bump bounty ladder up across the
+  board scaling similarly against guild gains if possible. Make it roughly 20% of what a
+  guild gets for a solo player's expected winnings."
+  Root cause of the gap: an earlier same-day exploratory comparison (used to sanity-check
+  #69 before it shipped) had held guild's `raidRewardMultiplier` frozen at Level 1 (1.0x)
+  across an entire power sweep — but that multiplier scales with accumulated `raidCount`
+  (win history), a completely separate axis from raw member power. Any guild developed
+  enough to field a strong roster has almost certainly also raided enough to level up,
+  so the frozen-at-1.0x comparison understated real guild income significantly — caught
+  only once a live in-game number was reported to check against.
+  Fix: rebuilt `Bounty.TIERS`' reward/penalty column (difficulty unchanged from #69) by
+  interpolating Guild Raid's own real 12-breakpoint reward-per-difficulty-point curve
+  (linear in `ln(difficulty)` between adjacent real tiers, exact given the curve's own
+  linear-in-tier-index-per-mode construction) at each Bounty tier's own difficulty, times
+  Guild Level 2's real 1.3x multiplier (grounded in the reported roster, not invented),
+  times 20%, rounded to the nearest 1,000 — targeting the guild's TOTAL raid reward (not
+  divided by roster size, matching how the live report itself was phrased), not a
+  per-member share. Net effect: B1 26,000 (was 15,000, 1.73x) down to B9 2,249,000 (was
+  2,248,000, 1.00x — the first pass happened to already sit right at target there), B10/B11
+  landing within 3-4% of the first pass (near-parity, not a real decrease), B12 15,600,000
+  (was 12,000,000, 1.30x). Penalty stays `-reward` throughout, untouched.
+  Notable design points: this is the SECOND reversal of the guild-comparison design intent
+  for Bounty in one session (retired for the old 3-tier design's own last patch, dropped
+  entirely in #69's first pass, reinstated here in a different shape — 20% of guild's
+  TOTAL, not 85% of guild's per-member share the old design targeted). Re-verified via a
+  full EV sweep (power 1-2,500, Rank 1 and Rank 6) that the new numbers introduce no dead
+  zone — same trivial near-zero-power edge case as before, no new mid-ladder dip.
+  New tests: `mercenaryFactory.test.js`'s `Bounty.TIERS ladder shape` block gained a
+  regression test checking every tier's reward against a live-computed 15-30% band of the
+  realistic-guild-total target (a wide band rather than an exact match, since rounding and
+  guild's own mode-boundary kinks drift the ratio a little tier to tier) — self-corrects if
+  either ladder is retuned again. Full suite green: 660/660 (up from 659/659 before this
+  item).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
