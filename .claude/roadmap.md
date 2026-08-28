@@ -2845,7 +2845,28 @@ and needs its own balance pass.
   either ladder is retuned again. Full suite green: 660/660 (up from 659/659 before this
   item).
 
-- [x] **71. Safehouse Capacity Rebalance — Fixed a Badly Overtuned Slot Ladder** — S — **Done**
+- [x] **71. Mercenary Bounty / Rival Bounty Hunter Rename — Potato/Vegetable Theme Pass** — S — **Done**
+  What: renamed all 36 named characters in `BountyScenarios` (30 entries across Tiers I-III)
+  and `RivalMercenaries.roster` (6 entries) in `constants.js`, from generic wanted-poster
+  outlaw names to potato/root-vegetable-variety puns, matching the theming convention every
+  other named-NPC system in the game already follows (Guild Raid bosses, `/work` encounters,
+  Companions). Examples: "The Chip Thief" -> "Kennebec Pete" (Kennebec is the classic
+  chip-potato variety), "The Rustbeard Ronin" -> "Turnipbeard, the Rusted Ronin". Each entry's
+  `winFlavor`/`loseFlavor` sentences were rewritten only where they directly named the old
+  character; story beats, currency assignments (potato vs. starch), and reward/difficulty
+  values were left untouched. `.claude/systems/mercenary-bounties.md`'s roster prose was
+  updated to match.
+  Why: a prior audit pass (this session, not itself a roadmap item) catalogued every named
+  encounter/character in the game against the potato/vegetable theming convention and found
+  Mercenary Bounties and Rival Bounty Hunters were the two systems written in an unrelated
+  "wanted-poster outlaw" voice instead. Direct instruction after reviewing the audit: "sure do
+  the renames."
+  Notable: the audit also flagged the World Boss "Thunderlord Raikon" as untethed, but that
+  call was wrong — its lore text already puns on daikon ("a daikon wielding terrifying storm
+  magic... this heinous root vegetable"), so it was deliberately left unrenamed. Full suite
+  green: 660/660, unchanged from before this item (flavor-text-only change, no logic touched).
+
+- [x] **72. Safehouse Capacity Rebalance — Fixed a Badly Overtuned Slot Ladder** — S — **Done**
   What: retuned `Safehouse.SLOTS`' capacity column (`constants.js`) — costs unchanged, only
   capacity per slot dropped: 15M/30M/60M/100M/150M/200M -> 3M/9M/20M/40M/78M/150M, taking the
   Rank-6 max-out total from 555,000,000 down to 300,000,000.
