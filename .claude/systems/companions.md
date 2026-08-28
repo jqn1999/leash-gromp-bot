@@ -881,12 +881,22 @@ market-tax discount for a full roster) for now.
   equivalent celebratory moment wired into ordinary `/work` leveling (unlike Scavenging's
   own embed) — the achievement-unlock embed (below) is what surfaces that moment for a
   `/work`-leveled crossing instead.
-- **Full-Roster flourish** — once `companions.ownedCount >= Companions.length` (13,
-  matching `full_roster`'s own threshold exactly), `/companion`'s list description gets a
-  "🏆 Menagerie Complete" line, and `/profile`'s title gets a " 🏆Menagerie Complete" suffix
-  (same title-flourish precedent " 🌱Rebirth N" already sets on that same embed). Purely
-  cosmetic — the underlying `full_roster` achievement already existed and is unchanged;
-  this just makes the milestone visible in-line rather than only on `/achievements`.
+- **Full-Roster flourish** — `/profile`'s title gets a " 🏆Menagerie Complete" suffix (same
+  title-flourish precedent " 🌱Rebirth N" already sets on that same embed) once
+  `companions.ownedCount >= Companions.length` (13, matching `full_roster`'s own threshold
+  exactly) — `ownedCount` is a lifetime, never-decrementing counter, so this stays a
+  permanent capstone once earned, same as the achievement itself. `/companion`'s own list
+  description gets an equivalent "🏆 Menagerie Complete" line, but compares against a
+  LIVE count instead: `companion.js`'s `buildOwnedPages` computes `uniqueOwnedCount` fresh
+  off currently-owned instances each time (distinct companion IDs, deduped — a duplicate
+  copy of one already-owned type doesn't count twice; fixed 2026-08-28 after this line
+  briefly compared against raw instance count instead, letting duplicates push the
+  displayed total past 13). The two are deliberately allowed to diverge: `/profile`'s tag
+  never regresses even if a player later sells away their only copy of a type, while
+  `/companion`'s own line reflects what its own paginated list actually shows right now.
+  Purely cosmetic either way — the underlying `full_roster` achievement already existed and
+  is unchanged; this just makes the milestone visible in-line rather than only on
+  `/achievements`.
 - **`companionFactory.applyMaxLevelTracking(companions, instanceId)`** — the shared
   write-side logic behind the tag. Marks one owned instance `hasReachedMaxLevel: true` the
   first time it's found at max level and bumps `companions.maxLevelCount` (any rarity) /
