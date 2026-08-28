@@ -1809,18 +1809,33 @@ const RivalMercenaries = {
 // house, so the amount that briefly becomes robbable liquid potatoes is bounded by that
 // one house's balance, not the mercenary's entire stash landing in the wallet at once.
 // mercenaryFactory.getMercenaryRankInfo gates which slot is purchasable next; a fully
-// Rank-6 mercenary who's bought every slot holds 555,000,000 potatoes of compartmentalized
+// Rank-6 mercenary who's bought every slot holds 300,000,000 potatoes of compartmentalized
 // capacity — enough to meaningfully soften the tier-7 cliff above without eliminating
 // exposure on the biggest purchases (a maxed personal bank + all 6 safehouses still falls
-// short of the 1B/2B top shop tiers).
+// well short of the 1B/2B top shop tiers).
+//
+// Rebalanced 2026-08-28, direct instruction, after a capacity-per-potato-spent audit found
+// the original table badly overtuned: slot 1 alone (15,000,000 capacity for a 2,000,000
+// cost, a 7.5x ratio) was nearly 4x more capacity-efficient than the personal bankShop
+// ladder's own best-ever tier (2.0x, tiers 2-3) — AND more efficient than the guild
+// bankCapacity ladder's typical sustained range (0.5x-1.0x past its own generous starter
+// tier) despite a Safehouse being funded entirely solo, not pooled across up to 25 guild
+// members. The ratio also ran backwards from where it should be gentlest: highest at the
+// cheapest, earliest (Rank 1, zero-wins-required) slot rather than tapering down toward it.
+// This table re-targets a smooth taper starting BELOW the personal shop's own peak ratio
+// (1.5x at slot 1, vs. the shop's best of 2.0x) down to a modest 0.375x at slot 6 — closely
+// tracking the personal bankShop ladder's own ratio at each comparable cost bracket instead
+// of dwarfing it. Costs are unchanged from the original table; only capacity was retuned,
+// dropping the Rank-6 total from 555,000,000 to 300,000,000 (direct instruction — "adjust
+// total capacity to 300 million for now at max").
 const Safehouse = {
     SLOTS: [
-        { slot: 1, rankRequired: 1, cost: 2000000,   capacity: 15000000 },
-        { slot: 2, rankRequired: 2, cost: 8000000,   capacity: 30000000 },
-        { slot: 3, rankRequired: 3, cost: 25000000,  capacity: 60000000 },
-        { slot: 4, rankRequired: 4, cost: 75000000,  capacity: 100000000 },
-        { slot: 5, rankRequired: 5, cost: 200000000, capacity: 150000000 },
-        { slot: 6, rankRequired: 6, cost: 400000000, capacity: 200000000 },
+        { slot: 1, rankRequired: 1, cost: 2000000,   capacity: 3000000 },
+        { slot: 2, rankRequired: 2, cost: 8000000,   capacity: 9000000 },
+        { slot: 3, rankRequired: 3, cost: 25000000,  capacity: 20000000 },
+        { slot: 4, rankRequired: 4, cost: 75000000,  capacity: 40000000 },
+        { slot: 5, rankRequired: 5, cost: 200000000, capacity: 78000000 },
+        { slot: 6, rankRequired: 6, cost: 400000000, capacity: 150000000 },
     ]
 }
 

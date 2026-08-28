@@ -2845,6 +2845,34 @@ and needs its own balance pass.
   either ladder is retuned again. Full suite green: 660/660 (up from 659/659 before this
   item).
 
+- [x] **71. Safehouse Capacity Rebalance — Fixed a Badly Overtuned Slot Ladder** — S — **Done**
+  What: retuned `Safehouse.SLOTS`' capacity column (`constants.js`) — costs unchanged, only
+  capacity per slot dropped: 15M/30M/60M/100M/150M/200M -> 3M/9M/20M/40M/78M/150M, taking the
+  Rank-6 max-out total from 555,000,000 down to 300,000,000.
+  Why: a user-prompted audit (started from "15 million for 2 million invested seems very high
+  compared to the shop's bank upgrade costs and amounts") found the original table's
+  capacity-per-potato-spent ratio badly out of line with every comparable system, and
+  front-loaded backwards from how it should taper: slot 1 (2,000,000 cost -> 15,000,000
+  capacity, a 7.5x ratio) was nearly 4x more efficient than the personal `bankShop` ladder's
+  own best-ever tier (2.0x, tiers 2-3) — worse, it was MORE efficient than the guild
+  `bankCapacity` ladder's own sustained range (0.5x-1.0x past its one generous starter tier)
+  despite a Safehouse being funded entirely solo, never pooled across up to 25 guild members
+  the way guild purchases are. The ratio also peaked at the cheapest, most-accessible slot
+  (Rank 1, zero wins required) rather than the shop's own shape of tapering down from a
+  modest early ratio.
+  Fix: rebuilt the capacity column so each slot's ratio starts at 1.5x (still below the
+  personal shop's own peak of 2.0x) and decays smoothly to 0.375x by slot 6, tracking the
+  personal `bankShop` ladder's real ratio at each comparable cost bracket instead of dwarfing
+  it. Total capacity target (300,000,000) was a direct instruction ("adjust total capacity to
+  300 million for now at max") rather than derived from the ratio curve itself — the curve was
+  fit to land on that total given the unchanged cost column.
+  Also updated: `systems/safehouses.md`'s slot table/prose, and two `safehouseFactory.test.js`
+  assertions that had hardcoded the old capacity numbers (`slot 2 is already full` at
+  30,000,000, and a `555,000,000` full-capacity deposit stress case) — both now reference
+  `Safehouse.SLOTS[...].capacity` live or the new 300,000,000 total instead of a second
+  hardcoded copy, so a future retune won't silently desync the tests again. Full suite green:
+  660/660.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

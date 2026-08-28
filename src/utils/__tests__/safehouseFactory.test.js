@@ -180,10 +180,11 @@ describe('applyDeposit / applyWithdraw', () => {
 
 describe('getTotalRemainingSpace', () => {
     test('sums remaining headroom across every owned slot', () => {
+        const slot1Balance = Safehouse.SLOTS[0].capacity - 1000000; // deliberately short of full, so slot 1 still has real headroom
         const user = baseUser({
-            safehouses: [{ slot: 1, balance: 5000000 }, { slot: 2, balance: 30000000 }] // slot 2 is already full
+            safehouses: [{ slot: 1, balance: slot1Balance }, { slot: 2, balance: Safehouse.SLOTS[1].capacity }] // slot 2 is already full
         });
-        const expected = (Safehouse.SLOTS[0].capacity - 5000000) + 0;
+        const expected = (Safehouse.SLOTS[0].capacity - slot1Balance) + 0;
         expect(safehouseFactory.getTotalRemainingSpace(user)).toBe(expected);
     });
 
@@ -196,7 +197,7 @@ describe('splitDepositRandomly', () => {
     test('the allocations always sum to exactly the requested amount', () => {
         const owned = Safehouse.SLOTS.map(def => ({ slot: def.slot, balance: 0 }));
         const user = baseUser({ safehouses: owned });
-        for (const amount of [1, 5, 1234567, 555000000]) {
+        for (const amount of [1, 5, 1234567, 300000000]) {
             const allocations = safehouseFactory.splitDepositRandomly(user, amount);
             const total = allocations.reduce((sum, a) => sum + a.amount, 0);
             expect(total).toBe(amount);

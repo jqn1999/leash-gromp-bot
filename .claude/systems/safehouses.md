@@ -58,16 +58,25 @@ personal/guild `bankCapacity` shop ladders already use:
 
 | Slot | Rank required | Cost | Capacity |
 |---|---|---|---|
-| 1 | 1 (fresh mercenary) | 2,000,000 | 15,000,000 |
-| 2 | 2 (15 wins) | 8,000,000 | 30,000,000 |
-| 3 | 3 (50 wins) | 25,000,000 | 60,000,000 |
-| 4 | 4 (125 wins) | 75,000,000 | 100,000,000 |
-| 5 | 5 (275 wins) | 200,000,000 | 150,000,000 |
-| 6 | 6 (525 wins, max rank) | 400,000,000 | 200,000,000 |
+| 1 | 1 (fresh mercenary) | 2,000,000 | 3,000,000 |
+| 2 | 2 (15 wins) | 8,000,000 | 9,000,000 |
+| 3 | 3 (50 wins) | 25,000,000 | 20,000,000 |
+| 4 | 4 (125 wins) | 75,000,000 | 40,000,000 |
+| 5 | 5 (275 wins) | 200,000,000 | 78,000,000 |
+| 6 | 6 (525 wins, max rank) | 400,000,000 | 150,000,000 |
 
-A fully-ranked mercenary who's bought all 6 holds 555,000,000 potatoes of compartmentalized
+A fully-ranked mercenary who's bought all 6 holds 300,000,000 potatoes of compartmentalized
 capacity — enough to meaningfully soften the shop ladder's 500M/1B/2B-cost tiers without eliminating
 exposure on the very largest purchases entirely.
+
+Rebalanced 2026-08-28 (direct instruction) from an original 555,000,000-total table
+(15M/30M/60M/100M/150M/200M capacity per slot) after a capacity-per-potato-spent audit found
+it badly overtuned against both the personal `bankShop` ladder (slot 1's original 7.5x ratio
+was nearly 4x the shop's own best-ever tier, 2.0x) and the guild `bankCapacity` ladder (whose
+sustained ratio past its own generous starter tier is only 0.5x-1.0x, despite being funded
+collectively across up to 25 members rather than by one player alone). Costs are unchanged;
+only capacity was retuned to taper smoothly from 1.5x at slot 1 down to 0.375x at slot 6,
+tracking the personal shop's own ratio at each comparable cost bracket instead of dwarfing it.
 
 Buying is `/safehouse buy` — no confirm step (same "explicit command = explicit intent" precedent
 `/create-new-guild` already sets), always targets the next unowned slot, rejects with a specific
@@ -112,7 +121,7 @@ proportional pass with `remaining >= eligible.length` specifically to avoid this
 a second, trivially-bounded loop (handing out at most `eligible.length - 1` leftover potatoes one at
 a time) to finish off whatever the flooring pass couldn't cleanly divide. The whole thing is bounded
 by `Safehouse.SLOTS.length` (currently 6) regardless of whether the deposit is 5 potatoes or
-555,000,000 — verified directly in `safehouseFactory.test.js` (exact-total-allocated invariants,
+300,000,000 — verified directly in `safehouseFactory.test.js` (exact-total-allocated invariants,
 per-house capacity-respecting invariants, and a timing assertion for a large multi-house split).
 
 `/safehouse list` shows every owned house's fill bar, the combined total, and the next purchasable
