@@ -2894,6 +2894,25 @@ and needs its own balance pass.
   hardcoded copy, so a future retune won't silently desync the tests again. Full suite green:
   660/660.
 
+- [x] **73. Fix: `/companion` Showed "15 / 13 collected" With Duplicate Companions Owned** — S — **Done**
+  What: `createCompanionListEmbed`'s "X / 13 collected" header and Menagerie Complete check
+  compared `Companions.length` (13 distinct types) against the raw count of owned INSTANCES,
+  which counts every duplicate copy separately since the 2026-08-25 instance rework — two
+  owned copies of one companion type pushed the displayed total past 13.
+  Why: direct user report: "when users use /companion it has x/13 for their companions but
+  now that duplicates that happen that count gets above 13 like 15/13... how about its just
+  unique pets? so a ladybug with 2 different ids would still just be 1 for the 13 count."
+  Fix: `companion.js`'s `buildOwnedPages` now also returns `uniqueOwnedCount` (distinct
+  companion IDs currently owned, deduped via `Set`), replacing the raw instance-count
+  `totalOwned` it used to return. Deliberately NOT reusing `userDetails.companions.ownedCount`
+  (a lifetime, never-decrementing achievement counter — see `companionFactory.applyCompanionAward`)
+  for this: that field is intentionally permanent for the `full_roster` achievement and
+  `/profile`'s own separate "Menagerie Complete" title tag, but `/companion`'s live roster
+  page should track CURRENT holdings and drop back down if a player later sells their only
+  copy of a type — the two are allowed to diverge by design. Two new
+  `companion.test.js` tests lock in the dedupe behavior (`buildOwnedPages` exported for
+  testing, matching the existing `attemptEquip` export precedent). Full suite green: 662/662.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
