@@ -332,7 +332,8 @@ Keyed by **band letter** (`I`/`II`/`III` — see `mercenaryFactory.getBandLetter
 the 12-Tier Bounty Ladder's numeric 1-12 tier down to these 3 bands: B1-4→I, B5-8→II,
 B9-12→III), `{ name, currency, winFlavor, loseFlavor }`, mirroring `regularWorkMobs`'
 "cosmetic flavor, mechanically identical formula" shape — Bounty targets read as
-wanted-poster/heist flavor (The Chip Thief, Marsh Bandit Malone, ...) rather than reusing
+wanted-poster/heist flavor, each target a potato/vegetable-variety pun in the Yukon-companion
+mold (Kennebec Pete, Bintje the Marsh Bandit, ...) rather than reusing
 Guild Raid's own mob roster. 10 entries per tier so the potato/starch ratio lands on an
 exact whole-number split, widening toward starch at deeper tiers (the same
 "rarer-and-different, not just rarer-and-bigger" direction Sweet/Ancient/Mimic/Golden Yam
@@ -858,8 +859,11 @@ the bump by scenario removes the problem at its root, on top of removing the cho
 fully-flavored-per-attempt table, since the scenario roll changes the fight's numbers, never
 which rival shows up. One entry (`{ name, thumbnailUrl, description, winFlavor, loseFlavor }`)
 is drawn uniformly at random on every `/confront-rival` call, independent of which scenario
-got rolled. Roster: The Rustbeard Ronin, Marsh Widow Malvina, Deadfall Duncan, The Coinpurse
-Reaper, Old Scattergun Suze, The Hollow Ledger. Flavor text is cosmetic only, same
+got rolled. Roster: Turnipbeard the Rusted Ronin, Taromire the Marsh Widow, Parsnare the
+Deadfall Trapper, Beetscythe the Coinpurse Reaper, Old Scattergun Jicama, Cassavashade the
+Hollow Ledger — renamed 2026-08-28, direct instruction, to match every other named-boss
+system's potato/vegetable-pun convention (Bounty's own roster got the same pass). Flavor
+text is cosmetic only, same
 non-load-bearing status `BountyScenarios`/`regularWorkMobs` already carry — `thumbnailUrl`
 points at the bot's own generic avatar as a placeholder pending commissioned art, same
 fallback Yukon and the T4 raid bosses already use (not literal placeholder text — that shipped
