@@ -2913,6 +2913,36 @@ and needs its own balance pass.
   `companion.test.js` tests lock in the dedupe behavior (`buildOwnedPages` exported for
   testing, matching the existing `attemptEquip` export precedent). Full suite green: 662/662.
 
+- [x] **74. Fix: `/work` Crashed on a Float-Drifted `workMultiplierAmount` (Ancient Potato)** — S — **Done**
+  What: `workFactory.js`'s `handleAncientPotato` could throw `TypeError: Cannot read
+  properties of undefined (reading 'amount')`, crashing the whole `/work` call. Traced from a
+  direct report of two crashes seen in production logs ("There was an error running this
+  command TypeError... it seems like it is happening when work is used").
+  Root cause: `getNextShopTier`'s exact `===` match against a workShop tier's `currentAmount`
+  broke for any player whose `workMultiplierAmount` had ever received a fractional flat grant
+  — `sweetPotatoRewards`/`metalPotatoRewards`' `workMultiplierAmount` type (0.2/0.6) and
+  `BountyStatReward`'s `TIER_I/II/III_GRANT` (0.2/0.4/0.6) all add the SAME `reward.amount` to
+  both the raw stat field and `sweetPotatoBuffs.workMultiplierAmount` via independent `+=`
+  accumulations. Algebraically the difference (`rebirthFactory.getBaseValue`) should stay
+  exactly the shop-purchased base value forever, but IEEE 754 float addition isn't
+  associative — after enough such grants the subtraction lands a hair off a tier's
+  `currentAmount` (e.g. `1.5000000000000004` instead of `1.5`) and never exactly matches
+  again, so `.find()` returned `undefined` and the next line crashed reading `.amount` off
+  it. Reproduced directly: 5 separate `0.2` grants land at exactly this drifted value.
+  `shopFactory.js`'s own `/shop`/`/buy` path happens to dodge this via a `.toFixed(1)` +
+  loose-`==` string-coercion trick in `getUserBaseShopValue`, but `workFactory.js` keeps its
+  own separate, un-guarded copy of this lookup (by existing "mirrored, not shared"
+  convention) and had no equivalent.
+  Fix: `getNextShopTier` now matches within an epsilon tolerance (`1e-6` — far above realistic
+  float noise, far below the smallest real gap between adjacent tiers in any of the three
+  shops, 0.5) instead of strict equality — self-heals both already-drifted and future accounts
+  with no data migration needed, since the very next matching write recomputes the raw stat
+  field cleanly. Also added a defensive `if (nextTier)` guard at the one call site so any
+  future/unforeseen non-matching case degrades to skipping that track's grant instead of
+  crashing the whole roll. One new `workFactory.test.js` regression test reproduces the exact
+  drifted float values and asserts no throw (confirmed it actually reproduces the reported
+  error message by re-running it against the pre-fix code first). Full suite green: 663/663.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

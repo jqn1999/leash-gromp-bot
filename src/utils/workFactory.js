@@ -54,9 +54,28 @@ const REGRADE_TRACKS = [
 // Same exact-match lookup buy.js/guildBuy.js each keep their own local copy of —
 // mirrored here rather than shared since it's a 3-line pure function, same convention
 // those two files already follow with each other.
+//
+// Fixed 2026-08-28 — was a strict === match against currentBaseAmount (itself
+// rebirthFactory.getBaseValue's raw, unrounded workMultiplierAmount - sweetPotatoBuffs -
+// regradeAmount), which crashed ("Cannot read properties of undefined (reading 'amount')")
+// for any player whose workMultiplierAmount had ever received a fractional flat grant —
+// sweetPotatoRewards/metalPotatoRewards' workMultiplierAmount type (0.2/0.6) and
+// BountyStatReward's TIER_I/II/III_GRANT (0.2/0.4/0.6) all add the SAME reward.amount to
+// both the raw stat field and sweetPotatoBuffs.workMultiplierAmount via independent `+=`
+// accumulations — algebraically their difference should stay exactly the shop-purchased
+// base value forever, but IEEE 754 float addition isn't associative, so after enough grants
+// the subtraction lands a hair off (e.g. 1.5000000000000004 instead of 1.5) and never
+// exactly equals a workShop tier's currentAmount again. shopFactory.js's own
+// getUserBaseShopValue happens to dodge this for /shop and /buy via a `.toFixed(1)` +
+// loose-`==` string-coercion trick, but this function had no equivalent guard. Switched to
+// an epsilon-tolerant match — TOLERANCE (1e-6) is far above realistic float noise
+// (~1e-13-1e-10 after any reasonable number of grants) and far below the smallest real gap
+// between adjacent tiers in any of these three shops (0.5, workShop's tier 1->2 step), so it
+// can never conflate two genuinely different tiers.
+const SHOP_TIER_MATCH_TOLERANCE = 1e-6;
 function getNextShopTier(shopId, currentBaseAmount) {
     const shop = shops.find(s => s.shopId === shopId);
-    return shop.items.find(item => item.currentAmount === currentBaseAmount);
+    return shop.items.find(item => Math.abs(item.currentAmount - currentBaseAmount) < SHOP_TIER_MATCH_TOLERANCE);
 }
 
 // True if `date` falls on a Monday in US Eastern time — same locale-based check
@@ -414,10 +433,19 @@ class WorkFactory {
             // survive a shop purchase the same way it does in buy.js.
             const track = shopEligibleTracks[Math.floor(Math.random() * shopEligibleTracks.length)];
             const nextTier = getNextShopTier(track.shopId, trackBaseValues[track.regradeKey]);
-            shopUpgradeIncrease = nextTier.amount - trackBaseValues[track.regradeKey];
-            shopUpgradedStatName = track.label;
+            // Defensive fallback, kept even after the epsilon-tolerance fix above (see
+            // getNextShopTier's own comment) — if some other/future cause ever leaves a
+            // track's base value with no matching tier at all, skip granting this track
+            // rather than crashing the whole /work call on a thrown TypeError. shopEligibleTracks
+            // already guarantees at least one OTHER track exists when there's more than one, but
+            // this can still be the only eligible track, so this has to degrade gracefully in
+            // place rather than assume a different pick is available.
+            if (nextTier) {
+                shopUpgradeIncrease = nextTier.amount - trackBaseValues[track.regradeKey];
+                shopUpgradedStatName = track.label;
 
-            updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
+                updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
+            }
         } else {
             // Reached either because every track is already maxed (nothing left to
             // stat-bump) or because rollsPotatoInstead pre-empted an eligible stat-bump

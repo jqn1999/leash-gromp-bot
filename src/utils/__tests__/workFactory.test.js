@@ -766,6 +766,48 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradedStatName).toBe('Work Multiplier');
     });
 
+    // Regression: a real report of "Cannot read properties of undefined (reading
+    // 'amount')" crashing /work. Root cause: sweetPotatoRewards/metalPotatoRewards'
+    // workMultiplierAmount grant (0.2/0.6) and BountyStatReward's TIER_I/II/III_GRANT
+    // (0.2/0.4/0.6) all add the SAME fractional reward.amount to both the raw
+    // workMultiplierAmount field and sweetPotatoBuffs.workMultiplierAmount via independent
+    // `+=` accumulations. Algebraically their difference (getBaseValue) should stay exactly
+    // the shop-purchased base value forever, but IEEE 754 float addition isn't associative,
+    // so after enough such grants the subtraction lands a hair off a workShop tier's
+    // currentAmount (e.g. 1.5000000000000004 instead of 1.5) and getNextShopTier's old
+    // strict === match never found a tier again — throwing on `.amount` of the resulting
+    // undefined. These exact float values reproduce that drift: base 1.5 plus five separate
+    // 0.2 grants landing on 2.5000000000000004 (raw) minus 1 (buffs) = 1.5000000000000004,
+    // not exactly 1.5.
+    test('a workMultiplierAmount base value one float epsilon off a tier boundary does not crash (float-drift regression)', async () => {
+        const userDetails = baseUser({
+            workMultiplierAmount: 2.5000000000000004, // 1.5 (tier 2 boundary) + five 0.2 grants, drifted
+            sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 0, bankCapacity: 0 }, // the same five 0.2 grants, summed independently
+            // getBaseValue subtracts regradeAmount too, so the raw field has to include it
+            // back in for base value to land exactly on SHOP_MAX (excluding these two tracks
+            // from shopEligibleTracks) — same shape the "mid-shop track" test above uses.
+            passiveAmount: SHOP_MAX.passiveAmount + REGRADE_CAPS.passiveAmount,
+            bankCapacity: SHOP_MAX.bankCapacity + REGRADE_CAPS.bankCapacity,
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
+                bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
+            },
+        });
+
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        let result;
+        try {
+            result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(result.shopUpgradedStatName).toBe('Work Multiplier');
+        // Grants tier 2's own step (currentAmount 1.5 -> amount 3), off the drifted base.
+        expect(result.shopUpgradeIncrease).toBeCloseTo(3 - 1.5000000000000004, 9);
+    });
+
     test('grants a big but sub-Golden potato payout once shop AND regrade are both maxed on every track', async () => {
         // calculateGainAmount caps the BASE amount (workGainAmount * factor) before the
         // player's own multiplier scales it up — so the payout itself isn't bounded by
