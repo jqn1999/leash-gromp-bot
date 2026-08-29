@@ -1,18 +1,21 @@
 # Quests / Bounties
 
-[src/utils/questFactory.js](../../src/utils/questFactory.js) + `Quests`/`DailyQuest`/`WeeklyQuest`
-constants in [constants.js](../../src/utils/constants.js), checked from
-[work.js](../../src/commands/user/work.js), rotated by the same 4am UTC cron that already resets
-`canEnterTower` and pays out the Tower leaderboard, viewed via `/quests`.
+[src/utils/questFactory.js](../../src/utils/questFactory.js) +
+`Quests`/`DailyQuest`/`WeeklyQuest`/`MercenaryQuest` constants in
+[constants.js](../../src/utils/constants.js), checked from
+[work.js](../../src/commands/user/work.js) (daily/weekly) and
+[take-bounty.js](../../src/commands/user/takeBounty.js) (mercenary), rotated by the same 4am UTC
+cron that already resets `canEnterTower` and pays out the Tower leaderboard, viewed via `/quests`.
 
 ## Pool and rotation
 
-11 quest templates total: 5 daily (3 rotate in), 6 weekly (2 rotate in). The **daily** set
-refreshes every day; the **weekly** set only refreshes on Mondays (`isMondayEST`) — any other day
-of the week, `rotateQuests()` leaves the existing weekly set untouched. Both categories are shared
-server-wide (the same 3 daily / 2 weekly quests for everyone), not personalized per user — stored
-in the stats table's `active_quests` doc: `{ dailyQuestIds, dailyRotationDate, weeklyQuestIds,
-weeklyRotationDate }`.
+13 quest templates total: 5 daily (3 rotate in), 6 weekly (2 rotate in), 2 mercenary (1 rotates
+in). The **daily** set refreshes every day; the **weekly** and **mercenary** sets share the same
+Monday-only cadence (`isMondayEST`) but rotate independently of each other — any other day of the
+week, `rotateQuests()` leaves both untouched. All three categories are shared server-wide (the
+same quests for everyone who's eligible), not personalized per user — stored in the stats table's
+`active_quests` doc: `{ dailyQuestIds, dailyRotationDate, weeklyQuestIds, weeklyRotationDate,
+mercenaryQuestIds, mercenaryRotationDate }`.
 
 **Every quest condition is a count delta** (work N times, trigger encounter type N times), never a
 potato-amount delta. A fixed potato threshold is wildly different difficulty for a fresh player vs.
@@ -94,16 +97,40 @@ pre-action value.
   `grantedRewardAmount` (not a static template value) so `createQuestCompleteEmbed` can display what
   that specific player actually got.
 
+## Mercenary Quest
+
+A third, mercenary-exclusive category (2026-08-29) rewarding **Safehouse capacity** instead of a
+stat bonus — see [systems/safehouses.md](safehouses.md#mercenary-quest-bonus) for how the reward
+is actually applied. Two templates today, both keyed on `mercenaryBountyWinCount` (win 3 / win 6
+Bounties this week) — deliberately the durable lifetime win counter, not `mercenaryNotoriety`
+(which is a resettable resource, unsafe as a quest condition since it can go backwards mid-week and
+silently un-complete progress).
+
+- **Gating**: `mercenaryQuestIds` is only folded into `activeIds` (in both `checkAndClaimQuests`
+  and `getProgress`) when `userDetails.isMercenary` is true. A non-mercenary never gets a baseline
+  snapshotted for it, never sees it in `/quests`, and never has it counted toward
+  `completedCount`/`totalCount` — same as it not existing for them at all, not just hidden.
+- **Reward shape**: flat, non-ramping (`reward: { type: 'additionalSafehouseStorage', amount }`) —
+  deliberately NOT scaled by regrade progress the way weekly `statType` rewards are, since a flat
+  Safehouse-capacity bump has no equivalent regrade track to ramp against. Multiple completions in
+  the same check sum into one write, same as daily.
+- **Checked from `take-bounty.js` only** — `mercenaryBountyWinCount` only ever changes there (a
+  Bounty win), so that's the only call site that can ever advance or complete this track. Uses the
+  same post-write `findUser` refetch already there for the achievement check, with pre-win
+  `userDetails` as the baseline for `previousUserDetails` — identical pattern to `/work`'s own
+  daily/weekly check.
+
 ## Where it's checked
 
-Only `/work` — after the scenario resolves, alongside (and after) the achievement check, using the
-same re-fetched `userDetails` (the scenario handlers write straight to DB without mutating the
-in-memory object the caller holds, same reason `/work`'s achievement check needs a re-fetch — see
-[systems/achievements.md](achievements.md)). Quest-driven achievement unlocks (e.g. a weekly
-quest's stat reward happening to cross an achievement threshold) are **not** eagerly re-checked —
-they resolve lazily on the player's next `/work` call, same as regrade- and Tower-driven
-achievements. This was a deliberate scope decision, not an oversight: quest rewards are modest
-enough that an instant re-check felt like unwarranted complexity for the likely payoff.
+`/work` (daily/weekly) and `take-bounty.js` (mercenary only) — after the scenario/bounty resolves,
+alongside (and after) the achievement check, using the same re-fetched `userDetails` (the handlers
+write straight to DB without mutating the in-memory object the caller holds, same reason the
+achievement check needs a re-fetch — see [systems/achievements.md](achievements.md)). Quest-driven
+achievement unlocks (e.g. a weekly quest's stat reward happening to cross an achievement threshold)
+are **not** eagerly re-checked — they resolve lazily on the player's next `/work` or `/take-bounty`
+call, same as regrade- and Tower-driven achievements. This was a deliberate scope decision, not an
+oversight: quest rewards are modest enough that an instant re-check felt like unwarranted
+complexity for the likely payoff.
 
 `/quests` is **read-only** — it calls `QuestFactory.getProgress`, never `checkAndClaimQuests`.
 Viewing your quest list doesn't snapshot a baseline or claim anything; only real gameplay actions
@@ -113,13 +140,18 @@ bug).
 
 ## UX
 
-- **On completion**: `work.js` sends a follow-up (`embedFactory.createQuestCompleteEmbed`, 📜)
-  listing whatever quests completed that call, with each one's reward shown individually (the daily
-  potato amount is recomputed per-quest for display even though the underlying write sums them).
+- **On completion**: `work.js`/`take-bounty.js` send a follow-up
+  (`embedFactory.createQuestCompleteEmbed`, 📜) listing whatever quests completed that call, with
+  each one's reward shown individually (the daily potato amount is recomputed per-quest for display
+  even though the underlying write sums them; the mercenary reward shows the flat template amount
+  since there's nothing per-player to compute).
 - **`/quests`**: button-paginated exactly like `/achievements` (5 per page, Previous/Next,
   `editReply` → `awaitMessageComponent` → `.update()`, 60s timeout) — in practice the active count
-  (5) rarely needs more than one page, but the infrastructure is there if `DailyQuest.ACTIVE_COUNT`/
-  `WeeklyQuest.ACTIVE_COUNT` ever grow.
+  (5-6) rarely needs more than one page, but the infrastructure is there if `DailyQuest.ACTIVE_COUNT`/
+  `WeeklyQuest.ACTIVE_COUNT`/`MercenaryQuest.ACTIVE_COUNT` ever grow. Each entry's category label
+  reads Daily/Weekly/Mercenary off `quest.category`.
 - **On rotation**: the 4am cron posts `createQuestRotationEmbed` to the events channel — always
-  shows the day's 3 daily quests, plus the week's 2 weekly quests only on the Monday they actually
-  changed.
+  shows the day's 3 daily quests, plus the week's 2 weekly and 1 mercenary quest only on the Monday
+  they actually changed (mercenary shares `weeklyRotated`'s own flag since they rotate on the same
+  cadence — announced to everyone same as weekly, even though only mercenaries see progress toward
+  it in `/quests`).

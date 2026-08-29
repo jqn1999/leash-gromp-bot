@@ -190,6 +190,33 @@ by retiring; a returning mercenary's houses (and whatever's still in them) are e
 them, they just can't grow further (no new deposits, no new slot purchases) until becoming a
 mercenary again.
 
+## Mercenary Quest bonus
+
+Added 2026-08-29 alongside the new Mercenary Quest track (see
+[systems/quests.md](quests.md#mercenary-quest)) — winning 3/6 Bounties in a week grants a flat,
+lifetime-accumulating `userDetails.additionalSafehouseStorage` bonus (default `0`), split EVENLY
+across every currently-**owned NUMBERED** slot (1-6). Main Safehouse (slot 0) is deliberately
+excluded — the original instruction was "split among the 1-6 safehouses" specifically, and Main
+Safehouse's capacity is already its own live formula off the personal bank, not this static-table
+system.
+
+- **`safehouseFactory.getSlotDefinition(slotNumber, userDetails)`** applies the bonus: for a
+  numbered slot, `bonusShare = floor(additionalSafehouseStorage / ownedNumberedSlotCount)` is added
+  on top of that slot's own static `Safehouse.SLOTS` capacity. Zero owned numbered slots, or zero
+  accumulated bonus, is a no-op (falls straight through to the plain static value) — the bonus can
+  be earned before any slot is bought and just sits inert until the first purchase.
+- **Recomputed live from the current owned count, not fixed at grant time.** Buying another slot
+  redistributes the SAME total across more slots (each existing slot's own share shrinks
+  correspondingly) rather than leaving the new slot's share stranded at 0 — the sum across every
+  owned slot is unaffected either way, only the per-slot breakdown shifts. `Math.floor` (not
+  rounded) so the sum of every slot's share can never exceed the real stored total through rounding
+  drift.
+- Since `getTotalCapacity`/`getTotalRemainingSpace` (and everything built on `getSlotDefinition`)
+  already read capacity through this function, the bonus flows through automatically everywhere
+  capacity is displayed or checked — no separate wiring needed in `safehouse.js` itself.
+- This bonus can currently only be earned via `take-bounty.js` Bounty wins
+  (`mercenaryBountyWinCount`) — see quests.md for the full reward/gating rules.
+
 ## Explicitly out of scope (for now)
 
 Letting Rivals or other mercenaries raid a Safehouse was considered and deliberately deferred —

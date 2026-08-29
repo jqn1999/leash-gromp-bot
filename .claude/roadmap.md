@@ -3077,6 +3077,43 @@ and needs its own balance pass.
   is the single most-called read in the codebase and directly guards real player currency/
   progress. Full suite: 685/685 (up from 684/684 — one new test, zero regressions).
 
+- [x] **78. Mercenary Quest — Weekly Bounty-Win Track Rewarding Safehouse Capacity** — M — **Done**
+  What: a third quest category, mercenary-exclusive, rewarding Safehouse capacity instead of a
+  stat bonus. Direct instruction: "Weekly quest for merc to increase safe house capacity";
+  clarified via follow-up to a new separate quest track, gated on existing mercenary actions
+  (Bounty wins), reward additive to safehouses via a new `additionalSafehouseStorage` field split
+  among the 1-6 safehouses.
+  - `constants.js`: new `MercenaryQuest.ACTIVE_COUNT` (1) config block, two templates
+    (`merc_bounty_wins_3`/`merc_bounty_wins_6`, 750K/1.5M reward) keyed on
+    `mercenaryBountyWinCount` — the durable lifetime win counter, deliberately not
+    `mercenaryNotoriety` (a resettable resource, unsafe as a quest condition).
+  - `questFactory.js`: `rotateQuests` now also rotates a `mercenaryPool`/`mercenaryQuestIds`/
+    `mercenaryRotationDate` on the same Monday cadence as weekly (independently, so it can never
+    crowd out weekly's own slots); `checkAndClaimQuests`/`getProgress` only fold mercenary quest
+    IDs into `activeIds` when `userDetails.isMercenary` — a non-mercenary never sees or
+    progresses this track at all. New flat (non-ramping) `additionalSafehouseStorage` reward
+    branch, since this reward type has no regrade track to ramp against.
+  - `dynamoHandler.js`: new default field `additionalSafehouseStorage: 0`.
+  - `safehouseFactory.js`: `getSlotDefinition` now folds the bonus into a numbered slot's own
+    capacity — `floor(additionalSafehouseStorage / ownedNumberedSlotCount)` added per slot,
+    Main Safehouse excluded per the original instruction. Recomputed live off the current owned
+    count (not fixed at grant time), so buying another slot redistributes the same total instead
+    of stranding the new slot's share at 0.
+  - `take-bounty.js`: wired in the actual `checkAndClaimQuests` call — `mercenaryBountyWinCount`
+    only ever changes here, so without this the quest could never actually be completed by real
+    gameplay. Uses the same post-write `findUser` refetch already there for the achievement
+    check.
+  - `embedFactory.js`: `createQuestCompleteEmbed` renders the flat reward type;
+    `createQuestsPageEmbed` labels it "Mercenary" instead of falling into the daily/weekly
+    ternary's "Weekly" default; `createQuestRotationEmbed` and the admin dashboard embed both
+    list mercenary quests alongside daily/weekly.
+  Caught before shipping: `MercenaryQuest` was defined in `constants.js` but never added to
+  `module.exports` — would have crashed `rotateQuests` for ALL quest categories, not just
+  mercenary, the moment the mercenary pool was read. Full suite: 699/699 (up from 685/685 —
+  14 new tests across `questFactory.test.js`/`safehouseFactory.test.js`, zero regressions). See
+  [systems/quests.md](systems/quests.md#mercenary-quest) and
+  [systems/safehouses.md](systems/safehouses.md#mercenary-quest-bonus).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
