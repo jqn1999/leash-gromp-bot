@@ -132,7 +132,7 @@ module.exports = {
         // Barn Owl — stacks with the guild robChance buff, if it has one.
         robChance += companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
 
-        const robChanceDisplay = (robChance*100).toFixed(2);
+        let robChanceDisplay = (robChance*100).toFixed(2);
 
         // Show the odds and stakes before rolling, so the player commits knowingly
         // instead of finding out both at once in the result embed.
@@ -158,6 +158,44 @@ module.exports = {
 
         await confirmation.deferUpdate();
 
+        // Re-fetch BOTH parties — up to 30 seconds passed while the preview embed sat
+        // waiting on a confirm click, and either side's potatoes could have moved in that
+        // window (the target could deposit into their bank, the robber could work/spend).
+        // The bug this fixes: the code used to keep computing robAmount/fineAmount off the
+        // pre-preview snapshot AND writing the target's `potatoes` as
+        // (stale snapshot - robAmount) — silently overwriting whatever the target's real,
+        // current balance actually was with a number derived from money that might not
+        // exist anymore (or ignoring money they'd gained since). Recomputing everything
+        // (robChance included, since it's also a function of both balances) off fresh state
+        // right before the roll means the actual transaction always lands on top of reality,
+        // never a stale guess — same "don't trust what was captured when the page was first
+        // rendered" discipline companionSell.js/companionMarket.js/rebirth.js/shop.js already
+        // use for their own confirm-button flows.
+        const freshUserDetails = await dynamoHandler.findUser(userId, username);
+        const freshTargetUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
+        if (!freshUserDetails || !freshTargetUserDetails) {
+            await interaction.editReply({ content: `${userDisplayName}, something went wrong re-checking balances — please try again.`, embeds: [], components: [] });
+            return;
+        }
+        userPotatoes = freshUserDetails.potatoes;
+        userTotalEarnings = freshUserDetails.totalEarnings;
+        userTotalLosses = freshUserDetails.totalLosses;
+        targetUserPotatoes = freshTargetUserDetails.potatoes;
+        targetUserTotalLosses = freshTargetUserDetails.totalLosses;
+
+        robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
+        if (userGuildId) {
+            const guild = await dynamoHandler.findGuildById(userGuildId);
+            if (guild && guild.guildBuff == "robChance") {
+                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+                robChance += guildBuffFactory.getGuildBuffValue("robChance", level);
+            }
+        }
+        robChance += companionFactory.getActivePerkValue(freshUserDetails, "robChanceFlat");
+        // Recomputed for the RESULT embed too — it should reflect the odds actually rolled
+        // against, not the estimate shown in the (by now possibly stale) preview.
+        robChanceDisplay = (robChance*100).toFixed(2);
+
         const userSuccessfulRob = determineRobOutcome(robChance);
 
         // Non-work-focused companion leveling (Barn Owl/Yukon/Elder Rootbeard's robChanceFlat)
@@ -168,7 +206,7 @@ module.exports = {
         // outcome. Restricted by PERK TYPE, not a specific companion id — any equipped
         // companion carrying robChanceFlat trains here, not just one hardcoded companion.
         const leveledCompanions = companionFactory.levelActiveCompanion(
-            userDetails.companions,
+            freshUserDetails.companions,
             companionFactory.getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
             null,
             "robChanceFlat"
@@ -186,7 +224,7 @@ module.exports = {
                 dynamoHandler.updateUserFields(userId, {
                     potatoes: userPotatoes,
                     totalEarnings: userTotalEarnings,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS,
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS * 1000,
                     companions: leveledCompanions
                 }),
                 dynamoHandler.updateUserFields(targetUserId, {
@@ -209,7 +247,7 @@ module.exports = {
                     potatoes: userPotatoes,
                     totalLosses: userTotalLosses,
                     workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS,
+                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS * 1000,
                     companions: leveledCompanions
                 })
             ]);

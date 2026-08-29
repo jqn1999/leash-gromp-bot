@@ -13,6 +13,20 @@ function houseLabel(slotNumber) {
     return slotNumber === safehouseFactory.MAIN_SAFEHOUSE_SLOT ? 'Main Safehouse' : `Safehouse #${slotNumber}`;
 }
 
+// Pulled out so the confirm-button flow can recompute all of this off a freshly re-fetched
+// userDetails right before applying the transaction, not just once before the up-to-30-
+// second wait for a button click (see the picker branch below).
+function computeSafehouseFigures(userDetails, slotNumber) {
+    const ownedHouses = safehouseFactory.getAllOwnedHouses(userDetails);
+    const record = slotNumber !== null ? (ownedHouses.find(s => s.slot === slotNumber) ?? null) : null;
+    const userPotatoes = userDetails.potatoes;
+    const totalStored = safehouseFactory.getTotalStored(userDetails);
+    const totalCapacity = safehouseFactory.getTotalCapacity(userDetails);
+    const depositHeadroom = record ? (safehouseFactory.getSlotDefinition(slotNumber, userDetails).capacity - record.balance) : safehouseFactory.getTotalRemainingSpace(userDetails);
+    const withdrawAvailable = record ? record.balance : totalStored;
+    return { ownedHouses, record, userPotatoes, totalStored, totalCapacity, depositHeadroom, withdrawAvailable };
+}
+
 function buildAmountPickerRow(action) {
     const actionLabel = action === 'deposit' ? 'Deposit' : 'Withdraw';
     const buttons = [25, 50, 100].map(pct => new ButtonBuilder()
@@ -60,7 +74,7 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userAvatar = interaction.user.avatar;
 
-        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        let userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
         // list/withdraw stay available even after /retire-mercenary — a mercenary's own
@@ -100,35 +114,24 @@ module.exports = {
         // not-full house (safehouseFactory.splitDepositRandomly) and withdrawals drain
         // whichever owned houses have balance (autoWithdrawAllocation), so a player never
         // HAS to think about which specific house they're using unless they want to.
-        // getAllOwnedHouses, not getOwnedSlots — a mercenary can deposit/withdraw through
-        // Main Safehouse (their personal bank) even before ever buying a numbered slot.
-        const ownedHouses = safehouseFactory.getAllOwnedHouses(userDetails);
+        const rawHouse = interaction.options.get('house')?.value;
+        const slotNumber = rawHouse === undefined ? null : Math.floor(rawHouse);
+
+        // getAllOwnedHouses (via computeSafehouseFigures), not getOwnedSlots — a mercenary
+        // can deposit/withdraw through Main Safehouse (their personal bank) even before
+        // ever buying a numbered slot. Can be Infinity for depositHeadroom/totalCapacity
+        // when the relevant house's bank-capacity regrade is fully maxed — every downstream
+        // comparison already treats Infinity as a normal, never-binding upper bound with no
+        // special-casing needed.
+        let { ownedHouses, record, userPotatoes, totalStored, totalCapacity, depositHeadroom, withdrawAvailable } = computeSafehouseFigures(userDetails, slotNumber);
         if (ownedHouses.length === 0) {
             interaction.editReply(`${userDisplayName}, you don't own any safehouses yet — run \`/safehouse buy\` first.`);
             return;
         }
-
-        const rawHouse = interaction.options.get('house')?.value;
-        const slotNumber = rawHouse === undefined ? null : Math.floor(rawHouse);
-        let record = null;
-        if (slotNumber !== null) {
-            record = ownedHouses.find(s => s.slot === slotNumber);
-            if (!record) {
-                interaction.editReply(`${userDisplayName}, you don't own ${houseLabel(slotNumber)}. Run \`/safehouse list\` to see what you own, or leave \`house\` blank to spread it across what you do own.`);
-                return;
-            }
+        if (slotNumber !== null && !record) {
+            interaction.editReply(`${userDisplayName}, you don't own ${houseLabel(slotNumber)}. Run \`/safehouse list\` to see what you own, or leave \`house\` blank to spread it across what you do own.`);
+            return;
         }
-
-        let userPotatoes = userDetails.potatoes;
-        const totalStored = safehouseFactory.getTotalStored(userDetails);
-        const totalCapacity = safehouseFactory.getTotalCapacity(userDetails);
-        // "Headroom"/"available" scope to the one picked house when given, otherwise the
-        // combined total across every owned house. Can be Infinity when the picked house
-        // (or Main Safehouse within the combined total) has its bank-capacity regrade fully
-        // maxed — every downstream comparison here already treats Infinity as a normal,
-        // never-binding upper bound with no special-casing needed.
-        const depositHeadroom = record ? (safehouseFactory.getSlotDefinition(slotNumber, userDetails).capacity - record.balance) : safehouseFactory.getTotalRemainingSpace(userDetails);
-        const withdrawAvailable = record ? record.balance : totalStored;
 
         let netAmount = interaction.options.get('amount')?.value;
 
@@ -168,6 +171,27 @@ module.exports = {
             }
 
             await confirmation.deferUpdate();
+
+            // Re-fetch and recompute — up to 30 seconds passed while the picker sat
+            // waiting on a button click, and this account's potatoes/safehouses/bankStored
+            // could have moved in that window (another deposit/withdraw, a bounty win, a
+            // rob, etc.). Without this, the eventual deposit/withdraw below would compute
+            // its amount off the stale pre-picker snapshot and then WRITE that
+            // stale-derived total back, silently overwriting whatever actually happened in
+            // between — same discipline bank.js/companionSell.js/rebirth.js/shop.js already
+            // use for their own confirm-button flows.
+            const freshUserDetails = await dynamoHandler.findUser(userId, username);
+            if (!freshUserDetails) {
+                await interaction.editReply({ content: `${userDisplayName}, something went wrong re-checking your balances — please try again.`, embeds: [], components: [] });
+                return;
+            }
+            userDetails = freshUserDetails;
+            ({ ownedHouses, record, userPotatoes, totalStored, totalCapacity, depositHeadroom, withdrawAvailable } = computeSafehouseFigures(userDetails, slotNumber));
+            if (slotNumber !== null && !record) {
+                await interaction.editReply({ content: `${userDisplayName}, you don't own ${houseLabel(slotNumber)} anymore — please try again.`, embeds: [], components: [] });
+                return;
+            }
+
             const pct = Number(confirmation.customId.replace('safehouse_pct_', ''));
             netAmount = pct === 100 ? 'all' : String(Math.floor((action === 'deposit' ? userPotatoes : withdrawAvailable) * pct / 100));
         }

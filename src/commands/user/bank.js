@@ -11,6 +11,22 @@ function calculateTax(amount){
     return Bank.TAX_BASE + Math.floor(amount*Bank.TAX_PERCENT)
 }
 
+// Pulled out so the confirm-button flow can recompute this off a freshly re-fetched
+// userDetails right before applying the transaction (see the picker branch below) instead
+// of only ever computing it once, before the up-to-30-second wait for a button click.
+function computeBankFigures(userDetails) {
+    const userPotatoes = userDetails.potatoes;
+    const userBankStored = userDetails.bankStored;
+    const isBankCapacityMaxed = userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
+    const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
+    const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+    const userBankCapacity = isBankCapacityMaxed
+        ? Infinity
+        : Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
+    const remainingBankSpace = userBankCapacity - userBankStored;
+    return { userPotatoes, userBankStored, userBankCapacity, remainingBankSpace };
+}
+
 function buildAmountPickerRow(action) {
     const actionLabel = action === 'deposit' ? 'Deposit' : 'Withdraw';
     const buttons = [25, 50, 100].map(pct => new ButtonBuilder()
@@ -57,10 +73,8 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userAvatar = interaction.user.avatar;
 
-        const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+        let userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
-        let userPotatoes = userDetails.potatoes;
-        let userBankStored = userDetails.bankStored;
         // The whole point of fully regrading bank capacity is "never have to worry
         // about overflow again" — any finite number eventually gets bumped into by a
         // dedicated-enough player in an economy where rebirth stacking has no ceiling
@@ -69,16 +83,7 @@ module.exports = {
         // a very large number. REGRADE_CAPS.bankCapacity stays a real finite threshold
         // for bookkeeping purposes (rebirth eligibility, the fort_knox achievement) —
         // this only changes what happens once a player has cleared it.
-        const isBankCapacityMaxed = userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
-        // Rootcarver and the live rebirth bonus — computed fresh here, never folded
-        // into the stored bankCapacity. Moot once maxed, but cheap enough to just always compute.
-        const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
-        const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
-        let userBankCapacity = isBankCapacityMaxed
-            ? Infinity
-            : Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
-
-        let remainingBankSpace = userBankCapacity - userBankStored;
+        let { userPotatoes, userBankStored, userBankCapacity, remainingBankSpace } = computeBankFigures(userDetails);
         const bankHasCapacity = remainingBankSpace > 0;
         if (!bankHasCapacity && action == 'deposit') {
             interaction.editReply(`${userDisplayName}, you do not have anymore space in your bank! Upgrade your bank capacity to store more potatoes`);
@@ -115,6 +120,24 @@ module.exports = {
             }
 
             await confirmation.deferUpdate();
+
+            // Re-fetch and recompute — up to 30 seconds passed while the picker sat
+            // waiting on a button click, and this account's potatoes/bankStored/regrade
+            // progress could have moved in that window (a /work, another /bank action from
+            // a second interaction, etc.). Without this, the eventual deposit/withdraw
+            // below would compute its amount off the stale pre-picker snapshot and then
+            // WRITE that stale-derived total/bankStored back, silently overwriting whatever
+            // actually happened in between — same "don't trust what was captured when the
+            // page was first rendered" discipline companionSell.js/rebirth.js/shop.js
+            // already use for their own confirm-button flows.
+            const freshUserDetails = await dynamoHandler.findUser(userId, username);
+            if (!freshUserDetails) {
+                await interaction.editReply({ content: `${userDisplayName}, something went wrong re-checking your balance — please try again.`, embeds: [], components: [] });
+                return;
+            }
+            userDetails = freshUserDetails;
+            ({ userPotatoes, userBankStored, userBankCapacity, remainingBankSpace } = computeBankFigures(userDetails));
+
             const pct = Number(confirmation.customId.replace('bank_pct_', ''));
             netAmount = pct === 100 ? 'all' : String(Math.floor((action === 'deposit' ? userPotatoes : userBankStored) * pct / 100));
         }
