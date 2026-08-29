@@ -3048,6 +3048,35 @@ and needs its own balance pass.
   with no obvious re-fetch afterward — flagged as a follow-up, out of scope here since the
   user's report specifically named companion/bank/rob.
 
+- [x] **77. Fix: `findUser` Used Eventually-Consistent Reads, Racing Its Own Re-Fetches** —
+  S — **Done**
+  What: `dynamoHandler.findUser`'s Query had no `ConsistentRead` flag, so it defaulted to
+  DynamoDB's eventually-consistent read.
+  Why: the user re-reported the `/companion` equip staleness issue from #76 as something
+  they and other players had genuinely run into, despite #76's own direct simulation
+  confirming `attemptEquip` already re-fetches fresh via `findUser` before writing. Re-ran
+  that exact simulation again and got the same correct result — which was the clue: an
+  in-memory test double is always perfectly consistent, so it can never reproduce a race
+  that depends on the REAL database occasionally serving a stale read.
+  Root cause: every "re-fetch right before a critical write" call site in this codebase
+  (`attemptEquip`, plus `rob.js`/`bank.js`/`safehouse.js`'s confirm-button flows from #76,
+  plus the pre-existing `rebirth.js`/`shop.js`/`companionSell*.js` ones) calls this same
+  `findUser`. An eventually-consistent read can, rarely, still return a just-superseded item
+  shortly after a different write to the same key lands — defeating the entire point of a
+  "re-fetch fresh before writing" guard, in exactly the shape of the bug it exists to
+  prevent (e.g. a companion's `/sell-starch` XP gain "disappearing" if an equip click
+  immediately afterward happened to read before that write's replication caught up).
+  Fix: added `ConsistentRead: true` to `findUser`'s query params. Confirmed this actually
+  takes effect rather than being silently ignored: it's a Query against the table's own
+  partition key (`userId`), not a GSI lookup — this codebase's only GSIs are
+  `webLinkToken-index` and `guildId` — and GSI queries only ever support eventually
+  consistent reads regardless of this flag. One new `dynamoHandler.test.js` test asserts the
+  flag is set on every `findUser` call; verified it actually catches the regression by
+  reverting just this change and re-running it before restoring the fix. Doubles this read's
+  consumed capacity (DynamoDB's own cost of strong consistency) — accepted given `findUser`
+  is the single most-called read in the codebase and directly guards real player currency/
+  progress. Full suite: 685/685 (up from 684/684 — one new test, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
