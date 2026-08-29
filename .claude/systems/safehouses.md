@@ -50,6 +50,58 @@ by slot number (`safehouseFactory.getSlotDefinition`), same "computed live off a
 pattern `MercenaryRank`/`RaidLevel` already establish — a slot's own capacity can be rebalanced later
 without a backfill migration.
 
+## Main Safehouse (slot 0) — the personal bank, displayed and reached through this system
+
+Added 2026-08-29, direct instruction: "for mercenaries can you display their bank capacity as a
+safehouse instead called something like main safehouse? nothing underneath should change just
+display wise and how users access it would be through the safehouse command instead and the
+profile would display the safehouse amount."
+
+This is a display/access-point layer only — `userDetails.bankStored`/`bankCapacity` stay the real,
+persisted source of truth, exactly as `/bank` has always used them. Nothing about how the personal
+bank works changed; a mercenary can now ALSO reach it through `/safehouse`, framed as one more house
+in the same list, and `/profile` names it accordingly.
+
+- **`safehouseFactory.MAIN_SAFEHOUSE_SLOT`** (`0`) is a virtual slot number that's never
+  purchased — every account already has a personal bank, so there's nothing to buy. It never
+  appears in `Safehouse.SLOTS` (the 6 real, purchasable slots) and is never written into
+  `userDetails.safehouses`.
+- **`safehouseFactory.getOwnedSlots(userDetails)` is UNCHANGED** — still the real, purchased
+  numbered slots only (1-6), exactly as before Main Safehouse existed. `buyNextSlot`/
+  `getNextPurchasableSlot`/`canBuyNextSlot` all still read this directly, since Main Safehouse has
+  no place in "which numbered slot is next."
+- **`safehouseFactory.getAllOwnedHouses(userDetails)`** is the new, pooled view — Main Safehouse
+  prepended ahead of the real slots, gated on `isMercenary || owns a real numbered slot` (so a
+  retired mercenary who kept safehouses, per `/retire-mercenary`'s own "no progress lost" promise,
+  still sees Main Safehouse too; someone who was never a mercenary and owns nothing gets nothing
+  extra). `getTotalCapacity`/`getTotalStored`/`getTotalRemainingSpace`/`splitDepositRandomly`/
+  `autoWithdrawAllocation` all read this instead of `getOwnedSlots`, so Main Safehouse participates
+  in every pooled deposit/withdraw/total the same way a numbered slot does.
+- **Capacity is live-computed, not a table lookup.** `safehouseFactory.getMainSafehouseCapacity`
+  mirrors `bank.js`'s own `userBankCapacity` formula exactly — `bankCapacity * (1 + companion's
+  bankCapacityPercent + live rebirth%)`, or literally unlimited (`Infinity`) once bank-capacity
+  regrade is fully maxed — so Main Safehouse can never drift from what `/bank` itself would show.
+  `getSlotDefinition(0, userDetails)` returns this; every other slot ignores the `userDetails` arg
+  (unchanged, still a static `Safehouse.SLOTS` lookup).
+- **Writes split at the DB layer.** `applyMultiDeposit`/`applyMultiWithdraw` return
+  `{ safehouses, bankStored }` instead of a flat array — `bankStored` is only present
+  (non-`undefined`) when the allocation list actually touched slot 0. `safehouse.js` conditionally
+  includes it in the same `updateUserFields` call rather than always spreading it in (an
+  `undefined`-valued key would otherwise reach DynamoDB as an invalid AttributeValue). The
+  `safehouses` half of the return is always built from `userDetails.safehouses` directly, never from
+  `getAllOwnedHouses`, so the synthetic slot-0 entry can never be persisted into the real array.
+- **`house:0` targets Main Safehouse explicitly** on `/safehouse deposit|withdraw` (the `house`
+  option was already numeric, so `0` slots in with no schema change). Every user-facing message that
+  names a house — "you don't own Safehouse #N", the amount-picker embed, the deposit/withdraw result
+  breakdown — labels slot 0 as "Main Safehouse" instead of the generic "Safehouse #0".
+- **`/profile`, for mercenaries only**, relabels "Banked Potatoes"/"Current Bank Capacity" to "Main
+  Safehouse Balance"/"Current Main Safehouse Capacity" — identical numbers, identical live-bonus
+  math. Non-mercenaries see no change at all. The separate, more technical `createUserStatsEmbed`
+  (base+bonus+regrade shop-upgrade breakdown) was deliberately left unrelabeled — it's framed around
+  shop-tier progression, not the simple balance/capacity summary this request was about. `/bank`
+  itself is completely unchanged for everyone, mercenary or not — it still reads/writes the same
+  fields, just under the "Bank" name there; it was not turned into a mercenary-only dead end.
+
 ## Acquiring slots — `constants.js`'s `Safehouse.SLOTS`
 
 Gated on BOTH Mercenary Rank (`mercenaryFactory.getMercenaryRankInfo`) and potatoes, bought strictly
@@ -93,7 +145,9 @@ tax-free alternative that would undercut `/bank`'s own tax economy; the advantag
 compartmentalized capacity, not a cheaper deposit. Withdrawal stays free, same as `/bank`.
 
 **`house` is optional (2026-08-24) — the smooth, default path.** A player who doesn't care which
-house is used just runs `/safehouse deposit amount:5000000` with no house picked:
+house is used just runs `/safehouse deposit amount:5000000` with no house picked. Since 2026-08-29,
+Main Safehouse (`house:0`, see below) is one of the houses this can land in or drain from, same as
+any numbered slot:
 
 - **Deposit** — `safehouseFactory.splitDepositRandomly` spreads the amount across every owned,
   not-full house with a randomized, organic-feeling proportional split (not an even division —

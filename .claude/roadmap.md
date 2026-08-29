@@ -2943,6 +2943,57 @@ and needs its own balance pass.
   drifted float values and asserts no throw (confirmed it actually reproduces the reported
   error message by re-running it against the pre-fix code first). Full suite green: 663/663.
 
+- [x] **75. Main Safehouse — the Personal Bank Displayed/Accessed as a Safehouse for
+  Mercenaries** — M — **Done**
+  What: mercenaries can now view and use their personal bank (`bankStored`/`bankCapacity`)
+  through `/safehouse` and `/profile`, framed as "Main Safehouse" — a virtual slot 0
+  alongside the 6 real, purchased `Safehouse.SLOTS`. Display/access-point only:
+  `bankStored`/`bankCapacity` stay the actual persisted source of truth, `/bank` is
+  completely unchanged for everyone, and nothing about how the personal bank works
+  mechanically changed.
+  Why: direct instruction — "for mercenaries can you display their bank capacity as a
+  safehouse instead called something like main safehouse? nothing underneath should change
+  just display wise and how users access it would be through the safehouse command instead
+  and the profile would display the safehouse amount." Confirmed the integration shape via
+  `AskUserQuestion` before implementing (three open UX decisions, each recommended-and-
+  accepted): Main Safehouse participates in `/safehouse`'s no-house-specified pooled
+  deposit/withdraw alongside the numbered slots; `/bank` keeps working unchanged for
+  everyone rather than redirecting mercenaries away from it; Main Safehouse lists first,
+  ahead of the numbered slots.
+  How: `safehouseFactory.getOwnedSlots` was deliberately left UNCHANGED (still the real,
+  purchased numbered slots only) — a new `getAllOwnedHouses(userDetails)` is the pooled
+  view (Main Safehouse prepended, gated on `isMercenary || owns a real slot`) that
+  `getTotalCapacity`/`getTotalStored`/`getTotalRemainingSpace`/`splitDepositRandomly`/
+  `autoWithdrawAllocation` all switched to. Main Safehouse's capacity is live-computed
+  (`getMainSafehouseCapacity`, mirroring `bank.js`'s own formula exactly — including
+  `Infinity` once bank-capacity regrade is maxed), not a static table value, since unlike
+  the 6 real slots it scales with companion/rebirth bonuses. `applyMultiDeposit`/
+  `applyMultiWithdraw` now return `{ safehouses, bankStored }` instead of a flat array —
+  `bankStored` only set when an allocation touched slot 0 — so `safehouse.js` can route a
+  single deposit/withdraw call across both persisted fields in one `updateUserFields`
+  write; the `safehouses` half is always built from the real array directly, never from the
+  pooled view, so the synthetic slot-0 entry can never leak into what actually gets
+  persisted as a safehouse. `house:0` targets it explicitly (the option was already
+  numeric). Every safehouse embed (`createSafehouseListEmbed`/
+  `createSafehouseAmountPickerEmbed`/`createSafehouseEmbed`) labels slot 0 as "Main
+  Safehouse" and reuses the existing `formatBankCapacityField` helper (already handled
+  `Infinity` -> "Unlimited") instead of a third copy of that formatting logic. `/profile`
+  relabels "Banked Potatoes"/"Current Bank Capacity" to "Main Safehouse Balance"/"Current
+  Main Safehouse Capacity" for mercenaries only, identical numbers/live-bonus math — the
+  separate, more technical `createUserStatsEmbed` (shop-upgrade breakdown) was deliberately
+  left unrelabeled as out of scope for this request.
+  Notable: shipped in 4 checkpointed commits (data layer -> command wiring -> embeds/profile
+  -> docs) specifically so a session token-budget cutoff mid-feature would still leave a
+  safely-revertable, individually-correct state at each step rather than one large
+  in-progress diff. 21 new `safehouseFactory.test.js` tests cover the new functions
+  directly (including a regression confirming `buyNextSlot` never persists a synthetic
+  slot-0 entry); the embed layer and `safehouse.js` itself have no dedicated test coverage
+  to extend, matching this codebase's existing pattern of not unit-testing embed builders
+  or command files directly — verified those manually instead (rendered all 4 embed paths
+  with mock data, including the Infinity-capacity case, and traced the full deposit/
+  withdraw write-path logic by hand). Full suite green: 684/684 (up from 663/663 — 21 new
+  tests, 0 regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
