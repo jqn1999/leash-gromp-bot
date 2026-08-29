@@ -2994,6 +2994,60 @@ and needs its own balance pass.
   withdraw write-path logic by hand). Full suite green: 684/684 (up from 663/663 — 21 new
   tests, 0 regressions).
 
+- [x] **76. Fix: Stale Confirm-Button Data in `/rob`, `/bank`, `/safehouse`; Fix `/rob`'s
+  Cooldown** — M — **Done**
+  What: `/rob`, `/bank`, and `/safehouse` all fetched `userDetails` (and for `/rob`, the
+  target's too) once, before showing a confirm/amount-picker embed and waiting up to 30
+  seconds for a button click — then computed and WROTE the eventual transaction off that
+  stale pre-wait snapshot, silently overwriting whatever actually happened to the real
+  balance in between.
+  Why: direct user report, specifically about `/companion`, `/bank`, and `/rob`: "If a user
+  uses them then does other commands that affect companion like equipping a starch one to
+  sell starches, then uses the embed to switch back to their previous companion the
+  experience gained from the starch sale goes away... Same with the others that hold
+  certain data about how much a user has for robbing, if they deposit before the person
+  hits the button on the embed itll still think they had that much money when they really
+  dont."
+  Investigation: `/companion`'s equip button was ALREADY correct — verified directly
+  (simulated leveling a companion via `/sell-starch` while a stale embed sits open, then
+  switching back to a different companion through that same stale embed's button; the XP
+  survives) — `attemptEquip` already re-fetches fresh via `dynamoHandler.findUser` on every
+  click, a precedent already established in this codebase (`rebirth.js`, `shop.js`,
+  `companionSell.js`, `companionSellNpc.js`, `companionScavengeCancel.js`,
+  `companionMarket.js` all already do this too). `/rob` and `/bank` never got the same
+  treatment, and neither did `/safehouse` (shipped earlier this session, mirrored from
+  `bank.js`'s own structure, inheriting the same gap).
+  Severity: `/rob` was the serious one — the target's snapshot taken before the robber's
+  preview embed even renders is used both to compute the stolen amount AND to overwrite the
+  target's `potatoes` field at the end. A target who deposits into their bank between the
+  preview and the robber's confirm click gets their real current balance silently replaced
+  by `(stale snapshot - robAmount)` — capable of fabricating or destroying potatoes
+  outright, not just a display quirk. `/bank`/`/safehouse` are a lower-severity SELF-race
+  (only the acting player's own account can go stale in the gap, not another player's).
+  Fix: `/rob` now re-fetches both parties fresh immediately after the confirm click and
+  recomputes `robChance`/`robAmount`/`fineAmount` off that fresh state (the result embed's
+  odds display is recomputed too, so it reflects what was actually rolled against, not the
+  by-then-stale preview estimate). `/bank`/`/safehouse` extract their derived figures into
+  `computeBankFigures`/`computeSafehouseFigures` and re-run them against a fresh fetch right
+  after their percentage-picker's confirm click, before computing the actual deposit/
+  withdraw amount.
+  Also fixed, found by inspection while already in `rob.js`: `robTimer` was being set to
+  `Date.now() + Rob.ROB_TIMER_SECONDS` — adding a raw SECONDS value (3600) directly to a
+  millisecond timestamp, setting the real cooldown to ~3.6 seconds instead of the intended 1
+  hour. Confirmed against the established correct pattern
+  (`dynamoHandler.calculateWorkTimerValue` does `cooldownTime * 1000`) and against
+  `Rob.WORK_TIMER_INCREASE_MS` sitting right next to the two broken `_SECONDS` writes in the
+  same file (correctly pre-multiplied, hence the `_MS` suffix). Unrelated to the staleness
+  bug — a separate, real bug, not scope creep folded in silently; both occurrences (success
+  and failure branches) now multiply by 1000.
+  Notable: no dedicated test files exist for `rob.js`/`bank.js`/`safehouse.js` as commands
+  to extend (this codebase only unit-tests factory files, not command files directly) — full
+  suite (684/684) is unaffected by these changes since none of it touches factory logic.
+  **Not yet audited for the same confirm-button staleness pattern**: `startRaid.js`,
+  `currentRaid.js`, `joinGuild.js`, `rps.js` all also hold a confirm/response button wait
+  with no obvious re-fetch afterward — flagged as a follow-up, out of scope here since the
+  user's report specifically named companion/bank/rob.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
