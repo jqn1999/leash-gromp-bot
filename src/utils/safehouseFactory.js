@@ -58,14 +58,34 @@ function getAllOwnedHouses(userDetails) {
     return [{ slot: MAIN_SAFEHOUSE_SLOT, balance: userDetails.bankStored }, ...realSlots];
 }
 
-// userDetails is only required for slot 0 (Main Safehouse's capacity is live-computed, not
-// a static table value) — every other slot ignores it, same as before this parameter
-// existed, so every pre-existing call site to slots 1-6 stays correct unchanged.
+// userDetails is only required for slot 0's live capacity and for folding the Mercenary
+// Quest reward (additionalSafehouseStorage — see systems/quests.md#mercenary-quest) into a
+// numbered slot's own capacity; passing null/omitting it falls back to the plain static
+// Safehouse.SLOTS value, exactly as this behaved before either feature existed.
 function getSlotDefinition(slotNumber, userDetails = null) {
     if (slotNumber === MAIN_SAFEHOUSE_SLOT) {
         return userDetails ? { slot: MAIN_SAFEHOUSE_SLOT, capacity: getMainSafehouseCapacity(userDetails), cost: 0, rankRequired: 0 } : null;
     }
-    return Safehouse.SLOTS.find(s => s.slot === slotNumber) ?? null;
+    const def = Safehouse.SLOTS.find(s => s.slot === slotNumber) ?? null;
+    if (!def || !userDetails) {
+        return def;
+    }
+    // Mercenary Quest reward — a flat, lifetime-accumulating bonus split EVENLY across
+    // every currently-owned NUMBERED slot (never Main Safehouse — direct instruction: "a
+    // new additionalSafehouseStorage amount field that gets split among the 1-6
+    // safehouses"). Recomputed live from the current owned count rather than fixed at
+    // grant time, so buying another slot redistributes the same total across more slots
+    // instead of leaving the new slot's own share stranded at 0 — the grand total across
+    // every owned slot is unaffected either way (it's the same additionalSafehouseStorage
+    // value regardless of how many slots divide it), only the PER-SLOT breakdown shifts.
+    // Floored (not rounded) so summing every slot's share can never exceed the real total
+    // through rounding drift.
+    const ownedCount = getOwnedSlots(userDetails).length;
+    if (ownedCount === 0 || !(userDetails.additionalSafehouseStorage > 0)) {
+        return def;
+    }
+    const bonusShare = Math.floor(userDetails.additionalSafehouseStorage / ownedCount);
+    return { ...def, capacity: def.capacity + bonusShare };
 }
 
 // Slots are bought strictly in ascending order — the lowest-numbered slot not yet owned

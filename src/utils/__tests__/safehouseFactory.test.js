@@ -442,3 +442,59 @@ describe('Main Safehouse (slot 0)', () => {
         });
     });
 });
+
+// Mercenary Quest reward (systems/quests.md#mercenary-quest) — additionalSafehouseStorage,
+// a flat lifetime bonus split evenly across currently-owned NUMBERED slots only.
+describe('additionalSafehouseStorage (Mercenary Quest reward)', () => {
+    test('with no bonus, a numbered slot is unaffected', () => {
+        const user = baseUser({ safehouses: [{ slot: 1, balance: 0 }], additionalSafehouseStorage: 0 });
+        expect(safehouseFactory.getSlotDefinition(1, user).capacity).toBe(Safehouse.SLOTS[0].capacity);
+    });
+
+    test('a single owned slot gets the entire bonus', () => {
+        const user = baseUser({ safehouses: [{ slot: 1, balance: 0 }], additionalSafehouseStorage: 900000 });
+        expect(safehouseFactory.getSlotDefinition(1, user).capacity).toBe(Safehouse.SLOTS[0].capacity + 900000);
+    });
+
+    test('the bonus is split evenly across every owned numbered slot', () => {
+        const user = baseUser({ safehouses: [{ slot: 1, balance: 0 }, { slot: 2, balance: 0 }, { slot: 3, balance: 0 }], additionalSafehouseStorage: 900000 });
+        expect(safehouseFactory.getSlotDefinition(1, user).capacity).toBe(Safehouse.SLOTS[0].capacity + 300000);
+        expect(safehouseFactory.getSlotDefinition(2, user).capacity).toBe(Safehouse.SLOTS[1].capacity + 300000);
+        expect(safehouseFactory.getSlotDefinition(3, user).capacity).toBe(Safehouse.SLOTS[2].capacity + 300000);
+    });
+
+    test('never applied to Main Safehouse (slot 0), even with owned numbered slots and a live bonus', () => {
+        const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 0 }], additionalSafehouseStorage: 900000, bankCapacity: 50000 });
+        expect(safehouseFactory.getSlotDefinition(0, user).capacity).toBe(50000);
+    });
+
+    test('does nothing while no numbered slot is owned yet (not divided by zero, not applied anywhere)', () => {
+        const user = baseUser({ safehouses: [], additionalSafehouseStorage: 900000 });
+        expect(safehouseFactory.getSlotDefinition(1, user)).toEqual(Safehouse.SLOTS[0]);
+    });
+
+    test('floors the per-slot share so summing every slot can never exceed the real total', () => {
+        const user = baseUser({ safehouses: [{ slot: 1, balance: 0 }, { slot: 2, balance: 0 }, { slot: 3, balance: 0 }], additionalSafehouseStorage: 100 }); // 100 / 3 = 33.33...
+        const perSlotBonus = safehouseFactory.getSlotDefinition(1, user).capacity - Safehouse.SLOTS[0].capacity;
+        expect(perSlotBonus).toBe(33);
+        expect(perSlotBonus * 3).toBeLessThanOrEqual(100);
+    });
+
+    test('redistributes across a newly bought slot without changing the grand total', () => {
+        const beforeBuying = baseUser({ safehouses: [{ slot: 1, balance: 0 }], additionalSafehouseStorage: 900000 });
+        const totalBefore = safehouseFactory.getTotalCapacity(beforeBuying);
+
+        const afterBuying = baseUser({ safehouses: [{ slot: 1, balance: 0 }, { slot: 2, balance: 0 }], additionalSafehouseStorage: 900000 });
+        const totalAfter = safehouseFactory.getTotalCapacity(afterBuying);
+
+        // Same bonus total, now split across one more slot — the grand total only grew by
+        // slot 2's own static capacity, not by a second helping of the bonus.
+        expect(totalAfter - totalBefore).toBe(Safehouse.SLOTS[1].capacity);
+    });
+
+    test('flows through getTotalCapacity/getTotalRemainingSpace automatically via getSlotDefinition', () => {
+        const user = baseUser({ safehouses: [{ slot: 1, balance: 0 }], additionalSafehouseStorage: 900000, isMercenary: true, bankCapacity: 0 });
+        expect(safehouseFactory.getTotalCapacity(user)).toBe(Safehouse.SLOTS[0].capacity + 900000);
+        expect(safehouseFactory.getTotalRemainingSpace(user)).toBe(Safehouse.SLOTS[0].capacity + 900000);
+    });
+});

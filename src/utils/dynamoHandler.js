@@ -415,6 +415,12 @@ function getDefaultUserFields(userId, username) {
         // Safehouse.SLOTS by slot number (same "computed live off a static table" pattern
         // MercenaryRank/RaidLevel already use) — see safehouseFactory.js.
         safehouses: [],
+        // Mercenary Quest reward (systems/quests.md#mercenary-quest) — a flat, lifetime-
+        // accumulating bonus split evenly across a mercenary's currently-owned NUMBERED
+        // Safehouse slots only (never Main Safehouse) when safehouseFactory.getSlotDefinition
+        // applies it. Never decremented; buying more slots redistributes the same total
+        // across more slots rather than shrinking it.
+        additionalSafehouseStorage: 0,
         companions: {                // see systems/companions.md
             owned: [],               // array of { instanceId, id, workCount } — each owned copy is its own independently-leveled instance
             active: null,            // INSTANCE id currently equipped, or null — not a companion id, since a companion type can have multiple owned copies
