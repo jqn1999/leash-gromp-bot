@@ -152,7 +152,7 @@ module.exports = {
                 return;
             }
 
-            const pickerEmbed = embedFactory.createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, record?.balance ?? 0, totalStored, totalCapacity);
+            const pickerEmbed = embedFactory.createSafehouseAmountPickerEmbed(userDisplayName, userId, userAvatar, action, slotNumber, userPotatoes, record?.balance ?? 0, totalStored, totalCapacity, userDetails);
             const reply = await interaction.editReply({ embeds: [pickerEmbed], components: [buildAmountPickerRow(action)] });
 
             const collectorFilter = i => i.user.id === interaction.user.id;
