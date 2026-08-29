@@ -391,6 +391,15 @@ function getDefaultUserFields(userId, username) {
         // never regress" precedent guildRaidWinCount/ownedCount already set.
         isMercenary: false,
         mercenaryBountyWinCount: 0,
+        // Heist (/rob-npc) equivalent of mercenaryBountyWinCount — added 2026-08-29
+        // specifically so Mercenary Quest could offer a Heist-win alternative alongside
+        // its existing Bounty-win option (see Quests' own merc_heist_wins_12 comment in
+        // constants.js). Previously a heist win only fed mercenaryNotoriety (a resettable
+        // resource, unsafe for delta-based quest tracking) — this is a separate, never-
+        // reset lifetime counter, same "lifetime counters never regress" precedent
+        // mercenaryBountyWinCount/guildRaidWinCount/ownedCount already set. Does NOT
+        // affect Mercenary Rank — that still reads mercenaryBountyWinCount only.
+        mercenaryHeistWinCount: 0,
         bountyTimer: 0,   // same shape as workTimer/robTimer — a plain ms-epoch timestamp
         npcRobTimer: 0,   // SEPARATE from robTimer (real /rob, 3600s) and bountyTimer
                            // (also 3600s) — see RobNpc.NPC_ROB_TIMER_SECONDS (1800s)

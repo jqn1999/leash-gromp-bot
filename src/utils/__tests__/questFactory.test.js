@@ -166,18 +166,18 @@ describe('checkAndClaimQuests', () => {
 describe('Mercenary Quest', () => {
     const mercenaryActiveQuests = {
         ...activeQuests,
-        mercenaryQuestIds: ['merc_bounty_wins_3'],
+        mercenaryQuestIds: ['merc_bounty_wins_12'],
         mercenaryRotationDate: '2026-08-17',
     };
 
     test('a mercenary completing the Bounty-wins condition gets additionalSafehouseStorage, flat and unscaled', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 3 });
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 12 });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
 
-        expect(result.completedQuests.map(q => q.id)).toContain('merc_bounty_wins_3');
-        const template = Quests.find(q => q.id === 'merc_bounty_wins_3');
+        expect(result.completedQuests.map(q => q.id)).toContain('merc_bounty_wins_12');
+        const template = Quests.find(q => q.id === 'merc_bounty_wins_12');
         expect(result.additionalSafehouseStorageReward).toBe(template.reward.amount);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.additionalSafehouseStorage).toBe(template.reward.amount);
@@ -188,42 +188,68 @@ describe('Mercenary Quest', () => {
 
     test('additionalSafehouseStorage accumulates on top of whatever the account already had', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 3, additionalSafehouseStorage: 500000 });
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 12, additionalSafehouseStorage: 500000 });
 
         await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
 
-        const template = Quests.find(q => q.id === 'merc_bounty_wins_3');
+        const template = Quests.find(q => q.id === 'merc_bounty_wins_12');
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.additionalSafehouseStorage).toBe(500000 + template.reward.amount);
     });
 
     test('a non-mercenary never gets a baseline or reward for the mercenary quest, even with matching progress', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 3 });
+        const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 12 });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: false, mercenaryBountyWinCount: 0 }));
 
-        expect(result.completedQuests.map(q => q.id)).not.toContain('merc_bounty_wins_3');
+        expect(result.completedQuests.map(q => q.id)).not.toContain('merc_bounty_wins_12');
         expect(result.additionalSafehouseStorageReward).toBe(0);
         // No mercenary quest baseline should even be established — the write, if any,
         // must never touch the mercenary quest id's state.
         if (dynamoHandler.updateUserFields.mock.calls.length > 0) {
             const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-            expect(setFields.quests).not.toHaveProperty('merc_bounty_wins_3');
+            expect(setFields.quests).not.toHaveProperty('merc_bounty_wins_12');
         }
+    });
+
+    // The Heist-win alternative (merc_heist_wins_12) — added alongside the Bounty-win
+    // option 2026-08-29, keyed on the new durable mercenaryHeistWinCount lifetime counter
+    // (dynamoHandler.js) rather than the resettable mercenaryNotoriety. Only one of the
+    // two ever rotates in at a time (MercenaryQuest.ACTIVE_COUNT is 1), so this exercises
+    // it as its own active quest rather than alongside the Bounty one.
+    test('a mercenary completing the Heist-wins condition also gets additionalSafehouseStorage', async () => {
+        const heistActiveQuests = { ...activeQuests, mercenaryQuestIds: ['merc_heist_wins_12'], mercenaryRotationDate: '2026-08-17' };
+        dynamoHandler.getActiveQuests.mockResolvedValue(heistActiveQuests);
+        const userDetails = baseUser({ isMercenary: true, mercenaryHeistWinCount: 12 });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryHeistWinCount: 0 }));
+
+        expect(result.completedQuests.map(q => q.id)).toContain('merc_heist_wins_12');
+        const template = Quests.find(q => q.id === 'merc_heist_wins_12');
+        expect(result.additionalSafehouseStorageReward).toBe(template.reward.amount);
+    });
+
+    // Both templates share the same reward — neither objective is meant to read as
+    // easier/harder than the other, unlike the old 3-win/6-win ladder they replaced.
+    test('Bounty-win and Heist-win options grant the same reward amount', () => {
+        const bountyTemplate = Quests.find(q => q.id === 'merc_bounty_wins_12');
+        const heistTemplate = Quests.find(q => q.id === 'merc_heist_wins_12');
+        expect(bountyTemplate.reward.amount).toBe(heistTemplate.reward.amount);
+        expect(bountyTemplate.threshold).toBe(heistTemplate.threshold);
     });
 
     describe('getProgress', () => {
         test('mercenary quest is included for a mercenary', () => {
             const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 1 });
             const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests);
-            expect(progress.map(p => p.quest.id)).toContain('merc_bounty_wins_3');
+            expect(progress.map(p => p.quest.id)).toContain('merc_bounty_wins_12');
         });
 
         test('mercenary quest is completely absent for a non-mercenary', () => {
             const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 1 });
             const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests);
-            expect(progress.map(p => p.quest.id)).not.toContain('merc_bounty_wins_3');
+            expect(progress.map(p => p.quest.id)).not.toContain('merc_bounty_wins_12');
         });
     });
 });

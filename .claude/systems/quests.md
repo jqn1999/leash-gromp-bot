@@ -101,10 +101,20 @@ pre-action value.
 
 A third, mercenary-exclusive category (2026-08-29) rewarding **Safehouse capacity** instead of a
 stat bonus — see [systems/safehouses.md](safehouses.md#mercenary-quest-bonus) for how the reward
-is actually applied. Two templates today, both keyed on `mercenaryBountyWinCount` (win 3 / win 6
-Bounties this week) — deliberately the durable lifetime win counter, not `mercenaryNotoriety`
-(which is a resettable resource, unsafe as a quest condition since it can go backwards mid-week and
-silently un-complete progress).
+is actually applied. Originally a two-tier Bounty-only ladder (win 3 / win 6 Bounties, 750K/1.5M),
+retuned the same day (direct instruction: "make merc contracts 12 bounties or 12 heists and grant 5
+million capacity") into a single-threshold Bounty-OR-Heist **pair** — `merc_bounty_wins_12`
+(`mercenaryBountyWinCount`) and `merc_heist_wins_12` (`mercenaryHeistWinCount`), both threshold 12,
+both granting a flat 5,000,000 — mirroring how Guild Contracts already offer several different
+weekly objectives with one active at a time rather than a difficulty ladder. Only one of the two
+ever rotates in per week (`MercenaryQuest.ACTIVE_COUNT` is 1).
+
+Both conditions read durable lifetime win counters, deliberately not `mercenaryNotoriety` (a
+resettable resource, unsafe as a quest condition since it can go backwards mid-week — spent down by
+`/confront-rival` — and would silently un-complete progress). `mercenaryHeistWinCount`
+(`dynamoHandler.js`) was added specifically to unblock the Heist option — previously a `/rob-npc`
+win only fed `mercenaryNotoriety`. It does **not** affect Mercenary Rank, which still reads
+`mercenaryBountyWinCount` only.
 
 - **Gating**: `mercenaryQuestIds` is only folded into `activeIds` (in both `checkAndClaimQuests`
   and `getProgress`) when `userDetails.isMercenary` is true. A non-mercenary never gets a baseline
@@ -114,20 +124,21 @@ silently un-complete progress).
   deliberately NOT scaled by regrade progress the way weekly `statType` rewards are, since a flat
   Safehouse-capacity bump has no equivalent regrade track to ramp against. Multiple completions in
   the same check sum into one write, same as daily.
-- **Checked from `take-bounty.js` only** — `mercenaryBountyWinCount` only ever changes there (a
-  Bounty win), so that's the only call site that can ever advance or complete this track. Uses the
-  same post-write `findUser` refetch already there for the achievement check, with pre-win
-  `userDetails` as the baseline for `previousUserDetails` — identical pattern to `/work`'s own
-  daily/weekly check.
+- **Checked from `take-bounty.js` (Bounty option) and `rob-npc.js` (Heist option)** — each
+  condition's counter only ever changes at its own call site, so those are the only two places that
+  can ever advance or complete this track. Both use the same post-write `findUser` refetch already
+  there for their own achievement check, with pre-action `userDetails` as the baseline for
+  `previousUserDetails` — identical pattern to `/work`'s own daily/weekly check.
 
 ## Where it's checked
 
-`/work` (daily/weekly) and `take-bounty.js` (mercenary only) — after the scenario/bounty resolves,
-alongside (and after) the achievement check, using the same re-fetched `userDetails` (the handlers
-write straight to DB without mutating the in-memory object the caller holds, same reason the
-achievement check needs a re-fetch — see [systems/achievements.md](achievements.md)). Quest-driven
-achievement unlocks (e.g. a weekly quest's stat reward happening to cross an achievement threshold)
-are **not** eagerly re-checked — they resolve lazily on the player's next `/work` or `/take-bounty`
+`/work` (daily/weekly), `take-bounty.js` (mercenary Bounty option), and `rob-npc.js` (mercenary
+Heist option) — after the scenario/bounty/heist resolves, alongside (and after) the achievement
+check, using the same re-fetched `userDetails` (the handlers write straight to DB without mutating
+the in-memory object the caller holds, same reason the achievement check needs a re-fetch — see
+[systems/achievements.md](achievements.md)). Quest-driven achievement unlocks (e.g. a weekly
+quest's stat reward happening to cross an achievement threshold) are **not** eagerly re-checked —
+they resolve lazily on the player's next `/work`, `/take-bounty`, or `/rob-npc`
 call, same as regrade- and Tower-driven achievements. This was a deliberate scope decision, not an
 oversight: quest rewards are modest enough that an instant re-check felt like unwarranted
 complexity for the likely payoff.

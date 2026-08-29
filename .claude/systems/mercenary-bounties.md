@@ -657,6 +657,14 @@ already-leveled state, and both effects reach the database in the same single wr
 crossing (or any other companion-driven achievement) triggered by a Heist attempt actually
 unlocks and shows its embed, the same way it already did for `/work`, Scavenging, and Bounty.
 
+**Durable heist-win counter (2026-08-29)**: `robNpc.js` also now increments a new
+`mercenaryHeistWinCount` on every win — separate from `mercenaryNotoriety` above, which resets on
+`/confront-rival` and so can't safely back a delta-tracked quest condition. Added specifically to
+give the Mercenary Quest track a Heist-win alternative alongside its existing Bounty-win one — see
+[systems/quests.md](quests.md#mercenary-quest). Does **not** feed Mercenary Rank, which still reads
+`mercenaryBountyWinCount` only; `/rob-npc` also gained the same post-write quest check
+`take-bounty.js` already had, right alongside its achievement check.
+
 ## Commands
 
 All five live in `src/commands/user/` (matches `/work`, `/rob`, `/companion`, `/profile` —

@@ -15,17 +15,20 @@ independently and earns its own copy of the reward on completion.
 ## Pool, rotation, and the templates
 
 `rotateContract()` picks uniformly at random from the `GuildContracts` array each Monday. Four
-templates exist today:
+templates exist today (thresholds retuned 2026-08-29, direct instruction — a flat across-the-board
+raise from the original 500/20/10/8; ids left unchanged, still encoding the ORIGINAL threshold as a
+now-stale naming convention only, specifically so a contract already active mid-rotation at deploy
+time keeps resolving against the same `templateId` instead of finding it missing):
 
 ```js
-{ id: "guild_weekly_work_500", name: "Combined Harvest", statPath: "workCount", threshold: 500,
-  description: "Complete 500 combined /work actions across the guild this week" }
-{ id: "guild_weekly_raids_20", name: "Guild Raid Rally", statPath: "guildRaidWinCount", threshold: 20,
-  description: "Win 20 combined guild raids across the guild this week (each win counts once per participating member)" }
-{ id: "guild_weekly_sweet_10", name: "Sweet Tooth", statPath: "workScenarioCounts.sweet", threshold: 10,
-  description: "Find 10 combined Sweet Potatoes across the guild this week" }
-{ id: "guild_weekly_poison_8", name: "Toxin Tally", statPath: "workScenarioCounts.poison", threshold: 8,
-  description: "Survive 8 combined Poison Potatoes across the guild this week" }
+{ id: "guild_weekly_work_500", name: "Combined Harvest", statPath: "workCount", threshold: 1000,
+  description: "Complete 1000 combined /work actions across the guild this week" }
+{ id: "guild_weekly_raids_20", name: "Guild Raid Rally", statPath: "guildRaidWinCount", threshold: 30,
+  description: "Win 30 combined guild raids across the guild this week (each win counts once per participating member)" }
+{ id: "guild_weekly_sweet_10", name: "Sweet Tooth", statPath: "workScenarioCounts.sweet", threshold: 20,
+  description: "Find 20 combined Sweet Potatoes across the guild this week" }
+{ id: "guild_weekly_poison_8", name: "Toxin Tally", statPath: "workScenarioCounts.poison", threshold: 16,
+  description: "Survive 16 combined Poison Potatoes across the guild this week" }
 ```
 
 `statPath` resolves against each tracked member's own user record via `getStatValue` (the same
@@ -38,9 +41,13 @@ this many Sweet Potatoes," etc.) isn't.
 `incrementCounter` bumps it for **every** member in the raid's `raidList` on a single win, not once
 per raid — so `Guild Raid Rally`'s per-member-sum aggregation already scales with guild size the same
 way `workCount` does, without a separate per-raid formula. `Sweet Tooth`/`Toxin Tally`'s thresholds
-(10 and 8) are sized against Sweet/Poison's real per-`/work` odds (~2%/~1%, see `eventFactory.js`'s
-`workChances`) relative to Combined Harvest's implied ~500 works/week for an active guild, so
-completing any of the four lands in roughly the same weekly-stretch-goal range.
+were originally sized against Sweet/Poison's real per-`/work` odds (~2%/~1%, see `eventFactory.js`'s
+`workChances`) relative to Combined Harvest's implied works/week for an active guild; the 2026-08-29
+retune was a direct, flat instruction on the four new numbers rather than a re-derivation off that
+same ratio (Combined Harvest and both roll-based templates doubled, Guild Raid Rally rose 1.5x), so
+the four thresholds' relative difficulty may have drifted slightly from the original sizing — worth
+revisiting with `balance-auditor` if guild feedback suggests one contract is now notably easier or
+harder than the others.
 
 Rotation only happens on Mondays (`isMondayEST`, a private copy in `guildContractFactory.js` —
 matches `dailyStreakFactory.js`'s own precedent of each factory keeping its own EST-boundary helpers

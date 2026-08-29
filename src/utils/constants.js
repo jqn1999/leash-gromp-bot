@@ -294,24 +294,22 @@ const Quests = [
     { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
 
     // Mercenary Quest pool — see MercenaryQuest's own comment above for the full
-    // derivation. statPath reuses mercenaryBountyWinCount as-is (an existing, already-
-    // incremented-on-every-Bounty-win lifetime counter — see takeBounty.js), so this
-    // needed zero new tracking infrastructure on the condition side, only a new call
-    // site (takeBounty.js's own win branch) actually invoking the quest check. Heist
-    // (/rob-npc) wins are NOT included in the condition — unlike Bounty, a heist win
-    // only feeds mercenaryNotoriety, a resettable resource (spent down by
-    // /confront-rival), not a lifetime counter safe for delta-based quest tracking; a
-    // combined Bounty-or-Heist version is a natural follow-up once/if a durable lifetime
-    // heist-win counter exists. reward.type (not reward.statType) marks this as the new,
-    // FLAT (non-ramping) reward shape — see questFactory.js's checkAndClaimQuests for
-    // the branch this reads. Two thresholds, reward scaled proportionally to effort
-    // since — unlike the ramping statType rewards above, which all share one range
-    // regardless of quest difficulty because the ramp is driven by the PLAYER's own
-    // regrade progress, not the quest itself — a flat reward has nothing else to scale
-    // it, so the size has to track the ask directly or the harder version would just be
-    // strictly worse to roll.
-    { id: "merc_bounty_wins_3", name: "Contract Runner", description: "Win 3 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 3, reward: { type: "additionalSafehouseStorage", amount: 750000 } },
-    { id: "merc_bounty_wins_6", name: "Contract Veteran", description: "Win 6 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 6, reward: { type: "additionalSafehouseStorage", amount: 1500000 } }
+    // derivation. reward.type (not reward.statType) marks this as the FLAT (non-ramping)
+    // reward shape — see questFactory.js's checkAndClaimQuests for the branch this reads.
+    //
+    // Retuned 2026-08-29 (direct instruction: "make merc contracts 12 bounties or 12
+    // heists and grant 5 million capacity") from the original two-tier 3-win/6-win Bounty-
+    // only ladder (750K/1.5M) to a single-threshold Bounty-OR-Heist pair, mirroring how
+    // Guild Contracts already offer several different weekly objectives with one active
+    // at a time rather than a difficulty ladder. This is also the "combined Bounty-or-
+    // Heist version" this same comment block once flagged as blocked on a durable lifetime
+    // heist-win counter — mercenaryHeistWinCount (dynamoHandler.js) now exists
+    // specifically to unblock it, incremented in robNpc.js's own win branch exactly like
+    // mercenaryBountyWinCount is in takeBounty.js's. Both templates share the same
+    // threshold/reward since neither objective is meant to read as the "easy" or "hard"
+    // option — just two different existing mercenary actions a player can lean on.
+    { id: "merc_bounty_wins_12", name: "Bounty Sweep", description: "Win 12 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 12, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+    { id: "merc_heist_wins_12", name: "Heist Sweep", description: "Win 12 Heists this week", category: "mercenary", statPath: "mercenaryHeistWinCount", threshold: 12, reward: { type: "additionalSafehouseStorage", amount: 5000000 } }
 ]
 
 // Guild Contracts: a shared weekly objective tracked in aggregate across a guild's
@@ -322,22 +320,27 @@ const Quests = [
 // single fixed template rather than Quests' full pool — the roadmap's own example
 // threshold is used directly; the array shape still leaves room to grow the pool later
 // without a factory rewrite.
+// Thresholds retuned 2026-08-29 (direct instruction: "Make guild contracts 1000 works, 30
+// guild raids, 20 sweet, 16 poison") — a flat across-the-board raise (500->1000, 20->30,
+// 10->20, 8->16), ids left unchanged (still encode the ORIGINAL threshold, now stale as a
+// naming convention only) specifically so a guild contract already active mid-rotation at
+// deploy time keeps resolving against the same templateId instead of finding it missing.
 const GuildContracts = [
-    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 500 combined /work actions across the guild this week", statPath: "workCount", threshold: 500 },
+    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 1000 combined /work actions across the guild this week", statPath: "workCount", threshold: 1000 },
     // guildRaidWinCount increments for EVERY member in a raid's raidList on a single win
     // (see raidFactory.js's incrementCounter), not once per raid — so, like workCount
     // above, this threshold is naturally scaled by guild size already, without needing a
     // separate per-raid formula.
-    { id: "guild_weekly_raids_20", name: "Guild Raid Rally", description: "Win 20 combined guild raids across the guild this week (each win counts once per participating member)", statPath: "guildRaidWinCount", threshold: 20 },
+    { id: "guild_weekly_raids_20", name: "Guild Raid Rally", description: "Win 30 combined guild raids across the guild this week (each win counts once per participating member)", statPath: "guildRaidWinCount", threshold: 30 },
     // ~2% chance per /work call (see eventFactory.js's workChances) — sized against
-    // Combined Harvest's implied ~500 works/week for an active guild, landing this in
+    // Combined Harvest's implied ~1000 works/week for an active guild, landing this in
     // the same weekly-stretch-goal range instead of being trivial or unreachable.
-    { id: "guild_weekly_sweet_10", name: "Sweet Tooth", description: "Find 10 combined Sweet Potatoes across the guild this week", statPath: "workScenarioCounts.sweet", threshold: 10 },
+    { id: "guild_weekly_sweet_10", name: "Sweet Tooth", description: "Find 20 combined Sweet Potatoes across the guild this week", statPath: "workScenarioCounts.sweet", threshold: 20 },
     // ~1% chance per /work call — same sizing logic as Sweet Tooth, just against
     // Poison's roughly half-as-common roll. Turns Poison Potato (a pure loss for
     // whoever hits it, see workFactory.js) into guild-wide progress too, so a rough week
     // of poison RNG isn't a total wash for the guild.
-    { id: "guild_weekly_poison_8", name: "Toxin Tally", description: "Survive 8 combined Poison Potatoes across the guild this week", statPath: "workScenarioCounts.poison", threshold: 8 },
+    { id: "guild_weekly_poison_8", name: "Toxin Tally", description: "Survive 16 combined Poison Potatoes across the guild this week", statPath: "workScenarioCounts.poison", threshold: 16 },
 ]
 
 // Reward for completing the active Guild Contract: a flat, permanent, uncapped bump to

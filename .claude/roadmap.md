@@ -3132,6 +3132,38 @@ and needs its own balance pass.
   its existing reward-history narrative. Full suite: 701/701, zero regressions — pure
   reward-table retune, no formula or eligibility logic touched.
 
+- [x] **80. Mercenary Quest Retune (Bounty-or-Heist, 12/5M) + Guild Contract Threshold Raise** — S — **Done**
+  What: two direct instructions in the same turn.
+  1. "make merc contracts 12 bounties or 12 heists and grant 5 million capacity" — replaced
+     the Mercenary Quest track's original two-tier Bounty-only ladder (win 3 -> 750K, win 6
+     -> 1.5M) with a single-threshold Bounty-OR-Heist pair: `merc_bounty_wins_12`
+     (`mercenaryBountyWinCount`, existing) and `merc_heist_wins_12` (new
+     `mercenaryHeistWinCount`), both threshold 12, both granting a flat 5,000,000 — mirroring
+     Guild Contracts' own "several objectives, one active at a time" shape instead of a
+     difficulty ladder. `mercenaryHeistWinCount` (`dynamoHandler.js`, default 0) is a new
+     durable lifetime counter, incremented in `robNpc.js`'s win branch exactly like
+     `mercenaryBountyWinCount` is in `takeBounty.js`'s — this specifically unblocks a gap
+     flagged back in item 78's own constants.js comment ("a combined Bounty-or-Heist version
+     is a natural follow-up once/if a durable lifetime heist-win counter exists"), since a
+     Heist win previously only fed the resettable `mercenaryNotoriety`. `robNpc.js` also
+     gained the `checkAndClaimQuests` call it never had (mirroring `takeBounty.js`'s own
+     post-write `findUser` refetch + quest-check pattern) — without this the Heist option
+     could never actually complete from real gameplay. Does NOT affect Mercenary Rank, which
+     still reads `mercenaryBountyWinCount` only.
+  2. "Make guild contracts 1000 works, 30 guild raids, 20 sweet, 16 poison" — raised all
+     four `GuildContracts` thresholds (500->1000, 20->30, 10->20, 8->16) and their
+     description text to match. Template `id`s deliberately left unchanged (they now encode
+     a stale original-threshold naming convention only) so a contract already active
+     mid-rotation at deploy time keeps resolving against the same `templateId` instead of
+     the lookup coming back empty.
+  Tests: `questFactory.test.js`'s Mercenary Quest block updated to the new ids/threshold
+  (12) plus two new tests (Heist-win completion, and both options sharing the same
+  threshold/reward). `guildContractFactory.test.js` needed no changes — it already reads
+  `template.threshold` live rather than a hardcoded number. Docs updated:
+  `systems/quests.md#mercenary-quest`, `systems/safehouses.md`,
+  `systems/mercenary-bounties.md`, `systems/guild-contracts.md`. Full suite: 703/703 (up
+  from 701/701 — 2 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

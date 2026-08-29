@@ -7,9 +7,11 @@ const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
+const { QuestFactory } = require("../../utils/questFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
+const questFactory = new QuestFactory();
 
 // A solo-only heist attempt against a fictional target — no real player involved, no
 // social risk, and (per direct instruction) a SEPARATE 30-minute cooldown (npcRobTimer)
@@ -84,6 +86,11 @@ module.exports = {
         // systems/mercenary-bounties.md#rival-bounty-hunters.
         if (result.won) {
             addAttributes.mercenaryNotoriety = tier.notorietyPerWin;
+            // Durable lifetime counter (systems/quests.md#mercenary-quest) — separate from
+            // mercenaryNotoriety above, which resets on /confront-rival and so can't safely
+            // drive delta-based quest progress. Does NOT feed Mercenary Rank — that's
+            // mercenaryBountyWinCount only.
+            addAttributes.mercenaryHeistWinCount = 1;
         }
         // Companion leveling (roadmap #59, direct instruction — "have it level during
         // heists and bounties... account for the longer cooldown"). Unconditional on
@@ -129,6 +136,15 @@ module.exports = {
             if (newlyUnlocked.length > 0) {
                 const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
                 interaction.followUp({ embeds: achievementEmbeds });
+            }
+
+            // Mercenary Quest's Heist-win option (systems/quests.md#mercenary-quest) is
+            // keyed off mercenaryHeistWinCount, which only ever changes here — mirrors
+            // take-bounty.js's own quest check for its Bounty-win option.
+            const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
+            if (questResult.completedQuests.length > 0) {
+                const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
+                interaction.followUp({ embeds: [questEmbed] });
             }
         }
     }
