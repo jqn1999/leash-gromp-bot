@@ -2533,6 +2533,7 @@ module.exports = {
     TowerLeaderboard,
     DailyQuest,
     WeeklyQuest,
+    MercenaryQuest,
     Quests,
     GuildContracts,
     GuildContract,

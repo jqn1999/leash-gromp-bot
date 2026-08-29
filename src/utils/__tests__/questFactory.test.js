@@ -163,6 +163,85 @@ describe('checkAndClaimQuests', () => {
     });
 });
 
+describe('Mercenary Quest', () => {
+    const mercenaryActiveQuests = {
+        ...activeQuests,
+        mercenaryQuestIds: ['merc_bounty_wins_3'],
+        mercenaryRotationDate: '2026-08-17',
+    };
+
+    test('a mercenary completing the Bounty-wins condition gets additionalSafehouseStorage, flat and unscaled', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 3 });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
+
+        expect(result.completedQuests.map(q => q.id)).toContain('merc_bounty_wins_3');
+        const template = Quests.find(q => q.id === 'merc_bounty_wins_3');
+        expect(result.additionalSafehouseStorageReward).toBe(template.reward.amount);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.additionalSafehouseStorage).toBe(template.reward.amount);
+        // Flat reward — no statRewards/sweetPotatoBuffs entry, unlike the ramping
+        // weekly statType rewards.
+        expect(result.statRewards).toEqual({});
+    });
+
+    test('additionalSafehouseStorage accumulates on top of whatever the account already had', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 3, additionalSafehouseStorage: 500000 });
+
+        await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
+
+        const template = Quests.find(q => q.id === 'merc_bounty_wins_3');
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.additionalSafehouseStorage).toBe(500000 + template.reward.amount);
+    });
+
+    test('a non-mercenary never gets a baseline or reward for the mercenary quest, even with matching progress', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 3 });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: false, mercenaryBountyWinCount: 0 }));
+
+        expect(result.completedQuests.map(q => q.id)).not.toContain('merc_bounty_wins_3');
+        expect(result.additionalSafehouseStorageReward).toBe(0);
+        // No mercenary quest baseline should even be established — the write, if any,
+        // must never touch the mercenary quest id's state.
+        if (dynamoHandler.updateUserFields.mock.calls.length > 0) {
+            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setFields.quests).not.toHaveProperty('merc_bounty_wins_3');
+        }
+    });
+
+    describe('getProgress', () => {
+        test('mercenary quest is included for a mercenary', () => {
+            const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 1 });
+            const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests);
+            expect(progress.map(p => p.quest.id)).toContain('merc_bounty_wins_3');
+        });
+
+        test('mercenary quest is completely absent for a non-mercenary', () => {
+            const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 1 });
+            const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests);
+            expect(progress.map(p => p.quest.id)).not.toContain('merc_bounty_wins_3');
+        });
+    });
+});
+
+describe('rotateQuests', () => {
+    test('rotates mercenary alongside weekly on the same Monday-only cadence', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(null); // no current set -> due regardless of day
+        dynamoHandler.setActiveQuests.mockResolvedValue({});
+
+        const { activeQuests: rotated, mercenaryRotated } = await questFactory.rotateQuests();
+
+        expect(mercenaryRotated).toBe(true);
+        expect(rotated.mercenaryQuestIds.length).toBeGreaterThan(0);
+        expect(rotated.mercenaryQuestIds.every(id => Quests.find(q => q.id === id)?.category === 'mercenary')).toBe(true);
+        expect(rotated.mercenaryRotationDate).toBe(rotated.weeklyRotationDate);
+    });
+});
+
 describe('getProgress', () => {
     test('is read-only: never calls updateUserFields even when a quest is at or past threshold', async () => {
         const userDetails = baseUser({ workCount: 30, quests: { weekly_work_25: { startValue: 0, rotationDate: '2026-08-17', completed: false } } });

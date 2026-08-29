@@ -1,6 +1,15 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getStatValue } = require("../utils/achievementFactory");
-const { Quests, DailyQuest, WeeklyQuest } = require("../utils/constants");
+const { Quests, DailyQuest, WeeklyQuest, MercenaryQuest } = require("../utils/constants");
+
+// Which activeQuests field holds a template's own rotation date — shared by
+// checkAndClaimQuests/getProgress so the three categories' lookup stays in one place
+// instead of a ternary chain duplicated in both.
+function getRotationDate(template, activeQuests) {
+    if (template.category === 'daily') return activeQuests.dailyRotationDate;
+    if (template.category === 'mercenary') return activeQuests.mercenaryRotationDate;
+    return activeQuests.weeklyRotationDate;
+}
 
 // "Day"/"week" boundaries computed in EST, matching every other day-based reset in this
 // game (Tower, daily streak, the 4am cron itself).
@@ -47,14 +56,18 @@ function calculateWeeklyStatReward(userDetails, reward) {
 }
 
 class QuestFactory {
-    // Refreshes the daily quest set every time this runs, and the weekly set only on
-    // Mondays (otherwise keeps whatever's already active). Returns the new active set,
-    // plus which categories actually rotated this call (for the announcement).
+    // Refreshes the daily quest set every time this runs, and the weekly + mercenary sets
+    // only on Mondays (otherwise keeps whatever's already active). Mercenary shares the
+    // Monday cadence but rotates independently of Weekly — its own pool/active-count/
+    // rotation-date so it can never collide with or crowd out the shared Weekly slots.
+    // Returns the new active set, plus which categories actually rotated this call (for
+    // the announcement).
     async rotateQuests() {
         const now = new Date();
         const today = getDateStringEST(now);
         const dailyPool = Quests.filter(quest => quest.category === 'daily');
         const weeklyPool = Quests.filter(quest => quest.category === 'weekly');
+        const mercenaryPool = Quests.filter(quest => quest.category === 'mercenary');
 
         const current = await dynamoHandler.getActiveQuests();
         const weeklyDue = isMondayEST(now) || !current;
@@ -63,11 +76,13 @@ class QuestFactory {
             dailyQuestIds: pickRandomIds(dailyPool, DailyQuest.ACTIVE_COUNT),
             dailyRotationDate: today,
             weeklyQuestIds: weeklyDue ? pickRandomIds(weeklyPool, WeeklyQuest.ACTIVE_COUNT) : current.weeklyQuestIds,
-            weeklyRotationDate: weeklyDue ? today : current.weeklyRotationDate
+            weeklyRotationDate: weeklyDue ? today : current.weeklyRotationDate,
+            mercenaryQuestIds: weeklyDue ? pickRandomIds(mercenaryPool, MercenaryQuest.ACTIVE_COUNT) : current.mercenaryQuestIds,
+            mercenaryRotationDate: weeklyDue ? today : current.mercenaryRotationDate
         };
 
         await dynamoHandler.setActiveQuests(activeQuests);
-        return { activeQuests, dailyRotated: true, weeklyRotated: weeklyDue };
+        return { activeQuests, dailyRotated: true, weeklyRotated: weeklyDue, mercenaryRotated: weeklyDue };
     }
 
     // Checks userDetails (current, post-action stats) against every currently-active
@@ -89,9 +104,19 @@ class QuestFactory {
     // rather than crashing.
     async checkAndClaimQuests(userDetails, previousUserDetails = userDetails) {
         const activeQuests = await dynamoHandler.getActiveQuests();
-        if (!activeQuests) return { completedQuests: [], totalPotatoReward: 0, statRewards: {} };
+        if (!activeQuests) return { completedQuests: [], totalPotatoReward: 0, statRewards: {}, additionalSafehouseStorageReward: 0 };
 
-        const activeIds = [...activeQuests.dailyQuestIds, ...activeQuests.weeklyQuestIds];
+        // Mercenary Quest is a separate, mercenary-exclusive track (see MercenaryQuest's
+        // own comment in constants.js) — its IDs are only folded into activeIds (and so
+        // only ever get a baseline snapshotted or a reward granted) for a userDetails that
+        // is CURRENTLY a mercenary. A non-mercenary (or a not-yet-mercenary account) never
+        // sees or progresses it, same as it never appearing in /quests for them either
+        // (see getProgress below).
+        const activeIds = [
+            ...activeQuests.dailyQuestIds,
+            ...activeQuests.weeklyQuestIds,
+            ...(userDetails.isMercenary ? (activeQuests.mercenaryQuestIds || []) : [])
+        ];
         const activeTemplates = Quests.filter(quest => activeIds.includes(quest.id));
 
         const userQuestState = userDetails.quests || {};
@@ -99,10 +124,11 @@ class QuestFactory {
         const completedQuests = [];
         let totalPotatoReward = 0;
         const statRewards = {};
+        let additionalSafehouseStorageReward = 0;
         let stateChanged = false;
 
         for (const template of activeTemplates) {
-            const rotationDate = template.category === 'daily' ? activeQuests.dailyRotationDate : activeQuests.weeklyRotationDate;
+            const rotationDate = getRotationDate(template, activeQuests);
             const existing = userQuestState[template.id];
             const currentValue = getStatValue(userDetails, template.statPath) || 0;
 
@@ -127,6 +153,13 @@ class QuestFactory {
                 if (template.category === 'daily') {
                     completedQuests.push(template);
                     totalPotatoReward += Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount);
+                } else if (template.reward?.type === 'additionalSafehouseStorage') {
+                    // Flat, non-ramping — deliberately NOT scaled by regrade progress the
+                    // way weekly statType rewards are (see MercenaryQuest's own comment in
+                    // constants.js for why: a flat reward has nothing else to scale it
+                    // against, so it's sized directly per-template instead).
+                    completedQuests.push(template);
+                    additionalSafehouseStorageReward += template.reward.amount;
                 } else if (template.reward) {
                     const grantedRewardAmount = calculateWeeklyStatReward(userDetails, template.reward);
                     completedQuests.push({ ...template, grantedRewardAmount });
@@ -154,10 +187,14 @@ class QuestFactory {
                 setFields.sweetPotatoBuffs = sweetPotatoBuffs;
             }
 
+            if (additionalSafehouseStorageReward > 0) {
+                setFields.additionalSafehouseStorage = (userDetails.additionalSafehouseStorage || 0) + additionalSafehouseStorageReward;
+            }
+
             await dynamoHandler.updateUserFields(userDetails.userId, setFields);
         }
 
-        return { completedQuests, totalPotatoReward, statRewards };
+        return { completedQuests, totalPotatoReward, statRewards, additionalSafehouseStorageReward };
     }
 
     // Every currently-active quest alongside this user's progress toward it, for
@@ -165,12 +202,18 @@ class QuestFactory {
     getProgress(userDetails, activeQuests) {
         if (!activeQuests) return [];
 
-        const activeIds = [...activeQuests.dailyQuestIds, ...activeQuests.weeklyQuestIds];
+        // Mercenary Quest only ever shows up here for a userDetails that IS currently a
+        // mercenary — see checkAndClaimQuests' own comment above for the same gate.
+        const activeIds = [
+            ...activeQuests.dailyQuestIds,
+            ...activeQuests.weeklyQuestIds,
+            ...(userDetails.isMercenary ? (activeQuests.mercenaryQuestIds || []) : [])
+        ];
         const activeTemplates = Quests.filter(quest => activeIds.includes(quest.id));
         const userQuestState = userDetails.quests || {};
 
         return activeTemplates.map(template => {
-            const rotationDate = template.category === 'daily' ? activeQuests.dailyRotationDate : activeQuests.weeklyRotationDate;
+            const rotationDate = getRotationDate(template, activeQuests);
             const existing = userQuestState[template.id];
             const hasFreshBaseline = existing && existing.rotationDate === rotationDate;
             const currentValue = getStatValue(userDetails, template.statPath) || 0;
