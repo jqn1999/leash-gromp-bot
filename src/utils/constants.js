@@ -239,6 +239,24 @@ const WeeklyQuest = {
     ACTIVE_COUNT: 2
 }
 
+// Mercenary Quest — a THIRD, separate rotation from Daily/Weekly, exclusive to
+// mercenaries (gated in questFactory.js's checkAndClaimQuests/getProgress on
+// userDetails.isMercenary, never shown or baselined for anyone else). Rotates on the same
+// Monday cadence as Weekly (questFactory.js's rotateQuests), just its own pool/active
+// count/rotation-date pair in the active_quests doc (mercenaryQuestIds/
+// mercenaryRotationDate) so it can't collide with or get crowded out of the shared
+// Weekly slots. Direct instruction: "Weekly quest for merc to increase safe house
+// capacity" — scoped via AskUserQuestion to its own track (rather than a slot in the
+// shared weekly pool a non-mercenary could roll and never complete), Bounty wins as the
+// condition (an existing, already-incremented lifetime counter — mercenaryBountyWinCount,
+// the same one Mercenary Rank itself gates on), and a flat, non-ramping capacity reward
+// (see Quests' own additionalSafehouseStorage reward type below and its comment on why
+// non-ramping specifically avoids the exact trap bankCapacity's old weekly-reward slot
+// hit — see this file's 2026-08-22 comment on weekly_work_50).
+const MercenaryQuest = {
+    ACTIVE_COUNT: 1
+}
+
 // statPath is resolved the same way as Achievements (dot-notation via getStatValue in
 // achievementFactory.js), but quest progress is tracked as a *delta* from a per-user
 // baseline snapshotted when the quest rotates in, not a lifetime total — see
@@ -273,7 +291,27 @@ const Quests = [
     { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
     // Rebalanced 2026-08-22 — same reason as weekly_work_50 above.
     { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
-    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } }
+    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+
+    // Mercenary Quest pool — see MercenaryQuest's own comment above for the full
+    // derivation. statPath reuses mercenaryBountyWinCount as-is (an existing, already-
+    // incremented-on-every-Bounty-win lifetime counter — see takeBounty.js), so this
+    // needed zero new tracking infrastructure on the condition side, only a new call
+    // site (takeBounty.js's own win branch) actually invoking the quest check. Heist
+    // (/rob-npc) wins are NOT included in the condition — unlike Bounty, a heist win
+    // only feeds mercenaryNotoriety, a resettable resource (spent down by
+    // /confront-rival), not a lifetime counter safe for delta-based quest tracking; a
+    // combined Bounty-or-Heist version is a natural follow-up once/if a durable lifetime
+    // heist-win counter exists. reward.type (not reward.statType) marks this as the new,
+    // FLAT (non-ramping) reward shape — see questFactory.js's checkAndClaimQuests for
+    // the branch this reads. Two thresholds, reward scaled proportionally to effort
+    // since — unlike the ramping statType rewards above, which all share one range
+    // regardless of quest difficulty because the ramp is driven by the PLAYER's own
+    // regrade progress, not the quest itself — a flat reward has nothing else to scale
+    // it, so the size has to track the ask directly or the harder version would just be
+    // strictly worse to roll.
+    { id: "merc_bounty_wins_3", name: "Contract Runner", description: "Win 3 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 3, reward: { type: "additionalSafehouseStorage", amount: 750000 } },
+    { id: "merc_bounty_wins_6", name: "Contract Veteran", description: "Win 6 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 6, reward: { type: "additionalSafehouseStorage", amount: 1500000 } }
 ]
 
 // Guild Contracts: a shared weekly objective tracked in aggregate across a guild's
