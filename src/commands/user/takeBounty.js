@@ -7,9 +7,11 @@ const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
+const { QuestFactory } = require("../../utils/questFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
+const questFactory = new QuestFactory();
 
 // Resolves immediately, no confirm step — same precedent /start-raid already sets. See
 // systems/mercenary-bounties.md for the full reward/penalty formula.
@@ -149,6 +151,15 @@ module.exports = {
             if (newlyUnlocked.length > 0) {
                 const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
                 interaction.followUp({ embeds: achievementEmbeds });
+            }
+
+            // Mercenary Quest (systems/quests.md#mercenary-quest) is keyed off
+            // mercenaryBountyWinCount, which only ever changes here — /work never touches
+            // it — so this is the only call site that can ever advance or complete it.
+            const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
+            if (questResult.completedQuests.length > 0) {
+                const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
+                interaction.followUp({ embeds: [questEmbed] });
             }
         }
     }

@@ -2720,7 +2720,7 @@ class EmbedFactory {
     createQuestsPageEmbed(userDisplayName, pageItems, pageIndex, totalPages, completedCount, totalCount) {
         const fields = pageItems.map(({ quest, isCompleted, progress }) => {
             const status = isCompleted ? '✅' : '📜';
-            const categoryLabel = quest.category === 'daily' ? 'Daily' : 'Weekly';
+            const categoryLabel = quest.category === 'daily' ? 'Daily' : quest.category === 'mercenary' ? 'Mercenary' : 'Weekly';
             const value = isCompleted
                 ? `${quest.description} (${categoryLabel})`
                 : `${quest.description} (${categoryLabel})\n(${progress.toLocaleString()} / ${quest.threshold.toLocaleString()})`;
@@ -2786,6 +2786,11 @@ class EmbedFactory {
             if (quest.category === 'daily') {
                 const perQuestReward = Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userMultiplier);
                 rewardText = `+${perQuestReward.toLocaleString()} potatoes`;
+            } else if (quest.reward?.type === 'additionalSafehouseStorage') {
+                // Flat template amount, not grantedRewardAmount — this reward type isn't
+                // ramped by regrade progress (see questFactory.js's checkAndClaimQuests),
+                // so there's nothing player-specific to read off the completed quest here.
+                rewardText = `+${quest.reward.amount.toLocaleString()} Safehouse Capacity (split across owned slots)`;
             } else if (quest.reward) {
                 const labels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
                 // grantedRewardAmount is the actual amount questFactory computed for this
@@ -2829,6 +2834,19 @@ class EmbedFactory {
             weeklyTemplates.forEach(quest => {
                 fields.push({
                     name: `🗓️ ${quest.name} (Weekly)`,
+                    value: quest.description,
+                    inline: false,
+                });
+            });
+
+            // Mercenary Quest shares the same Monday cadence as Weekly (see
+            // questFactory.js's rotateQuests), so weeklyRotated also covers it — no
+            // separate mercenaryRotated flag needed here. Announced to everyone same as
+            // Weekly/Daily; only mercenaries actually see progress toward it in /quests.
+            const mercenaryTemplates = Quests.filter(quest => activeQuests.mercenaryQuestIds?.includes(quest.id));
+            mercenaryTemplates.forEach(quest => {
+                fields.push({
+                    name: `⚔️ ${quest.name} (Mercenary)`,
                     value: quest.description,
                     inline: false,
                 });
@@ -3050,6 +3068,9 @@ class EmbedFactory {
         const weeklyNames = activeQuests
             ? Quests.filter(quest => activeQuests.weeklyQuestIds?.includes(quest.id)).map(quest => quest.name)
             : [];
+        const mercenaryNames = activeQuests
+            ? Quests.filter(quest => activeQuests.mercenaryQuestIds?.includes(quest.id)).map(quest => quest.name)
+            : [];
         fields.push({
             name: `Daily Quests${activeQuests ? ` (since ${activeQuests.dailyRotationDate})` : ''}`,
             value: dailyNames.length ? dailyNames.join(", ") : "Not rotated yet",
@@ -3058,6 +3079,11 @@ class EmbedFactory {
         fields.push({
             name: `Weekly Quests${activeQuests ? ` (since ${activeQuests.weeklyRotationDate})` : ''}`,
             value: weeklyNames.length ? weeklyNames.join(", ") : "Not rotated yet",
+            inline: false,
+        });
+        fields.push({
+            name: `Mercenary Quests${activeQuests ? ` (since ${activeQuests.mercenaryRotationDate})` : ''}`,
+            value: mercenaryNames.length ? mercenaryNames.join(", ") : "Not rotated yet",
             inline: false,
         });
 
