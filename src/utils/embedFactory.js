@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -1505,9 +1505,14 @@ class EmbedFactory {
     // 4-bracket-max preview never has to worry about).
     createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds) {
         const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+        // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) — shown
+        // here too, not just on the post-win result embed, so it's visible before taking a
+        // Bounty at all (same "make it felt before the fight" reasoning /notoriety's own
+        // rivalSuccessBonus preview already established). Omitted at Rank 1 (0%, a no-op).
+        const cooldownBonusText = rankInfo.cooldownReductionPercent > 0 ? `, -${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}% cooldown on a win` : '';
         const rankLine = rankInfo.winsToNextRank !== null
-            ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, ${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
-            : `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, max rank)`;
+            ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, ${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
+            : `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, max rank)`;
 
         // One line per tier (not one embed field per tier, and not two lines per tier
         // either) — a 12-tier, two-line-per-tier version measured out to 1,257 characters
@@ -1608,6 +1613,19 @@ class EmbedFactory {
             inline: true,
         });
 
+        // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) only
+        // ever applies on a win — surfaced explicitly here rather than left for a player to
+        // notice on their own, same "make it felt" reasoning the Rival success bonus's own
+        // display already established.
+        if (won && rankInfo.cooldownReductionPercent > 0) {
+            const reducedCooldownSeconds = Math.round(Bounty.BOUNTY_TIMER_SECONDS * (1 - rankInfo.cooldownReductionPercent));
+            fields.push({
+                name: 'Mercenary Rank Cooldown Bonus:',
+                value: `Next Bounty ready in ${convertSecondstoMinutes(reducedCooldownSeconds)} (-${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}%, Rank ${rankInfo.rank})`,
+                inline: true,
+            });
+        }
+
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`)
@@ -1639,6 +1657,17 @@ class EmbedFactory {
                 const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
                 const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
                 fields.push({ name: '🏅 The Big Score — Permanent Stat Reward!', value: statText, inline: false });
+            }
+            // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) only
+            // ever applies on a win — surfaced explicitly, same as createBountyResultEmbed's
+            // own field.
+            if (rankInfo.cooldownReductionPercent > 0) {
+                const reducedCooldownSeconds = Math.round(RobNpc.NPC_ROB_TIMER_SECONDS * (1 - rankInfo.cooldownReductionPercent));
+                fields.push({
+                    name: 'Mercenary Rank Cooldown Bonus:',
+                    value: `Next Heist ready in ${convertSecondstoMinutes(reducedCooldownSeconds)} (-${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}%, Rank ${rankInfo.rank})`,
+                    inline: false,
+                });
             }
         } else if (penaltyAmount > 0) {
             fields.push({ name: 'Potatoes Lost:', value: `${penaltyAmount.toLocaleString()} potatoes`, inline: false });

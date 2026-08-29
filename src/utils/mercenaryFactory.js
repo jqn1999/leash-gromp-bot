@@ -30,6 +30,7 @@ function getMercenaryRankInfo(winCount) {
         rank: tier.rank,
         rewardMultiplier: tier.rewardMultiplier,
         rivalSuccessBonus: tier.rivalSuccessBonus,
+        cooldownReductionPercent: tier.cooldownReductionPercent,
         winsToNextRank: nextTier ? nextTier.winsRequired - wins : null
     };
 }

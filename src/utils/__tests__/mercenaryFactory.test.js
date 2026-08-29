@@ -68,6 +68,29 @@ describe('getMercenaryRankInfo', () => {
         });
     });
 
+    // cooldownReductionPercent added 2026-08-29 — direct instruction: "with higher merc
+    // rank can we also lower the cooldown on successful bounty/heist attempts so they can
+    // be done again sooner." Verifies the confirmed 0 -> 30% linear ramp, Rank 1 to Rank 6.
+    test('cooldownReductionPercent is 0 at Rank 1', () => {
+        const result = mercenaryFactory.getMercenaryRankInfo(0);
+        expect(result.cooldownReductionPercent).toBe(0);
+    });
+
+    test('cooldownReductionPercent hits the confirmed 30% cap at max Rank 6', () => {
+        const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
+        expect(result.cooldownReductionPercent).toBe(0.30);
+    });
+
+    test('cooldownReductionPercent increases monotonically with rank', () => {
+        let previous = -1;
+        MercenaryRank.THRESHOLDS.forEach(tier => {
+            const { cooldownReductionPercent } = mercenaryFactory.getMercenaryRankInfo(tier.winsRequired);
+            expect(cooldownReductionPercent).toBeGreaterThanOrEqual(previous);
+            previous = cooldownReductionPercent;
+        });
+    });
+
     test('one win short of a threshold stays at the previous rank', () => {
         const rank3 = MercenaryRank.THRESHOLDS.find(t => t.rank === 3);
         expect(mercenaryFactory.getMercenaryRankInfo(rank3.winsRequired - 1).rank).toBe(2);

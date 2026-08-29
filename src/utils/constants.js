@@ -1354,14 +1354,29 @@ const Raid = {
 // with Yukon's own flat +5% stacked on top) without going anywhere near guaranteed — Hard
 // is still meant to be hard. Stacks additively with Yukon's rivalSuccessChanceFlat perk,
 // same "flat bonus added after the range roll" shape that perk already established.
+//
+// cooldownReductionPercent added 2026-08-29, direct instruction — "with higher merc rank
+// can we also lower the cooldown on successful bounty/heist attempts so they can be done
+// again sooner." Applies only on a WIN (a loss keeps the full cooldown — same "no discount
+// on the loss side" precedent rewardMultiplier/rivalSuccessBonus above already establish),
+// shortening the wait before /take-bounty's next Bounty attempt (3600s base) and /rob-npc's
+// next Heist attempt (1800s base) alike, each off its own base. Linear from 0 at Rank 1 to
+// 30% at Rank 6 (confirmed via AskUserQuestion against 20%/40% alternatives) — chosen to
+// stay meaningfully under PoisonMitigation's existing 50% cooldown-cut precedent, since that
+// one is punishment relief while this is a pure reward. At Rank 6: Bounty 60min -> 42min,
+// Heist 30min -> 21min. Implemented as backdating the stored bountyTimer/npcRobTimer
+// timestamp by the reduced amount at write time (see takeBounty.js/robNpc.js) rather than
+// changing Bounty.BOUNTY_TIMER_SECONDS/RobNpc.NPC_ROB_TIMER_SECONDS themselves — every other
+// reader of those constants (bountyBoard.js's remaining-time display, the companion-leveling
+// XP grant's cooldown-scaling ratio) keeps working unchanged off the real elapsed time.
 const MercenaryRank = {
     THRESHOLDS: [
-        { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0.00, medium: 0.00, hard: 0.00 } },
-        { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15, rivalSuccessBonus: { easy: 0.04, medium: 0.03, hard: 0.02 } },
-        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 } },
-        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50, rivalSuccessBonus: { easy: 0.12, medium: 0.09, hard: 0.06 } },
-        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65, rivalSuccessBonus: { easy: 0.16, medium: 0.12, hard: 0.08 } },
-        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 } },  // max
+        { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0.00, medium: 0.00, hard: 0.00 }, cooldownReductionPercent: 0.00 },
+        { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15, rivalSuccessBonus: { easy: 0.04, medium: 0.03, hard: 0.02 }, cooldownReductionPercent: 0.06 },
+        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 }, cooldownReductionPercent: 0.12 },
+        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50, rivalSuccessBonus: { easy: 0.12, medium: 0.09, hard: 0.06 }, cooldownReductionPercent: 0.18 },
+        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65, rivalSuccessBonus: { easy: 0.16, medium: 0.12, hard: 0.08 }, cooldownReductionPercent: 0.24 },
+        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 }, cooldownReductionPercent: 0.30 },  // max
     ]
 }
 

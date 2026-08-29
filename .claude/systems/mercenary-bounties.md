@@ -76,14 +76,14 @@ curve shape (0/15/50/125/275/525) rather than `RaidLevel.THRESHOLDS` — that cu
 for a *guild's* aggregate win count across many members over a long lifetime (up to 12,000
 wins), not a solo player's own wins one at a time on an hourly-ish cooldown:
 
-| Rank | Wins required | Reward multiplier |
-|---|---|---|
-| 1 | 0 | 1.00x |
-| 2 | 15 | 1.15x |
-| 3 | 50 | 1.35x |
-| 4 | 125 | 1.50x |
-| 5 | 275 | 1.65x |
-| 6 (max) | 525 | 1.75x |
+| Rank | Wins required | Reward multiplier | Cooldown reduction on a win |
+|---|---|---|---|
+| 1 | 0 | 1.00x | — |
+| 2 | 15 | 1.15x | -6% |
+| 3 | 50 | 1.35x | -12% |
+| 4 | 125 | 1.50x | -18% |
+| 5 | 275 | 1.65x | -24% |
+| 6 (max) | 525 | 1.75x | -30% |
 
 **Rank no longer gates Bounty tier access at all** — retired 2026-08-28 alongside the
 12-Tier Bounty Ladder rework below (`unlocksTier` removed from `MercenaryRank.THRESHOLDS`
@@ -674,9 +674,9 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 |---|---|
 | `/become-mercenary` | No args, no confirm. Rejects if guilded or already a mercenary. |
 | `/retire-mercenary` | No args, no confirm. Rejects if not currently a mercenary. Progress persists. |
-| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
-| `/take-bounty mode:<Baby Bounty\|Regular Bounty>` | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout, all in one result embed. |
-| `/rob-npc heist-type:<Corner Store\|Payroll Truck\|Armored Vault\|The Big Score>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Big Score). |
+| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
+| `/take-bounty mode:<Baby Bounty\|Regular Bounty>` | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
+| `/rob-npc heist-type:<Corner Store\|Payroll Truck\|Armored Vault\|The Big Score>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Big Score + (on a win, Rank 2+) a cooldown-reduction callout). |
 
 ## Data model
 
@@ -836,6 +836,27 @@ Surfaced explicitly on both `/notoriety` (a live preview, before fighting) and
 whenever it's actually nonzero) — the whole point was making rank's contribution *felt*, not
 just mathematically present, so baking it silently into the final `successChance` number alone
 wasn't considered sufficient.
+
+**Mercenary Rank's `cooldownReductionPercent`** (added 2026-08-29, direct instruction —
+"with higher merc rank can we also lower the cooldown on successful bounty/heist attempts
+so they can be done again sooner"). Lives directly on `MercenaryRank.THRESHOLDS` alongside
+`rewardMultiplier`/`rivalSuccessBonus`, ramping linearly from 0 at Rank 1 to 30% at max Rank
+6 (confirmed via AskUserQuestion against 20%/40% alternatives — 30% stays meaningfully under
+`PoisonMitigation`'s existing 50% cooldown-cut precedent, since that one is punishment relief
+while this is a pure reward). Applies to **both** `/take-bounty`'s `bountyTimer` (3600s base)
+and `/rob-npc`'s `npcRobTimer` (1800s base) — each off its own base, and **only on a WIN** —
+a loss/whiff always resets the full cooldown, same "no discount on the loss side" precedent
+`rewardMultiplier` and Bounty's own flat-loss formula already establish. At Rank 6: Bounty
+60min → 42min, Heist 30min → 21min. Implemented by backdating the stored
+`bountyTimer`/`npcRobTimer` timestamp by the reduced amount at write time
+(`takeBounty.js`/`robNpc.js`) rather than changing `Bounty.BOUNTY_TIMER_SECONDS`/
+`RobNpc.NPC_ROB_TIMER_SECONDS` themselves, so every other reader of those constants
+(`bountyBoard.js`'s remaining-time display, the companion-leveling XP grant's cooldown-scaling
+ratio) keeps reading real elapsed time correctly with no changes needed there. Surfaced
+explicitly on `/bounty-board`'s rank line (a live preview, before attempting) and on both
+`createBountyResultEmbed`/`createRobNpcResultEmbed` (a "Mercenary Rank Cooldown Bonus" field,
+shown only on a win with a nonzero reduction) — same "make it felt" reasoning the Rival
+success bonus display above already established.
 
 **Yukon's `rivalSuccessChanceFlat` perk** (direct instruction — Yukon previously had no
 Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll and

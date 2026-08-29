@@ -70,7 +70,17 @@ module.exports = {
 
         const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, heistTierKey);
 
-        const setAttributes = { npcRobTimer: Date.now() };
+        // Mercenary Rank's cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS
+        // comment) only shortens the wait after a WIN — a loss/whiff always resets the full
+        // RobNpc.NPC_ROB_TIMER_SECONDS, same "no discount on the loss side" precedent
+        // rewardMultiplier already establishes for Heist. Backdating the stored timestamp
+        // (rather than changing the constant itself) keeps every NPC_ROB_TIMER_SECONDS
+        // reader correct without further changes.
+        const setAttributes = {
+            npcRobTimer: result.won
+                ? Date.now() - Math.round(RobNpc.NPC_ROB_TIMER_SECONDS * result.rankInfo.cooldownReductionPercent * 1000)
+                : Date.now()
+        };
         const addAttributes = {};
         if (result.won && result.amount > 0) {
             setAttributes.potatoes = userDetails.potatoes + result.amount;

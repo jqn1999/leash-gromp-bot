@@ -3341,6 +3341,37 @@ and needs its own balance pass.
   rewritten (history condensed, final mechanism + full 3-round EV history documented). Full
   suite: 726/726, zero regressions.
 
+- [x] **85. Mercenary Rank Now Shortens Bounty/Heist Cooldown on a Win** — S — **Done**
+  What: direct instruction — "with higher merc rank can we also lower the cooldown on
+  successful bounty/heist attempts so they can be done again sooner." Confirmed the max
+  reduction via `AskUserQuestion` (20%/30%/40% options) — **30%** at Rank 6, chosen to stay
+  meaningfully under `PoisonMitigation`'s existing 50% cooldown-cut precedent since that one
+  is punishment relief while this is a pure reward.
+  - New `cooldownReductionPercent` field added directly to `MercenaryRank.THRESHOLDS`
+    alongside `rewardMultiplier`/`rivalSuccessBonus`, linear from 0 at Rank 1 to 0.30 at
+    Rank 6 (same per-rank step shape as the other two). `getMercenaryRankInfo` returns it;
+    both `resolveBountyAttempt`/`resolveNpcRob` already exposed the full `rankInfo` object
+    on their result, so no new plumbing was needed there.
+  - Applies only on a **WIN** — a loss/whiff always resets the full cooldown, same "no
+    discount on the loss side" precedent `rewardMultiplier` already establishes. Implemented
+    by backdating the stored `bountyTimer`/`npcRobTimer` timestamp by the reduced amount at
+    write time (`takeBounty.js`/`robNpc.js`) rather than changing
+    `Bounty.BOUNTY_TIMER_SECONDS`/`RobNpc.NPC_ROB_TIMER_SECONDS` themselves — every other
+    reader of those constants (`bountyBoard.js`'s remaining-time display, the
+    companion-leveling XP grant's cooldown-scaling ratio) keeps reading real elapsed time
+    correctly with zero changes needed there. At Rank 6: Bounty 60min → 42min, Heist 30min
+    → 21min.
+  - Surfaced explicitly, not just baked into the timer silently: `/bounty-board`'s rank line
+    now shows "-X% cooldown on a win" before attempting; `createBountyResultEmbed`/
+    `createRobNpcResultEmbed` both gained a "Mercenary Rank Cooldown Bonus" field shown only
+    on a win with a nonzero reduction — same "make it felt" reasoning the Rival success
+    bonus display already established.
+  Tests: `mercenaryFactory.test.js` gained coverage for `cooldownReductionPercent` at Rank
+  1/Rank 6/monotonic-across-ranks. `embedFactory.test.js` gained coverage for all three new
+  display surfaces (shown on a win, omitted on a loss, omitted at Rank 1). Docs:
+  `systems/mercenary-bounties.md#mercenary-rank`. Full suite: 738/738 (up from 728/728 — 10
+  new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

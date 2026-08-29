@@ -207,6 +207,90 @@ describe('createRivalConfrontationResultEmbed rank bonus display', () => {
     });
 });
 
+// Mercenary Rank's cooldownReductionPercent (2026-08-29) — surfaced on the Bounty/Heist
+// result embeds (only on a win, matching the "no discount on the loss side" precedent) and
+// on the pre-attempt /bounty-board preview, same "make it felt" pattern as the Rival bonus
+// display above.
+describe('createBountyResultEmbed cooldown bonus display', () => {
+    const scenario = { name: 'a rival gang', winFlavor: 'You win.', loseFlavor: 'You lose.', currency: 'potato' };
+
+    test('shows the Mercenary Rank Cooldown Bonus field on a win at Rank 6', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result);
+        const field = embed.data.fields.find(f => f.name.includes('Mercenary Rank Cooldown Bonus'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('-30%');
+        expect(field.value).toContain('Rank 6');
+    });
+
+    test('omits the field on a loss even at Rank 6', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: false, successChance: 0.5, scenario,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            currency: 'potato', rewardAmount: 0, penaltyAmount: 1000, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result);
+        expect(embed.data.fields.find(f => f.name.includes('Mercenary Rank Cooldown Bonus'))).toBeUndefined();
+    });
+
+    test('omits the field on a win at Rank 1 (cooldownReductionPercent is 0)', () => {
+        const result = {
+            tier: 1, mode: 'baby', won: true, successChance: 0.9, scenario,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+            currency: 'potato', rewardAmount: 100, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result);
+        expect(embed.data.fields.find(f => f.name.includes('Mercenary Rank Cooldown Bonus'))).toBeUndefined();
+    });
+});
+
+describe('createRobNpcResultEmbed cooldown bonus display', () => {
+    const tier = { key: 'corner_store', label: 'Corner Store' };
+
+    test('shows the Mercenary Rank Cooldown Bonus field on a win at Rank 6', () => {
+        const result = {
+            won: true, successChance: 0.8, amount: 5000,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier);
+        const field = embed.data.fields.find(f => f.name.includes('Mercenary Rank Cooldown Bonus'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('-30%');
+        expect(field.value).toContain('Rank 6');
+    });
+
+    test('omits the field on a loss even at Rank 6', () => {
+        const result = {
+            won: false, successChance: 0.8, amount: 0,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            penaltyAmount: 2500, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier);
+        expect(embed.data.fields.find(f => f.name.includes('Mercenary Rank Cooldown Bonus'))).toBeUndefined();
+    });
+});
+
+describe('createBountyBoardEmbed cooldown bonus preview', () => {
+    const weightedTiers = [{ tier: 1, weight: 1, successChance: 0.9, reward: 26000, penalty: -26000 }];
+
+    test('shows the cooldown bonus in the rank line at Rank 6', () => {
+        const rankInfo = { rank: 6, rewardMultiplier: 1.75, winsToNextRank: null, cooldownReductionPercent: 0.30 };
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, weightedTiers, 0);
+        expect(embed.data.description).toContain('-30% cooldown on a win');
+    });
+
+    test('omits the cooldown bonus text at Rank 1', () => {
+        const rankInfo = { rank: 1, rewardMultiplier: 1.00, winsToNextRank: 15, cooldownReductionPercent: 0 };
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, weightedTiers, 0);
+        expect(embed.data.description).not.toContain('cooldown on a win');
+    });
+});
+
 describe('createNotorietyEmbed Rival success bonus preview', () => {
     test('shows the per-scenario bonus for the current rank', () => {
         const rankInfo = { rank: 6, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 } };

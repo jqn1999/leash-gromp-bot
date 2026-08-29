@@ -65,7 +65,18 @@ module.exports = {
         let userTotalEarnings = userDetails.totalEarnings;
         let userTotalLosses = userDetails.totalLosses;
         let userStarches = userDetails.starches;
-        const setAttributes = { bountyTimer: Date.now() };
+        // Mercenary Rank's cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS
+        // comment) only shortens the wait after a WIN — a loss always resets the full
+        // Bounty.BOUNTY_TIMER_SECONDS, same "no discount on the loss side" precedent
+        // rewardMultiplier/rivalSuccessBonus already establish. Backdating the stored
+        // timestamp (rather than changing the constant itself) keeps bountyBoard.js's
+        // remaining-time display and every other BOUNTY_TIMER_SECONDS reader correct without
+        // any changes there.
+        const setAttributes = {
+            bountyTimer: result.won
+                ? Date.now() - Math.round(Bounty.BOUNTY_TIMER_SECONDS * result.rankInfo.cooldownReductionPercent * 1000)
+                : Date.now()
+        };
         const addAttributes = {};
 
         if (result.won) {
