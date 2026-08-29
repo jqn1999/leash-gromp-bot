@@ -6,8 +6,8 @@ a solo player could already touch (Companions, Quests, `/rebirth`, `/rob`) worke
 identically whether or not they were guilded. Mercenary Bounties gives that player their
 own risk/reward progression track — since the 12-Tier Bounty Ladder rework (2026-08-28,
 see below), deliberately calibrated so a solo player's expected winnings land at roughly
-20% of what a comparably-powered guild actually earns (see that section's own history for
-how this target evolved twice in one day).
+30% of what a comparably-powered guild actually earns (see that section's own history for
+how this target evolved three times across two days).
 
 Full history of how this was scoped (product-owner concept, a refinement pass, and the
 architect's build-ready technical design) lives in
@@ -223,10 +223,38 @@ never a real decrease worth worrying about at "roughly 20%" tolerance. PENALTY s
 `-reward` (Bounty's own existing 1:1 convention, untouched by either pass). Re-verified via
 a full EV sweep (power 1-2,500, Rank 1 and Rank 6) that this reshuffling introduces no new
 dead zone — worst case is still the same trivial near-zero-power edge case Guild's own
-ladder has. Regression-tested in `mercenaryFactory.test.js` (each tier's reward checked
-against a live-computed 15-30% band of the realistic-guild-total target, rather than an
-exact match, since rounding and the guild curve's own mode-boundary kinks drift the ratio
-a little tier to tier).
+ladder has.
+
+**Third pass, 2026-08-29, direct instruction — "buff bounties by 33%? would that make it
+too strong?"**, answered by computing the live ratio (every tier sat at exactly 20.0% of
+realistic guild total — the second pass's own rounding happened to land almost perfectly
+on target everywhere), confirming a 33% bump would only move that to ~26.6%, still well
+inside the 15-30% band and nowhere near guild parity. Follow-up instruction: *"ok lets
+bring it up to 30% then whatever the increase would be"* — i.e. target the ratio directly
+rather than a fixed percentage bump. Since every tier already sat at ~20% almost exactly,
+hitting 30% is a uniform 1.5x (30/20) on every tier's reward, rounded to the nearest 1,000:
+
+| Tier | Difficulty | Reward | Penalty | vs. second pass |
+|---|---|---|---|---|
+| B1 | 10 | 39,000 | -39,000 | 1.50x |
+| B2 | 16 | 69,000 | -69,000 | 1.50x |
+| B3 | 26 | 123,000 | -123,000 | 1.50x |
+| B4 | 42 | 215,000 | -215,000 | 1.50x |
+| B5 | 69 | 383,000 | -383,000 | 1.50x |
+| B6 | 111 | 660,000 | -660,000 | 1.50x |
+| B7 | 180 | 1,143,000 | -1,143,000 | 1.50x |
+| B8 | 291 | 1,967,000 | -1,967,000 | 1.50x |
+| B9 | 471 | 3,374,000 | -3,374,000 | 1.50x |
+| B10 | 763 | 5,777,000 | -5,777,000 | 1.50x |
+| B11 | 1,236 | 10,001,000 | -10,001,000 | 1.50x |
+| B12 | 2,000 | 23,400,000 | -23,400,000 | 1.50x |
+
+A flat 1.5x across the whole ladder rather than a re-derivation, since the underlying
+guild-comparison curve itself didn't change — only the target ratio did. Every tier now
+lands within a hair of exactly 30.0% (rounding drift keeps it inside 0.25-0.35, same
+regression test as before, band widened to stay centered on the new target). PENALTY still
+= `-reward`, unchanged shape. Full suite: 701/701, zero regressions — this is a pure
+reward-table retune, no formula or eligibility logic touched.
 
 **`SOLO_BOUNTY_REWARD_SHARE` (the old flat 0.15 discount applied at roll time) stayed
 retired through both passes** — direct instruction from earlier the same day: *"remove the

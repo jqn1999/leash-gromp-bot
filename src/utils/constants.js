@@ -1394,19 +1394,25 @@ const Bounty = {
     // MercenaryCompanionDrop.YUKON_CHANCE/Rival.NOTORIETY_PER_BOUNTY_TIER still use for
     // flavor/rare-stat-reward/currency-ratio purposes (B1-4->I, B5-8->II, B9-12->III) —
     // deliberately reused rather than authoring 12 tiers' worth of fresh flavor text.
+    //
+    // Third pass (2026-08-29, direct instruction: "buff bounties... bring it up to 30%"):
+    // every tier's reward raised 1.5x (rounded to the nearest 1,000) from the #70 second
+    // pass' ~20%-of-realistic-guild-total target to ~30% — still comfortably inside the
+    // EV-dead-zone-free ladder shape #70 verified, still well short of guild income parity.
+    // Penalty stays `-reward` throughout, unchanged in relative shape.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 26000,    penalty: -26000 },
-        { tier: 2,  difficulty: 16,   reward: 46000,    penalty: -46000 },
-        { tier: 3,  difficulty: 26,   reward: 82000,    penalty: -82000 },
-        { tier: 4,  difficulty: 42,   reward: 143000,   penalty: -143000 },
-        { tier: 5,  difficulty: 69,   reward: 255000,   penalty: -255000 },
-        { tier: 6,  difficulty: 111,  reward: 440000,   penalty: -440000 },
-        { tier: 7,  difficulty: 180,  reward: 762000,   penalty: -762000 },
-        { tier: 8,  difficulty: 291,  reward: 1311000,  penalty: -1311000 },
-        { tier: 9,  difficulty: 471,  reward: 2249000,  penalty: -2249000 },
-        { tier: 10, difficulty: 763,  reward: 3851000,  penalty: -3851000 },
-        { tier: 11, difficulty: 1236, reward: 6667000,  penalty: -6667000 },
-        { tier: 12, difficulty: 2000, reward: 15600000, penalty: -15600000 },
+        { tier: 1,  difficulty: 10,   reward: 39000,    penalty: -39000 },
+        { tier: 2,  difficulty: 16,   reward: 69000,    penalty: -69000 },
+        { tier: 3,  difficulty: 26,   reward: 123000,   penalty: -123000 },
+        { tier: 4,  difficulty: 42,   reward: 215000,   penalty: -215000 },
+        { tier: 5,  difficulty: 69,   reward: 383000,   penalty: -383000 },
+        { tier: 6,  difficulty: 111,  reward: 660000,   penalty: -660000 },
+        { tier: 7,  difficulty: 180,  reward: 1143000,  penalty: -1143000 },
+        { tier: 8,  difficulty: 291,  reward: 1967000,  penalty: -1967000 },
+        { tier: 9,  difficulty: 471,  reward: 3374000,  penalty: -3374000 },
+        { tier: 10, difficulty: 763,  reward: 5777000,  penalty: -5777000 },
+        { tier: 11, difficulty: 1236, reward: 10001000, penalty: -10001000 },
+        { tier: 12, difficulty: 2000, reward: 23400000, penalty: -23400000 },
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),

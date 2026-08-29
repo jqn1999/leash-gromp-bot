@@ -3114,6 +3114,24 @@ and needs its own balance pass.
   [systems/quests.md](systems/quests.md#mercenary-quest) and
   [systems/safehouses.md](systems/safehouses.md#mercenary-quest-bonus).
 
+- [x] **79. Bounty Reward Third Pass — Retargeted From ~20% to ~30% of Guild Income** — S — **Done**
+  What: direct question "can we buff merc bounties by 33%? would that make it too strong?"
+  — computed the live ratio first (every Bounty tier sat at exactly 20.0% of a realistic
+  Guild Level 2 guild's total raid reward, per #70's own target), confirming a 33% bump
+  would only move that to ~26.6%, comfortably inside the existing 15-30% regression band.
+  Follow-up direct instruction: "ok lets bring it up to 30% then whatever the increase
+  would be" — retargeting the ratio itself rather than a fixed percentage. Since every
+  tier already sat at ~20% almost exactly, hitting 30% is a uniform 1.5x on every tier's
+  reward (rounded to the nearest 1,000): B1 26,000 -> 39,000 ... B12 15,600,000 ->
+  23,400,000. Penalty stays `-reward` throughout.
+  Why safe: still well short of guild income parity, still inside the EV-dead-zone-free
+  ladder shape #70 verified (a flat multiplier preserves that curve's shape exactly).
+  `mercenaryFactory.test.js`'s guild-ratio regression test updated to assert a 0.25-0.35
+  band (was 0.15-0.30) centered on the new target, self-correcting if either ladder is
+  retuned again. `systems/mercenary-bounties.md` gained a "Third pass" section continuing
+  its existing reward-history narrative. Full suite: 701/701, zero regressions — pure
+  reward-table retune, no formula or eligibility logic touched.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

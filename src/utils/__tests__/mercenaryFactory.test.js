@@ -425,13 +425,15 @@ describe('Bounty.TIERS ladder shape', () => {
     // Regression for the 2026-08-28 second-pass reward recalibration — a live report that
     // a modest 5-person guild (team power ~38.4) was clearing 700k-1.1M per raid at a
     // realistic Guild Level 2 (1.3x) multiplier, while a comparably-powered solo Bounty
-    // attempt only paid ~92k-138k under the first-pass ladder. Target: each tier's reward
-    // should land at ~20% of a REALISTIC guild's own TOTAL raid reward (not divided by
-    // roster size) at that same difficulty. Computed entirely from live constants (Guild
-    // Raid's own real 12 breakpoints, interpolated in ln(difficulty) between them, same
-    // convention this file's other regression blocks use) so this self-corrects if either
-    // ladder is retuned again.
-    test('reward sits within a bounded band of ~20% of a realistic (Guild Level 2) guild\'s total reward at matching difficulty', () => {
+    // attempt only paid ~92k-138k under the first-pass ladder. Target then: ~20% of a
+    // REALISTIC guild's own TOTAL raid reward (not divided by roster size) at that same
+    // difficulty. Third pass (2026-08-29, direct instruction) raised every tier's reward
+    // 1.5x, moving the target to ~30% — still well short of guild income parity, still
+    // inside the EV-dead-zone-free ladder shape verified above. Computed entirely from
+    // live constants (Guild Raid's own real 12 breakpoints, interpolated in
+    // ln(difficulty) between them, same convention this file's other regression blocks
+    // use) so this self-corrects if either ladder is retuned again.
+    test('reward sits within a bounded band of ~30% of a realistic (Guild Level 2) guild\'s total reward at matching difficulty', () => {
         const guildBreakpoints = [
             { d: Raid.T1_RAID_DIFFICULTY, eff: Raid.T1_RAID_REWARD / Raid.T1_RAID_DIFFICULTY },
             { d: Raid.T2_RAID_DIFFICULTY, eff: Raid.T2_RAID_REWARD / Raid.T2_RAID_DIFFICULTY },
@@ -461,11 +463,11 @@ describe('Bounty.TIERS ladder shape', () => {
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            // Wide band ("roughly 20%") rather than an exact match — the actual target
+            // Wide band ("roughly 30%") rather than an exact match — the actual target
             // ratio drifts a little tier to tier since rewards are rounded to the nearest
             // 1,000 and guild's own efficiency curve has real kinks at mode boundaries.
-            expect(ratio).toBeGreaterThan(0.15);
-            expect(ratio).toBeLessThan(0.30);
+            expect(ratio).toBeGreaterThan(0.25);
+            expect(ratio).toBeLessThan(0.35);
         });
     });
 });
