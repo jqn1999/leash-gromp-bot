@@ -165,7 +165,7 @@ describe('createWorldResultEmbed world-buff announcement', () => {
         expect(field.value).toContain('5%');
     });
 
-    test('a win with no buff (Brassica) shows the explicit no-blessing line, not a missing field', () => {
+    test('a win with a null worldBuff (defensive fallback — every boss grants one today) shows the explicit no-blessing line, not a missing field', () => {
         const embed = embedFactory.createWorldResultEmbed([], 0, mob, 0.5, 'Win!', 1, 500000, 5000000, null, true);
         const field = embed.data.fields.find(f => f.name.includes('Server-Wide Blessing'));
         expect(field).toBeDefined();

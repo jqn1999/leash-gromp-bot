@@ -141,17 +141,16 @@ describe('World Boss server-wide buff', () => {
         expect(buff.value).toBe(0.10);
     });
 
-    test('a successful Brassica kill grants NO buff by design', async () => {
+    test('a successful Brassica kill sets a passiveBoost buff', async () => {
         const brassicaIndex = worldBossMobs.findIndex(m => m.name === 'Brassica, the Blooming Calamity');
         mockGuaranteedWin(brassicaIndex);
         const factory = new worldFactory();
 
         await factory.popWorldBoss();
 
-        // Confirm this really was a win (stat rewards granted) before asserting the
-        // buff-less outcome is by design, not an accidental loss.
-        expect(mockHandleStatSplit).toHaveBeenCalled();
-        expect(dynamoHandler.setActiveWorldBuff).not.toHaveBeenCalled();
+        const [buff] = dynamoHandler.setActiveWorldBuff.mock.calls[0];
+        expect(buff.buffType).toBe('passiveBoost');
+        expect(buff.value).toBe(0.10);
     });
 
     test('a FAILED raid never sets a buff, even against a boss that has one', async () => {

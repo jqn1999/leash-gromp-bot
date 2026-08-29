@@ -565,3 +565,32 @@ describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuff
         expect(dynamoHandler.isWorldBuffLive(undefined, 'workMulti')).toBe(false);
     });
 });
+
+// Brassica's passiveBoost buff (systems/raids-and-world-events.md#server-wide-buff) folds
+// additively into passivePotatoHandler's per-user passive gain, same site as
+// passiveIncomePercent/rebirthPercent.
+describe('passivePotatoHandler world buff term', () => {
+    const baseUser = { userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1 };
+
+    test('a live passiveBoost buff adds its value on top of the normal passive gain', async () => {
+        docClient.scan.mockReturnValue(resolved({ Items: [baseUser] }));
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'world_buff', buffType: 'passiveBoost', value: 0.10, expiresAt: Date.now() + 60000 }] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288); // 288 = ticks/day at the real 5-minute cadence
+
+        const [updateParams] = docClient.update.mock.calls[0];
+        expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 * 1.10 / 288));
+    });
+
+    test('an expired or absent buff leaves the passive gain unboosted', async () => {
+        docClient.scan.mockReturnValue(resolved({ Items: [baseUser] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const [updateParams] = docClient.update.mock.calls[0];
+        expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
+    });
+});

@@ -3168,9 +3168,9 @@ and needs its own balance pass.
   What: a **successful** World Boss kill now grants the whole server a free, temporary,
   boss-flavored buff on top of (never instead of) the existing per-participant rewards —
   Griseous grants +5% work cooldown skip chance, Raikon +10% work multiplier, Yamsalot a
-  starch cycle discount (buy -10%/sell +10%), all for 24h; Brassica deliberately grants
-  none (already the roster's easiest/cheapest pull — kept legible rather than diluted, and
-  the win embed says so explicitly). Product-owner scoped this first (see the entry above,
+  starch cycle discount (buy -10%/sell +10%), and Brassica +10% passive income, all for
+  24h (see Update below — Brassica originally shipped buff-less by design, then got one
+  the same day). Product-owner scoped this first (see the entry above,
   in "Needs more design discussion") grounding every number against a real comparable
   system already live; direct instruction to "implement" then built it exactly as scoped.
   - New stats-table doc `world_buff` (`{ bossName, buffType, value, expiresAt }`), read/
@@ -3194,12 +3194,26 @@ and needs its own balance pass.
     line) on the same message already posted on every World Boss resolution — no new
     channel/message needed.
   Tests: new coverage in `dynamoHandler.test.js` (buff-triggered skip, expired buff,
-  wrong-type buff), `worldFactory.test.js` (correct buff per boss, Brassica grants none, a
-  loss never grants one), `workFactory.test.js`/`starchFactory.test.js`
+  wrong-type buff), `worldFactory.test.js` (correct buff per boss, a loss never grants
+  one), `workFactory.test.js`/`starchFactory.test.js`
   (`getWorldBuffWorkMulti`/`getActiveStarchBuffPercent`), `embedFactory.test.js`
   (cooldown-skip field branching, world-result buff announcement). Docs:
   `systems/raids-and-world-events.md#server-wide-buff`. Full suite: 725/725 (up from
   703/703 — 22 new tests, zero regressions).
+  - **Update (2026-08-29, same day):** reversed the "Brassica deliberately grants none"
+    call — direct instruction ("earlier we said brassica has no buff, lets have brassica's
+    buff as an additional 10% passive for a day") — since every other boss having a buff
+    made Brassica's exclusion read as an oversight rather than a design choice once players
+    could compare all four. Added a new `passiveBoost` buff type: `worldFactory.js`'s
+    Brassica entry now carries `buff: { type: "passiveBoost", value: 0.10 }` instead of
+    `buff: null`; `dynamoHandler.passivePotatoHandler` reads the global buff once per tick
+    and folds `worldBuffPassivePercent` additively into the same term as
+    `passiveIncomePercent`/`rebirthPercent`; `embedFactory.js`'s `WORLD_BUFF_DESCRIPTIONS`
+    gained a `passiveBoost` line. `worldFactory.test.js`'s old "Brassica grants NO buff by
+    design" test replaced with one asserting the new `passiveBoost` buff; new coverage in
+    `dynamoHandler.test.js` for `worldBuffPassivePercent` (buff live vs. expired/absent).
+    Docs updated to match (`systems/raids-and-world-events.md`'s summary table and
+    Server-wide buff section). Full suite: 726/726.
 
 - [x] **82. Fix: Ancient Potato Was More Common Than Golden Potato** — S — **Done**
   What: direct instruction — "can we lower ancient potato odds under golden potato? would
@@ -3262,16 +3276,19 @@ and needs its own balance pass.
   on 97%+ of `/work` calls since Metal itself is already one of the rarer rolls. Planned
   out first: proposed generalizing the retired Metal-only widening mechanism to ALL
   non-Regular scenarios plus a work-multi or cooldown tax; refined across several rounds of
-  direct instruction into the shipped shape — doubling a hand-picked 7-scenario set
-  (Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, Golden
-  Yam), leaving Metal/Sweet/Ancient untouched, at an 8% work-multiplier tax.
+  direct instruction (including two live-tested value changes) into the shipped shape —
+  widening a hand-picked 7-scenario set (Golden Potato, Poison Potato, Large Potato,
+  Companion, Taro Trader, Mimic Potato, Golden Yam) by +75%, leaving Metal/Sweet/Ancient
+  untouched, at an 8% work-multiplier tax.
   - `workFactory.getEffectiveScenarioChances` (plural, replacing the retired singular
     `getEffectiveScenarioChance`) generalizes the exact same "widen this scenario's own
     slice, shift every later one up by the same running total, Regular absorbs the
     difference" mechanism to `PROSPECTOR_DOUBLED_SCENARIOS`' 7 non-contiguous scenario
     types in one pass, computed fresh per `/work` call in `work.js`'s `performWork` (still
     never mutating the shared `workScenarios` array).
-  - New perk `specialEncounterMultiplierBonus` (value 1 = doubles); cost reuses the
+  - New perk `specialEncounterMultiplierBonus` (value 0.75 = +75% of each affected
+    scenario's own base width; scales with companion level like every other perk, capping
+    at +108.75% at max level 10 — 0.75 * 1.45, not a round +150%); cost reuses the
     EXISTING `workMultiplierPercent` perk type with a negative value (-8%) rather than a
     new "penalty" type — `getCompanionWorkMulti`'s formula naturally subtracts, and it
     applies everywhere this perk is already read (raid power, every `/work` reward), a
@@ -3281,29 +3298,48 @@ and needs its own balance pass.
     longer cooldown means fewer total `/work` calls per day, directly cannibalizing the
     very buff it's paired with; a multiplier tax only taxes the value of a boring Regular
     hit, leaving the higher special-hit rate fully felt.
-  - **Sweet Potato was in an earlier draft of the doubled set** until a 1000-`/work` EV
-    check (reusing the real `workFactory.js` handlers via a throwaway Jest simulation, 200
-    trials averaged, compared against Spudsprite) found doubling its encounter rate alone
-    reproduced the exact compounding-snowball shape the 2026-08-24 Metal/`isBoostedHit` fix
-    already had to cap once — Sweet's flat `+0.2` `workMultiplierAmount` grant (1/3 of its
-    own rolls) let this Rare out-earn a Legendary by ~25-30% purely from extra permanent
-    stat growth compounding into every later roll. Pulling Sweet Potato out (and doubling
-    Taro Trader/Companion/Mimic Potato instead — all bounded rewards, no stat grants)
-    brought the final work-multiplier after 1000 calls back within noise of baseline,
-    closing the snowball without needing an `isBoostedHit`-style dampener across 6 more
-    scenario handlers. Final EV check: new Prospector ≈1.375x baseline potato total vs.
-    Spudsprite's raw ≈1.104x — but Spudsprite's 15% `workCooldownSkipChance` is invisible
-    to a fixed-call-count comparison (it buys more calls per real day, not more value per
-    call, `≈1/(1-.15)=1.176x` throughput); corrected, Spudsprite's real per-time value is
-    ≈1.298x, putting a Rare and a Legendary within a modest ~6% of each other rather than
-    the ~25-30% overshoot the Sweet-Potato-inclusive draft produced.
+  - **Sweet Potato was in an earlier draft of the widened set** (at a full doubling, value
+    `1`) until a 1000-`/work` EV check (reusing the real `workFactory.js` handlers via a
+    throwaway Jest simulation, deleted after each round's numbers were confirmed) found
+    doubling its encounter rate alone reproduced the exact compounding-snowball shape the
+    2026-08-24 Metal/`isBoostedHit` fix already had to cap once — Sweet's flat `+0.2`
+    `workMultiplierAmount` grant (1/3 of its own rolls) let this Rare out-earn a Legendary
+    by ~25-30% purely from extra permanent stat growth compounding into every later roll.
+    Pulling Sweet Potato out (and widening Taro Trader/Companion/Mimic Potato instead —
+    all bounded rewards, no stat grants) brought the final work-multiplier after 1000
+    calls back within noise of baseline, closing the snowball without needing an
+    `isBoostedHit`-style dampener across 6 more scenario handlers.
+  - **EV methodology itself needed a correction mid-check**: the first pass approximated
+    Spudsprite's `workCooldownSkipChance` throughput advantage with a post-hoc
+    `1/(1-p)` multiplier instead of actually simulating it — asked directly "is that
+    accounting for work skip chance," the honest answer was no. Rebuilt the sim to
+    properly chain scenario resolutions the same way `work.js`'s real `performWork` does
+    (capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH=15`) — confirmed the formula had been
+    numerically right (~1177 resolutions per 1000 Spudsprite commands, matching
+    `1/(1-.15)` almost exactly) but this was now verified, not assumed. At value `1`
+    (double), properly simulated, Prospector bounced both sides of "tied" with Spudsprite
+    across separate trial batches — too close for a Rare vs. a Legendary. Direct
+    instruction tested `0.5` (landed ~11% behind Spudsprite, clearly safe) before settling
+    on **0.75** as the shipped value: ~1000 real commands, 300-trial average, new
+    Prospector ≈1.17x baseline potato total vs. Spudsprite's ≈1.27x — comfortably behind a
+    Legendary (~10-15%) while still meaningfully ahead of no companion, and still ahead of
+    Spudsprite on starches specifically.
+  - **Old Metal-boosted-hit machinery fully removed** (not left dormant) once nothing could
+    ever trigger it again: `isMetalHitBoosted` deleted from `workFactory.js` entirely,
+    `handleMetalPotato`'s `isBoostedHit` param/`rewardScale`/dampened work-multiplier grant
+    removed (always full reward now), `metalPotatoRewards.boostedHitRewardScale` deleted,
+    `work.js`'s Metal action simplified (no more `workScenarioRoll`/`metalBaseChance`
+    threading through every scenario action, no more `metalSuccessChanceFlat` lookup —
+    flat 10% base only), `embedFactory.js`'s `isBoostedMetalHit` field/param removed from
+    `createWorkEmbed`, and the two retired perk labels (`metalSuccessChanceFlat`/
+    `metalEncounterChanceFlat`) dropped from `PERK_LABELS` outright.
   Tests: `workFactory.test.js`'s `getEffectiveScenarioChance` describe block fully rewritten
-  for the new plural function (doubled-scenario widening, untouched-scenario pass-through,
+  for the new plural function (widened-scenario shifting, untouched-scenario pass-through,
   Regular never widened, shift accumulates across scattered scenarios) against real
-  `eventFactory.js` base chances. Docs: `systems/companions.md`'s Prospector section
-  rewritten (history condensed, new mechanism + EV numbers documented in full). Full
-  suite: 736/736, zero regressions (test count unchanged — replaced, not added, since the
-  old function's tests were fully superseded).
+  `eventFactory.js` base chances; `isMetalHitBoosted`/`isBoostedHit` test coverage removed
+  entirely (nothing left to test). Docs: `systems/companions.md`'s Prospector section
+  rewritten (history condensed, final mechanism + full 3-round EV history documented). Full
+  suite: 726/726, zero regressions.
 
 ## Needs more design discussion before it can be scoped
 

@@ -673,13 +673,20 @@ const passivePotatoHandler = async function (timesInADay) {
     let serverTotalStarches = 0;
     const activeTotalEarnings = [];
 
+    // Brassica's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
+    // single global read outside the per-user loop below, since the buff itself isn't
+    // user-specific (unlike passiveIncomePercent/rebirthPercent, which are). 0 (a no-op)
+    // whenever no passiveBoost buff is currently live.
+    const worldBuff = await getActiveWorldBuff();
+    const worldBuffPassivePercent = isWorldBuffLive(worldBuff, "passiveBoost") ? worldBuff.value : 0;
+
     await Promise.all(allUsers.map(async user => {
         // Ladybug (+5%) / Mochi (+8%) and the live rebirth bonus — computed fresh here,
         // never folded into passiveAmount itself, same "one active modifier at the usage
         // site" pattern the guild buff system and every other companion perk follow.
         const passiveIncomePercent = companionFactory.getActivePerkValue(user, "passiveIncomePercent");
         const rebirthPercent = rebirthFactory.getLiveRebirthPercent(user);
-        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent) / timesInADay);
+        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent + worldBuffPassivePercent) / timesInADay);
         const userBankStored = toNumber(user.bankStored) + passiveGain;
         const userTotalEarnings = toNumber(user.totalEarnings) + passiveGain;
         await updateBankStoredPotatoesAndTotalEarnings(user.userId, userBankStored, userTotalEarnings);

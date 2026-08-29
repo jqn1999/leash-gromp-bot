@@ -84,10 +84,11 @@ async function startWorldBoss(world, mob){
         raidResultDescription = mob.successDescription;
         // Server-wide temporary buff (see each mob's own `buff` field above) — on top of,
         // never instead of, the per-participant rewards just granted. Only a WIN grants
-        // one; Brassica's own `buff: null` deliberately grants nothing (still passed
-        // through to createWorldResultEmbed so it can say so explicitly). A new kill's
-        // buff replaces whatever was previously stored outright — see setActiveWorldBuff's
-        // own comment for why this doesn't stack or extend a running timer.
+        // one; `mob.buff` is falsy only on a LOSS (`worldBuff` stays whatever it was
+        // initialized to above), still passed through to createWorldResultEmbed so it can
+        // say so explicitly. A new kill's buff replaces whatever was previously stored
+        // outright — see setActiveWorldBuff's own comment for why this doesn't stack or
+        // extend a running timer.
         if (mob.buff) {
             worldBuff = {
                 bossName: mob.name,
@@ -187,13 +188,11 @@ const worldBossMobs = [
         passiveReward: 350000,
         bankCapacityReward: 3500000,
         difficulty: 1200,
-        // Deliberately no server-wide buff (product-owner scoping call, 2026-08-29) —
-        // Brassica is already the roster's easiest/cheapest pull (lowest difficulty AND
-        // reward of the four), so staying the one boss whose kill is "just" the existing
-        // participant reward keeps that identity legible instead of diluted. Explicit
-        // `null` rather than omitting the field, so createWorldResultEmbed can say so on
-        // purpose (see its own comment) instead of a missing buff silently reading as a bug.
-        buff: null
+        // Reversal of an earlier "deliberately no buff" scoping call (2026-08-29) — Brassica
+        // now grants a server-wide passive income boost, keeping every boss on the roster
+        // paired with a buff type (Griseous: cooldown skip, Raikon: work multiplier,
+        // Yamsalot: starch discount, Brassica: passive income).
+        buff: { type: "passiveBoost", value: 0.10 }
     },
     {
         name: "Yamsalot, the Iron Yam",

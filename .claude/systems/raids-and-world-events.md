@@ -700,7 +700,7 @@ Current bosses:
 
 | Boss | Reward | Stat bonus | Difficulty | Penalty on failure | Server-wide buff |
 |---|---|---|---|---|---|
-| Brassica, the Blooming Calamity | 70,000,000 | +0.75 work multi, +350,000 passive, +3,500,000 bank | 1200 | none | none (by design) |
+| Brassica, the Blooming Calamity | 70,000,000 | +0.75 work multi, +350,000 passive, +3,500,000 bank | 1200 | none | +10% passive income, 24h |
 | Griseous, the Dragon Fruit | 150,000,000 | +1 work multi, +500,000 passive, +5,000,000 bank | 1800 | none | +5% work cooldown skip chance, 24h |
 | Thunderlord Raikon | 50,000,000 | +2 work multi, +1,000,000 passive, +10,000,000 bank | 1800 | none | +10% work multiplier, 24h |
 | Yamsalot, the Iron Yam | 140,000,000 | +3 work multi, +1,500,000 passive, +15,000,000 bank | 2500 | none | Starch buy -10% / sell +10%, 24h |
@@ -720,15 +720,19 @@ against the `world` stats doc instead of a guild record.
 Added 2026-08-29 — product-owner scoped, then implemented by direct instruction ("implement"). A
 **successful** kill grants the whole server a free, temporary, boss-flavored buff **on top of,
 never instead of**, the per-participant rewards above — whoever actually joined the raid still gets
-those; the rest of the server gets to feel that the win happened at all. A failed raid, or Brassica
-(deliberately, see its own `buff: null` in `worldFactory.js`'s `worldBossMobs` — it's already the
-roster's easiest/cheapest pull, so staying buff-less keeps that identity legible), grants nothing —
-`createWorldResultEmbed` says so explicitly rather than a missing field silently reading as a bug.
+those; the rest of the server gets to feel that the win happened at all. A failed raid grants
+nothing — `createWorldResultEmbed` says so explicitly rather than a missing field silently reading
+as a bug. Brassica originally shipped with `buff: null` by deliberate design (see roadmap.md #81) —
+already the roster's easiest/cheapest pull, the thinking was that staying buff-less kept that
+identity legible. Reversed the same day once every other boss on the roster had a buff and Brassica
+alone reading "no blessing" started to feel like an oversight rather than a design choice: it now
+grants `passiveBoost` (+10% passive income, 24h), so every boss pairs with exactly one buff type.
 
 Each numeric value was grounded against the closest real comparable system already live, not picked
 as a round number — see each mob's own `buff` field comment in `worldFactory.js` for the full
 derivation (Yamsalot vs. the `starchSellBonusPercent` companion ladder, Griseous vs. Fieldmouse's
-own permanent perk, Raikon vs. the guild `workMulti` cap and Mochi's companion bonus).
+own permanent perk, Raikon vs. the guild `workMulti` cap and Mochi's companion bonus, Brassica vs.
+Ladybug/Mochi's own `passiveIncomePercent` companion perks).
 
 - **State**: a single stats-table doc, `world_buff` — `{ bossName, buffType, value, expiresAt }` —
   read/written via `dynamoHandler.getActiveWorldBuff`/`setActiveWorldBuff`, mirroring
@@ -758,9 +762,12 @@ own permanent perk, Raikon vs. the guild `workMulti` cap and Mochi's companion b
     chain-continuation check and every embed's cooldown-skip display keep working unchanged —
     `embedFactory.buildCooldownSkipField` branches on the value's shape to show a distinct "Boss's
     Blessing" line instead of a companion's flavor text.
+  - `dynamoHandler.passivePotatoHandler` — one global `getActiveWorldBuff` read outside the per-user
+    loop (the buff isn't user-specific), folded additively into the same term as
+    `passiveIncomePercent`/`rebirthPercent` in each user's passive-gain calc.
 - **Announcement**: folded into the existing `createWorldResultEmbed` (posted to the events channel
   on every World Boss resolution) rather than a new message — a "🌍 Server-Wide Blessing" field on
-  a win, naming the buff or explicitly saying Brassica didn't grant one this time.
+  a win, naming the buff granted.
 
 ## Background scheduled jobs
 
