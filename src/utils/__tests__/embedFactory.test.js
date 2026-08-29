@@ -86,4 +86,42 @@ describe('createPoisonPotatoEmbed', () => {
             embedFactory.createPoisonPotatoEmbed('User', 42, result, poisonMob);
         }).not.toThrow();
     });
+
+    test('immune hit shows the mob\'s descriptionImmune text instead of its normal description when both are present', () => {
+        const mobWithImmuneText = { ...poisonMob, descriptionImmune: 'Your pet eats it first.' };
+        const result = {
+            potatoesGained: 200,
+            immune: true,
+            mitigationInfo: {
+                reduction: 0,
+                lockoutSeconds: 0,
+                hitNumberThisWeek: 1,
+                milestoneJustReached: false,
+                rebatePercent: 0.5,
+                escalationMultiplier: 1,
+            },
+        };
+
+        const embed = embedFactory.createPoisonPotatoEmbed('User', 42, result, mobWithImmuneText);
+        expect(embed.data.description).toBe('Your pet eats it first.');
+    });
+
+    test('non-immune hit always shows the normal description, even if descriptionImmune is present', () => {
+        const mobWithImmuneText = { ...poisonMob, descriptionImmune: 'Your pet eats it first.' };
+        const result = {
+            potatoesGained: -500,
+            immune: false,
+            mitigationInfo: {
+                reduction: 0,
+                lockoutSeconds: 3600,
+                hitNumberThisWeek: 1,
+                milestoneJustReached: false,
+                rebatePercent: null,
+                escalationMultiplier: null,
+            },
+        };
+
+        const embed = embedFactory.createPoisonPotatoEmbed('User', 42, result, mobWithImmuneText);
+        expect(embed.data.description).toBe(mobWithImmuneText.description);
+    });
 });

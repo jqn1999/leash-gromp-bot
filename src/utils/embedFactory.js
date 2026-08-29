@@ -1274,7 +1274,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
-            .setDescription(mob.description)
+            .setDescription(immune && mob.descriptionImmune ? mob.descriptionImmune : mob.description)
             .setColor(potatoesGained >= 0 ? 'Green' : 'Red')
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })

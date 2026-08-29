@@ -2012,6 +2012,13 @@ const poisonPotato = {
     name: "Poisonous Potato",
     thumbnailUrl: "https://static.wikia.nocookie.net/minecraft_gamepedia/images/c/c0/Poisonous_Potato_JE3_BE2.png/revision/latest?cb=20200521233152",
     description: `OH NO! While wandering around, you’re met with a Poisonous Potato and come down with a terrible illness. You pay a hefty sum of potatoes for medicinal herbs and are left with no choice but to take a long break from working as you recuperate!`,
+    // Shown instead of the description above when embedFactory.createPoisonPotatoEmbed's
+    // `immune` flag is set (Guinea Pig equipped — see companionFactory's "guinea_pig" perk
+    // roster entry, whose own flavor text is "insists on taking the first bite of every
+    // potato you find, just in case — it's never once let a bad one through"). Same voice
+    // as the base description, just paying off that lore instead of describing a hit that
+    // didn't actually land on the player.
+    descriptionImmune: `While wandering around, you're met with a Poisonous Potato — but before you can take a single bite, your Guinea Pig snatches it clean out of your hands and wolfs it down first, same as always. It doesn't even flinch, and somehow you walk away with MORE potatoes than you started with!`,
     credit: `Inspired by Saeriel`
 }
 
