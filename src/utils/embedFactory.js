@@ -94,18 +94,13 @@ const PERK_LABELS = {
     // clause (a yield tax on every other gain) — removed 2026-08-25 by direct
     // instruction, so this is now pure upside like every other perk's description.
     poisonImmunity: ({ rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout`,
-    // No companion currently grants either of these two — both were Prospector's own kit
-    // until its 2026-08-29 redesign retired them in favor of specialEncounterMultiplierBonus
-    // below. Wiring stays in place for a future Metal-focused companion, same
-    // "kept for a future companion" precedent starchCapacityPercent/
-    // guildRaidMultiplierPercent already set above.
-    metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
-    metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
-    // Prospector's own replacement kit (2026-08-29) — value is the BONUS multiple added to
-    // each affected scenario's own base width (1 = +100% = doubled), not the final
-    // multiplier itself. See workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for the exact
-    // scenario list this applies to.
-    specialEncounterMultiplierBonus: value => `${value + 1}x chance to find Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato & Golden Yam`,
+    // Prospector's kit (2026-08-29 redesign) — value is the BONUS fraction added to each
+    // affected scenario's own base width (0.75 = +75%), not the final multiplier itself.
+    // metalSuccessChanceFlat/metalEncounterChanceFlat (Prospector's old Metal-only kit,
+    // and the isBoostedHit dampener they triggered in handleMetalPotato) were fully
+    // removed alongside this redesign — see systems/companions.md's Prospector section
+    // for that history if a future Metal-focused companion ever needs it re-added.
+    specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato & Golden Yam`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
     rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`
 };
@@ -181,7 +176,8 @@ function buildCooldownSkipField(cooldownSkipSource) {
 const WORLD_BUFF_DESCRIPTIONS = {
     starchDiscount: value => `Starch prices favor the Kingdom for the next 24h — buying is ${(value * 100).toFixed(0)}% cheaper, selling pays ${(value * 100).toFixed(0)}% more!`,
     cooldownSkip: value => `+${(value * 100).toFixed(0)}% chance to skip your /work cooldown entirely for the next 24h!`,
-    workMulti: value => `+${(value * 100).toFixed(0)}% work multiplier for everyone for the next 24h!`
+    workMulti: value => `+${(value * 100).toFixed(0)}% work multiplier for everyone for the next 24h!`,
+    passiveBoost: value => `+${(value * 100).toFixed(0)}% passive income for everyone for the next 24h!`
 };
 
 function describeWorldBuff(worldBuff) {
@@ -1114,11 +1110,9 @@ class EmbedFactory {
         }
 
         // Server-wide temporary buff (systems/raids-and-world-events.md#server-wide-buff)
-        // — announced on a win only. worldBuff is null both on a loss and for Brassica's
-        // own deliberate no-buff design; the two are told apart by successfulRaid so a
-        // Brassica win still gets an explicit "no blessing this time" line rather than the
-        // field just silently not appearing (which would read as a bug once players are
-        // used to seeing one on the other three kills).
+        // — announced on a win only. All four bosses grant one now, but worldBuff can still
+        // be null here (e.g. a future buffless boss), so the fallback line stays rather
+        // than letting the field silently not appear.
         if (successfulRaid) {
             fields.push(worldBuff
                 ? { name: `🌍 Server-Wide Blessing:`, value: describeWorldBuff(worldBuff), inline: false }
@@ -1171,7 +1165,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, isBoostedMetalHit = false) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -1191,19 +1185,6 @@ class EmbedFactory {
 
         if (cooldownSkippedByCompanion) {
             fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
-        }
-
-        // A "boosted" Metal Potato hit — one that only landed because a companion perk
-        // widened its odds — pays a reduced reward and grants no work-multiplier bump at
-        // all (see workFactory.handleMetalPotato). That reduction has to actually show up
-        // here or it's just an unexplained smaller number, same reasoning the Poison
-        // Mitigation embed's own visibility field already established.
-        if (isBoostedMetalHit) {
-            fields.push({
-                name: `⛏️ Prospector's Own Luck:`,
-                value: `This strike only happened because of your companion's boosted odds — reduced haul, no Work Multiplier bump this time.`,
-                inline: false,
-            });
         }
 
         if (mob.credit) {

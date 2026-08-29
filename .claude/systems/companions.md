@@ -250,7 +250,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `specialEncounterMultiplierBonus` +1 (doubles Golden/Poison/Large/Companion/Taro/Mimic/Golden Yam encounter chance — Metal/Sweet/Ancient excluded, see below) + `workMultiplierPercent` -8% (the cost) |
+| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Golden/Poison/Large/Companion/Taro/Mimic/Golden Yam's own encounter chance — Metal/Sweet/Ancient excluded, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -288,7 +288,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
-| Special Encounter Chance (7 scenarios doubled) | — | +1x (Prospector) | — | — |
+| Special Encounter Chance (7 scenarios) | — | +75% (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why. The Work
@@ -372,8 +372,8 @@ calls. Player feedback called it "too niche." New kit:
 
 ```js
 perks: [
-    { type: "specialEncounterMultiplierBonus", value: 1 },   // doubles 7 scenarios' own encounter chance
-    { type: "workMultiplierPercent", value: -0.08 }           // the cost: -8% effective work multiplier
+    { type: "specialEncounterMultiplierBonus", value: 0.75 },  // +75% of 7 scenarios' own base width
+    { type: "workMultiplierPercent", value: -0.08 }             // the cost: -8% effective work multiplier
 ]
 ```
 
@@ -381,25 +381,28 @@ perks: [
 retired perk established — `workFactory.getEffectiveScenarioChances` (plural now; takes the whole
 scenario list and computes every effective threshold in one pass, rather than one scenario at a
 time) widens Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, and
-Golden Yam — each scenario's own raw slice width is added again (value `1` = "+1x own width" =
-doubled), every scenario after it in roll order shifts up by the same running total so each keeps
-its own width, and Regular (the fixed-at-1 catch-all) absorbs the total difference by shrinking.
-`work.js`'s `performWork` computes this fresh per request (still never mutating the shared
-`workScenarios` array — the same race-safety reasoning that shaped the original Metal-only version).
+Golden Yam — each scenario's own raw slice width is added again at `value` fraction (0.75 = +75% of
+its own width), every scenario after it in roll order shifts up by the same running total so each
+keeps its own width, and Regular (the fixed-at-1 catch-all) absorbs the total difference by
+shrinking. `work.js`'s `performWork` computes this fresh per request (still never mutating the
+shared `workScenarios` array — the same race-safety reasoning that shaped the original Metal-only
+version). Scales with companion level like every other perk
+(`CompanionLeveling.PERK_BONUS_PER_LEVEL`, +5%/level), capping at **+108.75%** (`0.75 * 1.45`) at max
+level 10 — not a round +150%, since the level-10 multiplier itself is 1.45x, not 1.5x.
 
-**Metal Potato, Sweet Potato, and Ancient Potato are deliberately excluded from the doubled set** —
+**Metal Potato, Sweet Potato, and Ancient Potato are deliberately excluded from the widened set** —
 see `PROSPECTOR_DOUBLED_SCENARIOS` in `workFactory.js`. Metal was excluded from the start (its own
 uncapped `workMultiplierReward` carries the identical snowball risk the 2026-08-24 fix above already
-had to cap once). Sweet Potato was in an early draft of this redesign until a 1000-`/work` EV check
-(comparing against Spudsprite, same methodology as the original Metal analysis) found doubling its
-encounter rate alone reproduced the *exact same* compounding shape: Sweet's flat `+0.2`
+had to cap once). Sweet Potato was in an early draft (at a full doubling, value `1`) until a
+1000-`/work` EV check (comparing against Spudsprite, chain mechanic included — see below) found
+doubling its encounter rate alone reproduced the *exact same* compounding shape: Sweet's flat `+0.2`
 `workMultiplierAmount` grant (1/3 of its own rolls) let this Rare out-earn a Legendary by ~25-30% in
 raw potato EV over 1000 calls, purely from the extra permanent stat growth compounding into every
-later roll. Pulling Sweet Potato out of the doubled list (and doubling Taro Trader/Companion/Mimic
+later roll. Pulling Sweet Potato out of the widened list (and widening Taro Trader/Companion/Mimic
 Potato instead — none of which grant any permanent stat bonus, only bounded potato/starch/companion
 rewards) brought the *final work-multiplier* after 1000 simulated calls back to within noise of
-baseline (≈21.9 across no-companion/Spudsprite/new-Prospector alike), closing the snowball risk
-without an `isBoostedHit`-style dampener needing to be built for 6 more scenario handlers.
+baseline across every companion configuration tested, closing the snowball risk without an
+`isBoostedHit`-style dampener needing to be built for 6 more scenario handlers.
 
 **The cost reuses `workMultiplierPercent` directly with a negative value**, rather than a separate
 "penalty" perk type — `getCompanionWorkMulti`'s existing `userMultiplier *
@@ -410,16 +413,26 @@ against Rare-tier single-perk peers (Firefly 9%, Mole/Rootcarver 9-12%) — mean
 crushing against a buff that touches 7 scenarios at once. `embedFactory.js`'s `workMultiplierPercent`
 label was fixed to render a leading `-` instead of a broken `+-8.0%` for this first-ever negative use.
 
-**Final EV check** (1000 `/work` calls, 200-trial average, `workMultiplierAmount` starting at 20):
-new Prospector landed ~1.375x baseline potato total vs. Spudsprite's raw ~1.104x — but Spudsprite's
-15% `workCooldownSkipChance` is invisible to a fixed-call-count comparison (it doesn't make any one
-call worth more, it lets you complete more calls per real day, roughly `1/(1-.15) ≈ 1.176x`
-throughput); once corrected for that, Spudsprite's real per-time value is ≈1.298x baseline — putting
-a Rare and a Legendary within a modest ~6% of each other rather than the ~25-30% overshoot the
-Sweet-Potato-inclusive draft produced. Verified via a throwaway simulation reusing the real
-`workFactory.js` handlers (not reimplemented formulas), same "revert-and-confirm" rigor as this
-codebase's own test suite, deleted after the numbers were confirmed rather than kept as a permanent
-test (the comparison is a one-time balance check, not a regression to guard forever).
+**EV check, iterated across three rounds** — 1000 `/work` COMMANDS (not raw scenario resolutions;
+see below), `workMultiplierAmount` starting at 20, reusing the real `workFactory.js` handlers via a
+throwaway Jest simulation (deleted after each round's numbers were confirmed, same "one-time balance
+check, not a permanent regression" treatment as the original Metal analysis):
+
+1. **First pass approximated Spudsprite's `workCooldownSkipChance` with a post-hoc `1/(1-p)`
+   throughput multiplier** rather than simulating it — this understated confidence in the result
+   even though the formula turned out to be numerically right.
+2. **Second pass properly simulated the real chain mechanic**: `work.js`'s `performWork` immediately
+   resolves another scenario when a skip procs (capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH=15`),
+   so 1000 Spudsprite *commands* produce ~1177 actual scenario *resolutions* (matching the `1/(1-.15)`
+   formula almost exactly, now verified rather than assumed). At value `1` (double), Prospector
+   landed within single-digit percent of Spudsprite — bouncing both sides of "tied" across separate
+   200-trial batches, too close for comfort for a Rare vs. a Legendary.
+3. **Direct instruction to soften the bump** (tested `0.5`, landed ~11% *behind* Spudsprite — clearly
+   safe but maybe underselling the buff) **before settling on 0.75** as the shipped value: ~1000
+   real commands, 300-trial average — new Prospector ≈1.17x baseline potato total, Spudsprite
+   ≈1.27x, landing Prospector comfortably (~10-15%) behind a Legendary while still meaningfully ahead
+   of no companion at all, and still ahead of Spudsprite on starches specifically (Taro
+   Trader/Golden Yam are both in the widened set).
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 

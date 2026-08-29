@@ -15,13 +15,14 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // own raw slice width, then shift every LATER scenario's cumulative threshold up by the
 // same running total so each keeps its own width unchanged — just applied to several
 // scattered scenario types instead of one contiguous "Metal onward" run. Sweet Potato and
-// Metal Potato are deliberately excluded from the doubled set: both grant a permanent,
+// Metal Potato are deliberately excluded from the widened set: both grant a permanent,
 // uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3 of the time, Metal's
 // own uncapped workMultiplierReward), and an EV check (2026-08-29, comparing this exact
-// redesign against Spudsprite over 1000 simulated /work calls) found doubling Sweet
-// Potato's encounter rate alone let a Rare-tier companion out-earn a Legendary by
-// ~25-30% — the same compounding-snowball shape already found and fixed once for
-// Prospector/Metal specifically (see handleMetalPotato's own isBoostedHit comment).
+// redesign against Spudsprite over 1000 simulated /work calls, chain mechanic included)
+// found doubling Sweet Potato's encounter rate alone let a Rare-tier companion out-earn a
+// Legendary by ~25-30% — the same compounding-snowball shape a since-removed
+// isBoostedHit dampener in handleMetalPotato already had to fix once for Prospector/Metal
+// specifically (see systems/companions.md's Prospector section for that history).
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -55,21 +56,6 @@ function getEffectiveScenarioChances(scenarios, multiplierBonus) {
         // "donated entirely from Regular" shape this mechanism has always used.
         return { type, chance: type === WORK_SCENARIO_INDICES.REGULAR ? chance : chance + shift };
     });
-}
-
-// Pure decision for handleMetalPotato's isBoostedHit — pulled out as its own function
-// (mirroring getEffectiveScenarioChance just above) so the actual roll-comparison logic
-// is unit-testable directly, rather than only reachable through work.js's full command
-// flow. A hit is "boosted" (see handleMetalPotato's own comment) unless BOTH the
-// encounter roll and the success roll would have cleared their own base, unwidened
-// threshold on their own — i.e. this exact hit would have happened even with no
-// Metal-boosting companion equipped at all. Both comparisons use the SAME roll values
-// work.js's scenario-selection walk and Metal's own success check already produced, not
-// a fresh re-roll — a genuinely "would this same roll have succeeded anyway" check.
-function isMetalHitBoosted(workScenarioRoll, metalBaseChance, metalSuccessRoll, baseMetalSuccessChance) {
-    const realEncounter = workScenarioRoll < metalBaseChance;
-    const realSuccess = metalSuccessRoll < baseMetalSuccessChance;
-    return !(realEncounter && realSuccess);
 }
 
 // Used by handleAncientPotato to pick a random eligible track and look up its real
@@ -159,28 +145,18 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
 }
 
 class WorkFactory {
-    // isBoostedHit: true when THIS specific encounter+success roll only cleared Metal's
-    // thresholds because of a companion perk (metalEncounterChanceFlat/
-    // metalSuccessChanceFlat — currently only Prospector) widening them past the base
-    // 1.0%/10% — see work.js's Metal action for exactly how that's determined (comparing
-    // the same roll values against the UNBOOSTED thresholds). A player with no such
-    // companion never produces a boosted hit at all, since every encounter+success roll
-    // that clears their (unwidened) thresholds is by definition "genuine" — so this is a
-    // pure no-op for anyone not running a Metal-boosting companion.
-    //
-    // 2026-08-24, direct instruction, following an EV analysis that found Prospector's
-    // combined encounter+success boost (9x more expected Metal hits) turned Metal's
-    // UNCAPPED workMultiplierReward into a runaway compounding snowball (each hit raises
-    // work multi, which raises the value of every future roll including future Metal
-    // hits) — over 10,000 /work calls Prospector out-earned Spudsprite 3.4x once that
-    // compounding was modeled correctly, not the ~1.1x a naive flat-EV comparison
-    // suggested. A boosted hit still pays out (this isn't "Prospector doesn't work"),
-    // just at metalPotatoRewards.boostedHitRewardScale (25%) of the potato/passive/bank
-    // reward, and the work-multiplier grant — the specific field with no per-hit cap at
-    // all, unlike passive/bank which already had maxPassiveGain/maxBankCapacityGain — is
-    // skipped entirely on a boosted hit rather than just scaled down, since ANY nonzero
-    // grant on every boosted hit still re-feeds the same snowball, just slower.
-    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, isBoostedHit = false) {
+    // 2026-08-24 to 2026-08-29: this handler briefly carried an isBoostedHit dampener
+    // (metalPotatoRewards.boostedHitRewardScale, 25% reward + no work-multiplier grant on
+    // a hit that only landed because a companion widened Metal's own thresholds) after an
+    // EV analysis found Prospector's old Metal-only kit turned Metal's uncapped
+    // workMultiplierReward into a runaway compounding snowball. Removed once Prospector's
+    // 2026-08-29 redesign retired both perks that could ever trigger it
+    // (metalEncounterChanceFlat/metalSuccessChanceFlat) — with no companion able to widen
+    // Metal's thresholds anymore, every hit is by definition "genuine," so the dampener
+    // was permanently dead weight. See systems/companions.md's Prospector section for the
+    // full history if this mechanism (or a future Metal-focused companion) is ever
+    // revisited.
+    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
@@ -195,19 +171,17 @@ class WorkFactory {
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
-        const rewardScale = isBoostedHit ? metalPotatoRewards.boostedHitRewardScale : 1;
-        const workMultiplierGrant = isBoostedHit ? 0 : metalPotatoRewards.workMultiplierReward;
+        const workMultiplierGrant = metalPotatoRewards.workMultiplierReward;
 
-        const fullPotatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier, userDetails);
-        const potatoesGained = Math.floor(fullPotatoesGained * rewardScale);
+        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         rawPassiveRewardAmount = userPassiveAmount * metalPotatoRewards.passiveReward;
-        actualPassiveRewardAmount = Math.floor(calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount, metalPotatoRewards.maxPassiveGain) * rewardScale);
+        actualPassiveRewardAmount = Math.floor(calculatePassiveAmount(userPassiveAmount, rawPassiveRewardAmount, metalPotatoRewards.maxPassiveGain));
 
         rawBankRewardAmount = userBankCapacity * metalPotatoRewards.bankCapacityReward;
-        actualBankRewardAmount = Math.floor(calculateBankCapacityAmount(userBankCapacity, rawBankRewardAmount, metalPotatoRewards.maxBankCapacityGain) * rewardScale);
+        actualBankRewardAmount = Math.floor(calculateBankCapacityAmount(userBankCapacity, rawBankRewardAmount, metalPotatoRewards.maxBankCapacityGain));
 
         userMultiplier += workMultiplierGrant;
         userPassiveAmount += actualPassiveRewardAmount;
@@ -234,7 +208,7 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return { potatoesGained, isBoostedHit };
+        return { potatoesGained };
     }
 
     async handleSweetPotato(userDetails) {
@@ -794,13 +768,6 @@ const metalPotatoRewards = {
     bankCapacityReward: 1.5,
     maxPassiveGain: 500000, // reached at 1MM
     maxBankCapacityGain: 5000000, // reached at 10MM
-    // A "boosted" Metal hit (see handleMetalPotato's own comment) still pays out potatoes/
-    // passive/bank at this fraction of the normal roll — 25%, tuned by direct instruction
-    // after modeling several scales (50% still left a 4x passive gap and a 0.91x potato
-    // ratio against Spudsprite; 25% lands potatoes at 0.83x and passive at 2.46x). The
-    // work-multiplier grant isn't scaled by this at all — it's removed entirely on a
-    // boosted hit, see handleMetalPotato.
-    boostedHitRewardScale: 0.25
 }
 
 const sweetPotatoRewards = [
@@ -843,7 +810,6 @@ module.exports = {
     getCurrentWeekTag,
     computePoisonMitigation,
     getEffectiveScenarioChances,
-    isMetalHitBoosted,
     // Widened for Mercenary Bounties (mercenaryFactory.js's /rob-npc payout) to reuse the
     // exact same reward-scaling formula every other /work-shaped reward already uses,
     // instead of duplicating it — behavior-preserving, these were already the private

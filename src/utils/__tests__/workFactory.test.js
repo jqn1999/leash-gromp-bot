@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, isMetalHitBoosted } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances } = require('../workFactory');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
@@ -101,39 +101,6 @@ describe('getEffectiveScenarioChances', () => {
         // own widths are skipped but don't reset the running total.
         const totalDoubledWidth = .001 + .01 + .04 + .015 + .02 + .01 + .001; // golden+poison+large+companion+taro+mimic+goldenYam
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN_YAM)).toBeCloseTo(.1275 + totalDoubledWidth);
-    });
-});
-
-// isMetalHitBoosted(workScenarioRoll, metalBaseChance, metalSuccessRoll, baseSuccessChance)
-// — see workFactory.js's own comment. metalBaseChance is Metal's UNBOOSTED cumulative
-// threshold (0.061 in the live scenario table); baseSuccessChance is the flat 10% base.
-describe('isMetalHitBoosted', () => {
-    test('a roll that clears both base thresholds on its own is NOT boosted', () => {
-        expect(isMetalHitBoosted(0.05, 0.061, 0.05, 0.10)).toBe(false);
-    });
-
-    test('an encounter that only landed in the widened slice (past the base threshold) IS boosted, even if the success roll was genuine', () => {
-        expect(isMetalHitBoosted(0.07, 0.061, 0.05, 0.10)).toBe(true);
-    });
-
-    test('a success that only cleared the boosted chance (past the base 10%) IS boosted, even if the encounter was genuine', () => {
-        expect(isMetalHitBoosted(0.05, 0.061, 0.25, 0.10)).toBe(true);
-    });
-
-    test('boosted on both dimensions at once is still just boosted (not a distinct case)', () => {
-        expect(isMetalHitBoosted(0.07, 0.061, 0.25, 0.10)).toBe(true);
-    });
-
-    test('exactly at the base threshold does not count as clearing it (strict <)', () => {
-        expect(isMetalHitBoosted(0.061, 0.061, 0.10, 0.10)).toBe(true);
-    });
-
-    test('a player with no Metal-boosting companion always gets isBoostedHit: false, since their thresholds are never widened in the first place', () => {
-        // No widening means metalBaseChance IS the effective chance actually rolled
-        // against, and baseSuccessChance IS the effective success chance — so any roll
-        // that reached this function at all (i.e. cleared the unwidened thresholds,
-        // since there was no widening to clear anything past) is automatically "real".
-        expect(isMetalHitBoosted(0.03, 0.061, 0.08, 0.10)).toBe(false);
     });
 });
 
@@ -467,57 +434,10 @@ describe('handleMetalPotato', () => {
         expect(setFields.workScenarioCounts.metalSuccess).toBe(1);
     });
 
-    test('returns { potatoesGained, isBoostedHit: false } by default', async () => {
+    test('returns { potatoesGained }', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 2 });
         const result = await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
-        expect(result.isBoostedHit).toBe(false);
         expect(result.potatoesGained).toBe(38000); // floor(min(100000, 20000) * 1 * 2 * .95)
-    });
-
-    // 2026-08-24, direct instruction — a "boosted" hit (one that only happened because a
-    // companion widened Metal's own odds, e.g. Prospector) pays a reduced reward and
-    // grants NO work-multiplier bump at all, closing the compounding snowball an EV
-    // analysis found: the flat, uncapped +0.6/hit work-multiplier grant (unlike
-    // passive/bank, which already had a per-hit cap) fed directly back into the value of
-    // every future roll including future Metal hits, letting Prospector out-earn a
-    // non-Metal-focused companion 3.4x over 10,000 /work calls once that compounding was
-    // modeled correctly rather than as a flat EV comparison.
-    describe('isBoostedHit', () => {
-        test('grants ZERO work-multiplier increase, unlike a normal hit', async () => {
-            const userDetails = baseUser({ workMultiplierAmount: 2, sweetPotatoBuffs: { workMultiplierAmount: 0.4, passiveAmount: 0, bankCapacity: 0 } });
-            await workFactory.handleMetalPotato(userDetails, 1000, 1, 0, true);
-            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-            expect(setFields.workMultiplierAmount).toBe(2); // unchanged from the input
-            expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.4); // unchanged
-        });
-
-        test('scales the potato reward down to boostedHitRewardScale (25%) of the normal roll', async () => {
-            const userDetails = baseUser({ workMultiplierAmount: 2 });
-            const boosted = await workFactory.handleMetalPotato(userDetails, 1000, 1, 0, true);
-            // A normal hit at the same inputs would be 38000 (see the default-case test
-            // above) — a boosted hit pays floor(38000 * 0.25).
-            expect(boosted.potatoesGained).toBe(9500);
-            expect(boosted.isBoostedHit).toBe(true);
-        });
-
-        test('scales the passive/bank capacity gains down to 25% as well, not just potatoes', async () => {
-            const userDetails = baseUser({ workMultiplierAmount: 2, passiveAmount: 0, bankCapacity: 0 });
-            await workFactory.handleMetalPotato(userDetails, 1000, 1, 0, true);
-            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-            // A normal hit at passiveAmount/bankCapacity 0 would grant the guaranteed
-            // minimum (10,000 passive / 50,000 bank) — a boosted hit pays 25% of that.
-            expect(setFields.passiveAmount).toBe(2500);
-            expect(setFields.bankCapacity).toBe(12500);
-            expect(setFields.sweetPotatoBuffs.passiveAmount).toBe(2500);
-            expect(setFields.sweetPotatoBuffs.bankCapacity).toBe(12500);
-        });
-
-        test('still increments workScenarioCounts.metalSuccess — a boosted hit is still a real hit', async () => {
-            const userDetails = baseUser();
-            await workFactory.handleMetalPotato(userDetails, 1000, 1, 0, true);
-            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-            expect(setFields.workScenarioCounts.metalSuccess).toBe(1);
-        });
     });
 });
 
