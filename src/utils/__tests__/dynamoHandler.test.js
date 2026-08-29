@@ -89,6 +89,22 @@ describe('findUser', () => {
         expect(docClient.put).toHaveBeenCalledTimes(1);
     });
 
+    // Regression: findUser backs every "re-fetch right before a critical write" call site
+    // in this codebase (companion.js's attemptEquip, rob.js/bank.js/safehouse.js's
+    // confirm-button flows, rebirth.js/shop.js, etc.) — the whole point of those re-fetches
+    // is to see whatever the most recent write actually landed, not a stale in-memory
+    // snapshot. DynamoDB's default eventually-consistent read can occasionally still
+    // return a just-superseded item shortly after a different write on the same key, which
+    // would silently defeat that "re-fetch fresh" discipline in exactly the same shape as
+    // the bug it exists to prevent. This query is against the table's own partition key
+    // (userId), not a GSI, so ConsistentRead actually takes effect here.
+    test('always requests a strongly consistent read', async () => {
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [{ userId: 'u2b', username: 'name2b' }] }));
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.findUser('u2b', 'name2b');
+        expect(docClient.query.mock.calls[0][0].ConsistentRead).toBe(true);
+    });
+
     test('returns undefined on a genuine lookup error rather than a half-formed user', async () => {
         docClient.query.mockReturnValue(rejected(new Error('boom')));
         const user = await dynamoHandler.findUser('u3', 'name3');

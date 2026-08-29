@@ -446,7 +446,27 @@ const findUser = async function (userId, username) {
         TableName: awsConfigurations.aws_table_name,
         KeyConditionExpression: 'userId = :userId',
         // FilterExpression: 'userId = :userId',
-        ExpressionAttributeValues: { ':userId': userId }
+        ExpressionAttributeValues: { ':userId': userId },
+        // ConsistentRead — this is a base-table Query on the table's own partition key
+        // (userId), not a GSI lookup, so a strongly consistent read is available and
+        // actually takes effect here (GSIs only ever support eventually consistent reads,
+        // regardless of this flag). Without it, findUser defaults to DynamoDB's eventually
+        // consistent read, which can occasionally still return a just-superseded item
+        // shortly after a write lands on a different partition replica — rare, but exactly
+        // the shape of an intermittent, hard-to-reproduce report: a companion's workCount
+        // gain from /sell-starch "disappearing" after immediately clicking a /companion
+        // equip button afterward, because attemptEquip's own "re-fetch fresh before
+        // writing" read (added specifically to avoid trusting a stale in-memory snapshot —
+        // see companion.js's own comment on attemptEquip) still won under a race with the
+        // /sell-starch write it was meant to see. findUser backs every one of this
+        // codebase's "re-fetch right before a critical write" call sites (rob.js/bank.js/
+        // safehouse.js/rebirth.js/shop.js/companionSell*.js's own confirm-button flows, not
+        // just companion.js), so this one flag closes the same race everywhere at once
+        // rather than needing a per-call-site fix. Doubles the read's consumed capacity
+        // (DynamoDB's own tradeoff for strong consistency) — accepted given findUser is
+        // already the single most-called read in the codebase and correctness here directly
+        // guards real player currency/progress.
+        ConsistentRead: true
     };
 
     const response = docClient.query(params).promise()
