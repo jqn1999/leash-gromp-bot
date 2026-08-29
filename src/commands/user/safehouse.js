@@ -7,6 +7,12 @@ const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
+// Main Safehouse (slot 0, the personal bank displayed as a Safehouse for mercenaries) gets
+// its own name in every user-facing message instead of the generic "Safehouse #0".
+function houseLabel(slotNumber) {
+    return slotNumber === safehouseFactory.MAIN_SAFEHOUSE_SLOT ? 'Main Safehouse' : `Safehouse #${slotNumber}`;
+}
+
 function buildAmountPickerRow(action) {
     const actionLabel = action === 'deposit' ? 'Deposit' : 'Withdraw';
     const buttons = [25, 50, 100].map(pct => new ButtonBuilder()
@@ -37,7 +43,7 @@ module.exports = {
         },
         {
             name: 'house',
-            description: 'Which safehouse number — omit to auto-spread deposits/withdrawals across your safehouses',
+            description: '0 = Main Safehouse (your personal bank), or a safehouse number — omit to auto-spread across all of them',
             required: false,
             type: ApplicationCommandOptionType.Number,
         },
@@ -67,10 +73,12 @@ module.exports = {
         }
 
         if (action === 'list') {
-            const ownedSlots = safehouseFactory.getOwnedSlots(userDetails);
+            // getAllOwnedHouses, not getOwnedSlots — Main Safehouse belongs in this list
+            // too (prepended first), same pooled view deposit/withdraw already use.
+            const ownedHouses = safehouseFactory.getAllOwnedHouses(userDetails);
             const nextSlotInfo = safehouseFactory.getNextPurchasableSlot(userDetails);
             const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
-            const embed = embedFactory.createSafehouseListEmbed(userDisplayName, userId, userAvatar, ownedSlots, nextSlotInfo, rankInfo);
+            const embed = embedFactory.createSafehouseListEmbed(userDisplayName, userId, userAvatar, ownedHouses, nextSlotInfo, rankInfo, userDetails);
             interaction.editReply({ embeds: [embed] });
             return;
         }
@@ -92,8 +100,10 @@ module.exports = {
         // not-full house (safehouseFactory.splitDepositRandomly) and withdrawals drain
         // whichever owned houses have balance (autoWithdrawAllocation), so a player never
         // HAS to think about which specific house they're using unless they want to.
-        const ownedSlots = safehouseFactory.getOwnedSlots(userDetails);
-        if (ownedSlots.length === 0) {
+        // getAllOwnedHouses, not getOwnedSlots — a mercenary can deposit/withdraw through
+        // Main Safehouse (their personal bank) even before ever buying a numbered slot.
+        const ownedHouses = safehouseFactory.getAllOwnedHouses(userDetails);
+        if (ownedHouses.length === 0) {
             interaction.editReply(`${userDisplayName}, you don't own any safehouses yet — run \`/safehouse buy\` first.`);
             return;
         }
@@ -102,9 +112,9 @@ module.exports = {
         const slotNumber = rawHouse === undefined ? null : Math.floor(rawHouse);
         let record = null;
         if (slotNumber !== null) {
-            record = ownedSlots.find(s => s.slot === slotNumber);
+            record = ownedHouses.find(s => s.slot === slotNumber);
             if (!record) {
-                interaction.editReply(`${userDisplayName}, you don't own Safehouse #${slotNumber}. Run \`/safehouse list\` to see what you own, or leave \`house\` blank to spread it across what you do own.`);
+                interaction.editReply(`${userDisplayName}, you don't own ${houseLabel(slotNumber)}. Run \`/safehouse list\` to see what you own, or leave \`house\` blank to spread it across what you do own.`);
                 return;
             }
         }
@@ -113,8 +123,11 @@ module.exports = {
         const totalStored = safehouseFactory.getTotalStored(userDetails);
         const totalCapacity = safehouseFactory.getTotalCapacity(userDetails);
         // "Headroom"/"available" scope to the one picked house when given, otherwise the
-        // combined total across every owned house.
-        const depositHeadroom = record ? (safehouseFactory.getSlotDefinition(slotNumber).capacity - record.balance) : safehouseFactory.getTotalRemainingSpace(userDetails);
+        // combined total across every owned house. Can be Infinity when the picked house
+        // (or Main Safehouse within the combined total) has its bank-capacity regrade fully
+        // maxed — every downstream comparison here already treats Infinity as a normal,
+        // never-binding upper bound with no special-casing needed.
+        const depositHeadroom = record ? (safehouseFactory.getSlotDefinition(slotNumber, userDetails).capacity - record.balance) : safehouseFactory.getTotalRemainingSpace(userDetails);
         const withdrawAvailable = record ? record.balance : totalStored;
 
         let netAmount = interaction.options.get('amount')?.value;
@@ -128,13 +141,13 @@ module.exports = {
             }
             if (action === 'withdraw' && withdrawAvailable < 1) {
                 interaction.editReply(record
-                    ? `${userDisplayName}, you don't have any potatoes in Safehouse #${slotNumber} to withdraw.`
+                    ? `${userDisplayName}, you don't have any potatoes in ${houseLabel(slotNumber)} to withdraw.`
                     : `${userDisplayName}, you don't have any potatoes in any safehouse to withdraw.`);
                 return;
             }
             if (action === 'deposit' && depositHeadroom <= 0) {
                 interaction.editReply(record
-                    ? `${userDisplayName}, Safehouse #${slotNumber} is already full!`
+                    ? `${userDisplayName}, ${houseLabel(slotNumber)} is already full!`
                     : `${userDisplayName}, all of your safehouses are already full!`);
                 return;
             }
@@ -163,7 +176,7 @@ module.exports = {
         if (action === 'deposit') {
             if (depositHeadroom <= 0) {
                 interaction.editReply(record
-                    ? `${userDisplayName}, Safehouse #${slotNumber} is already full!`
+                    ? `${userDisplayName}, ${houseLabel(slotNumber)} is already full!`
                     : `${userDisplayName}, all of your safehouses are already full!`);
                 return;
             }
@@ -188,7 +201,7 @@ module.exports = {
                 totalAmount = netAmount + safehouseFactory.calculateDepositTax(netAmount);
                 if (netAmount > depositHeadroom) {
                     interaction.editReply(record
-                        ? `${userDisplayName}, Safehouse #${slotNumber} only has ${depositHeadroom.toLocaleString()} potatoes of space remaining.`
+                        ? `${userDisplayName}, ${houseLabel(slotNumber)} only has ${depositHeadroom.toLocaleString()} potatoes of space remaining.`
                         : `${userDisplayName}, your safehouses only have ${depositHeadroom.toLocaleString()} potatoes of space remaining combined.`);
                     return;
                 }
@@ -209,11 +222,23 @@ module.exports = {
 
             userPotatoes -= totalAmount;
             const feeAmount = totalAmount - netAmount;
-            const updatedSafehouses = safehouseFactory.applyMultiDeposit(userDetails, allocations);
+            // { safehouses, bankStored } — bankStored is only present when `allocations`
+            // touched Main Safehouse (slot 0). Must be OMITTED from the update payload
+            // entirely when undefined, not just set to undefined — updateUserFields'
+            // buildUpdateExpression iterates Object.keys() and would hand DynamoDB a
+            // literal undefined AttributeValue otherwise.
+            const { safehouses: updatedSafehouses, bankStored: updatedBankStored } = safehouseFactory.applyMultiDeposit(userDetails, allocations);
+            const updateFields = { potatoes: userPotatoes, safehouses: updatedSafehouses };
+            if (updatedBankStored !== undefined) {
+                updateFields.bankStored = updatedBankStored;
+            }
             await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', feeAmount);
-            await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, safehouses: updatedSafehouses });
+            await dynamoHandler.updateUserFields(userId, updateFields);
 
-            const newTotalStored = safehouseFactory.getTotalStored({ safehouses: updatedSafehouses });
+            // Full userDetails (not just the changed fields) so getTotalStored's own
+            // isMercenary/bankStored gating for Main Safehouse still has what it needs.
+            const postWriteUserDetails = { ...userDetails, safehouses: updatedSafehouses, bankStored: updatedBankStored ?? userDetails.bankStored };
+            const newTotalStored = safehouseFactory.getTotalStored(postWriteUserDetails);
             const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'deposit', allocations, feeAmount, userPotatoes, newTotalStored, totalCapacity);
             interaction.editReply({ content: '', embeds: [embed], components: [] });
         } else {
@@ -227,7 +252,7 @@ module.exports = {
                 }
                 if (netAmount > withdrawAvailable) {
                     interaction.editReply(record
-                        ? `${userDisplayName}, Safehouse #${slotNumber} only has ${withdrawAvailable.toLocaleString()} potatoes stored.`
+                        ? `${userDisplayName}, ${houseLabel(slotNumber)} only has ${withdrawAvailable.toLocaleString()} potatoes stored.`
                         : `${userDisplayName}, your safehouses only have ${withdrawAvailable.toLocaleString()} potatoes stored combined.`);
                     return;
                 }
@@ -243,10 +268,16 @@ module.exports = {
                 : safehouseFactory.autoWithdrawAllocation(userDetails, netAmount);
 
             userPotatoes += netAmount;
-            const updatedSafehouses = safehouseFactory.applyMultiWithdraw(userDetails, allocations);
-            await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, safehouses: updatedSafehouses });
+            // Same { safehouses, bankStored } split-write shape as the deposit branch above.
+            const { safehouses: updatedSafehouses, bankStored: updatedBankStored } = safehouseFactory.applyMultiWithdraw(userDetails, allocations);
+            const updateFields = { potatoes: userPotatoes, safehouses: updatedSafehouses };
+            if (updatedBankStored !== undefined) {
+                updateFields.bankStored = updatedBankStored;
+            }
+            await dynamoHandler.updateUserFields(userId, updateFields);
 
-            const newTotalStored = safehouseFactory.getTotalStored({ safehouses: updatedSafehouses });
+            const postWriteUserDetails = { ...userDetails, safehouses: updatedSafehouses, bankStored: updatedBankStored ?? userDetails.bankStored };
+            const newTotalStored = safehouseFactory.getTotalStored(postWriteUserDetails);
             const embed = embedFactory.createSafehouseEmbed(userDisplayName, userId, userAvatar, 'withdraw', allocations, 0, userPotatoes, newTotalStored, totalCapacity);
             interaction.editReply({ content: '', embeds: [embed], components: [] });
         }
