@@ -57,7 +57,7 @@ module.exports = {
         },
         {
             name: 'house',
-            description: '0 = Main Safehouse (your personal bank), or a safehouse number — omit to auto-spread across all of them',
+            description: '0 = Main Safehouse (personal bank), or a house number — omit to auto-spread across all',
             required: false,
             type: ApplicationCommandOptionType.Number,
         },
