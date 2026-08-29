@@ -3,12 +3,22 @@ jest.mock('../dynamoHandler');
 const safehouseFactory = require('../safehouseFactory');
 const { Safehouse } = require('../constants');
 
+// bankStored/bankCapacity default to 0 deliberately — Main Safehouse's own capacity then
+// computes to exactly 0 (getMainSafehouseCapacity), which the deposit/withdraw pooling
+// functions treat as "no remaining space"/"nothing to withdraw" and filter out entirely.
+// That keeps every pre-existing numbered-slots-only test below correct unchanged (Main
+// Safehouse silently contributes nothing to their pools) — the dedicated 'Main Safehouse'
+// describe block further down is what actually exercises it, by overriding these to
+// realistic nonzero values.
 function baseUser(overrides = {}) {
     return {
         potatoes: 1000,
         isMercenary: true,
         mercenaryBountyWinCount: 0,
         safehouses: [],
+        bankStored: 0,
+        bankCapacity: 0,
+        regrades: { bankCapacity: { regradeAmount: 0 } },
         ...overrides,
     };
 }
@@ -152,16 +162,19 @@ describe('calculateDepositTax', () => {
 });
 
 describe('applyDeposit / applyWithdraw', () => {
+    // Both now return { safehouses, bankStored } (Main Safehouse support) rather than a
+    // flat array — bankStored stays undefined whenever the allocation never touched slot 0,
+    // exactly as it does here.
     test('applyDeposit adds to the target slot only, leaving others untouched', () => {
         const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }, { slot: 2, balance: 200 }] });
         const result = safehouseFactory.applyDeposit(user, 1, 50);
-        expect(result).toEqual([{ slot: 1, balance: 150 }, { slot: 2, balance: 200 }]);
+        expect(result).toEqual({ safehouses: [{ slot: 1, balance: 150 }, { slot: 2, balance: 200 }], bankStored: undefined });
     });
 
     test('applyWithdraw subtracts from the target slot only', () => {
         const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }] });
         const result = safehouseFactory.applyWithdraw(user, 1, 40);
-        expect(result).toEqual([{ slot: 1, balance: 60 }]);
+        expect(result).toEqual({ safehouses: [{ slot: 1, balance: 60 }], bankStored: undefined });
     });
 
     test('applyDeposit/applyWithdraw return null for a slot that is not owned', () => {
@@ -274,13 +287,13 @@ describe('applyMultiDeposit / applyMultiWithdraw', () => {
     test('applies every allocation in one pass, leaving untouched houses alone', () => {
         const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }, { slot: 2, balance: 200 }, { slot: 3, balance: 300 }] });
         const result = safehouseFactory.applyMultiDeposit(user, [{ slot: 1, amount: 50 }, { slot: 3, amount: 25 }]);
-        expect(result).toEqual([{ slot: 1, balance: 150 }, { slot: 2, balance: 200 }, { slot: 3, balance: 325 }]);
+        expect(result).toEqual({ safehouses: [{ slot: 1, balance: 150 }, { slot: 2, balance: 200 }, { slot: 3, balance: 325 }], bankStored: undefined });
     });
 
     test('applyMultiWithdraw subtracts every allocation in one pass', () => {
         const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }, { slot: 2, balance: 200 }] });
         const result = safehouseFactory.applyMultiWithdraw(user, [{ slot: 1, amount: 40 }, { slot: 2, amount: 200 }]);
-        expect(result).toEqual([{ slot: 1, balance: 60 }, { slot: 2, balance: 0 }]);
+        expect(result).toEqual({ safehouses: [{ slot: 1, balance: 60 }, { slot: 2, balance: 0 }], bankStored: undefined });
     });
 
     test('does not mutate the original array', () => {
@@ -288,5 +301,144 @@ describe('applyMultiDeposit / applyMultiWithdraw', () => {
         const user = baseUser({ safehouses: original });
         safehouseFactory.applyMultiDeposit(user, [{ slot: 1, amount: 50 }]);
         expect(original).toEqual([{ slot: 1, balance: 100 }]);
+    });
+});
+
+// Main Safehouse (slot 0) — the personal bank displayed/accessed as a Safehouse for
+// mercenaries. bankStored/bankCapacity stay the real, persisted source of truth; these
+// tests exercise the virtual slot-0 layer safehouseFactory builds on top of them.
+describe('Main Safehouse (slot 0)', () => {
+    const { REGRADE_CAPS } = require('../constants');
+
+    describe('getMainSafehouseCapacity', () => {
+        test('matches bank.js\'s own formula with no bonuses: just bankCapacity', () => {
+            const user = baseUser({ bankCapacity: 500000, regrades: { bankCapacity: { regradeAmount: 0 } } });
+            expect(safehouseFactory.getMainSafehouseCapacity(user)).toBe(500000);
+        });
+
+        test('is unlimited once bank-capacity regrade is fully maxed', () => {
+            const user = baseUser({ bankCapacity: 500000, regrades: { bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity } } });
+            expect(safehouseFactory.getMainSafehouseCapacity(user)).toBe(Infinity);
+        });
+    });
+
+    describe('getOwnedSlots stays numbered-slots-only', () => {
+        test('never includes Main Safehouse, even for a mercenary — getAllOwnedHouses is the pooled view', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 0 }], bankStored: 5000, bankCapacity: 50000 });
+            expect(safehouseFactory.getOwnedSlots(user)).toEqual([{ slot: 1, balance: 0 }]);
+        });
+    });
+
+    describe('getAllOwnedHouses', () => {
+        test('a mercenary with no real slots yet still sees Main Safehouse', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 1000, bankCapacity: 50000 });
+            expect(safehouseFactory.getAllOwnedHouses(user)).toEqual([{ slot: 0, balance: 1000 }]);
+        });
+
+        test('Main Safehouse is prepended ahead of the real slots', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 0 }], bankStored: 1000, bankCapacity: 50000 });
+            expect(safehouseFactory.getAllOwnedHouses(user).map(h => h.slot)).toEqual([0, 1]);
+        });
+
+        test('a retired (non-mercenary) player who still owns a real slot keeps seeing Main Safehouse too', () => {
+            const user = baseUser({ isMercenary: false, safehouses: [{ slot: 1, balance: 0 }], bankStored: 1000, bankCapacity: 50000 });
+            expect(safehouseFactory.getAllOwnedHouses(user).map(h => h.slot)).toEqual([0, 1]);
+        });
+
+        test('someone who was never a mercenary and owns nothing gets no Main Safehouse entry', () => {
+            const user = baseUser({ isMercenary: false, safehouses: [], bankStored: 1000, bankCapacity: 50000 });
+            expect(safehouseFactory.getAllOwnedHouses(user)).toEqual([]);
+        });
+    });
+
+    describe('getSlotDefinition(0, userDetails)', () => {
+        test('returns a live-computed capacity, not a static table value', () => {
+            const user = baseUser({ bankCapacity: 200000 });
+            expect(safehouseFactory.getSlotDefinition(0, user)).toEqual({ slot: 0, capacity: 200000, cost: 0, rankRequired: 0 });
+        });
+
+        test('returns null without userDetails — there is no static definition to fall back to', () => {
+            expect(safehouseFactory.getSlotDefinition(0)).toBeNull();
+        });
+    });
+
+    describe('pooled totals include Main Safehouse', () => {
+        test('getTotalCapacity sums Main Safehouse alongside real slots', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 0 }], bankStored: 0, bankCapacity: 20000 });
+            expect(safehouseFactory.getTotalCapacity(user)).toBe(Safehouse.SLOTS[0].capacity + 20000);
+        });
+
+        test('getTotalStored sums Main Safehouse\'s balance alongside real slots', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 500 }], bankStored: 1000, bankCapacity: 20000 });
+            expect(safehouseFactory.getTotalStored(user)).toBe(1500);
+        });
+
+        test('getTotalRemainingSpace accounts for Main Safehouse\'s own headroom', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 3000, bankCapacity: 20000 });
+            expect(safehouseFactory.getTotalRemainingSpace(user)).toBe(17000);
+        });
+    });
+
+    describe('splitDepositRandomly / autoWithdrawAllocation include Main Safehouse in the pool', () => {
+        test('a deposit can land in Main Safehouse when it is the only eligible house', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 0, bankCapacity: 50000 });
+            const allocations = safehouseFactory.splitDepositRandomly(user, 10000);
+            expect(allocations).toEqual([{ slot: 0, amount: 10000 }]);
+        });
+
+        test('a withdrawal can drain Main Safehouse when it is the only house with balance', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 5000, bankCapacity: 50000 });
+            const allocations = safehouseFactory.autoWithdrawAllocation(user, 3000);
+            expect(allocations).toEqual([{ slot: 0, amount: 3000 }]);
+        });
+    });
+
+    describe('applyMultiDeposit / applyMultiWithdraw split slot 0 into bankStored', () => {
+        test('an allocation touching slot 0 updates bankStored and leaves the real safehouses array\'s own balances alone', () => {
+            const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }], bankStored: 1000 });
+            const result = safehouseFactory.applyMultiDeposit(user, [{ slot: 0, amount: 500 }, { slot: 1, amount: 50 }]);
+            expect(result).toEqual({ safehouses: [{ slot: 1, balance: 150 }], bankStored: 1500 });
+        });
+
+        test('withdrawing from slot 0 alone never touches the safehouses array\'s contents', () => {
+            const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }], bankStored: 1000 });
+            const result = safehouseFactory.applyMultiWithdraw(user, [{ slot: 0, amount: 400 }]);
+            expect(result).toEqual({ safehouses: [{ slot: 1, balance: 100 }], bankStored: 600 });
+        });
+
+        test('an allocation that never touches slot 0 leaves bankStored undefined, not a copy of the old value', () => {
+            const user = baseUser({ safehouses: [{ slot: 1, balance: 100 }], bankStored: 1000 });
+            const result = safehouseFactory.applyMultiDeposit(user, [{ slot: 1, amount: 50 }]);
+            expect(result.bankStored).toBeUndefined();
+        });
+    });
+
+    describe('applyDeposit / applyWithdraw target Main Safehouse explicitly', () => {
+        test('applyDeposit(user, 0, amount) deposits into Main Safehouse', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 1000 });
+            const result = safehouseFactory.applyDeposit(user, 0, 250);
+            expect(result).toEqual({ safehouses: [], bankStored: 1250 });
+        });
+
+        test('applyWithdraw(user, 0, amount) withdraws from Main Safehouse', () => {
+            const user = baseUser({ isMercenary: true, safehouses: [], bankStored: 1000 });
+            const result = safehouseFactory.applyWithdraw(user, 0, 250);
+            expect(result).toEqual({ safehouses: [], bankStored: 750 });
+        });
+
+        test('applyDeposit(user, 0, amount) returns null for a non-mercenary who owns nothing', () => {
+            const user = baseUser({ isMercenary: false, safehouses: [], bankStored: 1000 });
+            expect(safehouseFactory.applyDeposit(user, 0, 250)).toBeNull();
+        });
+    });
+
+    describe('buyNextSlot never persists a synthetic Main Safehouse entry', () => {
+        test('the returned safehouses array never contains slot 0', () => {
+            const user = baseUser({ isMercenary: true, mercenaryBountyWinCount: 0, potatoes: Safehouse.SLOTS[0].cost, safehouses: [], bankStored: 1000, bankCapacity: 50000 });
+            const result = safehouseFactory.buyNextSlot(user);
+            expect(result.ok).toBe(true);
+            expect(result.safehouses.some(s => s.slot === 0)).toBe(false);
+            expect(result.safehouses).toEqual([{ slot: 1, balance: 0 }]);
+        });
     });
 });

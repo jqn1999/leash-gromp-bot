@@ -1,14 +1,70 @@
-const { Safehouse, Bank } = require("../utils/constants");
+const { Safehouse, Bank, REGRADE_CAPS } = require("../utils/constants");
 const mercenaryFactory = require("../utils/mercenaryFactory");
+const companionFactory = require("../utils/companionFactory");
+const rebirthFactory = require("../utils/rebirthFactory");
 
 // Pure computation only, same division of labor raidFactory.js/mercenaryFactory.js
 // already use — callers (safehouse.js) own the DB writes and user-facing text.
 
+// Main Safehouse (roadmap "display the personal bank as a Safehouse for mercenaries") —
+// slot 0, a virtual entry alongside the 6 real, purchased Safehouse.SLOTS. Unlike those,
+// it's never bought (every account already has a personal bank) and its capacity isn't a
+// static table lookup — it's the SAME live-computed value /bank and /profile already show
+// (userDetails.bankStored/bankCapacity, with bankCapacityPercent/rebirth% folded in fresh,
+// unlimited once bank-capacity regrade is maxed). This is purely a display/access-point
+// change — bankStored/bankCapacity stay the actual source of truth, never merged into the
+// `safehouses` array. Direct instruction: "for mercenaries can you display their bank
+// capacity as a safehouse instead called something like main safehouse... nothing
+// underneath should change just display wise."
+const MAIN_SAFEHOUSE_SLOT = 0;
+
+// Mirrors bank.js's own userBankCapacity computation exactly — Main Safehouse's displayed/
+// usable capacity has to match what /bank itself would show, not a second, independently-
+// drifting copy of the same formula.
+function getMainSafehouseCapacity(userDetails) {
+    const isBankCapacityMaxed = userDetails.regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity;
+    if (isBankCapacityMaxed) {
+        return Infinity;
+    }
+    const bankCapacityPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent");
+    const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+    return Math.round(userDetails.bankCapacity * (1 + bankCapacityPercent + rebirthPercent));
+}
+
+// Unchanged from before Main Safehouse existed — the real, purchased numbered slots only.
+// Still what buyNextSlot/getNextPurchasableSlot/canBuyNextSlot read (Main Safehouse is
+// never bought, so it has no place in "which numbered slot is next"), and safehouse.js/
+// embedFactory.js still reach for this specifically wherever they mean the 6-slot ladder.
+// See getAllOwnedHouses below for the pooled view (Main Safehouse + these) that deposit/
+// withdraw/capacity-total logic actually needs.
 function getOwnedSlots(userDetails) {
     return userDetails.safehouses ?? [];
 }
 
-function getSlotDefinition(slotNumber) {
+// The pooled view deposit/withdraw/capacity-total logic actually needs — the virtual Main
+// Safehouse entry prepended ahead of the real, purchased slots. Gated on isMercenary OR
+// already owning a real slot (so a retired mercenary who kept safehouses, per
+// /retire-mercenary's "no progress lost" promise, still sees Main Safehouse too; someone
+// who was never a mercenary and owns nothing gets exactly getOwnedSlots' own empty result).
+// NEVER write this array's output directly back into userDetails.safehouses — the synthetic
+// slot-0 entry isn't real persisted data; see applyMultiDeposit/applyMultiWithdraw for the
+// split-write pattern this requires.
+function getAllOwnedHouses(userDetails) {
+    const realSlots = getOwnedSlots(userDetails);
+    const hasMainSafehouse = userDetails.isMercenary || realSlots.length > 0;
+    if (!hasMainSafehouse) {
+        return realSlots;
+    }
+    return [{ slot: MAIN_SAFEHOUSE_SLOT, balance: userDetails.bankStored }, ...realSlots];
+}
+
+// userDetails is only required for slot 0 (Main Safehouse's capacity is live-computed, not
+// a static table value) — every other slot ignores it, same as before this parameter
+// existed, so every pre-existing call site to slots 1-6 stays correct unchanged.
+function getSlotDefinition(slotNumber, userDetails = null) {
+    if (slotNumber === MAIN_SAFEHOUSE_SLOT) {
+        return userDetails ? { slot: MAIN_SAFEHOUSE_SLOT, capacity: getMainSafehouseCapacity(userDetails), cost: 0, rankRequired: 0 } : null;
+    }
     return Safehouse.SLOTS.find(s => s.slot === slotNumber) ?? null;
 }
 
@@ -59,11 +115,11 @@ function buyNextSlot(userDetails) {
 }
 
 function getTotalCapacity(userDetails) {
-    return getOwnedSlots(userDetails).reduce((sum, owned) => sum + (getSlotDefinition(owned.slot)?.capacity ?? 0), 0);
+    return getAllOwnedHouses(userDetails).reduce((sum, owned) => sum + (getSlotDefinition(owned.slot, userDetails)?.capacity ?? 0), 0);
 }
 
 function getTotalStored(userDetails) {
-    return getOwnedSlots(userDetails).reduce((sum, owned) => sum + owned.balance, 0);
+    return getAllOwnedHouses(userDetails).reduce((sum, owned) => sum + owned.balance, 0);
 }
 
 // Deposit tax mirrors the personal bank's exactly (Bank.TAX_BASE/TAX_PERCENT) — Safehouses
@@ -78,8 +134,8 @@ function calculateDepositTax(netAmount) {
 // house-less deposit is validated against, same role a single house's own
 // (capacity - balance) plays for an explicit deposit.
 function getTotalRemainingSpace(userDetails) {
-    return getOwnedSlots(userDetails).reduce((sum, owned) => {
-        const def = getSlotDefinition(owned.slot);
+    return getAllOwnedHouses(userDetails).reduce((sum, owned) => {
+        const def = getSlotDefinition(owned.slot, userDetails);
         return sum + Math.max(0, (def?.capacity ?? 0) - owned.balance);
     }, 0);
 }
@@ -90,15 +146,16 @@ function getTotalRemainingSpace(userDetails) {
 // each round rolls a random weight (floored at 0.2x so no eligible house is ever reduced
 // to a near-zero sliver) per remaining house, allocates its floor(share) capped at that
 // house's own remaining space, and drops any house that fills up. Bounded strictly by the
-// number of owned houses (<=Safehouse.SLOTS.length), never by netAmount itself — the loop
+// number of owned houses (<=Safehouse.SLOTS.length + 1, including Main Safehouse), never by
+// netAmount itself — the loop
 // guard only continues while remaining >= eligible.length, which the flooring-sum identity
 // guarantees drops out within a couple of rounds once no more houses are hitting capacity;
 // a straight "1 random weight -> proportional share" pass with no such guard can stall
 // forever handing out a few leftover potatoes if every house's floored share rounds to 0.
 // Assumes the caller already validated netAmount <= getTotalRemainingSpace(userDetails).
 function splitDepositRandomly(userDetails, netAmount) {
-    let eligible = getOwnedSlots(userDetails)
-        .map(s => ({ slot: s.slot, remainingSpace: Math.max(0, (getSlotDefinition(s.slot)?.capacity ?? 0) - s.balance) }))
+    let eligible = getAllOwnedHouses(userDetails)
+        .map(s => ({ slot: s.slot, remainingSpace: Math.max(0, (getSlotDefinition(s.slot, userDetails)?.capacity ?? 0) - s.balance) }))
         .filter(s => s.remainingSpace > 0);
 
     const allocations = new Map();
@@ -142,7 +199,7 @@ function splitDepositRandomly(userDetails, netAmount) {
 // flavor, not a balance-relevant choice: a simple greedy drain, no proportional split
 // needed. Assumes the caller already validated amount <= getTotalStored(userDetails).
 function autoWithdrawAllocation(userDetails, amount) {
-    const houses = getOwnedSlots(userDetails)
+    const houses = getAllOwnedHouses(userDetails)
         .filter(s => s.balance > 0)
         .map(s => ({ slot: s.slot, balance: s.balance }))
         .sort(() => Math.random() - 0.5);
@@ -161,35 +218,53 @@ function autoWithdrawAllocation(userDetails, amount) {
 }
 
 // Applies a { slot, amount } allocation list (from either an explicit single house or
-// splitDepositRandomly/autoWithdrawAllocation) to the owned-slots array in one pass.
+// splitDepositRandomly/autoWithdrawAllocation) to the real safehouses array AND/OR
+// bankStored, whichever the allocation actually touches — returns { safehouses, bankStored },
+// with bankStored only present (non-undefined) when the allocation list included Main
+// Safehouse (slot 0). Callers pass BOTH straight into one updateUserFields call; spread
+// blindly writing an undefined bankStored key would just no-op that field, so no extra
+// conditional is needed at the call site.
+//
+// Builds the safehouses half from userDetails.safehouses directly (equivalent to
+// getOwnedSlots(userDetails)), NOT getAllOwnedHouses(userDetails) — the latter's output
+// carries the synthetic Main Safehouse entry, which must never be written back into the
+// real, persisted safehouses array.
 function applyMultiDeposit(userDetails, allocations) {
-    const owned = getOwnedSlots(userDetails);
     const bySlot = new Map(allocations.map(a => [a.slot, a.amount]));
-    return owned.map(s => bySlot.has(s.slot) ? { ...s, balance: s.balance + bySlot.get(s.slot) } : s);
+    const safehouses = (userDetails.safehouses ?? []).map(s => bySlot.has(s.slot) ? { ...s, balance: s.balance + bySlot.get(s.slot) } : s);
+    const mainAmount = bySlot.get(MAIN_SAFEHOUSE_SLOT);
+    return { safehouses, bankStored: mainAmount !== undefined ? userDetails.bankStored + mainAmount : undefined };
 }
 
 function applyMultiWithdraw(userDetails, allocations) {
-    const owned = getOwnedSlots(userDetails);
     const bySlot = new Map(allocations.map(a => [a.slot, a.amount]));
-    return owned.map(s => bySlot.has(s.slot) ? { ...s, balance: s.balance - bySlot.get(s.slot) } : s);
+    const safehouses = (userDetails.safehouses ?? []).map(s => bySlot.has(s.slot) ? { ...s, balance: s.balance - bySlot.get(s.slot) } : s);
+    const mainAmount = bySlot.get(MAIN_SAFEHOUSE_SLOT);
+    return { safehouses, bankStored: mainAmount !== undefined ? userDetails.bankStored - mainAmount : undefined };
 }
 
 // Single-house deposit/withdraw, kept as their own entry points (rather than making every
 // caller build a 1-element allocation array) since an explicit house pick is still the
 // common case a player who cares can reach for. Null if the slot isn't owned (nothing to
 // act on) — caller turns that into a normal user-facing error rather than this throwing.
+// Works for Main Safehouse too (slotNumber 0) — getAllOwnedHouses' own ownership check
+// already covers it, and delegating to applyMultiDeposit/Withdraw inherits the
+// { safehouses, bankStored } split-write shape automatically.
 function applyDeposit(userDetails, slotNumber, netAmount) {
-    if (!getOwnedSlots(userDetails).some(s => s.slot === slotNumber)) return null;
+    if (!getAllOwnedHouses(userDetails).some(s => s.slot === slotNumber)) return null;
     return applyMultiDeposit(userDetails, [{ slot: slotNumber, amount: netAmount }]);
 }
 
 function applyWithdraw(userDetails, slotNumber, amount) {
-    if (!getOwnedSlots(userDetails).some(s => s.slot === slotNumber)) return null;
+    if (!getAllOwnedHouses(userDetails).some(s => s.slot === slotNumber)) return null;
     return applyMultiWithdraw(userDetails, [{ slot: slotNumber, amount }]);
 }
 
 module.exports = {
+    MAIN_SAFEHOUSE_SLOT,
+    getMainSafehouseCapacity,
     getOwnedSlots,
+    getAllOwnedHouses,
     getSlotDefinition,
     getNextPurchasableSlot,
     canBuyNextSlot,
