@@ -489,4 +489,79 @@ describe('calculateWorkTimerValue', () => {
         expect(result).toBeGreaterThanOrEqual(before + poisonLockoutSeconds * 1000);
         expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
     });
+
+    // Griseous's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
+    // second, independent roll reached only once the companion roll (if any) has already
+    // missed. Reuses _cooldownSkippedByCompanion (an object here, not a companion id
+    // string) specifically so work.js's chain-continuation check keeps working unchanged.
+    test('a standard-length cooldown is also skippable on a live World Boss cooldownSkip buff proc, with no companion equipped', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Items: [{ trackingId: 'world_buff', bossName: 'Griseous, the Dragon Fruit', buffType: 'cooldownSkip', value: 0.05, expiresAt: Date.now() + 3600000 }]
+        }));
+        jest.spyOn(Math, 'random').mockReturnValue(0); // well below the buff's own value
+        const userDetails = {}; // no companion at all
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toEqual({ worldBuffBossName: 'Griseous, the Dragon Fruit' });
+    });
+
+    test('an EXPIRED World Boss cooldownSkip buff is never rolled — cooldown proceeds normally', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Items: [{ trackingId: 'world_buff', bossName: 'Griseous, the Dragon Fruit', buffType: 'cooldownSkip', value: 0.05, expiresAt: Date.now() - 1000 }]
+        }));
+        jest.spyOn(Math, 'random').mockReturnValue(0); // would have skipped a live buff
+        const userDetails = {};
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+    });
+
+    test('a live buff of a DIFFERENT type (e.g. workMulti) never triggers a cooldown skip', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Items: [{ trackingId: 'world_buff', bossName: 'Thunderlord Raikon', buffType: 'workMulti', value: 0.10, expiresAt: Date.now() + 3600000 }]
+        }));
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = {};
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+    });
+});
+
+describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuffLive)', () => {
+    test('getActiveWorldBuff reads the world_buff stats doc', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'world_buff', buffType: 'workMulti', value: 0.10 }] }));
+        const buff = await dynamoHandler.getActiveWorldBuff();
+        expect(docClient.query).toHaveBeenCalledWith(expect.objectContaining({
+            ExpressionAttributeValues: { ':trackingId': 'world_buff' }
+        }));
+        expect(buff).toEqual({ trackingId: 'world_buff', buffType: 'workMulti', value: 0.10 });
+    });
+
+    test('setActiveWorldBuff writes to the world_buff stats doc', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        const buff = { bossName: 'Yamsalot, the Iron Yam', buffType: 'starchDiscount', value: 0.10, expiresAt: 123 };
+        await dynamoHandler.setActiveWorldBuff(buff);
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.Key).toEqual({ trackingId: 'world_buff' });
+    });
+
+    test('isWorldBuffLive: true only for a matching, not-yet-expired buff', () => {
+        const future = Date.now() + 60000, past = Date.now() - 60000;
+        expect(dynamoHandler.isWorldBuffLive({ buffType: 'workMulti', expiresAt: future }, 'workMulti')).toBe(true);
+        expect(dynamoHandler.isWorldBuffLive({ buffType: 'workMulti', expiresAt: past }, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isWorldBuffLive({ buffType: 'cooldownSkip', expiresAt: future }, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isWorldBuffLive(null, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isWorldBuffLive(undefined, 'workMulti')).toBe(false);
+    });
 });

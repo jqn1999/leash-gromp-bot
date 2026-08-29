@@ -37,8 +37,17 @@ describe('workProbability / workChances stay in sync', () => {
 });
 
 describe('Ancient Potato encounter chance', () => {
-    test('is a 0.15% slice (halved from 0.3%, direct instruction 2026-08-23)', () => {
-        expect(eventFactory.workProbability[WORK_SCENARIO_INDICES.ANCIENT]).toBeCloseTo(0.0015);
+    test('is a 0.05% slice (halved again from 0.15%, direct instruction 2026-08-29)', () => {
+        expect(eventFactory.workProbability[WORK_SCENARIO_INDICES.ANCIENT]).toBeCloseTo(0.0005);
+    });
+
+    // Direct instruction: "can we lower ancient potato odds under golden potato?" — Golden
+    // sits at a flat .001 (WORK_SCENARIO_INDICES.GOLDEN, index 0) with no companion/event
+    // able to lower it below that floor within a single /work call, so Ancient landing at
+    // .0005 genuinely reads as the rarer of the two now, not just on paper.
+    test('is now rarer than Golden Potato\'s own encounter chance', () => {
+        expect(eventFactory.workProbability[WORK_SCENARIO_INDICES.ANCIENT])
+            .toBeLessThan(eventFactory.workProbability[WORK_SCENARIO_INDICES.GOLDEN]);
     });
 
     test('Mimic and Golden Yam keep their own slice widths after Ancient shrank', () => {

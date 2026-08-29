@@ -20,6 +20,15 @@ function isStarchBuyingWindow(date = new Date()) {
     return false;
 }
 
+// Yamsalot's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
+// temporary, server-wide discount folded into both buy-starch.js and sell-starch.js's own
+// price math. Returns 0 (a no-op) whenever no starchDiscount buff is currently live, so
+// both commands can apply this unconditionally without their own separate branch.
+async function getActiveStarchBuffPercent() {
+    const buff = await dynamoHandler.getActiveWorldBuff();
+    return dynamoHandler.isWorldBuffLive(buff, "starchDiscount") ? buff.value : 0;
+}
+
 const WEEKDAY_ORDER = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // The next weekday (strictly after `weekday`, wrapping) that a buying window opens on —
@@ -436,5 +445,6 @@ module.exports = {
     starchFactory,
     isStarchBuyingWindow,
     describeNextStarchEvent,
+    getActiveStarchBuffPercent,
     STARCH_PRICE_COUNT_BY_RESET_DAY
 }

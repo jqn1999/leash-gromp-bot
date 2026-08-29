@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { isStarchBuyingWindow } = require("../../utils/starchFactory");
+const { isStarchBuyingWindow, getActiveStarchBuffPercent } = require("../../utils/starchFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -67,9 +67,14 @@ module.exports = {
         const details = await dynamoHandler.getStatDatabase("starch")
         const buyPrice = details.starch_buy
         // Mole/Elder Rootbeard — folded straight into the per-unit price so the embed's
-        // displayed sellPrice and the actual payout never disagree.
+        // displayed sellPrice and the actual payout never disagree. Yamsalot's World Boss
+        // buff (systems/raids-and-world-events.md#server-wide-buff) stacks additively in
+        // the same bracket, same convention this codebase already uses for combining
+        // multiple percentage bonuses (e.g. workFactory.js's guild+companion+rebirth
+        // multiplier terms) — 0 whenever no such buff is currently live.
         const starchSellBonusPercent = companionFactory.getActivePerkValue(userDetails, "starchSellBonusPercent");
-        const sellPrice = details.starch_sell * (1 + starchSellBonusPercent)
+        const starchBuffPercent = await getActiveStarchBuffPercent();
+        const sellPrice = details.starch_sell * (1 + starchSellBonusPercent + starchBuffPercent)
 
         const buyValue = buyPrice * starches
         const sellValue = Math.round(sellPrice * starches)

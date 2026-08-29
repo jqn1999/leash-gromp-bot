@@ -138,16 +138,40 @@ const COOLDOWN_SKIP_FLAVOR = {
     mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' }
 };
 
-// companionId: the active companion's id that rolled the skip, or a falsy value if it
-// didn't happen this call — callers just do `if (cooldownSkippedByCompanion) fields.push(...)`.
-function buildCooldownSkipField(companionId) {
-    const companion = Companions.find(c => c.id === companionId);
-    const flavor = COOLDOWN_SKIP_FLAVOR[companionId];
+// cooldownSkipSource: either the active companion's id that rolled the skip (string,
+// existing behavior), or `{ worldBuffBossName }` when Griseous's World Boss buff rolled it
+// instead (see dynamoHandler.calculateWorkTimerValue — deliberately reuses the same
+// _cooldownSkippedByCompanion field/parameter for both sources rather than a parallel one,
+// so every existing call site's truthiness check and work.js's chain-continuation check
+// keep working unchanged for this source too), or a falsy value if neither happened this
+// call — callers just do `if (cooldownSkippedByCompanion) fields.push(...)`.
+function buildCooldownSkipField(cooldownSkipSource) {
+    if (cooldownSkipSource && typeof cooldownSkipSource === 'object') {
+        return {
+            name: `🌍 ${cooldownSkipSource.worldBuffBossName}'s Blessing:`,
+            value: `The Kingdom's gratitude shaves your cooldown to nothing — go again right away!`,
+            inline: false,
+        };
+    }
+    const companion = Companions.find(c => c.id === cooldownSkipSource);
+    const flavor = COOLDOWN_SKIP_FLAVOR[cooldownSkipSource];
     return {
         name: `${flavor.emoji} ${companion.name}:`,
         value: flavor.text,
         inline: false,
     };
+}
+
+// Server-wide World Boss buff descriptions (systems/raids-and-world-events.md#server-wide-buff)
+// — one line per buffType, used by createWorldResultEmbed's announcement.
+const WORLD_BUFF_DESCRIPTIONS = {
+    starchDiscount: value => `Starch prices favor the Kingdom for the next 24h — buying is ${(value * 100).toFixed(0)}% cheaper, selling pays ${(value * 100).toFixed(0)}% more!`,
+    cooldownSkip: value => `+${(value * 100).toFixed(0)}% chance to skip your /work cooldown entirely for the next 24h!`,
+    workMulti: value => `+${(value * 100).toFixed(0)}% work multiplier for everyone for the next 24h!`
+};
+
+function describeWorldBuff(worldBuff) {
+    return WORLD_BUFF_DESCRIPTIONS[worldBuff.buffType](worldBuff.value);
 }
 
 class EmbedFactory {
@@ -1048,7 +1072,8 @@ class EmbedFactory {
 
 
     createWorldResultEmbed(raidList, totalRaidReward, mob, successChance,
-        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null,
+        worldBuff = null, successfulRaid = false) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
         const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
@@ -1072,6 +1097,18 @@ class EmbedFactory {
                 value: `${statRewardMessage}`,
                 inline: false,
             })
+        }
+
+        // Server-wide temporary buff (systems/raids-and-world-events.md#server-wide-buff)
+        // — announced on a win only. worldBuff is null both on a loss and for Brassica's
+        // own deliberate no-buff design; the two are told apart by successfulRaid so a
+        // Brassica win still gets an explicit "no blessing this time" line rather than the
+        // field just silently not appearing (which would read as a bug once players are
+        // used to seeing one on the other three kills).
+        if (successfulRaid) {
+            fields.push(worldBuff
+                ? { name: `🌍 Server-Wide Blessing:`, value: describeWorldBuff(worldBuff), inline: false }
+                : { name: `🌍 Server-Wide Blessing:`, value: `The Kingdom rests easy, no further blessing needed this time.`, inline: false });
         }
 
         fields.push({

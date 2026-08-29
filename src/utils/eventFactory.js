@@ -13,7 +13,9 @@ class EventFactory {
             .02,
             .015,
             .02,
-            .0015, // ANCIENT — halved 2026-08-23 (was .003), direct instruction
+            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
+                   // than Golden Potato's own .001, so "Ancient" actually reads as the rarest
+                   // encounter in the game rather than sitting above Golden's own floor.
             .01,
             .001
         ];
@@ -25,9 +27,9 @@ class EventFactory {
             .081,
             .096,
             .116,
-            .1175, // ANCIENT — halved 2026-08-23 (was .119, i.e. a .003 slice; now a .0015 slice)
-            .1275, // MIMIC — shifted down to match, own slice width (.010) unchanged
-            .1285  // GOLDEN_YAM — shifted down to match, own slice width (.001) unchanged
+            .1165, // ANCIENT — halved again 2026-08-29 (was .1175, i.e. a .0015 slice; now a .0005 slice)
+            .1265, // MIMIC — shifted down to match, own slice width (.010) unchanged
+            .1275  // GOLDEN_YAM — shifted down to match, own slice width (.001) unchanged
         ];
         this.events = ["LARGEX2", "SWEETX2", "METALX2", "POISONX2", "TAROX2", "GOLDENX5", "METALX5", "POISONX5"];
         this.eventWeights = [3, 3, 3, 3, 3, 1, 1 ,1];
@@ -116,9 +118,9 @@ class EventFactory {
             .081,
             .096,
             .116,
-            .1175, // ANCIENT — halved 2026-08-23 (was .119, i.e. a .003 slice; now a .0015 slice)
-            .1275, // MIMIC — shifted down to match, own slice width (.010) unchanged
-            .1285  // GOLDEN_YAM — shifted down to match, own slice width (.001) unchanged
+            .1165, // ANCIENT — halved again 2026-08-29 (was .1175, i.e. a .0015 slice; now a .0005 slice)
+            .1265, // MIMIC — shifted down to match, own slice width (.010) unchanged
+            .1275  // GOLDEN_YAM — shifted down to match, own slice width (.001) unchanged
         ];
     }
 
@@ -131,7 +133,8 @@ class EventFactory {
             .02,
             .015,
             .02,
-            .0015, // ANCIENT — halved 2026-08-23 (was .003), direct instruction
+            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
+                   // than Golden Potato's own .001 (see the constructor's own comment)
             .01,
             .001
         ];

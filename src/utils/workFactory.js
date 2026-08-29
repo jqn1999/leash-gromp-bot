@@ -157,7 +157,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const rewardScale = isBoostedHit ? metalPotatoRewards.boostedHitRewardScale : 1;
         const workMultiplierGrant = isBoostedHit ? 0 : metalPotatoRewards.workMultiplierReward;
@@ -295,7 +296,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -322,7 +324,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(Work.GOLDEN_YAM_MULTIPLIER_MIN * effectiveMultiplier, Work.GOLDEN_YAM_MULTIPLIER_MAX * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -453,7 +456,8 @@ class WorkFactory {
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);
-            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+            const worldBuffMultiplier = await getWorldBuffWorkMulti(userDetails.workMultiplierAmount);
+            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
             potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
@@ -487,6 +491,10 @@ class WorkFactory {
     async handlePoisonPotato(userDetails, workGainAmount, multiplier) {
         // Note: catch-up intentionally does not apply here — Poison Potato is a loss,
         // and boosting a struggling player's penalty would undermine the whole point.
+        // Raikon's World Boss buff is deliberately excluded for the same reason — it's a
+        // pure "bigger gains" perk everywhere else it applies; folding it in here would
+        // make it silently bigger LOSSES on a Poison hit instead, the opposite of what a
+        // buff should ever do (see systems/raids-and-world-events.md#server-wide-buff).
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -609,7 +617,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -638,7 +647,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -667,7 +677,8 @@ class WorkFactory {
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier, catchUpBonus);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -733,6 +744,15 @@ function getCompanionWorkMulti(userDetails, userMultiplier) {
     return userMultiplier * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
 }
 
+// Raikon's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — same
+// "percentage of current userMultiplier" shape as getGuildWorkMulti/getCompanionWorkMulti,
+// stacking with both rather than replacing either. Returns 0 (a no-op) whenever no
+// workMulti buff is currently live, same convention as the other two.
+async function getWorldBuffWorkMulti(userMultiplier) {
+    const buff = await dynamoHandler.getActiveWorldBuff();
+    return dynamoHandler.isWorldBuffLive(buff, "workMulti") ? userMultiplier * buff.value : 0;
+}
+
 const metalPotatoRewards = {
     workMultiplierReward: 0.6,
     passiveReward: 1.5,
@@ -796,5 +816,6 @@ module.exports = {
     calculateGainAmount,
     applyCatchUp,
     getGuildWorkMulti,
-    getCompanionWorkMulti
+    getCompanionWorkMulti,
+    getWorldBuffWorkMulti
 }

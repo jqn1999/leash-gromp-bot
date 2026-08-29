@@ -492,6 +492,33 @@ describe('getGuildWorkMulti (via handleRegularWork)', () => {
     });
 });
 
+describe('getWorldBuffWorkMulti (via handleRegularWork)', () => {
+    test('a live workMulti World Boss buff adds 10% of the multiplier on top', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.10, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const userDetails = baseUser({ workMultiplierAmount: 10 });
+        const buffedGain = await workFactory.handleRegularWork(userDetails, 1000, 1, 0);
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        const unbuffedGain = await workFactory.handleRegularWork(baseUser({ workMultiplierAmount: 10 }), 1000, 1, 0);
+
+        expect(buffedGain).toBeGreaterThan(unbuffedGain);
+    });
+
+    test('a buff of a different type (e.g. cooldownSkip) never boosts the work multiplier', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'cooldownSkip', value: 0.05, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const withMismatchedBuff = await workFactory.handleRegularWork(baseUser({ workMultiplierAmount: 10 }), 1000, 1, 0);
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        const noBuff = await workFactory.handleRegularWork(baseUser({ workMultiplierAmount: 10 }), 1000, 1, 0);
+
+        expect(withMismatchedBuff).toBe(noBuff);
+    });
+});
+
 describe('live rebirth bonus (via handleRegularWork)', () => {
     test('a higher rebirthCount increases the gain for an otherwise identical user', async () => {
         const neverRebirthed = baseUser({ userId: 'a', workMultiplierAmount: 10, rebirthCount: 0 });

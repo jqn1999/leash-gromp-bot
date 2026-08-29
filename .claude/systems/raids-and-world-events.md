@@ -698,12 +698,12 @@ Server-wide bosses (not guild-scoped), state stored in the stats table under the
 
 Current bosses:
 
-| Boss | Reward | Stat bonus | Difficulty | Penalty on failure |
-|---|---|---|---|---|
-| Brassica, the Blooming Calamity | 70,000,000 | +0.75 work multi, +350,000 passive, +3,500,000 bank | 1200 | none |
-| Griseous, the Dragon Fruit | 150,000,000 | +1 work multi, +500,000 passive, +5,000,000 bank | 1800 | none |
-| Thunderlord Raikon | 50,000,000 | +2 work multi, +1,000,000 passive, +10,000,000 bank | 1800 | none |
-| Yamsalot, the Iron Yam | 140,000,000 | +3 work multi, +1,500,000 passive, +15,000,000 bank | 2500 | none |
+| Boss | Reward | Stat bonus | Difficulty | Penalty on failure | Server-wide buff |
+|---|---|---|---|---|---|
+| Brassica, the Blooming Calamity | 70,000,000 | +0.75 work multi, +350,000 passive, +3,500,000 bank | 1200 | none | none (by design) |
+| Griseous, the Dragon Fruit | 150,000,000 | +1 work multi, +500,000 passive, +5,000,000 bank | 1800 | none | +5% work cooldown skip chance, 24h |
+| Thunderlord Raikon | 50,000,000 | +2 work multi, +1,000,000 passive, +10,000,000 bank | 1800 | none | +10% work multiplier, 24h |
+| Yamsalot, the Iron Yam | 140,000,000 | +3 work multi, +1,500,000 passive, +15,000,000 bank | 2500 | none | Starch buy -10% / sell +10%, 24h |
 
 Brassica and Yamsalot were added to give the pool an actual difficulty gradient — the original two
 both sat at difficulty 1800 with no easier/harder alternative. `thumbnailUrl` for both is currently a
@@ -714,6 +714,53 @@ Success chance: `min(totalMultiplier/difficulty, .75)`. Unlike guild raids, rewa
 there is currently no penalty on failure (`potatoPenalty: 0`).
 `join-world-raid` / `current-world-raid` mirror the guild raid join/status commands but operate
 against the `world` stats doc instead of a guild record.
+
+### Server-wide buff
+
+Added 2026-08-29 — product-owner scoped, then implemented by direct instruction ("implement"). A
+**successful** kill grants the whole server a free, temporary, boss-flavored buff **on top of,
+never instead of**, the per-participant rewards above — whoever actually joined the raid still gets
+those; the rest of the server gets to feel that the win happened at all. A failed raid, or Brassica
+(deliberately, see its own `buff: null` in `worldFactory.js`'s `worldBossMobs` — it's already the
+roster's easiest/cheapest pull, so staying buff-less keeps that identity legible), grants nothing —
+`createWorldResultEmbed` says so explicitly rather than a missing field silently reading as a bug.
+
+Each numeric value was grounded against the closest real comparable system already live, not picked
+as a round number — see each mob's own `buff` field comment in `worldFactory.js` for the full
+derivation (Yamsalot vs. the `starchSellBonusPercent` companion ladder, Griseous vs. Fieldmouse's
+own permanent perk, Raikon vs. the guild `workMulti` cap and Mochi's companion bonus).
+
+- **State**: a single stats-table doc, `world_buff` — `{ bossName, buffType, value, expiresAt }` —
+  read/written via `dynamoHandler.getActiveWorldBuff`/`setActiveWorldBuff`, mirroring
+  `active_quests`/`active_guild_contract`'s own "global pointer" shape. `dynamoHandler.isWorldBuffLive(buff,
+  buffType)` is the one shared freshness+type check every consumer uses — an expired buff reads
+  identically to no buff at all, never actively cleared.
+- **Duration**: a flat `WORLD_BUFF_DURATION_SECONDS` (24h) for every boss that has one — a single
+  legible number rather than a per-boss tuning axis, roughly tracking the World Boss cycle's own
+  natural cadence.
+- **Stacking**: a new kill's buff **replaces** whatever was previously stored outright — mirrors
+  `guild.guildBuff`'s own single-field precedent, never stacks magnitude or extends a running timer.
+- **Consumers**:
+  - `starchFactory.getActiveStarchBuffPercent()` — read by both `buy-starch.js` (discounts
+    `starch_buy`) and `sell-starch.js` (folded additively into the same bracket as
+    `starchSellBonusPercent`, e.g. Mole/Elder Rootbeard).
+  - `workFactory.getWorldBuffWorkMulti(userMultiplier)` — same "percentage of current
+    userMultiplier" shape as `getGuildWorkMulti`/`getCompanionWorkMulti`, added into every
+    `effectiveMultiplier` calculation across `workFactory.js`'s scenario handlers. Deliberately
+    **excluded** from `handlePoisonPotato` — that handler's `effectiveMultiplier` scales a LOSS, not
+    a gain, so folding in a "bigger gains" buff there would silently mean bigger poison losses
+    instead, the opposite of what a buff should do (same reasoning `catchUpBonus` is already
+    excluded there).
+  - `dynamoHandler.calculateWorkTimerValue` — a second, independent cooldown-skip roll reached only
+    once a companion's own `workCooldownSkipChance` roll has already missed. Reuses the existing
+    `_cooldownSkippedByCompanion` transient field (holding `{ worldBuffBossName }` instead of a
+    companion id string for this source) rather than a parallel field, specifically so work.js's own
+    chain-continuation check and every embed's cooldown-skip display keep working unchanged —
+    `embedFactory.buildCooldownSkipField` branches on the value's shape to show a distinct "Boss's
+    Blessing" line instead of a companion's flavor text.
+- **Announcement**: folded into the existing `createWorldResultEmbed` (posted to the events channel
+  on every World Boss resolution) rather than a new message — a "🌍 Server-Wide Blessing" field on
+  a win, naming the buff or explicitly saying Brassica didn't grant one this time.
 
 ## Background scheduled jobs
 

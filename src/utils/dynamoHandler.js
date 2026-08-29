@@ -276,6 +276,22 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
         return Date.now();
     }
 
+    // Griseous's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
+    // second, independent roll against the SAME standard cooldown, only reached once the
+    // companion roll above has already missed (or there's no companion perk at all). Reuses
+    // the existing _cooldownSkippedByCompanion field (an object here instead of a companion
+    // id string) rather than a parallel field, specifically so work.js's own chain-
+    // continuation check ("if (userDetails._cooldownSkippedByCompanion) fire a follow-up
+    // /work call") keeps working unchanged for this source too — see
+    // embedFactory.js's buildCooldownSkipField for the display-side branch on this shape.
+    if (cooldownTime === Work.WORK_TIMER_SECONDS) {
+        const worldBuff = await getActiveWorldBuff();
+        if (isWorldBuffLive(worldBuff, "cooldownSkip") && Math.random() < worldBuff.value) {
+            userDetails._cooldownSkippedByCompanion = { worldBuffBossName: worldBuff.bossName };
+            return Date.now();
+        }
+    }
+
     // Was previously gated on cooldownTime === Work.POISON_POTATO_TIMER_INCREASE_SECONDS
     // (falling back to the default WORK_TIMER_SECONDS for anything else) — harmless while
     // every caller only ever passed one of those two exact constants, but it silently
@@ -1485,6 +1501,30 @@ const completeGuildContract = async function (guildId, newBankCapacity, newBankC
         });
 }
 
+// Server-wide temporary buff granted by a successful World Boss kill (see
+// systems/raids-and-world-events.md#server-wide-buff, worldFactory.js's startWorldBoss) —
+// { bossName, buffType, value, expiresAt } or undefined if none has ever been set. Mirrors
+// getActiveQuests/getActiveGuildContract's own "global pointer in the stats table" shape.
+// A new kill's buff REPLACES whatever was previously stored outright (worldFactory.js's own
+// design call, mirroring guild.guildBuff's single-field precedent) rather than stacking or
+// extending a timer — this doc is just overwritten wholesale on every win, buff-having or not.
+const getActiveWorldBuff = async function () {
+    return getStatDatabase("world_buff");
+}
+
+const setActiveWorldBuff = async function (buff) {
+    await updateStatFields("world_buff", buff);
+}
+
+// Pure freshness+type check shared by every consumer (workFactory.js's work-multiplier
+// calc, starchFactory.js's price calc, this file's own calculateWorkTimerValue below) so
+// "is this buff still live, and is it actually the type I care about" has exactly one
+// implementation to keep in sync. An expired buff reads identically to no buff at all —
+// it's never actively cleared, just left to go stale until the next kill overwrites it.
+function isWorldBuffLive(buff, buffType) {
+    return Boolean(buff && buff.buffType === buffType && buff.expiresAt > Date.now());
+}
+
 module.exports = {
     addUserDatabase,
     calculateWorkTimerValue,
@@ -1540,5 +1580,9 @@ module.exports = {
 
     getActiveGuildContract,
     setActiveGuildContract,
-    completeGuildContract
+    completeGuildContract,
+
+    getActiveWorldBuff,
+    setActiveWorldBuff,
+    isWorldBuffLive
 }

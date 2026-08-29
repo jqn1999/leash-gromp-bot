@@ -162,7 +162,7 @@ added to `sweetPotatoBuffs`:
 
 Metal Potato failure: 0 potatoes, just resets the timer.
 
-### Ancient Potato (0.15% roll — `workFactory.js`'s `handleAncientPotato`)
+### Ancient Potato (0.05% roll — `workFactory.js`'s `handleAncientPotato`)
 
 The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
 guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
@@ -205,6 +205,15 @@ branch is picked, rather than a separate check duplicated in each:
    0.15%. Covered by `eventFactory.test.js` (new file — this module had zero prior test coverage),
    which locks down that `workProbability`/`workChances` stay in sync and that the post-event reset
    methods return to the same baseline.
+   **Halved again 2026-08-29** (direct instruction: "lower ancient potato odds under golden
+   potato" — confirmed still reachable first, since 0.05% is the same order of magnitude as Golden's
+   own already-reachable 0.1%, just twice as rare): 0.15% → 0.05% (`.0015` → `.0005`), now genuinely
+   rarer than Golden Potato's own flat 0.1% floor rather than sitting above it — "Ancient" finally
+   reads as the rarest encounter in the game. The same four places moved together again (Mimic
+   0.1275→0.1265, Golden Yam 0.1285→0.1275, `work.js`'s own `workScenarios[].chance` baseline), and
+   `eventFactory.test.js` gained a direct "rarer than Golden" regression alongside the updated exact
+   value, so a future retune of either can't silently invert the ordering again without a test
+   catching it.
 2. **Free shop upgrade**, if no track qualifies for (1) — i.e. nothing is shop-maxed yet. Grants the
    next shop tier on a random not-yet-maxed track for free, mirroring `buy.js`'s own success-write
    shape (`newBase + sweetPotatoBuffs + regradeAmount`, not just the tier's raw amount).

@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js"); //types?
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands"); // getting info about user?
 const dynamoHandler = require("../../utils/dynamoHandler"); // helpers for accessing db
-const { isStarchBuyingWindow } = require("../../utils/starchFactory");
+const { isStarchBuyingWindow, getActiveStarchBuffPercent } = require("../../utils/starchFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -34,7 +34,11 @@ module.exports = {
         // get starch number and basic stuff
         // check if they have enough potatoes + get price from
         const details = await dynamoHandler.getStatDatabase("starch")
-        let price = details.starch_buy
+        // Yamsalot's World Boss buff (systems/raids-and-world-events.md#server-wide-buff)
+        // — a temporary, server-wide discount on top of the normal cycle price. 0 (a
+        // no-op) whenever no such buff is currently live.
+        const starchBuffPercent = await getActiveStarchBuffPercent();
+        let price = Math.round(details.starch_buy * (1 - starchBuffPercent))
         let starches = interaction.options.get('starch-amount')?.value;
         let userPotatoes = userDetails.potatoes;
         let userStarches = userDetails.starches;

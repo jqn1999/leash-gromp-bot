@@ -125,3 +125,56 @@ describe('createPoisonPotatoEmbed', () => {
         expect(embed.data.description).toBe(mobWithImmuneText.description);
     });
 });
+
+// buildCooldownSkipField (private, exercised via createWorkEmbed) now handles two sources
+// for the same field: a companion id (string, original behavior) and Griseous's World Boss
+// buff (an object, added 2026-08-29 — see dynamoHandler.calculateWorkTimerValue's own
+// comment on why this reuses the existing field/parameter instead of a parallel one).
+describe('buildCooldownSkipField (via createWorkEmbed)', () => {
+    const mob = { name: 'Regular Potato', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('a companion-triggered skip shows that companion\'s own flavor line', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, 'fieldmouse');
+        const field = embed.data.fields.find(f => f.name.includes('Fieldmouse'));
+        expect(field).toBeDefined();
+    });
+
+    test('a World Boss buff-triggered skip shows a distinct blessing line naming the boss, not a companion', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, { worldBuffBossName: 'Griseous, the Dragon Fruit' });
+        const field = embed.data.fields.find(f => f.name.includes('Blessing'));
+        expect(field).toBeDefined();
+        expect(field.name).toContain('Griseous, the Dragon Fruit');
+    });
+
+    test('no skip at all adds neither field', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, null);
+        expect(embed.data.fields.find(f => f.name.includes('Blessing'))).toBeUndefined();
+        expect(embed.data.fields.find(f => f.name.includes('Fieldmouse'))).toBeUndefined();
+    });
+});
+
+// createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).
+describe('createWorldResultEmbed world-buff announcement', () => {
+    const mob = { name: 'Griseous, the Dragon Fruit', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('a win with a granted buff announces it, including the numeric value', () => {
+        const worldBuff = { bossName: mob.name, buffType: 'cooldownSkip', value: 0.05 };
+        const embed = embedFactory.createWorldResultEmbed([], 0, mob, 0.5, 'Win!', 1, 500000, 5000000, worldBuff, true);
+        const field = embed.data.fields.find(f => f.name.includes('Server-Wide Blessing'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('5%');
+    });
+
+    test('a win with no buff (Brassica) shows the explicit no-blessing line, not a missing field', () => {
+        const embed = embedFactory.createWorldResultEmbed([], 0, mob, 0.5, 'Win!', 1, 500000, 5000000, null, true);
+        const field = embed.data.fields.find(f => f.name.includes('Server-Wide Blessing'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('rests easy');
+    });
+
+    test('a loss never shows a buff-announcement field at all', () => {
+        const embed = embedFactory.createWorldResultEmbed([], 0, mob, 0.5, 'Loss!', null, null, null, null, false);
+        const field = embed.data.fields.find(f => f.name.includes('Server-Wide Blessing'));
+        expect(field).toBeUndefined();
+    });
+});

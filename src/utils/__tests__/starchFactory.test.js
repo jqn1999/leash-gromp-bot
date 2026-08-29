@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { starchFactory, isStarchBuyingWindow, describeNextStarchEvent } = require('../starchFactory');
+const { starchFactory, isStarchBuyingWindow, describeNextStarchEvent, getActiveStarchBuffPercent } = require('../starchFactory');
 
 const factory = new starchFactory();
 
@@ -224,5 +224,27 @@ describe('createNarrowPeak / createChoppy profit odds', () => {
         Math.random.mockRestore();
 
         prices.forEach(p => expect(p).toBeLessThan(1000));
+    });
+});
+
+// Yamsalot's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
+// temporary, server-wide starch price discount folded into buy-starch.js/sell-starch.js.
+describe('getActiveStarchBuffPercent', () => {
+    test('returns the buff value when a live starchDiscount buff is active', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'starchDiscount', value: 0.10, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        expect(await getActiveStarchBuffPercent()).toBe(0.10);
+    });
+
+    test('returns 0 when no buff is active', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        expect(await getActiveStarchBuffPercent()).toBe(0);
+    });
+
+    test('returns 0 for a live buff of a different type', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.10, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        expect(await getActiveStarchBuffPercent()).toBe(0);
     });
 });

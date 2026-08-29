@@ -3164,6 +3164,61 @@ and needs its own balance pass.
   `systems/mercenary-bounties.md`, `systems/guild-contracts.md`. Full suite: 703/703 (up
   from 701/701 — 2 new tests, zero regressions).
 
+- [x] **81. World Boss Kill → Server-Wide Temporary Buff** — M/L — **Done**
+  What: a **successful** World Boss kill now grants the whole server a free, temporary,
+  boss-flavored buff on top of (never instead of) the existing per-participant rewards —
+  Griseous grants +5% work cooldown skip chance, Raikon +10% work multiplier, Yamsalot a
+  starch cycle discount (buy -10%/sell +10%), all for 24h; Brassica deliberately grants
+  none (already the roster's easiest/cheapest pull — kept legible rather than diluted, and
+  the win embed says so explicitly). Product-owner scoped this first (see the entry above,
+  in "Needs more design discussion") grounding every number against a real comparable
+  system already live; direct instruction to "implement" then built it exactly as scoped.
+  - New stats-table doc `world_buff` (`{ bossName, buffType, value, expiresAt }`), read/
+    written via new `dynamoHandler.getActiveWorldBuff`/`setActiveWorldBuff`/
+    `isWorldBuffLive` (mirrors `active_quests`/`active_guild_contract`'s own "global
+    pointer" shape). A new kill's buff replaces whatever was previously stored outright —
+    mirrors `guild.guildBuff`'s single-field precedent, never stacks or extends a timer.
+  - `starchFactory.getActiveStarchBuffPercent()` — read by `buy-starch.js`/`sell-starch.js`.
+  - `workFactory.getWorldBuffWorkMulti(userMultiplier)` — folded into `effectiveMultiplier`
+    across all 8 of `workFactory.js`'s scenario handlers that compute one, same shape as
+    `getGuildWorkMulti`/`getCompanionWorkMulti`. Deliberately excluded from
+    `handlePoisonPotato` — that handler's multiplier scales a LOSS, so including it there
+    would silently make poison hits worse instead of better, the opposite of a buff.
+  - `dynamoHandler.calculateWorkTimerValue` — a second, independent cooldown-skip roll
+    reached only once a companion's own roll has missed. Reuses the existing
+    `_cooldownSkippedByCompanion` transient field (holding `{ worldBuffBossName }` instead
+    of a companion id for this source) rather than a parallel field, so work.js's chain-
+    continuation check and every embed's display keep working unchanged;
+    `embedFactory.buildCooldownSkipField` branches on the value's shape.
+  - `createWorldResultEmbed` announces the buff (or Brassica's explicit "no blessing"
+    line) on the same message already posted on every World Boss resolution — no new
+    channel/message needed.
+  Tests: new coverage in `dynamoHandler.test.js` (buff-triggered skip, expired buff,
+  wrong-type buff), `worldFactory.test.js` (correct buff per boss, Brassica grants none, a
+  loss never grants one), `workFactory.test.js`/`starchFactory.test.js`
+  (`getWorldBuffWorkMulti`/`getActiveStarchBuffPercent`), `embedFactory.test.js`
+  (cooldown-skip field branching, world-result buff announcement). Docs:
+  `systems/raids-and-world-events.md#server-wide-buff`. Full suite: 725/725 (up from
+  703/703 — 22 new tests, zero regressions).
+
+- [x] **82. Fix: Ancient Potato Was More Common Than Golden Potato** — S — **Done**
+  What: direct instruction — "can we lower ancient potato odds under golden potato? would
+  that still be reachable?" Confirmed reachable first: Golden Potato's own flat 0.1%
+  (`workProbability[WORK_SCENARIO_INDICES.GOLDEN]`) is already treated as a legitimately
+  reachable rare encounter throughout this codebase's own design language, so halving
+  Ancient again to 0.05% — the same order of magnitude, just twice as rare — stays equally
+  reachable, not a de-facto removal. Ancient's own encounter chance halved again (0.15% →
+  0.05%, `.0015` → `.0005`) across all four places this number has to move together in
+  lockstep (`eventFactory.js`'s constructor `workProbability`/cumulative `workChances`,
+  its `setBaseWorkProbability`/`setBaseWorkChances` post-event reset pair, and `work.js`'s
+  own `workScenarios[].chance` baseline) — see `economy-and-work.md`'s own note on why a
+  4th copy in `work.js` is easy to miss (it's only overwritten by the other three via
+  `setWorkScenarios` when a special event starts/ends, so it's the stale live value the
+  rest of the time otherwise). Mimic/Golden Yam shifted down to match, own slice widths
+  unchanged — same mechanical pattern the original 2026-08-23 halving already established.
+  `eventFactory.test.js` gained a direct "Ancient is now rarer than Golden" regression
+  alongside the updated exact value. Full suite: 726/726, zero regressions.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
@@ -4852,8 +4907,9 @@ and needs its own balance pass.
   special-odds event) and scheduled announcements both need to become per-server. Full design,
   build order, and open questions in [multi-server-support.md](multi-server-support.md).
 
-- [ ] **World Boss Kill → Server-Wide Temporary Buff** — M/L — product-owner brainstorm, not yet
-  handed to the architect.
+- [x] **World Boss Kill → Server-Wide Temporary Buff** — M/L — **Shipped 2026-08-29** — see item
+  81 below for the built implementation (skipped the architect handoff below; the recommendations
+  here were implemented directly by instruction).
   What: on a **successful** World Boss kill only (the existing `successfulRaid` branch in
   `worldFactory.js`'s `startWorldBoss` — a failed raid grants nothing to anyone today, every boss's
   `potatoPenalty` is already 0, and this doesn't change that), the whole server gets a free,

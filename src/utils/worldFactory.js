@@ -69,7 +69,8 @@ async function startWorldBoss(world, mob){
     let totalRaidReward = 0,
         workMultiReward = 0,
         passiveReward = 0,
-        bankCapacityReward = 0;
+        bankCapacityReward = 0,
+        worldBuff = null;
     if (successfulRaid) {
         totalRaidReward = Math.round(mob.potatoReward * randomMultiplier);
         raidListByMulti = await raidFactory.handlePotatoSplitByShare(raidListByMulti, totalRaidReward);
@@ -81,13 +82,28 @@ async function startWorldBoss(world, mob){
         await raidFactory.handleStatSplit(raidList, 'bankCapacity', bankCapacityReward);
         await raidFactory.incrementCounter(raidList, 'worldBossWinCount');
         raidResultDescription = mob.successDescription;
+        // Server-wide temporary buff (see each mob's own `buff` field above) — on top of,
+        // never instead of, the per-participant rewards just granted. Only a WIN grants
+        // one; Brassica's own `buff: null` deliberately grants nothing (still passed
+        // through to createWorldResultEmbed so it can say so explicitly). A new kill's
+        // buff replaces whatever was previously stored outright — see setActiveWorldBuff's
+        // own comment for why this doesn't stack or extend a running timer.
+        if (mob.buff) {
+            worldBuff = {
+                bossName: mob.name,
+                buffType: mob.buff.type,
+                value: mob.buff.value,
+                expiresAt: Date.now() + WORLD_BUFF_DURATION_SECONDS * 1000
+            };
+            await dynamoHandler.setActiveWorldBuff(worldBuff);
+        }
     } else {
         totalRaidReward = Math.round(mob.potatoPenalty * randomMultiplier);
         raidListByMulti = await raidFactory.handlePotatoSplitByShare(raidListByMulti, totalRaidReward);
         raidResultDescription = mob.failureDescription;
     }
     return embedFactory.createWorldResultEmbed(raidListByMulti, totalRaidReward, mob, successChance,
-                                    raidResultDescription, workMultiReward, passiveReward, bankCapacityReward)
+                                    raidResultDescription, workMultiReward, passiveReward, bankCapacityReward, worldBuff, successfulRaid)
 }
 
 function determineRaidResult(successChance) {
@@ -104,6 +120,13 @@ function determinRaidSuccessChance(totalMultiplier, raidDifficulty) {
     return actualRaidSuccessChance
 }
 
+// How long a World Boss kill's server-wide buff (see each mob's own `buff` field below)
+// lasts before going stale — flat across every boss rather than varying by difficulty, so
+// a player only ever has to reason about one number ("about until the next boss might show
+// up," roughly this game's own dormant-boss spawn cadence). See
+// systems/raids-and-world-events.md#server-wide-buff.
+const WORLD_BUFF_DURATION_SECONDS = 86400;
+
 // TODO: Brassica and Yamsalot below still need real commissioned artwork — currently
 // using the bot's generic avatar as a thumbnail placeholder.
 const worldBossMobs = [
@@ -118,7 +141,13 @@ const worldBossMobs = [
         workMultiReward: 1,
         passiveReward: 500000,
         bankCapacityReward: 5000000,
-        difficulty: 1800
+        difficulty: 1800,
+        // Server-wide buff on a win (2026-08-29, product-owner scoped — see
+        // systems/raids-and-world-events.md#server-wide-buff): exact match to Fieldmouse's
+        // own permanent Common-tier workCooldownSkipChance (0.05) — "give the whole server
+        // Fieldmouse's perk for a day" — deliberately below Spudsprite (0.15)/Mochi (0.20)
+        // so those pulls stay meaningfully better than the free version.
+        buff: { type: "cooldownSkip", value: 0.05 }
     },
     {
         name: "Thunderlord Raikon",
@@ -131,7 +160,14 @@ const worldBossMobs = [
         workMultiReward: 2,
         passiveReward: 1000000,
         bankCapacityReward: 10000000,
-        difficulty: 1800
+        difficulty: 1800,
+        // Server-wide buff on a win — +10% of each player's own workMultiplierAmount,
+        // applied the same additive shape getGuildWorkMulti/getCompanionWorkMulti already
+        // use. Sits under both nearby investment-gated ceilings (guild workMulti caps at
+        // +15% at guild level 10; the best companion workMultiplierPercent is Mochi's
+        // +12%) — a free, temporary +10% is a real treat without out-earning either
+        // progression path. See systems/raids-and-world-events.md#server-wide-buff.
+        buff: { type: "workMulti", value: 0.10 }
     },
     // Both bosses above share the exact same difficulty (1800) — these two add a real
     // gradient either side of it: Brassica is the accessible/early pull, Yamsalot is the
@@ -150,7 +186,14 @@ const worldBossMobs = [
         workMultiReward: 0.75,
         passiveReward: 350000,
         bankCapacityReward: 3500000,
-        difficulty: 1200
+        difficulty: 1200,
+        // Deliberately no server-wide buff (product-owner scoping call, 2026-08-29) —
+        // Brassica is already the roster's easiest/cheapest pull (lowest difficulty AND
+        // reward of the four), so staying the one boss whose kill is "just" the existing
+        // participant reward keeps that identity legible instead of diluted. Explicit
+        // `null` rather than omitting the field, so createWorldResultEmbed can say so on
+        // purpose (see its own comment) instead of a missing buff silently reading as a bug.
+        buff: null
     },
     {
         name: "Yamsalot, the Iron Yam",
@@ -163,7 +206,14 @@ const worldBossMobs = [
         workMultiReward: 3,
         passiveReward: 1500000,
         bankCapacityReward: 15000000,
-        difficulty: 2500
+        difficulty: 2500,
+        // Server-wide buff on a win — a starch cycle discount (buy -10%, sell +10%). Real
+        // starch_buy already ranges ~9,500-10,999 (~14.6% band) day to day, so 10% is a
+        // real, felt discount without beating the best organic roll; also lands at the low
+        // end of the existing starchSellBonusPercent companion ladder (Mole 9% / Rootcarver
+        // 12% / Elder Rootbeard 15%) rather than matching or beating Elder Rootbeard's
+        // Mythic-tier value. See systems/raids-and-world-events.md#server-wide-buff.
+        buff: { type: "starchDiscount", value: 0.10 }
     }
 ]
 // Mochi, the Undying Stray previously lived here as a world boss (difficulty 1500,
@@ -174,5 +224,6 @@ const worldBossMobs = [
 
 module.exports = {
     worldFactory,
-    worldBossMobs
+    worldBossMobs,
+    WORLD_BUFF_DURATION_SECONDS
 }

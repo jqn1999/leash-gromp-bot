@@ -188,11 +188,12 @@ var workScenarios = [
             await sendWorkResult(interaction, embed, isChainedReply);
             return ancientResult.potatoesGained;
         },
-        // Halved 2026-08-23 — direct instruction, kept in lockstep with eventFactory.js's
-        // workProbability/workChances (both the constructor's baseline arrays and
-        // setBaseWorkChances/setBaseWorkProbability's post-event reset copies), which
-        // overwrite this value via setWorkScenarios whenever a special event starts/ends.
-        chance: .1175,
+        // Halved again 2026-08-29 — direct instruction ("lower ancient potato odds under
+        // golden potato"), kept in lockstep with eventFactory.js's workProbability/
+        // workChances (both the constructor's baseline arrays and setBaseWorkChances/
+        // setBaseWorkProbability's post-event reset copies), which overwrite this value
+        // via setWorkScenarios whenever a special event starts/ends.
+        chance: .1165,
         type: WORK_SCENARIO_INDICES.ANCIENT
     },
     {
@@ -202,7 +203,7 @@ var workScenarios = [
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
-        chance: .1275, // shifted down to match Ancient's slice shrinking above — own slice width unchanged
+        chance: .1265, // shifted down to match Ancient's slice shrinking above — own slice width unchanged
         type: WORK_SCENARIO_INDICES.MIMIC
     },
     {
@@ -212,7 +213,7 @@ var workScenarios = [
             await sendWorkResult(interaction, embed, isChainedReply);
             return starchesGained;
         },
-        chance: .1285, // shifted down to match — own slice width unchanged
+        chance: .1275, // shifted down to match — own slice width unchanged
         type: WORK_SCENARIO_INDICES.GOLDEN_YAM
     },
     {
