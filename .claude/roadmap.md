@@ -4852,6 +4852,105 @@ and needs its own balance pass.
   special-odds event) and scheduled announcements both need to become per-server. Full design,
   build order, and open questions in [multi-server-support.md](multi-server-support.md).
 
+- [ ] **World Boss Kill → Server-Wide Temporary Buff** — M/L — product-owner brainstorm, not yet
+  handed to the architect.
+  What: on a **successful** World Boss kill only (the existing `successfulRaid` branch in
+  `worldFactory.js`'s `startWorldBoss` — a failed raid grants nothing to anyone today, every boss's
+  `potatoPenalty` is already 0, and this doesn't change that), the whole server gets a free,
+  temporary, boss-flavored buff **on top of, never instead of**, the existing per-participant
+  rewards (potatoes split by raid share, flat `workMultiplierAmount`/`passiveAmount`/`bankCapacity`
+  bumps to whoever actually joined via `/join-world-raid`). Whoever fought still gets the real
+  reward; the rest of the server gets to feel that the win happened at all. Per-boss flavor, grounded
+  against the closest *real* comparable system already live, not round numbers:
+
+  | Boss | Buff | Value | Grounded against |
+  |---|---|---|---|
+  | Yamsalot, the Iron Yam | Starch cycle discount | Buy price -10%, sell price +10% | Real `starch_buy` already ranges 9,500–10,999 (~14.6% band) — 10% is a real, felt discount without beating the best organic roll. Also lands at the low end of the existing `starchSellBonusPercent` companion ladder (Mole 9% / Rootcarver 12% / Elder Rootbeard 15%) — a free server-wide buff should sit near a Common/Rare companion's own value, not match or beat Elder Rootbeard's Mythic-tier 15% |
+  | Griseous, the Dragon Fruit | Work cooldown skip chance | +5% | Exact match to Fieldmouse's own permanent Common-tier `workCooldownSkipChance` (5%) — literally "give the whole server Fieldmouse's perk for a day." Pegging it to Common rather than Spudsprite's 15% or Mochi's 20% keeps those pulls meaningfully better than the free version |
+  | Thunderlord Raikon | Work multiplier | +10% of each player's own multiplier, applied the same additive shape `getGuildWorkMulti`/`getCompanionWorkMulti` already use (`bonus = userMultiplier * 0.10`, summed into `effectiveMultiplier`) | Sits under both investment-gated ceilings it's adjacent to: the guild `workMulti` buff caps at +15% (guild level 10, needs a raiding guild), and the best companion `workMultiplierPercent` is Mochi's +12% (Mythic, needs a 2% pull). A free, temporary +10% is a real treat without out-earning either progression path |
+  | Brassica, the Blooming Calamity | see Open Question 1 | — | — |
+
+  Why: closes a real gap the informal feedback already named — every other server-wide moment in
+  this game (the hourly special work-odds event, starch market price flips) already carries both an
+  announcement AND a mechanical effect; a World Boss kill today only pays the raid roster, so a
+  server that watched the fight (and got pinged for it) has nothing to show for it if they didn't
+  personally join. This stays explicitly a bonus flourish, not a new incentive to replace joining —
+  per-participant rewards are completely untouched.
+
+  Touches: `worldFactory.js` (`startWorldBoss`'s success branch sets the buff), a new small
+  stats-table doc mirroring `active_quests`/`active_guild_contract`'s "global pointer" shape (see
+  Open Question 3), `buyStarch.js`/`sellStarch.js` (both already call
+  `dynamoHandler.getStatDatabase("starch")` on every single invocation — folding in one more cheap
+  read is free, not a new DB-read pattern), `dynamoHandler.calculateWorkTimerValue`, roughly 9 call
+  sites in `workFactory.js` that each independently assemble `guildMultiplier`/`companionMultiplier`/
+  `rebirthMultiplier` before summing into `effectiveMultiplier` (see Open Question 5),
+  `embedFactory.js`'s `createWorldResultEmbed` (announce on the same message the win/loss result
+  already posts to the events channel), and probably `currentEvent.js` (`/current-event` is already
+  the "what's live right now" read-only surface for the hourly special-odds event — a natural reuse
+  rather than a new command).
+
+  **Open questions, with recommendations:**
+  1. **Does Brassica get a buff too, or stay buff-less as the deliberately low-stakes/accessible
+     pick?** No clean default here — a real product call, not a technical one:
+     - *No buff (recommended)*: Brassica is already the roster's easiest pull (difficulty 1200 vs.
+       1800/1800/2500, and the smallest reward and stat bonus of the four) — staying the one boss
+       whose kill is "just" the existing participant reward keeps that identity legible instead of
+       diluted, and costs nothing extra to build. The one real risk is a player reading "no buff" as
+       something broken once they're used to seeing one on the other three kills — close that by
+       having `createWorldResultEmbed` say so explicitly in Brassica's own flavor text (e.g., "the
+       Kingdom rests easy, no further blessing needed this time") instead of silently omitting the
+       field, turning a possible confusion into an intentional beat.
+     - *Reuse one of the three mechanics at reduced strength (alternative)*: keeps all four bosses
+       mechanically consistent, at the cost of a real scope-creep risk this pass is specifically
+       supposed to catch — the user only ever specified three buff flavors, and inventing a fourth
+       distinct mechanic just for symmetry isn't free. If this direction is picked, recommend reusing
+       the starch-discount flavor at half strength (±5%) rather than a diluted cooldown-skip or
+       work-multi version — it's the lowest-stakes of the three, which fits Brassica's own
+       "lowest-stakes boss" identity better than a watered-down copy of Griseous's or Raikon's buff.
+  2. **Should every buff share one flat duration, or vary per boss?** The user only specified "a
+     day's worth" for Griseous. Recommend a **flat 24h for all of them** (Brassica included, if it
+     gets one) — a single legible number is easier for a player to reason about than four different
+     windows, and it roughly tracks the World Boss cycle's own natural cadence (a new boss needs a 5%
+     hourly spawn roll while dormant, so ~20h between dormancy and a fresh attempt on average) — "the
+     buff runs about until the next World Boss might show up" is an easy mental model to hold. A
+     bigger/harder boss (Yamsalot, difficulty 2500) granting a *longer* window instead of a bigger
+     number is a real, considered alternative, but adds a second tuning axis (duration AND magnitude)
+     for a marginal legibility loss.
+  3. **Stacking/overlap: what happens if a second World Boss is won while a previous buff is still
+     active?** Recommend **replace outright** — the new kill's buff (type, value, duration) fully
+     overwrites whatever was live, never stacking magnitude or extending duration. Mirrors
+     `guild.guildBuff`'s own "one active buff, a single field, not a set" precedent, and sidesteps
+     ever having to reason about whether Yamsalot's starch discount and Raikon's work-multiplier
+     surge should be allowed to run simultaneously. Given World Boss kills won't be a several-times-
+     a-day occurrence, overlap will be the uncommon case, not the norm — a simple replace is enough,
+     no queue needed.
+  4. **Where does "a buff is active" live, and how does every consuming call site check it cheaply
+     without an extra DB read on every action?** Recommend a small stats-table doc (`{ bossName,
+     buffType, value, expiresAt }`), read the exact same way `buyStarch.js`/`sellStarch.js` already
+     read the `starch` doc on every call — one more small-item DynamoDB read on an already
+     network-bound command, not a new architecture pattern (`dynamoHandler.getCachedServerTotal`
+     already establishes "read a small cached stats doc on a hot path" as normal in this codebase).
+     Explicitly **not** recommending an in-memory singleton the way `EventFactory` holds the hourly
+     special-odds event — that pattern lives in one process and resets on every redeploy, fine for an
+     hourly-reset event but not for a buff meant to survive up to 24 hours.
+  5. **Should the work-multiplier buff share one helper, or get duplicated across `workFactory.js`'s
+     ~9 scenario handlers?** Recommend a single `getWorldBuffMulti(userMultiplier)` helper mirroring
+     `getGuildWorkMulti`/`getCompanionWorkMulti`'s exact shape, called from the same handful of places
+     those two already are — nine independent inline reads is exactly the kind of drift risk this
+     codebase has hit before (see `eventFactory.js`'s Ancient Potato odds needing four copies kept in
+     sync by hand). A technical-design detail more than a product one, but worth flagging since it
+     changes how many places actually need to move.
+  6. **Announcement**: recommend folding the buff into the existing `createWorldResultEmbed` already
+     posted to the events channel with a role ping on every World Boss resolution, the same way
+     `starchEvents.js`'s market-update announcements added a line to an existing embed rather than
+     inventing a second message — no new channel/role plumbing needed.
+
+  **Out of scope for v1**: any new companion or achievement tied to the buff; a UI/command for
+  viewing buff *history* (only "what's active right now," surfaced via `/current-event` per above);
+  more than one buff active at a time; any change to World Boss spawn cadence, difficulty, or the
+  existing per-participant rewards; a guild-scoped variant (this is deliberately server-wide, not a
+  second `guildBuff` slot).
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
