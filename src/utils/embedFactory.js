@@ -67,7 +67,11 @@ const COMPANION_RARITY_LABEL = {
 const MAX_COMPANION_LEVEL = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
 
 const PERK_LABELS = {
-    workMultiplierPercent: value => `+${(value * 100).toFixed(1)}% Work Multiplier`,
+    // Signed explicitly (rather than always prefixing "+") since Prospector's 2026-08-29
+    // redesign made this the first companion perk with a NEGATIVE value (a work-multiplier
+    // tax, the cost side of its broadened encounter-chance buff) — every other user of
+    // this perk type stays positive and renders exactly as before.
+    workMultiplierPercent: value => `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}% Work Multiplier`,
     workCooldownSkipChance: value => `${(value * 100).toFixed(1)}% chance to skip /work cooldown entirely`,
     passiveIncomePercent: value => `+${(value * 100).toFixed(1)}% Passive Income`,
     // Shared by real /rob (rob.js) and /rob-npc (mercenaryFactory.js's resolveNpcRob) — see
@@ -90,8 +94,18 @@ const PERK_LABELS = {
     // clause (a yield tax on every other gain) — removed 2026-08-25 by direct
     // instruction, so this is now pure upside like every other perk's description.
     poisonImmunity: ({ rebatePercent }) => `On Poison Potato: gain ${(rebatePercent * 100).toFixed(1)}% of what you'd have lost instead, no cooldown lockout`,
+    // No companion currently grants either of these two — both were Prospector's own kit
+    // until its 2026-08-29 redesign retired them in favor of specialEncounterMultiplierBonus
+    // below. Wiring stays in place for a future Metal-focused companion, same
+    // "kept for a future companion" precedent starchCapacityPercent/
+    // guildRaidMultiplierPercent already set above.
     metalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to beat Metal Potato`,
     metalEncounterChanceFlat: value => `+${(value * 100).toFixed(1)}% chance to find Metal Potato`,
+    // Prospector's own replacement kit (2026-08-29) — value is the BONUS multiple added to
+    // each affected scenario's own base width (1 = +100% = doubled), not the final
+    // multiplier itself. See workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for the exact
+    // scenario list this applies to.
+    specialEncounterMultiplierBonus: value => `${value + 1}x chance to find Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato & Golden Yam`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
     rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`
 };

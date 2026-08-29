@@ -1,7 +1,7 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
-const { WorkFactory, getEffectiveScenarioChance, isMetalHitBoosted } = require("../../utils/workFactory");
+const { WorkFactory, getEffectiveScenarioChances, isMetalHitBoosted } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
@@ -108,14 +108,21 @@ var workScenarios = [
             const userId = userDetails.userId;
             const metalSuccessRoll = Math.random();
             const BASE_METAL_SUCCESS_CHANCE = .1;
-            // Prospector — a flat bonus on top of the base 10% success chance, the
-            // only stat that touches this roll.
+            // metalSuccessChanceFlat/metalEncounterChanceFlat (below, and in the roll walk
+            // above) were Prospector's own perks until its 2026-08-29 redesign retired both
+            // in favor of specialEncounterMultiplierBonus, which deliberately excludes Metal
+            // — see workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS comment for why. No
+            // companion currently grants either lookup below, so this permanently resolves
+            // to the base 10%/isBoostedHit permanently false — left in place (not ripped
+            // out) as ready-made wiring for a future Metal-focused companion, same
+            // "structurally correct even while dormant" precedent
+            // starchCapacityPercent/guildRaidMultiplierPercent already set in PERK_LABELS.
             const metalSuccessChance = BASE_METAL_SUCCESS_CHANCE + companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat");
             let potatoesGained;
             if (metalSuccessRoll < metalSuccessChance) {
-                // "Boosted hit" (see workFactory.handleMetalPotato's own comment) — a
-                // hit that only landed because a companion perk widened Metal's
-                // encounter chance (metalEncounterChanceFlat) and/or success chance
+                // "Boosted hit" (see workFactory.handleMetalPotato's own comment) — a hit
+                // that only landed because a companion perk widened Metal's encounter
+                // chance (metalEncounterChanceFlat) and/or success chance
                 // (metalSuccessChanceFlat) past the base 1.0%/10%. Uses the exact same
                 // roll values that just resolved the real encounter/success, not a
                 // fresh re-roll — see isMetalHitBoosted for the actual comparison.
@@ -268,17 +275,20 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     let matchedScenarioType;
     let multiplier = getRandomFromInterval(.8, 1.2);
     const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
-    // Prospector — see workFactory.js's getEffectiveScenarioChance for why this widens
-    // Metal Potato's slice per-request instead of mutating the shared workScenarios array.
-    const metalEncounterBonus = companionFactory.getActivePerkValue(userDetails, "metalEncounterChanceFlat");
-    for (const scenario of workScenarios) {
-        const effectiveChance = getEffectiveScenarioChance(scenario.type, scenario.chance, metalEncounterBonus);
-        if (workScenarioRoll < effectiveChance) {
+    // Prospector — see workFactory.js's getEffectiveScenarioChances for why this widens
+    // several scenarios' own slice per-request instead of mutating the shared
+    // workScenarios array (reused across every concurrent player's /work call — a
+    // per-request mutation there would race).
+    const prospectorMultiplierBonus = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus");
+    const effectiveChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
+    for (let i = 0; i < workScenarios.length; i++) {
+        const scenario = workScenarios[i];
+        if (workScenarioRoll < effectiveChances[i].chance) {
             // workScenarioRoll + scenario.chance (Metal's own UNBOOSTED base chance) are
             // passed through to every action — only Metal's own action reads them, to
-            // determine whether a given hit would have encountered at all without
-            // metalEncounterChanceFlat widening its slice (see that action for the full
-            // "boosted hit" determination, alongside the success roll it makes itself).
+            // determine whether a given hit would have encountered at all without a
+            // companion widening its slice (see that action for the full "boosted hit"
+            // determination, alongside the success roll it makes itself).
             potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply, workScenarioRoll, scenario.chance);
             matchedScenarioType = scenario.type;
             break;

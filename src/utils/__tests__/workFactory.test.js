@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChance, isMetalHitBoosted } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, isMetalHitBoosted } = require('../workFactory');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
@@ -35,32 +35,72 @@ beforeEach(() => {
 // Prospector's metalEncounterChanceFlat perk (see constants.js) — widens Metal Potato's own
 // slice of work.js's cumulative roll table without mutating the shared workScenarios array.
 // Pure function, so covered directly rather than via a full /work roll simulation.
-describe('getEffectiveScenarioChance', () => {
+//
+// Real base cumulative chances (post-2026-08-29 Ancient halving), matching eventFactory.js's
+// live workChances exactly — used as fixture data throughout this describe block so the
+// tests stay meaningful against the real game table, not made-up round numbers.
+const REAL_SCENARIOS = [
+    { type: WORK_SCENARIO_INDICES.GOLDEN, chance: .001 },
+    { type: WORK_SCENARIO_INDICES.POISON, chance: .011 },
+    { type: WORK_SCENARIO_INDICES.LARGE, chance: .051 },
+    { type: WORK_SCENARIO_INDICES.METAL, chance: .061 },
+    { type: WORK_SCENARIO_INDICES.SWEET, chance: .081 },
+    { type: WORK_SCENARIO_INDICES.COMPANION, chance: .096 },
+    { type: WORK_SCENARIO_INDICES.TARO, chance: .116 },
+    { type: WORK_SCENARIO_INDICES.ANCIENT, chance: .1165 },
+    { type: WORK_SCENARIO_INDICES.MIMIC, chance: .1265 },
+    { type: WORK_SCENARIO_INDICES.GOLDEN_YAM, chance: .1275 },
+    { type: WORK_SCENARIO_INDICES.REGULAR, chance: 1 },
+];
+
+function chanceFor(effective, type) {
+    return effective.find(s => s.type === type).chance;
+}
+
+describe('getEffectiveScenarioChances', () => {
     test('a zero bonus is a no-op for every scenario', () => {
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.METAL, 0.061, 0)).toBe(0.061);
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.REGULAR, 1, 0)).toBe(1);
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 0);
+        REAL_SCENARIOS.forEach(s => expect(chanceFor(effective, s.type)).toBeCloseTo(s.chance));
     });
 
-    test('Metal Potato itself gets the bonus added', () => {
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.METAL, 0.061, 0.02)).toBeCloseTo(0.081);
+    // Prospector's specialEncounterMultiplierBonus (2026-08-29) doubles (bonus=1) Golden,
+    // Poison, Large, Companion, Taro, Mimic, and Golden Yam — each independently, while
+    // Metal/Sweet/Ancient stay untouched. See workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS
+    // for why those three specifically are excluded (Metal/Sweet's own uncapped-ish stat
+    // grants create the same compounding-snowball risk an EV check found once already).
+    test('each doubled scenario\'s OWN slice widens to exactly double its base width', () => {
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
+        // Golden: base width .001 -> effective width .002 (chance .001 -> .003, since
+        // there's nothing before it to shift).
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN)).toBeCloseTo(.001 + .001);
+        // Poison: base width .01 (.011-.001), doubled -> +.01 shift on top of Golden's own
+        // +.001 already accumulated.
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.POISON)).toBeCloseTo(.011 + .001 + .01);
     });
 
-    test('every scenario after Metal in roll order also shifts up by the same bonus, keeping its own slice width unchanged', () => {
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.SWEET, 0.081, 0.02)).toBeCloseTo(0.101);
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.GOLDEN_YAM, 0.130, 0.02)).toBeCloseTo(0.150);
+    test('untouched scenarios (Metal, Sweet, Ancient) still shift up by whatever widening came before them, but their OWN width stays unchanged', () => {
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
+        // Accumulated shift through Large (Golden .001 + Poison .01 + Large .04, each
+        // doubled = +.001+.01+.04 = +.051 total shift by the time Metal is reached).
+        const shiftThroughLarge = .001 + .01 + .04;
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.METAL)).toBeCloseTo(.061 + shiftThroughLarge);
+        // Metal's own width (.061-.051=.01) must be unchanged even though its threshold moved.
+        const metalWidth = chanceFor(effective, WORK_SCENARIO_INDICES.METAL) - chanceFor(effective, WORK_SCENARIO_INDICES.LARGE);
+        expect(metalWidth).toBeCloseTo(.01);
     });
 
-    test('scenarios before Metal in roll order are untouched', () => {
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.GOLDEN, 0.001, 0.02)).toBe(0.001);
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.POISON, 0.011, 0.02)).toBe(0.011);
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.LARGE, 0.051, 0.02)).toBe(0.051);
+    test('Regular (the catch-all) is never widened, even with a bonus active — it absorbs everything else by shrinking', () => {
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.REGULAR)).toBe(1);
     });
 
-    // Regular is the fixed-at-1 catch-all (WORK_SCENARIO_INDICES.REGULAR = -1, always fails
-    // `>= METAL`) — it has to stay untouched so it absorbs the widened Metal slice by
-    // shrinking, exactly the "donated entirely from Regular" shape the EV sizing assumed.
-    test('Regular (the catch-all) is never widened, even with a bonus active', () => {
-        expect(getEffectiveScenarioChance(WORK_SCENARIO_INDICES.REGULAR, 1, 0.02)).toBe(1);
+    test('the accumulated shift never resets between doubled scenarios — it carries through untouched ones too', () => {
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
+        // By Golden Yam (the last doubled scenario), the shift includes Golden+Poison+Large
+        // (each doubled) plus Companion+Taro+Mimic (also doubled) — Metal/Sweet/Ancient's
+        // own widths are skipped but don't reset the running total.
+        const totalDoubledWidth = .001 + .01 + .04 + .015 + .02 + .01 + .001; // golden+poison+large+companion+taro+mimic+goldenYam
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN_YAM)).toBeCloseTo(.1275 + totalDoubledWidth);
     });
 });
 

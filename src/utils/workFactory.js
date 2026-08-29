@@ -6,20 +6,55 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
-// Prospector's metalEncounterChanceFlat perk (see constants.js) widens Metal Potato's own
-// slice of work.js's cumulative roll table — every scenario from Metal onward (Sweet,
-// Companion, Taro, Ancient, Mimic, Golden Yam) shifts up by the same bonus so each keeps
-// its own slice width unchanged, and Regular (the fixed-at-1 catch-all, WORK_SCENARIO_INDICES
-// -1, always fails `>= METAL`) absorbs the difference by shrinking — exactly the "donated
-// entirely from Regular" shape balance-audit.md's 2026-08-23 sizing pass assumed. Kept as a
-// standalone pure function (rather than mutating work.js's shared module-level
-// `workScenarios` array in place) since that array is reused across every concurrent
-// player's /work call — a per-request mutation there would race.
-function getEffectiveScenarioChance(scenarioType, baseChance, metalEncounterBonus) {
-    if (metalEncounterBonus > 0 && scenarioType >= WORK_SCENARIO_INDICES.METAL) {
-        return baseChance + metalEncounterBonus;
-    }
-    return baseChance;
+// Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
+// non-contiguous scenarios' own slice of work.js's cumulative roll table — Golden, Poison,
+// Large, Companion, Taro, Mimic, and Golden Yam, each independently, while every OTHER
+// scenario (Metal, Sweet, Ancient) and Regular's own fixed-at-1 catch-all stay untouched
+// and absorb the difference by shrinking. Generalizes the exact mechanism the retired
+// Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a scenario's
+// own raw slice width, then shift every LATER scenario's cumulative threshold up by the
+// same running total so each keeps its own width unchanged — just applied to several
+// scattered scenario types instead of one contiguous "Metal onward" run. Sweet Potato and
+// Metal Potato are deliberately excluded from the doubled set: both grant a permanent,
+// uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3 of the time, Metal's
+// own uncapped workMultiplierReward), and an EV check (2026-08-29, comparing this exact
+// redesign against Spudsprite over 1000 simulated /work calls) found doubling Sweet
+// Potato's encounter rate alone let a Rare-tier companion out-earn a Legendary by
+// ~25-30% — the same compounding-snowball shape already found and fixed once for
+// Prospector/Metal specifically (see handleMetalPotato's own isBoostedHit comment).
+//
+// Computes every scenario's new effective cumulative threshold in ONE pass over the whole
+// table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
+// this stays a single, directly-testable pure function. `scenarios` is
+// `[{ type, chance }]` in roll order (matches work.js's own `workScenarios` array order
+// exactly — GOLDEN..GOLDEN_YAM, then REGULAR's fixed 1) — `chance` is each scenario's own
+// BASE (unwidened) cumulative threshold. `multiplierBonus` is the perk's own value (0 if
+// no such companion is equipped — a true no-op, not just "no scenario matches the
+// membership check below).
+const PROSPECTOR_DOUBLED_SCENARIOS = [
+    WORK_SCENARIO_INDICES.GOLDEN,
+    WORK_SCENARIO_INDICES.POISON,
+    WORK_SCENARIO_INDICES.LARGE,
+    WORK_SCENARIO_INDICES.COMPANION,
+    WORK_SCENARIO_INDICES.TARO,
+    WORK_SCENARIO_INDICES.MIMIC,
+    WORK_SCENARIO_INDICES.GOLDEN_YAM,
+];
+
+function getEffectiveScenarioChances(scenarios, multiplierBonus) {
+    let previousChance = 0;
+    let shift = 0;
+    return scenarios.map(({ type, chance }) => {
+        const rawWidth = chance - previousChance;
+        previousChance = chance;
+        if (multiplierBonus > 0 && type !== WORK_SCENARIO_INDICES.REGULAR && PROSPECTOR_DOUBLED_SCENARIOS.includes(type)) {
+            shift += rawWidth * multiplierBonus;
+        }
+        // Regular (the fixed-at-1 catch-all, WORK_SCENARIO_INDICES.REGULAR = -1) is never
+        // widened — it absorbs every other scenario's widening by shrinking, exactly the
+        // "donated entirely from Regular" shape this mechanism has always used.
+        return { type, chance: type === WORK_SCENARIO_INDICES.REGULAR ? chance : chance + shift };
+    });
 }
 
 // Pure decision for handleMetalPotato's isBoostedHit — pulled out as its own function
@@ -807,7 +842,7 @@ module.exports = {
     WorkFactory,
     getCurrentWeekTag,
     computePoisonMitigation,
-    getEffectiveScenarioChance,
+    getEffectiveScenarioChances,
     isMetalHitBoosted,
     // Widened for Mercenary Bounties (mercenaryFactory.js's /rob-npc payout) to reuse the
     // exact same reward-scaling formula every other /work-shaped reward already uses,

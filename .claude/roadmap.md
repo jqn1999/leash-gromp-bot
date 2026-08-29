@@ -3256,6 +3256,55 @@ and needs its own balance pass.
   correctly). Docs: `systems/mercenary-bounties.md#rival-bounty-hunters`. Full suite:
   736/736 (up from 726/726 — 10 new tests, zero regressions).
 
+- [x] **84. Prospector Redesign — From Metal-Only Niche Kit to a Broad Encounter-Luck Buff** — M — **Done**
+  What: player feedback — Prospector's kit (`metalSuccessChanceFlat`/
+  `metalEncounterChanceFlat`, both Metal-Potato-only) was "too niche," realistically silent
+  on 97%+ of `/work` calls since Metal itself is already one of the rarer rolls. Planned
+  out first: proposed generalizing the retired Metal-only widening mechanism to ALL
+  non-Regular scenarios plus a work-multi or cooldown tax; refined across several rounds of
+  direct instruction into the shipped shape — doubling a hand-picked 7-scenario set
+  (Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, Golden
+  Yam), leaving Metal/Sweet/Ancient untouched, at an 8% work-multiplier tax.
+  - `workFactory.getEffectiveScenarioChances` (plural, replacing the retired singular
+    `getEffectiveScenarioChance`) generalizes the exact same "widen this scenario's own
+    slice, shift every later one up by the same running total, Regular absorbs the
+    difference" mechanism to `PROSPECTOR_DOUBLED_SCENARIOS`' 7 non-contiguous scenario
+    types in one pass, computed fresh per `/work` call in `work.js`'s `performWork` (still
+    never mutating the shared `workScenarios` array).
+  - New perk `specialEncounterMultiplierBonus` (value 1 = doubles); cost reuses the
+    EXISTING `workMultiplierPercent` perk type with a negative value (-8%) rather than a
+    new "penalty" type — `getCompanionWorkMulti`'s formula naturally subtracts, and it
+    applies everywhere this perk is already read (raid power, every `/work` reward), a
+    deliberate broad tradeoff. `embedFactory.js`'s label fixed for the first-ever negative
+    use (was rendering a broken `+-8.0%`).
+  - Cost lever (work-multi tax over cooldown increase) chosen by direct reasoning: a
+    longer cooldown means fewer total `/work` calls per day, directly cannibalizing the
+    very buff it's paired with; a multiplier tax only taxes the value of a boring Regular
+    hit, leaving the higher special-hit rate fully felt.
+  - **Sweet Potato was in an earlier draft of the doubled set** until a 1000-`/work` EV
+    check (reusing the real `workFactory.js` handlers via a throwaway Jest simulation, 200
+    trials averaged, compared against Spudsprite) found doubling its encounter rate alone
+    reproduced the exact compounding-snowball shape the 2026-08-24 Metal/`isBoostedHit` fix
+    already had to cap once — Sweet's flat `+0.2` `workMultiplierAmount` grant (1/3 of its
+    own rolls) let this Rare out-earn a Legendary by ~25-30% purely from extra permanent
+    stat growth compounding into every later roll. Pulling Sweet Potato out (and doubling
+    Taro Trader/Companion/Mimic Potato instead — all bounded rewards, no stat grants)
+    brought the final work-multiplier after 1000 calls back within noise of baseline,
+    closing the snowball without needing an `isBoostedHit`-style dampener across 6 more
+    scenario handlers. Final EV check: new Prospector ≈1.375x baseline potato total vs.
+    Spudsprite's raw ≈1.104x — but Spudsprite's 15% `workCooldownSkipChance` is invisible
+    to a fixed-call-count comparison (it buys more calls per real day, not more value per
+    call, `≈1/(1-.15)=1.176x` throughput); corrected, Spudsprite's real per-time value is
+    ≈1.298x, putting a Rare and a Legendary within a modest ~6% of each other rather than
+    the ~25-30% overshoot the Sweet-Potato-inclusive draft produced.
+  Tests: `workFactory.test.js`'s `getEffectiveScenarioChance` describe block fully rewritten
+  for the new plural function (doubled-scenario widening, untouched-scenario pass-through,
+  Regular never widened, shift accumulates across scattered scenarios) against real
+  `eventFactory.js` base chances. Docs: `systems/companions.md`'s Prospector section
+  rewritten (history condensed, new mechanism + EV numbers documented in full). Full
+  suite: 736/736, zero regressions (test count unchanged — replaced, not added, since the
+  old function's tests were fully superseded).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

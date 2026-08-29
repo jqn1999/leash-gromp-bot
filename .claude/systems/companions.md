@@ -250,7 +250,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `metalSuccessChanceFlat` +20% (the flat 10% base success roll on Metal Potato, see below) + `metalEncounterChanceFlat` +2% (Metal Potato's own 1.0% base encounter chance, Prospector-owner only — see below). A hit that only landed because of this boost pays 25% reward and grants no work-multiplier bump — see "boosted hits" below |
+| Prospector | Rare | `specialEncounterMultiplierBonus` +1 (doubles Golden/Poison/Large/Companion/Taro/Mimic/Golden Yam encounter chance — Metal/Sweet/Ancient excluded, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -288,11 +288,13 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
-| Metal Success Chance | — | 20% (Prospector) | — | — |
-| Metal Encounter Chance | — | 2% (Prospector) | — | — |
+| Special Encounter Chance (7 scenarios doubled) | — | +1x (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
-Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why.
+Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why. The Work
+Multiplier row above lists Firefly (the tier's positive example) — Prospector, also Rare, carries
+the same perk type at **-8%** (a cost, not a benefit — see its own section below), the first
+negative use of `workMultiplierPercent` in the roster.
 
 ### Guinea Pig
 
@@ -350,77 +352,74 @@ carry) and multiplied in on top. See `.claude/roadmap.md` for the exact numbers 
 before/after comparison chart shared with the account holder — note that chart predates the
 escalation pass and only shows the level axis, not the weekly-hit-count axis.
 
-### Prospector: Metal Potato's success roll gets its first modifier
+### Prospector: retired Metal-only kit, then a full 2026-08-29 redesign
 
-Landing on the `METAL` scenario slot doesn't guarantee the reward — `work.js`'s dispatch closure
-rolls a separate, flat 10% chance to actually succeed (`metalPotatoRoll < .1`); missing it burns
-the cooldown for nothing. That roll was previously untouched by any stat in the game. Prospector
-adds `metalSuccessChanceFlat` straight onto the threshold (`.1 +
-companionFactory.getActivePerkValue(userDetails, "metalSuccessChanceFlat")`) — 20% takes it to
-30%, a 3x improvement, sized up from the usual Rare-tier bump specifically because Metal Potato is
-already rare to roll into in the first place; a smaller number wouldn't feel worth chasing.
+**History, condensed** (full detail in git history/roadmap if ever needed): Prospector originally
+worked Metal Potato's own success roll (`metalSuccessChanceFlat`, +20%: 10%→30%) and, in a 2026-08-23
+follow-up, Metal's *encounter* chance too (`metalEncounterChanceFlat`, +2%: 1.0%→3.0%), widening
+Metal's own slice of the cumulative roll table via a pure `getEffectiveScenarioChance` function so no
+per-request mutation of the shared `workScenarios` array was needed. A 2026-08-24 follow-up
+(`isMetalHitBoosted`/`handleMetalPotato`'s `isBoostedHit` param) then had to cap a real compounding
+snowball this combo created: Metal's own `+0.6` `workMultiplierAmount` grant is uncapped, so more
+Metal hits meant more of that grant feeding into every future roll's `effectiveMultiplier` —
+Prospector out-earned Spudsprite 3.4x in potatoes and 7.5x in passive over 10,000 simulated `/work`
+calls before a "boosted hit" (one that only landed because of the widened thresholds) was capped to
+25% reward with the work-multiplier grant skipped entirely.
 
-**Follow-up (2026-08-23): the previously-deferred encounter-chance idea shipped, via a
-non-mutating approach.** Prompted by a `balance-audit.md` Income Power sizing pass: Prospector was
-realizing only ~2.9% of the same potato-scenario EV measure Rare peers Mole/Firefly realize
-unconditionally at a flat 9%, since `metalSuccessChanceFlat` only ever matters conditional on Metal
-Potato's own rare 1.0% base encounter chance already hitting. The concern raised above (the odds
-table, `work.js`'s module-level `workScenarios`, is shared/mutated once for the whole bot via
-`setWorkScenarios` — not computed per-user, and mutating it per-request would race across
-concurrent players) turned out not to require solving at all: `workFactory.js`'s
-`getEffectiveScenarioChance(scenarioType, baseChance, metalEncounterBonus)` is a **pure function**
-computed fresh at roll-comparison time in `work.js`'s `performWork`, never touching the shared array.
-Prospector's new `metalEncounterChanceFlat` (+2%, `getActivePerkValue`'d the same as every other
-perk) widens Metal Potato's own slice of the cumulative roll table — every scenario from Metal
-onward (Sweet, Companion, Taro, Ancient, Mimic, Golden Yam) shifts up by the same bonus so each
-keeps its own slice width, and Regular (the fixed-at-1 catch-all) absorbs the difference by
-shrinking. This is Prospector-exclusive value (unlike a universal chance bump, which was considered
-and rejected — it would've hidden the actual "Prospector is underpriced" signal by handing free EV
-to every non-Prospector player too). +2% (1.0%→3.0% effective encounter chance for a Prospector
-owner) lands at ~10.1% of the same EV measure, at/slightly past the 9% parity bar — deliberately not
-also touching `metalSuccessChanceFlat`, since the encounter-chance lever alone already closes the
-gap and stacking both would overshoot.
+**Redesigned 2026-08-29, direct instruction** — despite that fix, the whole kit stayed scoped to one
+scenario (Metal, already one of the rarer rolls), so it was realistically silent on 97%+ of `/work`
+calls. Player feedback called it "too niche." New kit:
 
-### Second follow-up (2026-08-24): "boosted hits" — closing an uncapped compounding snowball
+```js
+perks: [
+    { type: "specialEncounterMultiplierBonus", value: 1 },   // doubles 7 scenarios' own encounter chance
+    { type: "workMultiplierPercent", value: -0.08 }           // the cost: -8% effective work multiplier
+]
+```
 
-The EV-parity analysis above only ever measured a single Metal Potato hit's immediate potato payout
-— it never accounted for the fact that Metal Potato *also* grants a flat, **uncapped** `+0.6`
-`workMultiplierAmount` bump on every success (unlike its own passive/bank-capacity grants, which
-already had a per-hit cap — `maxPassiveGain`/`maxBankCapacityGain`, see `metalPotatoRewards` in
-`workFactory.js`). That grant feeds directly back into `effectiveMultiplier`, which sizes the payout
-of every future `/work` roll — including future Metal hits. A companion that lands more Metal hits
-doesn't just earn more potatoes per hit, it also lands more of these uncapped compounding grants,
-which then makes every subsequent roll (of any scenario type) bigger too.
+**`specialEncounterMultiplierBonus` generalizes the exact same widening mechanism** Metal's own
+retired perk established — `workFactory.getEffectiveScenarioChances` (plural now; takes the whole
+scenario list and computes every effective threshold in one pass, rather than one scenario at a
+time) widens Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, and
+Golden Yam — each scenario's own raw slice width is added again (value `1` = "+1x own width" =
+doubled), every scenario after it in roll order shifts up by the same running total so each keeps
+its own width, and Regular (the fixed-at-1 catch-all) absorbs the total difference by shrinking.
+`work.js`'s `performWork` computes this fresh per request (still never mutating the shared
+`workScenarios` array — the same race-safety reasoning that shaped the original Metal-only version).
 
-Modeled precisely (live-compounding, not a flat-multiplier approximation) over 10,000 `/work` calls
-at an 8x work multi: Prospector's combined encounter+success boost (9x more expected Metal
-successes than baseline) let it out-earn Spudsprite **3.4x** in total potatoes and **7.5x** in
-passive amount — nowhere close to the ~1.1x a naive single-hit EV comparison suggested, because that
-comparison never let the snowball actually run.
+**Metal Potato, Sweet Potato, and Ancient Potato are deliberately excluded from the doubled set** —
+see `PROSPECTOR_DOUBLED_SCENARIOS` in `workFactory.js`. Metal was excluded from the start (its own
+uncapped `workMultiplierReward` carries the identical snowball risk the 2026-08-24 fix above already
+had to cap once). Sweet Potato was in an early draft of this redesign until a 1000-`/work` EV check
+(comparing against Spudsprite, same methodology as the original Metal analysis) found doubling its
+encounter rate alone reproduced the *exact same* compounding shape: Sweet's flat `+0.2`
+`workMultiplierAmount` grant (1/3 of its own rolls) let this Rare out-earn a Legendary by ~25-30% in
+raw potato EV over 1000 calls, purely from the extra permanent stat growth compounding into every
+later roll. Pulling Sweet Potato out of the doubled list (and doubling Taro Trader/Companion/Mimic
+Potato instead — none of which grant any permanent stat bonus, only bounded potato/starch/companion
+rewards) brought the *final work-multiplier* after 1000 simulated calls back to within noise of
+baseline (≈21.9 across no-companion/Spudsprite/new-Prospector alike), closing the snowball risk
+without an `isBoostedHit`-style dampener needing to be built for 6 more scenario handlers.
 
-**The fix scopes to exactly the hits that wouldn't have happened without the boost.** A Metal hit's
-encounter roll and success roll are each checked independently against their own UNBOOSTED
-threshold (`workFactory.isMetalHitBoosted`, using the *same* roll values that already resolved the
-real encounter/success, not a fresh re-roll) — a hit is "boosted" unless *both* rolls would have
-cleared their base threshold (1.0% encounter, 10% success) on their own. A player with no
-Metal-boosting companion always gets `isBoostedHit: false`, since their thresholds are never widened
-in the first place — this is a complete no-op outside of Prospector (or any future companion with
-either `metalEncounterChanceFlat` or `metalSuccessChanceFlat`).
+**The cost reuses `workMultiplierPercent` directly with a negative value**, rather than a separate
+"penalty" perk type — `getCompanionWorkMulti`'s existing `userMultiplier *
+companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent")` formula naturally
+subtracts when the value is negative, and it applies everywhere this perk is already read (raid
+power, every `/work` reward), not scoped to `/work` only — a deliberate broad tradeoff. Sized at -8%
+against Rare-tier single-perk peers (Firefly 9%, Mole/Rootcarver 9-12%) — meaningful without being
+crushing against a buff that touches 7 scenarios at once. `embedFactory.js`'s `workMultiplierPercent`
+label was fixed to render a leading `-` instead of a broken `+-8.0%` for this first-ever negative use.
 
-A boosted hit (`workFactory.handleMetalPotato`'s `isBoostedHit` param) still resolves — it's not
-"Prospector doesn't work" — but at `metalPotatoRewards.boostedHitRewardScale` (25%) of the normal
-potato/passive/bank-capacity reward, and **the work-multiplier grant is skipped entirely**, not just
-scaled down — since that's the one field with no cap of its own, any nonzero grant on every boosted
-hit still re-feeds the same snowball, just slower. Visible on the result embed
-(`createWorkEmbed`'s `isBoostedMetalHit` field) so a reduced haul doesn't read as an unexplained
-smaller number, same reasoning Poison Mitigation's own visibility field already established.
-
-Tuned by direct instruction after testing several scales: 50% left Prospector still 4x ahead on
-passive and just under parity on potatoes (0.91x); 25% (the shipped value) lands potatoes at 0.83x
-of Spudsprite's total (Prospector now slightly *behind* on raw potatoes) and passive at 2.46x
-(down from 7.5x, but still a real, accepted residual edge — deliberately left as-is rather than
-decoupling passive onto its own, harsher scale, per direct instruction to keep one shared scale for
-both).
+**Final EV check** (1000 `/work` calls, 200-trial average, `workMultiplierAmount` starting at 20):
+new Prospector landed ~1.375x baseline potato total vs. Spudsprite's raw ~1.104x — but Spudsprite's
+15% `workCooldownSkipChance` is invisible to a fixed-call-count comparison (it doesn't make any one
+call worth more, it lets you complete more calls per real day, roughly `1/(1-.15) ≈ 1.176x`
+throughput); once corrected for that, Spudsprite's real per-time value is ≈1.298x baseline — putting
+a Rare and a Legendary within a modest ~6% of each other rather than the ~25-30% overshoot the
+Sweet-Potato-inclusive draft produced. Verified via a throwaway simulation reusing the real
+`workFactory.js` handlers (not reimplemented formulas), same "revert-and-confirm" rigor as this
+codebase's own test suite, deleted after the numbers were confirmed rather than kept as a permanent
+test (the comparison is a one-time balance check, not a regression to guard forever).
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 

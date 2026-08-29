@@ -782,31 +782,51 @@ const Companions = [
         name: "Prospector",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-        description: "A grizzled prospector who's spent a lifetime learning exactly where the ore is soft — Metal Potato doesn't stand a chance against them, and they know exactly where to dig for one in the first place.",
+        description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — doubles your odds of stumbling into Golden Potatoes, Large Potatoes, Poison Potatoes, wandering Companions, Taro Traders, Mimics, and Golden Yams alike, though all that extra digging leaves them a little too worn out for steady work.",
         scavengeFlavor: "Prospector staked out a promising patch of dirt and worked it methodically, panning and prying until something worthwhile finally came loose.",
-        // Metal Potato's own success roll (work.js's workScenarios) is a flat 10% for
-        // everyone, independent of any stat — this is the first perk that touches it.
-        // +20% (10%->30%, a 3x improvement) since Metal Potato is already rare to roll
-        // into in the first place; a smaller bump wouldn't feel worth chasing.
+        // Redesigned 2026-08-29, direct instruction — the original Metal-only kit
+        // (metalSuccessChanceFlat/metalEncounterChanceFlat, retired) was realistically
+        // silent on 97%+ of /work calls, since it only ever mattered on Metal Potato
+        // specifically (already one of the rarer scenarios). Player feedback called it
+        // "too niche." Redesigned around "generally improves odds of all special work
+        // encounters at a cost of either reduced work multi or increased work cooldown"
+        // (the user's own framing) — cost lever picked (reduced work multi over increased
+        // cooldown) because a longer cooldown means fewer total /work calls per day,
+        // directly cannibalizing the very buff it's paired with; a multiplier tax only
+        // taxes the VALUE of a boring Regular hit, leaving the higher special-hit rate
+        // fully felt.
         //
-        // metalEncounterChanceFlat added 2026-08-23 per balance-audit.md's 2026-08-23
-        // Income Power sizing pass: Prospector was realizing only ~2.9% of the same
-        // potato-scenario EV measure Rare peers Mole/Firefly realize unconditionally at a
-        // flat 9%, since metalSuccessChanceFlat only ever matters conditional on Metal
-        // Potato's own rare 1.0% base encounter chance (work.js's workScenarios) already
-        // hitting. A universal encounter-chance buff was considered and rejected — it
-        // would've handed free EV to every non-Prospector player too, not corrected
-        // Prospector's own pricing. This perk instead widens Metal Potato's slice of the
-        // roll table ONLY while Prospector is equipped (see work.js's performWork,
-        // workFactory.js's getEffectiveScenarioChance), donated entirely from Regular's
-        // catch-all remainder the same way the EV model assumed. +2% (1.0%->3.0%
-        // effective for a Prospector owner) lands right at/slightly past the 9% parity
-        // bar (~10.1% by the same measure) — the success-chance perk above was
-        // deliberately left untouched since the encounter-chance lever alone already
-        // closes the gap; stacking a success-chance increase on top would overshoot.
+        // specialEncounterMultiplierBonus doubles (value 1 = "+1x own base width", i.e.
+        // 2x total) Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader,
+        // Mimic Potato, and Golden Yam — see workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS
+        // for the exact mechanism (generalizes the retired Metal-only widening technique
+        // to several non-contiguous scenarios at once). Metal Potato, Sweet Potato, and
+        // Ancient Potato are deliberately EXCLUDED from the doubled set — Sweet Potato was
+        // in an earlier draft of this redesign until a 1000-/work EV check (2026-08-29,
+        // comparing against Spudsprite) found doubling its encounter rate let this Rare
+        // out-earn a Legendary by ~25-30%, driven entirely by Sweet's flat +0.2
+        // workMultiplierAmount grant (1/3 of its own rolls) compounding into every later
+        // roll for the rest of the account's life — the same snowball shape the original
+        // Metal-only kit already caused once before being capped via isBoostedHit. Metal
+        // itself was left out of the redesign from the start (its own uncapped
+        // workMultiplierReward carries the identical risk); Ancient was never proposed for
+        // inclusion. Every scenario actually included here pays out a bounded reward
+        // (potatoes, starches, or a companion pull) with no compounding stat grant, so
+        // widening them carries no equivalent snowball risk.
+        //
+        // workMultiplierPercent's -0.08 reuses the SAME perk type every positive-value
+        // companion already uses (Sprout +0.05, Firefly +0.09, Spudsprite +0.08, Mochi
+        // +0.12) rather than inventing a separate "penalty" perk type — a negative value
+        // naturally subtracts via getCompanionWorkMulti's existing
+        // `userMultiplier * companionFactory.getActivePerkValue(...)` formula, and
+        // embedFactory.js's own label was fixed to render the sign either way. Applies
+        // everywhere workMultiplierPercent is already read (raid power, /work rewards),
+        // not scoped to /work only — a deliberate broad tradeoff, not an oversight. Sized
+        // against Rare-tier single-perk peers (Firefly 9%, Mole/Rootcarver 9-12%) as a
+        // meaningful but not crushing tax against a buff that touches 7 scenarios at once.
         perks: [
-            { type: "metalSuccessChanceFlat", value: 0.20 },
-            { type: "metalEncounterChanceFlat", value: 0.02 }
+            { type: "specialEncounterMultiplierBonus", value: 1 },
+            { type: "workMultiplierPercent", value: -0.08 }
         ]
     },
     {
