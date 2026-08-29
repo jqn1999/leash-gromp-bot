@@ -3219,6 +3219,43 @@ and needs its own balance pass.
   `eventFactory.test.js` gained a direct "Ancient is now rarer than Golden" regression
   alongside the updated exact value. Full suite: 726/726, zero regressions.
 
+- [x] **83. Mercenary Rank Now Boosts Rival Bounty Hunter Success Chance** — S/M — **Done**
+  What: player complaint — "not feeling much of a boost for rival fights with levels."
+  Investigated first (asked to "plan out" a fix): confirmed the complaint was literally
+  true, not perception. Since the 2026-08-23 Rival redesign, `resolveRivalConfrontation`'s
+  `successChance` was a pure `[min,max]` range roll per scenario with ZERO dependence on
+  Mercenary Rank, power, or rebirth — Rank touched exactly one thing in that fight
+  (`rewardMultiplier`, applied only on a win landing at the same rate regardless of rank).
+  Presented a plan (flat per-rank bonus, biggest on Hard since its range is narrowest);
+  refined by direct instruction to per-scenario caps instead — "+20% for easy, +15% for
+  medium, +10% for hard... scaling up to those caps on the way from merc lvl 1-6."
+  - New `rivalSuccessBonus: { easy, medium, hard }` field added directly to
+    `MercenaryRank.THRESHOLDS` (alongside `rewardMultiplier`), linear from all-zero at
+    Rank 1 to the requested caps at Rank 6 (2/4/6/8/10-point steps for hard, 3/6/9/12/15
+    for medium, 4/8/12/16/20 for easy). Deliberately bigger in absolute points on Easy
+    (60% of rolls) than Hard (10% of rolls), but proportionally consistent — Easy's +20
+    and Hard's +10 both fully span their own range widths (20pt/10pt), Medium's +15 covers
+    75% of its own 20pt range. A maxed mercenary's Hard floor doubles (10%->20%) without
+    approaching a guaranteed win.
+  - `getMercenaryRankInfo` returns the new field; `resolveRivalConfrontation` adds
+    `rankInfo.rivalSuccessBonus[scenario]` into `successChance`, stacking additively with
+    Yukon's existing flat `rivalSuccessChanceFlat` bonus (unchanged).
+  - Surfaced explicitly, not just baked silently into the final number — the whole point
+    was making it *felt*: a new "Mercenary Rank Bonus: +X% (Rank N)" field on
+    `createRivalConfrontationResultEmbed` (shown only when nonzero), and a live
+    "Rival Success Bonus (this Rank): +20% Easy / +15% Medium / +10% Hard"-shaped preview
+    line added to `/notoriety`'s `createNotorietyEmbed`, so a player can see their own
+    bonus BEFORE fighting, not just infer it from a bigger number after.
+  - Loss/penalty side deliberately left untouched — mirrors Bounty's own stated "no
+    discount on the loss side" precedent; the win-rate fix alone is the actual number
+    players watch.
+  Tests: `mercenaryFactory.test.js` gained coverage for `rivalSuccessBonus` at Rank 1/Rank
+  6/monotonic-across-ranks, `resolveRivalConfrontation` folding it into `successChance`
+  correctly (including stacking with Yukon), and a Rank 1 no-op case.
+  `embedFactory.test.js` gained coverage for both new display surfaces (shown/hidden
+  correctly). Docs: `systems/mercenary-bounties.md#rival-bounty-hunters`. Full suite:
+  736/736 (up from 726/726 — 10 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

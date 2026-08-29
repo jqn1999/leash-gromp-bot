@@ -30,12 +30,41 @@ describe('getMercenaryRankInfo', () => {
     });
 
     // unlocksTier retired 2026-08-28 (12-Tier Bounty Ladder rework) — Rank no longer
-    // gates tier access, only the reward multiplier.
+    // gates tier access, only the reward multiplier (and, since 2026-08-29, the Rival
+    // success bonus below).
     test('every threshold resolves to its own rank/multiplier exactly at the boundary', () => {
         MercenaryRank.THRESHOLDS.forEach(tier => {
             const result = mercenaryFactory.getMercenaryRankInfo(tier.winsRequired);
             expect(result.rank).toBe(tier.rank);
             expect(result.rewardMultiplier).toBe(tier.rewardMultiplier);
+        });
+    });
+
+    // rivalSuccessBonus added 2026-08-29 — direct instruction fixing the "ranking up does
+    // nothing for Rival odds" complaint. Verifies the exact per-scenario caps/progression
+    // requested: +20%/+15%/+10% (easy/medium/hard) at max Rank 6, 0 at Rank 1, linearly
+    // ramping in between.
+    test('rivalSuccessBonus is 0 across all three scenarios at Rank 1', () => {
+        const result = mercenaryFactory.getMercenaryRankInfo(0);
+        expect(result.rivalSuccessBonus).toEqual({ easy: 0, medium: 0, hard: 0 });
+    });
+
+    test('rivalSuccessBonus hits the exact requested caps at max Rank 6', () => {
+        const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
+        expect(result.rivalSuccessBonus).toEqual({ easy: 0.20, medium: 0.15, hard: 0.10 });
+    });
+
+    test('rivalSuccessBonus increases monotonically with rank for every scenario, and easy >= medium >= hard at every rank', () => {
+        let previous = { easy: -1, medium: -1, hard: -1 };
+        MercenaryRank.THRESHOLDS.forEach(tier => {
+            const { rivalSuccessBonus } = mercenaryFactory.getMercenaryRankInfo(tier.winsRequired);
+            expect(rivalSuccessBonus.easy).toBeGreaterThanOrEqual(previous.easy);
+            expect(rivalSuccessBonus.medium).toBeGreaterThanOrEqual(previous.medium);
+            expect(rivalSuccessBonus.hard).toBeGreaterThanOrEqual(previous.hard);
+            expect(rivalSuccessBonus.easy).toBeGreaterThanOrEqual(rivalSuccessBonus.medium);
+            expect(rivalSuccessBonus.medium).toBeGreaterThanOrEqual(rivalSuccessBonus.hard);
+            previous = rivalSuccessBonus;
         });
     });
 
@@ -1014,5 +1043,67 @@ describe('resolveRivalConfrontation', () => {
         }
         expect(result.scenario).toBe('easy');
         expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0] + 0.05);
+    });
+
+    // Mercenary Rank's own success-chance bonus, added 2026-08-29 (direct instruction) —
+    // see MercenaryRank.THRESHOLDS' own comment for the full derivation.
+    test('a maxed-rank mercenary\'s successChance includes the rank bonus for whichever scenario rolled', async () => {
+        const maxRank = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const user = baseUser({ workMultiplierAmount: 90, mercenaryBountyWinCount: maxRank.winsRequired });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // scenario roll -> hard
+            .mockReturnValueOnce(0)        // successChance roll -> low end of the range
+            .mockReturnValueOnce(0.999999) // win check fails regardless
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.scenario).toBe('hard');
+        expect(result.rankSuccessBonus).toBe(0.10);
+        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.hard[0] + 0.10);
+    });
+
+    test('a Rank 1 mercenary gets no rank bonus at all — successChance is unaffected', async () => {
+        const user = baseUser({ workMultiplierAmount: 90, mercenaryBountyWinCount: 0 });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)      // scenario roll -> easy
+            .mockReturnValueOnce(0)        // successChance roll -> low end of the range
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(user);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.rankSuccessBonus).toBe(0);
+        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0]);
+    });
+
+    test('rank bonus and Yukon\'s flat bonus stack additively', async () => {
+        const maxRank = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const userWithYukonAndRank = baseUser({
+            workMultiplierAmount: 90,
+            mercenaryBountyWinCount: maxRank.winsRequired,
+            companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 0 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 1 },
+        });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)      // scenario roll -> easy
+            .mockReturnValueOnce(0)        // successChance roll -> low end of the range
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await mercenaryFactory.resolveRivalConfrontation(userWithYukonAndRank);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0] + 0.05 + 0.20);
     });
 });

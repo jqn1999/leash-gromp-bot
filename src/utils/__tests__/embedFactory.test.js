@@ -178,3 +178,49 @@ describe('createWorldResultEmbed world-buff announcement', () => {
         expect(field).toBeUndefined();
     });
 });
+
+// Mercenary Rank's Rival success bonus (2026-08-29) — surfaced explicitly on both the
+// post-fight result embed and the pre-fight /notoriety preview, since the whole point was
+// making rank's contribution to a Rival fight actually felt.
+describe('createRivalConfrontationResultEmbed rank bonus display', () => {
+    const rival = { name: 'Turnipbeard, the Rusted Ronin', winFlavor: 'You win.', loseFlavor: 'You lose.' };
+
+    test('shows the Mercenary Rank Bonus field when rankSuccessBonus > 0', () => {
+        const result = {
+            scenario: 'hard', won: true, successChance: 0.30, rankSuccessBonus: 0.10, rival,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75 }, rewardAmount: 1000, penaltyAmount: 0, statBump: null,
+        };
+        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result);
+        const field = embed.data.fields.find(f => f.name.includes('Mercenary Rank Bonus'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('+10%');
+        expect(field.value).toContain('Rank 6');
+    });
+
+    test('omits the field entirely at Rank 1 (rankSuccessBonus is 0)', () => {
+        const result = {
+            scenario: 'easy', won: false, successChance: 0.45, rankSuccessBonus: 0, rival,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00 }, rewardAmount: 0, penaltyAmount: 500, statBump: null,
+        };
+        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result);
+        expect(embed.data.fields.find(f => f.name.includes('Mercenary Rank Bonus'))).toBeUndefined();
+    });
+});
+
+describe('createNotorietyEmbed Rival success bonus preview', () => {
+    test('shows the per-scenario bonus for the current rank', () => {
+        const rankInfo = { rank: 6, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 } };
+        const embed = embedFactory.createNotorietyEmbed('User', 15, 20, rankInfo, true, 3);
+        const field = embed.data.fields.find(f => f.name.includes('Rival Success Bonus'));
+        expect(field).toBeDefined();
+        expect(field.value).toBe('+20% Easy / +15% Medium / +10% Hard');
+    });
+
+    test('shows all-zero bonuses at Rank 1 rather than omitting the field', () => {
+        const rankInfo = { rank: 1, rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0, medium: 0, hard: 0 } };
+        const embed = embedFactory.createNotorietyEmbed('User', 0, 20, rankInfo, false, 0);
+        const field = embed.data.fields.find(f => f.name.includes('Rival Success Bonus'));
+        expect(field).toBeDefined();
+        expect(field.value).toBe('+0% Easy / +0% Medium / +0% Hard');
+    });
+});

@@ -29,6 +29,7 @@ function getMercenaryRankInfo(winCount) {
     return {
         rank: tier.rank,
         rewardMultiplier: tier.rewardMultiplier,
+        rivalSuccessBonus: tier.rivalSuccessBonus,
         winsToNextRank: nextTier ? nextTier.winsRequired - wins : null
     };
 }
@@ -339,10 +340,15 @@ function rollRivalScenario() {
 // harder and better, full stop.
 //
 // Success chance deliberately does NOT compute effectiveRaidPower/rebirth at all — the
-// range itself is the whole formula, nothing else feeds it. One direct consequence, flagged
-// rather than silently decided: rebirth progress has zero effect anywhere in Rival Bounty
-// Hunters (not here, and not in the reward formula below either, which scales off raw
-// workMultiplierAmount, never effectiveRaidPower).
+// range itself is the whole formula, nothing else feeds it (rank aside, see below). One
+// direct consequence, flagged rather than silently decided: rebirth progress has zero
+// effect anywhere in Rival Bounty Hunters (not here, and not in the reward formula below
+// either, which scales off raw workMultiplierAmount, never effectiveRaidPower).
+//
+// Mercenary Rank DOES feed successChance as of 2026-08-29 — see MercenaryRank.THRESHOLDS'
+// own rivalSuccessBonus comment for the full derivation (direct instruction, fixing a real
+// player complaint that ranking up did nothing for Rival odds, only reward SIZE on a win
+// already landing at the same rate). Stacks additively with Yukon's own flat bonus below.
 //
 // Reward/penalty formula deliberately does NOT read companionFactory.getActivePerkValue(
 // userDetails, "bountyRewardPercent") — Yukon's perk is scoped to Bounty by name and the
@@ -351,16 +357,17 @@ function rollRivalScenario() {
 async function resolveRivalConfrontation(userDetails) {
     const scenario = rollRivalScenario();
     const [minChance, maxChance] = Rival.SUCCESS_CHANCE_RANGE[scenario];
+    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     // Yukon-only — see constants.js's Companions entry for why this is kept modest (5%,
     // half of Hard's own 10-point-wide range) and deliberately uncapped, matching real
     // /rob's own robChance.
-    const rivalSuccessBonus = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat");
-    const successChance = getRandomFromInterval(minChance, maxChance) + rivalSuccessBonus;
+    const yukonSuccessBonus = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat");
+    const rankSuccessBonus = rankInfo.rivalSuccessBonus[scenario];
+    const successChance = getRandomFromInterval(minChance, maxChance) + yukonSuccessBonus + rankSuccessBonus;
     const won = Math.random() < successChance;
-    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     const rival = pickRandomRival();
 
-    const result = { scenario, won, successChance, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
+    const result = { scenario, won, successChance, rankSuccessBonus, rival, rankInfo, rewardAmount: 0, penaltyAmount: 0, statBump: null };
     const rawBase = Math.min(Rival.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount, Rival.MAX_RIVAL_REWARD_BASE);
     const tierFactor = Rival.TIER_REWARD_FACTOR[scenario];
 

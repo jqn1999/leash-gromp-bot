@@ -1302,18 +1302,34 @@ const Raid = {
 // `unlocksTier` retired 2026-08-28 (12-Tier Bounty Ladder rework) — Bounty tier access is
 // no longer rank-gated at all; which of Bounty.TIERS' 12 tiers gets rolled is purely a
 // function of the mercenary's own current power via dynamic tier weighting, the same way
-// Guild Raid's own T1-T4 within Regular mode was never gated by guild level either. Rank
-// keeps exactly one job now: rewardMultiplier. (`/rob-npc`'s own separate heist ladder
-// still gates its 4 tiers by rank directly via RobNpc.TIERS' own `rankRequired` field —
-// untouched by this, it never read `unlocksTier` in the first place.)
+// Guild Raid's own T1-T4 within Regular mode was never gated by guild level either.
+// (`/rob-npc`'s own separate heist ladder still gates its 4 tiers by rank directly via
+// RobNpc.TIERS' own `rankRequired` field — untouched by this, it never read `unlocksTier`
+// in the first place.)
+//
+// rivalSuccessBonus added 2026-08-29, direct instruction — players reported not feeling
+// any boost from ranking up against Rival Bounty Hunters, and the complaint was correct:
+// resolveRivalConfrontation's successChance was a pure [min,max] roll per scenario (see
+// Rival.SUCCESS_CHANCE_RANGE) with zero dependence on rank, power, or rebirth — the ONLY
+// thing rank changed in that fight was rewardMultiplier, applied only on a win a player
+// wasn't landing any more often. Sized per-scenario (not one flat number) at direct
+// instruction: +20%/+15%/+10% (easy/medium/hard) at max Rank 6, ramping linearly from 0
+// at Rank 1. Deliberately BIGGER on easy (the most common scenario, 60% of rolls) than
+// hard (the rarest, 10%) in absolute points, but proportionally similar relative to each
+// scenario's own range width — easy's +20 fully spans its own 20-point range (40-60%),
+// hard's +10 fully spans its own 10-point range (10-20%), medium's +15 covers 75% of its
+// 20-point range (20-40%). A maxed mercenary's Hard roll floor doubles (10%->20%, 25%-35%
+// with Yukon's own flat +5% stacked on top) without going anywhere near guaranteed — Hard
+// is still meant to be hard. Stacks additively with Yukon's rivalSuccessChanceFlat perk,
+// same "flat bonus added after the range roll" shape that perk already established.
 const MercenaryRank = {
     THRESHOLDS: [
-        { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00 },
-        { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15 },
-        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35 },
-        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50 },
-        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65 },
-        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75 },  // max
+        { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0.00, medium: 0.00, hard: 0.00 } },
+        { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15, rivalSuccessBonus: { easy: 0.04, medium: 0.03, hard: 0.02 } },
+        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 } },
+        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50, rivalSuccessBonus: { easy: 0.12, medium: 0.09, hard: 0.06 } },
+        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65, rivalSuccessBonus: { easy: 0.16, medium: 0.12, hard: 0.08 } },
+        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 } },  // max
     ]
 }
 

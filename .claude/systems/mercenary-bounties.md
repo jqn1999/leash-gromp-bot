@@ -795,36 +795,57 @@ flat range instead of a derived ceiling:
 
 ```
 [minChance, maxChance] = Rival.SUCCESS_CHANCE_RANGE[scenario]
-rivalSuccessBonus       = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat")   // Yukon only
-successChance           = getRandomFromInterval(minChance, maxChance) + rivalSuccessBonus
+rankInfo                = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
+yukonSuccessBonus       = companionFactory.getActivePerkValue(userDetails, "rivalSuccessChanceFlat")   // Yukon only
+rankSuccessBonus        = rankInfo.rivalSuccessBonus[scenario]                                         // see below
+successChance           = getRandomFromInterval(minChance, maxChance) + yukonSuccessBonus + rankSuccessBonus
 won                     = Math.random() < successChance
 ```
 
-| Scenario | Roll chance | Success chance range | Stat reward |
-|---|---|---|---|
-| Easy | 60% | 40%–60% | 1 random track |
-| Medium | 30% | 20%–40% | 2 random tracks |
-| Hard | 10% | 10%–20% | all 3 tracks |
+| Scenario | Roll chance | Success chance range | Rank bonus at max Rank 6 | Stat reward |
+|---|---|---|---|---|
+| Easy | 60% | 40%–60% | +20% | 1 random track |
+| Medium | 30% | 20%–40% | +15% | 2 random tracks |
+| Hard | 10% | 10%–20% | +10% | all 3 tracks |
 
 **Yes, a Rival confrontation can absolutely end in a loss** — even Easy only wins 40-60% of
-the time, and Medium/Hard are more likely to lose than win (20-40% and 10-20% respectively).
-This is by design: Rival fights are meant to read as genuinely risky, not a guaranteed payout
-with a coat of flavor text.
+the time before rank/Yukon bonuses, and Medium/Hard are more likely to lose than win (20-40%
+and 10-20% respectively) at Rank 1. This is by design: Rival fights are meant to read as
+genuinely risky, not a guaranteed payout with a coat of flavor text.
 
 No call to `raidFactory.getEffectiveRaidPower` or `rebirthFactory.getLiveRebirthPercent`
-anywhere in this path — success chance depends only on which scenario got rolled (plus
-Yukon's flat bonus, see below), never on the player's own power. One direct, flagged
-consequence: **rebirth progress has zero effect anywhere in Rival Bounty Hunters** — not
-here, and not in the reward formula either (see below).
+anywhere in this path — success chance depends only on which scenario got rolled, Mercenary
+Rank (see below), and Yukon's flat bonus, never on `workMultiplierAmount`/rebirth/guild power
+the way Bounty's own dynamic tier weighting does. One direct, flagged consequence still holds:
+**rebirth progress has zero effect anywhere in Rival Bounty Hunters** — not here, and not in
+the reward formula either (see below).
 
-**Yukon's `rivalSuccessChanceFlat` perk** (new, direct instruction — Yukon previously had no
-Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll.
-Kept modest specifically because Hard's own range is only 10 percentage points wide (10%-20%)
-— 5% is meaningful (half that width) without trivializing what a rolled Hard scenario is
-supposed to represent. Deliberately uncapped, matching real `/rob`'s own `robChance` (never
-clamped either). This makes Yukon a **triple-perk** companion — a deliberate exception to the
-"every Legendary is dual-perk" convention (Spudsprite, Rootcarver), made once Rival gave a
-Bounty-only companion a third action to plausibly help with.
+**Mercenary Rank's `rivalSuccessBonus`** (added 2026-08-29, direct instruction — players
+reported ranking up didn't feel like it helped Rival fights at all, and the formula above
+confirms that was literally true before this: rank previously touched only `rewardMultiplier`,
+applied only on a win landing at the exact same rate regardless of rank). Lives directly on
+`MercenaryRank.THRESHOLDS` alongside `rewardMultiplier`, as a per-scenario object
+(`{ easy, medium, hard }`) ramping linearly from all-zero at Rank 1 to +20%/+15%/+10% at max
+Rank 6. Deliberately bigger in absolute points on Easy (the most common roll, 60% of
+confrontations) than Hard (the rarest, 10%) — but proportionally consistent: Easy's +20 fully
+spans its own 20-point range, Hard's +10 fully spans its own 10-point range, Medium's +15
+covers 75% of its 20-point range. A maxed mercenary's Hard floor doubles (10%→20%, 25-35% with
+Yukon stacked on top) without approaching a guaranteed win — Hard is still meant to be hard.
+Surfaced explicitly on both `/notoriety` (a live preview, before fighting) and
+`createRivalConfrontationResultEmbed` (a "Mercenary Rank Bonus: +X% (Rank N)" field, shown
+whenever it's actually nonzero) — the whole point was making rank's contribution *felt*, not
+just mathematically present, so baking it silently into the final `successChance` number alone
+wasn't considered sufficient.
+
+**Yukon's `rivalSuccessChanceFlat` perk** (direct instruction — Yukon previously had no
+Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll and
+stacking additively with the rank bonus above. Kept modest specifically because Hard's own
+range is only 10 percentage points wide (10%-20%) — 5% is meaningful (half that width) without
+trivializing what a rolled Hard scenario is supposed to represent. Deliberately uncapped,
+matching real `/rob`'s own `robChance` (never clamped either). This makes Yukon a
+**triple-perk** companion — a deliberate exception to the "every Legendary is dual-perk"
+convention (Spudsprite, Rootcarver), made once Rival gave a Bounty-only companion a third
+action to plausibly help with.
 
 ### Reward / penalty formula
 

@@ -1705,6 +1705,17 @@ class EmbedFactory {
             inline: true,
         });
 
+        // Rank's own contribution to Rival success chance (2026-08-29) — surfaced here too,
+        // not just on the post-fight result embed, so it's visible BEFORE fighting (the
+        // whole point of adding it was making rank feel like it matters for this specific
+        // activity). Shown per-scenario since the bonus itself is per-scenario, not flat.
+        const { easy, medium, hard } = rankInfo.rivalSuccessBonus;
+        fields.push({
+            name: 'Rival Success Bonus (this Rank):',
+            value: `+${(easy * 100).toFixed(0)}% Easy / +${(medium * 100).toFixed(0)}% Medium / +${(hard * 100).toFixed(0)}% Hard`,
+            inline: false,
+        });
+
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Notoriety`)
             .setDescription(rankLine)
@@ -1721,7 +1732,7 @@ class EmbedFactory {
     // so there's no conditional currency branch or rare-roll callout). `result` is
     // mercenaryFactory.resolveRivalConfrontation's own return shape.
     createRivalConfrontationResultEmbed(userDisplayName, result) {
-        const { scenario, won, successChance, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
+        const { scenario, won, successChance, rankSuccessBonus, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
         const color = won ? 'Green' : 'Red';
         const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
         const fields = [];
@@ -1737,6 +1748,18 @@ class EmbedFactory {
             value: `${(successChance * 100).toFixed(2)}%`,
             inline: true,
         });
+
+        // Surfaced explicitly (2026-08-29) rather than only baked silently into the number
+        // above — the whole point of this addition was making Mercenary Rank's contribution
+        // to a Rival fight actually FELT, not just mathematically present. 0 at Rank 1, so
+        // this only ever appears once it's actually doing something.
+        if (rankSuccessBonus > 0) {
+            fields.push({
+                name: 'Mercenary Rank Bonus:',
+                value: `+${(rankSuccessBonus * 100).toFixed(0)}% (Rank ${rankInfo.rank})`,
+                inline: true,
+            });
+        }
 
         if (won) {
             fields.push({
