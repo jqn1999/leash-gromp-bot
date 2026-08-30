@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank, Starch } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -312,6 +312,19 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
         }
     }
 
+    // Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat, holder-wide
+    // passive perk unlike Mercenary Rank's own cooldownReductionPercent (win-only), so
+    // this applies regardless of anything else that already touched `time` above.
+    // Lazily required (not a top-level import) to avoid a circular require —
+    // spudKeepFactory.js itself requires this file for its own dynamoHandler calls, and
+    // this file's own module.exports is only fully built at the bottom of the file, so a
+    // top-level require here would hand spudKeepFactory a half-built dynamoHandler.
+    const spudKeepFactory = require("../utils/spudKeepFactory");
+    const spudKeepCooldownBuff = await getActiveSpudKeepCooldownBuff();
+    if (spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)) {
+        time -= cooldownTime * 1000 * spudKeepCooldownBuff.value;
+    }
+
     return time;
 }
 
@@ -470,7 +483,13 @@ function getDefaultUserFields(userId, username) {
         // weeklyHitCount first reaches PoisonMitigation.MILESTONE_HIT_THRESHOLD, powering
         // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,
         // which resets every Monday and can't be used for a lifetime achievement threshold.
-        totalPoisonMilestonesReached: 0
+        totalPoisonMilestonesReached: 0,
+        // Spud Keep (systems/spud-keep.md) — the free participation counter, credited only
+        // to a guild entrant's own live raid roster or the Merc Faction's counted top-N at
+        // each daily resolution (never to every signed-up mercenary, never server-wide —
+        // see spudKeepFactory.resolveCycle's own step 9 comment). Feeds a future
+        // participation achievement only; no potato/stat payout of its own.
+        spudKeepAttemptCount: 0
     };
 }
 
@@ -682,6 +701,16 @@ const passivePotatoHandler = async function (timesInADay) {
     const worldBuff = await getActiveWorldBuff();
     const worldBuffPassivePercent = isWorldBuffLive(worldBuff, "passiveBoost") ? worldBuff.value : 0;
 
+    // Spud Keep's passive-income half (systems/spud-keep.md) — same "one global read
+    // outside the per-user loop" shape as the World Boss buff above, since the buff doc
+    // itself doesn't depend on which user is being ticked, only isSpudKeepBuffLiveForUser's
+    // per-user guildId/isMercenary check does (evaluated inside the loop below, once per
+    // user, off this single already-fetched doc — zero extra per-user reads). Lazily
+    // required to avoid a circular require with spudKeepFactory.js — see
+    // calculateWorkTimerValue's own comment above for the full reasoning.
+    const spudKeepFactory = require("../utils/spudKeepFactory");
+    const spudKeepBuff = await getActiveSpudKeepBuff();
+
     // Passive-pet leveling (CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT's own
     // comment in constants.js) — derives the real seconds this tick covers from timesInADay
     // itself (86400/288 = 300s, matching the actual 5-minute backgroundEvents.js interval)
@@ -694,7 +723,8 @@ const passivePotatoHandler = async function (timesInADay) {
         // site" pattern the guild buff system and every other companion perk follow.
         const passiveIncomePercent = companionFactory.getActivePerkValue(user, "passiveIncomePercent");
         const rebirthPercent = rebirthFactory.getLiveRebirthPercent(user);
-        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent + worldBuffPassivePercent) / timesInADay);
+        const spudKeepPassivePercent = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepBuff, user, SpudKeep.PASSIVE_BUFF_TYPE) ? spudKeepBuff.value : 0;
+        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent + worldBuffPassivePercent + spudKeepPassivePercent) / timesInADay);
         const userBankStored = toNumber(user.bankStored) + passiveGain;
         const userTotalEarnings = toNumber(user.totalEarnings) + passiveGain;
         await updateBankStoredPotatoesAndTotalEarnings(user.userId, userBankStored, userTotalEarnings);
@@ -1040,6 +1070,34 @@ const updateStatFields = async function (trackingId, setAttributes = {}) {
             console.debug(`updateStatFields error: ${JSON.stringify(err)}`)
         });
     return response;
+}
+
+// Atomic ADD wrapper for the stats table — thin sibling of updateStatFields, routed
+// through buildUpdateExpression's own already-existing-but-previously-unused
+// `addAttributes` parameter instead of its `setAttributes` half. Every existing
+// updateStatFields caller only ever needed SET (replace-outright), so this capability
+// had never been exercised until Spud Keep's accruing pot (systems/spud-keep.md) needed a
+// genuine server-side atomic increment against spud_keep.potPotatoes — many concurrent
+// tax events across the whole server each issuing their own independent `add`, with
+// DynamoDB serializing them at the attribute level, no lost updates — the same guarantee
+// addUserDatabase's own atomic `add` already relies on for the user table.
+const addStatFields = async function (trackingId, addAttributes = {}) {
+    const { expression, names, values } = buildUpdateExpression({}, addAttributes);
+    if (!expression) return;
+
+    const params = {
+        TableName: awsConfigurations.aws_stats_table_name,
+        Key: { trackingId: trackingId },
+        UpdateExpression: expression,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .catch(function (err) {
+            console.debug(`addStatFields error: ${JSON.stringify(err)}`)
+        });
 }
 
 const getStatDatabase = async function (trackingId) {
@@ -1549,6 +1607,34 @@ function isWorldBuffLive(buff, buffType) {
     return Boolean(buff && buff.buffType === buffType && buff.expiresAt > Date.now());
 }
 
+// Spud Keep (systems/spud-keep.md) — the granted-buff/holder-pointer doc, mirroring
+// getActiveWorldBuff/setActiveWorldBuff's own "global pointer in the stats table" shape
+// exactly, just carrying a holder-type-aware predicate (spudKeepFactory.
+// isSpudKeepBuffLiveForUser) instead of isWorldBuffLive's flat type+expiry check — see
+// that function's own comment for why. Remains the sole canonical holder pointer +
+// consecutiveHoldCycles counter (the Attacker's Bonus escalation).
+const getActiveSpudKeepBuff = async function () {
+    return getStatDatabase("spud_keep_buff");
+}
+
+const setActiveSpudKeepBuff = async function (buff) {
+    await updateStatFields("spud_keep_buff", buff);
+}
+
+// Structurally identical sibling doc carrying the SECOND half of Spud Keep's bundle
+// buff (the cooldown-reduction percent) — a separate doc rather than reshaping
+// spud_keep_buff into a `buffs: []` array, specifically so isSpudKeepBuffLiveForUser's own
+// {buffType, value, expiresAt, holderType, holderId} shape/signature never needed to
+// change. holderType/holderId/holderName/expiresAt are mirrored from spud_keep_buff at
+// every resolution — this doc is never independently authoritative on "who's the holder."
+const getActiveSpudKeepCooldownBuff = async function () {
+    return getStatDatabase("spud_keep_cooldown_buff");
+}
+
+const setActiveSpudKeepCooldownBuff = async function (buff) {
+    await updateStatFields("spud_keep_cooldown_buff", buff);
+}
+
 module.exports = {
     addUserDatabase,
     calculateWorkTimerValue,
@@ -1577,6 +1663,7 @@ module.exports = {
     updateStatDatabase,
     updateStatFields,
     updateStatFieldsWithLock,
+    addStatFields,
     getStatDatabase,
 
     updateGuildDatabase,
@@ -1608,5 +1695,10 @@ module.exports = {
 
     getActiveWorldBuff,
     setActiveWorldBuff,
-    isWorldBuffLive
+    isWorldBuffLive,
+
+    getActiveSpudKeepBuff,
+    setActiveSpudKeepBuff,
+    getActiveSpudKeepCooldownBuff,
+    setActiveSpudKeepCooldownBuff
 }

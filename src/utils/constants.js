@@ -1350,6 +1350,62 @@ const Raid = {
     REGULAR_STAT_RAID_DIFFICULTY: 350
 }
 
+// Spud Keep — daily server-wide contested-territory event (guilds + Merc Faction). See
+// roadmap.md's "Spud Keep" entry for the full derivation; every magnitude below is
+// grounded there against an existing comparable constant rather than picked freeform.
+// spudKeepFactory.js is the single consumer of every field here.
+const SpudKeep = {
+    // Resolved daily inside the same 4am UTC cron Tower/Quest/Guild Contract rotation
+    // already uses (backgroundEvents.js) — also the exact duration both granted buffs'
+    // own expiresAt uses, so a successful defense has zero coverage gap.
+    CONTEST_INTERVAL_SECONDS: 86400,
+
+    // N = max(this, the largest signed-up guild's own live raid roster headcount that
+    // cycle) — the Merc Faction always counts at least this many of its own top-ranked
+    // signed-up mercenaries (by raidFactory.getMemberRaidPower), never more than the
+    // single largest guild entrant's own headcount.
+    MERC_FACTION_MIN_TOP_N: 5,
+
+    // Part 1 of the bundle reward — a passivePotatoHandler-consumed percent, live for
+    // whichever side currently holds the Keep. Matches Mochi's own Mythic-tier
+    // passiveIncomePercent (constants.js's Companions entry) exactly.
+    PASSIVE_BUFF_TYPE: "passiveIncome",
+    PASSIVE_BUFF_VALUE: 0.06,
+
+    // Part 2 of the bundle reward — a flat cooldown shave applied at every /work,
+    // guild raidTimer, Bounty, and Heist cooldown-write site, gated by the same
+    // spudKeepFactory.isSpudKeepBuffLiveForUser predicate as the passive half, just off
+    // a second sibling doc (spud_keep_cooldown_buff) so the predicate's own
+    // {buffType, value, expiresAt, holderType, holderId} shape never needs to become an
+    // array. Sits just above a level-1 guild workTimer/raidTimer buff's own -6%.
+    COOLDOWN_BUFF_TYPE: "cooldownReduction",
+    COOLDOWN_BUFF_VALUE: 0.08,
+
+    // The accruing pot (Reward Part 2) — while ANY holder is live, this fraction of
+    // every one of this game's ~7 house-account tax events is redirected to
+    // spud_keep.potPotatoes instead of the house account, the remainder still going to
+    // the house exactly as before. The pot is potato-only (2026-08-30 simplification, no
+    // separate potStarches counter) — /give's one starch-denominated tax site converts
+    // its own pot share to potatoes at the current starch sell price
+    // (spudKeepFactory.convertStarchesToPotatoesForPot) before crediting it. Paid out
+    // once per cycle, split evenly (raidFactory.handlePotatoSplit) among the OUTGOING
+    // holder's own roster at resolution.
+    POT_REDIRECT_PERCENT: 0.75,
+
+    // Attacker's bonus (2026-08-30 follow-up, direct instruction) — every non-holder
+    // entrant's power is multiplied up by this escalating amount immediately before the
+    // lottery roll, specifically to push toward eventual turnover against a guild whose
+    // top member's own power has no structural ceiling (see roadmap.md's own derivation
+    // — workMultiplierAmount stacks forever, so a flat bonus alone can't guarantee it).
+    // Mirrors PoisonMitigation's own capped-escalation shape: streak 0/1/2/3/4+ ->
+    // +0%/15%/30%/45%/60% on top of the flat base, so total challenger bonus caps at
+    // 6%+60% = 66% after ~4-5 consecutive days under one holder. Resets to 0 the instant
+    // the (holderType, holderId) pair changes — see spud_keep_buff.consecutiveHoldCycles.
+    ATTACKER_BONUS_BASE: 0.06,
+    ATTACKER_BONUS_PER_HOLD_CYCLE: 0.15,
+    ATTACKER_BONUS_STREAK_CAP: 4
+}
+
 // Mercenary Bounties (roadmap "Mercenary Bounties (Solo Raid-Equivalent Progression)") —
 // a personal, guild-independent alternative to Guild Raids, mutually exclusive with
 // guild membership (see userDetails.isMercenary). See mercenaryFactory.js and
@@ -2684,6 +2740,7 @@ module.exports = {
     Give,
     GuildRoles,
     Raid,
+    SpudKeep,
     MercenaryRank,
     Bounty,
     BountyScenarios,
