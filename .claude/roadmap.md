@@ -5753,6 +5753,247 @@ and needs its own balance pass.
   Boss buff's own precedent of documenting a cross-cutting feature in one place and linking to it from
   both affected systems.
 
+  **Reward options (2026-08-30 follow-up) — "universally powerful and worth fighting for" for BOTH
+  populations, expanding finding 4's single +12% `workMulti` pick into a real menu — open decision,
+  nothing has shipped yet.** Direct ask, verbatim: *"Plan out more ideas on rewards for the spud keep
+  that could make it universally powerful and worth fighting for."* The load-bearing test for every
+  option below: does it pay off for a guild's own mixed roster (work-grinders, raiders,
+  companion-focused members) AND for the Merc Faction's own mixed roster (work-focused, Bounty-focused,
+  Heist-focused mercenaries) without going dead for any one of those six sub-populations? Finding 4's
+  original +12% `workMulti` pick fails this test in a documented, concrete way: Bounty's own
+  potato-flavored reward formula (`tierEntry.reward * rangeRoll * rankInfo.rewardMultiplier *
+  (1+yukonBonus)`, see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#rewardpenalty-formula)) never reads
+  `workMultiplierAmount`/`userMultiplier` at all — and potato-flavored scenarios are the MAJORITY of
+  Bounty rolls at every tier (80%/70%/60% of Band I/II/III's own `BountyScenarios` tables, see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#flavor-text-scenarios-bountyscenarios)).
+  A Bounty-focused mercenary holding the Keep under the original recommendation gets a real buff on
+  `/work` and on Heist's own `calculateGainAmount`-shaped payout, but literally nothing on the majority
+  of their own primary activity. Four grounded options below, including the two floated in chat before
+  this doc existed, each scored against that same six-population test:
+
+  1. **Passive-income-percent buff (chat option (a)) — reuse World Boss/Brassica's exact mechanism.**
+     A `getSpudKeepPassiveMulti`-style read inside `dynamoHandler.passivePotatoHandler`'s existing
+     per-user loop, additively folded alongside `passiveIncomePercent`/`rebirthPercent`/the World
+     Buff's own passive term — see
+     [raids-and-world-events.md](raids-and-world-events.md#server-wide-buff)'s Brassica row for the
+     exact precedent. **Playstyle-agnostic in the strongest sense of any option here**: it requires
+     zero action of any kind from any of the six sub-populations — a guild's companion-focused member,
+     a Bounty-grinding mercenary, and a raid-focused guild officer all accrue it identically, every
+     5-minute tick, purely for having `passiveAmount > 0` (true of any account that's ever bought a
+     single `passiveIncomeShop` tier or rolled a Sweet/Metal/Ancient/weekly-quest passive bonus — i.e.,
+     true of essentially every developed account on either side). **Magnitude**: match Brassica's own
+     +10%/24h exactly — the closest real comparable (a free, temporary, server-scoped buff on the exact
+     same 24h duration Spud Keep already commits to) — framed as "as good as the rarest World Boss
+     buff currently in the game, but exclusive to whoever's currently strong enough to hold the Keep"
+     rather than free for the whole server the way Brassica's own version is. **Real risk**: weakest
+     for the newest accounts on either side (a brand-new mercenary or guild recruit with `passiveAmount`
+     still near its unpurchased default gets a real but small absolute number) — a much narrower gap
+     than a work-cooldown or rob-chance buff would create (which can go to literally zero for a whole
+     sub-population), but still not perfectly flat across account maturity.
+
+  2. **Cross-cutting cooldown reduction (chat option (b), generalized) — extend
+     `MercenaryRank.cooldownReductionPercent`'s shape past just Bounty/Heist to cover whichever
+     action-cooldown each side's own members actually have.** For the Merc Faction: shave
+     `bountyTimer`/`npcRobTimer` (already a live mechanic at Rank 2-6, see
+     [systems/mercenary-bounties.md](systems/mercenary-bounties.md#mercenary-rank)). For a guild:
+     shave `guild.raidTimer` (the guild's own dedicated action cooldown), and for both sides, shave
+     `/work`'s cooldown too. **Playstyle-agnostic across every one of the six sub-populations
+     specifically because it targets whichever cooldown that member's own chosen activity already
+     has** — a raid-focused guild officer gets faster raids, a work-focused member gets faster `/work`,
+     a Bounty-focused mercenary gets faster Bounty, a Heist-focused mercenary gets faster Heist —
+     nobody's own primary loop is untouched, unlike option 1 (dead-ish for brand-new accounts) or the
+     original `workMulti` pick (dead for Bounty's own majority-potato rolls). **Magnitude**:
+     `MercenaryRank`'s own ladder is a genuinely earned, capped-at-Rank-6 (525 lifetime wins) 30%
+     reduction — handing that full magnitude out for free, server-wide, for a single day of holding
+     the Keep would make actually grinding to Rank 6 look foolish by comparison, the same
+     "bypasses cost/risk entirely" problem Ancient Potato's original regrade-grant branch was nerfed
+     10x for (see [economy-and-work.md](economy-and-work.md#ancient-potato)). Recommend capping well
+     under that ceiling — **flat -10%**, sitting between Rank 2's (-6%) and Rank 3's (-12%) earned
+     tiers: "holding the Keep gives your whole side roughly a free Rank 2-3's worth of cooldown relief
+     on whatever you're doing, without having actually earned it." **Real risk / added complexity**:
+     unlike option 1 (one read site inside an existing loop) or the original `workMulti` pick (one new
+     sibling function called from `workFactory.js`'s existing 9 call sites), this genuinely touches
+     three separate, structurally different cooldown-write call sites
+     (`dynamoHandler.calculateWorkTimerValue`, `startRaid.js`'s `raidTimer` reset,
+     `takeBounty.js`/`robNpc.js`'s existing Rank-based backdating logic) — three places to keep in
+     sync rather than one, a real, concrete increase in the "how many call sites does this touch"
+     surface the original single-buff-type design explicitly kept small.
+
+  3. **A flat, per-cycle lump-sum potato payout (`handlePotatoSplit`-shaped) instead of, or alongside,
+     an ongoing buff.** Reuses `raidFactory.handlePotatoSplit`/`handleStatSplit` exactly, paid once at
+     resolution to the winning side's roster (a guild's live raid roster, or the Merc Faction's counted
+     top-N from that cycle). **Trivially playstyle-agnostic** — potatoes are the one thing every
+     sub-population wants regardless of how they earn them, so there's no "dead for X" case to
+     construct at all. **Magnitude**: grounded against Guild Raid's own Metal King payout (10,000,000,
+     split across raiders) or Elite Metal King (30,000,000) as the closest "a big one-off split
+     reward" comparable already in the game — something in that range read as "winning the Keep pays
+     out like landing a Metal King, on top of whatever ongoing buff it also grants." **Real risk, and
+     the reason this isn't the top pick**: this is the one option that structurally cannot reuse the
+     buff mechanism's own headline property — "every mercenary server-wide benefits at **zero**
+     additional writes" (the load-bearing decision in "The holder buff" section above). A real potato
+     payout has to land on real user records, so it can only ever go to that cycle's actually-fetched
+     roster (a guild's live raiders, or the Faction's counted top-N) — narrower than "every mercenary
+     server-wide," mirroring the deliberately-narrower scope the participation counter already accepts
+     (see "A narrower, separate counter for participation" above), not the buff's own broader
+     guarantee. Fine as a supplementary, clearly-scoped bonus layered on top of a buff (mirroring how
+     World Boss already pays a per-participant reward ALONGSIDE its own free server-wide buff), but a
+     poor REPLACEMENT for the ongoing buff specifically because it can't reach the same audience the
+     buff reaches for free.
+
+  4. **A modest bundle — a smaller passive-income bump PLUS a smaller cross-cutting cooldown shave,
+     rather than one bigger single-axis number.** E.g. **+6% passive income** (matching Mochi's own
+     Mythic-tier `passiveIncomePercent`, the lowest real value already in the companion roster — see
+     [systems/companions.md](systems/companions.md#starting-roster-12)) **+ a flat -8% cooldown shave**
+     (below option 2's own -10% recommendation, sitting just above a level-1 guild
+     `workTimer`/`raidTimer` buff's own -6%). **Why a bundle over one bigger lever**: options 1 and 2
+     each have a real, different dead zone (1 is weak for brand-new accounts; 2 is the one with the
+     most call sites to keep in sync) — a bundle means neither half has to carry the whole "worth
+     fighting for" weight alone, and a player who's weak on one axis (a fresh account with near-zero
+     `passiveAmount`) still feels the other (a faster `/work`/raid/Bounty/Heist cadence) immediately.
+     **Complexity cost, stated explicitly per the prompt's own ask**: this is now two buff types read
+     from two different places (`spud_keep_buff` would need either two documents or a `buffs: []`
+     array instead of the single `{buffType, value}` shape the existing data model above specifies),
+     doubling the number of `isSpudKeepBuffLiveForUser`-style consumer call sites from finding 4's
+     original ~9 to something closer to 12 (the 9 `/work` handlers plus the 3 cooldown-write sites from
+     option 2). This is a real, non-trivial expansion of "Touches" — recommend it only if a
+     single-lever option (1 or 2) is confirmed to feel underwhelming after the feature actually ships,
+     not as the v1 default.
+
+  **Recommendation: ship option 1 (passive-income %) alone for v1, at +10%/24h matching Brassica
+  exactly.** It's the cheapest to build (one read site, reusing a mechanism that already exists
+  byte-for-byte), the least likely to introduce a new dead zone across any of the six sub-populations
+  (its one weakness — brand-new accounts — is narrower than every other option's own weak point), and
+  it's a genuinely different axis from the game's existing guild-buff menu (`GuildBuffScaling` has no
+  `passiveIncome` entry at all today, so this doesn't compete with or duplicate an existing guild-buff
+  choice the way a `workMulti`/`workTimer`/`robChance` pick would). Revisit option 2 (or the bundle) as
+  a fast-follow once real participation data shows whether a pure passive buff actually reads as "worth
+  fighting for" in practice, or whether a Bounty/Heist-focused mercenary population specifically wants
+  their own cooldown to visibly shrink instead.
+
+  **Attacker's bonus (2026-08-30 follow-up) — reverses finding 6's "no defender's bonus"
+  recommendation at direct user instruction, toward challengers specifically, not toward penalizing
+  the holder.** Direct ask, verbatim: *"I also want an attacker bonus to make sure it's more likely
+  for the keep to switch hands rather than a powerful guild getting it and keeping it forever."*
+  Framing matters mechanically here, not just rhetorically — an ATTACKER bonus (every non-holder
+  entrant's power is multiplied up) and a DEFENDER penalty (the holder's own power is multiplied down)
+  can be tuned to produce identical relative lottery odds for a given cycle, but they compose
+  differently with the rest of this design: a defender penalty would mean touching how the HOLDER's
+  power is computed (resolution-flow steps 2-3, which reuse `raidFactory.getEffectiveRaidPower`
+  byte-identically with `/current-raid`/Bounty/every other consumer of that function) — risking this
+  leaking into displays that have nothing to do with Spud Keep, or requiring a Spud-Keep-specific
+  wrapper around a function this whole feature was designed to reuse untouched. An attacker bonus
+  instead only touches resolution-flow step 5 (assembling the final entrant list) — a single new
+  multiplier applied to every entrant that ISN'T the current holder, right before the lottery roll,
+  never touching `getEffectiveRaidPower`'s own output for anyone. Recommend the attacker-bonus framing
+  for this mechanical reason alone, independent of which the user asked for by name.
+
+  **Is a flat, non-escalating bonus enough? No — reasoned, not just asserted.** A flat `+X%` to every
+  challenger shifts the odds at the margin (helps a challenger that's already reasonably close in
+  power), but does nothing to change the fact that a truly dominant guild's own power is structurally
+  UNBOUNDED in this economy: `getEffectiveRaidPower`'s own real ceiling (`teamPower` converging to
+  2.0x, `effectivePower` to 3.0x, the top raider's own raw power — see
+  [raids-and-world-events.md](raids-and-world-events.md#effective-raid-power)) bounds a guild's
+  HEADCOUNT-driven overinvestment, not its top MEMBER's own power, and that member's own
+  `workMultiplierAmount` is explicitly, deliberately uncapped — shop tiers, regrade, and every
+  Sweet/Metal/Ancient Potato permanent bonus all stack forever with no ceiling
+  ([economy-and-work.md](economy-and-work.md#catch-up-bonus) documents this exact property as the
+  reason the separate catch-up-bonus mechanic had to be built at all for `/work`). Worse: catch-up's
+  own mitigation doesn't reach here at all — it's applied to `userMultiplier` inside `/work`'s own
+  reward formula, never folded into `workMultiplierAmount` itself, so it never reaches
+  `getMemberRaidPower`/`getEffectiveRaidPower` and therefore never reaches Spud Keep's power calc
+  either. **Conclusion (reasoned from the formula's own shape — honestly speculative without live
+  server telemetry on real guild power spreads; no live data was available for this pass)**: a guild
+  built around one or two exceptionally long-tenured, heavily-invested members can reach an effective
+  power ceiling that grows every single day the server runs, with nothing else in this codebase
+  currently softening it for Spud Keep's purposes specifically. A flat bonus alone cannot guarantee
+  eventual turnover against that kind of gap — only something that grows the longer a single reign
+  persists can force the math to eventually favor challengers regardless of the initial gap's size.
+
+  **Recommend a CAPPED escalating bonus, not an uncapped one** — mirroring `PoisonMitigation`'s own
+  already-proven shape (small steps, capped after several, one further "milestone" jump for genuine
+  outliers) rather than inventing a fresh escalation curve. An uncapped escalation would guarantee
+  eventual turnover mathematically, but this codebase has already been burned once by an uncapped
+  mechanic silently becoming absurd (Ancient Potato's original full-tier regrade grant, worth
+  97x-475x a same-roll Golden Potato before being caught and nerfed) — recommend the same caution
+  here: cap the escalation, and be honest that this "meaningfully improves realistic turnover odds
+  over a plausible number of cycles" rather than "mathematically guarantees" it, the same honest
+  framing finding 6 already uses for the plain lottery itself ("keeps odds non-zero for everyone...
+  doesn't guarantee rotation").
+
+  **What resets it.** Track one new integer on the existing `spud_keep_buff` doc itself —
+  `consecutiveHoldCycles` — incremented by 1 on every resolution where the winning entrant's
+  `(holderType, holderId)` pair is IDENTICAL to the previous cycle's, and reset to `0` the instant
+  either value changes (a different guild wins, the Merc Faction wins away from a guild, or vice
+  versa). **Resets on any holder CHANGE, not tracked as a lifetime total.** If the same guild loses
+  the Keep for a week and wins it back later, its streak restarts at 0 — deliberately NOT carrying a
+  separate "how many times has this guild ever held it" lifetime counter, because the goal (per the
+  user's own framing) is specifically to stop a SINGLE unbroken reign from calcifying, not to punish a
+  guild that fairly re-wins an open contest later; tracking lifetime holds would answer a different
+  question nobody asked, and would risk feeling punitive toward a guild that legitimately wins back
+  something it fairly lost, contradicting the lottery's own "keeps odds non-zero for everyone" spirit.
+  Left untouched (neither incremented nor reset) on a skipped cycle (resolution-flow step 5's "nobody
+  signed up at all" edge case) — nothing else about the Keep's state changes on a skip either, so the
+  streak shouldn't either.
+
+  **Uniform-per-challenger vs. underdog-scaled — recommend uniform, explicitly trading away the "helps
+  the little guy specifically" appeal for one fewer interacting curve.** An underdog-scaled bonus
+  (bigger the further below the holder's own power a challenger sits) more directly serves "help the
+  weak guild specifically," closer in spirit to Guild Raid's own dynamic tier weighting — but stacking
+  a SECOND scaling curve (challenger-relative-weakness) on top of the FIRST (holder-streak escalation)
+  is exactly the kind of two-curve interaction that has bitten this codebase multiple times already and
+  needed real EV sweeps to catch (the `RAID_TIER_WEIGHT_SHARPNESS` multi-day tuning saga, the Regular
+  ladder's own T2/T3 dead zone — both in
+  [raids-and-world-events.md](raids-and-world-events.md#dynamic-tier-weighting)). A uniform bonus
+  achieves the actually-stated goal (shrink the HOLDER's own relative share of the total lottery pool)
+  without a second axis to verify: lifting every non-holder entrant's power by the same percentage
+  necessarily shrinks the holder's own share of `Σpower` proportionally, regardless of how that lifted
+  total is distributed among however many challengers show up — the redistribution AMONG challengers
+  was never the stated problem. Recommend uniform for v1; an underdog-scaled refinement is a plausible
+  fast-follow once real per-cycle entrant-power data exists to sweep against, same "don't pre-build a
+  fix for an unconfirmed problem" caution finding 6 already applies to the rotation/pity mechanic in
+  general.
+
+  **Concrete formula shape:**
+
+  ```
+  effective_power_i = power_i * (1 + ATTACKER_BONUS_BASE
+                                    + ATTACKER_BONUS_PER_HOLD_CYCLE * min(consecutiveHoldCycles, ATTACKER_BONUS_STREAK_CAP))
+      // applied to every entrant i that is NOT the current holder; the holder's own power is
+      // read completely unchanged, per finding 6's own "no defender's bonus" reasoning — this
+      // adds a challenger-side term, it doesn't reverse that finding
+  ```
+
+  Reasoned starting magnitudes, each anchored to an existing constant rather than picked freeform:
+  - `ATTACKER_BONUS_BASE = 0.06` — matches the smallest real buff step already shipped anywhere in
+    this game (`GuildBuffScaling`'s own level-1 entries, +6%), so even a challenger facing a BRAND NEW
+    holder (streak 0) already has a small, legible edge from cycle one.
+  - `ATTACKER_BONUS_PER_HOLD_CYCLE = 0.15` — the exact same step size as
+    `PoisonMitigation.REDUCTION_PER_HIT`, reused in the "same number, opposite direction" spirit
+    Guinea Pig's own escalation perk already borrows from that same constant.
+  - `ATTACKER_BONUS_STREAK_CAP = 4` (cycles) — mirrors `PoisonMitigation.MAX_REDUCTION`'s own "capped
+    after a handful of hits" shape: streak 0/1/2/3/4+ → +0%/15%/30%/45%/60% escalation, so total
+    challenger bonus caps at `6% + 60% = 66%` after roughly **4-5 consecutive days** of one holder.
+  - An optional milestone jump at, say, `consecutiveHoldCycles >= 9` (mirroring
+    `PoisonMitigation.MILESTONE_HIT_THRESHOLD`/`MILESTONE_REDUCTION` exactly, ~a week and a half of one
+    unbroken reign) to `+90%` escalation (`96%` total) — a rare, real "this has gone on long enough"
+    jump, paired with its own announcement flavor (e.g. "the people grow restless!") the same way the
+    Guinea Pig milestone gets its own 🏅 callout, rather than a silent number change. This mirrors
+    `PoisonMitigation`'s own two-tier shape (steady escalation, then a further milestone jump) closely
+    enough that it's more a reuse than a new design.
+
+  **Applies identically whether the current holder is a guild or the Merc Faction** — the bonus reads
+  off `spud_keep_buff.holderType`/`holderId` directly, so a Merc Faction reign escalates and resets by
+  the exact same rule a guild reign does, with no separate branch needed.
+
+  **Recommendation**: ship the capped-escalating, uniform, holder-change-reset version above —
+  `ATTACKER_BONUS_BASE=0.06`, `PER_HOLD_CYCLE=0.15`, `STREAK_CAP=4` (66% ceiling), with the optional
+  streak-9 milestone jump to 96% as a nice-to-have rather than a v1 requirement (it's flavor/pressure-
+  valve on top of an already-functioning mechanic, not load-bearing). This is a genuinely new integer
+  to add to `spud_keep_buff` (`consecutiveHoldCycles`) and one new multiplier applied at
+  entrant-assembly time (resolution-flow step 5) — a small, contained addition on top of the
+  already-designed flow, not a rework of anything already finalized.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
