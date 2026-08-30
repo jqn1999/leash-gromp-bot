@@ -30,12 +30,12 @@ module.exports = {
     options: [
         {
             name: 'mode',
-            description: 'Baby Bounty (guaranteed easiest tier) or Regular Bounty (all 12 tiers, auto-selected by your power)',
+            description: 'Regular Bounty (all 12 tiers, auto-selected by your power) or Baby Bounty (guaranteed easiest tier)',
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [
-                { name: 'Baby Bounty', value: 'baby' },
                 { name: 'Regular Bounty', value: 'regular' },
+                { name: 'Baby Bounty', value: 'baby' },
             ]
         }
     ],
