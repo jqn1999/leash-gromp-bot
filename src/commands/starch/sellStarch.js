@@ -2,6 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { isStarchBuyingWindow, getActiveStarchBuffPercent } = require("../../utils/starchFactory");
+const { Starch } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -78,9 +79,15 @@ module.exports = {
 
         const buyValue = buyPrice * starches
         const sellValue = Math.round(sellPrice * starches)
-        const profitOrLoss = sellValue - buyValue
+        // Starch.SELL_TAX_PERCENT (5%, new 2026-08-30) — taken off the gross sale, same
+        // "seller nets less, house gets the rest" shape every other tax in this game uses.
+        // profitOrLoss is computed off the NET amount, since that's what the seller
+        // actually walks away with.
+        const starchSaleTax = Math.floor(sellValue * Starch.SELL_TAX_PERCENT)
+        const netSellValue = sellValue - starchSaleTax
+        const profitOrLoss = netSellValue - buyValue
 
-        userPotatoes += sellValue
+        userPotatoes += netSellValue
         userStarches -= starches
 
         // Non-work-focused companion leveling (Mole/Rootcarver/Elder Rootbeard's
@@ -99,13 +106,16 @@ module.exports = {
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
         await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
+        if (starchSaleTax > 0) {
+            await dynamoHandler.addUserDatabase(client.user.id, "potatoes", starchSaleTax);
+        }
         if (profitOrLoss > 0) {
             await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings + profitOrLoss);
         } else if (profitOrLoss < 0) {
             await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses + profitOrLoss);
         }
         embed = embedFactory.createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes,
-            userStarches, 'sell', starches, sellPrice, sellValue);
+            userStarches, 'sell', starches, sellPrice, netSellValue, starchSaleTax);
         interaction.editReply({ embeds: [embed] });
     }
 }

@@ -3510,6 +3510,43 @@ and needs its own balance pass.
   write). Docs: `systems/companions.md#leveling`. Full suite: 755/755 (up from 745/745 —
   10 new tests, zero regressions).
 
+- [x] **91. House-Account Tax Changes: New Guild Raid + Starch-Sell Taxes, Rob's Fine
+  Tax Removed** — S/M — **Done**
+  What: three direct instructions in the same turn — "remove the 10% of robber's fine
+  tax," "include a new 5% tax on guild raids that goes to the bot," and "include a new 5%
+  starch tax as well on sales." Raised while investigating the exact tax model for the
+  Spud Keep lump-sum reward (which needs to know precisely how the house account's balance
+  grows) — see item 87 above.
+  - **`/rob`**: removed the `Math.floor(fineAmount*.10)` admin cut on a failed rob entirely
+    — the fine is now a pure loss with no house skim.
+  - **`/sell-starch`**: new `Starch.SELL_TAX_PERCENT` (5%), taken off the gross `sellValue`
+    (already inclusive of any companion/starch-buff price bonus) before `profitOrLoss` is
+    computed. `embedFactory.createBuyOrSellStarchEmbed` gained an optional trailing
+    `taxAmount` parameter (defaults to 0, so `/buy-starch`'s own call site is unaffected)
+    showing a "Kingdom Tax" field only when nonzero.
+  - **Guild raids**: new `Raid.GUILD_RAID_TAX_PERCENT` (5%), taken off `totalRaidSplit`
+    inside `startRaid.js`'s shared `addToBankOrPurse` helper — the one place every one of
+    the ~15 individual raid-scenario closures already funnels its win reward through, so
+    the tax only needed to land there instead of at each scenario. Never applied to
+    `removeFromBankOrPurse` (a loss isn't income to skim). Needed `interaction.client.user.id`
+    threaded through as a new optional trailing `houseUserId` parameter (defaults to `null`,
+    degrading to untaxed) — all 15 call sites updated via one exact-string `replace_all`
+    edit, since they were already byte-identical.
+  Tests: `embedFactory.test.js` gained 2 new tests for the Kingdom Tax field (shown on
+  sell, omitted on buy). `startRaidPayoutMode.test.js` gained 1 new test asserting the
+  exact tax amount credited and the exact post-tax split amount, using `raidPayoutMode:
+  'direct'` to force the full post-tax reward through a single, easily-asserted
+  `handlePotatoSplit` call. Also fixed 2 pre-existing test files
+  (`startRaidSplitMode.test.js`/`startRaidPayoutMode.test.js`) whose `fakeInteraction()`
+  fixtures didn't carry a `.client` property, which the new `interaction.client.user.id`
+  threading needs — `rob.js`/`sellStarch.js` have no dedicated test files to extend
+  (command files aren't unit-tested in this codebase unless they already export a pure
+  function), verified by hand instead. Docs:
+  `systems/economy-and-work.md#house-account-taxes` (new consolidated section listing
+  every tax site in the game, added specifically so the Spud Keep lump-sum reward's "75%
+  of what the bot has" formula has one place to point to). Full suite: 758/758 (up from
+  755/755 — 3 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

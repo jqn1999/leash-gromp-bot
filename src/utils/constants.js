@@ -402,7 +402,13 @@ const Bank = {
 // let the two silently drift apart (rebirth resetting a player to a stale, pre-rebalance
 // default while new accounts get the current one).
 const Starch = {
-    STARTING_CAPACITY: 250
+    STARTING_CAPACITY: 250,
+    // New 2026-08-30, direct instruction — a real sink on /sell-starch, same "taken off the
+    // top, seller nets less" shape Bank/Give/CompanionMarket's own taxes already use.
+    // Applied to the gross sellValue (after Mole/Rootcarver/Elder Rootbeard/starch-buff
+    // bonuses are already folded into the per-unit price), not the buy-side cost, so a
+    // seller's own profit/loss calculation is computed off what they actually receive.
+    SELL_TAX_PERCENT: 0.05
 }
 
 // Shared cap for guild.raidHistory/guild.contractHistory — both are append-and-trim
@@ -1103,6 +1109,12 @@ const Raid = {
     LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE: .6,
     MAXIMUM_STAT_RAID_SUCCESS_RATE: .5,
     RAID_TIMER_SECONDS: 3600,
+    // New 2026-08-30, direct instruction — a real sink on guild raid rewards, same "taken
+    // off the top, recipients net less" shape Bank/Give/CompanionMarket/Starch's own taxes
+    // already use. Applied once, inside startRaid.js's shared addToBankOrPurse, to every
+    // scenario's win-side reward before it's banked or split — never on the penalty side
+    // (removeFromBankOrPurse), since a loss isn't income to skim.
+    GUILD_RAID_TAX_PERCENT: 0.05,
 
     // Moved here 2026-08-24 from startRaid.js's own bare, undeclared module-scope
     // assignments (`ELITE_PENALTY_INCREASE = 1.5`, an implicit global — this codebase's

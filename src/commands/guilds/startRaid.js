@@ -213,7 +213,25 @@ async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRa
 // caller passing remainingBankSpace: 0 in — that alone forces every reward through the
 // "excess" branch below with excess == the full reward, so this function itself needs no
 // separate direct-mode branch or parameter.
-async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode = 'even', raidListByMulti = []) {
+// houseUserId (new 2026-08-30, direct instruction — "a new 5% tax on guild raids that
+// goes to the bot"): optional so any caller that hasn't passed it degrades to untaxed
+// rather than crashing, same "default to old behavior" precedent raidSplitMode/
+// raidListByMulti already set right above. Every real call site passes
+// interaction.client.user.id — see the win-branch scenarios below.
+async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode = 'even', raidListByMulti = [], houseUserId = null) {
+    // Raid.GUILD_RAID_TAX_PERCENT — taken off the top of the raid's total reward before
+    // bank/split accounting, same "recipients net less, house gets the rest" shape every
+    // other tax in this game already uses (see Bank.TAX_PERCENT/Give.POTATO_TAX_PERCENT/
+    // Starch.SELL_TAX_PERCENT). Applied here rather than inside each of the ~15 individual
+    // scenario closures above, since they all already funnel their reward through this one
+    // shared function.
+    if (houseUserId) {
+        const raidTax = Math.floor(totalRaidSplit * Raid.GUILD_RAID_TAX_PERCENT);
+        if (raidTax > 0) {
+            await dynamoHandler.addUserDatabase(houseUserId, 'potatoes', raidTax);
+            totalRaidSplit -= raidTax;
+        }
+    }
     let raidSplit = null;
     if (remainingBankSpace >= totalRaidSplit) {
         guildBankStored += totalRaidSplit;
@@ -240,7 +258,7 @@ const regularRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', Raid.METAL_KING_MULTIPLIER_REWARD);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', Raid.METAL_KING_PASSIVE_REWARD);
                 await raidFactory.handleStatSplit(raidList, 'bankCapacity', Raid.METAL_KING_CAPACITY_REWARD);
@@ -272,7 +290,7 @@ const regularRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.T4_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = ultimateRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -304,7 +322,7 @@ const regularRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.T3_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -331,7 +349,7 @@ const regularRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.T2_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -358,7 +376,7 @@ const regularRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -415,7 +433,7 @@ const eliteRaidScenarios = [
             const capacityReward = Raid.ELITE_METAL_KING_CAPACITY_REWARD;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.ELITE_METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
                 await raidFactory.handleStatSplit(raidList, 'bankCapacity', capacityReward);
@@ -445,7 +463,7 @@ const eliteRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.ELITE_T4_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = ultimateRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -473,7 +491,7 @@ const eliteRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.ELITE_T3_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -500,7 +518,7 @@ const eliteRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.ELITE_T2_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -527,7 +545,7 @@ const eliteRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.ELITE_T1_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -565,7 +583,7 @@ const legendaryRaidScenarios = [
             const capacityReward = Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_METAL_KING_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', workMultiReward);
                 await raidFactory.handleStatSplit(raidList, 'passiveAmount', passiveReward);
                 await raidFactory.handleStatSplit(raidList, 'bankCapacity', capacityReward);
@@ -595,7 +613,7 @@ const legendaryRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T4_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = ultimateRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -623,7 +641,7 @@ const legendaryRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T3_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = hardRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -650,7 +668,7 @@ const legendaryRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T2_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = mediumRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
@@ -677,7 +695,7 @@ const legendaryRaidScenarios = [
             const successfulRaid = Math.random() < successChance;
             if (successfulRaid) {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T1_REWARD * randomMultiplier * raidRewardMultiplier);
-                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
+                raidSplit = await addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, interaction.client.user.id);
                 raidResultDescription = regularRaidMob.successDescription;
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);

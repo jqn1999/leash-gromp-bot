@@ -31,6 +31,7 @@ jest.mock('../../../utils/raidFactory', () => {
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow } = require('../startRaid');
+const { Raid } = require('../../../utils/constants');
 
 function fakeInteraction() {
     const replyObj = {
@@ -41,6 +42,7 @@ function fakeInteraction() {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(replyObj),
         user: { id: 'leader', username: 'Leader', displayName: 'Leader', avatar: 'hash' },
+        client: { user: { id: 'house-account' } },
     };
 }
 
@@ -107,6 +109,23 @@ describe('/start-raid reward-payout-mode routing', () => {
         expect(mockHandlePotatoSplit).toHaveBeenCalledTimes(1);
         // The bank itself is never written to on a reward under direct mode.
         expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalledWith(7, 'bankStored', expect.anything());
+    });
+
+    // Raid.GUILD_RAID_TAX_PERCENT (5%, new 2026-08-30) — taken off the top of the win
+    // reward, credited to interaction.client.user.id, before the remainder is banked or
+    // split. 'direct' mode forces the full (post-tax) amount through handlePotatoSplit,
+    // making the exact split amount easy to assert directly.
+    test('a guild raid win credits 5% of the reward to the house account and only splits the remaining 95%', async () => {
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidPayoutMode: 'direct' }));
+        const interaction = fakeInteraction();
+
+        await runStartRaidFlow(interaction, 'baby');
+
+        // Fixed Math.random()=0.5 -> randomMultiplier 1.0, fresh guild -> raidRewardMultiplier
+        // 1.00, so the raw T1 reward before tax is exactly Raid.T1_RAID_REWARD.
+        const expectedTax = Math.floor(Raid.T1_RAID_REWARD * Raid.GUILD_RAID_TAX_PERCENT);
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('house-account', 'potatoes', expectedTax);
+        expect(mockHandlePotatoSplit).toHaveBeenCalledWith(expect.anything(), Raid.T1_RAID_REWARD - expectedTax);
     });
 
     test('raidPayoutMode: "bank" (default) fills the bank instead of paying members, since there is plenty of remaining space', async () => {

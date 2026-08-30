@@ -248,21 +248,20 @@ module.exports = {
             const fineAmount = calculateFailedRobPenalty(userPotatoes);
             userPotatoes -= fineAmount;
             userTotalLosses -= fineAmount;
-            adminUserShare = Math.floor(fineAmount*.10);
 
-            await Promise.all([
-                dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare),
-                dynamoHandler.updateUserFields(userId, {
-                    potatoes: userPotatoes,
-                    totalLosses: userTotalLosses,
-                    // workTimer DOES use a future "ready-at" timestamp (work.js reads it as
-                    // `workTimer - Date.now()`) — this one was already correct. robTimer is
-                    // the opposite convention (see the win branch's own comment above).
-                    workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
-                    robTimer: Date.now(),
-                    companions: leveledCompanions
-                })
-            ]);
+            // The 10% admin cut of a failed rob's fine was removed 2026-08-30, direct
+            // instruction — the fine is now a pure loss with no house skim, unlike the
+            // taxes on /bank/give/etc. which stay untouched.
+            await dynamoHandler.updateUserFields(userId, {
+                potatoes: userPotatoes,
+                totalLosses: userTotalLosses,
+                // workTimer DOES use a future "ready-at" timestamp (work.js reads it as
+                // `workTimer - Date.now()`) — this one was already correct. robTimer is
+                // the opposite convention (see the win branch's own comment above).
+                workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
+                robTimer: Date.now(),
+                companions: leveledCompanions
+            });
 
             const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
             await interaction.editReply({ embeds: [embed], components: [] });

@@ -308,3 +308,20 @@ describe('createNotorietyEmbed Rival success bonus preview', () => {
         expect(field.value).toBe('+0% Easy / +0% Medium / +0% Hard');
     });
 });
+
+// Starch.SELL_TAX_PERCENT (2026-08-30) — shown explicitly on a sell, omitted on a buy
+// (buyStarch.js's own call site never passes taxAmount, defaulting to 0).
+describe('createBuyOrSellStarchEmbed Kingdom Tax display', () => {
+    test('shows the Kingdom Tax field when taxAmount is nonzero', () => {
+        const embed = embedFactory.createBuyOrSellStarchEmbed('User', 'u1', null, 100000, 50, 'sell', 100, 950, 90250, 4750);
+        const field = embed.data.fields.find(f => f.name.includes('Kingdom Tax'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('4,750');
+        expect(field.value).toContain('5%');
+    });
+
+    test('omits the Kingdom Tax field on a buy (no taxAmount passed)', () => {
+        const embed = embedFactory.createBuyOrSellStarchEmbed('User', 'u1', null, 100000, 50, 'buy', 100, 950, 95000);
+        expect(embed.data.fields.find(f => f.name.includes('Kingdom Tax'))).toBeUndefined();
+    });
+});

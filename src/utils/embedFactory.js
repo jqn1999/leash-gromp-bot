@@ -2704,7 +2704,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice) {
+    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice, taxAmount = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const color = currentType == 'buy' ? 'Green' : 'Orange';
         const starchesText = starchAmount > 1 ? 'starches' : 'starch';
@@ -2720,6 +2720,17 @@ class EmbedFactory {
             value: `${userStarches.toLocaleString()} ${starchesText}`,
             inline: true,
         })
+        // Starch.SELL_TAX_PERCENT (2026-08-30) — shown explicitly, same transparency
+        // precedent /bank's/`/give`'s own tax fields already set, rather than a quieter
+        // number just baked into totalPrice. taxAmount is only ever nonzero on a sell
+        // (buyStarch.js's own call site omits it, defaulting to 0 — no tax on buying).
+        if (taxAmount > 0) {
+            fields.push({
+                name: `Kingdom Tax:`,
+                value: `-${taxAmount.toLocaleString()} potatoes (5%)`,
+                inline: true,
+            })
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} ${currentType}s ${starchAmount.toLocaleString()} ${starchesText} for ${totalPrice.toLocaleString()} potatoes!`)

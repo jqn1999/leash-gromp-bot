@@ -463,3 +463,46 @@ onto their `/work` cooldown as a penalty.
 Also levels the robber's equipped companion if it carries `robChanceFlat` (Barn Owl/Yukon/Elder
 Rootbeard), cooldown-scaled against `/work` and unconditional on win/loss — see
 [companions.md#leveling](companions.md#leveling).
+
+**No house cut on a failed rob (removed 2026-08-30, direct instruction).** A failed rob's fine used
+to skim 10% to the house account (`Math.floor(fineAmount*.10)`) on top of the robber's own loss —
+removed entirely, so the fine is now a pure loss with no admin share, unlike every tax below.
+
+## House Account Taxes
+
+Every tax below is credited to the bot's own Discord user id (`client.user.id`, threaded through
+as `interaction.client.user.id` wherever a scenario closure only has `interaction` in scope) via
+`dynamoHandler.addUserDatabase`. Two shapes exist across this game, same distinction
+[give.js](../../src/commands/user/give.js)'s own comment already draws: some taxes are **added on
+top** of a chosen net amount (the sender/depositor decides what they keep, tax is extra on top of
+that); others are **taken out of** a gross amount (what's specified/earned is the total, the
+recipient nets less).
+
+| Source | Rate | Shape |
+|---|---|---|
+| `/bank`/`/safehouse` deposit | `Bank.TAX_BASE(1000)` + `Bank.TAX_PERCENT(.05)` | Added on top |
+| Guild bank deposit | `Bank.GUILD_TAX_BASE(5000)` + `Bank.GUILD_TAX_PERCENT(.05)` | Added on top |
+| `/give` (potatoes) | `Give.POTATO_TAX_PERCENT(.30)` | Taken out |
+| `/give` (starches) | `Give.STARCH_TAX_PERCENT(.10)` | Taken out |
+| `/companion-market` sale | `CompanionMarket.TAX_PERCENT(.05)` | Taken out |
+| `/sell-starch` (new 2026-08-30) | `Starch.SELL_TAX_PERCENT(.05)` | Taken out |
+| Guild raid win (new 2026-08-30) | `Raid.GUILD_RAID_TAX_PERCENT(.05)` | Taken out |
+
+**`/sell-starch`** — 5% of the gross `sellValue` (already inclusive of any Mole/Rootcarver/Elder
+Rootbeard/starch-buff price bonuses), taken off the top before `profitOrLoss` is computed, so a
+seller's profit/loss reflects what they actually walked away with. Shown explicitly on the result
+embed as a "Kingdom Tax" field (`embedFactory.createBuyOrSellStarchEmbed`'s new `taxAmount`
+parameter, defaulted to 0 so `/buy-starch`'s own call site — which has no tax — is unaffected).
+
+**Guild raid wins** — 5% of `totalRaidSplit`, taken off the top inside `startRaid.js`'s shared
+`addToBankOrPurse` helper (every one of the ~15 individual raid-scenario closures already funnels
+its win reward through this one function, so the tax only needed to land in one place) before the
+remainder is banked or split to members. Never applied to the penalty side
+(`removeFromBankOrPurse`) — a loss isn't income to skim. `houseUserId` is an optional trailing
+parameter (defaults to `null`, degrading to untaxed) so any caller that hasn't been updated
+doesn't crash, mirroring `raidSplitMode`/`raidListByMulti`'s own default-to-old-behavior shape on
+the same function signature.
+
+**Note on currency**: a starch-denominated tax (`/give`'s starch tax) is credited to the house
+account's own `starches` field, never converted to potatoes — the house account holds two
+genuinely separate balances, same as any player.

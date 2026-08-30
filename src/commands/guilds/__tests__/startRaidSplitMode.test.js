@@ -42,6 +42,7 @@ function fakeInteraction() {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(replyObj),
         user: { id: 'leader', username: 'Leader', displayName: 'Leader', avatar: 'hash' },
+        client: { user: { id: 'house-account' } },
     };
 }
 
