@@ -208,6 +208,37 @@ the other).
   `/rob`'s reasoning above), so it's unconditional on success/fail and fires once per attempt
   in all three tracks.
 
+**Passive-pet leveling (2026-08-30, direct instruction)** — every leveling path above is
+action-gated, but `passiveIncomePercent` (Rootcarver/Elder Rootbeard/Mochi) is earned purely by
+sitting equipped, no action required. That mismatch meant a player who genuinely wanted the
+passive-income playstyle was still forced into active grinding just to level the one companion
+meant to reward not having to. `companionFactory.applyPassiveCompanionTick(companions,
+tickSeconds)` grants workCount off elapsed EQUIPPED time instead, for whichever companion is
+currently active if (and only if) it carries `passiveIncomePercent` — **additive** on top of,
+never a replacement for, ordinary action-based leveling, per direct instruction (the broader of
+two scoping options): a passiveIncomePercent companion also actively used for `/work`/Bounty/etc.
+still levels from that too, which also means its OTHER perks (Rootcarver's
+`starchSellBonusPercent`, Elder Rootbeard's `regradeChanceFlat`/`robChanceFlat`, Mochi's
+`workMultiplierPercent`/`workCooldownSkipChance`/`rebirthBonusPercent`) can grow just from
+sitting equipped too — an accepted tradeoff of the chosen scope, not an oversight.
+
+Rate: `CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT` (450s = 7.5 min per workCount) —
+derived the same way every other cooldown-scaled grant already is:
+`Work.WORK_TIMER_SECONDS(300) / CompanionLeveling.REALISTIC_PLAY_DISCOUNT(2/3) = 450`, the same
+"roughly one `/work` call's worth of real time, pulled back by the realistic-play factor" ratio
+`getCooldownScaledWorkCountGrant` already applies to Bounty/Heist. Ticked from
+`dynamoHandler.passivePotatoHandler`'s existing 5-minute (300s) server-wide loop —
+`tickSeconds` is derived from that function's own `timesInADay` argument (`86400/288 = 300`)
+rather than a second hardcoded constant that could drift out of sync with the real interval.
+Since 300s doesn't divide evenly into 450s, each owned instance keeps a small persisted
+remainder, `passiveLevelAccumulatorSeconds`, so the two periods compose with **zero long-run
+drift** (grants land on the 2nd and 3rd tick of every 3-tick/900s window: 300→300, 600→+1/150,
+450→+1/0, repeat) instead of naively rounding every single tick, which would either always floor
+to 0 or always ceiling to 1 and badly miss the real 2:3 ratio. Folds in `applyMaxLevelTracking`
+automatically, same as every other leveling path. `lastUsedAt` (see below) is stamped on every
+tick this applies to, not just when a workCount threshold happens to be crossed — a passive pet
+earning its perk IS being used the whole time it's equipped.
+
 This is a genuine time investment, not a currency sink — there's no `/companion feed` or similar
 spend-to-level command. `companionFactory.getCompanionLevel(workCount)` maps the raw counter to a
 level (1-10) via `CompanionLeveling.THRESHOLDS`, the exact same shape/lookup pattern

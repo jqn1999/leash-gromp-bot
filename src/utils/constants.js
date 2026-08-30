@@ -594,7 +594,29 @@ const CompanionLeveling = {
     // since even the cheapest regrade attempt is a real 500,000,000-potato commitment with
     // genuine failure risk.
     REGRADE_BASE_GRANT: 2,
-    REGRADE_GRANT_COST_EXPONENT: 0.5
+    REGRADE_GRANT_COST_EXPONENT: 0.5,
+    // Passive-pet leveling (2026-08-30, direct instruction) — companions carrying
+    // passiveIncomePercent (Rootcarver, Elder Rootbeard, Mochi) earn their perk's value
+    // purely by sitting equipped, with no action required — but before this, LEVELING them
+    // still required active play (every other leveling path is action-gated), so a player
+    // who genuinely wanted the passive-income playstyle was forced into active grinding
+    // anyway just to grow the very companion meant to reward not having to. This grants
+    // workCount purely off elapsed equipped time instead, ADDITIVE on top of (never a
+    // replacement for) their existing action-based leveling — a passiveIncomePercent
+    // companion that's also actively used for /work, Bounty, etc. still levels from that
+    // too, same as always.
+    //
+    // 450 seconds (7.5 min) per workCount — derived the same way every other cooldown-
+    // scaled grant in this file already is: Work.WORK_TIMER_SECONDS (300s) /
+    // REALISTIC_PLAY_DISCOUNT (2/3) = 450, i.e. the same "roughly one /work call's worth of
+    // real time, pulled back by the same realistic-play factor" ratio getCooldownScaledWork
+    // CountGrant already applies to Bounty/Heist. Ticked from dynamoHandler.passivePotatoHandler's
+    // existing 5-minute (300s) server loop via companionFactory.applyPassiveCompanionTick,
+    // which keeps a small persisted remainder (passiveLevelAccumulatorSeconds) per owned
+    // instance so the 300s tick and 450s grant period compose with zero long-run drift
+    // (grants land on the 2nd and 3rd tick of every 3-tick/900s window, never skipping or
+    // double-counting a second) instead of naively rounding every single tick.
+    PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT: 450
 }
 
 // Companion Scavenging (roadmap #17): a benched (owned, unequipped, not already

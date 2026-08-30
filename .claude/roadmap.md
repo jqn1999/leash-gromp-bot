@@ -3473,6 +3473,43 @@ and needs its own balance pass.
   `systems/mercenary-bounties.md#rival-bounty-hunters`. Full suite: 745/745 (up from
   743/743 — 2 new tests, zero regressions).
 
+- [x] **90. Passive-Pet Leveling: Time-Equipped Grants workCount for passiveIncomePercent
+  Companions** — S/M — **Done**
+  What: raised as an exploratory question first ("what would be a good ratio of work
+  leveling up for passive pets based on time equipped?"), answered by grounding a rate
+  against the existing `getCooldownScaledWorkCountGrant` shape (`Work.WORK_TIMER_SECONDS /
+  REALISTIC_PLAY_DISCOUNT = 450s per workCount`), then confirmed for implementation ("yeah
+  lets do that for passive pets"). Root problem: `passiveIncomePercent` (Rootcarver/Elder
+  Rootbeard/Mochi) is the one perk type earned with zero action required, yet LEVELING it
+  still required active play like every other companion — a player who wanted the
+  passive-income playstyle specifically was forced into active grinding anyway.
+  - Scoping confirmed via `AskUserQuestion`: the BROADER of two options — this is additive
+    on top of ordinary action-based leveling for any companion carrying
+    `passiveIncomePercent`, not scoped to single-perk-only companions. Accepted tradeoff:
+    Rootcarver/Elder Rootbeard/Mochi's OTHER perks (starch-sell, rob chance, regrade,
+    rebirth bonus, work multi) can now also grow just from sitting equipped.
+  - New `companionFactory.applyPassiveCompanionTick(companions, tickSeconds)` — a no-op
+    (same reference back) unless the active companion carries `passiveIncomePercent`.
+    Persists a small remainder, `passiveLevelAccumulatorSeconds`, per owned instance so the
+    real 300s tick and the 450s grant period compose with zero long-run drift (2 grants per
+    3 ticks/900s, not a naive round-every-tick that would floor to 0 or ceiling to 1
+    forever). Folds in `applyMaxLevelTracking` automatically; stamps `lastUsedAt` every tick
+    it applies to (2026-08-30's "most recently used" sort, item 88 above).
+  - Wired into `dynamoHandler.passivePotatoHandler`'s existing 5-minute server-wide loop
+    (not a new interval — reuses the same `getUsers()` scan already running for personal
+    passive income) via a SEPARATE conditional `updateUserFields` write per user, kept
+    deliberately apart from the existing, already-tested `updateBankStoredPotatoesAndTotal
+    Earnings` call so that well-covered write shape stays untouched. `tickSeconds` derived
+    from `timesInADay` itself (`86400/288 = 300`) rather than a second hardcoded constant.
+  - New constant: `CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT: 450`.
+  Tests: `companionFactory.test.js` gained 7 new tests (no-op cases, threshold-crossing
+  grant + remainder, zero-drift over 30 simulated ticks, `lastUsedAt` stamping, other
+  instances untouched, composes additively with `levelActiveCompanion`).
+  `dynamoHandler.test.js` gained 2 new tests (a Rootcarver-equipped user gets a second
+  write with the correct workCount/remainder; a non-passive-companion user gets no second
+  write). Docs: `systems/companions.md#leveling`. Full suite: 755/755 (up from 745/745 —
+  10 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -16,6 +16,7 @@ const {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     isScavenging,
@@ -795,6 +796,80 @@ describe('levelActiveCompanion', () => {
             const companions = { owned: [], active: null };
             expect(levelActiveCompanion(companions, 8, null, 'robChanceFlat')).toBe(companions);
         });
+    });
+});
+
+// Passive-pet leveling (2026-08-30, direct instruction — "yeah lets do that for passive
+// pets", following an exploratory discussion of a good time-equipped leveling ratio). Only
+// companions carrying passiveIncomePercent qualify (Rootcarver, Elder Rootbeard, Mochi) —
+// direct instruction chose the broader scope where this is ADDITIVE on top of their
+// existing action-based leveling, not a replacement, so their other active perks (e.g.
+// Rootcarver's starchSellBonusPercent) can also grow just from sitting equipped.
+describe('applyPassiveCompanionTick', () => {
+    test('is a no-op (same reference back) when nothing is equipped', () => {
+        const companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: null };
+        expect(applyPassiveCompanionTick(companions, 300)).toBe(companions);
+    });
+
+    test('is a no-op when the active companion does not carry passiveIncomePercent', () => {
+        // Sprout only carries workMultiplierPercent.
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a' };
+        expect(applyPassiveCompanionTick(companions, 300)).toBe(companions);
+    });
+
+    test('accumulates seconds without granting workCount until the threshold is crossed', () => {
+        const companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 10 }], active: 'rootcarver-a' };
+        const result = applyPassiveCompanionTick(companions, 300); // < 450 (PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT)
+        expect(result.owned[0].workCount).toBe(10);
+        expect(result.owned[0].passiveLevelAccumulatorSeconds).toBe(300);
+    });
+
+    test('grants exactly 1 workCount and carries the remainder once the threshold is crossed', () => {
+        const companions = {
+            owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 10, passiveLevelAccumulatorSeconds: 300 }],
+            active: 'rootcarver-a'
+        };
+        const result = applyPassiveCompanionTick(companions, 300); // 300 + 300 = 600 >= 450 -> 1 grant, 150 remainder
+        expect(result.owned[0].workCount).toBe(11);
+        expect(result.owned[0].passiveLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('the 300s tick and 450s grant period compose with zero long-run drift over many ticks', () => {
+        let companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: 'rootcarver-a' };
+        const ticks = 30; // 30 * 300s = 9,000s of real equipped time
+        for (let i = 0; i < ticks; i++) {
+            companions = applyPassiveCompanionTick(companions, 300);
+        }
+        // 9,000s / 450s = exactly 20 workCount, no fractional loss or overshoot.
+        expect(companions.owned[0].workCount).toBe(20);
+    });
+
+    test('stamps lastUsedAt even on a tick that only accumulates (no workCount granted yet)', () => {
+        const companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: 'rootcarver-a' };
+        const before = Date.now();
+        const result = applyPassiveCompanionTick(companions, 300);
+        expect(result.owned[0].lastUsedAt).toBeGreaterThanOrEqual(before);
+    });
+
+    test('leaves every other owned instance untouched', () => {
+        const companions = {
+            owned: [
+                { instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 10 },
+                { instanceId: 'sprout-a', id: 'sprout', workCount: 5 }
+            ],
+            active: 'rootcarver-a'
+        };
+        const result = applyPassiveCompanionTick(companions, 300);
+        expect(result.owned[1]).toEqual({ instanceId: 'sprout-a', id: 'sprout', workCount: 5 });
+    });
+
+    // Additive, not a replacement — a passive pet also actively used for /work (or any
+    // other action) still levels from that too, same as always.
+    test('composes additively with ordinary action-based leveling', () => {
+        let companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: 'rootcarver-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        companions = applyPassiveCompanionTick(companions, 450); // +1 from time equipped
+        companions = levelActiveCompanion(companions, 1);        // +1 from an ordinary /work call
+        expect(companions.owned[0].workCount).toBe(2);
     });
 });
 

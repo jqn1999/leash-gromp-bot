@@ -323,6 +323,47 @@ function levelActiveCompanion(companions, workCountGained, restrictToCompanionId
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
 }
 
+// Passive-pet leveling (2026-08-30, direct instruction — see CompanionLeveling.PASSIVE_
+// LEVEL_SECONDS_PER_WORK_COUNT's own comment in constants.js for the full rationale/ratio
+// derivation). Called from dynamoHandler.passivePotatoHandler's existing 5-minute server
+// loop with tickSeconds = however many real seconds that tick actually covers, for whichever
+// companion is currently equipped — a no-op (same reference back) unless that companion
+// carries passiveIncomePercent, since this is ADDITIVE on top of ordinary action-based
+// leveling, not a replacement for it. Keeps a small persisted remainder
+// (passiveLevelAccumulatorSeconds) per owned instance so a 300s tick composes with a 450s
+// grant period with zero long-run drift, rather than naively rounding every single tick
+// (which would either always floor to 0 or always ceiling to 1, neither matching the real
+// 2:3 ratio). lastUsedAt is stamped every tick this applies to, same as any other leveling
+// path — a passive pet earning its perk every tick IS being used the whole time it's
+// equipped, not just at the moment a workCount threshold happens to be crossed.
+function applyPassiveCompanionTick(companions, tickSeconds) {
+    const activeInstanceId = companions?.active;
+    if (!activeInstanceId) {
+        return companions;
+    }
+    const activeEntry = (companions.owned ?? []).find(c => c.instanceId === activeInstanceId);
+    const activeCompanion = activeEntry ? getCompanionById(activeEntry.id) : null;
+    const hasPassivePerk = activeCompanion?.perks?.some(p => p.type === "passiveIncomePercent") ?? false;
+    if (!hasPassivePerk) {
+        return companions;
+    }
+
+    let accumulator = (activeEntry.passiveLevelAccumulatorSeconds || 0) + tickSeconds;
+    let workCountGained = 0;
+    while (accumulator >= CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT) {
+        workCountGained += 1;
+        accumulator -= CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT;
+    }
+
+    const now = Date.now();
+    const leveledOwned = companions.owned.map(o =>
+        o.instanceId === activeInstanceId
+            ? { ...o, workCount: (o.workCount || 0) + workCountGained, passiveLevelAccumulatorSeconds: accumulator, lastUsedAt: now }
+            : o
+    );
+    return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
+}
+
 // Starches sold this call -> companion XP grant, for whichever equipped companion carries
 // starchSellBonusPercent (Mole/Rootcarver/Elder Rootbeard) when /sell-starch runs. /sell-starch
 // has no cooldown to scale against the way Bounty/Heist do, so the grant instead scales by the
@@ -571,6 +612,7 @@ module.exports = {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     isScavenging,

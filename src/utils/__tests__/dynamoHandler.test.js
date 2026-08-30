@@ -594,3 +594,47 @@ describe('passivePotatoHandler world buff term', () => {
         expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
     });
 });
+
+// Passive-pet leveling (2026-08-30) — companionFactory.applyPassiveCompanionTick ticked
+// once per user per 5-minute cycle for whoever has a passiveIncomePercent companion
+// equipped (Rootcarver/Elder Rootbeard/Mochi). tickSeconds is derived from timesInADay
+// itself (86400/288 = 300s) rather than a second hardcoded constant.
+describe('passivePotatoHandler passive-pet leveling', () => {
+    test('a live Rootcarver (passiveIncomePercent) gains time-based workCount via a second write', async () => {
+        const user = {
+            userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            companions: { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 10, passiveLevelAccumulatorSeconds: 300 }], active: 'rootcarver-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        // The bankStored/totalEarnings write is always first, then the companions write
+        // (only fired when applyPassiveCompanionTick actually changes something); a third
+        // call is the trailing updateStatFields("economy", ...) write, unrelated here.
+        expect(docClient.update).toHaveBeenCalledTimes(3);
+        const [companionsParams] = docClient.update.mock.calls[1];
+        const updatedCompanions = companionsParams.ExpressionAttributeValues[':s0'];
+        // 300 (existing accumulator) + 300 (this tick) = 600 >= 450 -> +1 workCount, 150 remainder.
+        expect(updatedCompanions.owned[0].workCount).toBe(11);
+        expect(updatedCompanions.owned[0].passiveLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('a user with no passive-perk companion equipped gets no second write', async () => {
+        const user = {
+            userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 5 }], active: 'sprout-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        // Just the bankStored/totalEarnings write plus the trailing economy stat write —
+        // no companions write, since this user has nothing to level passively.
+        expect(docClient.update).toHaveBeenCalledTimes(2);
+    });
+});

@@ -682,6 +682,12 @@ const passivePotatoHandler = async function (timesInADay) {
     const worldBuff = await getActiveWorldBuff();
     const worldBuffPassivePercent = isWorldBuffLive(worldBuff, "passiveBoost") ? worldBuff.value : 0;
 
+    // Passive-pet leveling (CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT's own
+    // comment in constants.js) — derives the real seconds this tick covers from timesInADay
+    // itself (86400/288 = 300s, matching the actual 5-minute backgroundEvents.js interval)
+    // rather than a second hardcoded constant that could silently drift out of sync with it.
+    const tickSeconds = 86400 / timesInADay;
+
     await Promise.all(allUsers.map(async user => {
         // Ladybug (+5%) / Mochi (+8%) and the live rebirth bonus — computed fresh here,
         // never folded into passiveAmount itself, same "one active modifier at the usage
@@ -696,6 +702,15 @@ const passivePotatoHandler = async function (timesInADay) {
         serverTotalStarches += toNumber(user.starches);
         if (user.workCount > 0) {
             activeTotalEarnings.push(userTotalEarnings);
+        }
+
+        // A separate, conditional write — a no-op (same reference back) for the vast
+        // majority of users who either have nothing equipped or have a non-passive
+        // companion active, so this never touches updateBankStoredPotatoesAndTotalEarnings's
+        // own well-tested write shape above.
+        const updatedCompanions = companionFactory.applyPassiveCompanionTick(user.companions, tickSeconds);
+        if (updatedCompanions !== user.companions) {
+            await updateUserFields(user.userId, { companions: updatedCompanions });
         }
     }));
 
