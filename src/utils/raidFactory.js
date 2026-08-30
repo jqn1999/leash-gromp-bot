@@ -18,6 +18,7 @@ function getRaidLevelInfo(raidCount) {
     return {
         level: tier.level,
         multiplier: tier.multiplier,
+        raidCooldownReductionPercent: tier.raidCooldownReductionPercent,
         winsToNextLevel: nextTier ? nextTier.winsRequired - wins : null
     };
 }

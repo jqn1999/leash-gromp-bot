@@ -428,18 +428,28 @@ const GuildHistory = {
 // reward is guild-wide and split across however many members actually raided — 10x
 // split across a real 3-10 person roster lands in a meaningful-but-not-absurd
 // per-player range once a guild is genuinely maxed out.
+// raidCooldownReductionPercent added 2026-08-30, direct instruction — "update guilds to
+// get up to a 30% guild raid cooldown reduction at max level. Additive with guild buff
+// they can use." A flat, automatic reduction to the 1hr raid cooldown (Raid.RAID_TIMER_
+// SECONDS) purely from guild LEVEL, stacking additively in startRaid.js's own raidTimer
+// write alongside the guild's SELECTED buff (guildBuffFactory.getGuildBuffValue("raidTimer",
+// level), only live if the guild actually picked raidTimer as its one active buff — see
+// GuildBuffScaling.raidTimer) and Spud Keep's own cooldown-reduction perk — none of the
+// three gate or reduce each other. Linear from 0% at Level 1 to the requested 30% cap at
+// Level 10, same "0 at the floor, hit the requested cap at max" shape MercenaryRank's own
+// cooldownReductionPercent already established, rounded to whole percentage points.
 const RaidLevel = {
     THRESHOLDS: [
-        { level: 1, winsRequired: 0, multiplier: 1.00 },
-        { level: 2, winsRequired: 25, multiplier: 1.30 },
-        { level: 3, winsRequired: 75, multiplier: 1.70 },
-        { level: 4, winsRequired: 175, multiplier: 2.30 },
-        { level: 5, winsRequired: 400, multiplier: 3.00 },
-        { level: 6, winsRequired: 800, multiplier: 4.00 },
-        { level: 7, winsRequired: 1500, multiplier: 5.20 },
-        { level: 8, winsRequired: 3000, multiplier: 6.70 },
-        { level: 9, winsRequired: 6000, multiplier: 8.30 },
-        { level: 10, winsRequired: 12000, multiplier: 10.00 },
+        { level: 1, winsRequired: 0, multiplier: 1.00, raidCooldownReductionPercent: 0.00 },
+        { level: 2, winsRequired: 25, multiplier: 1.30, raidCooldownReductionPercent: 0.03 },
+        { level: 3, winsRequired: 75, multiplier: 1.70, raidCooldownReductionPercent: 0.07 },
+        { level: 4, winsRequired: 175, multiplier: 2.30, raidCooldownReductionPercent: 0.10 },
+        { level: 5, winsRequired: 400, multiplier: 3.00, raidCooldownReductionPercent: 0.13 },
+        { level: 6, winsRequired: 800, multiplier: 4.00, raidCooldownReductionPercent: 0.17 },
+        { level: 7, winsRequired: 1500, multiplier: 5.20, raidCooldownReductionPercent: 0.20 },
+        { level: 8, winsRequired: 3000, multiplier: 6.70, raidCooldownReductionPercent: 0.23 },
+        { level: 9, winsRequired: 6000, multiplier: 8.30, raidCooldownReductionPercent: 0.27 },
+        { level: 10, winsRequired: 12000, multiplier: 10.00, raidCooldownReductionPercent: 0.30 },  // max
     ]
 }
 

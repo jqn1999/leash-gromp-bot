@@ -31,7 +31,8 @@ jest.mock('../../../utils/raidFactory', () => {
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow } = require('../startRaid');
-const { Raid } = require('../../../utils/constants');
+const { Raid, RaidLevel } = require('../../../utils/constants');
+const guildBuffFactory = require('../../../utils/guildBuffFactory');
 
 function fakeInteraction() {
     const replyObj = {
@@ -163,6 +164,26 @@ describe('/start-raid reward-payout-mode routing', () => {
 
         expect(mockHandlePotatoSplitByShare).toHaveBeenCalledTimes(1);
         expect(mockHandlePotatoSplit).not.toHaveBeenCalled();
+    });
+
+    // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent (0-30% across guild levels
+    // 1-10, new 2026-08-30) — automatic and additive alongside the guild's own SELECTED
+    // 'raidTimer' buff, neither one gating the other.
+    test('a max-level guild raid win gets both its selected raidTimer buff AND the automatic level-based cooldown reduction, stacked additively', async () => {
+        const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: maxTier.winsRequired, guildBuff: 'raidTimer' }));
+        const interaction = fakeInteraction();
+        const fixedNow = 1_700_000_000_000;
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(fixedNow);
+
+        await runStartRaidFlow(interaction, 'baby');
+
+        const guildBuffReduction = guildBuffFactory.getGuildBuffValue('raidTimer', maxTier.level);
+        const totalReduction = guildBuffReduction + maxTier.raidCooldownReductionPercent;
+        const expectedTimer = fixedNow + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalReduction);
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'raidTimer', expectedTimer);
+
+        nowSpy.mockRestore();
     });
 
     test('raidPayoutMode: "direct" does not change penalty handling — a lost raid still drains the bank first', async () => {

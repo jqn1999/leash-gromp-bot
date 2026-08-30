@@ -6361,6 +6361,23 @@ and needs its own balance pass.
   `embedFactory.test.js` tests (full list shown when unpaginated; correct page slice + "Page X / Y"
   line when paginated). Full suite: 808/808 (up from 806/806), zero regressions.
 
+**Guild-level raid cooldown reduction (2026-08-30).** Direct instruction: "update guilds to get up
+to a 30% guild raid cooldown reduction at max level. Additive with guild buff they can use." Added
+`raidCooldownReductionPercent` to every entry of `constants.js`'s `RaidLevel.THRESHOLDS` — a linear
+0% (level 1) → 30% (level 10, max) ramp, mirroring the shape already established by Mercenary Rank's
+own `cooldownReductionPercent` precedent. `raidFactory.js`'s `getRaidLevelInfo` now returns it
+alongside `level`/`multiplier`. Wired into `startRaid.js`'s existing post-raid cooldown write as a
+third additive term alongside the guild's own selected `raidTimer` buff reduction and Spud Keep's
+cooldown-reduction perk — all three stack, none gate each other, matching the exact "additive with
+guild buff" ask. Automatic and unconditional: applies regardless of which `guildBuff` (if any) the
+guild has selected, purely a function of `guild.raidCount` via the same computed-not-stored level
+lookup guild level/reward-multiplier already use. New tests: `raidFactory.test.js` (field hits 0% at
+level 1 and 30% at every max-tier win count), `startRaidPayoutMode.test.js` (a max-level guild with
+the `raidTimer` buff selected gets both reductions summed into the final `raidTimer` write, asserted
+against a fixed `Date.now()`). Full suite: 811/811, zero regressions. Docs:
+[systems/guilds.md](systems/guilds.md#guild-level) updated with the new column and an explanatory
+paragraph.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

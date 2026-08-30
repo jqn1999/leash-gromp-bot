@@ -605,6 +605,20 @@ describe('getRaidLevelInfo', () => {
         const result = getRaidLevelInfo(10); // level 1, next threshold at 25
         expect(result.winsToNextLevel).toBe(15);
     });
+
+    test('raidCooldownReductionPercent ramps from 0% at level 1 to 30% at max level', () => {
+        const minTier = RaidLevel.THRESHOLDS[0];
+        const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
+        expect(getRaidLevelInfo(minTier.winsRequired).raidCooldownReductionPercent).toBe(0);
+        expect(getRaidLevelInfo(maxTier.winsRequired).raidCooldownReductionPercent).toBe(0.30);
+    });
+
+    test('raidCooldownReductionPercent matches the threshold table at every level', () => {
+        RaidLevel.THRESHOLDS.forEach(tier => {
+            const result = getRaidLevelInfo(tier.winsRequired);
+            expect(result.raidCooldownReductionPercent).toBe(tier.raidCooldownReductionPercent);
+        });
+    });
 });
 
 // Regression coverage for the "Legendary raids are a guaranteed-loss trap at low guild

@@ -936,7 +936,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: raidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
+    const { level: guildLevel, multiplier: raidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
 
     // Elite/Legendary gated by guild level, not by how much totalMultiplier the
     // roster brings — below the derived level, the tier's success-rate cap sits
@@ -1130,7 +1130,10 @@ async function runStartRaidFlow(interaction, raidSelection) {
         ? spudKeepCooldownBuff.value
         : 0;
     const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
-    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * (guildBuffRaidTimerReduction + spudKeepRaidTimerReduction)));
+    // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent (2026-08-30, direct
+    // instruction) — automatic, level-scaled, stacks additively alongside the guild's
+    // SELECTED buff and Spud Keep's own cooldown perk; none of the three gate each other.
+    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * (guildBuffRaidTimerReduction + spudKeepRaidTimerReduction + guildLevelRaidTimerReduction)));
 
     // No raidList to clear anymore — the roster is computed live from each member's
     // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so

@@ -104,7 +104,7 @@ the scaled value, `getGuildBuffLabel(buffType, level)` builds the human-readable
 | Buff value | Level 1 | Level 5 | Level 10 | Applied in |
 |---|---|---|---|---|
 | `robChance` | +6% | +10% | +20% | [rob.js](../../src/commands/user/rob.js) |
-| `raidTimer` | -6% | -11% | -25% | `start-raid`'s post-raid cooldown write |
+| `raidTimer` | -6% | -11% | -25% | `start-raid`'s post-raid cooldown write (additive with the level-based reduction below — see [Guild level](#guild-level)) |
 | `workTimer` | -6% | -11% | -25% | `dynamoHandler.calculateWorkTimerValue` |
 | `workMulti` | +6% | +10% | +15% (cap) | `/work` (`getGuildWorkMulti` in `workFactory.js`, and again in `embedFactory.js` for `/profile`'s display) |
 
@@ -189,18 +189,28 @@ stuck at their creation-time default (`1`) — nothing anywhere ever wrote to ei
 are now **computed live from `guild.raidCount`** (raid *wins* only, never attempts) by
 `raidFactory.js`'s `getRaidLevelInfo`, against the curve in `constants.js`'s `RaidLevel.THRESHOLDS`:
 
-| Level | Raid wins needed | Reward multiplier |
-|---|---|---|
-| 1 | 0 | 1.00x |
-| 2 | 25 | 1.30x |
-| 3 | 75 | 1.70x |
-| 4 | 175 | 2.30x |
-| 5 | 400 | 3.00x |
-| 6 | 800 | 4.00x |
-| 7 | 1,500 | 5.20x |
-| 8 | 3,000 | 6.70x |
-| 9 | 6,000 | 8.30x |
-| 10 (max) | 12,000 | 10.00x |
+| Level | Raid wins needed | Reward multiplier | Raid cooldown reduction |
+|---|---|---|---|
+| 1 | 0 | 1.00x | 0% |
+| 2 | 25 | 1.30x | 3% |
+| 3 | 75 | 1.70x | 7% |
+| 4 | 175 | 2.30x | 10% |
+| 5 | 400 | 3.00x | 13% |
+| 6 | 800 | 4.00x | 17% |
+| 7 | 1,500 | 5.20x | 20% |
+| 8 | 3,000 | 6.70x | 23% |
+| 9 | 6,000 | 8.30x | 27% |
+| 10 (max) | 12,000 | 10.00x | 30% |
+
+**Raid cooldown reduction** (`raidCooldownReductionPercent`, added 2026-08-30, direct instruction:
+"update guilds to get up to a 30% guild raid cooldown reduction at max level. Additive with guild
+buff they can use") — automatic, applies to every guild regardless of its selected `guildBuff`,
+scaling with the same level curve above. `raidFactory.js`'s `getRaidLevelInfo` returns it alongside
+`level`/`multiplier`; `startRaid.js`'s post-raid cooldown write sums it together with the guild's own
+selected `raidTimer` buff reduction (if chosen) and Spud Keep's cooldown-reduction perk (if this
+guild currently holds the Keep) — all three stack additively and none of them gate any other. A
+max-level guild that has also selected the `raidTimer` buff and holds Spud Keep can stack all three
+for a combined reduction north of 80% off the base 1-hour cooldown.
 
 Deliberately computed, not stored — a second write path to keep `level` in sync with `raidCount`
 would just reintroduce the same class of sync-drift bug that left the old fields dead in the first
