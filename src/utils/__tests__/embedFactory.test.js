@@ -325,3 +325,38 @@ describe('createBuyOrSellStarchEmbed Kingdom Tax display', () => {
         expect(embed.data.fields.find(f => f.name.includes('Kingdom Tax'))).toBeUndefined();
     });
 });
+
+// /current-spud-keep pagination (2026-08-30) — mirrors /current-world-raid's own
+// Previous/Next shape rather than a hard-capped "+N more" line, since this command is
+// checked live/repeatedly and a busy server's entrant list can run past one embed's worth.
+describe('createSpudKeepStatusEmbed pagination', () => {
+    function basePreview(entrants) {
+        return {
+            currentBuff: null,
+            spudKeep: { potPotatoes: 0, lastResolvedAt: null },
+            entrants,
+            attackerBonusPercent: 0,
+            consecutiveHoldCycles: 0,
+        };
+    }
+
+    test('shows the full entrant list and no page line when called without pagination params', () => {
+        const entrants = [{ type: 'guild', name: 'Guild A', isHolder: false, chancePercent: 0.5, roster: [] }];
+        const embed = embedFactory.createSpudKeepStatusEmbed(basePreview(entrants));
+        expect(embed.data.description).not.toContain('Page');
+        expect(embed.data.fields.some(f => f.name.includes('Guild A'))).toBe(true);
+    });
+
+    test('shows only the given page slice and a Page X / Y line when paginated', () => {
+        const fullList = [
+            { type: 'guild', name: 'Guild A', isHolder: false, chancePercent: 0.5, roster: [] },
+            { type: 'guild', name: 'Guild B', isHolder: false, chancePercent: 0.5, roster: [] },
+        ];
+        const pageSlice = [fullList[1]]; // simulates page 2 of 2 (Guild B only)
+        const embed = embedFactory.createSpudKeepStatusEmbed(basePreview(fullList), pageSlice, 1, 2);
+
+        expect(embed.data.description).toContain('Page 2 / 2');
+        expect(embed.data.fields.some(f => f.name.includes('Guild B'))).toBe(true);
+        expect(embed.data.fields.some(f => f.name.includes('Guild A'))).toBe(false);
+    });
+});

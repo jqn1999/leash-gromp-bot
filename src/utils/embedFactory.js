@@ -3233,9 +3233,19 @@ class EmbedFactory {
 
     // Read-only /current-spud-keep preview — mirrors /current-world-raid/current-raid's
     // own "live power preview, no state written by viewing it" shape. `preview` is
-    // spudKeepFactory.buildEntrantPreview's own return shape.
-    createSpudKeepStatusEmbed(preview) {
+    // spudKeepFactory.buildEntrantPreview's own return shape. Since 2026-08-30, paginated
+    // the same way /current-world-raid is (Previous/Next buttons via
+    // helperCommands.runPaginatedReply) rather than a hard-capped "+N more" line — a busy
+    // server's entrant list can genuinely exceed one embed's worth, and this command (a
+    // live, repeatedly-checked status view) is exactly the interactive case pagination is
+    // for, unlike createSpudKeepResultEmbed's own one-shot cron announcement below, which
+    // keeps its own hard cap since a fire-and-forget post can't paginate.
+    // currentSpudKeep.js pre-chunks `preview.entrants` and passes this page's own slice as
+    // `pageEntrants`; omitted (null) falls back to the full list, so this stays callable
+    // the original way too.
+    createSpudKeepStatusEmbed(preview, pageEntrants = null, pageIndex = 0, totalPages = 1) {
         const { currentBuff, spudKeep, entrants, attackerBonusPercent, consecutiveHoldCycles } = preview;
+        const entrantsToShow = pageEntrants || entrants;
         const isHolderLive = Boolean(currentBuff && currentBuff.holderType && currentBuff.expiresAt > Date.now());
         const fields = [];
 
@@ -3261,11 +3271,13 @@ class EmbedFactory {
             value: `+${(attackerBonusPercent * 100).toFixed(0)}% power for every challenger (the current holder, if any, is exempt)`,
             inline: false,
         });
-        fields.push(...buildSpudKeepEntrantFields(entrants));
+        fields.push(...buildSpudKeepEntrantFields(entrantsToShow));
 
+        const lastResolvedLine = spudKeep.lastResolvedAt ? `Last resolved <t:${Math.floor(spudKeep.lastResolvedAt / 1000)}:R>.` : 'Never resolved yet.';
+        const pageLine = totalPages > 1 ? `\nPage ${pageIndex + 1} / ${totalPages}` : '';
         const embed = new EmbedBuilder()
             .setTitle('🥔🏰 Spud Keep — Live Status')
-            .setDescription(spudKeep.lastResolvedAt ? `Last resolved <t:${Math.floor(spudKeep.lastResolvedAt / 1000)}:R>.` : 'Never resolved yet.')
+            .setDescription(`${lastResolvedLine}${pageLine}`)
             .setColor('Gold')
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

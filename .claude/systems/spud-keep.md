@@ -205,7 +205,15 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   `spud_keep.mercenaryEntrants`, mirrors `/join-world-raid` exactly.
 - `/current-spud-keep` (misc) — read-only, `buildEntrantPreview()` live, no state written by viewing
   it: current holder + buff expiry + streak, both buff magnitudes, the live pot total, the Attacker's
-  Bonus this cycle would apply, and every entrant's power/breakdown/lottery chance.
+  Bonus this cycle would apply, and every entrant's power/breakdown/lottery chance. **Paginated**
+  (2026-08-30, direct instruction) — 10 entrants/page via the same `buildPaginationRow`/
+  `runPaginatedReply` Previous/Next shape `/current-world-raid` already uses, rather than a
+  hard-capped "+N more" line, since this is a live/repeatedly-checked status view and a busy
+  server's entrant count can genuinely exceed one page. `createSpudKeepStatusEmbed` takes an
+  optional `pageEntrants`/`pageIndex`/`totalPages` — omitted, it falls back to showing the full
+  list on one embed (used by anything that doesn't need pagination). `createSpudKeepResultEmbed`'s
+  own one-shot cron announcement is unchanged — still `buildSpudKeepEntrantFields`' hard 20-field
+  cap with a "+N more" line, since a fire-and-forget post can't paginate.
 
 ## Cross-cutting notes
 

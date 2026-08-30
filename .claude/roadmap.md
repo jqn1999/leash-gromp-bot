@@ -6348,6 +6348,19 @@ and needs its own balance pass.
   requirement" in this entry's own Recommendation above and was NOT implemented — only the
   base+per-cycle escalation (capped at 66%) shipped.
 
+  **Follow-up (2026-08-30, same day): `/current-spud-keep` paginated.** It originally shipped with
+  `buildSpudKeepEntrantFields`'s hard 20-field cap ("+N more entrant(s) not shown") — fine for
+  `createSpudKeepResultEmbed`'s one-shot cron post, but a real gap for `/current-spud-keep`, a
+  live status view players would check repeatedly. Direct instruction to add pagination. Mirrors
+  `/current-world-raid`'s exact Previous/Next shape: `createSpudKeepStatusEmbed` gained optional
+  `pageEntrants`/`pageIndex`/`totalPages` params (falls back to the full list when omitted, so it's
+  still callable the original way), `currentSpudKeep.js` chunks `preview.entrants` 10/page and
+  drives `helperCommands.runPaginatedReply`, same local `chunkArray` convention every other
+  paginated command file already duplicates rather than sharing. `createSpudKeepResultEmbed`'s own
+  hard cap is untouched — a fire-and-forget cron post genuinely can't paginate. 2 new
+  `embedFactory.test.js` tests (full list shown when unpaginated; correct page slice + "Page X / Y"
+  line when paginated). Full suite: 808/808 (up from 806/806), zero regressions.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
