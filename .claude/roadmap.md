@@ -3047,6 +3047,23 @@ and needs its own balance pass.
   `currentRaid.js`, `joinGuild.js`, `rps.js` all also hold a confirm/response button wait
   with no obvious re-fetch afterward — flagged as a follow-up, out of scope here since the
   user's report specifically named companion/bank/rob.
+  - **Correction (2026-08-30, direct player report — "my cooldown said 59m 23s but i
+    havent robbed in a while")**: the `*1000` fix above corrected the UNITS but not the
+    underlying convention mismatch — it wrote `robTimer: Date.now() + ROB_TIMER_SECONDS *
+    1000` (a future "ready-at" timestamp, copied from `workTimer`'s own different
+    convention), while this same file's own cooldown check (line 87) reads `robTimer` as a
+    PAST "last action" timestamp (`Date.now() - robTimer`), the same convention
+    `bountyTimer`/`npcRobTimer` already use correctly. The mismatch silently DOUBLED the
+    real cooldown to ~2 hours: at the true 1-hour mark the read math still evaluated to "0
+    seconds elapsed," forcing a second full hour of wait. Root-caused directly from the
+    player's own numbers (59m23s remaining despite waiting past the real 1-hour mark maps
+    exactly to being 37 seconds into the phantom second hour). Fixed by writing plain
+    `Date.now()` for both the win and loss branches' `robTimer`, matching
+    `bountyTimer`/`npcRobTimer`'s convention exactly; `workTimer`'s own write on the same
+    loss branch was already correct (that field genuinely uses the future-ready-at
+    convention, per `work.js`'s own `workTimer - Date.now()` read) and was left untouched.
+    No test file exists for `rob.js` to extend (command files aren't unit-tested in this
+    codebase) — verified by hand against both write sites and the file's own read.
 
 - [x] **77. Fix: `findUser` Used Eventually-Consistent Reads, Racing Its Own Re-Fetches** —
   S — **Done**

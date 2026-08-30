@@ -224,7 +224,16 @@ module.exports = {
                 dynamoHandler.updateUserFields(userId, {
                     potatoes: userPotatoes,
                     totalEarnings: userTotalEarnings,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS * 1000,
+                    // robTimer stores the LAST-ACTION timestamp (Date.now()), not a future
+                    // "ready-at" one — this file's own cooldown check above (line 87) reads
+                    // it as `Date.now() - robTimer`, the same "past timestamp" convention
+                    // bountyTimer/npcRobTimer already use. Writing `Date.now() + ROB_TIMER_
+                    // SECONDS*1000` here (a prior fix's leftover, copied from workTimer's own
+                    // *different*, future-ready-at convention) silently doubled the real
+                    // cooldown to ~2 hours — confirmed via a direct player report of the
+                    // remaining-time display reading a near-full hour despite having waited
+                    // out the real 1-hour window already.
+                    robTimer: Date.now(),
                     companions: leveledCompanions
                 }),
                 dynamoHandler.updateUserFields(targetUserId, {
@@ -246,8 +255,11 @@ module.exports = {
                 dynamoHandler.updateUserFields(userId, {
                     potatoes: userPotatoes,
                     totalLosses: userTotalLosses,
+                    // workTimer DOES use a future "ready-at" timestamp (work.js reads it as
+                    // `workTimer - Date.now()`) — this one was already correct. robTimer is
+                    // the opposite convention (see the win branch's own comment above).
                     workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
-                    robTimer: Date.now() + Rob.ROB_TIMER_SECONDS * 1000,
+                    robTimer: Date.now(),
                     companions: leveledCompanions
                 })
             ]);
