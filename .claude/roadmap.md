@@ -5298,6 +5298,194 @@ and needs its own balance pass.
   existing per-participant rewards; a guild-scoped variant (this is deliberately server-wide, not a
   second `guildBuff` slot).
 
+- [ ] **Spud Keep — Contested Node/Territory Event (guilds + mercenaries)** — L, brainstorm only,
+  not yet scoped. Player pitch, verbatim: a recurring (daily or every-2-day) event where guilds
+  and/or individual mercenaries "fight" over one shared castle/city/node; the winner holds it and
+  draws a benefit until the next contest, when they have to defend it; resolution should be "some
+  calculation of multipliers on each side to determine win %, then a random roll." Inspired by
+  another game's capturable-territory mechanic.
+
+  **What**: a single, server-wide, always-exactly-one-holder "Keep" — a stats-table doc mirroring
+  `world`/`world_buff`/`active_quests`/`active_guild_contract`'s existing "one global pointer" shape
+  (holder id/type, a live power snapshot, an `expiresAt`) rather than a new parallel economy. On a
+  daily cadence (see Cadence below), whoever currently holds the Keep is automatically re-entered at
+  their live power with **no action required to "defend"** — matches the pitch's own framing that
+  holding is passive between contests, only losing it requires something to have out-competed you.
+  Any other guild (via an officer-run command using the guild's existing live raid roster — the exact
+  `getLiveRaidRoster`/`autoJoinRaids` mechanism `/join-raid` already toggles, zero new membership
+  state) or any individual mercenary (a fire-and-forget signup mirroring `/join-world-raid`) can enter
+  as a challenger for that cycle. At resolution, one entrant is picked and becomes (or stays) the
+  holder for the next cycle, receiving a Keep-flavored buff for exactly that cycle's duration.
+
+  **Why**: nothing in this game today is a *shared, exclusive, contestable* resource — every existing
+  timed buff is either fully guild-private (`guildBuff`, gated behind that guild's own investment) or
+  fully server-wide and free (the World Boss kill buff, [above](#world-boss-kill--server-wide-temporary-buff)).
+  A Keep sits in the gap: a real prize that only one side can hold at a time, visible to everyone,
+  contestable by anyone — a genuinely new kind of "there's something worth fighting over" moment this
+  game hasn't had, and one of the few places guilds and mercenaries would ever compete for the exact
+  same thing rather than running parallel, non-overlapping tracks.
+
+  **1. Resolution mechanic — generalizing "two sides, win %, roll" to however many show up.** The
+  pitch's own phrasing (multipliers on each side → win % → random roll) is exactly a two-entrant
+  weighted coin flip: `chance_A = power_A / (power_A + power_B)`. Rather than forcing every cycle into
+  an artificial 1-on-1 pairing (and needing matchmaking logic to decide *which* challenger gets the
+  holder's slot if three guilds all sign up the same day — precisely the "open challenges vs.
+  matchmaking" and "mismatched guild sizes" problems the shelved Guild vs. Guild Raids item already
+  flagged as unresolved, see [below](#discussed-earlier-not-picked-up-in-this-pass)), recommend the
+  natural N-way generalization of the identical formula: every signed-up entrant that cycle (holder
+  included) gets a lottery ticket count equal to its own power, `chance_i = power_i / Σpower`, and one
+  winner is drawn — mathematically identical to the pitch's own two-sided formula whenever exactly two
+  entrants exist, but needs no separate matchmaking step when more do. Each entrant's power is
+  computed by the exact same function every raid/Bounty formula already shares —
+  `raidFactory.getEffectiveRaidPower(memberDetailsList)` — fed either a guild's live raid roster (team
+  power + headcount bonus, as `/current-raid` already shows) or a single mercenary's own `userDetails`
+  in a 1-length array (byte-identical to how Bounty already treats a solo mercenary as a "roster of
+  one," see [systems/mercenary-bounties.md](systems/mercenary-bounties.md#success-chance)) — no new
+  power formula needed, only a new place that calls the existing one.
+
+  **A genuine, already-existing fairness backstop, not something new to build**: `getEffectiveRaidPower`
+  already caps a roster's own ceiling at roughly 3x its single strongest member's power (2.0x from the
+  rank-decayed `teamPower` term, ×1.5x from the capped headcount bonus — see
+  [systems/raids-and-world-events.md](systems/raids-and-world-events.md#effective-raid-power)) — a
+  guild can't just stack unlimited members to guarantee a win the way it could under a naive summed
+  total. This doesn't eliminate a dominant guild's edge, but it bounds it, for free, with the exact
+  formula this feature would already be reusing.
+
+  **2. The guild/mercenary "same axis, different depth" wrinkle.** Feeding both populations through
+  the identical `getEffectiveRaidPower` call makes the *numbers* directly comparable, but not the
+  *realistic odds*: a guild's power scales with roster depth (multiple members' power summed with
+  decay, up to that ~3x ceiling above), while a mercenary is always exactly one data point bounded by
+  their own `workMultiplierAmount` — Bounty's own solo power landmarks top out around 600-1,272
+  depending on rebirth/companion investment (see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework)),
+  comfortably inside what even a modest 3-5 person active-raiding guild's own `teamPower` already
+  reaches. In practice, a lone mercenary entering the same lottery as an active guild is a real but
+  usually small longshot, not a coin flip — the same asymmetry Bounty's own reward-parity design
+  (deliberately ~30% of guild income, never full parity) already accepts as correct rather than a bug
+  to fix. Three shapes to resolve this, in increasing order of scope:
+
+  - **Option A — guild-only Keep.** Mercenaries aren't eligible at all; the Keep becomes an N-way
+    version of the shelved Guild vs. Guild Raids concept. Simplest, avoids the asymmetry question
+    entirely, but doesn't fulfill the actual ask (mercenaries were explicitly named as eligible
+    contestants).
+  - **Option B — literal unified pool (recommended starting point).** Guilds and mercenaries enter
+    the exact same lottery on equal mechanical footing, accepting the realistic-odds asymmetry above
+    as an honest, disclosed tradeoff rather than something to paper over — the same posture this
+    codebase already takes with Bounty vs. Guild Raid parity. A mercenary's entry is a real, if
+    usually small, chance every cycle (never zero, unlike a hard threshold gate), and costs nothing to
+    attempt (see Open Question on ante below), so the "why bother" risk is softer than it would be
+    under a deterministic highest-power-wins model.
+  - **Option C — mercenaries can also pledge to a guild's side ("sellsword") instead of only fielding
+    their own solo entry.** A mercenary opts, per cycle, to add their own power into one guild's
+    entrant array for that cycle only (literally appending one more `userDetails` object to the array
+    `getEffectiveRaidPower` already accepts — no formula change), in exchange for a smaller,
+    contribution-scaled slice of that guild's reward if it wins (the same proportional-by-contribution
+    shape `handlePotatoSplitByShare` already establishes for World Raid). Gives a mercenary a
+    genuinely meaningful way to swing a small guild's odds, and gives guilds a reason to court
+    mercenaries, without requiring mercenary solo power to structurally rival guild power. Real, but
+    more surface area (two distinct mercenary participation paths, a new proportional-reward branch)
+    — recommend as a fast-follow once Option B's base loop is live and its real participation numbers
+    are known, not a v1 requirement.
+
+  **Recommendation: ship Option B for v1** (simplest version of the literal ask, reuses the existing
+  power formula with zero adjustment), explicitly documenting the asymmetry as accepted rather than
+  discovering it as a surprise later, and treat Option C as the natural next step if mercenary
+  participation turns out to feel too token in practice.
+
+  **3. Reward — grounded against the World Boss buff, deliberately NOT a live "tax on server income"
+  mechanic.** The pitch's own "a % of taxes for all money in the area" framing was flagged up front as
+  a real risk: nothing in this codebase skims a *live, ongoing* percentage of other players'
+  transactions server-wide today (guild bank/treasury interest is guild-scoped only, and even that is
+  a percentage of the guild's own stored balance, never a cut of members' independent activity) —
+  building one would mean a genuinely new, parallel economic layer with real volatility/exploit
+  surface (e.g. a losing side's members feeling directly taxed by a side they didn't choose to lose
+  to), not a small addition. Recommend instead a **flat, disclosed buff** to the holder's own
+  side only, the same shape World Boss's kill buff already uses (`{ buffType, value, expiresAt }`,
+  read live at each consuming call site) — just scoped to the holder's roster instead of the whole
+  server. Because exclusivity itself is the prize (only the holder's side benefits, unlike World
+  Boss's buff which is free for everyone), recommend NOT also stacking on extra raw magnitude on top
+  of that exclusivity: anchor the flagship `workMulti`-style version at a flat **+12%**, i.e.
+  concretely "as good as a level 7-8 guild's own investment-gated `workMulti` buff, for free, while
+  you hold the Keep" (real guild buffs range +6% at level 1 to a hard +15% cap at level 10 — see
+  [systems/guilds.md](systems/guilds.md#guild-buffs)) — a genuine prize without trivializing the
+  guild-level ladder guilds already grind toward. **Duration should equal the contest interval
+  exactly** (24h if daily), so a successful defense has zero coverage gap and a loss hands the buff
+  over at precisely the moment it would have expired anyway — one fewer constant to keep in sync,
+  same lesson the World Buff's own "single legible duration" note already draws.
+  A mercenary win is the one open engineering gap this creates: there is no existing "one specific
+  user has a timed personal buff" shape anywhere in this codebase today (every timed buff so far is
+  either guild-wide or server-wide) — worth flagging to whichever architect picks this up as new
+  surface, not something to route through `sweetPotatoBuffs` (permanent) or `guildBuff` (guild-scoped)
+  by accident.
+
+  **4. Cadence — recommend daily, not every 2 days.** Reuses the existing 4am UTC daily cron
+  (Tower reset, Quest rotation, Guild Contract rotation on Mondays, the birthday announcer all already
+  fire there) rather than inventing a new interval-tracking scheme — this codebase's own experience
+  with a non-daily cadence (starch trading's Monday/Thursday cycle needing an explicit
+  `STARCH_PRICE_COUNT_BY_RESET_DAY` table just to track how many shifts happen between resets, and
+  still shipping a real `NaN`-producing bug from getting that count wrong once — see
+  [systems/starch-trading.md](systems/starch-trading.md#price-cycle)) is a concrete, documented
+  warning against a bespoke "every 2 days" interval unless there's a strong reason for it. A daily
+  resolution also means the announcement rides the same already-existing daily cron bundle rather than
+  adding a second, separately-timed announcement — no new notification-spam surface.
+
+  **5. Entrenchment risk — real, not fully solved by the lottery alone.** Over many cycles, a
+  consistently dominant, always-populated guild will still win most cycles proportional to its power
+  share — the lottery keeps odds non-zero for everyone (strictly better for morale than a hard
+  threshold gate), but doesn't guarantee rotation. Explicitly recommend **no defender's bonus** (the
+  holder's power is computed exactly the same live way a challenger's is, no bonus for already
+  holding it) specifically to avoid compounding a leading guild's edge further. A rotation/pity
+  mechanic (e.g. a small, escalating penalty to a guild's own entry weight after N consecutive wins,
+  the mirror image of `PoisonMitigation`'s escalating-relief shape) is a plausible follow-up but not
+  recommended for v1 — better to see real participation/win-distribution data first than to
+  pre-build a fix for a problem not yet confirmed at this game's actual guild-power spread.
+
+  **6. One Keep, not several.** Recommend exactly one global Keep for v1, matching "the castle"
+  singular framing and World Boss's own "exactly one active encounter at a time" precedent — multiple
+  simultaneous nodes (regional, or tier-gated) has no existing partitioning precedent to reuse (Guild
+  Raid's tiers are opt-in difficulty bands within one flow, not separate simultaneous contested
+  resources) and meaningfully multiplies the entrant-tracking/resolution/announcement surface for
+  more world-flavor, not more mechanical depth. A natural "if this lands well" expansion, not a v1
+  requirement.
+
+  **What this explicitly does NOT do**: no live skim/tax on other players' ongoing activity (see
+  finding 3); no ante/wager to enter (recommended free-to-attempt, see Open Questions); no per-guild
+  matchmaking or targeted challenges (the N-way lottery replaces that entirely, see finding 1); no
+  change to Guild Raid, Bounty, or World Boss's own existing formulas or rewards — this reuses their
+  power/proportional-split math, it doesn't touch their live behavior.
+
+  **Open questions, with a recommendation on each:**
+  - *Should entering cost anything (an ante), mirroring the shelved Guild vs. Guild Raids' own
+    bank-percentage ante?* Recommend **no ante for v1** — that precedent was a targeted 1-on-1 grudge
+    match, where raising the stakes was the point; this is an open, low-commitment lottery, and a free
+    entry cost keeps the barrier low enough for small guilds/mercenaries to keep trying even at
+    long odds, which matters more here given the entrenchment risk in finding 5.
+  - *Does a losing entrant get any consolation, or is it pure win/lose?* Recommend a trivial, free
+    **participation counter** (feeding a future achievement only, no potato/stat payout) rather than
+    nothing — keeps every attempt strictly non-negative, unlike a Guild Raid attempt which risks a
+    real potato penalty on a loss; this event should read as "worth trying," not "worth risking."
+  - *Exactly two entrants (a real 1-on-1) vs. the N-way lottery when only one challenger shows up?*
+    They're mathematically identical in that case (finding 1) — no separate code path needed, just
+    confirming this isn't actually two different mechanics to design.
+  - *Does the current holder's guild losing all its members (disband, mass-leave) vacate the Keep
+    immediately, or only at the next resolution?* Recommend **only at the next resolution**, mirroring
+    `disbandGuild.js`'s existing "leave the record in place, treat empty `memberList` as nonexistent"
+    pattern — the live roster lookup already produces 0 power for an empty guild, so an empty holder
+    naturally loses the very next lottery without needing an eager vacate-on-disband hook.
+
+  **Touches (once a direction is picked)**: a new stats-table doc (`spud_keep` or similar, mirroring
+  `world`/`world_buff`'s shape) + `dynamoHandler.js` get/set/`isLive` helpers; a new factory
+  (`spudKeepFactory.js`?) for entrant collection + the weighted-lottery draw, reusing
+  `raidFactory.getEffectiveRaidPower` as-is; 1-2 new commands (an entry command for guild officers
+  mirroring `/join-raid`'s toggle or `/start-raid`'s officer-gated action, and a mercenary entry
+  command mirroring `/join-world-raid`) plus a read-only status command mirroring `/current-world-raid`;
+  a resolution step added to the existing 4am UTC daily cron in `backgroundEvents.js`; wherever the
+  flagship buff type(s) get consumed (likely the same handful of `workFactory.js`/`dynamoHandler.js`
+  call sites the guild `workMulti` buff and World Boss buff already touch); `embedFactory.js` for the
+  new status/result embeds; `systems/guilds.md` and `systems/mercenary-bounties.md` cross-links once
+  a shape ships, following the World Boss buff's own precedent of documenting a cross-cutting feature
+  in one place and linking to it from both affected systems.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).
