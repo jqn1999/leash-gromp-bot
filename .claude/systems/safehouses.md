@@ -111,13 +111,13 @@ personal/guild `bankCapacity` shop ladders already use:
 | Slot | Rank required | Cost | Capacity |
 |---|---|---|---|
 | 1 | 1 (fresh mercenary) | 2,000,000 | 3,000,000 |
-| 2 | 2 (15 wins) | 8,000,000 | 9,000,000 |
-| 3 | 3 (50 wins) | 25,000,000 | 20,000,000 |
-| 4 | 4 (125 wins) | 75,000,000 | 40,000,000 |
-| 5 | 5 (275 wins) | 200,000,000 | 78,000,000 |
-| 6 | 6 (525 wins, max rank) | 400,000,000 | 150,000,000 |
+| 2 | 2 (15 wins) | 8,000,000 | 12,000,000 |
+| 3 | 3 (50 wins) | 25,000,000 | 25,000,000 |
+| 4 | 4 (125 wins) | 75,000,000 | 60,000,000 |
+| 5 | 5 (275 wins) | 200,000,000 | 150,000,000 |
+| 6 | 6 (525 wins, max rank) | 400,000,000 | 250,000,000 |
 
-A fully-ranked mercenary who's bought all 6 holds 300,000,000 potatoes of compartmentalized
+A fully-ranked mercenary who's bought all 6 holds 500,000,000 potatoes of compartmentalized
 capacity — enough to meaningfully soften the shop ladder's 500M/1B/2B-cost tiers without eliminating
 exposure on the very largest purchases entirely.
 
@@ -129,6 +129,17 @@ sustained ratio past its own generous starter tier is only 0.5x-1.0x, despite be
 collectively across up to 25 members rather than by one player alone). Costs are unchanged;
 only capacity was retuned to taper smoothly from 1.5x at slot 1 down to 0.375x at slot 6,
 tracking the personal shop's own ratio at each comparable cost bracket instead of dwarfing it.
+
+**Rebalanced again 2026-08-30** (direct instruction — "scale merc safehouses up to 500
+million with all 6 safehouses from buying, and make the buying cost scale similar to the
+guild equivalent"). Costs stayed unchanged again — this request was about the payoff, not
+the mercenary's own grind curve. Only the capacity-per-cost ratio moved, and it moved
+specifically INTO the guild `bankCapacity` ladder's own documented 0.5x-1.0x sustained range
+(the 2026-08-28 pass had deliberately stayed under that range) — the new slot 6 ratio,
+0.625x, is exactly the guild ladder's own real final-tier ratio (500M/800M), not a round
+number picked to hit the target. Slot 1 stayed at its already-tuned 1.5x: the 2026-08-28
+audit's actual finding was that the ORIGINAL table over-rewarded the cheap, early slot, not
+that a healthy top-end ratio was itself a problem, so there was no reason to revisit it here.
 
 Buying is `/safehouse buy` — no confirm step (same "explicit command = explicit intent" precedent
 `/create-new-guild` already sets), always targets the next unowned slot, rejects with a specific

@@ -1932,20 +1932,34 @@ const RivalMercenaries = {
 // tier) despite a Safehouse being funded entirely solo, not pooled across up to 25 guild
 // members. The ratio also ran backwards from where it should be gentlest: highest at the
 // cheapest, earliest (Rank 1, zero-wins-required) slot rather than tapering down toward it.
-// This table re-targets a smooth taper starting BELOW the personal shop's own peak ratio
+// This table re-targeted a smooth taper starting BELOW the personal shop's own peak ratio
 // (1.5x at slot 1, vs. the shop's best of 2.0x) down to a modest 0.375x at slot 6 — closely
 // tracking the personal bankShop ladder's own ratio at each comparable cost bracket instead
 // of dwarfing it. Costs are unchanged from the original table; only capacity was retuned,
 // dropping the Rank-6 total from 555,000,000 to 300,000,000 (direct instruction — "adjust
 // total capacity to 300 million for now at max").
+//
+// Rebalanced again 2026-08-30, direct instruction — "scale merc safehouses up to 500
+// million with all 6 safehouses from buying, and make the buying cost scale similar to the
+// guild equivalent." Costs stay UNCHANGED again (same reasoning as the 2026-08-28 pass —
+// they're a solo mercenary's own grind curve, not something this request touched), only
+// each slot's capacity-per-cost RATIO moves: the 2026-08-28 taper (1.5x -> 0.375x) was
+// calibrated against the personal bankShop ladder specifically to stay well under the guild
+// bankCapacity ladder's own sustained 0.5x-1.0x range (see that ladder's own comment above
+// this one) — this pass raises the taper INTO that guild range instead, ending at exactly
+// 0.625x at slot 6 (500,000,000/800,000,000 — the guild ladder's own real final-tier ratio,
+// not an arbitrary number). Slot 1 is left at its already-battle-tested 1.5x — the earlier
+// audit specifically flagged an over-generous EARLY/cheap slot as the actual overtuning
+// risk, not a healthier top-end ratio, so there was no reason to touch it again. Sums to
+// exactly 500,000,000 across all 6 (3M + 12M + 25M + 60M + 150M + 250M).
 const Safehouse = {
     SLOTS: [
         { slot: 1, rankRequired: 1, cost: 2000000,   capacity: 3000000 },
-        { slot: 2, rankRequired: 2, cost: 8000000,   capacity: 9000000 },
-        { slot: 3, rankRequired: 3, cost: 25000000,  capacity: 20000000 },
-        { slot: 4, rankRequired: 4, cost: 75000000,  capacity: 40000000 },
-        { slot: 5, rankRequired: 5, cost: 200000000, capacity: 78000000 },
-        { slot: 6, rankRequired: 6, cost: 400000000, capacity: 150000000 },
+        { slot: 2, rankRequired: 2, cost: 8000000,   capacity: 12000000 },
+        { slot: 3, rankRequired: 3, cost: 25000000,  capacity: 25000000 },
+        { slot: 4, rankRequired: 4, cost: 75000000,  capacity: 60000000 },
+        { slot: 5, rankRequired: 5, cost: 200000000, capacity: 150000000 },
+        { slot: 6, rankRequired: 6, cost: 400000000, capacity: 250000000 },
     ]
 }
 

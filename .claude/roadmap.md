@@ -3389,6 +3389,38 @@ and needs its own balance pass.
   `systems/mercenary-bounties.md#mercenary-rank`. Full suite: 738/738 (up from 728/728 — 10
   new tests, zero regressions).
 
+- [x] **86. Fix: `/rob`'s Cooldown Was Silently Doubled to ~2 Hours** — S — **Done**
+  What: direct player report — "my cooldown said 59m 23s but i havent robbed in a while."
+  See item 76's own correction note above for the full root cause: `robTimer` was written as
+  a future "ready-at" timestamp (`Date.now() + ROB_TIMER_SECONDS*1000`, copied from
+  `workTimer`'s different convention) but read as a past "last-action" timestamp
+  (`Date.now() - robTimer`), doubling the real wait to ~2 hours. Fixed by writing plain
+  `Date.now()` on both branches. Full suite: 738/738, zero regressions (no test file exists
+  for `rob.js` to extend — command files aren't unit-tested in this codebase; verified by
+  hand against both write sites and the file's own read).
+
+- [x] **87. Mercenary Safehouses Rebalanced to a 500,000,000 Total, Guild-Ladder-Shaped
+  Ratio** — S — **Done**
+  What: direct instruction — "can you scale merc safehouses up to 500 million with all 6
+  safehouses from buying, and make the buying cost scale similar to the guild equivalent."
+  Interpreted "cost scale similar to the guild equivalent" as the capacity-per-cost RATIO
+  curve (not the raw cost numbers themselves, which the 2026-08-28 rebalance's own comment
+  already establishes are tuned for a SOLO mercenary's grind, not guild's up-to-25-member
+  pooled economics) — costs stayed unchanged from the 2026-08-28 table.
+  - Retuned each slot's capacity so the ratio tapers from the already-tuned 1.5x at slot 1
+    down to exactly 0.625x at slot 6 (500,000,000/800,000,000 — the guild `bankCapacity`
+    ladder's own real final-tier ratio, not an arbitrary number), moving the taper's floor
+    UP INTO the guild ladder's documented 0.5x-1.0x sustained range instead of staying under
+    it as the prior pass deliberately had. Slot 1 left untouched — the 2026-08-28 audit's
+    actual finding was an over-generous cheap/early slot, not a healthy top-end ratio, so
+    there was no reason to revisit it.
+  - New table: 3M/12M/25M/60M/150M/250M capacity (was 3M/9M/20M/40M/78M/150M), same
+    2M/8M/25M/75M/200M/400M costs throughout. Sums to exactly 500,000,000 across all 6.
+  - `safehouseFactory.js` reads `Safehouse.SLOTS` live everywhere (no hardcoded totals) and
+    `safehouseFactory.test.js` derives its expectations from the same array — zero code or
+    test changes needed beyond the constant itself. Docs: `systems/safehouses.md`. Full
+    suite: 738/738, zero regressions.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
