@@ -2231,11 +2231,9 @@ const metalPotatoFailure = {
 // See workFactory.js's handleAncientPotato and embedFactory.js's
 // createAncientPotatoEmbed — the one work scenario whose main payoff is guild-facing
 // (resets the guild's raid cooldown to ready-now) rather than purely personal.
-// thumbnailUrl is a placeholder (the bot's own generic avatar, same fallback already
-// used for Brassica/Yamsalot in worldFactory.js) pending real commissioned art.
 const ancientPotato = {
     name: "Ancient Potato",
-    thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+    thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543749563955814531/image.png?ex=6a960051&is=6a94aed1&hm=3917aed603f174296d18bc6183f5526037adfa57b9b0abf0cbbbc6f630332af6&",
     description: `Buried beneath the Kingdom's oldest battlefield, you unearth a potato far older than the Kingdom itself — dust-caked, faintly warm, and humming with a strange residual energy. Word of the find spreads fast: half the guild is already talking about the next raid.`
 }
 

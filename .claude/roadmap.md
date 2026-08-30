@@ -6388,6 +6388,42 @@ raid bosses (Marrowveil, Solara — Umbrathorn still pending). Pure data change 
 next to the swapped entries were updated to match. Still on the generic-avatar placeholder:
 Rootcarver, Yukon, Umbrathorn, Ancient Potato, Mimic Potato, Golden Yam.
 
+**Follow-up (2026-08-30, same day): Ancient Potato art added.** One more user-supplied image,
+same pattern as above. Remaining placeholders: Rootcarver, Yukon, Umbrathorn, Mimic Potato,
+Golden Yam.
+
+**Spud Keep follow-up (2026-08-30, same day): weighted, collectible pot payout.** Direct
+instruction: show a per-player amount line on the resolution announcement, split the pot by each
+participant's own work-multiplier ratio "at the time of the spud keep battle" instead of evenly, and
+stop crediting the payout straight to liquid potatoes (a lump sum landing the instant the cycle
+resolves would make every daily reset a guaranteed rob target) — store it instead so players
+manually collect it whenever they want.
+
+- `spudKeepFactory.splitPotByWorkMulti(roster, potPotatoesPaid)` replaces the old
+  `raidFactory.handlePotatoSplit` even-split call in `resolveCycle`'s payout step — re-fetches each
+  outgoing roster member's live `workMultiplierAmount` (never a signup-time snapshot) and splits the
+  pot proportionally, floored per person; falls back to an even split only if every fetched
+  participant's `workMultiplierAmount` is 0. Deliberately the raw stat, not `getMemberRaidPower`'s
+  rebirth/companion-inflated figure, per the literal "their multi" framing.
+- New per-user field `spudKeepPendingPotatoes` (default 0). Each share is credited via its own
+  atomic ADD (`dynamoHandler.addUserDatabase`) — never a direct `potatoes` write.
+- New `dynamoHandler.collectSpudKeepReward(userId, amount)` — one atomic conditional update (`ADD
+  potatoes/totalEarnings :amount, spudKeepPendingPotatoes -:amount`, gated on
+  `spudKeepPendingPotatoes >= :amount`) so two concurrent collects can't double-credit the same
+  balance, same shape as `resolveScavenge`'s own double-collect guard.
+- New command `/spud-keep-collect` (`src/commands/user/spudKeepCollect.js`) — moves a player's own
+  pending balance into spendable/robbable potatoes whenever they choose.
+- `createSpudKeepResultEmbed` gains a per-player payout breakdown field
+  (`buildSpudKeepPayoutShareField`, embedFactory.js) — one packed field (not one field per player,
+  since a large roster could exceed Discord's 1024-char single-field limit), sorted by amount
+  descending, truncated with a "+N more" line.
+- New tests: `spudKeepFactory.test.js` (weighted split math, even-split fallback, zero-share no-op
+  ADD skip, `resolveCycle` integration), `dynamoHandler.test.js` (`collectSpudKeepReward`'s
+  conditional-write shape and its double-collect-race guard), `embedFactory.test.js` (payout
+  breakdown field content, sort order, truncation, and the new `createSpudKeepCollectEmbed`). Full
+  suite: 821/821, zero regressions. Docs: [systems/spud-keep.md](systems/spud-keep.md) and
+  [reference/commands.md](reference/commands.md) updated.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

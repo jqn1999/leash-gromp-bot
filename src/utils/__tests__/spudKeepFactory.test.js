@@ -166,6 +166,39 @@ describe('selectTopNMercenaries', () => {
     });
 });
 
+describe('splitPotByWorkMulti', () => {
+    test('splits proportionally by each participant\'s own workMultiplierAmount, floored, credited via an atomic ADD to spudKeepPendingPotatoes', async () => {
+        dynamoHandler.findUser.mockImplementation(async (id) => id === 'a'
+            ? user('a', { workMultiplierAmount: 3 })
+            : user('b', { workMultiplierAmount: 1 }));
+
+        const shares = await spudKeepFactory.splitPotByWorkMulti([{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }], 1000);
+
+        expect(shares).toEqual([{ id: 'a', username: 'a', amount: 750 }, { id: 'b', username: 'b', amount: 250 }]);
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('a', 'spudKeepPendingPotatoes', 750);
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('b', 'spudKeepPendingPotatoes', 250);
+    });
+
+    test('falls back to an even split when every participant has 0 (or a missing/malformed) workMultiplierAmount', async () => {
+        dynamoHandler.findUser.mockImplementation(async (id) => id === 'missing' ? undefined : user(id, { workMultiplierAmount: 0 }));
+
+        const shares = await spudKeepFactory.splitPotByWorkMulti([{ id: 'a', username: 'a' }, { id: 'missing', username: 'missing' }], 100);
+
+        expect(shares).toEqual([{ id: 'a', username: 'a', amount: 50 }, { id: 'missing', username: 'missing', amount: 50 }]);
+    });
+
+    test('never credits a zero share (no-op ADD calls for a member whose floored amount is 0)', async () => {
+        dynamoHandler.findUser.mockImplementation(async (id) => id === 'whale'
+            ? user('whale', { workMultiplierAmount: 1000 })
+            : user(id, { workMultiplierAmount: 1 }));
+
+        const shares = await spudKeepFactory.splitPotByWorkMulti([{ id: 'whale', username: 'whale' }, { id: 'ant', username: 'ant' }], 10);
+
+        expect(shares.find(s => s.id === 'ant').amount).toBe(0);
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalledWith('ant', 'spudKeepPendingPotatoes', 0);
+    });
+});
+
 describe('isCurrentHolderEntrant', () => {
     test('a guild entrant matches only on the exact guildId', () => {
         const buff = { holderType: 'guild', holderId: 'g1' };
@@ -293,7 +326,7 @@ describe('resolveCycle', () => {
         expect(dynamoHandler.addStatFields).not.toHaveBeenCalled(); // nothing paid out, nothing to subtract
     });
 
-    test('a successful defense pays the accrued pot to the SAME guild\'s own roster, increments consecutiveHoldCycles, and subtracts exactly what was paid', async () => {
+    test('a successful defense pays the accrued pot to the SAME guild\'s own roster (credited to their pending balance, not straight to potatoes), increments consecutiveHoldCycles, and subtracts exactly what was paid', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], mercenaryEntrants: [], potPotatoes: 900 });
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 1 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
@@ -307,8 +340,33 @@ describe('resolveCycle', () => {
         expect(result.consecutiveHoldCycles).toBe(2);
         expect(result.potPotatoesPaid).toBe(900);
         expect(result.potForfeited).toBe(false);
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('m1', expect.objectContaining({ potatoes: expect.any(Number) }));
+        // Single-member roster gets the whole pot, but as a pending balance credit — never a
+        // direct potatoes write (that would make every reset a guaranteed rob target).
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('m1', 'spudKeepPendingPotatoes', 900);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalledWith('m1', expect.objectContaining({ potatoes: expect.any(Number) }));
+        expect(result.payoutShares).toEqual([{ id: 'm1', username: 'm1', amount: 900 }]);
         expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('spud_keep', { potPotatoes: -900 });
+    });
+
+    test('a multi-member roster splits the pot by each member\'s own workMultiplierAmount, not evenly', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], mercenaryEntrants: [], potPotatoes: 1000 });
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 0 });
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'strong', username: 'strong' }, { id: 'weak', username: 'weak' }]));
+        dynamoHandler.findUser.mockImplementation(async (id) => id === 'strong'
+            ? user('strong', { autoJoinRaids: true, workMultiplierAmount: 3 })
+            : user(id, { autoJoinRaids: true, workMultiplierAmount: 1 }));
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+
+        const result = await spudKeepFactory.resolveCycle();
+
+        // 3:1 weight ratio over a 1000-potato pot -> 750/250, floored.
+        expect(result.payoutShares).toEqual(expect.arrayContaining([
+            { id: 'strong', username: 'strong', amount: 750 },
+            { id: 'weak', username: 'weak', amount: 250 }
+        ]));
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('strong', 'spudKeepPendingPotatoes', 750);
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('weak', 'spudKeepPendingPotatoes', 250);
     });
 
     test('an empty outgoing roster forfeits the pot instead of paying it to anyone, and still zeroes it out', async () => {

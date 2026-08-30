@@ -3,7 +3,8 @@
 [src/utils/spudKeepFactory.js](../../src/utils/spudKeepFactory.js) +
 [src/commands/guilds/joinSpudKeep.js](../../src/commands/guilds/joinSpudKeep.js) +
 [src/commands/user/spudKeepSignup.js](../../src/commands/user/spudKeepSignup.js) +
-[src/commands/misc/currentSpudKeep.js](../../src/commands/misc/currentSpudKeep.js). Scheduling:
+[src/commands/misc/currentSpudKeep.js](../../src/commands/misc/currentSpudKeep.js) +
+[src/commands/user/spudKeepCollect.js](../../src/commands/user/spudKeepCollect.js). Scheduling:
 [src/events/ready/backgroundEvents.js](../../src/events/ready/backgroundEvents.js) (same 4am UTC
 cron Tower/Quest/Guild Contract rotation already uses). Constants:
 [constants.js](../../src/utils/constants.js) `SpudKeep`. Full design derivation:
@@ -42,6 +43,9 @@ mercenaries genuinely compete for the exact same prize.
 Both buff docs share this shape: `{ holderType: "guild"|"mercenary"|null, holderId: <guildId>|null,
 holderName, buffType, value, expiresAt }` (`spud_keep_buff` additionally carries
 `consecutiveHoldCycles`).
+
+- `spudKeepPendingPotatoes` — a per-USER field (default user schema, `dynamoHandler.js`), not a
+  stats-table doc. The pot payout's holding pen — see "Pending balance, not a direct credit" below.
 
 ## The two predicates — deliberately separate
 
@@ -111,17 +115,42 @@ See [economy-and-work.md#house-account-taxes](economy-and-work.md#house-account-
 site's own tax rate/shape — only the destination of the redirected share changes, not the amount any
 player actually pays.
 
-**Payout**: split ONE TIME at resolution (`raidFactory.handlePotatoSplit`, an even split) among the
-OUTGOING holder's own roster that cycle — a guild's live raid roster, or the Merc Faction's counted
-top-N — NOT among every entrant, and not to the newly-drawn winner (who starts accruing their OWN
-pot from zero). An empty outgoing roster (holder's guild disbanded/emptied mid-cycle) **forfeits**
-the pot — discarded, not paid to anyone, not rolled forward. Either way, `spud_keep.potPotatoes` is
-decremented by exactly the amount paid/forfeited (`addStatFields` with a negative amount), never
-blind-reset to 0 — a concurrent tax event's own `addStatFields` ADD landing mid-resolution survives
-into next cycle's pot.
+**Payout**: split ONE TIME at resolution (`spudKeepFactory.splitPotByWorkMulti`) among the OUTGOING
+holder's own roster that cycle — a guild's live raid roster, or the Merc Faction's counted top-N —
+NOT among every entrant, and not to the newly-drawn winner (who starts accruing their OWN pot from
+zero). An empty outgoing roster (holder's guild disbanded/emptied mid-cycle) **forfeits** the pot —
+discarded, not paid to anyone, not rolled forward. Either way, `spud_keep.potPotatoes` is decremented
+by exactly the amount paid/forfeited (`addStatFields` with a negative amount), never blind-reset to
+0 — a concurrent tax event's own `addStatFields` ADD landing mid-resolution survives into next
+cycle's pot.
 
-`/current-spud-keep` shows the live, growing total — zero extra reads, off the same doc it already
-reads for `guildEntrants`/`mercenaryEntrants`.
+**Split by work multiplier, not evenly** (2026-08-30, direct instruction: "split it by their work
+multipliers ratio from what their multi was at the time of the spud keep battle") — each
+participant's raw `workMultiplierAmount` is re-fetched fresh at resolution time (never a signup-time
+snapshot, matching this whole feature's "always read live" precedent) and the pot is divided
+proportionally to that ratio, floored per person. Deliberately the raw stat, not
+`getMemberRaidPower`'s rebirth/companion-inflated figure — matches the literal "their multi" framing
+rather than the guild-raid "share" split mode's broader definition of strength. Falls back to an
+even split only if every fetched participant's `workMultiplierAmount` is 0 (an all-fresh-account
+roster with nothing yet to weight against), so a payout is never silently dropped to 0 for everyone.
+
+**Pending balance, not a direct credit** (2026-08-30, direct instruction: a lump sum landing in
+every winner's liquid balance the instant the cycle resolves would make each daily reset a
+guaranteed rob target) — each share is credited to a new `spudKeepPendingPotatoes` user field via
+its own atomic ADD (`dynamoHandler.addUserDatabase`), never straight to `potatoes`. Players move
+their own pending balance into spendable/robbable potatoes whenever THEY choose, via
+`/spud-keep-collect` (`dynamoHandler.collectSpudKeepReward`) — a single atomic conditional update
+(`ADD potatoes/totalEarnings :amount, spudKeepPendingPotatoes -:amount` gated on
+`spudKeepPendingPotatoes >= :amount`) so two concurrent collect calls can't double-credit the same
+balance; the loser of that race is simply told to try again, mirroring `resolveScavenge`'s own
+double-collect guard.
+
+`/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc it
+already reads for `guildEntrants`/`mercenaryEntrants`. The daily resolution announcement
+(`createSpudKeepResultEmbed`) shows a per-player breakdown of who got what
+(`buildSpudKeepPayoutShareField`, sorted by amount descending, packed into one field with a "+N
+more" truncation line rather than one field per player, since a large roster could otherwise blow
+past Discord's 1024-char single-field limit) alongside the aggregate total.
 
 ## The Merc Faction
 
@@ -164,7 +193,10 @@ tickets — a lone mercenary's solo power was a near-token longshot against even
 4. Grant both halves of the bundle buff to the winner, replacing outright (fresh `expiresAt`, even on
    a successful defense).
 5. Pay (or forfeit) the pot to the OUTGOING holder's own roster, using `potPotatoes` exactly as read
-   in step 1 (never re-read).
+   in step 1 (never re-read) — split by each participant's live `workMultiplierAmount` ratio
+   (`splitPotByWorkMulti`) and credited to `spudKeepPendingPotatoes` (an atomic ADD per person), not
+   directly to `potatoes`. Players collect their own share into liquid potatoes whenever they choose
+   via `/spud-keep-collect`.
 6. Clear `guildEntrants`/`mercenaryEntrants`, set `lastResolvedAt`, and `addStatFields` a subtraction
    of exactly what was paid/forfeited — never a blind reset.
 7. Increment `spudKeepAttemptCount` for every guild entrant's own roster (auto-re-entered holder
@@ -214,6 +246,10 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   list on one embed (used by anything that doesn't need pagination). `createSpudKeepResultEmbed`'s
   own one-shot cron announcement is unchanged — still `buildSpudKeepEntrantFields`' hard 20-field
   cap with a "+N more" line, since a fire-and-forget post can't paginate.
+- `/spud-keep-collect` (user) — moves a player's own `spudKeepPendingPotatoes` balance into liquid
+  `potatoes`/`totalEarnings` (see "Pending balance, not a direct credit" above). No-op reply if
+  nothing is pending; the underlying write is an atomic conditional update so a double-submit can't
+  double-credit.
 
 ## Cross-cutting notes
 

@@ -104,6 +104,40 @@ function selectTopNMercenaries(mercUserDetailsList, n) {
         .slice(0, n);
 }
 
+// Splits the outgoing holder's pot payout proportionally by each participant's OWN raw
+// workMultiplierAmount "at the time of the spud keep battle" (direct instruction,
+// 2026-08-30) — re-fetched fresh here at resolution time, never reused from an earlier
+// snapshot, matching this whole feature's "always read live" precedent (getLiveRaidRoster/
+// getGuildEntrantBreakdown above do the same). Deliberately the raw workMultiplierAmount
+// stat, not getMemberRaidPower's rebirth/companion-inflated figure — matches the user's
+// own literal framing ("their multi") rather than the guild-raid "share" mode's broader
+// definition of strength. Falls back to an even split only if every fetched participant's
+// workMultiplierAmount is 0 (e.g. an all-fresh-account roster with nothing yet to weight
+// against), so a payout is never silently dropped to 0 for everyone. Each share is
+// credited to spudKeepPendingPotatoes via its own atomic ADD (dynamoHandler.addUserDatabase)
+// — never straight to potatoes (direct instruction: a lump sum landing in every winner's
+// liquid balance the instant the cycle resolves would make each daily reset a guaranteed
+// rob target) — collected later, whenever the player chooses, via /spud-keep-collect.
+// Returns the per-player shares (id/username/amount) so the result embed can show exactly
+// who got what.
+async function splitPotByWorkMulti(roster, potPotatoesPaid) {
+    const userDetailsList = await Promise.all(roster.map(m => dynamoHandler.findUser(m.id, m.username)));
+    const weights = userDetailsList.map(u => Math.max(0, toNumber(u && u.workMultiplierAmount)));
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    const useEvenSplit = !(totalWeight > 0);
+
+    const shares = roster.map((member, index) => {
+        const ratio = useEvenSplit ? (1 / roster.length) : (weights[index] / totalWeight);
+        return { id: member.id, username: member.username, amount: Math.floor(potPotatoesPaid * ratio) };
+    });
+
+    await Promise.all(shares
+        .filter(s => s.amount > 0)
+        .map(s => dynamoHandler.addUserDatabase(s.id, 'spudKeepPendingPotatoes', s.amount)));
+
+    return shares;
+}
+
 // Whether `buff`'s CURRENT holder is this specific entrant — used both to exempt the
 // holder from the attacker's bonus and to find the outgoing holder's own roster for the
 // pot payout. A mercenary entrant matches purely on holderType (there's only ever one
@@ -251,16 +285,17 @@ async function resolveCycle() {
     });
 
     // Step 7b — split the accruing pot ONE TIME among the OUTGOING holder's own roster
-    // this cycle (a guild's live raid roster, or the Merc Faction's counted top-N) —
-    // using potPotatoes exactly as read back at the top of buildEntrantPreview (never
-    // re-read). The pot is potato-only (no separate starch counter — every starch-
-    // denominated tax contribution was already converted to potatoes at credit time, see
-    // spudKeepFactory.convertStarchesToPotatoesForPot). No previous holder at all
-    // (pre-first-ever-resolution) skips this entirely — nothing could have accrued. An
-    // empty outgoing roster (holder's guild disbanded/emptied mid-cycle) forfeits the pot
-    // instead — discarded, not paid to anyone, not rolled forward (see step 8's
-    // subtraction below).
-    let potPotatoesPaid = 0, outgoingHolderName = null, potForfeited = false;
+    // this cycle (a guild's live raid roster, or the Merc Faction's counted top-N),
+    // weighted by each participant's own workMultiplierAmount at this exact resolution
+    // moment (splitPotByWorkMulti above) — using potPotatoes exactly as read back at the
+    // top of buildEntrantPreview (never re-read). The pot is potato-only (no separate
+    // starch counter — every starch-denominated tax contribution was already converted to
+    // potatoes at credit time, see spudKeepFactory.convertStarchesToPotatoesForPot). No
+    // previous holder at all (pre-first-ever-resolution) skips this entirely — nothing
+    // could have accrued. An empty outgoing roster (holder's guild disbanded/emptied
+    // mid-cycle) forfeits the pot instead — discarded, not paid to anyone, not rolled
+    // forward (see step 8's subtraction below).
+    let potPotatoesPaid = 0, outgoingHolderName = null, potForfeited = false, payoutShares = [];
     if (currentBuff && currentBuff.holderType) {
         outgoingHolderName = currentBuff.holderName;
         const outgoingEntrant = entrants.find(e => isCurrentHolderEntrant(currentBuff, e.type, e.id));
@@ -268,7 +303,7 @@ async function resolveCycle() {
         const potPotatoes = toNumber(spudKeep.potPotatoes);
 
         if (outgoingRoster.length > 0) {
-            if (potPotatoes > 0) await raidFactory.handlePotatoSplit(outgoingRoster, potPotatoes);
+            if (potPotatoes > 0) payoutShares = await splitPotByWorkMulti(outgoingRoster, potPotatoes);
         } else if (potPotatoes > 0) {
             potForfeited = true;
         }
@@ -309,7 +344,8 @@ async function resolveCycle() {
         })),
         potPotatoesPaid,
         potForfeited,
-        outgoingHolderName
+        outgoingHolderName,
+        payoutShares
     };
 }
 
@@ -322,6 +358,7 @@ module.exports = {
     getAttackerBonusMultiplier,
     getMercFactionN,
     selectTopNMercenaries,
+    splitPotByWorkMulti,
     isCurrentHolderEntrant,
     rollLottery,
     buildEntrantPreview,

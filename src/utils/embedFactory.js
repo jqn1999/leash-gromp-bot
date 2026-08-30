@@ -223,6 +223,36 @@ function buildSpudKeepEntrantFields(entrants) {
     return fields;
 }
 
+// Per-player pot payout breakdown (2026-08-30, direct instruction: "a per player amount
+// line") — one packed field rather than one field per player, since a guild's live raid
+// roster has no server-imposed size cap the way buildSpudKeepEntrantFields' own 20-entrant
+// cap does, and could still blow past Discord's 1024-char single-field limit on a large
+// roster. Sorted by amount descending (biggest work-multiplier contributors first, since
+// the split is now weighted by that instead of even) and truncated with a "+N more" line
+// the same shape buildSpudKeepEntrantFields already uses, rather than a hard player-count
+// cap — a roster of small amounts fits far more lines than one of large ones.
+const SPUD_KEEP_PAYOUT_FIELD_CHAR_LIMIT = 1024;
+function buildSpudKeepPayoutShareField(shares) {
+    const sorted = [...shares].sort((a, b) => b.amount - a.amount);
+    const lines = [];
+    let shown = 0;
+    for (const share of sorted) {
+        const line = `${share.username}: ${share.amount.toLocaleString()} potatoes`;
+        // +40 is headroom for the eventual "+N more" line this loop may still need to append.
+        if (lines.join('\n').length + line.length + 40 > SPUD_KEEP_PAYOUT_FIELD_CHAR_LIMIT) break;
+        lines.push(line);
+        shown += 1;
+    }
+    if (shown < sorted.length) {
+        lines.push(`+${(sorted.length - shown).toLocaleString()} more...`);
+    }
+    return {
+        name: '🥔 Payout Breakdown (by work multiplier):',
+        value: lines.join('\n'),
+        inline: false,
+    };
+}
+
 class EmbedFactory {
     // Paginated 2 pages — Overview (economy stats) and Activity & Records — same
     // Previous/Next button mechanics as /quests, just over a fixed field set instead of
@@ -3299,7 +3329,7 @@ class EmbedFactory {
         }
 
         const { winner, holderChanged, consecutiveHoldCycles, expiresAt, passiveBuffValue, cooldownBuffValue,
-            attackerBonusPercent, entrants, potPotatoesPaid, potForfeited, outgoingHolderName } = result;
+            attackerBonusPercent, entrants, potPotatoesPaid, potForfeited, outgoingHolderName, payoutShares } = result;
         const fields = [];
 
         fields.push({
@@ -3326,9 +3356,12 @@ class EmbedFactory {
         } else if (potPotatoesPaid > 0) {
             fields.push({
                 name: '🥔 Pot Payout:',
-                value: `${potPotatoesPaid.toLocaleString()} potatoes split among ${outgoingHolderName}'s roster from this cycle's reign.`,
+                value: `${potPotatoesPaid.toLocaleString()} potatoes split among ${outgoingHolderName}'s roster from this cycle's reign, weighted by each player's own work multiplier — credited to each player's pending balance, collect it anytime with \`/spud-keep-collect\`.`,
                 inline: false,
             });
+            if (payoutShares && payoutShares.length > 0) {
+                fields.push(buildSpudKeepPayoutShareField(payoutShares));
+            }
         }
         fields.push(...buildSpudKeepEntrantFields(entrants));
 
@@ -3338,6 +3371,20 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)
+        return embed;
+    }
+
+    // /spud-keep-collect's confirmation — the manual claim half of the pending-balance
+    // payout model (systems/spud-keep.md), same "small confirmation embed" weight as
+    // createScavengeReturnEmbed rather than a plain text reply, for consistency with every
+    // other currency-granting command in this codebase.
+    createSpudKeepCollectEmbed(userDisplayName, amountCollected) {
+        const embed = new EmbedBuilder()
+            .setTitle('🥔🏰 Spud Keep Payout Collected!')
+            .setDescription(`${userDisplayName} collected **${amountCollected.toLocaleString()} potatoes** from the Spud Keep pot.`)
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
         return embed;
     }
 }

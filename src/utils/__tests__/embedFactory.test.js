@@ -360,3 +360,59 @@ describe('createSpudKeepStatusEmbed pagination', () => {
         expect(embed.data.fields.some(f => f.name.includes('Guild A'))).toBe(false);
     });
 });
+
+// Per-player pot payout breakdown (2026-08-30, direct instruction: "a per player amount
+// line", plus the switch from an even split to a workMultiplierAmount-weighted one).
+describe('createSpudKeepResultEmbed payout breakdown', () => {
+    function baseResult(overrides = {}) {
+        return {
+            winner: { type: 'guild', id: 'g1', name: 'Guild A' },
+            holderChanged: false,
+            consecutiveHoldCycles: 1,
+            expiresAt: Date.now() + 100000,
+            passiveBuffValue: 0.06,
+            cooldownBuffValue: 0.08,
+            attackerBonusPercent: 0.06,
+            entrants: [],
+            potPotatoesPaid: 0,
+            potForfeited: false,
+            outgoingHolderName: null,
+            payoutShares: [],
+            ...overrides,
+        };
+    }
+
+    test('lists each player and their own share, sorted by amount descending', () => {
+        const result = baseResult({
+            potPotatoesPaid: 1000, outgoingHolderName: 'Guild A',
+            payoutShares: [{ id: 'a', username: 'Alice', amount: 250 }, { id: 'b', username: 'Bob', amount: 750 }]
+        });
+        const embed = embedFactory.createSpudKeepResultEmbed(result);
+        const field = embed.data.fields.find(f => f.name.includes('Payout Breakdown'));
+        expect(field).toBeDefined();
+        expect(field.value.indexOf('Bob')).toBeLessThan(field.value.indexOf('Alice'));
+        expect(field.value).toContain('Bob: 750 potatoes');
+        expect(field.value).toContain('Alice: 250 potatoes');
+    });
+
+    test('omits the breakdown field entirely when nothing was paid out', () => {
+        const embed = embedFactory.createSpudKeepResultEmbed(baseResult());
+        expect(embed.data.fields.find(f => f.name.includes('Payout Breakdown'))).toBeUndefined();
+    });
+
+    test('truncates a very long roster with a "+N more" line instead of exceeding the field size', () => {
+        const payoutShares = Array.from({ length: 200 }, (_, i) => ({ id: `u${i}`, username: `Player${i}`, amount: 5 }));
+        const result = baseResult({ potPotatoesPaid: 1000, outgoingHolderName: 'Guild A', payoutShares });
+        const embed = embedFactory.createSpudKeepResultEmbed(result);
+        const field = embed.data.fields.find(f => f.name.includes('Payout Breakdown'));
+        expect(field.value.length).toBeLessThanOrEqual(1024);
+        expect(field.value).toMatch(/\+\d+ more\.\.\./);
+    });
+});
+
+describe('createSpudKeepCollectEmbed', () => {
+    test('shows the collected amount', () => {
+        const embed = embedFactory.createSpudKeepCollectEmbed('User', 12345);
+        expect(embed.data.description).toContain('12,345');
+    });
+});

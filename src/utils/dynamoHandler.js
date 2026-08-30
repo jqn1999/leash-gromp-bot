@@ -248,6 +248,44 @@ const resolveScavenge = async function (userId, instanceId, setAttributes = {}) 
         });
 }
 
+// Spud Keep pot payout collection (systems/spud-keep.md) — the accruing pot no longer
+// credits potatoes directly at resolution (2026-08-30, direct instruction: a lump sum
+// landing straight in every winner's liquid balance the instant the cycle resolves would
+// make each daily reset a guaranteed rob target). resolveCycle instead credits each
+// participant's own SHARE into spudKeepPendingPotatoes via an atomic ADD
+// (addUserDatabase); /spud-keep-collect calls this function to move a player's own
+// pending balance into their liquid potatoes whenever THEY choose to, never automatically.
+// One atomic conditional update, ADD-only (same discipline as every other Spud Keep
+// money-moving write in this file) — the ConditionExpression guards against two
+// concurrent /spud-keep-collect calls both reading the same pre-collect balance and
+// double-crediting it: the second one's condition fails once the first has already
+// landed, and (same shape as resolveScavenge's own double-collect guard above) it's told
+// to just try again rather than silently double-paying.
+const collectSpudKeepReward = async function (userId, amount) {
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: "add potatoes :amount, totalEarnings :amount, spudKeepPendingPotatoes :negAmount",
+        ConditionExpression: "spudKeepPendingPotatoes >= :amount",
+        ExpressionAttributeValues: {
+            ":amount": amount,
+            ":negAmount": -amount,
+        },
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`collectSpudKeepReward error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 // Computes the work-timer expiry (including the guild workTimer-buff discount) without
 // writing it, so callers can fold the result into a combined updateUserFields call.
 // Every companion that touches the work cooldown now does it through
@@ -489,7 +527,14 @@ function getDefaultUserFields(userId, username) {
         // each daily resolution (never to every signed-up mercenary, never server-wide —
         // see spudKeepFactory.resolveCycle's own step 9 comment). Feeds a future
         // participation achievement only; no potato/stat payout of its own.
-        spudKeepAttemptCount: 0
+        spudKeepAttemptCount: 0,
+        // The pot payout's own holding pen (2026-08-30, direct instruction) — resolveCycle
+        // credits a player's SHARE of the outgoing pot here via an atomic ADD
+        // (addUserDatabase), never straight to potatoes, so a daily reset doesn't hand
+        // every winner a lump sum the instant before the next rob window opens. Collected
+        // into liquid potatoes whenever the player chooses via /spud-keep-collect (see
+        // dynamoHandler.collectSpudKeepReward).
+        spudKeepPendingPotatoes: 0
     };
 }
 
@@ -1643,6 +1688,7 @@ module.exports = {
     claimDailyStreak,
     updateIfNewRecord,
     resolveScavenge,
+    collectSpudKeepReward,
     addUser,
     findUser,
     getUsers,

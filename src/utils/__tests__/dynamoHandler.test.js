@@ -340,6 +340,36 @@ describe('resolveScavenge', () => {
     });
 });
 
+// Spud Keep pot payout collection (systems/spud-keep.md) — resolveCycle only ever credits
+// spudKeepPendingPotatoes via an atomic ADD, never potatoes directly (a lump sum landing
+// straight in a winner's liquid balance the instant the cycle resolves would make every
+// daily reset a guaranteed rob target). collectSpudKeepReward is the only path that ever
+// moves that balance into spendable/robbable potatoes, and only when the player themselves
+// runs /spud-keep-collect. Same conditional-write race guard as resolveScavenge above —
+// two concurrent collects reading the same pre-collect balance must not both succeed.
+describe('collectSpudKeepReward', () => {
+    test('moves the given amount from spudKeepPendingPotatoes into potatoes/totalEarnings, conditioned on the balance actually covering it', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        const result = await dynamoHandler.collectSpudKeepReward('u1', 500);
+
+        expect(result).toBe(true);
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.Key).toEqual({ userId: 'u1' });
+        expect(params.UpdateExpression).toBe('add potatoes :amount, totalEarnings :amount, spudKeepPendingPotatoes :negAmount');
+        expect(params.ConditionExpression).toBe('spudKeepPendingPotatoes >= :amount');
+        expect(params.ExpressionAttributeValues).toEqual({ ':amount': 500, ':negAmount': -500 });
+    });
+
+    test('returns false (not a throw) when a concurrent collect already spent the balance', async () => {
+        const conditionalFailure = new Error('The conditional request failed');
+        conditionalFailure.code = 'ConditionalCheckFailedException';
+        docClient.update.mockReturnValue(rejected(conditionalFailure));
+
+        const result = await dynamoHandler.collectSpudKeepReward('u1', 500);
+        expect(result).toBe(false);
+    });
+});
+
 // Regression coverage for the guild memberList/inviteList race: every guild command
 // that mutates one of these lists reads the whole guild, mutates locally, and writes
 // the whole list back with no locking, so two near-simultaneous mutations (two invitees
