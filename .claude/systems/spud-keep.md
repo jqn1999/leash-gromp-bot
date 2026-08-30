@@ -148,9 +148,16 @@ double-collect guard.
 `/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc it
 already reads for `guildEntrants`/`mercenaryEntrants`. The daily resolution announcement
 (`createSpudKeepResultEmbed`) shows a per-player breakdown of who got what
-(`buildSpudKeepPayoutShareField`, sorted by amount descending, packed into one field with a "+N
-more" truncation line rather than one field per player, since a large roster could otherwise blow
-past Discord's 1024-char single-field limit) alongside the aggregate total.
+(`buildSpudKeepPayoutShareField`, sorted by amount descending) alongside the aggregate total.
+
+**Payout breakdown is paginated 5/page** (2026-08-30, direct instruction: "show 5 players and
+paginate if more than 5 players") — `embedFactory.getSpudKeepPayoutPageCount(result)` tells
+`backgroundEvents.js` up front whether to attach Previous/Next buttons at all. This is a public,
+fire-and-forget cron post with no single owning interaction (unlike every other paginated command
+in this codebase), so it's driven by a NEW `helperCommands.runPaginatedBroadcast` rather than the
+interaction-scoped `runPaginatedReply` — same Previous/Next loop shape, just filtered to nothing (any
+channel viewer can page it) and built directly off the `Message` `channel.send()` returns, since a
+plain sent message supports the same `awaitMessageComponent`/`edit` API an interaction reply does.
 
 ## The Merc Faction
 

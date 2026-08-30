@@ -224,30 +224,24 @@ function buildSpudKeepEntrantFields(entrants) {
 }
 
 // Per-player pot payout breakdown (2026-08-30, direct instruction: "a per player amount
-// line") — one packed field rather than one field per player, since a guild's live raid
-// roster has no server-imposed size cap the way buildSpudKeepEntrantFields' own 20-entrant
-// cap does, and could still blow past Discord's 1024-char single-field limit on a large
-// roster. Sorted by amount descending (biggest work-multiplier contributors first, since
-// the split is now weighted by that instead of even) and truncated with a "+N more" line
-// the same shape buildSpudKeepEntrantFields already uses, rather than a hard player-count
-// cap — a roster of small amounts fits far more lines than one of large ones.
-const SPUD_KEEP_PAYOUT_FIELD_CHAR_LIMIT = 1024;
-function buildSpudKeepPayoutShareField(shares) {
+// line", follow-up: "show 5 players and paginate if more than 5 players") — sorted by
+// amount descending (biggest work-multiplier contributors first, since the split is now
+// weighted by that instead of even) and paged 5/page via the same Previous/Next shape
+// /current-spud-keep already uses, just driven by helperCommands.runPaginatedBroadcast
+// instead of runPaginatedReply since this is a fire-and-forget cron post with no owning
+// interaction — see backgroundEvents.js's own resolution-posting call site.
+const SPUD_KEEP_PAYOUT_PAGE_SIZE = 5;
+function spudKeepPayoutPageCount(payoutShares) {
+    if (!payoutShares || payoutShares.length === 0) return 1;
+    return Math.ceil(payoutShares.length / SPUD_KEEP_PAYOUT_PAGE_SIZE);
+}
+function buildSpudKeepPayoutShareField(shares, pageIndex = 0) {
     const sorted = [...shares].sort((a, b) => b.amount - a.amount);
-    const lines = [];
-    let shown = 0;
-    for (const share of sorted) {
-        const line = `${share.username}: ${share.amount.toLocaleString()} potatoes`;
-        // +40 is headroom for the eventual "+N more" line this loop may still need to append.
-        if (lines.join('\n').length + line.length + 40 > SPUD_KEEP_PAYOUT_FIELD_CHAR_LIMIT) break;
-        lines.push(line);
-        shown += 1;
-    }
-    if (shown < sorted.length) {
-        lines.push(`+${(sorted.length - shown).toLocaleString()} more...`);
-    }
+    const totalPages = spudKeepPayoutPageCount(sorted);
+    const pageShares = sorted.slice(pageIndex * SPUD_KEEP_PAYOUT_PAGE_SIZE, (pageIndex + 1) * SPUD_KEEP_PAYOUT_PAGE_SIZE);
+    const lines = pageShares.map(share => `${share.username}: ${share.amount.toLocaleString()} potatoes`);
     return {
-        name: '🥔 Payout Breakdown (by work multiplier):',
+        name: `🥔 Payout Breakdown (by work multiplier)${totalPages > 1 ? ` — Page ${pageIndex + 1} / ${totalPages}` : ''}:`,
         value: lines.join('\n'),
         inline: false,
     };
@@ -3317,7 +3311,13 @@ class EmbedFactory {
 
     // Daily 4am UTC cron announcement — `result` is spudKeepFactory.resolveCycle's own
     // return shape (either { skipped: true } or the full resolution result).
-    createSpudKeepResultEmbed(result) {
+    // How many pages of 5 the payout breakdown needs — backgroundEvents.js calls this
+    // BEFORE the first send so it knows whether to attach pagination buttons at all.
+    getSpudKeepPayoutPageCount(result) {
+        return spudKeepPayoutPageCount(result.payoutShares);
+    }
+
+    createSpudKeepResultEmbed(result, payoutPageIndex = 0) {
         if (result.skipped) {
             const embed = new EmbedBuilder()
                 .setTitle('🥔🏰 Spud Keep — Cycle Skipped')
@@ -3360,7 +3360,7 @@ class EmbedFactory {
                 inline: false,
             });
             if (payoutShares && payoutShares.length > 0) {
-                fields.push(buildSpudKeepPayoutShareField(payoutShares));
+                fields.push(buildSpudKeepPayoutShareField(payoutShares, payoutPageIndex));
             }
         }
         fields.push(...buildSpudKeepEntrantFields(entrants));

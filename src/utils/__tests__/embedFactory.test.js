@@ -400,13 +400,41 @@ describe('createSpudKeepResultEmbed payout breakdown', () => {
         expect(embed.data.fields.find(f => f.name.includes('Payout Breakdown'))).toBeUndefined();
     });
 
-    test('truncates a very long roster with a "+N more" line instead of exceeding the field size', () => {
-        const payoutShares = Array.from({ length: 200 }, (_, i) => ({ id: `u${i}`, username: `Player${i}`, amount: 5 }));
+    // Pagination follow-up (2026-08-30, direct instruction: "show 5 players and paginate
+    // if more than 5 players") — 5/page instead of the old char-limit truncation.
+    test('shows only 5 players per page and no "Page X / Y" suffix when 5 or fewer total', () => {
+        const payoutShares = Array.from({ length: 5 }, (_, i) => ({ id: `u${i}`, username: `Player${i}`, amount: 100 - i }));
         const result = baseResult({ potPotatoesPaid: 1000, outgoingHolderName: 'Guild A', payoutShares });
         const embed = embedFactory.createSpudKeepResultEmbed(result);
         const field = embed.data.fields.find(f => f.name.includes('Payout Breakdown'));
-        expect(field.value.length).toBeLessThanOrEqual(1024);
-        expect(field.value).toMatch(/\+\d+ more\.\.\./);
+        expect(field.name).not.toContain('Page');
+        expect(field.value.split('\n').length).toBe(5);
+    });
+
+    test('paginates a roster over 5 players — page 0 shows the top 5, later pages the rest, with a Page X / Y label', () => {
+        const payoutShares = Array.from({ length: 12 }, (_, i) => ({ id: `u${i}`, username: `Player${i}`, amount: 100 - i }));
+        const result = baseResult({ potPotatoesPaid: 1000, outgoingHolderName: 'Guild A', payoutShares });
+
+        const page0 = embedFactory.createSpudKeepResultEmbed(result, 0);
+        const field0 = page0.data.fields.find(f => f.name.includes('Payout Breakdown'));
+        expect(field0.name).toContain('Page 1 / 3');
+        expect(field0.value.split('\n').length).toBe(5);
+        expect(field0.value).toContain('Player0');
+        expect(field0.value).not.toContain('Player5');
+
+        const page2 = embedFactory.createSpudKeepResultEmbed(result, 2);
+        const field2 = page2.data.fields.find(f => f.name.includes('Payout Breakdown'));
+        expect(field2.name).toContain('Page 3 / 3');
+        expect(field2.value.split('\n').length).toBe(2); // 12 shares, 5+5+2
+        expect(field2.value).toContain('Player10');
+        expect(field2.value).toContain('Player11');
+    });
+
+    test('getSpudKeepPayoutPageCount matches the field\'s own paging math, and is 1 for a skipped cycle', () => {
+        const payoutShares = Array.from({ length: 12 }, (_, i) => ({ id: `u${i}`, username: `Player${i}`, amount: 1 }));
+        expect(embedFactory.getSpudKeepPayoutPageCount({ payoutShares })).toBe(3);
+        expect(embedFactory.getSpudKeepPayoutPageCount({ payoutShares: [] })).toBe(1);
+        expect(embedFactory.getSpudKeepPayoutPageCount({ payoutShares: undefined })).toBe(1);
     });
 });
 

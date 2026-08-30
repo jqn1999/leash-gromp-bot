@@ -6424,6 +6424,31 @@ manually collect it whenever they want.
   suite: 821/821, zero regressions. Docs: [systems/spud-keep.md](systems/spud-keep.md) and
   [reference/commands.md](reference/commands.md) updated.
 
+**Spud Keep follow-up (2026-08-30, same day): paginate the payout breakdown.** Direct instruction:
+"just have the daily resolution show 5 players and paginate if more than 5 players." Replaces the
+per-player breakdown field's old char-limit-based truncation (a "+N more..." line once the packed
+field neared Discord's 1024-char cap) with real 5-per-page pagination.
+
+- `embedFactory.js`: `buildSpudKeepPayoutShareField(shares, pageIndex)` now slices to exactly 5
+  entries per page and labels the field name with "Page X / Y" once there's more than one page;
+  `createSpudKeepResultEmbed(result, payoutPageIndex)` gained the new optional param (defaults to
+  page 0, so every existing call site is unaffected); new `getSpudKeepPayoutPageCount(result)`
+  instance method lets the caller know the page count up front, before the first send.
+- New `helperCommands.runPaginatedBroadcast(message, idPrefix, totalPages, renderPage, timeoutMs)`
+  — the daily resolution post is a public, fire-and-forget cron announcement with no single owning
+  interaction, unlike every other paginated command in this codebase, so it can't reuse
+  `runPaginatedReply`'s `interaction.user.id` filter. This sibling drives the identical
+  Previous/Next loop off the plain `Message` a `channel.send()` returns (which supports the same
+  `awaitMessageComponent`/`edit` API an interaction reply does) with no per-user filter — any viewer
+  in the channel can page through it.
+- `backgroundEvents.js`'s Spud Keep resolution post now checks the page count first and only
+  attaches Previous/Next buttons (and drives `runPaginatedBroadcast`) when there's more than one
+  page.
+- Updated/replaced the old truncation-focused tests in `embedFactory.test.js` with pagination
+  coverage (5-per-page slicing, the Page X / Y label, `getSpudKeepPayoutPageCount`'s own math,
+  including the skipped-cycle case). Full suite: 823/823, zero regressions. Docs:
+  [systems/spud-keep.md](systems/spud-keep.md) updated.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

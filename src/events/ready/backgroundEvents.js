@@ -1,4 +1,4 @@
-const { getSortedBirthdays } = require("../../utils/helperCommands");
+const { getSortedBirthdays, buildPaginationRow, runPaginatedBroadcast } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EventFactory } = require("../../utils/eventFactory");
@@ -101,8 +101,19 @@ module.exports = async (client) => {
         const spudKeepResult = await spudKeepFactory.resolveCycle();
         client.channels.fetch('1188525931346792498')
             .then(async channel => {
-                const spudKeepEmbed = embedFactory.createSpudKeepResultEmbed(spudKeepResult);
-                channel.send({ embeds: [spudKeepEmbed] })
+                // Payout breakdown pagination (2026-08-30, direct instruction: "show 5
+                // players and paginate if more than 5 players") — this is a public,
+                // fire-and-forget cron post with no owning interaction, so it drives
+                // runPaginatedBroadcast (open to any channel viewer) instead of the
+                // interaction-scoped runPaginatedReply every command uses.
+                const totalPayoutPages = spudKeepResult.skipped ? 1 : embedFactory.getSpudKeepPayoutPageCount(spudKeepResult);
+                const spudKeepEmbed = embedFactory.createSpudKeepResultEmbed(spudKeepResult, 0);
+                const components = totalPayoutPages > 1 ? [buildPaginationRow('spud_keep_payout', 0, totalPayoutPages)] : [];
+                const message = await channel.send({ embeds: [spudKeepEmbed], components });
+                if (totalPayoutPages > 1) {
+                    await runPaginatedBroadcast(message, 'spud_keep_payout', totalPayoutPages,
+                        (pageIndex) => embedFactory.createSpudKeepResultEmbed(spudKeepResult, pageIndex));
+                }
             })
             .catch(err => {
                 console.log(err)

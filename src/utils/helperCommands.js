@@ -110,6 +110,29 @@ async function runPaginatedReply(reply, interaction, idPrefix, totalPages, rende
     }
 }
 
+// Same Previous/Next loop as runPaginatedReply, for a message with no single owning
+// interaction — a fire-and-forget cron post (Spud Keep's own daily resolution embed is the
+// first user of this) that the whole channel can click through, not just whoever ran a
+// command. Takes the already-sent `message` directly (a plain channel.send() Message
+// supports the exact same `awaitMessageComponent`/`edit` API an interaction reply does, so
+// no interaction object is needed at all) and has no per-user filter — any viewer in the
+// channel can page it.
+async function runPaginatedBroadcast(message, idPrefix, totalPages, renderPage, timeoutMs = 60_000) {
+    if (totalPages <= 1) return;
+    let pageIndex = 0;
+    while (true) {
+        const confirmation = await message.awaitMessageComponent({ time: timeoutMs }).catch(() => null);
+        if (!confirmation) {
+            await message.edit({ components: [] }).catch(() => {});
+            break;
+        }
+
+        pageIndex = confirmation.customId === `${idPrefix}_next` ? pageIndex + 1 : pageIndex - 1;
+        const pageEmbed = await renderPage(pageIndex);
+        await confirmation.update({ embeds: [pageEmbed], components: [buildPaginationRow(idPrefix, pageIndex, totalPages)] });
+    }
+}
+
 function buildConfirmCancelRow(idPrefix, confirmLabel, cancelLabel = 'Back out') {
     const confirmButton = new ButtonBuilder()
         .setCustomId(`${idPrefix}_confirm`)
@@ -174,6 +197,7 @@ module.exports = {
     buildConfirmCancelRow,
     buildPaginationRow,
     runPaginatedReply,
+    runPaginatedBroadcast,
     getSortedBirthdays,
     getRandomFromInterval
 }
