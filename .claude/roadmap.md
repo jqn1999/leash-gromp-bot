@@ -5335,8 +5335,8 @@ and needs its own balance pass.
   existing per-participant rewards; a guild-scoped variant (this is deliberately server-wide, not a
   second `guildBuff` slot).
 
-- [ ] **Spud Keep — Contested Node/Territory Event (guilds + Merc Faction)** — L, **technical
-  design complete, not yet built** (product-owner concept → refined by direct user instruction →
+- [x] **Spud Keep — Contested Node/Territory Event (guilds + Merc Faction)** — L, **Done**
+  (product-owner concept → refined by direct user instruction →
   full architect design below, same "design-complete-but-shelved-until-picked-up" status
   [Guild vs. Guild Raids](#discussed-earlier-not-picked-up-in-this-pass) uses, except this one is
   actively queued rather than shelved). Player pitch, verbatim: a recurring (daily or every-2-day)
@@ -5596,9 +5596,16 @@ and needs its own balance pass.
       guildEntrants: [],       // [{ guildId, guildName }], this cycle's signed-up guilds only
       mercenaryEntrants: [],   // [{ id, username }], this cycle's signed-up mercenaries only
       lastResolvedAt: 0,       // epoch ms, informational only (display/debugging)
-      potPotatoes: 0,          // NEW — atomic-ADD-only counter, 75% of every taxed potato event
-                               // server-wide while a holder is live (see Reward Part 2 below)
-      potStarches: 0           // NEW — same, for the one starch-denominated tax site (/give starches)
+      potPotatoes: 0           // NEW — atomic-ADD-only counter, 75% of every taxed potato event
+                               // server-wide while a holder is live (see Reward Part 2 below).
+                               // POTATO-ONLY (2026-08-30 simplification, direct instruction — no
+                               // separate potStarches field at all): /give's one starch-
+                               // denominated tax site converts its own pot share to potatoes at
+                               // the CURRENT starch sell price (dynamoHandler.getStatDatabase
+                               // ("starch").starch_sell, the same price /sell-starch itself
+                               // reads, never the buy price — spudKeepFactory.
+                               // convertStarchesToPotatoesForPot) before crediting potPotatoes,
+                               // so guilds and mercenaries are always paid out in one currency
   }
 
   // stats table, trackingId: "spud_keep_buff" — dedicated get/set wrapper
@@ -5731,20 +5738,21 @@ and needs its own balance pass.
      value: SpudKeep.COOLDOWN_BUFF_VALUE, expiresAt: <same expiresAt> })` — both replace outright,
      even on a successful defense (fresh `expiresAt`, zero coverage gap, per finding 4's own reasoning).
   7b. **Split the accruing pot ONE TIME, among the OUTGOING holder's own roster this cycle** (see
-     "Reward — FINALIZED" Part 2 below for the full mechanism/reasoning) — using `potPotatoes`/
-     `potStarches` exactly as read back in step 1 (never re-read), paid to whichever
-     `memberDetailsList`/`topNUserDetailsList` this same resolution already fetched in steps 2-4 for
-     the PRE-resolution `spud_keep_buff.holderId`/`holderType` (a guild's live roster, or the Merc
-     Faction's counted top-N) — zero extra reads. An empty outgoing roster (holder's guild disbanded/
-     emptied mid-cycle) means that cycle's pot is forfeited, not paid to anyone and not rolled forward
-     — mirrors the "empty holder naturally loses" precedent applied uniformly elsewhere in this design.
-     No previous holder at all (pre-first-ever-resolution) skips this step entirely (nothing could have
-     accrued, since the tax-redirect predicate requires a live holder in the first place).
+     "Reward — FINALIZED" Part 2 below for the full mechanism/reasoning) — using `potPotatoes`
+     exactly as read back in step 1 (never re-read; potato-only, see the Data model's own note on
+     starch-tax conversion), paid to whichever `memberDetailsList`/`topNUserDetailsList` this same
+     resolution already fetched in steps 2-4 for the PRE-resolution
+     `spud_keep_buff.holderId`/`holderType` (a guild's live roster, or the Merc Faction's counted
+     top-N) — zero extra reads. An empty outgoing roster (holder's guild disbanded/emptied mid-cycle)
+     means that cycle's pot is forfeited, not paid to anyone and not rolled forward — mirrors the
+     "empty holder naturally loses" precedent applied uniformly elsewhere in this design. No previous
+     holder at all (pre-first-ever-resolution) skips this step entirely (nothing could have accrued,
+     since the tax-redirect predicate requires a live holder in the first place).
   8. **Clear the per-cycle entrant lists AND subtract exactly what was just paid out from the pot** —
      `guildEntrants: []`, `mercenaryEntrants: []`, `lastResolvedAt: Date.now()` on `spud_keep` (mirrors
      `world.world_list`'s own clearing in `popWorldBoss`), plus an ATOMIC `addStatFields('spud_keep', {
-     potPotatoes: -potPotatoesJustPaid, potStarches: -potStarchesJustPaid })` — a subtraction of the
-     EXACT amount just split in step 7b, never a blind `set potPotatoes = 0`. This is the load-bearing
+     potPotatoes: -potPotatoesJustPaid })` — a subtraction of the EXACT amount just split in step 7b
+     (or forfeited), never a blind `set potPotatoes = 0`. This is the load-bearing
      correctness detail for reset timing: any tax event whose redirect write lands concurrently, between
      step 1's read and this step's write, is NOT destroyed by a blind overwrite — it correctly survives
      into next cycle's pot, because subtracting a known exact amount commutes with a concurrent ADD
@@ -5832,9 +5840,10 @@ and needs its own balance pass.
   Reward Part 2 below); a new `spudKeepFactory.js` for entrant collection, the Merc Faction top-N
   selection, `isSpudKeepBuffLiveForUser` (unchanged), the tax-redirect split/credit helpers, the
   weighted-lottery draw, and `resolveCycle()` — reusing `raidFactory.getEffectiveRaidPower`/
-  `getMemberRaidPower`/`getLiveRaidRoster`/`handlePotatoSplit` as-is, plus one small new
-  `raidFactory.handleStarchSplit` sibling (mirrors `handlePotatoSplit` field-for-field, targeting
-  `starches` instead, for the pot's much-rarer starch-denominated slice); ~7 existing tax call sites
+  `getMemberRaidPower`/`getLiveRaidRoster`/`handlePotatoSplit` as-is (the pot is potato-only, per the
+  2026-08-30 simplification below — no `raidFactory.handleStarchSplit` sibling needed after all; a
+  starch-denominated tax contribution is converted to potatoes at credit time instead, see Reward
+  Part 2's own `convertStarchesToPotatoesForPot`); ~7 existing tax call sites
   (`bank.js`, `safehouse.js`, `guildBank.js`, `give.js`, `companionMarket.js`, `sellStarch.js`,
   `startRaid.js`'s `addToBankOrPurse`) each gain one `getActiveSpudKeepBuff()` read + a conditional
   `addStatFields` pot credit ahead of their existing `addUserDatabase` house credit (see Reward Part 2
@@ -5846,7 +5855,7 @@ and needs its own balance pass.
   three sites option 2's own writeup below already identified); two new commands (an officer-gated
   guild entry command mirroring `/start-raid`'s permission check, and a mercenary entry command
   mirroring `/join-world-raid`) plus a read-only status command mirroring `/current-world-raid`,
-  now also surfacing the live `potPotatoes`/`potStarches` total (see Reward Part 2 below); a
+  now also surfacing the live `potPotatoes` total (see Reward Part 2 below); a
   `resolveCycle()` hook added to the existing 4am UTC daily cron in `backgroundEvents.js`;
   `embedFactory.js` for the new status/result embeds; a new `SpudKeep` block in `constants.js` (see
   Data model above); `systems/guilds.md` and `systems/mercenary-bounties.md` cross-links, plus a
@@ -6068,19 +6077,20 @@ and needs its own balance pass.
 
   This is a genuine atomic server-side increment (never a read-modify-write), exactly the primitive
   the concurrency requirement calls for — many unrelated tax events across the whole server firing at
-  the same instant each issue their own independent `add` against `spud_keep.potPotatoes`/
-  `potStarches`, and DynamoDB serializes them at the attribute level with no lost updates, the same
-  guarantee `addUserDatabase` already relies on everywhere else in this codebase (and the exact class
-  of bug — read-then-write clobbering under concurrency — this repo's own `/rob` cooldown fix and
-  `findUser`'s `ConsistentRead` fix already had to clean up elsewhere). `creditSpudKeepPot` is the
-  one-line consumer:
+  the same instant each issue their own independent `add` against `spud_keep.potPotatoes`, and
+  DynamoDB serializes them at the attribute level with no lost updates, the same guarantee
+  `addUserDatabase` already relies on everywhere else in this codebase (and the exact class of bug —
+  read-then-write clobbering under concurrency — this repo's own `/rob` cooldown fix and `findUser`'s
+  `ConsistentRead` fix already had to clean up elsewhere). `creditSpudKeepPot` is the one-line
+  consumer:
 
   ```js
-  // spudKeepFactory.js
-  async function creditSpudKeepPot(currencyField, amount) {
-      if (amount <= 0) return;
-      const potField = currencyField === 'starches' ? 'potStarches' : 'potPotatoes';
-      await dynamoHandler.addStatFields('spud_keep', { [potField]: amount });
+  // spudKeepFactory.js — the pot is potato-only (2026-08-30 simplification, direct instruction: no
+  // separate potStarches field at all, so guilds and mercenaries are always paid out in one
+  // currency). Every caller always passes a potato amount.
+  async function creditSpudKeepPot(potatoAmount) {
+      if (potatoAmount <= 0) return;
+      await dynamoHandler.addStatFields('spud_keep', { potPotatoes: potatoAmount });
   }
   ```
 
@@ -6095,13 +6105,32 @@ and needs its own balance pass.
   // After:
   const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
   await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
-  await spudKeepFactory.creditSpudKeepPot('potatoes', potAmount);
+  await spudKeepFactory.creditSpudKeepPot(potAmount);
   ```
 
-  `give.js`'s starch-tax branch is the one site that passes `'starches'` instead of `'potatoes'` to
-  both calls, preserving the existing "house account holds two genuinely separate balances" rule
-  (see the Note on currency in economy-and-work.md) — the pot mirrors that split exactly
-  (`potPotatoes`/`potStarches` as two separate fields on `spud_keep`, never converted into each other).
+  `give.js`'s starch-tax branch is the one site whose `taxAmount`/`potAmount` are starch-denominated
+  — `houseAmount` is still credited back to the house account's own `starches` field, preserving the
+  existing "house account holds two genuinely separate balances" rule (see the Note on currency in
+  economy-and-work.md), but `potAmount` is converted to potatoes BEFORE calling `creditSpudKeepPot`,
+  since the pot itself never holds starches:
+
+  ```js
+  // spudKeepFactory.js — converts at the CURRENT starch sell price, the same price /sell-starch
+  // itself reads (dynamoHandler.getStatDatabase("starch").starch_sell), never the buy price. A
+  // missing/malformed starch-market doc guards to 0 rather than propagating NaN into the pot.
+  async function convertStarchesToPotatoesForPot(starchAmount) {
+      if (starchAmount <= 0) return 0;
+      const starchMarket = await dynamoHandler.getStatDatabase("starch");
+      const sellPrice = toNumber(starchMarket && starchMarket.starch_sell);
+      return Math.floor(starchAmount * sellPrice);
+  }
+
+  // give.js's starch-tax branch:
+  const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount); // starches
+  await dynamoHandler.addUserDatabase(client.user.id, 'starches', houseAmount);
+  const potPotatoAmount = await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount);
+  await spudKeepFactory.creditSpudKeepPot(potPotatoAmount);
+  ```
 
   **Cost, confirmed cheap by the same standard `isWorldBuffLive` already sets.** Every tax site pays
   exactly one extra `getStatDatabase("spud_keep_buff")` read (a single-item Query on a tiny stats
@@ -6116,9 +6145,9 @@ and needs its own balance pass.
   accepts.
 
   **Visibility — where players watch it climb.** The read-only status command already scoped earlier
-  in this entry (mirroring `/current-world-raid`) gains two more fields, read directly off the SAME
-  `spud_keep` doc it already reads for `guildEntrants`/`mercenaryEntrants` — `potPotatoes`/
-  `potStarches`, shown live, growing between cron resolutions, zero extra reads for the display itself.
+  in this entry (mirroring `/current-world-raid`) gains one more field, read directly off the SAME
+  `spud_keep` doc it already reads for `guildEntrants`/`mercenaryEntrants` — `potPotatoes`, shown
+  live, growing between cron resolutions, zero extra reads for the display itself.
 
   **Resolution — who gets paid, and why.** *(Genuinely new interpretation call, not previously pinned
   — flagged explicitly.)* The pot is split among the OUTGOING holder's own roster this cycle (a
@@ -6130,8 +6159,9 @@ and needs its own balance pass.
   the roster/top-N composition rules already established elsewhere in this entry for describing a
   holder's own side — not the challenger side. Mechanically this is also the cheapest correct reading:
   the outgoing holder's roster is ALREADY fetched in resolution-flow steps 2-4 (to compute its lottery
-  power), so paying it out costs zero extra reads, reusing `raidFactory.handlePotatoSplit`/the new
-  `handleStarchSplit` exactly as option 3 above already proposed for a lump sum, just fed the pot's
+  power), so paying it out costs zero extra reads, reusing `raidFactory.handlePotatoSplit` exactly as
+  option 3 above already proposed for a lump sum (the pot is potato-only, per the 2026-08-30
+  simplification above — no separate starch split needed), just fed the pot's
   real accrued total instead of a fixed constant. See resolution-flow steps 7b/8 above for the exact
   ordering (split first using the value read in step 1, then subtract — never blind-reset — exactly
   what was paid, so a concurrent tax event mid-resolution is never destroyed).
@@ -6265,6 +6295,58 @@ and needs its own balance pass.
   to add to `spud_keep_buff` (`consecutiveHoldCycles`) and one new multiplier applied at
   entrant-assembly time (resolution-flow step 5) — a small, contained addition on top of the
   already-designed flow, not a rework of anything already finalized.
+
+  **Implementation notes (2026-08-30) — shipped as designed above, one v1-scope call flagged below.**
+  New: `src/utils/spudKeepFactory.js` (predicates, pot split/credit/currency-conversion helpers,
+  attacker's bonus, Merc Faction top-N selection, the shared `buildEntrantPreview` both
+  `/current-spud-keep` and `resolveCycle` read from, and `resolveCycle` itself); three new commands
+  (`src/commands/guilds/joinSpudKeep.js`, `src/commands/user/spudKeepSignup.js`,
+  `src/commands/misc/currentSpudKeep.js`); `src/utils/__tests__/spudKeepFactory.test.js` (38 tests).
+  Modified: `constants.js` (new `SpudKeep` block); `dynamoHandler.js` (`addStatFields`,
+  `getActiveSpudKeepBuff`/`setActiveSpudKeepBuff`/`getActiveSpudKeepCooldownBuff`/
+  `setActiveSpudKeepCooldownBuff`, the passive/cooldown consumer wiring inside
+  `passivePotatoHandler`/`calculateWorkTimerValue` — both via a LAZY `require("../utils/
+  spudKeepFactory")` inside the function body, not a top-level import, since spudKeepFactory.js
+  itself requires dynamoHandler.js and a top-level circular require would hand one side a
+  half-built module.exports object; new `spudKeepAttemptCount` default user field); `raidFactory.js`
+  (no new export needed after all — see the pot-currency simplification below); the 7 tax sites
+  (`bank.js`, `safehouse.js`, `guildBank.js`, `give.js`, `companionMarket.js`, `sellStarch.js`,
+  `startRaid.js`'s `addToBankOrPurse`); the 3 cooldown-write sites (`startRaid.js`'s `raidTimer`
+  reset, `takeBounty.js`, `robNpc.js`); `embedFactory.js` (`createSpudKeepStatusEmbed`,
+  `createSpudKeepResultEmbed`, capped at 20 per-entrant fields plus an overflow note rather than
+  full pagination, since both are a single fire-and-forget cron post / read-only snapshot, not an
+  interactive multi-page list); `backgroundEvents.js` (`resolveCycle()` added to the existing 4am
+  UTC cron, posting to the same events channel, including an explicit "cycle skipped" announcement
+  rather than silence); `dynamoHandler.test.js` (+10 tests: `addStatFields`, the two buff-doc
+  wrappers, and the passive/cooldown consumer wiring). Full suite: 806 passing (758 pre-existing +
+  48 new).
+
+  **Mid-build correction, applied before any of the above shipped**: the pot ended up **potato-only**
+  — no separate `potStarches` field, no `raidFactory.handleStarchSplit` sibling. `/give`'s one
+  starch-denominated tax site converts its own pot share to potatoes at the CURRENT starch sell price
+  (`dynamoHandler.getStatDatabase("starch").starch_sell`, the same price `/sell-starch` itself reads,
+  never the buy price — `spudKeepFactory.convertStarchesToPotatoesForPot`) before crediting
+  `potPotatoes`, so a guild's own live roster and the Merc Faction's counted top-N are always paid
+  out in one currency regardless of which tax sites fed the pot that cycle. Every earlier mention of
+  `potStarches`/`handleStarchSplit` above (the original Data model, resolution-flow steps 7b/8, and
+  the Reward Part 2 writeup) has been updated in place to reflect this — the pot's *existence*,
+  *redirect percentage*, *payout timing*, and *payout audience* are all unchanged from the original
+  design, only its currency shape simplified from two fields to one.
+
+  **Genuinely new interpretation calls made during implementation** (flagged, not silently decided):
+  (1) the cooldown-reduction half of the bundle buff is a flat, holder-wide passive perk applied
+  regardless of that specific action's own win/loss — unlike Mercenary Rank's own
+  `cooldownReductionPercent`, which is win-only — since nothing in the design explicitly pinned
+  win/loss-gating for Spud Keep's own cooldown shave, and gating it to wins only would have made the
+  perk invisible on every loss for a mercenary-heavy holder side. (2) the participation counter
+  (`spudKeepAttemptCount`) also credits the auto-re-entered holder's own roster (resolution-flow step
+  3), not just guilds that proactively ran `/join-spud-keep` that cycle — the design's own step 9
+  says "for a guild entrant, every member of that guild's live roster used in step 2," and the
+  auto-re-entered holder is folded into that same final entrant list before step 9 runs, so this
+  reads as the more literal application of an already-written rule rather than a new one. (3) the
+  streak-9 milestone jump (+90%/96% total) was explicitly marked "nice-to-have, not a v1
+  requirement" in this entry's own Recommendation above and was NOT implemented — only the
+  base+per-cycle escalation (capped at 66%) shipped.
 
 ## Discussed earlier, not picked up in this pass
 

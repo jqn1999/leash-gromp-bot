@@ -6,6 +6,7 @@ const safehouseFactory = require("../../utils/safehouseFactory");
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 // Main Safehouse (slot 0, the personal bank displayed as a Safehouse for mercenaries) gets
 // its own name in every user-facing message instead of the generic "Safehouse #0".
@@ -246,6 +247,11 @@ module.exports = {
 
             userPotatoes -= totalAmount;
             const feeAmount = totalAmount - netAmount;
+            // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this
+            // fee is redirected to the accruing pot instead of the house account; a
+            // no-op (100% to the house, byte-identical to before) whenever no holder is live.
+            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(feeAmount);
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
             // { safehouses, bankStored } — bankStored is only present when `allocations`
             // touched Main Safehouse (slot 0). Must be OMITTED from the update payload
             // entirely when undefined, not just set to undefined — updateUserFields'
@@ -256,7 +262,7 @@ module.exports = {
             if (updatedBankStored !== undefined) {
                 updateFields.bankStored = updatedBankStored;
             }
-            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', feeAmount);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
             await dynamoHandler.updateUserFields(userId, updateFields);
 
             // Full userDetails (not just the changed fields) so getTotalStored's own

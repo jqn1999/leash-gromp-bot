@@ -14,6 +14,12 @@ architect's build-ready technical design) lives in
 [roadmap.md](../roadmap.md#mercenary-bounties-solo-raid-equivalent-progression). This doc
 covers the shipped mechanic only.
 
+Every mercenary who signs up via `/spud-keep-signup` also becomes part of **the Merc Faction** — a
+single combined pseudo-entrant (only the top-N by `raidFactory.getMemberRaidPower` actually count)
+competing against every signed-up guild for a shared daily prize, the one place this game's guild
+and mercenary tracks genuinely compete for the exact same thing — see
+[systems/spud-keep.md](spud-keep.md#the-merc-faction).
+
 ## Mutual exclusivity with guild membership
 
 Mercenary and guild membership are mutually exclusive, gated by a new top-level

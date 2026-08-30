@@ -478,6 +478,15 @@ top** of a chosen net amount (the sender/depositor decides what they keep, tax i
 that); others are **taken out of** a gross amount (what's specified/earned is the total, the
 recipient nets less).
 
+**Redirected while a Spud Keep holder is live (new 2026-08-30)** — every row below now first calls
+`spudKeepFactory.splitTaxForSpudKeepPot(taxAmount)`: whenever ANY Spud Keep holder (guild or Merc
+Faction) is currently live, `SpudKeep.POT_REDIRECT_PERCENT` (75%) of the tax amount goes to the
+accruing `spud_keep.potPotatoes` pot instead of the house account, the remainder still going to the
+house — never both, and 100% to the house exactly as below whenever no holder is live. See
+[systems/spud-keep.md](spud-keep.md#the-pot-reward-part-2--a-redirect-not-conjured-money) for the
+full mechanism (including how `/give`'s starch-denominated share is converted to potatoes before
+crediting the pot, since the pot itself is potato-only).
+
 | Source | Rate | Shape |
 |---|---|---|
 | `/bank`/`/safehouse` deposit | `Bank.TAX_BASE(1000)` + `Bank.TAX_PERCENT(.05)` | Added on top |

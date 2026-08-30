@@ -5,6 +5,7 @@ const { Give } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 module.exports = {
     name: "give",
@@ -118,7 +119,21 @@ module.exports = {
         const balanceField = isStarches ? "starches" : "potatoes";
         await dynamoHandler.updateUserDatabase(userId, balanceField, userBalance);
         await dynamoHandler.updateUserDatabase(targetUserId, balanceField, targetUserBalance);
-        await dynamoHandler.addUserDatabase(client.user.id, balanceField, taxAmount);
+
+        // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this tax
+        // is redirected to the accruing pot instead of the house account; a no-op (100%
+        // to the house, byte-identical to before) whenever no holder is live. The pot is
+        // potato-only — a starch-denominated split (taxAmount here in starches) is
+        // converted to potatoes at the current starch sell price before crediting it, so
+        // houseAmount alone stays starch-denominated and untouched.
+        const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
+        await dynamoHandler.addUserDatabase(client.user.id, balanceField, houseAmount);
+        if (isStarches) {
+            const potPotatoAmount = await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount);
+            await spudKeepFactory.creditSpudKeepPot(potPotatoAmount);
+        } else {
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
+        }
 
         const currencyLabel = isStarches ? "Starches" : "Potatoes";
         embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, currencyLabel, amount, taxAmount, receivedAmount, userBalance, targetUserDisplayName, targetUserBalance);

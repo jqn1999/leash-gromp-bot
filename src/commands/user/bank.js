@@ -6,6 +6,7 @@ const companionFactory = require("../../utils/companionFactory");
 const rebirthFactory = require("../../utils/rebirthFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 function calculateTax(amount){
     return Bank.TAX_BASE + Math.floor(amount*Bank.TAX_PERCENT)
@@ -182,7 +183,12 @@ module.exports = {
             userPotatoes -= totalAmount;
             userBankStored += netAmount;
             const adminUserShare = totalAmount - netAmount;
-            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', adminUserShare);
+            // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this
+            // tax is redirected to the accruing pot instead of the house account; a
+            // no-op (100% to the house, byte-identical to before) whenever no holder is live.
+            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(adminUserShare);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
             await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
             await dynamoHandler.updateUserDatabase(userId, "bankStored", userBankStored);
 

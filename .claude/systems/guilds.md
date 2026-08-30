@@ -10,6 +10,12 @@ already uses for user records — see [architecture/data-model.md](../architectu
 [systems/guild-contracts.md](guild-contracts.md#guild-self-healing-a-gap-this-feature-had-to-close-first)
 for why this was previously missing and how it was fixed.
 
+A guild's own live raid roster (`getLiveRaidRoster` — see
+[raids-and-world-events.md](raids-and-world-events.md)) also doubles as its entry into **Spud Keep**,
+a daily contested-territory event a guild opts into via `/join-spud-keep` (Elder+) and can win/lose
+against every other signed-up guild plus the Merc Faction — see
+[systems/spud-keep.md](spud-keep.md).
+
 ## Roles
 
 `GuildRoles`: `Leader` > `Co-Leader` > `Elder` > `Member`. Stored per-member in

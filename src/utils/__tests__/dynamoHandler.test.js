@@ -566,6 +566,113 @@ describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuff
     });
 });
 
+// Spud Keep (systems/spud-keep.md) — spud_keep_buff/spud_keep_cooldown_buff mirror
+// world_buff's own get/set shape exactly.
+describe('Spud Keep buff docs (getActiveSpudKeepBuff / setActiveSpudKeepBuff / getActiveSpudKeepCooldownBuff / setActiveSpudKeepCooldownBuff)', () => {
+    test('getActiveSpudKeepBuff reads the spud_keep_buff stats doc', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_buff', holderType: 'guild', holderId: 'g1', buffType: 'passiveIncome', value: 0.06 }] }));
+        const buff = await dynamoHandler.getActiveSpudKeepBuff();
+        expect(docClient.query).toHaveBeenCalledWith(expect.objectContaining({
+            ExpressionAttributeValues: { ':trackingId': 'spud_keep_buff' }
+        }));
+        expect(buff.holderType).toBe('guild');
+    });
+
+    test('setActiveSpudKeepBuff writes to the spud_keep_buff stats doc', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.setActiveSpudKeepBuff({ holderType: 'mercenary', holderId: null, buffType: 'passiveIncome', value: 0.06, expiresAt: 123, consecutiveHoldCycles: 0 });
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.Key).toEqual({ trackingId: 'spud_keep_buff' });
+    });
+
+    test('getActiveSpudKeepCooldownBuff reads the spud_keep_cooldown_buff stats doc', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08 }] }));
+        const buff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+        expect(docClient.query).toHaveBeenCalledWith(expect.objectContaining({
+            ExpressionAttributeValues: { ':trackingId': 'spud_keep_cooldown_buff' }
+        }));
+        expect(buff.buffType).toBe('cooldownReduction');
+    });
+
+    test('setActiveSpudKeepCooldownBuff writes to the spud_keep_cooldown_buff stats doc', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.setActiveSpudKeepCooldownBuff({ holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: 123 });
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.Key).toEqual({ trackingId: 'spud_keep_cooldown_buff' });
+    });
+});
+
+// addStatFields (systems/spud-keep.md) — the first real consumer of buildUpdateExpression's
+// own already-existing-but-previously-unused `addAttributes` parameter for the stats table.
+describe('addStatFields', () => {
+    test('issues an ADD UpdateExpression against the given trackingId', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.addStatFields('spud_keep', { potPotatoes: 500 });
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.TableName).toBe('leash-gromp-stats');
+        expect(params.Key).toEqual({ trackingId: 'spud_keep' });
+        expect(params.UpdateExpression).toBe('add #a0 :a0');
+        expect(params.ExpressionAttributeValues[':a0']).toBe(500);
+    });
+
+    test('a negative amount subtracts via the same ADD expression (step 8\'s exact-payout subtraction)', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        await dynamoHandler.addStatFields('spud_keep', { potPotatoes: -500 });
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.ExpressionAttributeValues[':a0']).toBe(-500);
+    });
+
+    test('an empty addAttributes object never issues a write', async () => {
+        await dynamoHandler.addStatFields('spud_keep', {});
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+});
+
+// Spud Keep's passive-income half (systems/spud-keep.md) — folds additively into
+// passivePotatoHandler's per-user passive gain, gated per-user by
+// spudKeepFactory.isSpudKeepBuffLiveForUser (guildId/isMercenary), unlike the World Boss
+// buff above which is free for everyone.
+describe('passivePotatoHandler Spud Keep passive term', () => {
+    test('a live guild-holder buff boosts only a member of the exact holding guild', async () => {
+        const memberOfHolder = { userId: 'u1', guildId: 'g1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1 };
+        const outsider = { userId: 'u2', guildId: 'g2', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1 };
+        docClient.scan.mockReturnValue(resolved({ Items: [memberOfHolder, outsider] }));
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_buff', holderType: 'guild', holderId: 'g1', buffType: 'passiveIncome', value: 0.06, expiresAt: Date.now() + 60000 }] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const memberUpdate = docClient.update.mock.calls.find(([params]) => params.Key.userId === 'u1');
+        const outsiderUpdate = docClient.update.mock.calls.find(([params]) => params.Key.userId === 'u2');
+        expect(memberUpdate[0].ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 * 1.06 / 288));
+        expect(outsiderUpdate[0].ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
+    });
+});
+
+// Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat holder-wide perk
+// applied inside calculateWorkTimerValue regardless of anything else already computed.
+describe('calculateWorkTimerValue Spud Keep cooldown term', () => {
+    test('a live guild-holder cooldown buff shaves a member\'s /work cooldown', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
+        const userDetails = { guildId: 'g1' };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeLessThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000 - Work.WORK_TIMER_SECONDS * 1000 * 0.08 + 5);
+    });
+
+    test('a live buff held by a DIFFERENT guild never shaves this user\'s cooldown', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
+        const userDetails = { guildId: 'g2' };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+    });
+});
+
 // Brassica's passiveBoost buff (systems/raids-and-world-events.md#server-wide-buff) folds
 // additively into passivePotatoHandler's per-user passive gain, same site as
 // passiveIncomePercent/rebirthPercent.

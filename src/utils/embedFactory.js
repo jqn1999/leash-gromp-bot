@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -182,6 +182,45 @@ const WORLD_BUFF_DESCRIPTIONS = {
 
 function describeWorldBuff(worldBuff) {
     return WORLD_BUFF_DESCRIPTIONS[worldBuff.buffType](worldBuff.value);
+}
+
+// Shared by createSpudKeepStatusEmbed and createSpudKeepResultEmbed so the two never show
+// conflicting numbers for the same entrant shape (spudKeepFactory.buildEntrantPreview's
+// own `entrants` array — see systems/spud-keep.md). Reuses getEffectiveRaidPowerBreakdown's
+// own teamPower/headcountBonus split, same display convention /current-raid already uses.
+function formatSpudKeepEntrantValue(entrant) {
+    const breakdown = entrant.breakdown || { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
+    const lines = [
+        `Power: ${Math.round(breakdown.effectivePower).toLocaleString()} (team ${Math.round(breakdown.teamPower).toLocaleString()}, +${(breakdown.headcountBonus * 100).toFixed(0)}% headcount)`,
+        `Lottery Chance: ${(entrant.chancePercent * 100).toFixed(1)}%${entrant.isHolder ? ' (current holder — no attacker bonus)' : ''}`,
+    ];
+    lines.push(entrant.type === 'mercenary'
+        ? `N=${entrant.mercFactionN}, ${entrant.mercSignedUpCount.toLocaleString()} signed up, top ${entrant.mercCountedCount.toLocaleString()} counted`
+        : `${entrant.roster.length.toLocaleString()} live raider${entrant.roster.length === 1 ? '' : 's'}`);
+    return lines.join('\n');
+}
+
+// Caps the number of per-entrant fields either Spud Keep embed builds — guild sign-ups
+// have no server-imposed cap the way a single guild's own raid roster does (memberCap),
+// so a busy server could in principle exceed Discord's 25-field limit. Mirrors
+// createWorldRaidPageEmbed's own "could exceed the limit, guard it" precedent, just with
+// a truncation note instead of full pagination — this is a single fire-and-forget cron
+// post / read-only status snapshot, not a multi-page interactive list.
+const SPUD_KEEP_MAX_ENTRANT_FIELDS = 20;
+function buildSpudKeepEntrantFields(entrants) {
+    const fields = entrants.slice(0, SPUD_KEEP_MAX_ENTRANT_FIELDS).map(entrant => ({
+        name: `${entrant.type === 'mercenary' ? '⚔️' : '🏰'} ${entrant.name}${entrant.isHolder ? ' 👑' : ''}`,
+        value: formatSpudKeepEntrantValue(entrant),
+        inline: false,
+    }));
+    if (entrants.length > SPUD_KEEP_MAX_ENTRANT_FIELDS) {
+        fields.push({
+            name: 'And more...',
+            value: `+${(entrants.length - SPUD_KEEP_MAX_ENTRANT_FIELDS).toLocaleString()} more entrant(s) not shown.`,
+            inline: false,
+        });
+    }
+    return fields;
 }
 
 class EmbedFactory {
@@ -3186,6 +3225,104 @@ class EmbedFactory {
             .setTitle("🛠️ Admin Economy Dashboard")
             .setDescription("Cached game-health snapshot — refreshes every 5 minutes via the passive income tick, except quests/world which update on their own triggers.")
             .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Read-only /current-spud-keep preview — mirrors /current-world-raid/current-raid's
+    // own "live power preview, no state written by viewing it" shape. `preview` is
+    // spudKeepFactory.buildEntrantPreview's own return shape.
+    createSpudKeepStatusEmbed(preview) {
+        const { currentBuff, spudKeep, entrants, attackerBonusPercent, consecutiveHoldCycles } = preview;
+        const isHolderLive = Boolean(currentBuff && currentBuff.holderType && currentBuff.expiresAt > Date.now());
+        const fields = [];
+
+        fields.push({
+            name: 'Current Holder:',
+            value: isHolderLive
+                ? `**${currentBuff.holderName}** (${currentBuff.holderType === 'guild' ? 'Guild' : 'Merc Faction'}) — buff expires <t:${Math.floor(currentBuff.expiresAt / 1000)}:R>, ${consecutiveHoldCycles.toLocaleString()} consecutive cycle${consecutiveHoldCycles === 1 ? '' : 's'} held`
+                : 'The Keep is currently unclaimed!',
+            inline: false,
+        });
+        fields.push({
+            name: 'Holder Buffs:',
+            value: `+${(SpudKeep.PASSIVE_BUFF_VALUE * 100).toFixed(0)}% passive income, -${(SpudKeep.COOLDOWN_BUFF_VALUE * 100).toFixed(0)}% cooldown (work/raid/bounty/heist) while held`,
+            inline: false,
+        });
+        fields.push({
+            name: '🥔 The Pot:',
+            value: `${Math.round(spudKeep.potPotatoes || 0).toLocaleString()} potatoes accrued — split among the OUTGOING holder's own roster at the next resolution`,
+            inline: false,
+        });
+        fields.push({
+            name: "Attacker's Bonus (this cycle):",
+            value: `+${(attackerBonusPercent * 100).toFixed(0)}% power for every challenger (the current holder, if any, is exempt)`,
+            inline: false,
+        });
+        fields.push(...buildSpudKeepEntrantFields(entrants));
+
+        const embed = new EmbedBuilder()
+            .setTitle('🥔🏰 Spud Keep — Live Status')
+            .setDescription(spudKeep.lastResolvedAt ? `Last resolved <t:${Math.floor(spudKeep.lastResolvedAt / 1000)}:R>.` : 'Never resolved yet.')
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Daily 4am UTC cron announcement — `result` is spudKeepFactory.resolveCycle's own
+    // return shape (either { skipped: true } or the full resolution result).
+    createSpudKeepResultEmbed(result) {
+        if (result.skipped) {
+            const embed = new EmbedBuilder()
+                .setTitle('🥔🏰 Spud Keep — Cycle Skipped')
+                .setDescription("Nobody signed up this cycle (no guilds, no mercenaries, and no live holder roster) — the lottery was skipped. The Keep's state carries over unchanged until a future cycle has at least one real entrant.")
+                .setColor('Grey')
+                .setFooter({ text: "Made by Beggar" })
+                .setTimestamp(Date.now())
+            return embed;
+        }
+
+        const { winner, holderChanged, consecutiveHoldCycles, expiresAt, passiveBuffValue, cooldownBuffValue,
+            attackerBonusPercent, entrants, potPotatoesPaid, potForfeited, outgoingHolderName } = result;
+        const fields = [];
+
+        fields.push({
+            name: 'Winner:',
+            value: `**${winner.name}** (${winner.type === 'guild' ? 'Guild' : 'Merc Faction'})${holderChanged ? ' — the Keep changes hands!' : ' — successfully defended!'}`,
+            inline: false,
+        });
+        fields.push({
+            name: 'Buff Granted:',
+            value: `+${(passiveBuffValue * 100).toFixed(0)}% passive income, -${(cooldownBuffValue * 100).toFixed(0)}% cooldown (work/raid/bounty/heist) — expires <t:${Math.floor(expiresAt / 1000)}:R>`,
+            inline: false,
+        });
+        fields.push({
+            name: 'Streak & Next Attacker Bonus:',
+            value: `${consecutiveHoldCycles.toLocaleString()} consecutive cycle${consecutiveHoldCycles === 1 ? '' : 's'} held. Next cycle's challengers get a +${(attackerBonusPercent * 100).toFixed(0)}% power bonus.`,
+            inline: false,
+        });
+        if (potForfeited) {
+            fields.push({
+                name: '🥔 Pot Payout:',
+                value: `${outgoingHolderName}'s roster was empty at resolution — this cycle's pot was forfeited, not paid to anyone.`,
+                inline: false,
+            });
+        } else if (potPotatoesPaid > 0) {
+            fields.push({
+                name: '🥔 Pot Payout:',
+                value: `${potPotatoesPaid.toLocaleString()} potatoes split among ${outgoingHolderName}'s roster from this cycle's reign.`,
+                inline: false,
+            });
+        }
+        fields.push(...buildSpudKeepEntrantFields(entrants));
+
+        const embed = new EmbedBuilder()
+            .setTitle('🥔🏰 Spud Keep Resolved!')
+            .setColor('Gold')
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)

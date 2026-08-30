@@ -1,10 +1,11 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Rival, CompanionLeveling } = require("../../utils/constants");
+const { Bounty, Rival, CompanionLeveling, SpudKeep } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
@@ -72,10 +73,17 @@ module.exports = {
         // timestamp (rather than changing the constant itself) keeps bountyBoard.js's
         // remaining-time display and every other BOUNTY_TIMER_SECONDS reader correct without
         // any changes there.
+        //
+        // Spud Keep's cooldown-reduction half (systems/spud-keep.md) is a flat,
+        // holder-wide passive perk, unlike Rank's own win-only discount — it applies
+        // regardless of win/loss, stacked additively on top of whatever Rank already grants.
+        const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+        const spudKeepCooldownReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
+            ? spudKeepCooldownBuff.value
+            : 0;
+        const bountyCooldownReduction = (result.won ? result.rankInfo.cooldownReductionPercent : 0) + spudKeepCooldownReduction;
         const setAttributes = {
-            bountyTimer: result.won
-                ? Date.now() - Math.round(Bounty.BOUNTY_TIMER_SECONDS * result.rankInfo.cooldownReductionPercent * 1000)
-                : Date.now()
+            bountyTimer: Date.now() - Math.round(Bounty.BOUNTY_TIMER_SECONDS * bountyCooldownReduction * 1000)
         };
         const addAttributes = {};
 

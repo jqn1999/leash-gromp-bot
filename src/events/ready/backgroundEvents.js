@@ -9,6 +9,7 @@ const { QuestFactory } = require("../../utils/questFactory.js");
 const { GuildContracts } = require("../../utils/constants.js");
 const { GuildContractFactory } = require("../../utils/guildContractFactory.js");
 const { EmbedFactory } = require("../../utils/embedFactory.js");
+const spudKeepFactory = require("../../utils/spudKeepFactory.js");
 
 const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
 let eF = new EventFactory()
@@ -90,6 +91,22 @@ module.exports = async (client) => {
                     console.log(err)
                 });
         }
+
+        // Spud Keep's own daily resolution (systems/spud-keep.md) — reuses this same 4am
+        // UTC cron bundle rather than a separately-timed announcement, same cadence
+        // reasoning Tower/Quest/Guild Contract rotation above already established.
+        // Posted only on an actual resolution (winner drawn); a skipped cycle (nobody
+        // signed up at all) still gets its own announcement so a quiet cycle doesn't
+        // look like a missed cron run.
+        const spudKeepResult = await spudKeepFactory.resolveCycle();
+        client.channels.fetch('1188525931346792498')
+            .then(async channel => {
+                const spudKeepEmbed = embedFactory.createSpudKeepResultEmbed(spudKeepResult);
+                channel.send({ embeds: [spudKeepEmbed] })
+            })
+            .catch(err => {
+                console.log(err)
+            });
 
         // Birthday shit
         client.channels.fetch('1188539987118010408')

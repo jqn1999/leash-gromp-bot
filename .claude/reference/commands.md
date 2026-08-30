@@ -33,6 +33,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `notoriety.js` | `/notoriety` | Read-only: current Notoriety vs. threshold, Rank 2+ gate status, confrontation availability, lifetime Rival wins — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `confrontRival.js` | `/confront-rival` | Resolves a Rival Bounty Hunter confrontation immediately (no confirm, no options — which scenario you get is rolled, not chosen) once Notoriety crosses the threshold — resettable resource-threshold gate, not a cooldown — see [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#rival-bounty-hunters) |
 | `safehouse.js` | `/safehouse action:<list\|buy\|deposit\|withdraw> [house]` | Mercenary-exclusive extra bank capacity — up to 6 separately-owned, separately-balanced stashes gated by Mercenary Rank, so funding a purchase only ever exposes one house to `/rob`, not the whole stash; `house` is optional on deposit/withdraw — omit it to auto-spread a deposit across owned houses (randomized, capacity-respecting) or auto-drain a withdrawal from wherever has balance, or pass it to target one specifically; deposit/withdraw otherwise mirror `/bank`'s UX (percentage picker, same deposit tax), purely defensive — see [systems/safehouses.md](../systems/safehouses.md) |
+| `spudKeepSignup.js` | `/spud-keep-signup` | Fire-and-forget, idempotent signup as a mercenary for today's Spud Keep contest (joins the Merc Faction) — see [systems/spud-keep.md](../systems/spud-keep.md) |
 
 ## `buying/` — [systems/economy-and-work.md](../systems/economy-and-work.md)
 
@@ -43,7 +44,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `rebirth.js` | `/rebirth` | Prestige reset once every shop tier and regrade track is maxed, for a permanent buff — see [systems/economy-and-work.md](../systems/economy-and-work.md#rebirth-prestige-reset) |
 | `shop.js` | `/shop` | Ephemeral display of shop tiers/prices for a category — marks each tier ✅ owned / ➡️ next up / 🔒 locked against the caller's own progress, calls out the actual next purchase + affordability up top, and carries a one-click "Buy Next Tier" button that purchases in place without leaving `/shop` |
 
-## `guilds/` — [systems/guilds.md](../systems/guilds.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md)
+## `guilds/` — [systems/guilds.md](../systems/guilds.md), [systems/raids-and-world-events.md](../systems/raids-and-world-events.md), [systems/spud-keep.md](../systems/spud-keep.md)
 
 | File | Command | Summary |
 |---|---|---|
@@ -67,6 +68,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `currentRaid.js` | `/current-raid` | Shows raid roster, combined multiplier, cooldown remaining; once ready, a Start Raid button reveals unlocked-mode buttons that delegate to `startRaid.js`'s `runStartRaidFlow` |
 | `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract, the guild's aggregate progress, and a Top Contributors leaderboard (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
 | `guildHistory.js` | `/guild-history` | Paginated past raids or completed Guild Contracts (`type: raids \| contracts`) — see [systems/guilds.md](../systems/guilds.md#guild-history) |
+| `joinSpudKeep.js` | `/join-spud-keep` | Elder/Co-Leader/Leader idempotently enters the guild into today's Spud Keep contest — see [systems/spud-keep.md](../systems/spud-keep.md) |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 
@@ -100,7 +102,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `coinflip.js` | `/coinflip` | 50/50 wager, 95% payout on win |
 | `rps.js` | `/rps` | Rock-Paper-Scissors duel for a potato wager, button-driven, 30s/turn timeout |
 
-## `misc/` — [systems/raids-and-world-events.md](../systems/raids-and-world-events.md)
+## `misc/` — [systems/raids-and-world-events.md](../systems/raids-and-world-events.md), [systems/spud-keep.md](../systems/spud-keep.md)
 
 | File | Command | Summary |
 |---|---|---|
@@ -108,6 +110,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `currentEvent.js` | `/current-event` | Shows the active hourly special work event, if any |
 | `currentWorldRaid.js` | `/current-world-raid` | Shows the active world boss and its joined participants |
 | `joinWorldRaid.js` | `/join-world-raid` | Joins the current world boss encounter |
+| `currentSpudKeep.js` | `/current-spud-keep` | Read-only live Spud Keep status — current holder, this cycle's entrants with a live power/chance preview, and the accruing pot — see [systems/spud-keep.md](../systems/spud-keep.md) |
 | `addBirthday.js` | `/add-birthday` | Registers the caller's birthday |
 | `birthdays.js` | `/birthdays` | Lists upcoming birthdays, sorted by next occurrence |
 

@@ -5,6 +5,7 @@ const companionFactory = require("../../utils/companionFactory");
 const companionMarketFactory = require("../../utils/companionMarketFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 const PAGE_SIZE = 5;
 const PAGE_PREFIX = 'companion_market';
@@ -69,13 +70,18 @@ async function attemptBuy(client, userId, username, listingId) {
     const { fee, sellerReceives } = companionMarketFactory.computeSaleSplit(listing.price);
     const { companions: buyerCompanions } = companionFactory.applyCompanionAward(freshUserDetails, companion, listing.workCount || 0);
 
+    // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this fee is
+    // redirected to the accruing pot instead of the house account; a no-op (100% to the
+    // house, byte-identical to before) whenever no holder is live.
+    const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(fee);
     await Promise.all([
         dynamoHandler.updateUserFields(userId, {
             potatoes: freshUserDetails.potatoes - listing.price,
             companions: buyerCompanions
         }),
         dynamoHandler.addUserDatabase(listing.sellerId, 'potatoes', sellerReceives),
-        dynamoHandler.addUserDatabase(client.user.id, 'potatoes', fee)
+        dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount),
+        spudKeepFactory.creditSpudKeepPot(potAmount)
     ]);
 
     const message = alreadyOwned

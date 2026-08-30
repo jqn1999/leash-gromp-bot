@@ -6,6 +6,7 @@ const { Starch } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 module.exports = {
     name: "sell-starch",
@@ -107,7 +108,13 @@ module.exports = {
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
         await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
         if (starchSaleTax > 0) {
-            await dynamoHandler.addUserDatabase(client.user.id, "potatoes", starchSaleTax);
+            // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this
+            // tax is redirected to the accruing pot instead of the house account
+            // (already potato-denominated here, no currency conversion needed); a no-op
+            // (100% to the house, byte-identical to before) whenever no holder is live.
+            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(starchSaleTax);
+            await dynamoHandler.addUserDatabase(client.user.id, "potatoes", houseAmount);
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
         }
         if (profitOrLoss > 0) {
             await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings + profitOrLoss);

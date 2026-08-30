@@ -33,10 +33,14 @@ function isSpudKeepHolderLive(buff) {
     return Boolean(buff && buff.holderType && buff.expiresAt > Date.now());
 }
 
-// Splits one taxed amount between the house account and the pot. Returns
-// houseAmount === taxAmount and potAmount === 0 whenever no holder is live — today's
-// exact pre-Spud-Keep behavior, byte-identical, so every one of the ~7 tax call sites
-// degrades to untouched behavior the moment the Keep goes unclaimed.
+// Splits one taxed amount between the house account and the pot, IN WHATEVER CURRENCY
+// taxAmount itself is denominated. Returns houseAmount === taxAmount and potAmount === 0
+// whenever no holder is live — today's exact pre-Spud-Keep behavior, byte-identical, so
+// every one of the ~7 tax call sites degrades to untouched behavior the moment the Keep
+// goes unclaimed. The pot itself only ever stores potatoes (see creditSpudKeepPot below)
+// — a caller whose taxAmount is starch-denominated (currently only /give's starch-tax
+// branch) must convert potAmount via convertStarchesToPotatoesForPot before crediting it;
+// houseAmount is always credited back in the SAME currency taxAmount came in as.
 async function splitTaxForSpudKeepPot(taxAmount) {
     const buff = await dynamoHandler.getActiveSpudKeepBuff();
     if (!isSpudKeepHolderLive(buff)) return { houseAmount: taxAmount, potAmount: 0 };
@@ -47,13 +51,28 @@ async function splitTaxForSpudKeepPot(taxAmount) {
                                                                 // always equals taxAmount
 }
 
+// The pot is potato-only (2026-08-30 simplification — no separate potStarches counter,
+// so guilds and mercenaries alike are always paid out in one currency). /give's
+// starch-tax branch is the one tax site whose split amount isn't already potato-
+// denominated — convert it to potatoes at the CURRENT starch sell price (the same price
+// /sell-starch itself reads, dynamoHandler.getStatDatabase("starch").starch_sell, never
+// the buy price) before handing it to creditSpudKeepPot below. A missing/malformed
+// starch-market doc guards to 0 (toNumber) rather than propagating NaN into the pot.
+async function convertStarchesToPotatoesForPot(starchAmount) {
+    if (!(starchAmount > 0)) return 0;
+    const starchMarket = await dynamoHandler.getStatDatabase("starch");
+    const sellPrice = toNumber(starchMarket && starchMarket.starch_sell);
+    return Math.floor(starchAmount * sellPrice);
+}
+
 // One-line atomic-ADD consumer for every tax site — never a read-then-write, so many
 // unrelated tax events across the whole server firing at the same instant each land
-// safely (dynamoHandler.addStatFields's own atomic `add` UpdateExpression).
-async function creditSpudKeepPot(currencyField, amount) {
-    if (!(amount > 0)) return;
-    const potField = currencyField === 'starches' ? 'potStarches' : 'potPotatoes';
-    await dynamoHandler.addStatFields('spud_keep', { [potField]: amount });
+// safely (dynamoHandler.addStatFields's own atomic `add` UpdateExpression). Always
+// potatoes — see convertStarchesToPotatoesForPot above for the one caller that needs a
+// currency conversion first.
+async function creditSpudKeepPot(potatoAmount) {
+    if (!(potatoAmount > 0)) return;
+    await dynamoHandler.addStatFields('spud_keep', { potPotatoes: potatoAmount });
 }
 
 // Attacker's bonus (2026-08-30 follow-up, direct instruction) — every non-holder
@@ -130,7 +149,7 @@ function rollLottery(weightedEntrants) {
 // "always read the roster fresh" precedent Guild Raid/guild buffs already follow) —
 // nothing here is snapshotted at signup time.
 async function buildEntrantPreview() {
-    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { guildEntrants: [], mercenaryEntrants: [], potPotatoes: 0, potStarches: 0 };
+    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { guildEntrants: [], mercenaryEntrants: [], potPotatoes: 0 };
     const currentBuff = await dynamoHandler.getActiveSpudKeepBuff();
     const cooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
 
@@ -233,25 +252,27 @@ async function resolveCycle() {
 
     // Step 7b — split the accruing pot ONE TIME among the OUTGOING holder's own roster
     // this cycle (a guild's live raid roster, or the Merc Faction's counted top-N) —
-    // using potPotatoes/potStarches exactly as read back at the top of buildEntrantPreview
-    // (never re-read). No previous holder at all (pre-first-ever-resolution) skips this
-    // entirely — nothing could have accrued. An empty outgoing roster (holder's guild
-    // disbanded/emptied mid-cycle) forfeits the pot instead — discarded, not paid to
-    // anyone, not rolled forward (see step 8's subtraction below).
-    let potPotatoesPaid = 0, potStarchesPaid = 0, outgoingHolderName = null;
+    // using potPotatoes exactly as read back at the top of buildEntrantPreview (never
+    // re-read). The pot is potato-only (no separate starch counter — every starch-
+    // denominated tax contribution was already converted to potatoes at credit time, see
+    // spudKeepFactory.convertStarchesToPotatoesForPot). No previous holder at all
+    // (pre-first-ever-resolution) skips this entirely — nothing could have accrued. An
+    // empty outgoing roster (holder's guild disbanded/emptied mid-cycle) forfeits the pot
+    // instead — discarded, not paid to anyone, not rolled forward (see step 8's
+    // subtraction below).
+    let potPotatoesPaid = 0, outgoingHolderName = null, potForfeited = false;
     if (currentBuff && currentBuff.holderType) {
         outgoingHolderName = currentBuff.holderName;
         const outgoingEntrant = entrants.find(e => isCurrentHolderEntrant(currentBuff, e.type, e.id));
         const outgoingRoster = outgoingEntrant ? outgoingEntrant.roster : [];
         const potPotatoes = toNumber(spudKeep.potPotatoes);
-        const potStarches = toNumber(spudKeep.potStarches);
 
         if (outgoingRoster.length > 0) {
             if (potPotatoes > 0) await raidFactory.handlePotatoSplit(outgoingRoster, potPotatoes);
-            if (potStarches > 0) await raidFactory.handleStarchSplit(outgoingRoster, potStarches);
+        } else if (potPotatoes > 0) {
+            potForfeited = true;
         }
         potPotatoesPaid = potPotatoes;
-        potStarchesPaid = potStarches;
     }
 
     // Step 8 — clear the per-cycle entrant lists AND subtract exactly what was just paid
@@ -260,8 +281,8 @@ async function resolveCycle() {
     // this write is NOT destroyed, since subtracting a known exact amount commutes with a
     // concurrent ADD regardless of ordering.
     await dynamoHandler.updateStatFields("spud_keep", { guildEntrants: [], mercenaryEntrants: [], lastResolvedAt: Date.now() });
-    if (potPotatoesPaid > 0 || potStarchesPaid > 0) {
-        await dynamoHandler.addStatFields("spud_keep", { potPotatoes: -potPotatoesPaid, potStarches: -potStarchesPaid });
+    if (potPotatoesPaid > 0) {
+        await dynamoHandler.addStatFields("spud_keep", { potPotatoes: -potPotatoesPaid });
     }
 
     // Step 9 — participation counter: every guild entrant's own live roster (auto-
@@ -287,7 +308,7 @@ async function resolveCycle() {
             ...(e.type === 'mercenary' ? { mercFactionN: e.mercFactionN, mercSignedUpCount: e.mercSignedUpCount, mercCountedCount: e.mercCountedCount } : {})
         })),
         potPotatoesPaid,
-        potStarchesPaid,
+        potForfeited,
         outgoingHolderName
     };
 }
@@ -296,6 +317,7 @@ module.exports = {
     isSpudKeepBuffLiveForUser,
     isSpudKeepHolderLive,
     splitTaxForSpudKeepPot,
+    convertStarchesToPotatoesForPot,
     creditSpudKeepPot,
     getAttackerBonusMultiplier,
     getMercFactionN,

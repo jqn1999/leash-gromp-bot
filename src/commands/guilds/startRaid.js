@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory } = require("../../utils/constants")
+const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
@@ -8,6 +8,7 @@ const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
+const spudKeepFactory = require("../../utils/spudKeepFactory");
 
 const regularRaidMobs = [
     [
@@ -228,7 +229,12 @@ async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, ra
     if (houseUserId) {
         const raidTax = Math.floor(totalRaidSplit * Raid.GUILD_RAID_TAX_PERCENT);
         if (raidTax > 0) {
-            await dynamoHandler.addUserDatabase(houseUserId, 'potatoes', raidTax);
+            // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this
+            // tax is redirected to the accruing pot instead of the house account; a
+            // no-op (100% to the house, byte-identical to before) whenever no holder is live.
+            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(raidTax);
+            await dynamoHandler.addUserDatabase(houseUserId, 'potatoes', houseAmount);
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
             totalRaidSplit -= raidTax;
         }
     }
@@ -1113,9 +1119,18 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
     await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
 
-    guild.guildBuff == "raidTimer"
-        ? await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel)))
-        : await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
+    // Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat, holder-wide
+    // perk on top of whichever guild-buff reduction already applies above, live only
+    // while this GUILD is the current Keep holder. Checked against a synthetic
+    // { guildId } "userDetails" — isSpudKeepBuffLiveForUser's guild branch only ever
+    // reads .guildId, and raidTimer is a whole-guild cooldown with no single user to key
+    // off of.
+    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+    const spudKeepRaidTimerReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, { guildId }, SpudKeep.COOLDOWN_BUFF_TYPE)
+        ? spudKeepCooldownBuff.value
+        : 0;
+    const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
+    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * (guildBuffRaidTimerReduction + spudKeepRaidTimerReduction)));
 
     // No raidList to clear anymore — the roster is computed live from each member's
     // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so
