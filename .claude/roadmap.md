@@ -5298,24 +5298,31 @@ and needs its own balance pass.
   existing per-participant rewards; a guild-scoped variant (this is deliberately server-wide, not a
   second `guildBuff` slot).
 
-- [ ] **Spud Keep — Contested Node/Territory Event (guilds + mercenaries)** — L, brainstorm only,
-  not yet scoped. Player pitch, verbatim: a recurring (daily or every-2-day) event where guilds
-  and/or individual mercenaries "fight" over one shared castle/city/node; the winner holds it and
-  draws a benefit until the next contest, when they have to defend it; resolution should be "some
-  calculation of multipliers on each side to determine win %, then a random roll." Inspired by
-  another game's capturable-territory mechanic.
+- [ ] **Spud Keep — Contested Node/Territory Event (guilds + Merc Faction)** — L, **technical
+  design complete, not yet built** (product-owner concept → refined by direct user instruction →
+  full architect design below, same "design-complete-but-shelved-until-picked-up" status
+  [Guild vs. Guild Raids](#discussed-earlier-not-picked-up-in-this-pass) uses, except this one is
+  actively queued rather than shelved). Player pitch, verbatim: a recurring (daily or every-2-day)
+  event where guilds and/or individual mercenaries "fight" over one shared castle/city/node; the
+  winner holds it and draws a benefit until the next contest, when they have to defend it;
+  resolution should be "some calculation of multipliers on each side to determine win %, then a
+  random roll." Inspired by another game's capturable-territory mechanic.
 
-  **What**: a single, server-wide, always-exactly-one-holder "Keep" — a stats-table doc mirroring
-  `world`/`world_buff`/`active_quests`/`active_guild_contract`'s existing "one global pointer" shape
-  (holder id/type, a live power snapshot, an `expiresAt`) rather than a new parallel economy. On a
-  daily cadence (see Cadence below), whoever currently holds the Keep is automatically re-entered at
-  their live power with **no action required to "defend"** — matches the pitch's own framing that
-  holding is passive between contests, only losing it requires something to have out-competed you.
-  Any other guild (via an officer-run command using the guild's existing live raid roster — the exact
+  **What**: a single, server-wide, always-exactly-one-holder "Keep" — state split across two
+  stats-table docs mirroring `world`/`world_buff`'s own split (a per-cycle entrant-list doc + a
+  separate granted-buff doc), rather than a new parallel economy. On a daily cadence (see Cadence
+  below), whoever currently holds the Keep is automatically re-entered at their live power with
+  **no action required to "defend"** — matches the pitch's own framing that holding is passive
+  between contests, only losing it requires something to have out-competed you. Any other guild
+  (via an officer-run command using the guild's existing live raid roster — the exact
   `getLiveRaidRoster`/`autoJoinRaids` mechanism `/join-raid` already toggles, zero new membership
-  state) or any individual mercenary (a fire-and-forget signup mirroring `/join-world-raid`) can enter
-  as a challenger for that cycle. At resolution, one entrant is picked and becomes (or stays) the
-  holder for the next cycle, receiving a Keep-flavored buff for exactly that cycle's duration.
+  state) can enter as a challenger for that cycle, and any number of individual mercenaries can
+  freely sign up (a fire-and-forget signup mirroring `/join-world-raid`) — but, per direct user
+  refinement below, mercenaries do **not** each get their own lottery ticket. Every mercenary who
+  signs up that cycle is collapsed into exactly **one** combined entrant, the **Merc Faction**,
+  competing in the same N-way lottery as however many guilds signed up. At resolution, one entrant
+  is picked and becomes (or stays) the holder for the next cycle, receiving a Keep-flavored buff for
+  exactly that cycle's duration.
 
   **Why**: nothing in this game today is a *shared, exclusive, contestable* resource — every existing
   timed buff is either fully guild-private (`guildBuff`, gated behind that guild's own investment) or
@@ -5335,13 +5342,13 @@ and needs its own balance pass.
   natural N-way generalization of the identical formula: every signed-up entrant that cycle (holder
   included) gets a lottery ticket count equal to its own power, `chance_i = power_i / Σpower`, and one
   winner is drawn — mathematically identical to the pitch's own two-sided formula whenever exactly two
-  entrants exist, but needs no separate matchmaking step when more do. Each entrant's power is
-  computed by the exact same function every raid/Bounty formula already shares —
-  `raidFactory.getEffectiveRaidPower(memberDetailsList)` — fed either a guild's live raid roster (team
-  power + headcount bonus, as `/current-raid` already shows) or a single mercenary's own `userDetails`
-  in a 1-length array (byte-identical to how Bounty already treats a solo mercenary as a "roster of
-  one," see [systems/mercenary-bounties.md](systems/mercenary-bounties.md#success-chance)) — no new
-  power formula needed, only a new place that calls the existing one.
+  entrants exist, but needs no separate matchmaking step when more do. Each entrant is either **one
+  guild** (fed the exact same function every raid/Bounty formula already shares —
+  `raidFactory.getEffectiveRaidPower(memberDetailsList)` — over that guild's live raid roster, team
+  power + headcount bonus, as `/current-raid` already shows) or **the Merc Faction**, exactly one
+  pseudo-entrant regardless of how many mercenaries signed up that cycle (see "The Merc Faction"
+  below for how its power is computed) — no new per-entrant power formula needed for the guild side,
+  only a new place that calls the existing one.
 
   **A genuine, already-existing fairness backstop, not something new to build**: `getEffectiveRaidPower`
   already caps a roster's own ceiling at roughly 3x its single strongest member's power (2.0x from the
@@ -5351,48 +5358,108 @@ and needs its own balance pass.
   total. This doesn't eliminate a dominant guild's edge, but it bounds it, for free, with the exact
   formula this feature would already be reusing.
 
-  **2. The guild/mercenary "same axis, different depth" wrinkle.** Feeding both populations through
-  the identical `getEffectiveRaidPower` call makes the *numbers* directly comparable, but not the
-  *realistic odds*: a guild's power scales with roster depth (multiple members' power summed with
-  decay, up to that ~3x ceiling above), while a mercenary is always exactly one data point bounded by
-  their own `workMultiplierAmount` — Bounty's own solo power landmarks top out around 600-1,272
-  depending on rebirth/companion investment (see
-  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework)),
-  comfortably inside what even a modest 3-5 person active-raiding guild's own `teamPower` already
-  reaches. In practice, a lone mercenary entering the same lottery as an active guild is a real but
-  usually small longshot, not a coin flip — the same asymmetry Bounty's own reward-parity design
-  (deliberately ~30% of guild income, never full parity) already accepts as correct rather than a bug
-  to fix. Three shapes to resolve this, in increasing order of scope:
+  **2. The guild/mercenary "same axis, different depth" wrinkle — resolved by grouping, not by
+  choosing an option.** The original brainstorm (below, kept for its own reasoning) framed this as a
+  three-way choice between guild-only eligibility, a literal unified pool of individual entrants, and
+  a "sellsword" pledge mechanic. **Direct user instruction has since settled this**: ship Option B's
+  unified-pool *spirit* (guilds and mercenaries genuinely compete for the same prize, on the same
+  `chance_i = power_i / Σpower` lottery, no ante, no matchmaking), but mercenaries do not each get an
+  individual entry — every mercenary who signs up that cycle is collapsed into exactly **one** combined
+  entrant, the **Merc Faction** (full mechanic in the next section). This directly addresses the
+  asymmetry the original brainstorm flagged: a single mercenary's solo power (Bounty's own landmarks
+  top out ~600-1,272, see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework))
+  was comfortably inside even a modest 3-5 person guild's `teamPower`, making a lone mercenary's entry
+  a near-token longshot every cycle — grouping mercenaries into one faction, run through the *same*
+  `getEffectiveRaidPower` roster formula a guild's own roster gets, gives the merc side a real,
+  non-trivial power figure instead of one player's own single data point. The original three-option
+  writeup is preserved below purely for its own reasoning trail (why "guild-only" and "sellsword" were
+  considered and set aside); it is no longer a live decision to make — the Merc Faction supersedes it.
 
-  - **Option A — guild-only Keep.** Mercenaries aren't eligible at all; the Keep becomes an N-way
-    version of the shelved Guild vs. Guild Raids concept. Simplest, avoids the asymmetry question
-    entirely, but doesn't fulfill the actual ask (mercenaries were explicitly named as eligible
-    contestants).
-  - **Option B — literal unified pool (recommended starting point).** Guilds and mercenaries enter
-    the exact same lottery on equal mechanical footing, accepting the realistic-odds asymmetry above
-    as an honest, disclosed tradeoff rather than something to paper over — the same posture this
-    codebase already takes with Bounty vs. Guild Raid parity. A mercenary's entry is a real, if
-    usually small, chance every cycle (never zero, unlike a hard threshold gate), and costs nothing to
-    attempt (see Open Question on ante below), so the "why bother" risk is softer than it would be
-    under a deterministic highest-power-wins model.
-  - **Option C — mercenaries can also pledge to a guild's side ("sellsword") instead of only fielding
-    their own solo entry.** A mercenary opts, per cycle, to add their own power into one guild's
-    entrant array for that cycle only (literally appending one more `userDetails` object to the array
-    `getEffectiveRaidPower` already accepts — no formula change), in exchange for a smaller,
-    contribution-scaled slice of that guild's reward if it wins (the same proportional-by-contribution
-    shape `handlePotatoSplitByShare` already establishes for World Raid). Gives a mercenary a
-    genuinely meaningful way to swing a small guild's odds, and gives guilds a reason to court
-    mercenaries, without requiring mercenary solo power to structurally rival guild power. Real, but
-    more surface area (two distinct mercenary participation paths, a new proportional-reward branch)
-    — recommend as a fast-follow once Option B's base loop is live and its real participation numbers
-    are known, not a v1 requirement.
+  *Original three-option writeup, superseded by the Merc Faction above — kept for context only:*
+  - *Option A — guild-only Keep.* Mercenaries aren't eligible at all; simplest, but doesn't fulfill the
+    actual ask (mercenaries were explicitly named as eligible contestants).
+  - *Option B — literal unified pool, individual mercenary entries.* What "Option B" originally meant
+    before the grouping refinement — every mercenary is their own lottery line item. Superseded: this
+    is the asymmetry the Merc Faction now fixes.
+  - *Option C — mercenaries can also pledge to a guild's side ("sellsword") instead of fielding their
+    own entry.* Still a plausible fast-follow **once the Merc Faction ships and its real participation
+    numbers are known** — nothing about the Merc Faction forecloses a later "opt out of the Faction
+    this cycle and pledge your power to a guild's entrant array instead" toggle, since it's still
+    exactly "append one more `userDetails` object to the array `getEffectiveRaidPower` already
+    accepts." Not a v1 requirement.
 
-  **Recommendation: ship Option B for v1** (simplest version of the literal ask, reuses the existing
-  power formula with zero adjustment), explicitly documenting the asymmetry as accepted rather than
-  discovering it as a surprise later, and treat Option C as the natural next step if mercenary
-  participation turns out to feel too token in practice.
+  **3. The Merc Faction — exact mechanic (direct user instruction, resolving the asymmetry above).**
+  Verbatim: *"mercenaries are grouped together. To keep it somewhat balanced, players in guilds that
+  join can freely join, mercenaries can join and only the top 5 work multis are used. If a single
+  guild has more than 5 members join, then the maximum number of mercenary multipliers used is the
+  top x with x equaling the number of highest members of a given guild that joined."*
 
-  **3. Reward — grounded against the World Boss buff, deliberately NOT a live "tax on server income"
+  - **Signup is unlimited; counting is capped at N.** Any number of mercenaries can run the signup
+    command that cycle (see Signup commands below) — there is no cap on who can *sign up*, only on how
+    many of them actually count toward the Faction's power.
+  - **N = `max(5, largest single signed-up guild's own live-raid-roster headcount that cycle)`.**
+    Normally 5. If any one guild that *actually signed up this cycle* fields more than 5 members on
+    its live raid roster (`getLiveRaidRoster(guild).length`, the same roster the guild's own power is
+    computed from — not `guild.memberList.length`, and not every guild in the server, only the ones
+    that entered this cycle), N becomes that guild's own headcount instead. This is a deliberate
+    anti-flooding ceiling: a mega-guild fielding, say, 12 raid-eligible members can't structurally cap
+    the Merc Faction below its own headcount — the Faction always gets to count at least as many
+    mercenaries as the single largest guild fields members.
+  - **Ranking metric = full computed power, not the bare stat.** Each signed-up mercenary is ranked by
+    `raidFactory.getMemberRaidPower(userDetails)` — `workMultiplierAmount * (1 + liveRebirthPercent +
+    companionWorkMultiplierPercent)`, the exact same per-member figure a guild roster's own members are
+    ranked/weighted by. A mercenary's raw `workMultiplierAmount` alone is deliberately NOT what's
+    ranked or fed forward — rebirth and companion investment matter here exactly as they do everywhere
+    else this stat is used.
+  - **The top-N selected mercenaries are combined via a "virtual roster," not summed raw.** Take the
+    top-N `userDetails` objects (by the ranking above) and call
+    `raidFactory.getEffectiveRaidPower(topNUserDetailsList)` — literally the same function call, on the
+    same shape of input array, a real guild's live roster already goes through. This is the load-bearing
+    design decision: the Merc Faction gets the *exact same* rank-decayed `teamPower` curve, the same
+    `RAID_HEADCOUNT_BONUS_PER_MEMBER`/`RAID_HEADCOUNT_BONUS_CAP` headcount bonus, and the same inherent
+    ~3x-of-top-member ceiling any guild entrant already has — no new power-combination formula to
+    invent, tune, or keep in sync with raid's own. A naive `sum(topNPowers)` would have given the
+    Faction an *uncapped*, structurally different (and likely far larger) power curve than any guild
+    could ever reach, which would have made "guild vs. Merc Faction" a fundamentally different kind of
+    contest than "guild vs. guild" rather than the same mechanic reused across both entrant types.
+  - **Worked example.** Say 9 mercenaries sign up in a cycle where the largest signed-up guild fielded
+    7 raid-eligible members. N = max(5, 7) = 7. The 9 mercenaries are ranked by
+    `getMemberRaidPower`; the top 7 are kept, the bottom 2 are dropped from this cycle's Faction power
+    entirely (they still keep their own personal Bounty progression, achievements, etc. — being
+    dropped from the Faction's counted roster costs them nothing). Those 7 `userDetails` objects are
+    fed into `getEffectiveRaidPower`, producing one `effectivePower` number — the Faction's single
+    lottery ticket count for that cycle, computed exactly the way a real 7-member guild roster's
+    `effectivePower` would be.
+  - **Re-ranked live, at resolution time, not locked in at signup.** Same "always read the roster
+    fresh" precedent every other roster-based system (Guild Raid, guild buffs) already follows —
+    `workMultiplierAmount`/rebirth/companion state between signup and the daily resolution cron is
+    read as of resolution time, not snapshotted at signup. A mercenary who signs up, then buys a
+    massive work-multiplier upgrade an hour before resolution, is ranked/counted at their *new* power.
+  - **Zero mercenaries signed up this cycle**: the Faction's power is `getEffectiveRaidPower([])`,
+    which the existing function already returns as `0` via its own empty-array guard — no special
+    casing needed. The Faction still occupies a line item in that cycle's lottery (it's a structurally
+    always-present pseudo-entrant, not opt-in at the Faction level the way a guild's entry is), it just
+    carries a 0% win chance that cycle, identical in effect to a guild whose entire roster left —
+    exactly the "empty holder naturally loses" behavior the original brainstorm's own resolved open
+    question already established.
+  - **Fewer than N mercenaries signed up**: use however many actually did (no padding, no phantom
+    zero-power slots) — e.g. 3 mercenaries signed up against an N of 5 simply means all 3 are counted,
+    `getEffectiveRaidPower` runs on a 3-length array exactly as it would for a 3-member guild roster.
+  - **Who benefits from a Merc Faction win — resolved, not left open.** Every mercenary server-wide
+    gets the holder buff on a Merc Faction win, not just that cycle's counted top-N and not a single
+    "representative" — mirrors how guild membership already grants a guild's buff to every member,
+    including someone who joins mid-buff. See "The holder buff — a genuinely new pattern" below for
+    exactly how this is read at zero extra write cost.
+  - **A narrower, separate counter for participation.** The free "did you try" participation counter
+    (see the original brainstorm's resolved Open Questions below) is credited only to that cycle's
+    actual **counted top-N** mercenaries, not to every mercenary who merely signed up and not to
+    everyone server-wide — a deliberately different, narrower scope than the buff-on-win, which IS
+    server-wide. Don't conflate "counted this cycle" (narrow, feeds a future participation
+    achievement) with "benefits from a win" (broad, server-wide by design) — they're two different
+    mechanics that happen to both touch mercenaries.
+
+  **4. Reward — grounded against the World Boss buff, deliberately NOT a live "tax on server income"
   mechanic.** The pitch's own "a % of taxes for all money in the area" framing was flagged up front as
   a real risk: nothing in this codebase skims a *live, ongoing* percentage of other players'
   transactions server-wide today (guild bank/treasury interest is guild-scoped only, and even that is
@@ -5412,13 +5479,111 @@ and needs its own balance pass.
   exactly** (24h if daily), so a successful defense has zero coverage gap and a loss hands the buff
   over at precisely the moment it would have expired anyway — one fewer constant to keep in sync,
   same lesson the World Buff's own "single legible duration" note already draws.
-  A mercenary win is the one open engineering gap this creates: there is no existing "one specific
-  user has a timed personal buff" shape anywhere in this codebase today (every timed buff so far is
-  either guild-wide or server-wide) — worth flagging to whichever architect picks this up as new
-  surface, not something to route through `sweetPotatoBuffs` (permanent) or `guildBuff` (guild-scoped)
-  by accident.
 
-  **4. Cadence — recommend daily, not every 2 days.** Reuses the existing 4am UTC daily cron
+  **The holder buff — a genuinely new pattern, now fully resolved.** A Merc Faction win is the one
+  place this codebase has never needed to go before: every existing timed buff is either guild-wide
+  (`guild.guildBuff`) or server-wide-and-free (World Boss's `world_buff`) — there was no existing
+  shape for "a buff that's live for exactly one *class* of user (every mercenary) without being free
+  for the whole server." The resolution deliberately does **not** introduce a per-user field, a
+  membership list, or any write that touches individual mercenary records at all — it reuses the
+  "global pointer buff, gated by a live predicate at each read site" shape `world_buff` already
+  established, just with a **holder-type-aware predicate** instead of a flat type+expiry check:
+
+  ```js
+  // dynamoHandler.js, alongside getActiveWorldBuff/setActiveWorldBuff/isWorldBuffLive
+  const getActiveSpudKeepBuff = () => getStatDatabase("spud_keep_buff");
+  const setActiveSpudKeepBuff = (buff) => updateStatFields("spud_keep_buff", buff);
+
+  // spudKeepFactory.js — the one new conditional shape this feature needs
+  function isSpudKeepBuffLiveForUser(buff, userDetails, buffType) {
+      if (!buff || buff.buffType !== buffType || buff.expiresAt <= Date.now()) return false;
+      if (buff.holderType === "guild") return userDetails.guildId === buff.holderId;
+      if (buff.holderType === "mercenary") return userDetails.isMercenary === true;
+      return false;
+  }
+  ```
+
+  This is the load-bearing design decision for the whole feature. Because the predicate is evaluated
+  **live, at read time, off a field the user record already has** (`guildId` for the guild case,
+  `isMercenary` for the Faction case — both already exist, both already used exactly this way
+  elsewhere: `getGuildWorkMulti` already gates on `userDetails.guildId` matching a guild record, and
+  every Bounty/mercenary command already gates on `userDetails.isMercenary`), granting the buff to
+  "every mercenary server-wide" costs **zero additional writes** at grant time — one `setActiveSpudKeepBuff`
+  call, full stop, regardless of whether 3 or 300 mercenaries exist. Anyone who becomes a mercenary
+  while the buff is live picks it up on their very next read (identical in spirit to a player joining a
+  guild mid-buff already inheriting that guild's `workMulti`); anyone who retires out of Mercenary
+  stops qualifying on their very next read, no cleanup write needed either way. This is strictly
+  cheaper and simpler than the alternative that might first come to mind (writing a temporary flag onto
+  every mercenary's own record) — that alternative would need a full mercenary-table scan at grant
+  time, a symmetric un-grant scan at expiry (which nothing in this codebase's cron model naturally
+  triggers — see the `node-schedule` no-catch-up caveat in this repo's own conventions), and a third
+  write path for someone who becomes a mercenary mid-buff. None of that is needed here.
+
+  Consumer wiring is a direct, mechanical extension of the existing 3-way `workMulti` stack in
+  `workFactory.js` (`getGuildWorkMulti` + `getCompanionWorkMulti` + `getWorldBuffWorkMulti`, all
+  additive percentages of `userMultiplier`, summed at every `/work` scenario handler's
+  `effectiveMultiplier` calculation): add a 4th sibling,
+
+  ```js
+  // workFactory.js, same file/shape as its three siblings
+  async function getSpudKeepWorkMulti(userDetails, userMultiplier) {
+      const buff = await dynamoHandler.getActiveSpudKeepBuff();
+      return spudKeepFactory.isSpudKeepBuffLiveForUser(buff, userDetails, "workMulti")
+          ? userMultiplier * buff.value : 0;
+  }
+  ```
+
+  called alongside the other three at every one of `workFactory.js`'s existing
+  `getGuildWorkMulti`/`getCompanionWorkMulti` call sites (9 handlers per the current file), plus the
+  `/profile` display in `embedFactory.js` that already shows the guild buff's contribution. **Stacks
+  additively with a holder guild's own chosen `guildBuff`** — winning the Keep is a prize layered on
+  top of guild investment, not a replacement for it, same reasoning the original brainstorm already
+  applied to World Boss's buff.
+
+  **Data model — two stats-table docs, `spud_keep` (per-cycle entrant lists) and `spud_keep_buff`
+  (the granted buff + authoritative holder pointer)**, mirroring the `world`/`world_buff` split rather
+  than one combined doc — the entrant lists churn every cycle (cleared to empty after each
+  resolution, exactly like `world.world_list`), while the buff/holder pointer persists independently
+  and is what every `/work`-path consumer actually reads, so keeping them separate keeps each
+  consumer's read scoped to only what it needs:
+
+  ```js
+  // stats table, trackingId: "spud_keep" — read/written directly via
+  // getStatDatabase/updateStatFields, same as active_quests/active_guild_contract (no dedicated
+  // wrapper needed — mutated from only 2-3 call sites, same as world.world_list)
+  {
+      trackingId: "spud_keep",
+      guildEntrants: [],       // [{ guildId, guildName }], this cycle's signed-up guilds only
+      mercenaryEntrants: [],   // [{ id, username }], this cycle's signed-up mercenaries only
+      lastResolvedAt: 0        // epoch ms, informational only (display/debugging)
+  }
+
+  // stats table, trackingId: "spud_keep_buff" — dedicated get/set wrapper
+  // (dynamoHandler.getActiveSpudKeepBuff/setActiveSpudKeepBuff), since this is the one read from
+  // many call sites across workFactory.js/embedFactory.js, same as world_buff
+  {
+      trackingId: "spud_keep_buff",
+      holderType: "guild" | "mercenary" | null,   // null only before the very first resolution ever runs
+      holderId: "<guildId>" | null,                // null when holderType is "mercenary" or null
+      holderName: "<guild name>" | "The Merc Faction" | null,
+      buffType: "workMulti",                       // only one buff type shipped in v1, see below
+      value: 0.12,                                  // SpudKeep.HOLDER_BUFF_VALUE (proposed constant)
+      expiresAt: 0                                  // epoch ms — Date.now() + SpudKeep.CONTEST_INTERVAL_SECONDS*1000, set on EVERY resolution (even a successful defense), same "replace outright" convention world_buff/guildBuff already use
+  }
+  ```
+
+  No separate "who's the current holder" pointer is needed beyond `spud_keep_buff` itself — since
+  duration equals the contest interval exactly, the holder always has a live buff between successful
+  resolutions by construction (the only way `holderType`/`holderId` go stale is a missed cron run,
+  which this codebase's own `node-schedule` re-registration convention already accepts as a real,
+  undesigned-around possibility for every scheduled job — a missed Spud Keep resolution just means
+  the same holder keeps its buff one extra day past its nominal `expiresAt`, exactly the same
+  "no catch-up" behavior every other daily cron job in `backgroundEvents.js` already has).
+  Proposed constants (`constants.js`, new `SpudKeep` block, values to confirm against
+  `GuildBuffScaling.workMulti`/`Raid` at build time): `CONTEST_INTERVAL_SECONDS: 86400`,
+  `MERC_FACTION_MIN_TOP_N: 5`, `HOLDER_BUFF_TYPE: "workMulti"`, `HOLDER_BUFF_VALUE: 0.12`.
+
+  **5. Cadence — recommend daily, not every 2 days.** Reuses the existing 4am UTC daily cron
   (Tower reset, Quest rotation, Guild Contract rotation on Mondays, the birthday announcer all already
   fire there) rather than inventing a new interval-tracking scheme — this codebase's own experience
   with a non-daily cadence (starch trading's Monday/Thursday cycle needing an explicit
@@ -5427,20 +5592,25 @@ and needs its own balance pass.
   [systems/starch-trading.md](systems/starch-trading.md#price-cycle)) is a concrete, documented
   warning against a bespoke "every 2 days" interval unless there's a strong reason for it. A daily
   resolution also means the announcement rides the same already-existing daily cron bundle rather than
-  adding a second, separately-timed announcement — no new notification-spam surface.
+  adding a second, separately-timed announcement — no new notification-spam surface. Concretely: a
+  new `spudKeepFactory.resolveCycle()` call added inside the same `schedule.scheduleJob('0 4 * * *', ...)`
+  block in `backgroundEvents.js` that already runs Tower/Quest/Guild Contract rotation, its result
+  posted to the same events channel (`1188525931346792498`) those already use.
 
-  **5. Entrenchment risk — real, not fully solved by the lottery alone.** Over many cycles, a
+  **6. Entrenchment risk — real, not fully solved by the lottery alone.** Over many cycles, a
   consistently dominant, always-populated guild will still win most cycles proportional to its power
   share — the lottery keeps odds non-zero for everyone (strictly better for morale than a hard
   threshold gate), but doesn't guarantee rotation. Explicitly recommend **no defender's bonus** (the
   holder's power is computed exactly the same live way a challenger's is, no bonus for already
-  holding it) specifically to avoid compounding a leading guild's edge further. A rotation/pity
+  holding it) specifically to avoid compounding a leading guild's edge further — this applies equally
+  to the Merc Faction as holder: a winning Faction gets no bonus either, it's re-run through the exact
+  same top-N selection + `getEffectiveRaidPower` call as any other cycle. A rotation/pity
   mechanic (e.g. a small, escalating penalty to a guild's own entry weight after N consecutive wins,
   the mirror image of `PoisonMitigation`'s escalating-relief shape) is a plausible follow-up but not
   recommended for v1 — better to see real participation/win-distribution data first than to
   pre-build a fix for a problem not yet confirmed at this game's actual guild-power spread.
 
-  **6. One Keep, not several.** Recommend exactly one global Keep for v1, matching "the castle"
+  **7. One Keep, not several.** Recommend exactly one global Keep for v1, matching "the castle"
   singular framing and World Boss's own "exactly one active encounter at a time" precedent — multiple
   simultaneous nodes (regional, or tier-gated) has no existing partitioning precedent to reuse (Guild
   Raid's tiers are opt-in difficulty bands within one flow, not separate simultaneous contested
@@ -5448,22 +5618,93 @@ and needs its own balance pass.
   more world-flavor, not more mechanical depth. A natural "if this lands well" expansion, not a v1
   requirement.
 
+  **Resolution flow, end to end (`spudKeepFactory.resolveCycle()`, called from the 4am UTC cron):**
+  1. Read `spud_keep` (`guildEntrants`, `mercenaryEntrants`) and `spud_keep_buff` (current holder).
+  2. **Build the guild side of the entrant pool.** For each `{guildId}` in `guildEntrants`:
+     `findGuildById(guildId)` → `getLiveRaidRoster(guild)` → `Promise.all` of `findUser` per roster
+     member (same batched-fetch shape `getLiveRaidRoster`/`startWorldBoss` already use) →
+     `raidFactory.getEffectiveRaidPower(memberDetailsList)`. A guild whose live roster is now empty
+     (everyone toggled `autoJoinRaids` off, or the guild disbanded) naturally computes to 0 power —
+     no special-casing needed, this is the resolved "empty holder naturally loses" behavior applied
+     uniformly to every guild entrant, holder or not.
+  3. **Auto-re-enter the current holder if it's a guild not already in this cycle's `guildEntrants`.**
+     If `spud_keep_buff.holderType === "guild"` and that `holderId` isn't already among the guilds
+     computed in step 2, compute its power the same way and add it to the pool for this resolution
+     only (not persisted back into `guildEntrants` — it's cleared regardless in step 8). This is the
+     "no action required to defend" behavior. **The Merc Faction needs no equivalent auto-re-entry
+     branch** — unlike a guild's per-cycle opt-in, the Faction is a structurally always-present
+     pseudo-entrant every cycle regardless of holder status (see step 4), so there's nothing to
+     "forget" to re-enter.
+  4. **Compute the Merc Faction's power** (always run, whether or not it currently holds, whether or
+     not any guild signed up):
+     a. `N = max(SpudKeep.MERC_FACTION_MIN_TOP_N, max(getLiveRaidRoster(guild).length for guild in
+        this cycle's guildEntrants, default 0))` — computed off the SAME live rosters already fetched
+        in step 2, no extra reads.
+     b. `Promise.all(mercenaryEntrants.map(m => findUser(m.id, m.username)))`.
+     c. Sort by `raidFactory.getMemberRaidPower(userDetails)` descending, take the top N (or fewer,
+        if fewer signed up — no padding).
+     d. `power = raidFactory.getEffectiveRaidPower(topNUserDetailsList)` — `0` for free via the
+        existing function's own empty-array guard if zero mercenaries signed up.
+  5. **Assemble the final entrant list**: every guild from steps 2-3 (deduplicated by `guildId`, so a
+     holder that also proactively re-signed-up isn't double-counted) plus exactly one Merc Faction
+     entry from step 4. If every entrant's power is `0` (nobody signed up at all, including no live
+     holder roster) — this is a genuinely new edge case the original single-holder-always-exists
+     brainstorm didn't need to consider — skip the lottery entirely: no resolution, no buff write, the
+     Keep simply stays at whatever `spud_keep_buff` already says (or fully vacant, pre-first-ever-win)
+     until a future cycle has at least one nonzero entrant.
+  6. **Roll the lottery**: `chance_i = power_i / Σpower`; draw one `Math.random()` against the
+     cumulative thresholds, same cumulative-roll loop shape `raidFactory.rollWeightedTier` already
+     uses.
+  7. **Grant the buff**: `setActiveSpudKeepBuff({ holderType, holderId, holderName, buffType:
+     "workMulti", value: SpudKeep.HOLDER_BUFF_VALUE, expiresAt: Date.now() +
+     SpudKeep.CONTEST_INTERVAL_SECONDS * 1000 })` — replaces outright, even on a successful defense
+     (fresh `expiresAt`, zero coverage gap, per finding 4 above).
+  8. **Clear the per-cycle entrant lists**: `guildEntrants: []`, `mercenaryEntrants: []` on
+     `spud_keep`, plus `lastResolvedAt: Date.now()` — mirrors `world.world_list`'s own clearing in
+     `popWorldBoss`. A fresh signup window opens immediately.
+  9. **Participation counter**: `raidFactory.incrementCounter`-style atomic ADD of a new
+     `spudKeepAttemptCount` field — for a guild entrant, every member of that guild's live roster used
+     in step 2; for the Merc Faction, **only the counted top-N mercenaries from step 4c** (not every
+     signed-up mercenary, and — unlike the buff grant — NOT server-wide; see "Who benefits" in the
+     Merc Faction section above for why this is a deliberately narrower scope than the buff).
+  10. **Announcement**: `embedFactory.createSpudKeepResultEmbed(...)` — winner, new holder, each
+      entrant's computed power/chance% (guild entries reuse `getEffectiveRaidPowerBreakdown`'s
+      teamPower/headcountBonus display exactly as `/current-raid` does; the Merc Faction entry shows
+      the same breakdown plus "N=_, _ mercenaries signed up, top _ counted"), buff granted + expiry —
+      posted to the same events channel the other daily-cron announcements already use.
+
+  **Cost/determinism, confirmed cheap — the risk this refinement could plausibly have introduced,
+  and why it doesn't.** The one part of this feature that could have silently become an expensive
+  full-table operation is "credit every mercenary server-wide" (requirement in the Merc Faction
+  section above) — but per the buff-mechanism design above, that step costs **zero per-mercenary
+  reads or writes**, only one `setActiveSpudKeepBuff` call regardless of server size. The only
+  per-mercenary work anywhere in this flow is `findUser` over `mercenaryEntrants` — a per-cycle
+  **opt-in** signup list, not a scan of every mercenary account, bounded by however many mercenaries
+  actually ran the signup command that cycle (realistically dozens at most, not the whole server).
+  Guild-side power computation is exactly as expensive as `/current-raid` already is per guild,
+  paid once per signed-up guild per day. Nothing in this resolution flow is a full `getUsers()`-style
+  table scan (the kind `passivePotatoHandler` already accepts as a real, existing 5-minute cost) —
+  it's strictly cheaper than that.
+
   **What this explicitly does NOT do**: no live skim/tax on other players' ongoing activity (see
-  finding 3); no ante/wager to enter (recommended free-to-attempt, see Open Questions); no per-guild
+  finding 4); no ante/wager to enter (recommended free-to-attempt, see Open Questions); no per-guild
   matchmaking or targeted challenges (the N-way lottery replaces that entirely, see finding 1); no
   change to Guild Raid, Bounty, or World Boss's own existing formulas or rewards — this reuses their
-  power/proportional-split math, it doesn't touch their live behavior.
+  power/proportional-split math, it doesn't touch their live behavior; no per-mercenary write of any
+  kind to grant or revoke the holder buff (see "The holder buff" above).
 
   **Open questions, with a recommendation on each:**
   - *Should entering cost anything (an ante), mirroring the shelved Guild vs. Guild Raids' own
     bank-percentage ante?* Recommend **no ante for v1** — that precedent was a targeted 1-on-1 grudge
     match, where raising the stakes was the point; this is an open, low-commitment lottery, and a free
     entry cost keeps the barrier low enough for small guilds/mercenaries to keep trying even at
-    long odds, which matters more here given the entrenchment risk in finding 5.
+    long odds, which matters more here given the entrenchment risk in finding 6.
   - *Does a losing entrant get any consolation, or is it pure win/lose?* Recommend a trivial, free
     **participation counter** (feeding a future achievement only, no potato/stat payout) rather than
     nothing — keeps every attempt strictly non-negative, unlike a Guild Raid attempt which risks a
-    real potato penalty on a loss; this event should read as "worth trying," not "worth risking."
+    real potato penalty on a loss; this event should read as "worth trying," not "worth risking." See
+    resolution-flow step 9 above for its exact (deliberately narrower-than-the-buff) scope on the Merc
+    Faction side.
   - *Exactly two entrants (a real 1-on-1) vs. the N-way lottery when only one challenger shows up?*
     They're mathematically identical in that case (finding 1) — no separate code path needed, just
     confirming this isn't actually two different mechanics to design.
@@ -5471,20 +5712,46 @@ and needs its own balance pass.
     immediately, or only at the next resolution?* Recommend **only at the next resolution**, mirroring
     `disbandGuild.js`'s existing "leave the record in place, treat empty `memberList` as nonexistent"
     pattern — the live roster lookup already produces 0 power for an empty guild, so an empty holder
-    naturally loses the very next lottery without needing an eager vacate-on-disband hook.
+    naturally loses the very next lottery without needing an eager vacate-on-disband hook. The same
+    logic now also covers the Merc Faction: if every mercenary retires between resolutions, the next
+    cycle's Faction power is simply whatever fresh `mercenaryEntrants` produces (possibly 0), no
+    eager vacate needed there either.
+  - *(New, from the Merc Faction refinement) What if literally nobody — no guild, no mercenary —
+    signs up in a cycle?* See resolution-flow step 5 above: the lottery is skipped entirely rather
+    than forced to pick among all-zero-power entrants; the Keep's state (holder/buff) simply carries
+    over unchanged into the next cycle.
+  - *(New, from the Merc Faction refinement) What if fewer than N mercenaries sign up?* Use however
+    many actually did — no padding with phantom zero-power slots (resolution-flow step 4c).
 
-  **Touches (once a direction is picked)**: a new stats-table doc (`spud_keep` or similar, mirroring
-  `world`/`world_buff`'s shape) + `dynamoHandler.js` get/set/`isLive` helpers; a new factory
-  (`spudKeepFactory.js`?) for entrant collection + the weighted-lottery draw, reusing
-  `raidFactory.getEffectiveRaidPower` as-is; 1-2 new commands (an entry command for guild officers
-  mirroring `/join-raid`'s toggle or `/start-raid`'s officer-gated action, and a mercenary entry
-  command mirroring `/join-world-raid`) plus a read-only status command mirroring `/current-world-raid`;
-  a resolution step added to the existing 4am UTC daily cron in `backgroundEvents.js`; wherever the
-  flagship buff type(s) get consumed (likely the same handful of `workFactory.js`/`dynamoHandler.js`
-  call sites the guild `workMulti` buff and World Boss buff already touch); `embedFactory.js` for the
-  new status/result embeds; `systems/guilds.md` and `systems/mercenary-bounties.md` cross-links once
-  a shape ships, following the World Boss buff's own precedent of documenting a cross-cutting feature
-  in one place and linking to it from both affected systems.
+  **Signup commands.** Guild side: a new officer-gated command (Elder/Co-Leader/Leader, same
+  permission tier `start-raid` already uses) that idempotently adds `{guildId, guildName}` to
+  `spud_keep.guildEntrants` for the current cycle if not already present — the guild's own roster
+  composition is still entirely controlled by each member's own persistent `/join-raid`
+  `autoJoinRaids` toggle, this command only registers the guild itself as a participant, exactly the
+  "zero new membership state" framing in this entry's own opening paragraph. Mercenary side: a new
+  command, any `isMercenary` user, ADD-only signup mirroring `/join-world-raid` exactly (append
+  `{id, username}` to `spud_keep.mercenaryEntrants` if not already present, reject if already
+  signed up this cycle). Plus a read-only status command mirroring `/current-world-raid`/`/current-raid`
+  — current holder, buff expiry, this cycle's guild entrants with a live power preview, and a live
+  Merc Faction preview (this cycle's `N`, how many mercenaries have signed up, the top-N breakdown) —
+  all computed live and read-only, no state written by viewing it.
+
+  **Touches**: two new stats-table docs (`spud_keep`, `spud_keep_buff` — see Data model above) +
+  `dynamoHandler.js` get/set wrapper for `spud_keep_buff` (mirroring `getActiveWorldBuff`/
+  `setActiveWorldBuff`); a new `spudKeepFactory.js` for entrant collection, the Merc Faction top-N
+  selection, `isSpudKeepBuffLiveForUser`, the weighted-lottery draw, and `resolveCycle()` — reusing
+  `raidFactory.getEffectiveRaidPower`/`getMemberRaidPower`/`getLiveRaidRoster` as-is, no changes to
+  `raidFactory.js` itself; a new `workFactory.js` sibling function (`getSpudKeepWorkMulti`, 4th
+  alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti`) wired into that
+  file's ~9 existing `effectiveMultiplier` call sites, plus `embedFactory.js`'s `/profile` display;
+  two new commands (an officer-gated guild entry command mirroring `/start-raid`'s permission check,
+  and a mercenary entry command mirroring `/join-world-raid`) plus a read-only status command
+  mirroring `/current-world-raid`; a `resolveCycle()` hook added to the existing 4am UTC daily cron in
+  `backgroundEvents.js`; `embedFactory.js` for the new status/result embeds; a new `SpudKeep` block in
+  `constants.js` (see Data model above); `systems/guilds.md` and `systems/mercenary-bounties.md`
+  cross-links, plus a `reference/constants.md` row, once a shape actually ships — following the World
+  Boss buff's own precedent of documenting a cross-cutting feature in one place and linking to it from
+  both affected systems.
 
 ## Discussed earlier, not picked up in this pass
 
