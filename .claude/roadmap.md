@@ -6378,6 +6378,16 @@ against a fixed `Date.now()`). Full suite: 811/811, zero regressions. Docs:
 [systems/guilds.md](systems/guilds.md#guild-level) updated with the new column and an explanatory
 paragraph.
 
+**Real art for 20 more companions/encounters (2026-08-30).** User-supplied commissioned artwork
+replacing the bot's generic-avatar thumbnail placeholder: all 8 Common/Rare companions (Sprout,
+Fieldmouse, Ladybug, Guinea Pig, Barn Owl, Mole, Prospector, Firefly), Spudsprite and Elder
+Rootbeard, all 6 Rival Bounty Hunters (Turnipbeard, Taromire, Parsnare, Beetscythe, Old Scattergun
+Jicama, Cassavashade), both remaining World Bosses (Brassica, Yamsalot), and 2 of 3 Tier-4 guild
+raid bosses (Marrowveil, Solara — Umbrathorn still pending). Pure data change in `constants.js`/
+`worldFactory.js`/`startRaid.js`, no logic touched; stale "still needs commissioned art" comments
+next to the swapped entries were updated to match. Still on the generic-avatar placeholder:
+Rootcarver, Yukon, Umbrathorn, Ancient Potato, Mimic Potato, Golden Yam.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

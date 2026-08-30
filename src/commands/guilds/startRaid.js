@@ -49,13 +49,11 @@ const regularRaidMobs = [
             credit: 'Made by Beggar'
         }
     ],
-    // Tier 4 — the ultra-late-game bracket, index [3]. thumbnailUrl is a placeholder
-    // (the bot's own generic avatar, same fallback already used for Brassica/Yamsalot
-    // in worldFactory.js) until real commissioned artwork exists.
+    // Tier 4 — the ultra-late-game bracket, index [3].
     [
         {
             name: "Marrowveil, the Sovereign Squash",
-            thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543699288058757120/UT0.png?ex=6a95d17e&is=6a947ffe&hm=0101484da18e8f07aae92e4062e2d1450e399e5ba57860d45dfaeeeedc4f521b&",
             description: `Deep within a walled royal garden long thought abandoned, a butternut squash swollen with stolen magic has crowned itself sovereign: Marrowveil, the Sovereign Squash. Once an ordinary crop tended by the Kingdom's gardeners, it gorged itself on runoff from a buried ley line until its rind hardened into gilded armor and its vines grew long enough to strangle a throne room. It now holds court over a small army of loyal root vegetables, demanding tribute from every farmer who passes its garden walls. The adventurers who've handled every other troublemaker in the Kingdom are the only ones bold — or foolish — enough to challenge a squash that thinks it's a king.`,
             successDescription: 'Marrowveil\'s loyal root-vegetable court scatters the moment its gilded rind finally cracks open, the stolen ley-line magic hissing out in a burst of golden light. Stripped of its borrowed power, the Sovereign Squash rolls pathetically back into its garden bed, muttering about an eventual return to the throne. The adventurers, still faintly sticky with squash pulp, call it a win.',
             failureDescription: 'Marrowveil\'s vines prove sturdier than anyone expected, snaring the party one by one as its root-vegetable court jeers from the garden walls. Humbled and thoroughly out-squashed, the adventurers retreat to lick their wounds, while Marrowveil settles back onto its throne of stolen dirt, more insufferably regal than ever.'
@@ -94,11 +92,11 @@ const eliteRaidMobs = [
             credit: 'Made by Beggar'
         }
     ],
-    // Tier 4 — placeholder thumbnail, same reasoning as regularRaidMobs' T4 entry above.
+    // Tier 4.
     [
         {
             name: "Solara, the Sunpeach Sovereign",
-            thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+            thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543699381134430288/anBn.png?ex=6a95d195&is=6a948015&hm=b0ea7a5cea425ea0dffec264abcf0ef35447cd4bb3da2e0ee5a28c2095015105&",
             description: `In the highest boughs of an orchard no living gardener ever planted, Solara, the Sunpeach Sovereign, has ripened into something far beyond an ordinary peach tree spirit. Elder to Scarlet, Basilbane, and Evertart alike — some whisper she raised each of them from seedlings — Solara radiates a warmth potent enough to wilt steel and a fragrance that lulls even hardened adventurers into false security. She does not attack so much as overwhelm, her orchard blooming and withering in the same breath as she tests whether a party is truly ready to stand among the Kingdom's elite.`,
             successDescription: 'The party pushes through Solara\'s disorienting fragrance and lands a coordinated strike at the heart of her orchard, severing the roots that anchor her power. The Sunpeach Sovereign\'s radiant bloom dims to a gentle glow, and she withdraws into dormancy, murmuring that few have ever earned the right to call themselves elite — but they have.',
             failureDescription: 'Solara\'s fragrance proves too much, and the party stumbles through her blooming orchard in a daze, easy prey for her thorned branches. She doesn\'t gloat — she simply lets her orchard fold back around her, unbothered, as the humbled adventurers retreat to reconsider whether "elite" was ever the right word for them.'
@@ -148,8 +146,9 @@ const legendaryRaidMobs = [
     // Tier 4 — the true capstone of the Legendary track, ties directly into the "Spud
     // Entity" lore Radishrend's own description already seeds ("likely fueled by the
     // Spud Entity"). Deliberately a herald/vessel rather than the Entity fully unveiled,
-    // leaving room for a future standalone raid to be the actual reveal. Placeholder
-    // thumbnail, same reasoning as the other two T4 entries above.
+    // leaving room for a future standalone raid to be the actual reveal. thumbnailUrl is
+    // still a placeholder (the bot's own generic avatar) pending real commissioned art —
+    // Marrowveil/Solara above got real art 2026-08-30, this one hasn't yet.
     [
         {
             name: "Umbrathorn, the Withered Vessel",

@@ -128,8 +128,6 @@ function determinRaidSuccessChance(totalMultiplier, raidDifficulty) {
 // systems/raids-and-world-events.md#server-wide-buff.
 const WORLD_BUFF_DURATION_SECONDS = 86400;
 
-// TODO: Brassica and Yamsalot below still need real commissioned artwork — currently
-// using the bot's generic avatar as a thumbnail placeholder.
 const worldBossMobs = [
     {
         name: "Griseous, the Dragon Fruit",
@@ -172,13 +170,10 @@ const worldBossMobs = [
     },
     // Both bosses above share the exact same difficulty (1800) — these two add a real
     // gradient either side of it: Brassica is the accessible/early pull, Yamsalot is the
-    // apex threat. thumbnailUrl is a placeholder (the bot's own generic avatar, same
-    // fallback already used safely across other embeds in this codebase) since real
-    // custom artwork like Griseous/Raikon's needs actual commissioned art, not something
-    // generated here — swap it out once real art exists.
+    // apex threat.
     {
         name: "Brassica, the Blooming Calamity",
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543699186912854026/NzQwJnE9ODA.png?ex=6a95d166&is=6a947fe6&hm=8186bbb99fc05c113a906a918e7f0ec01a61a92f861e28b003e27fa90f5e441b&",
         description: `Deep within the Kingdom's overgrown Bramblewood, a dormant patch of cauliflower has stirred into something far stranger: Brassica, the Blooming Calamity. Once a humble vegetable bed tended by kingdom farmers, the patch was overtaken by wild floral magic during a forgotten storm, and now sprawls across the woods as a writhing mass of blossoming heads and thorned vines. It isn't malicious so much as mindlessly hungry, consuming everything in its path as it creeps toward the Kingdom's outskirts. Adventurers are needed to cut it back before it reaches the fields.\n\nJoin this world raid with /join-world-raid!`,
         successDescription: `The potato adventurers hack through Brassica's thorned vines and sever its central bud before the calamity can bloom any further. Robbed of its ability to spread, the mass of cauliflower heads wilts and retreats into the Bramblewood, dormant once more — for now.`,
         failureDescription: `The adventurers can't keep pace with Brassica's relentless growth, and the blooming calamity swallows their formation beneath a wave of thorned vines. Forced to retreat, the heroes watch helplessly as the patch creeps ever closer to the Kingdom's fields.`,
@@ -196,7 +191,7 @@ const worldBossMobs = [
     },
     {
         name: "Yamsalot, the Iron Yam",
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543699244047663195/NzI1NDQ5LmpwZw.png?ex=6a95d174&is=6a947ff4&hm=1d8cb3f859f4082a8df0a9e6963ce40259c1d21537f50fd3c321a551f0c46d40&",
         description: `Legends of the Kingdom speak of an ancient yam knight forged in the molten root-fires beneath the mountains, sealed away after nearly toppling the throne generations ago. That seal has broken. Yamsalot, the Iron Yam, marches from the mountain passes clad in plating of hardened root-bark, wielding a blade quenched in the same fires that forged him — and he intends to finish what he started. The Kingdom's greatest heroes are needed to stand a chance.\n\nJoin this world raid with /join-world-raid!`,
         successDescription: `Through coordinated assault and no small amount of luck, the potato adventurers find the seams in Yamsalot's root-bark plating and drive their weapons home. The Iron Yam roars in fury as the ancient seal reasserts itself, dragging him back into the mountain passes — the Kingdom is safe, for now, from its oldest enemy.`,
         failureDescription: `Yamsalot's ancient fury proves too much even for the Kingdom's finest. His molten blade cuts through their ranks with contemptuous ease, and the adventurers are forced into a humiliating retreat as the Iron Yam continues his march toward the throne.`,

@@ -727,7 +727,7 @@ const Companions = [
         id: "sprout",
         name: "Sprout",
         rarity: CompanionRarity.COMMON,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695141447929856/image.png?ex=6a95cda2&is=6a947c22&hm=3f9835eff07fce42aedf5b7a0306a2eb8ada1b0752e394ebe864cac2eb26988d&",
         description: "A tiny potato sprout that took a liking to you after one too many /work sessions nearby. It doesn't do much, but it tries.",
         // Bumped from 2% during a balance pass — workCooldownSkipChance (Fieldmouse's
         // own Common-tier perk) turned out to be worth ~5.3% effective /work throughput
@@ -741,7 +741,7 @@ const Companions = [
         id: "fieldmouse",
         name: "Fieldmouse",
         rarity: CompanionRarity.COMMON,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695336160366682/MCZxPTgw.png?ex=6a95cdd0&is=6a947c50&hm=0a555ae59c2aefd8d4cf0d2b48ac45f709f46ecbe924305a396b1ea122a766d7&",
         description: "A quick little fieldmouse that scouts ahead between work sessions — every so often it comes back so fast your cooldown never even starts.",
         // A flat % reduction off a 300-second base cooldown reads as basically nothing
         // to a player (5% of 300s = 15s), and only Legendary+/guild investment can push
@@ -755,7 +755,7 @@ const Companions = [
         id: "ladybug",
         name: "Ladybug",
         rarity: CompanionRarity.COMMON,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695472764387460/LmpwZw.png?ex=6a95cdf1&is=6a947c71&hm=648c3932f635fd713276d97208dfd124cc94b15775970f4ca52f7bf7ad02c4c3&",
         description: "A ladybug that's taken a shine to your bank vault, tucking a little extra room into the corners whenever no one's looking.",
         // Bumped from 5% — bankCapacityPercent only pays off when a player is both near
         // their cap AND getting robbed, so it needs a bigger number than an always-on
@@ -769,7 +769,7 @@ const Companions = [
         id: "guinea_pig",
         name: "Guinea Pig",
         rarity: CompanionRarity.COMMON,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695555719331982/PTc0MCZxPTgw.png?ex=6a95ce04&is=6a947c84&hm=becf36f33c3177b906bd94fe437111c5ae9879dd8607bccacaeb87a3ef698da8&",
         description: "A guinea pig that insists on taking the first bite of every potato you find, just in case — a little wasteful, but it's never once let a bad one through.",
         // Turns every Poison Potato hit into a gain instead of a loss: the same weekly
         // bad-luck mitigation everyone else gets applies first, then Guinea Pig converts
@@ -789,7 +789,7 @@ const Companions = [
         id: "barn_owl",
         name: "Barn Owl",
         rarity: CompanionRarity.RARE,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695687953285200/WkQuanBn.png?ex=6a95ce24&is=6a947ca4&hm=83285780ecc78f2ab78c21974b7125c0b26bead31f3ed17a87321cd6eeda6ac7&",
         description: "A watchful barn owl that spots the best moment to strike when you're robbing someone — stacks with your guild's rob-chance buff, if it has one.",
         // Shown on the scavenging return embed instead of `description` (see
         // embedFactory.js's createScavengeReturnEmbed) — added 2026-08-23 per the
@@ -801,7 +801,7 @@ const Companions = [
         id: "mole",
         name: "Mole",
         rarity: CompanionRarity.RARE,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695759084359780/dz03NDAmcT04MA.png?ex=6a95ce35&is=6a947cb5&hm=87393d1a35c51d37bb980033dbad4ead0e5533e27a31cc8d6a3a881120ff2e59&",
         description: "A mole that knows a guy — somehow gets you a better rate every time you cash out your starches.",
         scavengeFlavor: "Mole tunneled through half the county before surfacing with dirt-caked paws and a satisfied grin — turns out there's always something worth digging for underground.",
         // Redesigned from starchCapacityPercent (10%) during a balance pass — that perk
@@ -819,7 +819,7 @@ const Companions = [
         id: "prospector",
         name: "Prospector",
         rarity: CompanionRarity.RARE,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695898683375788/ODE0NTkyMC5qcGc.png?ex=6a95ce56&is=6a947cd6&hm=b5b18ec4b311ffb254df06b6f908f3e5aae497759f05791a03c6c8cd1c94a06f&",
         description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — sharply improves your odds of stumbling into Golden Potatoes, Large Potatoes, Poison Potatoes, wandering Companions, Taro Traders, Mimics, and Golden Yams alike, though all that extra digging leaves them a little too worn out for steady work.",
         scavengeFlavor: "Prospector staked out a promising patch of dirt and worked it methodically, panning and prying until something worthwhile finally came loose.",
         // Redesigned 2026-08-29, direct instruction — the original Metal-only kit
@@ -883,7 +883,7 @@ const Companions = [
         id: "firefly",
         name: "Firefly",
         rarity: CompanionRarity.RARE,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695998558146700/cGc.png?ex=6a95ce6e&is=6a947cee&hm=4b5717c2557637ec9b892665eae196a2797b3f29a760aae99ed4d3936a6bafe4&",
         description: "A firefly that lights the way while you work, somehow making every session a little more productive.",
         scavengeFlavor: "Firefly drifted off into the dark, a single bobbing light growing fainter and fainter — until it came bobbing right back, leading the way to something it found along the way.",
         // Bumped from 5% during the same balance pass as Sprout — 5% no longer read as a
@@ -895,7 +895,7 @@ const Companions = [
         id: "spudsprite",
         name: "Spudsprite",
         rarity: CompanionRarity.LEGENDARY,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543696447332163604/LXZlY3Rvci5qcGc.png?ex=6a95ced9&is=6a947d59&hm=178ecac7cc37e084b695dfc153dd0379bfa0985a20d5b7743c141d81fdc10e94&",
         description: "A small potato spirit that bends time itself around your work cooldown — often enough it just skips the wait outright — and sharpens your focus while it's at it.",
         scavengeFlavor: "Spudsprite blinked out of sight and was gone for what felt like both an instant and an eternity at once — time works strangely around it, even out scavenging.",
         perks: [
@@ -937,7 +937,7 @@ const Companions = [
         id: "elder_rootbeard",
         name: "Elder Rootbeard",
         rarity: CompanionRarity.MYTHIC,
-        thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543696791306899519/Ni5qcGc.png?ex=6a95cf2b&is=6a947dab&hm=94982c6df81cc8b2f41c9c828a5e5f48802e9437e569498c112d448f73a4f026&",
         description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, quietly tends a slow-growing harvest in the background, and always finds room to get a better rate cashing out starches.",
         scavengeFlavor: "Elder Rootbeard returned at its own unhurried pace, the way it does everything, and delivered a field report on exactly what it found and where — some things never change with age.",
         // Rebalanced 2026-08-22: bankCapacityPercent replaced with passiveIncomePercent
@@ -1960,39 +1960,39 @@ const Rival = {
 // BountyScenarios' own naming (this table is drawn per-attempt like that one, not per-tier-
 // bracket like regularRaidMobs/eliteRaidMobs). Flavor text is cosmetic only, same
 // "not mechanically load-bearing" status BountyScenarios/regularWorkMobs already carry —
-// a 7th+ rival is pure data, no code changes required. thumbnailUrl is a placeholder (the
-// bot's own generic avatar) until real commissioned art exists — same fallback Yukon and
-// the T4 raid bosses already use (see startRaid.js's own comment on this).
+// a 7th+ rival is pure data, no code changes required. All 6 rivals got real commissioned
+// art 2026-08-30; Yukon (below) and Umbrathorn (startRaid.js's T4 legendary raid boss)
+// still use the bot's generic avatar as a placeholder pending their own art.
 const RivalMercenaries = {
     description: "Your growing reputation has drawn the attention of the realm's most notorious bounty hunters — sooner or later, one of them comes looking for you.",
     roster: [
         { name: "Turnipbeard, the Rusted Ronin",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543696994890162317/TG0uanBn.png?ex=6a95cf5c&is=6a947ddc&hm=2dcaf1a6d48736e999f6c9ff4ebdaa4809e5281a4ae2cc132f61cfbf6ccc1389&",
           description: "A wandering blade-for-hire whose rust-flecked turnip hide has seen more bounties than anyone cares to count.",
           winFlavor: "Turnipbeard's rusted blade meets yours one time too many, and finally gives — a grudging nod is the only concession you get, but it's enough.",
           loseFlavor: "Turnipbeard's rusted armor turns out to hide a much sharper edge than expected. You live to fight another day, just not today." },
         { name: "Taromire, the Marsh Widow",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543697127547474060/SF90LmpwZw.png?ex=6a95cf7b&is=6a947dfb&hm=b06d101e89572b818e1c38eff3ba31f44cf95c8856c9dbdb09c8d63fbe651350&",
           description: "She's collected more bounties out of the wetlands than the local constabulary has ever managed, and she's not planning on stopping at you.",
           winFlavor: "Taromire's home turf finally works against her — you know the marsh better than she expected, and it costs her the fight.",
           loseFlavor: "Taromire knows every sinking patch of that marsh by name. You don't, and it shows." },
         { name: "Parsnare, the Deadfall Trapper",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543697233306718318/anBn.png?ex=6a95cf94&is=6a947e14&hm=a8d9d8192045f2d5dfeec9bc418c4a0871382f8d446d15c8a84a1983c3f95356&",
           description: "A trapper-turned-hunter who's never met a bounty he thought was worth losing sleep over — until yours.",
           winFlavor: "Parsnare's own trap gets sprung on him first — a rare miscalculation he won't be living down anytime soon.",
           loseFlavor: "Parsnare's traps are half the reason he's still hunting after all these years. Today, you find out why the hard way." },
         { name: "Beetscythe, the Coinpurse Reaper",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543697354459189319/NDUwNy5wbmc.png?ex=6a95cfb1&is=6a947e31&hm=831d7dcf8d3e6250142d9eb05315ccbad96dd0ccd4d56dd476f11a8a8f7adb02&",
           description: "Rumor has it the Reaper only takes contracts worth remembering — apparently, you qualify now.",
           winFlavor: "Beetscythe's reputation turns out to be bigger than Beetscythe themself — the contract on your head gets torn up on the spot.",
           loseFlavor: "Beetscythe's reputation is, unfortunately, entirely earned. You'll be paying that particular debt down for a while." },
         { name: "Old Scattergun Jicama",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543697499284578335/YWlzX2h5YnJpZA.png?ex=6a95cfd4&is=6a947e54&hm=d8adeefa330bbbf8063250179f77d5d81dea9855b1422fb2c721dd42517057a6&",
           description: "Retired twice, un-retired twice — Jicama keeps coming out of retirement specifically for bounties like yours.",
           winFlavor: "Jicama's aim isn't what it used to be, and today that's the difference — you walk away, and she rolls off muttering about retiring for real this time.",
           loseFlavor: "Jicama's aim is exactly what it used to be, unfortunately for you. Third retirement, still on hold." },
         { name: "Cassavashade, the Hollow Ledger",
-          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543697564426178610/PQ.png?ex=6a95cfe3&is=6a947e63&hm=3f496294afef6df6f2bdd5fa3a1297e1f58ef2fe94fcc3d620e8dace42d1e9e4&",
           description: "Nobody's ever seen the Ledger's face — only the tally of names they've collected on, which keeps getting longer.",
           winFlavor: "Whatever's under that hood, it bleeds like anything else — your name comes off Cassavashade's tally for good.",
           loseFlavor: "Cassavashade adds one more name to an already very long list, and doesn't even slow down to gloat about it." }
