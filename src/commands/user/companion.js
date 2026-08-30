@@ -45,9 +45,16 @@ function buildOwnedPages(userDetails) {
     const ownedCompanions = (userDetails.companions?.owned ?? [])
         .map(o => {
             const companion = companionFactory.getCompanionById(o.id);
-            return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false } : null;
+            return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false, lastUsedAt: o.lastUsedAt || 0 } : null;
         })
         .filter(Boolean);
+    // Most-recently-used-for-work-or-scavenging first (2026-08-30, direct instruction) —
+    // lastUsedAt is stamped by companionFactory.levelActiveCompanion (every training path:
+    // /work, /rob, /sell-starch, /take-bounty, /rob-npc, /regrade) and by
+    // companionScavenge.js's own dispatch write. A never-used instance (lastUsedAt 0)
+    // sorts last; Array.prototype.sort is stable, so untouched/tied instances keep their
+    // original acquisition order rather than jumping around.
+    ownedCompanions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
     const uniqueOwnedCount = new Set(ownedCompanions.map(c => c.id)).size;
     return { pages: chunkArray(ownedCompanions, PAGE_SIZE), uniqueOwnedCount };
 }

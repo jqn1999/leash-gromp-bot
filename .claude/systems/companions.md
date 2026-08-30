@@ -575,6 +575,22 @@ An optional `target-user` (Mentionable, same option shape `/profile`'s own targe
 someone else's list, since equipping only ever mutates the *invoking* user's own state, never the
 viewed user's. Pagination still works normally if the viewed list spans multiple pages.
 
+**Sort order (2026-08-30, direct instruction — "companions used to work/scavenge most recently
+are earlier in the list").** `companion.js`'s `buildOwnedPages` sorts owned instances by a new
+`lastUsedAt` timestamp, most recent first, before paginating. Stamped in two places: (1)
+`companionFactory.levelActiveCompanion` — the single funnel every training path (`/work`,
+`/rob`, `/sell-starch`, `/take-bounty`, `/rob-npc`, `/regrade`) already routes an actual grant
+through, so one stamp there covers all of them; a call blocked by `restrictToCompanionId`/
+`restrictToPerkType` correctly leaves `lastUsedAt` untouched, same as it leaves `workCount`
+untouched. (2) `companionScavenge.js`'s own dispatch write — Scavenging never routes through
+`levelActiveCompanion` at all (a scavenging instance can't be the active one), so that command
+stamps the dispatched instance directly, at send-time rather than at collection — sending it out
+is the actual "use," collecting later is just retrieving the reward. An instance that's never
+been used (no `lastUsedAt`, or a brand-new one from `applyCompanionAward`) sorts last; ties
+(including every never-used instance, which all read as 0) keep their original relative order,
+since `Array.prototype.sort` is stable — new pulls don't visually jump around relative to each
+other before anything's actually used them.
+
 ## Marketplace
 
 The first player-to-player trading this bot has ever had. Listings live in a shared stats-table doc

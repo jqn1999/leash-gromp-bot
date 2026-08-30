@@ -307,8 +307,18 @@ function levelActiveCompanion(companions, workCountGained, restrictToCompanionId
             return companions;
         }
     }
+    // lastUsedAt (2026-08-30, direct instruction — "/companion should show companions used
+    // to work/scavenge most recently earlier in the list") — stamped here rather than at
+    // each of this function's 6 call sites (work.js, rob.js, sellStarch.js, takeBounty.js,
+    // robNpc.js, regrade.js) since this is already the single funnel every one of them
+    // routes an actual grant through; a companion that hit an early `return companions`
+    // above (restriction didn't match, or nothing's equipped) correctly never gets touched.
+    // Scavenging has no grant to route through this function at all (a scavenging instance
+    // can't be the active one), so companionScavenge.js stamps its own dispatched instance
+    // directly — see that file's own comment.
+    const now = Date.now();
     const leveledOwned = (companions.owned ?? []).map(o =>
-        o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained } : o
+        o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained, lastUsedAt: now } : o
     );
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
 }

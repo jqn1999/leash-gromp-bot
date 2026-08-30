@@ -3421,6 +3421,35 @@ and needs its own balance pass.
     test changes needed beyond the constant itself. Docs: `systems/safehouses.md`. Full
     suite: 738/738, zero regressions.
 
+- [x] **88. `/companion` List Sorted by Most-Recently-Used-for-Work-or-Scavenging** — S — **Done**
+  What: direct instruction — "update companion embed list to show companions used to
+  work/scavenge most recently are earlier in the list." No such recency signal existed
+  before this (owned instances only ever carried `{ instanceId, id, workCount,
+  hasScavenged }` — no timestamp), so this adds one: a new `lastUsedAt` field per owned
+  instance.
+  - Stamped in exactly two places rather than at every individual command: (1)
+    `companionFactory.levelActiveCompanion` — already the single funnel every training path
+    (`/work`, `/rob`, `/sell-starch`, `/take-bounty`, `/rob-npc`, `/regrade`) routes an
+    actual grant through, so one stamp there covers all of them for free; correctly skipped
+    when `restrictToCompanionId`/`restrictToPerkType` blocks the grant (the existing
+    early-return path). (2) `companionScavenge.js`'s own dispatch write — Scavenging never
+    routes through `levelActiveCompanion` (a scavenging instance can't be the active one),
+    so this stamps the dispatched instance directly at SEND time, not at
+    `/companion-scavenge-collect` time — `resolveScavengeReward`'s existing spread already
+    preserves whatever `lastUsedAt` dispatch set, no change needed there.
+  - `companion.js`'s `buildOwnedPages` sorts the mapped owned-instance list by `lastUsedAt`
+    descending before chunking into pages (missing/never-used reads as 0, sorting last;
+    `Array.prototype.sort`'s stability keeps ties — including every never-used instance —
+    in their original acquisition order rather than shuffling them).
+  Tests: `companionFactory.test.js` gained 2 new tests (stamps on a successful grant,
+  doesn't stamp on a blocked one). `companion.test.js` gained 3 new tests (sorts by
+  recency, never-used sorts last, never-used instances keep stable relative order).
+  `companionScavenge.js`'s own dispatch stamp has no test file to extend — no command file
+  in this codebase is unit-tested unless it already exports a pure function to test
+  (`buildOwnedPages`/`attemptEquip` here do; the scavenge dispatch callback doesn't) —
+  verified by hand instead. Docs: `systems/companions.md#viewing-and-equipping`. Full
+  suite: 743/743 (up from 738/738 — 5 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a

@@ -700,6 +700,22 @@ describe('levelActiveCompanion', () => {
         expect(result.owned[0].workCount).toBe(22);
     });
 
+    // lastUsedAt (2026-08-30) — powers /companion's "recently used first" sort order
+    // (companion.js's buildOwnedPages). Stamped here since every training path (/work,
+    // /rob, /sell-starch, /take-bounty, /rob-npc, /regrade) routes through this function.
+    test('stamps lastUsedAt on the active instance with the current time', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        const before = Date.now();
+        const result = levelActiveCompanion(companions, 12);
+        expect(result.owned[0].lastUsedAt).toBeGreaterThanOrEqual(before);
+    });
+
+    test('does not stamp lastUsedAt when the restriction blocks the grant (no-op)', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10, lastUsedAt: 123 }], active: 'sprout-a' };
+        const result = levelActiveCompanion(companions, 12, 'yukon');
+        expect(result.owned[0].lastUsedAt).toBe(123);
+    });
+
     test('is a no-op (same reference back) when nothing is equipped', () => {
         const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: null };
         expect(levelActiveCompanion(companions, 12)).toBe(companions);

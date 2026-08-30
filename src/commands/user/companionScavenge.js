@@ -91,8 +91,17 @@ module.exports = {
         // companion is ever orphaned by it. See dynamoHandler.resolveScavenge's own
         // comment for the guarded collect/cancel writes this deliberately does NOT need.
         const scavenging = companionFactory.buildScavengeDispatch(companion, instanceId, ownedEntry.workCount);
+        // lastUsedAt (2026-08-30, direct instruction — recently-used companions sort earlier
+        // in /companion's list) — stamped on the dispatched instance itself, mirroring
+        // companionFactory.levelActiveCompanion's own stamp for /work and every other
+        // training path. Scavenging never routes through that function (a scavenging
+        // instance can't be the active one, so it never levels via a normal grant), so this
+        // is the one place that needs its own explicit stamp.
+        const updatedOwned = userDetails.companions.owned.map(o =>
+            o.instanceId === instanceId ? { ...o, lastUsedAt: Date.now() } : o
+        );
         await dynamoHandler.updateUserFields(userId, {
-            companions: { ...userDetails.companions, scavenging }
+            companions: { ...userDetails.companions, owned: updatedOwned, scavenging }
         });
 
         interaction.editReply(`${userDisplayName}, ${companion.name} heads out scavenging! It'll be back in ${convertSecondstoMinutes(Math.ceil((scavenging.returnsAt - Date.now()) / 1000))} — run /companion-scavenge-collect once it's returned.`);

@@ -142,4 +142,51 @@ describe('buildOwnedPages', () => {
 
         expect(uniqueOwnedCount).toBe(2);
     });
+
+    // Most-recently-used-first sort (2026-08-30, direct instruction — "companions used to
+    // work/scavenge most recently are earlier in the list"). lastUsedAt is stamped by
+    // companionFactory.levelActiveCompanion (/work and every other training path) and by
+    // companionScavenge.js's own dispatch write.
+    describe('most-recently-used sort order', () => {
+        test('sorts owned instances by lastUsedAt, most recent first', () => {
+            const userDetails = userWith({
+                owned: [
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0, lastUsedAt: 1000 },
+                    { instanceId: 'mole-a', id: 'mole', workCount: 0, lastUsedAt: 3000 },
+                    { instanceId: 'yukon-a', id: 'yukon', workCount: 0, lastUsedAt: 2000 }
+                ]
+            });
+
+            const { pages } = buildOwnedPages(userDetails);
+
+            expect(pages.flat().map(c => c.instanceId)).toEqual(['mole-a', 'yukon-a', 'sprout-a']);
+        });
+
+        test('never-used instances (no lastUsedAt) sort after any used instance', () => {
+            const userDetails = userWith({
+                owned: [
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+                    { instanceId: 'mole-a', id: 'mole', workCount: 0, lastUsedAt: 500 }
+                ]
+            });
+
+            const { pages } = buildOwnedPages(userDetails);
+
+            expect(pages.flat().map(c => c.instanceId)).toEqual(['mole-a', 'sprout-a']);
+        });
+
+        test('never-used instances keep their original relative order among themselves', () => {
+            const userDetails = userWith({
+                owned: [
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+                    { instanceId: 'mole-a', id: 'mole', workCount: 0 },
+                    { instanceId: 'yukon-a', id: 'yukon', workCount: 0 }
+                ]
+            });
+
+            const { pages } = buildOwnedPages(userDetails);
+
+            expect(pages.flat().map(c => c.instanceId)).toEqual(['sprout-a', 'mole-a', 'yukon-a']);
+        });
+    });
 });
