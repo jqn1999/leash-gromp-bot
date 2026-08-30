@@ -5587,25 +5587,53 @@ and needs its own balance pass.
   ```js
   // stats table, trackingId: "spud_keep" — read/written directly via
   // getStatDatabase/updateStatFields, same as active_quests/active_guild_contract (no dedicated
-  // wrapper needed — mutated from only 2-3 call sites, same as world.world_list)
+  // wrapper needed — mutated from only 2-3 call sites, same as world.world_list). Now ALSO the
+  // home of the accruing pot (finalized reward, see "Reward — FINALIZED" below) — the pot's
+  // lifecycle (accrues during a cycle, hard-reset every resolution) matches guildEntrants/
+  // mercenaryEntrants exactly, which is why it lives here rather than on spud_keep_buff.
   {
       trackingId: "spud_keep",
       guildEntrants: [],       // [{ guildId, guildName }], this cycle's signed-up guilds only
       mercenaryEntrants: [],   // [{ id, username }], this cycle's signed-up mercenaries only
-      lastResolvedAt: 0        // epoch ms, informational only (display/debugging)
+      lastResolvedAt: 0,       // epoch ms, informational only (display/debugging)
+      potPotatoes: 0,          // NEW — atomic-ADD-only counter, 75% of every taxed potato event
+                               // server-wide while a holder is live (see Reward Part 2 below)
+      potStarches: 0           // NEW — same, for the one starch-denominated tax site (/give starches)
   }
 
   // stats table, trackingId: "spud_keep_buff" — dedicated get/set wrapper
   // (dynamoHandler.getActiveSpudKeepBuff/setActiveSpudKeepBuff), since this is the one read from
-  // many call sites across workFactory.js/embedFactory.js, same as world_buff
+  // many call sites, same as world_buff. Remains the SOLE canonical holder pointer +
+  // consecutiveHoldCycles counter (see Attacker's bonus section below) and now carries the
+  // passive-income half of the finalized bundle buff directly.
   {
       trackingId: "spud_keep_buff",
       holderType: "guild" | "mercenary" | null,   // null only before the very first resolution ever runs
       holderId: "<guildId>" | null,                // null when holderType is "mercenary" or null
       holderName: "<guild name>" | "The Merc Faction" | null,
-      buffType: "workMulti",                       // only one buff type shipped in v1, see below
-      value: 0.12,                                  // SpudKeep.HOLDER_BUFF_VALUE (proposed constant)
-      expiresAt: 0                                  // epoch ms — Date.now() + SpudKeep.CONTEST_INTERVAL_SECONDS*1000, set on EVERY resolution (even a successful defense), same "replace outright" convention world_buff/guildBuff already use
+      buffType: "passiveIncome",                    // CHANGED (was "workMulti") — see Reward Part 1 below
+      value: 0.06,                                   // SpudKeep.PASSIVE_BUFF_VALUE (was 0.12 HOLDER_BUFF_VALUE)
+      expiresAt: 0,                                 // epoch ms — Date.now() + SpudKeep.CONTEST_INTERVAL_SECONDS*1000, set on EVERY resolution (even a successful defense), same "replace outright" convention world_buff/guildBuff already use
+      consecutiveHoldCycles: 0                      // see Attacker's bonus section below (unchanged)
+  }
+
+  // stats table, trackingId: "spud_keep_cooldown_buff" — NEW sibling doc, dedicated get/set
+  // wrapper (dynamoHandler.getActiveSpudKeepCooldownBuff/setActiveSpudKeepCooldownBuff). Exists
+  // ONLY so the already-FINAL isSpudKeepBuffLiveForUser(buff, userDetails, buffType) predicate
+  // can be called completely unchanged against a second, structurally-identical buff object —
+  // the predicate takes whatever `buff` it's handed and was never doc-name-specific, so serving
+  // a second simultaneous buff type means handing it a second doc, not touching its signature or
+  // logic. holderType/holderId/holderName/expiresAt are mirrored from spud_keep_buff (written
+  // together, in the same resolution step, below) — this doc is never independently
+  // authoritative on "who's the holder," only on "what's this buff's own value."
+  {
+      trackingId: "spud_keep_cooldown_buff",
+      holderType: "guild" | "mercenary" | null,     // mirrors spud_keep_buff.holderType
+      holderId: "<guildId>" | null,                  // mirrors spud_keep_buff.holderId
+      holderName: "<guild name>" | "The Merc Faction" | null,
+      buffType: "cooldownReduction",
+      value: 0.08,                                   // SpudKeep.COOLDOWN_BUFF_VALUE
+      expiresAt: 0                                   // mirrors spud_keep_buff.expiresAt, same replace-outright convention
   }
   ```
 
@@ -5616,9 +5644,13 @@ and needs its own balance pass.
   undesigned-around possibility for every scheduled job — a missed Spud Keep resolution just means
   the same holder keeps its buff one extra day past its nominal `expiresAt`, exactly the same
   "no catch-up" behavior every other daily cron job in `backgroundEvents.js` already has).
-  Proposed constants (`constants.js`, new `SpudKeep` block, values to confirm against
-  `GuildBuffScaling.workMulti`/`Raid` at build time): `CONTEST_INTERVAL_SECONDS: 86400`,
-  `MERC_FACTION_MIN_TOP_N: 5`, `HOLDER_BUFF_TYPE: "workMulti"`, `HOLDER_BUFF_VALUE: 0.12`.
+  Proposed constants (`constants.js`, new `SpudKeep` block — spot-checked against
+  `GuildBuffScaling.workTimer[0]` (0.06) and Mochi's own `passiveIncomePercent` (0.06) in
+  `src/utils/constants.js`, both confirmed current as of this pass): `CONTEST_INTERVAL_SECONDS:
+  86400`, `MERC_FACTION_MIN_TOP_N: 5`, `PASSIVE_BUFF_TYPE: "passiveIncome"`, `PASSIVE_BUFF_VALUE:
+  0.06`, `COOLDOWN_BUFF_TYPE: "cooldownReduction"`, `COOLDOWN_BUFF_VALUE: 0.08`,
+  `POT_REDIRECT_PERCENT: 0.75` (superseding the old single `HOLDER_BUFF_TYPE`/`HOLDER_BUFF_VALUE`
+  pair — see "Reward — FINALIZED" below).
 
   **5. Cadence — recommend daily, not every 2 days.** Reuses the existing 4am UTC daily cron
   (Tower reset, Quest rotation, Guild Contract rotation on Mondays, the birthday announcer all already
@@ -5692,13 +5724,32 @@ and needs its own balance pass.
   6. **Roll the lottery**: `chance_i = power_i / Σpower`; draw one `Math.random()` against the
      cumulative thresholds, same cumulative-roll loop shape `raidFactory.rollWeightedTier` already
      uses.
-  7. **Grant the buff**: `setActiveSpudKeepBuff({ holderType, holderId, holderName, buffType:
-     "workMulti", value: SpudKeep.HOLDER_BUFF_VALUE, expiresAt: Date.now() +
-     SpudKeep.CONTEST_INTERVAL_SECONDS * 1000 })` — replaces outright, even on a successful defense
-     (fresh `expiresAt`, zero coverage gap, per finding 4 above).
-  8. **Clear the per-cycle entrant lists**: `guildEntrants: []`, `mercenaryEntrants: []` on
-     `spud_keep`, plus `lastResolvedAt: Date.now()` — mirrors `world.world_list`'s own clearing in
-     `popWorldBoss`. A fresh signup window opens immediately.
+  7. **Grant both halves of the bundle buff** (see "Reward — FINALIZED" below): `setActiveSpudKeepBuff({
+     holderType, holderId, holderName, buffType: "passiveIncome", value: SpudKeep.PASSIVE_BUFF_VALUE,
+     expiresAt: Date.now() + SpudKeep.CONTEST_INTERVAL_SECONDS * 1000, consecutiveHoldCycles })` AND
+     `setActiveSpudKeepCooldownBuff({ holderType, holderId, holderName, buffType: "cooldownReduction",
+     value: SpudKeep.COOLDOWN_BUFF_VALUE, expiresAt: <same expiresAt> })` — both replace outright,
+     even on a successful defense (fresh `expiresAt`, zero coverage gap, per finding 4's own reasoning).
+  7b. **Split the accruing pot ONE TIME, among the OUTGOING holder's own roster this cycle** (see
+     "Reward — FINALIZED" Part 2 below for the full mechanism/reasoning) — using `potPotatoes`/
+     `potStarches` exactly as read back in step 1 (never re-read), paid to whichever
+     `memberDetailsList`/`topNUserDetailsList` this same resolution already fetched in steps 2-4 for
+     the PRE-resolution `spud_keep_buff.holderId`/`holderType` (a guild's live roster, or the Merc
+     Faction's counted top-N) — zero extra reads. An empty outgoing roster (holder's guild disbanded/
+     emptied mid-cycle) means that cycle's pot is forfeited, not paid to anyone and not rolled forward
+     — mirrors the "empty holder naturally loses" precedent applied uniformly elsewhere in this design.
+     No previous holder at all (pre-first-ever-resolution) skips this step entirely (nothing could have
+     accrued, since the tax-redirect predicate requires a live holder in the first place).
+  8. **Clear the per-cycle entrant lists AND subtract exactly what was just paid out from the pot** —
+     `guildEntrants: []`, `mercenaryEntrants: []`, `lastResolvedAt: Date.now()` on `spud_keep` (mirrors
+     `world.world_list`'s own clearing in `popWorldBoss`), plus an ATOMIC `addStatFields('spud_keep', {
+     potPotatoes: -potPotatoesJustPaid, potStarches: -potStarchesJustPaid })` — a subtraction of the
+     EXACT amount just split in step 7b, never a blind `set potPotatoes = 0`. This is the load-bearing
+     correctness detail for reset timing: any tax event whose redirect write lands concurrently, between
+     step 1's read and this step's write, is NOT destroyed by a blind overwrite — it correctly survives
+     into next cycle's pot, because subtracting a known exact amount commutes with a concurrent ADD
+     regardless of ordering, the same reasoning that makes `addUserDatabase`'s atomic `add` safe against
+     concurrent writers in general. A fresh signup window opens immediately.
   9. **Participation counter**: `raidFactory.incrementCounter`-style atomic ADD of a new
      `spudKeepAttemptCount` field — for a guild entrant, every member of that guild's live roster used
      in step 2; for the Merc Faction, **only the counted top-N mercenaries from step 4c** (not every
@@ -5773,26 +5824,43 @@ and needs its own balance pass.
   Merc Faction preview (this cycle's `N`, how many mercenaries have signed up, the top-N breakdown) —
   all computed live and read-only, no state written by viewing it.
 
-  **Touches**: two new stats-table docs (`spud_keep`, `spud_keep_buff` — see Data model above) +
-  `dynamoHandler.js` get/set wrapper for `spud_keep_buff` (mirroring `getActiveWorldBuff`/
-  `setActiveWorldBuff`); a new `spudKeepFactory.js` for entrant collection, the Merc Faction top-N
-  selection, `isSpudKeepBuffLiveForUser`, the weighted-lottery draw, and `resolveCycle()` — reusing
-  `raidFactory.getEffectiveRaidPower`/`getMemberRaidPower`/`getLiveRaidRoster` as-is, no changes to
-  `raidFactory.js` itself; a new `workFactory.js` sibling function (`getSpudKeepWorkMulti`, 4th
-  alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti`) wired into that
-  file's ~9 existing `effectiveMultiplier` call sites, plus `embedFactory.js`'s `/profile` display;
-  two new commands (an officer-gated guild entry command mirroring `/start-raid`'s permission check,
-  and a mercenary entry command mirroring `/join-world-raid`) plus a read-only status command
-  mirroring `/current-world-raid`; a `resolveCycle()` hook added to the existing 4am UTC daily cron in
-  `backgroundEvents.js`; `embedFactory.js` for the new status/result embeds; a new `SpudKeep` block in
-  `constants.js` (see Data model above); `systems/guilds.md` and `systems/mercenary-bounties.md`
-  cross-links, plus a `reference/constants.md` row, once a shape actually ships — following the World
-  Boss buff's own precedent of documenting a cross-cutting feature in one place and linking to it from
-  both affected systems.
+  **Touches**: three stats-table docs (`spud_keep` — now also the pot, `spud_keep_buff`,
+  `spud_keep_cooldown_buff` — see Data model above) + `dynamoHandler.js` get/set wrappers for both
+  buff docs (mirroring `getActiveWorldBuff`/`setActiveWorldBuff`) plus a new `addStatFields(trackingId,
+  addAttributes)` atomic-ADD wrapper for the stats table (thin sibling of `addUserDatabase`, built on
+  `buildUpdateExpression`'s already-existing-but-previously-unused `addAttributes` parameter — see
+  Reward Part 2 below); a new `spudKeepFactory.js` for entrant collection, the Merc Faction top-N
+  selection, `isSpudKeepBuffLiveForUser` (unchanged), the tax-redirect split/credit helpers, the
+  weighted-lottery draw, and `resolveCycle()` — reusing `raidFactory.getEffectiveRaidPower`/
+  `getMemberRaidPower`/`getLiveRaidRoster`/`handlePotatoSplit` as-is, plus one small new
+  `raidFactory.handleStarchSplit` sibling (mirrors `handlePotatoSplit` field-for-field, targeting
+  `starches` instead, for the pot's much-rarer starch-denominated slice); ~7 existing tax call sites
+  (`bank.js`, `safehouse.js`, `guildBank.js`, `give.js`, `companionMarket.js`, `sellStarch.js`,
+  `startRaid.js`'s `addToBankOrPurse`) each gain one `getActiveSpudKeepBuff()` read + a conditional
+  `addStatFields` pot credit ahead of their existing `addUserDatabase` house credit (see Reward Part 2
+  below); a new passive-income read site inside `dynamoHandler.passivePotatoHandler`'s existing
+  per-user loop (mirrors the Brassica/World Buff precedent exactly, replacing the originally-planned
+  `workFactory.js` sibling function entirely — no `workFactory.js` changes needed for this reward);
+  three existing cooldown-write sites gain a conditional shave (`dynamoHandler.calculateWorkTimerValue`,
+  `startRaid.js`'s `raidTimer` reset, `takeBounty.js`/`robNpc.js`'s Rank-based backdating logic — same
+  three sites option 2's own writeup below already identified); two new commands (an officer-gated
+  guild entry command mirroring `/start-raid`'s permission check, and a mercenary entry command
+  mirroring `/join-world-raid`) plus a read-only status command mirroring `/current-world-raid`,
+  now also surfacing the live `potPotatoes`/`potStarches` total (see Reward Part 2 below); a
+  `resolveCycle()` hook added to the existing 4am UTC daily cron in `backgroundEvents.js`;
+  `embedFactory.js` for the new status/result embeds; a new `SpudKeep` block in `constants.js` (see
+  Data model above); `systems/guilds.md` and `systems/mercenary-bounties.md` cross-links, plus a
+  `reference/constants.md` row and a `systems/economy-and-work.md#house-account-taxes` update (every
+  row in that table needs a "redirected while a Spud Keep holder is live" footnote), once a shape
+  actually ships — following the World Boss buff's own precedent of documenting a cross-cutting
+  feature in one place and linking to it from every affected system.
 
   **Reward options (2026-08-30 follow-up) — "universally powerful and worth fighting for" for BOTH
-  populations, expanding finding 4's single +12% `workMulti` pick into a real menu — open decision,
-  nothing has shipped yet.** Direct ask, verbatim: *"Plan out more ideas on rewards for the spud keep
+  populations, expanding finding 4's single +12% `workMulti` pick into a real menu.** *Superseded by
+  "Reward — FINALIZED" further below, which picks option 4 (the bundle) for Part 1 and adds an
+  entirely new Part 2 (the accruing pot) that wasn't on this original menu at all — kept here for its
+  own reasoning trail, since option 4's exact magnitudes (+6%/-8%) are what finalized.* Direct ask,
+  verbatim: *"Plan out more ideas on rewards for the spud keep
   that could make it universally powerful and worth fighting for."* The load-bearing test for every
   option below: does it pay off for a guild's own mixed roster (work-grinders, raiders,
   companion-focused members) AND for the Merc Faction's own mixed roster (work-focused, Bounty-focused,
@@ -5897,16 +5965,183 @@ and needs its own balance pass.
      single-lever option (1 or 2) is confirmed to feel underwhelming after the feature actually ships,
      not as the v1 default.
 
-  **Recommendation: ship option 1 (passive-income %) alone for v1, at +10%/24h matching Brassica
-  exactly.** It's the cheapest to build (one read site, reusing a mechanism that already exists
-  byte-for-byte), the least likely to introduce a new dead zone across any of the six sub-populations
-  (its one weakness — brand-new accounts — is narrower than every other option's own weak point), and
-  it's a genuinely different axis from the game's existing guild-buff menu (`GuildBuffScaling` has no
-  `passiveIncome` entry at all today, so this doesn't compete with or duplicate an existing guild-buff
-  choice the way a `workMulti`/`workTimer`/`robChance` pick would). Revisit option 2 (or the bundle) as
-  a fast-follow once real participation data shows whether a pure passive buff actually reads as "worth
-  fighting for" in practice, or whether a Bounty/Heist-focused mercenary population specifically wants
-  their own cooldown to visibly shrink instead.
+  **Reward — FINALIZED (2026-08-30, third follow-up): bundle buff + accruing pot.**
+  This section is the final word on Spud Keep's reward, replacing both finding 4's original flat
+  +12% `workMulti` pick AND the "Recommendation: ship option 1 alone" call directly above — the
+  reward ships as TWO parts: a modest ongoing bundle buff (option 4 above, magnitudes unchanged)
+  PLUS a brand-new real-time accruing pot that was never on the menu above at all. Everything else in
+  this Spud Keep entry (the lottery, the Merc Faction, the entrant/holder data model, the
+  `isSpudKeepBuffLiveForUser` predicate, daily cadence, no ante, the attacker's bonus below) is
+  unchanged by this section.
+
+  **Part 1 — the bundle buff (option 4 above, now final, not a fast-follow).**
+  **+6% passive income** (`SpudKeep.PASSIVE_BUFF_VALUE`, matching Mochi's own Mythic-tier
+  `passiveIncomePercent` — confirmed still 0.06 in `src/utils/constants.js` as of this pass) **+ a
+  flat -8% cooldown shave** (`SpudKeep.COOLDOWN_BUFF_VALUE`, sitting just above a level-1 guild
+  `workTimer`/`raidTimer` buff's own -6%, confirmed still `GuildBuffScaling.workTimer[0] === 0.06`,
+  and below `MercenaryRank.THRESHOLDS`' own Rank 3 tier of 0.12), both live for the exact 24h
+  contest interval, gated by the SAME `isSpudKeepBuffLiveForUser(buff, userDetails, buffType)`
+  predicate already finalized elsewhere in this entry — unchanged signature, unchanged logic.
+  Superseded by this choice: the single-buff `getSpudKeepWorkMulti` function originally planned for
+  `workFactory.js` is dropped entirely; no changes to `workFactory.js` are needed for this reward.
+
+  **Two simultaneous buff types without touching the final predicate.** Since
+  `isSpudKeepBuffLiveForUser` reads a single `{buffType, value, expiresAt, holderType, holderId}`
+  shape off whatever `buff` object it's handed, and that function is explicitly final, the two buff
+  types are served from TWO sibling stats-table docs instead of reshaping one doc into a `buffs: []`
+  array (which would have forced a predicate rewrite): `spud_keep_buff` keeps its original shape and
+  now carries `buffType: "passiveIncome"`/`value: 0.06` (also remaining the sole canonical holder
+  pointer + `consecutiveHoldCycles`, per the Attacker's bonus section below), and a new
+  `spud_keep_cooldown_buff` doc — structurally identical, `buffType: "cooldownReduction"`/
+  `value: 0.08` — is written alongside it at every resolution (`holderType`/`holderId`/`holderName`/
+  `expiresAt` mirrored between the two, never independently authoritative). Both are read via the
+  identical, unchanged predicate; only the wrapper functions (`getActiveSpudKeepCooldownBuff`/
+  `setActiveSpudKeepCooldownBuff`, byte-for-byte mirrors of the existing
+  `getActiveSpudKeepBuff`/`setActiveSpudKeepBuff`) are new.
+
+  **Consumer wiring**: one new read inside `dynamoHandler.passivePotatoHandler`'s existing per-user
+  loop (mirrors the Brassica/World Buff precedent exactly — see
+  [raids-and-world-events.md](raids-and-world-events.md#server-wide-buff)) for the passive half;
+  three existing cooldown-write call sites (`dynamoHandler.calculateWorkTimerValue`, `startRaid.js`'s
+  `raidTimer` reset, `takeBounty.js`/`robNpc.js`'s Rank-based backdating logic) each gain one more
+  conditional percent added into whatever backdating/reduction math they already do, mirroring how
+  `MercenaryRank.cooldownReductionPercent` is already folded in at the same call sites today.
+
+  **Part 2 — the accruing pot (new mechanic, this is the crux of this revision).**
+  **The mechanism, confirmed as a genuine redirect, not conjured money.** While ANY Spud Keep holder
+  is currently live (guild or Merc Faction, gated on the exact same `expiresAt`/`holderType` fields
+  already on `spud_keep_buff`, independent of which buff type or which user), every one of this
+  game's ~7 tax sites splits its tax amount `SpudKeep.POT_REDIRECT_PERCENT` (0.75) to the pot and the
+  remainder to the house account, instead of the full amount going to the house — never both. When no
+  holder is live, 100% goes to the house exactly as today; nothing new is created, only redirected.
+
+  **New predicate — deliberately separate from `isSpudKeepBuffLiveForUser`, not a reuse of it.** The
+  tax-redirect check answers "is a holder live at all," independent of buff type or of the paying
+  user's own guild/mercenary status (unlike the buff predicate, which is scoped per-consuming-user):
+
+  ```js
+  // spudKeepFactory.js — reads the SAME spud_keep_buff doc every consumer already reads, since its
+  // holderType/expiresAt fields are exactly what "is a holder live" needs; no new doc, no extra read
+  // beyond the one every tax site now has to pay (see cost note below).
+  function isSpudKeepHolderLive(buff) {
+      return Boolean(buff && buff.holderType && buff.expiresAt > Date.now());
+  }
+
+  // Splits one taxed amount between the house account and the pot. Returns houseAmount === taxAmount
+  // and potAmount === 0 whenever no holder is live — today's exact behavior, byte-identical.
+  async function splitTaxForSpudKeepPot(taxAmount) {
+      const buff = await dynamoHandler.getActiveSpudKeepBuff();
+      if (!isSpudKeepHolderLive(buff)) return { houseAmount: taxAmount, potAmount: 0 };
+      const potAmount = Math.floor(taxAmount * SpudKeep.POT_REDIRECT_PERCENT);
+      return { houseAmount: taxAmount - potAmount, potAmount }; // subtraction, not a second Math.floor
+                                                                  // — guarantees houseAmount+potAmount
+                                                                  // always equals the original taxAmount
+  }
+  ```
+
+  **The atomic-increment primitive, confirmed.** `addUserDatabase`'s own `add` `UpdateExpression`
+  (`src/utils/dynamoHandler.js`) is already this codebase's one existing atomic-ADD primitive, but it
+  targets the USER table by a fixed single-attribute shape. The stats table's own `updateStatFields`
+  only ever issues `set` (its call into `buildUpdateExpression` never passes `addAttributes`, even
+  though `buildUpdateExpression` has supported an `addAttributes` parameter, unused by every existing
+  stats-table caller, since it was written). The minimal, correct fix is a new one-line wrapper that
+  finally exercises that already-existing capability instead of inventing a new update-expression
+  builder:
+
+  ```js
+  // dynamoHandler.js, alongside updateStatFields — same table, same buildUpdateExpression helper,
+  // just routed through the ADD half instead of the SET half.
+  const addStatFields = async function (trackingId, addAttributes = {}) {
+      const { expression, names, values } = buildUpdateExpression({}, addAttributes);
+      if (!expression) return;
+      const params = {
+          TableName: awsConfigurations.aws_stats_table_name,
+          Key: { trackingId },
+          UpdateExpression: expression,
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+          ReturnValues: "ALL_NEW",
+      };
+      return docClient.update(params).promise().catch(err => console.debug(`addStatFields error: ${JSON.stringify(err)}`));
+  }
+  ```
+
+  This is a genuine atomic server-side increment (never a read-modify-write), exactly the primitive
+  the concurrency requirement calls for — many unrelated tax events across the whole server firing at
+  the same instant each issue their own independent `add` against `spud_keep.potPotatoes`/
+  `potStarches`, and DynamoDB serializes them at the attribute level with no lost updates, the same
+  guarantee `addUserDatabase` already relies on everywhere else in this codebase (and the exact class
+  of bug — read-then-write clobbering under concurrency — this repo's own `/rob` cooldown fix and
+  `findUser`'s `ConsistentRead` fix already had to clean up elsewhere). `creditSpudKeepPot` is the
+  one-line consumer:
+
+  ```js
+  // spudKeepFactory.js
+  async function creditSpudKeepPot(currencyField, amount) {
+      if (amount <= 0) return;
+      const potField = currencyField === 'starches' ? 'potStarches' : 'potPotatoes';
+      await dynamoHandler.addStatFields('spud_keep', { [potField]: amount });
+  }
+  ```
+
+  **Every tax site's new shape** (`bank.js`, `safehouse.js`, `guildBank.js`, `give.js`,
+  `companionMarket.js`, `sellStarch.js`, `startRaid.js`'s `addToBankOrPurse` — the exact list in
+  [economy-and-work.md#house-account-taxes](economy-and-work.md#house-account-taxes)):
+
+  ```js
+  // Before (every site today):
+  await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', taxAmount);
+
+  // After:
+  const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
+  await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+  await spudKeepFactory.creditSpudKeepPot('potatoes', potAmount);
+  ```
+
+  `give.js`'s starch-tax branch is the one site that passes `'starches'` instead of `'potatoes'` to
+  both calls, preserving the existing "house account holds two genuinely separate balances" rule
+  (see the Note on currency in economy-and-work.md) — the pot mirrors that split exactly
+  (`potPotatoes`/`potStarches` as two separate fields on `spud_keep`, never converted into each other).
+
+  **Cost, confirmed cheap by the same standard `isWorldBuffLive` already sets.** Every tax site pays
+  exactly one extra `getStatDatabase("spud_keep_buff")` read (a single-item Query on a tiny stats
+  table) per taxed transaction, plus one extra atomic `add` write when a holder happens to be live —
+  the identical read shape `getGuildWorkMulti`/`getWorldBuffWorkMulti` already pay at every one of
+  `/work`'s ~9 handlers, just now paid by tax call sites instead. This is not free, but it's the same
+  proven-cheap read this codebase already runs at far higher volume (`/work` is on a cooldown but
+  still this game's single most frequent command) — there was no way to make this "is a holder live"
+  check zero-cost, since (unlike the buff-consumption sites, which already needed a Spud Keep read for
+  their own purposes) these tax sites read nothing Spud-Keep-related today; one new read per site is
+  the honest floor, and it's the same floor every other live-buff consumer in this codebase already
+  accepts.
+
+  **Visibility — where players watch it climb.** The read-only status command already scoped earlier
+  in this entry (mirroring `/current-world-raid`) gains two more fields, read directly off the SAME
+  `spud_keep` doc it already reads for `guildEntrants`/`mercenaryEntrants` — `potPotatoes`/
+  `potStarches`, shown live, growing between cron resolutions, zero extra reads for the display itself.
+
+  **Resolution — who gets paid, and why.** *(Genuinely new interpretation call, not previously pinned
+  — flagged explicitly.)* The pot is split among the OUTGOING holder's own roster this cycle (a
+  guild's live raid roster, or the Merc Faction's counted top-N) — NOT among every entrant in the
+  lottery, and not only among the NEW winner. Read literally, "they collect [taxes]... and have it
+  split between those players" already frames this as the current holder's own side collecting the
+  fruits of the reign that's ending, and "the actual participants who fought for the Keep that cycle
+  (guild: everyone who joined; Merc Faction: only the counted top-N mercenaries)" maps exactly onto
+  the roster/top-N composition rules already established elsewhere in this entry for describing a
+  holder's own side — not the challenger side. Mechanically this is also the cheapest correct reading:
+  the outgoing holder's roster is ALREADY fetched in resolution-flow steps 2-4 (to compute its lottery
+  power), so paying it out costs zero extra reads, reusing `raidFactory.handlePotatoSplit`/the new
+  `handleStarchSplit` exactly as option 3 above already proposed for a lump sum, just fed the pot's
+  real accrued total instead of a fixed constant. See resolution-flow steps 7b/8 above for the exact
+  ordering (split first using the value read in step 1, then subtract — never blind-reset — exactly
+  what was paid, so a concurrent tax event mid-resolution is never destroyed).
+
+  **What this explicitly does NOT do**: it does not pay out to the newly-drawn winner if that's a
+  different side than the outgoing holder (the new winner starts accruing their OWN pot from zero,
+  going forward); it does not weight the split by power (an even split via `handlePotatoSplit`, same
+  as every other even-split reward in this codebase); it does not roll an empty-roster cycle's
+  forfeited pot forward into the next cycle (mirrors "empty holder naturally loses," no new
+  roll-forward mechanic to design/maintain).
 
   **Attacker's bonus (2026-08-30 follow-up) — reverses finding 6's "no defender's bonus"
   recommendation at direct user instruction, toward challengers specifically, not toward penalizing
