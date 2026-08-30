@@ -47,10 +47,18 @@ module.exports = {
 
         const result = await mercenaryFactory.resolveRivalConfrontation(userDetails);
 
-        // Full reset, win OR lose — the reset-to-0-on-any-resolution behavior IS the
-        // re-gating mechanism for the next cycle (see mercenaryNotoriety's own comment in
-        // dynamoHandler.getDefaultUserFields).
-        const setAttributes = { mercenaryNotoriety: 0 };
+        // Subtracts the flat CONFRONTATION_THRESHOLD, win OR lose, rather than resetting to
+        // 0 (direct instruction — "instead of notoriety going down to 0 on rival, just
+        // subtract 20 ... so that notoriety can also just be stored up"). Notoriety keeps
+        // accruing from /take-bounty/rob-npc wins even after a player is already eligible
+        // to fight (fighting is a deliberate player choice, not auto-triggered), so any
+        // overflow past the threshold at confrontation time now carries straight into the
+        // next cycle's progress instead of being thrown away — clamped at 0 so a rare
+        // edge case (this value ever ending up below the threshold some other way) can't
+        // go negative. Re-gating for the next cycle still works exactly the same:
+        // /confront-rival's own guard above only cares whether the value is still
+        // >= CONFRONTATION_THRESHOLD.
+        const setAttributes = { mercenaryNotoriety: Math.max(0, userDetails.mercenaryNotoriety - Rival.CONFRONTATION_THRESHOLD) };
         const addAttributes = {};
 
         if (result.won) {

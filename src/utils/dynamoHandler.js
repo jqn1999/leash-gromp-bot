@@ -424,12 +424,14 @@ function getDefaultUserFields(userId, username) {
                                          // and /join-guild — see Bounty.GUILD_SWITCH_COOLDOWN_SECONDS
         // Rival Bounty Hunters (systems/mercenary-bounties.md#rival-bounty-hunters) — a
         // resettable resource-threshold gate, not a cooldown timer. mercenaryNotoriety is
-        // the CYCLING progress meter (built up by /take-bounty and /rob-npc wins, reset to
-        // 0 on every /confront-rival resolution, win or lose); rivalConfrontationWinCount
-        // is the LIFETIME, never-reset counter the two rival_* achievements and
-        // /notoriety's own "rivals defeated" line read — same
-        // poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached resetting-vs-
-        // monotonic split this codebase already established.
+        // the CYCLING progress meter (built up by /take-bounty and /rob-npc wins; every
+        // /confront-rival resolution, win or lose, subtracts a flat Rival.CONFRONTATION_
+        // THRESHOLD rather than zeroing it out, so any overflow banked past the threshold
+        // before a player chooses to fight carries straight into the next cycle instead of
+        // being thrown away); rivalConfrontationWinCount is the LIFETIME, never-reset
+        // counter the two rival_* achievements and /notoriety's own "rivals defeated" line
+        // read — same poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached
+        // resetting-vs-monotonic split this codebase already established.
         mercenaryNotoriety: 0,
         rivalConfrontationWinCount: 0,
         // Safehouses (systems/safehouses.md) — mercenary-exclusive, purely defensive extra

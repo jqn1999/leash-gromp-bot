@@ -734,9 +734,12 @@ Mercenary-exclusive activity layered on top of ordinary Bounty/`/rob-npc` play. 
 framing from "you hunt a target" (Bounty) to "you've built a reputation and now something is
 hunting *you*." Gated by Mercenary Rank 2+ (Tier II's own unlock rank) plus a **resettable
 resource-threshold gate**, not a cooldown timer — the first accumulated-counter-as-gate
-pattern in this codebase. `/confront-rival` has no cooldown field at all; the
-reset-to-0-on-any-resolution behavior of `mercenaryNotoriety` *is* the re-gating mechanism
-for the next cycle.
+pattern in this codebase. `/confront-rival` has no cooldown field at all; every resolution
+subtracts a flat `Rival.CONFRONTATION_THRESHOLD` (20) from `mercenaryNotoriety` — changed
+2026-08-30 from an outright reset to 0, direct instruction ("subtract 20 ... so that
+notoriety can also just be stored up") — which *is* the re-gating mechanism for the next
+cycle, while letting any notoriety banked past the threshold before a player chose to fight
+carry straight into the next cycle's progress instead of being discarded.
 
 ### Notoriety accrual and the confrontation gate
 
@@ -961,8 +964,12 @@ Both live in `src/commands/user/`:
 Two new top-level fields, healed exactly like every other top-level default field:
 
 ```js
-mercenaryNotoriety: 0,          // resets to 0 on EVERY /confront-rival resolution, win or lose —
-                                 // the "cycle, not a ladder" progress meter
+mercenaryNotoriety: 0,          // on EVERY /confront-rival resolution (win or lose), loses a flat
+                                 // CONFRONTATION_THRESHOLD (20) rather than resetting to 0 (changed
+                                 // 2026-08-30, direct instruction) — any overflow banked past the
+                                 // threshold before a player chose to fight carries into the next
+                                 // cycle instead of being thrown away; the "cycle, not a ladder"
+                                 // progress meter
 rivalConfrontationWinCount: 0,  // LIFETIME, never reset — same delta-vs-lifetime split
                                  // poisonMitigation.weeklyHitCount/totalPoisonMilestonesReached
                                  // already established

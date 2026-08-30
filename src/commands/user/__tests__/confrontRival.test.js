@@ -1,10 +1,16 @@
 // /confront-rival's gating chain (§1 of the architect's technical design in roadmap.md) and
-// its write-sequence invariants (§10) — the reset-to-0-on-any-resolution behavior IS the
-// re-gating mechanism for the next cycle, so it's worth pinning down directly rather than
-// only trusting mercenaryFactory.resolveRivalConfrontation's own pure-formula tests.
+// its write-sequence invariants (§10) — subtracting CONFRONTATION_THRESHOLD (not resetting to
+// 0) on every resolution IS the re-gating mechanism for the next cycle, so it's worth pinning
+// down directly rather than only trusting mercenaryFactory.resolveRivalConfrontation's own
+// pure-formula tests.
 // Redesigned 2026-08-23, direct instruction: the command no longer takes a `tier` option at
 // all — which scenario (easy/medium/hard) a confrontation is gets rolled internally, not
 // chosen by the player. See systems/mercenary-bounties.md#rival-bounty-hunters.
+// Changed 2026-08-30, direct instruction ("instead of notoriety going down to 0 on rival,
+// just subtract 20 ... so that notoriety can also just be stored up") — a resolution now
+// subtracts a flat Rival.CONFRONTATION_THRESHOLD instead of zeroing mercenaryNotoriety out,
+// so any overflow banked past the threshold before the player chose to fight carries into
+// the next cycle.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -87,7 +93,7 @@ describe('/confront-rival gating chain', () => {
 describe('/confront-rival write sequence', () => {
     const { callback } = require('../confrontRival');
 
-    test('a win resets mercenaryNotoriety to 0, ADDs rivalConfrontationWinCount, and credits potatoes', async () => {
+    test('a win at exactly the threshold subtracts it down to 0, ADDs rivalConfrontationWinCount, and credits potatoes', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
         const interaction = fakeInteraction();
         // resolveRivalConfrontation's own call order: scenario roll, successChance roll, win
@@ -112,7 +118,7 @@ describe('/confront-rival write sequence', () => {
         expect(setAttributes.totalLosses).toBeUndefined();
     });
 
-    test('a loss resets mercenaryNotoriety to 0, does NOT add rivalConfrontationWinCount, and floors potatoes at 0', async () => {
+    test('a loss at exactly the threshold subtracts it down to 0, does NOT add rivalConfrontationWinCount, and floors potatoes at 0', async () => {
         // A tiny potato balance plus a near-guaranteed loss to exercise the Math.max(0, ...) floor.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: 10, totalLosses: 0 }));
         const interaction = fakeInteraction();
@@ -139,9 +145,10 @@ describe('/confront-rival write sequence', () => {
         expect(setAttributes.totalLosses).toBeLessThan(0);
     });
 
-    // Resolves the roadmap's own open question directly: a loss forfeits ALL accumulated
-    // Notoriety regardless of which scenario got rolled, not a scenario-scaled partial loss.
-    test('Notoriety resets to 0 on a loss whichever scenario gets rolled', async () => {
+    // Resolves the roadmap's own open question directly: a loss forfeits a flat
+    // CONFRONTATION_THRESHOLD worth of accumulated Notoriety regardless of which scenario got
+    // rolled, not a scenario-scaled partial loss.
+    test('a loss always subtracts exactly the threshold, whichever scenario gets rolled', async () => {
         const scenarioRolls = { hard: 0, medium: 0.15, easy: 0.5 };
         for (const scenario of Object.keys(scenarioRolls)) {
             dynamoHandler.updateUserFields.mockClear();
@@ -161,5 +168,39 @@ describe('/confront-rival write sequence', () => {
             const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
             expect(setAttributes.mercenaryNotoriety).toBe(0);
         }
+    });
+
+    // The actual point of this change (2026-08-30, direct instruction) — Notoriety banked
+    // past the threshold before the player chose to fight must carry into the next cycle
+    // instead of being discarded, on both a win and a loss.
+    test('a win with overflow banked past the threshold carries the remainder into the next cycle', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD + 25 }));
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.mercenaryNotoriety).toBe(25);
+    });
+
+    test('a loss with overflow banked past the threshold carries the remainder into the next cycle', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD + 10 }));
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.mercenaryNotoriety).toBe(10);
     });
 });

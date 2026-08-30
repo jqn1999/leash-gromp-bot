@@ -3450,6 +3450,29 @@ and needs its own balance pass.
   verified by hand instead. Docs: `systems/companions.md#viewing-and-equipping`. Full
   suite: 743/743 (up from 738/738 — 5 new tests, zero regressions).
 
+- [x] **89. Rival Confrontation Subtracts the Threshold Instead of Resetting Notoriety to 0**
+  — S — **Done**
+  What: direct instruction — "instead of notoriety going down to 0 on rival, just subtract
+  20 (the requirement for a rival fight) so that notoriety can also just be stored up."
+  Notoriety keeps accruing from `/take-bounty`/`/rob-npc` wins even after a player is
+  already eligible to fight (fighting is a deliberate choice, not auto-triggered), so any
+  amount banked past `Rival.CONFRONTATION_THRESHOLD` (20) before they actually run
+  `/confront-rival` used to be thrown away outright on the reset — now it carries into the
+  next cycle.
+  - `confrontRival.js`: `mercenaryNotoriety: 0` → `mercenaryNotoriety: Math.max(0,
+    userDetails.mercenaryNotoriety - Rival.CONFRONTATION_THRESHOLD)`, applied on both a win
+    and a loss (unchanged: still no discount on the loss side, still the same re-gating
+    check against the threshold for the next `/confront-rival`). `Math.max(0, ...)` guards
+    the same never-actually-possible-today edge case the existing potato-floor pattern
+    elsewhere in this file already guards defensively.
+  Tests: `confrontRival.test.js`'s three existing reset-to-0 tests still pass unchanged
+  (their fixture sits exactly at the threshold, so subtracting it still lands on 0) and were
+  relabeled to reflect what they now actually verify; 2 new tests added confirming a banked
+  overflow (threshold + 25 on a win, threshold + 10 on a loss) correctly carries the
+  remainder forward instead of zeroing out. Docs:
+  `systems/mercenary-bounties.md#rival-bounty-hunters`. Full suite: 745/745 (up from
+  743/743 — 2 new tests, zero regressions).
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
