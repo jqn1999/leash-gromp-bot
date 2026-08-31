@@ -6844,3 +6844,36 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   moved to 15. Difficulty-curve tests' hardcoded `4.0`-derived expected values were recomputed for
   `3.0` (not weakened), plus a new dedicated test locking in the paired 50%-coinflip invariant
   itself, generically off the live constants rather than a literal. Full suite: **888/888**.
+
+- [x] **Tower Entry Gate Uses Effective Power** — S — **Done (2026-08-31, same day)**. `enter-tower.js`'s
+  gate check and the `multi` handed to `towerFactory`'s constructor (`this.multi`, driving both the
+  Elite success-chance formula and `scalingFactor(this.multi)`'s reward scaling) both read raw
+  `userDetails.workMultiplierAmount` directly — that field already includes shop/regrade purchases
+  and flat `sweetPotatoBuffs` grants, but never the percentage-based power bonuses from rebirth or
+  companion `workMultiplierPercent` perks, which are computed live only where other systems actually
+  use them (`/work`'s `effectiveMultiplier`, Guild Raids' per-member power). A rebirther/companion
+  user was being gated, Elite-success-scaled, and reward-scaled on a smaller number than their real
+  strength.
+  Fix: both call sites now use `raidFactory.getMemberRaidPower(userDetails)` instead of the raw
+  field — reused rather than inventing a new formula, since it already solves exactly this problem
+  for an individual raider's own contribution (`workMultiplierAmount * (1 + live rebirth % +
+  companion workMultiplierPercent perk)`), and Tower is scoped the same way (one player's own
+  built-up power, not a group/contextual buff). `towerFactory.js` itself is untouched — it already
+  just takes whatever `multi` number it's constructed with. `processRewardPayouts`'s own raw-stat
+  read/write (crediting permanent stat GAINS earned during a run) is deliberately untouched too — a
+  permanent credit should never be inflated by a temporary rebirth/companion percentage.
+  Notable design points: deliberately excludes guild buffs and world buffs, matching
+  `getMemberRaidPower`'s own existing scope — those are temporary/contextual, not part of a player's
+  personal power, the same reasoning that already kept them out of an individual raider's own power
+  contribution (Guild Raids' separate `getEffectiveRaidPower`/`guildRaidMultiplierPercent` go further
+  for the group-roll case, which Tower has no equivalent of). Confirmed no circular dependency —
+  `raidFactory.js` requires `dynamoHandler`, `constants`, `rebirthFactory`, `companionFactory`; none
+  of those touch tower code. See
+  [systems/tower.md](systems/tower.md#entry-gate-uses-effective-power-2026-08-31) for the full
+  writeup.
+  Tests: new `src/commands/tower/__tests__/enter-tower.test.js` (this command had no dedicated test
+  file before) — a player below `ENTRY_GATE_MULTI` on raw stat alone who clears the gate once a real
+  `rebirthCount`-driven live bonus is folded in (the bug being fixed, exercised through the actual
+  formula rather than a stubbed return value), and a player at/above the raw threshold with no
+  rebirth/companion bonus to confirm identical gate/construction behavior to before. Full suite:
+  **891/891**.

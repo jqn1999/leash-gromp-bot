@@ -1154,3 +1154,55 @@ tests that previously used a hardcoded `multi = 20` purely as "a legal, scale-ne
 anchor moved to 15, so those tests needed to track the live gate constant to keep asserting the
 same "reward exactly equals the raw undecayed/unscaled value at the gate" invariant they were
 written to lock in. Full suite: **888/888**.
+
+## Entry Gate Uses Effective Power (2026-08-31)
+
+`enter-tower.js`'s gate check and the `multi` it hands to `towerFactory`'s constructor
+(`this.multi`, driving both `execElite`'s success-chance formula and `scalingFactor(this.multi)`'s
+reward scaling — see the two sections above) both used to read raw `userDetails.workMultiplierAmount`
+directly. That field already includes shop purchases, regrade purchases, and flat
+`sweetPotatoBuffs` grants — see `regrade.js`'s own `userBaseWorkMultiplier = workMultiplierAmount -
+sweetPotatoBuffs.workMultiplierAmount - regradeAmount` math — but it never included the
+*percentage*-based power bonuses from rebirth (`rebirthFactory.getLiveRebirthPercent`) or companion
+`workMultiplierPercent` perks, which are computed live only at the point other systems actually use
+them (`/work`'s `effectiveMultiplier`, Guild Raids' per-member power). A rebirther or someone running
+a power-boosting companion was being gated (and reward-scaled, and Elite-success-scaled) on a number
+strictly smaller than their real strength.
+
+Fixed both call sites in `enter-tower.js` to use `raidFactory.getMemberRaidPower(userDetails)`
+instead of the raw field:
+
+```js
+let userMultiplier = raidFactory.getMemberRaidPower(userDetails); // gate check
+...
+let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue) // this.multi
+```
+
+`getMemberRaidPower` (already exported by `raidFactory.js`, added for Guild Raids) was reused rather
+than inventing a new formula — it already solves exactly this problem for an individual raider's own
+contribution: `workMultiplierAmount * (1 + getLiveRebirthPercent + companion workMultiplierPercent
+perk)`. Tower is a solo minigame, same scope as one raider's own power, so the same formula applies
+unchanged.
+
+**Deliberately excludes guild buffs and world buffs**, matching `getMemberRaidPower`'s own existing
+scope (it's `/work`'s `effectiveMultiplier` and Guild Raids' `getEffectiveRaidPower` that go further
+and also fold in contextual boosts like `guildRaidMultiplierPercent`/world-event buffs — see
+`getEffectiveRaidPowerBreakdown`'s comment on `guildRaidMultiplierPercent` being applied separately).
+Guild/world buffs are temporary and contextual, not part of a player's own built-up power, so folding
+them into Tower's gate or reward scaling would let a temporary guild-wide buff single-handedly unlock
+or inflate a personal minigame run — the same reasoning that already kept them out of an individual
+raider's own power contribution.
+
+`towerFactory.js` itself is untouched — it already just takes whatever `multi` number its constructor
+is given. `processRewardPayouts`'s own `userDetails.workMultiplierAmount` read (crediting raw stat
+GAINS earned during a run back onto the raw DB field) is also untouched and must stay reading/writing
+the raw stat — crediting a permanent stat increase should never be inflated by a temporary
+rebirth/companion percentage.
+
+New coverage in `src/commands/tower/__tests__/enter-tower.test.js` (this command previously had no
+dedicated test file): a player below `ENTRY_GATE_MULTI` on raw `workMultiplierAmount` alone but who
+clears the gate once their live rebirth bonus is folded in (the bug being fixed — constructed via a
+real `rebirthCount` rather than a mocked `getMemberRaidPower`, so the actual formula is exercised
+end-to-end), and a player at/above the raw threshold with `rebirthCount: 0` to confirm identical
+gate/construction behavior to before (effective power === raw power when rebirth/companion bonuses
+are both 0). Full suite: **891/891**.

@@ -3,6 +3,7 @@ var {towerFactory} = require("../../utils/towerFactory");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands");
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
+const raidFactory = require("../../utils/raidFactory");
 
 async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died) {
     const userDetails = await dynamoHandler.findUser(userId, username);
@@ -71,7 +72,11 @@ module.exports = {
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
-        let userMultiplier = userDetails.workMultiplierAmount;
+        // Full effective power (raw stat + live rebirth/companion workMultiplierPercent
+        // bonuses), same formula raidFactory.js already uses for a solo raider's own
+        // contribution — see tower.md's "Entry Gate Uses Effective Power" section for why
+        // guild/world buffs are deliberately excluded here.
+        let userMultiplier = raidFactory.getMemberRaidPower(userDetails);
 
         if (userMultiplier < tC.ENTRY_GATE_MULTI) {
             interaction.editReply(`${userDisplayName} you are barred entry due to being too weak, reach ${tC.ENTRY_GATE_MULTI}x multiplier before you can enter!`)
@@ -85,7 +90,7 @@ module.exports = {
         }
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
-        let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount, userDetails.autoTowerContinue)
+        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue)
         let tower_out = await tF.startRun()
         let rewards = tower_out[0];
         let floor = tower_out[1];
