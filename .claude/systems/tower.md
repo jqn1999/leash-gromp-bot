@@ -1206,3 +1206,21 @@ real `rebirthCount` rather than a mocked `getMemberRaidPower`, so the actual for
 end-to-end), and a player at/above the raw threshold with `rebirthCount: 0` to confirm identical
 gate/construction behavior to before (effective power === raw power when rebirth/companion bonuses
 are both 0). Full suite: **891/891**.
+
+## Golden Ginger Auto-Pick Fixed (2026-08-31)
+
+`Golden Ginger` (a `REWARDS` entry, plain non-conditional choice between 200,000 passive income or
+1.5 million bank capacity — see "Content widening" above) was never added to `AUTO_PICK_TABLE`, so
+both SAFE and GREEDY fell through to the generic fallback, which compares raw numeric value and
+always picked bank capacity (1,500,000 > 200,000) — the two policies never actually diverged on this
+reward, and passive income was never once selected by either auto-policy (visible in every
+simulation run this session as exactly 0 expected passive income, regardless of multi).
+
+Per explicit direction, added a fixed entry (same shape as `King Kiwi`'s, which also always returns a
+constant index regardless of policy):
+```js
+"Golden Ginger": () => 0,   // both choices are risk-free permanent grants — always take passive
+                             // income (index 0) rather than the fallback's raw-value comparison.
+```
+Both SAFE and GREEDY now always take passive income for this reward. New test in
+`towerFactory.test.js` locks this in. Full suite: **892/892**.

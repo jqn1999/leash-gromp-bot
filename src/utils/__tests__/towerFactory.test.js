@@ -210,6 +210,13 @@ describe('pickChoiceIndex', () => {
         expect(pickChoiceIndex(fl, tC.POLICY.GREEDY)).toBe(0);
     });
 
+    test('Golden Ginger: both policies take passive income, not the larger raw bank capacity number', () => {
+        const fl = findReward('Golden Ginger');
+        const passiveIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.PASSIVE_INCOME);
+        expect(pickChoiceIndex(fl, tC.POLICY.SAFE)).toBe(passiveIndex);
+        expect(pickChoiceIndex(fl, tC.POLICY.GREEDY)).toBe(passiveIndex);
+    });
+
     describe('general default rule (fallback for content not in the explicit table)', () => {
         test('GREEDY takes an offered ELITE choice even amid other choices', () => {
             const fl = { name: 'Some Future Thing', choices: [

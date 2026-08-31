@@ -663,6 +663,11 @@ const AUTO_PICK_TABLE = {
     "The Baron's Beet": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.PAYOUT.BANK_CAPACITY : tC.CHOICES.EXIT)),
     "Fairy Fig": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.MODIFIER.WORK_MULTIPLIER : tC.PAYOUT.POTATOES)),
     "King Kiwi": () => 0,   // all three choices carry identical risk — no axis to diverge on.
+    "Golden Ginger": () => 0,   // both choices are risk-free permanent grants (200,000 passive
+                                 // income vs. 1.5 million bank capacity) — per explicit direction,
+                                 // always take passive income (index 0) rather than letting the
+                                 // generic fallback's raw-value comparison always pick bank
+                                 // capacity for having the bigger number.
 }
 
 function pickChoiceIndex(fl, policy) {
