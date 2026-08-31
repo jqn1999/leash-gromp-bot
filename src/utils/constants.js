@@ -1606,6 +1606,14 @@ const Bounty = {
     // discounted by it in the first place (guild raids never pay starches, so there was
     // never an analogous "don't out-earn guild" risk to guard against here).
     STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 },
+    // House tax on a WON bounty (2026-08-31, direct instruction: "add 5% bounty tax,
+    // nothing on rob-npc") — taken off the top of result.rewardAmount before crediting the
+    // winner, same "taken out of a gross amount" shape every other percentage-of-reward
+    // house tax in this game uses (see economy-and-work.md#house-account-taxes). Never
+    // applied to a loss's penaltyAmount — a loss isn't income to skim, same precedent
+    // guild raids already established for their own penalty side. /rob-npc (Heist)
+    // deliberately excluded per the same instruction — this tax is Bounty-only.
+    WIN_TAX_PERCENT: 0.05,
     // Added 2026-08-23, direct instruction — without this, a player could rapidly flip
     // guild <-> mercenary to double-dip both tracks' benefits in quick succession (e.g.
     // ride a guild raid, retire to mercenary for a Bounty an hour later, rejoin a guild

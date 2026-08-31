@@ -496,6 +496,7 @@ crediting the pot, since the pot itself is potato-only).
 | `/companion-market` sale | `CompanionMarket.TAX_PERCENT(.05)` | Taken out |
 | `/sell-starch` (new 2026-08-30) | `Starch.SELL_TAX_PERCENT(.05)` | Taken out |
 | Guild raid win (new 2026-08-30) | `Raid.GUILD_RAID_TAX_PERCENT(.05)` | Taken out |
+| `/take-bounty` win (new 2026-08-31) | `Bounty.WIN_TAX_PERCENT(.05)` | Taken out |
 
 **`/sell-starch`** — 5% of the gross `sellValue` (already inclusive of any Mole/Rootcarver/Elder
 Rootbeard/starch-buff price bonuses), taken off the top before `profitOrLoss` is computed, so a
@@ -512,6 +513,20 @@ parameter (defaults to `null`, degrading to untaxed) so any caller that hasn't b
 doesn't crash, mirroring `raidSplitMode`/`raidListByMulti`'s own default-to-old-behavior shape on
 the same function signature.
 
-**Note on currency**: a starch-denominated tax (`/give`'s starch tax) is credited to the house
-account's own `starches` field, never converted to potatoes — the house account holds two
-genuinely separate balances, same as any player.
+**`/take-bounty` wins** — 5% of `result.rewardAmount` (`mercenaryFactory.resolveBountyAttempt`'s
+pure GROSS output, left untouched), taken off the top in `takeBounty.js` before crediting the
+winner — in whichever currency that bounty paid out in (potato or starch, `result.currency`), same
+"taxed in the currency it's denominated in" shape `/give`'s two separate tax rates already
+establish. Never applied to a loss's `penaltyAmount` — a loss isn't income to skim, same precedent
+guild raids already set for their own penalty side. Deliberately **excludes `/rob-npc` (Heist)** —
+direct instruction ("add 5% bounty tax, nothing on rob-npc") scoped this to Bounty only. Shown
+explicitly on the result embed as a "Kingdom Tax" field
+(`embedFactory.createBountyResultEmbed`'s new `netRewardAmount`/`taxAmount` params, both defaulting
+to the untaxed shape so a call site that hasn't been updated doesn't crash).
+
+**Note on currency**: a starch-denominated tax (`/give`'s starch tax, a starch-flavored `/take-bounty`
+win's tax) is credited to the house account's own `starches` field, never converted to potatoes —
+the house account holds two genuinely separate balances, same as any player. (The one exception is
+crediting the Spud Keep POT specifically, which is potato-only — see
+[spud-keep.md](spud-keep.md#the-pot-reward-part-2--a-redirect-not-conjured-money) for
+`convertStarchesToPotatoesForPot`.)

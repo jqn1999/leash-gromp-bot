@@ -87,6 +87,14 @@ module.exports = {
         };
         const addAttributes = {};
 
+        // House tax on a win (Bounty.WIN_TAX_PERCENT, 5%, new 2026-08-31, direct instruction
+        // "add 5% bounty tax, nothing on rob-npc") — taken off result.rewardAmount's own
+        // GROSS value before crediting the winner, same "taken out" shape /give's tax uses.
+        // result.rewardAmount itself is left untouched (mercenaryFactory's pure resolution
+        // output) — netRewardAmount is what actually reaches the player, taxAmount is what's
+        // redirected to the house/Spud Keep pot in whichever currency this bounty paid in.
+        let taxAmount = 0;
+        let netRewardAmount = result.won ? result.rewardAmount : 0;
         if (result.won) {
             addAttributes.mercenaryBountyWinCount = 1;
             // Rival Bounty Hunters — Notoriety accrual is a one-line constant lookup, not a
@@ -96,13 +104,27 @@ module.exports = {
             // tier the 12-Tier Bounty Ladder rework introduced. See
             // systems/mercenary-bounties.md#rival-bounty-hunters.
             addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_BOUNTY_TIER[mercenaryFactory.getBandLetter(result.tier)];
+
+            taxAmount = Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
+            netRewardAmount = result.rewardAmount - taxAmount;
+            if (taxAmount > 0) {
+                const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
+                const balanceField = result.currency === 'potato' ? 'potatoes' : 'starches';
+                await dynamoHandler.addUserDatabase(client.user.id, balanceField, houseAmount);
+                if (result.currency === 'potato') {
+                    await spudKeepFactory.creditSpudKeepPot(potAmount);
+                } else {
+                    await spudKeepFactory.creditSpudKeepPot(await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount));
+                }
+            }
+
             if (result.currency === 'potato') {
-                userPotatoes += result.rewardAmount;
-                userTotalEarnings += result.rewardAmount;
+                userPotatoes += netRewardAmount;
+                userTotalEarnings += netRewardAmount;
                 setAttributes.potatoes = userPotatoes;
                 setAttributes.totalEarnings = userTotalEarnings;
             } else {
-                userStarches += result.rewardAmount;
+                userStarches += netRewardAmount;
                 setAttributes.starches = userStarches;
             }
         } else {
@@ -146,8 +168,8 @@ module.exports = {
 
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
-        if (result.won && result.currency === 'potato' && result.rewardAmount > 0) {
-            await dynamoHandler.updateIfNewRecord(userId, 'largestBountyReward', result.rewardAmount);
+        if (result.won && result.currency === 'potato' && netRewardAmount > 0) {
+            await dynamoHandler.updateIfNewRecord(userId, 'largestBountyReward', netRewardAmount);
         }
 
         // The rare permanent stat-increase branch — reuses raidFactory.handleStatSplit
@@ -161,7 +183,7 @@ module.exports = {
             }
         }
 
-        const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward);
+        const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount);
         await interaction.editReply({ embeds: [embed] });
 
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);

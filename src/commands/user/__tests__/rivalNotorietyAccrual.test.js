@@ -71,7 +71,9 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
             .mockReturnValueOnce(0.99)
             .mockReturnValueOnce(0.99);
         try {
-            await callback({}, interaction);
+            // A win now runs the new Bounty.WIN_TAX_PERCENT tax path, which credits the
+            // house account via client.user.id — needs a real client fixture, not {}.
+            await callback({ user: { id: 'house-account' } }, interaction);
         } finally {
             randomSpy.mockRestore();
         }

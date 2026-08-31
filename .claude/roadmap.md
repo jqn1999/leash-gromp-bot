@@ -6474,6 +6474,24 @@ generalized (the underlying "trusts whatever userDetails it's handed, no implici
 regression guard is still real for any quest's statPath, not just achievements). Full suite:
 823/823, zero regressions. Docs: [systems/quests.md](systems/quests.md) updated.
 
+**Add a 5% `/take-bounty` win tax, nothing on `/rob-npc` (2026-08-31).** Direct instruction: "add
+5% bounty tax, nothing on rob-npc." New `Bounty.WIN_TAX_PERCENT(.05)`, taken off
+`result.rewardAmount`'s GROSS value (from `mercenaryFactory.resolveBountyAttempt`, left untouched)
+in `takeBounty.js` before crediting the winner, in whichever currency the bounty paid out in
+(potato or starch). Routed through `spudKeepFactory.splitTaxForSpudKeepPot`, same as every other
+percentage-of-reward house tax — 100% to the house when no Spud Keep holder is live, 75%/25%
+pot/house split when one is. Never applied to a loss's `penaltyAmount`. `/rob-npc` (Heist)
+deliberately untouched per the instruction — its own reward path has no tax at all.
+`largestBountyReward` now records the NET (post-tax) amount, matching `largestRaidContribution`'s
+own "actual amount received" precedent. Shown on the result embed as a "Kingdom Tax" field
+(`createBountyResultEmbed`'s new `netRewardAmount`/`taxAmount` params, defaulting to the untaxed
+shape so no other call site needed updating). New test file `takeBountyTax.test.js` (potato win,
+starch win, loss is untouched, Spud Keep pot redirect when a holder is live) plus fixture fixes in
+`mercenaryCompanionLeveling.test.js`/`rivalNotorietyAccrual.test.js` (a win now needs a real
+`client.user.id`, not `{}`). Full suite: 827/827, zero regressions. Docs:
+[systems/mercenary-bounties.md](systems/mercenary-bounties.md) and
+[systems/economy-and-work.md](systems/economy-and-work.md#house-account-taxes) updated.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

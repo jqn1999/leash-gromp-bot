@@ -360,6 +360,30 @@ since before the 15%-share retirement and is unchanged by it — only the consta
 (`tierEntry.penalty` instead of `Bounty.BOUNTY_T{n}_PENALTY * SOLO_BOUNTY_REWARD_SHARE`)
 simplified.
 
+### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
+
+Direct instruction: "add 5% bounty tax, nothing on rob-npc." `mercenaryFactory.resolveBountyAttempt`
+itself is untouched — `result.rewardAmount` stays the pure GROSS value the formulas above compute.
+The tax is taken off the top in `takeBounty.js`, in whichever currency the win paid out in
+(`result.currency`):
+
+```
+taxAmount = floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT)
+netRewardAmount = result.rewardAmount - taxAmount
+```
+
+`netRewardAmount` is what's actually credited to the winner (and what `largestBountyReward` now
+records); `taxAmount` is routed through `spudKeepFactory.splitTaxForSpudKeepPot` exactly like every
+other percentage-of-reward house tax (see
+[economy-and-work.md#house-account-taxes](economy-and-work.md#house-account-taxes)) — 100% to the
+house when no Spud Keep holder is live, 75% to the accruing pot / 25% to the house when one is.
+Never applied to a loss's `penaltyAmount` — a loss isn't income to skim, same precedent guild raids
+already set for their own penalty side. **`/rob-npc` (Heist) is deliberately excluded** — the
+instruction scoped this to Bounty only; Heist's own reward path is completely untouched. Shown on
+the result embed as a "Kingdom Tax" field (`embedFactory.createBountyResultEmbed`'s new
+`netRewardAmount`/`taxAmount` params, both defaulting to the untaxed shape —
+`result.rewardAmount`/`0` — so a call site that hasn't been updated doesn't crash).
+
 ## Flavor-text scenarios (`BountyScenarios`)
 
 Keyed by **band letter** (`I`/`II`/`III` — see `mercenaryFactory.getBandLetter`, which maps

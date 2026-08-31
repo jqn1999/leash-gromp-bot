@@ -1618,8 +1618,12 @@ class EmbedFactory {
     // createCompanionEncounterEmbed already set. `result` is
     // mercenaryFactory.resolveBountyAttempt's own return shape; `yukonAward` is
     // mercenaryFactory.resolveYukonAward's return shape, or null if Yukon didn't hit.
-    createBountyResultEmbed(userDisplayName, result, yukonAward = null) {
-        const { tier, mode, won, successChance, scenario, rankInfo, currency, rewardAmount, penaltyAmount, statReward } = result;
+    // netRewardAmount/taxAmount (Bounty.WIN_TAX_PERCENT, 5%, new 2026-08-31) default to
+    // result.rewardAmount/0 so any call site that hasn't been updated still shows the
+    // pre-tax number rather than crashing — same default-to-untaxed shape
+    // createBuyOrSellStarchEmbed's own taxAmount param already uses.
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0) {
+        const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
 
@@ -1639,9 +1643,16 @@ class EmbedFactory {
             const currencyLabel = currency === 'potato' ? 'Potatoes' : 'Starches';
             fields.push({
                 name: `${currencyLabel} Gained:`,
-                value: `${rewardAmount.toLocaleString()} ${currencyLabel.toLowerCase()}`,
+                value: `${netRewardAmount.toLocaleString()} ${currencyLabel.toLowerCase()}`,
                 inline: true,
             });
+            if (taxAmount > 0) {
+                fields.push({
+                    name: 'Kingdom Tax:',
+                    value: `${taxAmount.toLocaleString()} ${currencyLabel.toLowerCase()} (5%)`,
+                    inline: true,
+                });
+            }
         } else {
             fields.push({
                 name: 'Potatoes Lost:',

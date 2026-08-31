@@ -80,6 +80,9 @@ beforeEach(() => {
 
 describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, on win or loss', () => {
     const { callback } = require('../takeBounty');
+    // A win now runs the new Bounty.WIN_TAX_PERCENT tax path, which credits the house
+    // account via client.user.id — needs a real client fixture, not {}.
+    const fakeClient = { user: { id: 'house-account' } };
 
     test('a win bumps Yukon by the Bounty-scaled grant', async () => {
         const user = baseUser();
@@ -92,7 +95,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
             .mockReturnValueOnce(0.99) // stat-reward miss
             .mockReturnValueOnce(0.99); // yukon miss (already owned/equipped — this is the drop roll, not the leveling)
         try {
-            await callback({}, interaction);
+            await callback(fakeClient, interaction);
         } finally {
             randomSpy.mockRestore();
         }
@@ -110,7 +113,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
             .mockReturnValueOnce(0)        // scenario index
             .mockReturnValueOnce(0);       // penalty rangeRoll
         try {
-            await callback({}, interaction);
+            await callback(fakeClient, interaction);
         } finally {
             randomSpy.mockRestore();
         }
@@ -132,7 +135,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
             .mockReturnValueOnce(0.99)
             .mockReturnValueOnce(0.99);
         try {
-            await callback({}, interaction);
+            await callback(fakeClient, interaction);
         } finally {
             randomSpy.mockRestore();
         }
@@ -150,7 +153,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(0);
         try {
-            await callback({}, interaction);
+            await callback(fakeClient, interaction);
         } finally {
             randomSpy.mockRestore();
         }
@@ -177,7 +180,7 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
             .mockReturnValueOnce(0.99) // stat-reward miss
             .mockReturnValueOnce(0);   // yukon HIT (duplicate — already owned)
         try {
-            await callback({}, interaction);
+            await callback(fakeClient, interaction);
         } finally {
             randomSpy.mockRestore();
         }
