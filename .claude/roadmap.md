@@ -7166,3 +7166,292 @@ entire potato penalty. Naming decided too — see 5 below.
   `getGuildBuffValue`'s exact shape; `/guild`'s embed (`embedFactory.js`) to display Cinderroot
   once owned; a new `systems/` doc or a new section in [guilds.md](guilds.md), architect's call
   depending on final surface area.
+
+## Mercenary Leaderboard (2026-08-31, requested)
+
+Direct ask: "Add a merc leaderboard based on merc successes bounty and level." Verified against
+`src/utils/mercenaryFactory.js` (`getMercenaryRankInfo`), `src/commands/user/takeBounty.js`,
+`src/utils/dynamoHandler.js` (`getSortedUsers`/`getSortedGuildsByLevelAndRaidCount`/`getUsers`),
+and `src/commands/user/leaderboard.js`/`src/commands/tower/tower-leaderboard.js` for the two
+leaderboard shapes this codebase already has.
+
+**Ranking key: `mercenaryBountyWinCount` alone — a single number, not a real composite.**
+"Successes, bounty, and level" collapses to one metric already: Mercenary Rank
+(`MercenaryRank.THRESHOLDS`, 6 ranks, 0/15/50/125/275/525 wins) is purely a live readout of
+`mercenaryBountyWinCount` via `getMercenaryRankInfo` — exactly the same relationship
+`getSortedGuildsByLevelAndRaidCount`'s own comment already documents for Guild Level/`raidCount`
+("sorting by level-then-raidCount is exactly equivalent to sorting by raidCount alone — level is a
+monotonic readout of the same number, not a separate signal"). Sort by win count, display the
+derived rank as a readout, same as the Guild Leaderboard shows Level next to raid wins.
+
+**Live query, not a Tower-style daily snapshot.** Tower's leaderboard
+(`towerLeaderboardFactory.js`, `getTowerLeaderboard`/`clearTowerLeaderboard`) exists because a
+Tower *run* is an ephemeral, resettable daily contest with its own payout. A mercenary's win count
+is a lifetime, already-persisted per-user counter — exactly like `guild.raidCount` — so the correct
+precedent is `/leaderboard`'s existing live-scan pattern (`getSortedUsers`/
+`getSortedGuildsByLevelAndRaidCount`: `getUsers()` full-table scan, sort in-memory, no stored
+snapshot, no reset). A periodic reset here would be actively wrong — it would erase real rank
+standing, not just a leaderboard display.
+
+**Inclusion filter: `mercenaryBountyWinCount > 0`, NOT `isMercenary === true`.**
+`/retire-mercenary` explicitly leaves `mercenaryBountyWinCount` untouched ("Your Mercenary Rank and
+win count are untouched, in case you come back later") while flipping `isMercenary` to `false` — a
+filter on `isMercenary` would silently drop retired champions off their own leaderboard. Filtering
+on win count also keeps the scan cheap to sort (excludes the large body of users who were never a
+mercenary at all, same as Guild Leaderboard implicitly excludes disbanded/memberless guilds by
+having nothing worth showing for `raidCount: 0`). Recommend tagging a retired entry with a small
+"(Retired)" suffix in the embed, reading `isMercenary`, purely cosmetic.
+
+**Command surface: a new `mercenary-leaderboard` option value on the existing `/leaderboard`
+command, not a new slash command.** `/leaderboard`'s `leaderboard-option` choices
+(`user-leaderboard`/`guild-leaderboard`/`starch-leaderboard`) are exactly this shape already — one
+command, N leaderboard types, each backed by its own `getSorted*` dynamoHandler function and its
+own `create*LeaderboardEmbed`. Adding a fourth option is a direct, minimal-touch fit; a standalone
+`/mercenary-leaderboard` command (mirroring `/tower-leaderboard`) was considered and rejected here
+specifically because Tower's leaderboard needed its own command for a different reason (it also
+shows *today's in-progress* standings, a concept `/leaderboard`'s other three options don't have) —
+Mercenary has no such live-run state to show, so it fits the existing enum cleanly instead.
+
+**Zero new persisted state.** `mercenaryBountyWinCount` already exists and is exactly the right
+column; nothing new to add to `getDefaultUserFields`.
+
+**Not a new pattern.** This is a pure reuse of the already-established live-sorted-leaderboard
+shape (`getSortedUsers`/`getSortedGuildsByLevelAndRaidCount`) — no new mechanic, no new data model
+question, no balance question (a leaderboard doesn't change any formula).
+
+**Open questions, with a recommendation on each:**
+- Filter to active mercenaries only? **Recommend no** — see the retirement reasoning above; show
+  everyone with at least 1 win, tag retirees.
+- New command or fold into `/leaderboard`? **Recommend fold in** — see above.
+- Show "Your Rank" like the user leaderboard does? **Recommend yes, reusing `leaderboard.js`'s own
+  `findUserIndex` helper** — but guard the case a non-mercenary (or 0-win mercenary) calls it:
+  `findUserIndex` assumes the caller's `userId` is present in the array being searched, which won't
+  be true here for most callers (the sorted list excludes 0-win users entirely) — show a plain "You
+  haven't won a bounty yet" fallback line instead of running `findUserIndex` against an array that
+  doesn't contain them.
+
+**Touches:** `dynamoHandler.js` (new `getSortedMercenariesByBountyWins()`, mirroring
+`getSortedGuildsByLevelAndRaidCount`'s exact shape: `getUsers()` then filter
+`mercenaryBountyWinCount > 0` then sort descending); `embedFactory.js` (new
+`createMercenaryLeaderboardEmbed(sortedMercs, userIndex)`, mirroring `createGuildLeaderboardEmbed`'s
+per-entry shape — rank label via the existing `rankLabel` helper, username, Mercenary Rank name/
+number via `mercenaryFactory.getMercenaryRankInfo`, win count, "(Retired)" tag when `!isMercenary`);
+`src/commands/user/leaderboard.js` (new `mercenary-leaderboard` choice + case, reusing
+`findUserIndex` with the 0-win guard above). No changes needed to `mercenaryFactory.js` itself —
+`getMercenaryRankInfo` is already exported and already exactly what the embed needs.
+
+## Raid Result Embed Shows Next-Raid Cooldown (2026-08-31, requested)
+
+Direct ask: "Have the final raid embed say how long until the next raid is available so users
+don't have to immediately check raid after a raid completion." Verified against
+`src/commands/guilds/startRaid.js`'s `runStartRaidFlow` and `src/utils/embedFactory.js`'s
+`createRaidEmbed`.
+
+**The value is fully computable BEFORE any raid scenario resolves — a genuinely useful finding,
+not just a convenience.** `runStartRaidFlow`'s final `raidTimer` write (currently at the very
+bottom of the function) sums four reduction terms: `guildLevelRaidTimerReduction`
+(`getRaidLevelInfo(guild.raidCount)`, pre-raid), `guildBuffRaidTimerReduction`
+(`guild.guildBuff`/`getGuildBuffValue`, pre-raid), `spudKeepRaidTimerReduction` (whoever currently
+holds Spud Keep — independent of this raid's outcome), and `companionCooldownReduction`
+(`guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel)` — reads the PRE-raid `guild`
+object, not the post-raid `freshGuild`, even in today's real write). **None of these four terms
+depend on win/loss, which scenario/tier gets rolled, or `potatoesGained`** — confirmed by reading
+the actual bottom-of-function computation, not assumed. That means
+`Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 *
+totalRaidTimerReduction)` can be computed once, at the very top of `runStartRaidFlow` (right where
+`guildLevel`/`companionRewardBonus` are already computed, before the preview embed), and reused
+both for display and for the actual `updateGuildDatabase(guildId, 'raidTimer', ...)` write at the
+bottom — which also **removes a duplicate computation**, closing off any future risk of the
+displayed number drifting from the actual written cooldown (previously two independent call sites
+computing what should always be the same formula).
+
+**Display convention: `<t:UNIX:R>`, already established in this codebase.** Grepped for existing
+precedent rather than assuming — Spud Keep's buff-expiry displays already use exactly this
+(`embedFactory.js`: `` `buff expires <t:${Math.floor(currentBuff.expiresAt / 1000)}:R>` ``,
+`` `Last resolved <t:${Math.floor(spudKeep.lastResolvedAt / 1000)}:R>.` ``). `/bounty-board` and
+`/start-raid`'s own pre-raid cooldown check instead use `convertSecondstoMinutes` (a static "X
+minutes" string) — **recommend the Discord relative timestamp over that**, since it self-updates
+live in the client and is the more recent, already-adopted convention for a future point in time
+specifically (vs. `convertSecondstoMinutes`'s use for "how long you must still wait," a duration,
+not a timestamp).
+
+**Genuinely more touch surface than "small" suggests, though every single edit is mechanical.**
+`createRaidEmbed` is called from **~25 separate call sites** across 5 module-scope scenario arrays
+(`babyRaidScenarios`/`regularRaidScenarios`/`eliteRaidScenarios`/`legendaryRaidScenarios`/
+`statRaidScenarios`), each an independent closure with no lexical access to `runStartRaidFlow`'s
+local variables (same reason `sacrificeOffer` is explicitly passed as a parameter today, per that
+code's own comment). Adding `nextRaidAvailableAt` needs: one new trailing parameter on
+`createRaidEmbed` itself; one new argument on each of the 5 `scenario.action(...)` call statements
+in `runStartRaidFlow` (alongside `raidRewardMultiplier`, already threaded the same way); and each
+of the ~14 scenario closure functions passing that value through to its own `createRaidEmbed`
+call(s) (1-2 per closure). None of this is a logic change — it's the exact same "add a trailing
+default param, thread it through" shape this file already used for `raidRewardMultiplier`
+and `sacrificeOffer` — but a developer should budget for touching every scenario closure in
+`startRaid.js`, not treat this as a one-line change.
+
+**Formula/example:** at `Raid.RAID_TIMER_SECONDS` = 3600s with a guild sitting at, say, 30%
+(guild level) + 15% (selected `raidTimer` buff) + 8% (Spud Keep holder) + 4% (Cinderroot, if
+owned) = 57% total reduction: `nextRaidAvailableAt = Date.now() + 3600_000 - (3600_000 * 0.57)` =
+`Date.now() + 1_548_000` (~25.8 minutes out). Embed shows `Next Raid Available: <t:UNIX:R>` (e.g.
+"in 26 minutes"), where `UNIX = Math.floor(nextRaidAvailableAt / 1000)`.
+
+**Open questions, with a recommendation on each:**
+- Show this on a loss too, or only a win? **Recommend always** — the cooldown reset is unconditional
+  on win/loss (confirmed: the write sits outside every win/loss branch), so there's no reason to
+  withhold the information on a loss; that's exactly the case the product owner's own framing
+  ("so users don't have to immediately check raid") cares about most.
+- Show it on `stat`-mode raids too? **Recommend yes** — the raid-wide cooldown applies regardless of
+  mode; `statRaidScenarios`' closures have a narrower parameter list today (no
+  `raidRewardMultiplier`/`sacrificeOffer`) but still call `createRaidEmbed`, so they need the same
+  one new parameter.
+- New field or folded into an existing one? **Recommend a new field**, "Next Raid Available" —
+  keeps it scannable and matches Spud Keep's own precedent of a distinct sentence/field for a
+  relative timestamp rather than appending it to an unrelated field's value.
+
+**Touches:** `src/commands/guilds/startRaid.js` (hoist the `totalRaidTimerReduction`/
+`nextRaidAvailableAt` computation from the bottom of `runStartRaidFlow` to the top, right after
+`guildLevel` is known; remove the now-duplicate bottom computation, reusing the hoisted value for
+the final `updateGuildDatabase` write; add `nextRaidAvailableAt` to each of the 5
+`scenario.action(...)` call statements and each scenario closure's own signature/`createRaidEmbed`
+call); `src/utils/embedFactory.js` (`createRaidEmbed` gets one new trailing default param,
+`nextRaidAvailableAt = null`, and a new field using `<t:${Math.floor(nextRaidAvailableAt /
+1000)}:R>` when non-null).
+
+## Companion "Work Count" → "XP" Rename + Show XP Gained in Result Embeds (2026-08-31, requested)
+
+Direct ask, user's own words: "Make companion works just called exp or something since it goes up
+through many different means now. For each of those include the companion xp gained if possible in
+embeds when relevant if the correct pet is on." Verified in full against
+`src/utils/companionFactory.js`, every one of its 6 real call sites
+(`work.js`/`rob.js`/`sellStarch.js`/`takeBounty.js`/`robNpc.js`/`regrade.js`), and a codebase-wide
+grep for `workCount` (424 raw occurrences across 35 files).
+
+**Part 1 — the rename. Recommend display-text-only, NOT a field/identifier rename, and this
+distinction matters more than it looks like it should.**
+
+The field in question is `companions.owned[].workCount` (each owned companion instance's XP/leveling
+counter), read by `getCompanionLevel`/`getNextLevelThreshold`/`getActivePerkValue` and written by
+`levelActiveCompanion`/`applyPassiveCompanionTick`/`resolveScavengeReward`. It is genuinely
+misnamed today — it accrues from `/work`, `/rob`, `/sell-starch`, `/take-bounty`, `/rob-npc`,
+`/regrade`, Scavenging returns, and a passive-companion tick, not just `/work` anymore (see
+`companionFactory.js`'s own extensive comments documenting each of these paths). "XP" is the right
+player-facing word.
+
+**But there is a landmine the naive fix walks straight into: `userDetails.workCount` (a totally
+different, unrelated field — the player's own lifetime count of `/work` command invocations, used
+for achievements and the catch-up formula) shares the exact same literal string `workCount`.** A
+blind rename or find/replace would corrupt that unrelated feature. Any rename work MUST be scoped
+precisely to `companions.owned[].workCount` and its direct siblings
+(`CompanionLeveling.THRESHOLDS[].workCountRequired`, `getCooldownScaledWorkCountGrant`,
+`getRegradeWorkCountGrant`, `getStarchSellWorkCountGrant`, `levelActiveCompanion`'s
+`workCountGained` parameter, `resolveScavengeReward`'s `workCountGained` return, embed labels on
+companion-specific embeds) — never `userDetails.workCount` itself, whose own "Work Count:" displays
+(profile embed, and the per-`/work`-result embeds' own field showing `newWorkCount`) are correctly
+named already and must stay untouched.
+
+**Recommend: rename display strings only, leave every internal field/variable/function name as
+`workCount`.** Reasoning:
+- This codebase's own stated convention is "no ORM... new persisted fields go through
+  `getDefaultUserFields`-style defaults... not a migration script." That convention covers *adding*
+  fields with self-healing defaults; it says nothing about *renaming* a field every existing user's
+  DynamoDB row already has real, non-default data in. Renaming the stored key
+  (`companions.owned[].workCount` → e.g. `.xp`) for real would need either a genuine one-time
+  migration script (a pattern this codebase has never used and the docs explicitly steer away from)
+  or permanent dual-read compatibility code in every reader (`getCompanionLevel`, etc., checking
+  `entry.xp ?? entry.workCount`) forever — real, ongoing complexity purchased for a purely cosmetic
+  ask.
+- Blast radius if attempted anyway: 424 raw-text matches for `workCount` across 35 files, including
+  `companionFactory.js` (48), `embedFactory.js` (21), `constants.js` (28), `dynamoHandler.js` (4),
+  `workFactory.js` (12), 6 command files, and 10+ test files (`companionFactory.test.js` alone: 133
+  occurrences). Even after correctly excluding every `userDetails.workCount` occurrence from that
+  count, this is still a wide, high-risk mechanical rename for something that's supposed to be a
+  cosmetic label fix.
+- Precedent already in this codebase for exactly this kind of internal/external name mismatch:
+  `mercenaryBountyWinCount` is the internal field name for what's player-facing displayed as
+  "Mercenary Rank" progress — nobody has renamed the field to match the display concept it drives.
+  Same treatment here: `workCount` stays the internal name, "XP" becomes the exclusive player-facing
+  word.
+
+**Concretely, what changes:** every companion-facing embed/label currently saying "Work Count" or
+"/work calls" becomes "XP" — `embedFactory.js`'s companion list embed (`X / Y /work calls to Lv. Z`
+→ `X / Y XP to Lv. Z`; `/work calls — max level` → `XP — max level`), the Scavenge Return embed's
+"Work Count:" field label, and the companion-market listing embeds' equivalent level-progress text.
+New code this feature adds (the XP-gained display below, any new helper names) should use
+"XP"-flavored naming freely since it's new, not a rename of anything existing.
+
+**Part 2 — show "+N Companion XP" in result embeds, only when it actually applied.**
+
+**New shared helper, `companionFactory.getAppliedCompanionXpGain(companionsBefore, companionsAfter)`**
+— diffs the active instance's `workCount` before vs. after a `levelActiveCompanion` call (via the
+already-exported `getActiveInstance`) and returns the delta (0 if nothing was equipped, or if
+`levelActiveCompanion`'s own `restrictToCompanionId`/`restrictToPerkType` gate didn't match — both
+already produce a same-reference no-op today). This is the "how do I know if it was a no-op"
+mechanism the product owner asked to reuse — rather than duplicating each call site's own
+restriction logic (Yukon-only for Bounty/Heist, perk-type-gated for Rob/Sell-Starch/Regrade,
+unrestricted for `/work`), every caller just diffs before/after and gets the right answer uniformly.
+
+**5 of 6 commands already compute the leveling grant BEFORE building their result embed** — verified
+call-order in each file, not assumed:
+- `/take-bounty` → `createBountyResultEmbed`
+- `/rob-npc` → `createRobNpcResultEmbed`
+- `/rob` → `createRobEmbed` (2 call sites, win/fine branches)
+- `/sell-starch` → `createBuyOrSellStarchEmbed`
+- `/regrade` → `createRegradeEmbed` (6 call sites, 2 per track × 3 tracks)
+
+For each: call `getAppliedCompanionXpGain(userDetails.companions, leveledCompanions)` right after
+the existing `levelActiveCompanion` call, and pass the result plus
+`companionFactory.getActiveCompanion(userDetails)?.name` into the embed builder as two new trailing
+optional params (`companionXpGained = 0`, `companionName = null`); each embed builder adds a "+N
+Companion XP (Name)" line only when `companionXpGained > 0`.
+
+**`/work` is the one structural exception, flagged rather than silently special-cased.** Its
+companion-leveling write happens AFTER the result embed is already sent (a separate,
+`updatedUserDetails`-based `levelActiveCompanion` call, unrestricted, always granting a flat `+1`
+whenever any companion is equipped) — so the grant amount isn't known yet at embed-build time the
+way it is for the other 5 commands. Rather than restructuring `workFactory.js`'s ~8 scenario
+handlers to thread a new formal parameter through, **recommend mirroring this exact file's own
+existing pattern for the same problem**: `userDetails._cooldownSkippedByCompanion` is already a
+non-persisted, in-memory-only flag stamped onto `userDetails` and read directly (not passed as a
+function parameter) at all 12 of `work.js`'s own `createWorkEmbed`/`createPoisonPotatoEmbed`/
+`createCompanionEncounterEmbed`/`createAncientPotatoEmbed` call sites. Since `/work`'s grant is
+unconditional and flat (no perk-type/companion-id gate), and no scenario handler changes
+`companions.active` mid-call (Companion Encounter only appends a new *unequipped* instance — see
+`applyCompanionAward`'s own comment: "does not auto-equip"), `userDetails.companions?.active`'s
+truthiness at the very top of the callback (before scenario dispatch) is already a reliable
+predictor of what the later write will grant. Recommend: set
+`userDetails._companionXpGained = userDetails.companions?.active ? 1 : 0` once near the top of the
+callback, then read it at each existing embed call site exactly the way `_cooldownSkippedByCompanion`
+already is.
+
+**UX flag, not silently decided:** `/work` is by far the highest-frequency command in the game, and
+this grant is always exactly `+1` whenever any companion is equipped at all (true for most active
+players most of the time) — showing a full new field every single `/work` result risks feeling
+noisy/repetitive in a way the other 5 (rarer, cooldown-gated, sometimes-zero) commands don't.
+**Recommend folding it into the existing "Work Count:" field's value string** on `/work`'s own
+embeds specifically (e.g. `142 (+1 XP: Sprout)`), rather than a new standalone field — keeps the
+information present without adding visual weight to the single most-viewed embed in the bot. The
+other 5 commands, where the grant is a more meaningful "did the right companion actually train"
+signal (often 0), can use a real distinct field.
+
+**Open questions, with a recommendation on each:**
+- Rename the stored field? **Recommend no** — display-only, see Part 1.
+- Show XP gained on `/work` the same way as the other 5? **Recommend yes, but folded into the
+  existing field rather than a new one** — see the UX flag above.
+- Any command where an equipped companion trains but showing the amount would be confusing (e.g.
+  Guinea Pig, which doesn't level via the ordinary `getActivePerkValue` scaling)? **Recommend no
+  special-casing needed** — `getAppliedCompanionXpGain` reads the real diff off `workCount`
+  regardless of which perk the companion carries; Guinea Pig still occupies the "active" slot and
+  still gains XP through whichever action's normal grant applies to it, same as any other companion.
+
+**Touches:** `src/utils/companionFactory.js` (new `getAppliedCompanionXpGain` helper, exported);
+`src/utils/embedFactory.js` (label text changes in the companion list/scavenge-return/market-listing
+embeds — no field renames; two new optional trailing params + a conditional line on
+`createBountyResultEmbed`, `createRobNpcResultEmbed`, `createRobEmbed`, `createBuyOrSellStarchEmbed`,
+`createRegradeEmbed`, and `createWorkEmbed`/`createPoisonPotatoEmbed`/`createCompanionEncounterEmbed`/
+`createAncientPotatoEmbed`); `src/commands/user/takeBounty.js`, `robNpc.js`, `rob.js`,
+`src/commands/starch/sellStarch.js`, `src/commands/buying/regrade.js` (one `getAppliedCompanionXpGain`
+call + two new args into their existing embed call, at each of their respective call sites);
+`src/commands/user/work.js` (one new `_companionXpGained` stamp near the top of the callback, read at
+each existing embed call site); no changes to `dynamoHandler.js`, no new persisted fields, no
+changes to `constants.js`'s `CompanionLeveling` values themselves (only its `workCountRequired`
+label text is display-affected, not the numbers).
