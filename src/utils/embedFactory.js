@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -18,6 +18,29 @@ const eventFactory = new EventFactory();
 const LEADERBOARD_MEDALS = ['🥇', '🥈', '🥉'];
 function rankLabel(index) {
     return LEADERBOARD_MEDALS[index] || `${index + 1}.`;
+}
+
+// Potato Roulette pocket icons — reuses existing /work encounter art rather than
+// commissioning new icons for a cosmetic thumbnail swap (poisonPotato's icon stands in
+// for "rotten," the one existing icon in this codebase that already reads as spoiled/bad).
+const ROULETTE_POCKET_ICONS = {
+    golden: goldenPotato.thumbnailUrl,
+    dirt: largePotato.thumbnailUrl,
+    rotten: poisonPotato.thumbnailUrl,
+}
+
+// Golden Reels symbol icons — Golden/Metal/Large reuse the exact /work encounter icons
+// for the same-named potatoes (see GoldenReels' own comment in constants.js on why the
+// rarity language is shared); "Regular Potato" and a loss have no existing dedicated
+// potato art, so both fall back to the bot's own avatar as a placeholder pending real
+// commissioned icons (same fallback mimicPotato/goldenYam already use elsewhere).
+const BOT_AVATAR_FALLBACK = "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png";
+const GOLDEN_REELS_SYMBOL_ICONS = {
+    'Golden Potato': goldenPotato.thumbnailUrl,
+    'Metal Potato': metalPotatoSuccess.thumbnailUrl,
+    'Large Potato': largePotato.thumbnailUrl,
+    'Regular Potato': BOT_AVATAR_FALLBACK,
+    'No Match': BOT_AVATAR_FALLBACK,
 }
 
 // Used by the bank embeds to show capacity fill at a glance instead of just raw numbers.
@@ -2322,6 +2345,145 @@ class EmbedFactory {
             .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and coinflip stats.`)
             .setColor(color)
             .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Mirrors createCoinflipEmbed's field layout (two count fields + a gained/lost field)
+    // — see the Potato Roulette technical design in roadmap.md. pocketColor is the actual
+    // pocket the wheel landed on ('golden'/'dirt'/'rotten'); colorSelected is what the
+    // player bet on. amount is signed (positive on a win, negative on a loss), same
+    // convention createCoinflipEmbed already uses.
+    createPotatoRouletteEmbed(pocketColor, colorSelected, goldenCount, dirtCount, rottenCount, userPotatoes, amount) {
+        const potatoResultLabel = amount >= 0 ? 'Gained' : 'Lost';
+        const color = amount >= 0 ? 'Green' : 'Red';
+        const avatarUrl = ROULETTE_POCKET_ICONS[pocketColor];
+
+        const fields = [
+            {
+                name: `Golden Count:`,
+                value: `${goldenCount.toLocaleString()} golden`,
+                inline: true,
+            },
+            {
+                name: `Dirt Count:`,
+                value: `${dirtCount.toLocaleString()} dirt`,
+                inline: true,
+            },
+            {
+                name: `Rotten Count:`,
+                value: `${rottenCount.toLocaleString()} rotten`,
+                inline: true,
+            },
+            {
+                name: '\n',
+                value: '\n',
+                inline: false
+            },
+            {
+                name: `You Bet:`,
+                value: `${colorSelected}`,
+                inline: true,
+            },
+            {
+                name: `Potatoes ${potatoResultLabel}:`,
+                value: `${Math.abs(amount).toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Current Potatoes:`,
+                value: `${userPotatoes.toLocaleString()} potatoes`,
+                inline: true,
+            },
+        ];
+
+        const pocketLabel = pocketColor === 'rotten' ? 'rotten potato (house wins)' : pocketColor;
+        const embed = new EmbedBuilder()
+            .setTitle(`The wheel landed on... ${pocketLabel}!`)
+            .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and roulette stats.`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Per-spin reveal shown mid-loop via interaction.editReply as Golden Reels paces
+    // through however many spins were requested — see goldenReels.js. delta is the signed
+    // net change to the player's balance for just this spin (already includes the bet
+    // staked/returned, per payoutMultiplier being a TOTAL return multiple).
+    createGoldenReelsSpinEmbed(spinNumber, totalSpins, symbolName, payoutMultiplier, delta, userPotatoes) {
+        const potatoResultLabel = delta >= 0 ? 'Gained' : 'Lost';
+        const color = delta >= 0 ? 'Green' : 'Red';
+        const avatarUrl = GOLDEN_REELS_SYMBOL_ICONS[symbolName] || BOT_AVATAR_FALLBACK;
+
+        const fields = [
+            {
+                name: `Symbol:`,
+                value: `${symbolName}${payoutMultiplier > 0 ? ` (${payoutMultiplier}x)` : ''}`,
+                inline: true,
+            },
+            {
+                name: `Potatoes ${potatoResultLabel}:`,
+                value: `${Math.abs(delta).toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Current Potatoes:`,
+                value: `${userPotatoes.toLocaleString()} potatoes`,
+                inline: true,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Golden Reels — Spin ${spinNumber}/${totalSpins}`)
+            .setDescription(symbolName === 'No Match' ? `No match this spin — better luck next time!` : `You hit ${symbolName}!`)
+            .setColor(color)
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Final tally shown after the spin loop ends, whether it ran to completion or stopped
+    // early on a bust — see goldenReels.js's mid-run affordability check. bet is passed
+    // through purely to phrase the early-stop reason plainly per the technical design's
+    // own example wording ("not enough potatoes left for another 500-potato spin").
+    createGoldenReelsSummaryEmbed(spinsRun, spinsRequested, netTotal, jackpotHits, stoppedEarly, bet) {
+        const resultLabel = netTotal >= 0 ? 'Net Gained' : 'Net Lost';
+        const color = netTotal >= 0 ? 'Green' : 'Red';
+
+        const fields = [
+            {
+                name: `Spins Run:`,
+                value: `${spinsRun.toLocaleString()} / ${spinsRequested.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: resultLabel,
+                value: `${Math.abs(netTotal).toLocaleString()} potatoes`,
+                inline: true,
+            },
+            {
+                name: `Jackpot Hits:`,
+                value: `${jackpotHits.toLocaleString()}`,
+                inline: true,
+            },
+        ];
+
+        const description = stoppedEarly
+            ? `Stopped after ${spinsRun} of ${spinsRequested} spins — not enough potatoes left for another ${bet.toLocaleString()}-potato spin.`
+            : `Ran all ${spinsRequested} requested spins.`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Golden Reels — Summary`)
+            .setDescription(description)
+            .setColor(color)
+            .setThumbnail(goldenPotato.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)

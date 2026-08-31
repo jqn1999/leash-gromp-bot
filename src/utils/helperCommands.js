@@ -189,6 +189,44 @@ function getRandomFromInterval(min, max) {
     return Math.random() * (max - min) + min;
 }
 
+// Extracted from coinflip.js/rps.js, which both inlined this identical 12-line
+// all/half/numeric parse+validate block before this helper existed (see the Potato
+// Roulette + Golden Reels technical design in roadmap.md) — a third and fourth
+// near-verbatim copy in the two new gambling commands was the point this stopped being
+// cheaper than a shared helper. Same "return null after already sending the error reply"
+// contract as requireUserDetails/requireUserGuild above: caller just needs
+// `if (!parsed) return;`. Returns `{ bet }` on success. Pure extraction — coinflip.js and
+// rps.js keep their own inline copies untouched (no behavior change risked against
+// either), so this is purely for new call sites going forward.
+function parseAndValidateBet(betString, userPotatoes, userDisplayName, interaction) {
+    let bet;
+    if (typeof betString === 'string' && betString.toLowerCase() === 'all') {
+        bet = userPotatoes;
+    } else if (typeof betString === 'string' && betString.toLowerCase() === 'half') {
+        bet = Math.round(userPotatoes / 2);
+    } else {
+        bet = Math.floor(Number(betString));
+        if (isNaN(bet)) {
+            interaction.editReply(`${userDisplayName}, something went wrong with your bet. Try again!`);
+            return null;
+        }
+    }
+
+    const isBetGreaterThanZero = bet >= 1;
+    if (!isBetGreaterThanZero) {
+        interaction.editReply(`${userDisplayName}, you can only bet positive amounts! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+        return null;
+    }
+
+    const isBetLessThanOrEqualUserAmount = bet <= userPotatoes;
+    if (!isBetLessThanOrEqualUserAmount) {
+        interaction.editReply(`${userDisplayName}, you do not have enough potatoes to bet ${bet.toLocaleString()} potatoes! You have ${userPotatoes.toLocaleString()} potatoes left.`);
+        return null;
+    }
+
+    return { bet };
+}
+
 module.exports = {
     convertSecondstoMinutes,
     getUserInteractionDetails,
@@ -199,5 +237,6 @@ module.exports = {
     runPaginatedReply,
     runPaginatedBroadcast,
     getSortedBirthdays,
-    getRandomFromInterval
+    getRandomFromInterval,
+    parseAndValidateBet
 }

@@ -1129,6 +1129,41 @@ const Give = {
     STARCH_TAX_PERCENT: .10
 }
 
+// Potato Roulette — see the "Potato Roulette + Golden Reels" technical design in
+// roadmap.md. American double-zero roulette's 38-pocket structure: 18 Golden, 18 Dirt,
+// and 2 "Rotten Potato" house-only pockets (deliberately NOT its own stored constant —
+// it's POCKET_COUNT minus both color counts below, so the math can't drift if only one
+// side gets edited). A color bet wins 18/38 (47.368...%) of spins; the house's edge is
+// purely the 2 uncovered pockets (2/38 = 5.263...%), no tax on top.
+const Roulette = {
+    POCKET_COUNT: 38,
+    GOLDEN_POCKETS: 18,
+    DIRT_POCKETS: 18
+}
+
+// Golden Reels — a single hand-tuned weighted draw per spin (not 3 independent reels;
+// three independent 0.001 Golden Potato rolls would make the jackpot ~1-in-a-billion and
+// practically unreachable). `chance` values are per-symbol slice widths, NOT cumulative
+// thresholds (unlike workScenarios in work.js) — the roll cumulative-sums them at
+// resolve-time (goldenReels.js's rollSymbol). Golden Potato's 0.001 chance is pinned to
+// the exact same probability /work's own Golden Potato encounter uses (workScenarios[0]
+// in work.js) so "Golden" means one consistent rarity across the whole game. Payout
+// multipliers are TOTAL return multiples (stake included), not net-profit multiples —
+// RTP = sum(chance * payoutMultiplier) = .001*200 + .006*40 + .04*6 + .18*1.5 = 0.95,
+// an exact analytic 95% RTP / 5% house edge (confirmed independently via a 20M-iteration
+// Monte Carlo during implementation — see betting-and-games.md). Falling past the last
+// cumulative threshold (.227) is a loss (0x, lose the full bet).
+const GoldenReels = {
+    SYMBOLS: [
+        { name: 'Golden Potato', chance: .001, payoutMultiplier: 200 },
+        { name: 'Metal Potato', chance: .006, payoutMultiplier: 40 },
+        { name: 'Large Potato', chance: .04, payoutMultiplier: 6 },
+        { name: 'Regular Potato', chance: .18, payoutMultiplier: 1.5 },
+    ],
+    MAX_SPINS: 10,
+    SPIN_DELAY_MS: 2000
+}
+
 // Difficulty anchors (see systems/raids-and-world-events.md): each landmark is the
 // per-member effectiveRaidPower (workMultiplierAmount * (1 + liveRebirthPercent)) a
 // tier is meant to represent, and each *_RAID_DIFFICULTY is set so that landmark lands
@@ -2819,6 +2854,8 @@ module.exports = {
     Companions,
     HelpTopics,
     Give,
+    Roulette,
+    GoldenReels,
     GuildRoles,
     Raid,
     SpudKeep,

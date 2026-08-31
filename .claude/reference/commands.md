@@ -103,6 +103,8 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 |---|---|---|
 | `coinflip.js` | `/coinflip` | 50/50 wager, 95% payout on win |
 | `rps.js` | `/rps` | Rock-Paper-Scissors duel for a potato wager, button-driven, 30s/turn timeout |
+| `potatoRoulette.js` | `/potato-roulette bet-amount:<all\|half\|amount> color:<golden\|dirt>` | 38-pocket wheel (18 golden/18 dirt/2 rotten house pockets), win pays the full bet as profit (no tax) — the 2 rotten pockets alone are the 5.26% house edge — see [systems/betting-and-games.md](../systems/betting-and-games.md#potato-roulette) |
+| `goldenReels.js` | `/golden-reels bet-amount:<all\|half\|amount> spins:<1-10>` | Per-spin (not split) weighted single-draw slot, paced ~2s/spin via live-editing embeds, stops early with a plain summary (not an error) if a spin becomes unaffordable mid-run — 95% RTP — see [systems/betting-and-games.md](../systems/betting-and-games.md#golden-reels) |
 
 ## `misc/` — [systems/raids-and-world-events.md](../systems/raids-and-world-events.md), [systems/spud-keep.md](../systems/spud-keep.md)
 

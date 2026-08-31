@@ -7530,7 +7530,17 @@ The two proposals below deliberately use the *other* edge shape the ask calls ou
 not a tax line — so the bot ends up with both archetypes represented instead of three variations on
 the same tax-on-winnings mechanic.
 
-- [ ] **Potato Roulette** — S — **recommend building first**
+- [x] **Potato Roulette** — S — **Shipped 2026-08-31**. Built exactly per the technical design
+  below (`src/commands/games/potatoRoulette.js`), mirroring `coinflip.js`'s
+  `handleWinningBet`/`handleLosingBet` structure: `Math.floor(Math.random()*38)`, pockets 0-17
+  golden / 18-35 dirt / 36-37 rotten (house, nobody wins), win pays the full bet as profit with no
+  tax on top, loss costs the full bet. `Roulette` constants group (`POCKET_COUNT`/`GOLDEN_POCKETS`/
+  `DIRT_POCKETS`, rotten pockets deliberately left as the remainder) and a new `'roulette'` stats
+  doc (`goldenCount`/`dirtCount`/`rottenCount`/`totalPayout`/`totalReceived`) — no new user-record
+  fields. New `createPotatoRouletteEmbed` in `embedFactory.js`. No deviations from the design.
+  Tests: 16 cases in `src/commands/games/__tests__/potatoRoulette.test.js` covering bet parsing,
+  win/loss math, exact pocket-boundary mapping (0/17/18/35/36/37) plus a 200k-spin statistical
+  sanity check of the 18/18/2 split, and the rotten-pocket house-wins-both-colors case.
   What: `/potato-roulette bet-amount:<all|half|amount> color:<golden|dirt>` — one command, resolves
   immediately, no confirm step, same shape as `/coinflip` (defaults to a color if omitted, same
   `all`/`half`/exact bet-string parsing). A 38-pocket wheel: 18 Golden pockets, 18 Dirt pockets, and
@@ -7551,8 +7561,25 @@ the same tax-on-winnings mechanic.
   a 35:1 payout needs its own bet-size sanity pass before it ships and can be a fast follow-up once
   the base command is live.
 
-- [ ] **Golden Reels** — M
-  What: `/slots bet-amount:<all|half|amount>` — a single 3-reel spin drawing from a weighted symbol
+- [x] **Golden Reels** — M — **Shipped 2026-08-31**. Built per the 2026-08-31 technical design
+  below (`src/commands/games/goldenReels.js`, `/golden-reels`), which superseded this brainstorm
+  entry's own `/slots`/3-reel framing — see that section for the final shape: a single hand-tuned
+  weighted draw per spin (not 3 independent reels), `bet-amount` wagered per spin (not split across
+  `spins`), spins capped at 10 with a ~2s-paced live-editing reveal loop, and a live-balance
+  affordability recheck before each spin that stops the run early with a plain summary (never an
+  error) on a mid-run bust. `GoldenReels` constants group in `constants.js`; new `'goldenReels'`
+  stats doc (`jackpotCount`/`metalCount`/`largeCount`/`regularCount`/`lossCount`/`totalPayout`/
+  `totalReceived` — field names are this developer's own reasonable choice, not spelled out in the
+  design, which only fixed Roulette's stat field names explicitly). New `createGoldenReelsSpinEmbed`/
+  `createGoldenReelsSummaryEmbed` in `embedFactory.js`. RTP verified two ways: analytically (exact
+  95%, `sum(chance * payoutMultiplier)`) and via an actual Monte Carlo run during implementation
+  (20M iterations, ~95.2%; a 3M-iteration version is also baked into the test suite as a permanent
+  regression check) — the design's own analytic RTP claim is confirmed correct, not just asserted.
+  No other deviations from the design. Tests: 14 cases in
+  `src/commands/games/__tests__/goldenReels.test.js` covering the paytable/RTP (analytic + Monte
+  Carlo), per-symbol win math, spin-cap enforcement (including a request past `MAX_SPINS`), and
+  mid-run bust stopping early without throwing.
+  What (superseded, kept for history): `/slots bet-amount:<all|half|amount>` — a single 3-reel spin drawing from a weighted symbol
   table that reuses this game's own established rarity language: Regular Potato (common), Large
   Potato (uncommon), Metal Potato (rare), Golden Potato (jackpot symbol, anchored to the same
   ~0-0.1% chance `/work`'s own Golden Potato encounter already uses — see
@@ -7769,3 +7796,19 @@ themselves once it exists, so there's only one copy of this logic instead of fou
 `rps.js`), two new stats docs (`'roulette'`, `'goldenReels'`) via existing
 `getStatDatabase`/`updateStatDatabase` — no `dynamoHandler.js` changes, no new user-record fields,
 no cron/background hook for either game.
+
+**Shipped 2026-08-31, built exactly as designed above.** `coinflip.js`/`rps.js`'s own inline
+bet-parsing blocks were deliberately left untouched (no existing test coverage of either predated
+this change to diff a behavior-parity swap against, so the safer call was a pure extraction with
+no back-port, per this section's own "optionally"). One real implementation-level decision this
+design left open: Golden Reels' stats-doc field names (only Roulette's were spelled out
+explicitly) — picked `jackpotCount`/`metalCount`/`largeCount`/`regularCount`/`lossCount`/
+`totalPayout`/`totalReceived`, mirroring Roulette's own `totalPayout`/`totalReceived` shape. The
+95% Golden Reels RTP was independently verified via Monte Carlo during implementation (not just
+taken on the design's analytic word) — see the roadmap entries above and
+[systems/betting-and-games.md](systems/betting-and-games.md#golden-reels). Both stats docs
+(`'roulette'`, `'goldenReels'`) need to be manually seeded with zeroed fields in the live stats
+table before first use, the same one-time operational step `'coinflip'` itself originally needed —
+`getStatDatabase`/the two new commands assume the row already exists, exactly like every other
+existing `getStatDatabase(trackingId)` call site in this codebase (`coinflip.js`, `work.js`, etc.)
+that reads counters off it without a fallback default.
