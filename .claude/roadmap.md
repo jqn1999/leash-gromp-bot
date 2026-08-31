@@ -6449,6 +6449,31 @@ field neared Discord's 1024-char cap) with real 5-per-page pagination.
   including the skipped-cycle case). Full suite: 823/823, zero regressions. Docs:
   [systems/spud-keep.md](systems/spud-keep.md) updated.
 
+**Retire `weekly_achievement`, replace with `weekly_companion_3` (2026-08-30).** Direct
+instruction: "Rework weekly unlock one achievement this week quest since people start running into
+blockers for that for only 30k passive." `weekly_achievement`'s `statPath` was
+`achievements.length` — a monotonic, one-time-per-achievement counter, not a renewable weekly
+action like every sibling quest — so once a player unlocked every achievement in the game (or had
+nothing easy left within a week), the quest became permanently unsatisfiable for them from then on,
+every time it rotated back in. Same root-cause class as `weekly_work_50`/`weekly_poison_5`'s own
+2026-08-22 bankCapacity retirement, different mechanism (there: a reward that ramped toward its own
+dead zone; here: a stat that stops moving entirely once exhausted).
+
+Replaced with `weekly_companion_3` — `statPath: "workScenarioCounts.companion"` (Wandering
+Companion encounters, ~1.5% per `/work`, not used by any other quest), threshold 3, same
+30,000–150,000 passive reward tier. New id rather than a `statPath` swap under the old one — a live
+per-user baseline already snapshotted mid-week against the old stat would produce a meaningless
+delta if silently reinterpreted against the new one; retiring the old id lets any currently-active
+instance just gracefully drop out of a player's active set until the next Monday rotation redraws
+from the corrected pool (no code change needed in `questFactory.js` itself — an unknown active id
+simply matches nothing in `Quests`). `work.js`'s achievements-array in-memory merge (originally
+added so this quest saw a same-call unlock immediately) is kept as ordinary in-memory correctness,
+its comment updated to stop citing the now-retired quest. Updated the 4 `questFactory.test.js`
+tests that referenced `weekly_achievement` — 2 repointed to the new quest/statPath directly, 2
+generalized (the underlying "trusts whatever userDetails it's handed, no implicit staleness"
+regression guard is still real for any quest's statPath, not just achievements). Full suite:
+823/823, zero regressions. Docs: [systems/quests.md](systems/quests.md) updated.
+
 ## Discussed earlier, not picked up in this pass
 
 Prestige/rebirth **shipped** (see `/rebirth`, [systems/economy-and-work.md](systems/economy-and-work.md#rebirth-prestige-reset)).

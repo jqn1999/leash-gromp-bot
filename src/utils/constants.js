@@ -291,7 +291,26 @@ const Quests = [
     { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
     // Rebalanced 2026-08-22 — same reason as weekly_work_50 above.
     { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
-    { id: "weekly_achievement", name: "Weekly Milestone", description: "Unlock an achievement this week", category: "weekly", statPath: "achievements.length", threshold: 1, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+    // Reworked 2026-08-30, direct instruction ("Rework weekly unlock one achievement this
+    // week quest since people start running into blockers for that for only 30k passive")
+    // — replaces the old weekly_achievement (retired, id removed from this pool entirely).
+    // achievements.length is a monotonic, one-time-per-achievement counter, not a
+    // renewable weekly action like every sibling quest here (workCount/
+    // workScenarioCounts.*): once a player has unlocked every achievement in the game (or
+    // just doesn't have an easy one left in reach that particular week), the quest was
+    // PERMANENTLY unsatisfiable for them from then on, every single time it rotated back
+    // in — the exact "goes to a literal no-op" trap already flagged and fixed for
+    // weekly_work_50's own old bankCapacity statPath (see that entry's own comment above).
+    // Swapped to workScenarioCounts.companion (Wandering Companion encounters, ~1.5% per
+    // /work, not used by any other quest) — renewable and uncapped like every other
+    // weekly quest, so it can never dead-end a veteran's quest slot again. Given a NEW id
+    // rather than reusing weekly_achievement's — a live per-user baseline already
+    // snapshotted against the OLD statPath mid-week would produce a meaningless delta if
+    // silently reinterpreted against a different one; retiring the old id lets any
+    // currently-active instance just gracefully drop out of a player's active set
+    // (Quests.filter(id) simply stops matching it) until the next Monday rotation
+    // redraws from the corrected pool.
+    { id: "weekly_companion_3", name: "Wandering Friends", description: "Encounter 3 Wandering Companions this week", category: "weekly", statPath: "workScenarioCounts.companion", threshold: 3, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
 
     // Mercenary Quest pool — see MercenaryQuest's own comment above for the full
     // derivation. reward.type (not reward.statType) marks this as the FLAT (non-ramping)

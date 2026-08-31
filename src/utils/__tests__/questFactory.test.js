@@ -9,7 +9,7 @@ const questFactory = new QuestFactory();
 const activeQuests = {
     dailyQuestIds: ['daily_work_3'],
     dailyRotationDate: '2026-08-18',
-    weeklyQuestIds: ['weekly_work_25', 'weekly_achievement'],
+    weeklyQuestIds: ['weekly_work_25', 'weekly_companion_3'],
     weeklyRotationDate: '2026-08-17',
 };
 
@@ -36,17 +36,17 @@ beforeEach(() => {
 });
 
 describe('checkAndClaimQuests', () => {
-    test('a fresh baseline uses the pre-action value: an action that both reveals and satisfies a threshold-1 quest completes it immediately', async () => {
-        // weekly_achievement (threshold 1) has never been seen before (quests: {}) — its
-        // baseline is snapshotted from previousUserDetails (achievements.length === 0),
-        // not from userDetails, so the unlock that just happened still counts as progress
-        // instead of being absorbed into the baseline itself.
-        const previousUserDetails = baseUser({ achievements: [] });
-        const userDetails = baseUser({ achievements: ['first_steps'] });
+    test('a fresh baseline uses the pre-action value: an action that both reveals and satisfies a quest completes it immediately', async () => {
+        // weekly_companion_3 (threshold 3) has never been seen before (quests: {}) — its
+        // baseline is snapshotted from previousUserDetails (workScenarioCounts.companion
+        // === 0), not from userDetails, so the 3 encounters that just happened still count
+        // as progress instead of being absorbed into the baseline itself.
+        const previousUserDetails = baseUser({ workScenarioCounts: { companion: 0 } });
+        const userDetails = baseUser({ workScenarioCounts: { companion: 3 } });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, previousUserDetails);
 
-        expect(result.completedQuests.map(q => q.id)).toContain('weekly_achievement');
+        expect(result.completedQuests.map(q => q.id)).toContain('weekly_companion_3');
     });
 
     test('does not complete a quest whose progress has not reached threshold', async () => {
@@ -56,9 +56,9 @@ describe('checkAndClaimQuests', () => {
         const seededBaseline = {
             daily_work_3: { startValue: 0, rotationDate: '2026-08-18', completed: false },
             weekly_work_25: { startValue: 0, rotationDate: '2026-08-17', completed: false },
-            weekly_achievement: { startValue: 0, rotationDate: '2026-08-17', completed: false },
+            weekly_companion_3: { startValue: 0, rotationDate: '2026-08-17', completed: false },
         };
-        const userDetails = baseUser({ workCount: 2, achievements: [], quests: seededBaseline });
+        const userDetails = baseUser({ workCount: 2, workScenarioCounts: { companion: 0 }, quests: seededBaseline });
         const result = await questFactory.checkAndClaimQuests(userDetails, userDetails);
         expect(result.completedQuests).toHaveLength(0);
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
@@ -139,27 +139,29 @@ describe('checkAndClaimQuests', () => {
         expect(resultOverMax.statRewards.workMultiplierAmount).toBeCloseTo(1.0); // still capped at max, not extrapolated past it
     });
 
-    // Regression: work.js's achievement check writes newly-unlocked achievements to the
-    // DB without mutating the in-memory userDetails object. checkAndClaimQuests trusts
-    // whatever userDetails it's handed, so a quest keyed on achievements.length only
-    // completes here if the caller already merged the new achievement in — which is
-    // exactly what work.js's fix does before calling into this function.
-    test('weekly_achievement completes the moment achievements.length reflects the new unlock', async () => {
-        const previousUserDetails = baseUser({ achievements: [] });
-        const userDetailsWithMergedAchievement = baseUser({ achievements: ['first_steps'] });
+    // Regression (originally caught via work.js's achievement check writing newly-unlocked
+    // achievements to the DB without mutating the in-memory userDetails object, back when
+    // "Weekly Milestone" was keyed on achievements.length — that quest was retired
+    // 2026-08-30, see constants.js's weekly_companion_3, but the general mechanic this
+    // guards is still real for ANY quest's statPath): checkAndClaimQuests trusts whatever
+    // userDetails it's handed — progress only reflects what the caller actually merged in,
+    // never something implicit from a DB write the caller forgot to mirror locally.
+    test('weekly_companion_3 completes the moment workScenarioCounts.companion reflects the new encounters', async () => {
+        const previousUserDetails = baseUser({ workScenarioCounts: { companion: 0 } });
+        const userDetailsWithMergedCount = baseUser({ workScenarioCounts: { companion: 3 } });
 
-        const result = await questFactory.checkAndClaimQuests(userDetailsWithMergedAchievement, previousUserDetails);
+        const result = await questFactory.checkAndClaimQuests(userDetailsWithMergedCount, previousUserDetails);
 
-        expect(result.completedQuests.map(q => q.id)).toContain('weekly_achievement');
+        expect(result.completedQuests.map(q => q.id)).toContain('weekly_companion_3');
     });
 
-    test('weekly_achievement is NOT detected if achievements.length is still stale (the bug this guards against)', async () => {
-        const previousUserDetails = baseUser({ achievements: [] });
-        const staleUserDetails = baseUser({ achievements: [] }); // unlock happened in DB but wasn't merged locally
+    test('weekly_companion_3 is NOT detected if workScenarioCounts.companion is still stale (the bug class this guards against)', async () => {
+        const previousUserDetails = baseUser({ workScenarioCounts: { companion: 0 } });
+        const staleUserDetails = baseUser({ workScenarioCounts: { companion: 0 } }); // encounters happened in DB but weren't merged locally
 
         const result = await questFactory.checkAndClaimQuests(staleUserDetails, previousUserDetails);
 
-        expect(result.completedQuests.map(q => q.id)).not.toContain('weekly_achievement');
+        expect(result.completedQuests.map(q => q.id)).not.toContain('weekly_companion_3');
     });
 });
 

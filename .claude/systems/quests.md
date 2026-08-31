@@ -97,6 +97,25 @@ pre-action value.
   `grantedRewardAmount` (not a static template value) so `createQuestCompleteEmbed` can display what
   that specific player actually got.
 
+**`weekly_achievement` retired 2026-08-30, replaced by `weekly_companion_3`** — same class of
+problem as the bank-capacity retirement above, different mechanism. `weekly_achievement`'s
+`statPath` was `achievements.length`, a monotonic one-time-per-achievement counter rather than a
+renewable weekly action like every sibling quest (`workCount`/`workScenarioCounts.*`): once a
+player unlocked every achievement in the game (or just had nothing easy left within a week's
+reach), the quest became **permanently unsatisfiable** for them, forever, every time it rotated
+back into the active pool — direct instruction: "Rework weekly unlock one achievement this week
+quest since people start running into blockers for that for only 30k passive." Replaced with
+`weekly_companion_3` (`statPath: "workScenarioCounts.companion"`, threshold 3, same 30,000–150,000
+passive reward tier) — Wandering Companion encounters (~1.5% per `/work`) are renewable and
+uncapped, so this can never dead-end a veteran's quest slot again. Given a **new id** rather than
+reusing `weekly_achievement`'s — a live per-user baseline already snapshotted against the old
+`statPath` mid-week would produce a meaningless delta if silently reinterpreted against a different
+one; retiring the old id instead lets any currently-active instance simply drop out of a player's
+active set (the id no longer matches anything in `Quests`) until the next Monday rotation redraws
+from the corrected pool. `work.js`'s achievements-array in-memory merge (originally added so this
+quest saw a same-call unlock immediately) is kept regardless, as ordinary in-memory correctness —
+see that file's own comment.
+
 ## Mercenary Quest
 
 A third, mercenary-exclusive category (2026-08-29) rewarding **Safehouse capacity** instead of a

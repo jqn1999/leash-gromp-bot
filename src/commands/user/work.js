@@ -322,9 +322,13 @@ async function performWork(interaction, userId, username, userDisplayName, workG
             interaction.followUp({ embeds: achievementEmbeds });
 
             // checkAndUnlock persists the new achievement list straight to the DB
-            // without mutating updatedUserDetails — mirror that here so a quest
-            // keyed on achievements.length (e.g. "Weekly Milestone") sees the
-            // unlock immediately instead of needing a second /work call to notice.
+            // without mutating updatedUserDetails — mirror that here so
+            // updatedUserDetails.achievements stays accurate for the rest of this
+            // call (originally added so a quest keyed on achievements.length, "Weekly
+            // Milestone", saw the unlock immediately; that quest was retired 2026-08-30
+            // for permanently dead-ending veteran players once they'd unlocked
+            // everything, see constants.js's weekly_companion_3 — this merge is kept
+            // regardless as ordinary in-memory correctness).
             updatedUserDetails.achievements = [
                 ...(updatedUserDetails.achievements || []),
                 ...newlyUnlocked.map(achievement => achievement.id)
