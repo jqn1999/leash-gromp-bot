@@ -1888,19 +1888,16 @@ const RobNpc = {
 // Yukon, the Highwayman's drop odds — see the Companions entry below (dropSource:
 // "bounty", filtered out of the normal /work roll entirely by
 // companionFactory.getCompanionsByRarity). Checked once per Bounty WIN, independent of
-// the stat-reward roll above. Sized so the PER-ATTEMPT rate at each tier's own 0.9
-// success-chance cap (the best realistic case) lands close to Legendary's own real
+// the stat-reward roll above. Originally sized so the PER-ATTEMPT rate at each tier's own
+// 0.9 success-chance cap (the best realistic case) landed close to Legendary's own real
 // per-/work-call rate (0.12% = 1.5% Wandering Companion encounter x 8% conditional
-// Legendary roll) — e.g. Tier I: 0.0015 * 0.9 = 0.135%, close to 0.12%. The remaining gap
-// (real calendar time to obtain is still ~12x longer than a Legendary /work pull) is
-// purely because Bounty attempts are inherently 12x less frequent (3600s vs /work's 300s
-// cooldown) — an accepted, explicit tradeoff, not a modeling error.
+// Legendary roll) — e.g. Tier I: 0.0015 * 0.9 = 0.135%, close to 0.12% — then buffed
+// 2026-08-23 to be meaningfully more frequent than that parity target.
 const MercenaryCompanionDrop = {
-    // Buffed 2026-08-23, direct instruction, to make Yukon meaningfully more frequent —
-    // Bounty attempts run on a 3600s cooldown (vs. /work's 300s), so even a rate tuned to
-    // land close to Legendary's real per-/work-call odds still takes ~12x longer in real
-    // time to pay off; this buff is deliberately NOT trying to preserve that parity anymore.
-    YUKON_CHANCE: { I: 0.01, II: 0.02, III: 0.05 }   // 1% / 2% / 5% per WINNING resolution
+    // Halved 2026-08-31, direct instruction, alongside setting the new Guild Raid
+    // Companion's proposed odds (see roadmap.md) to the same rate — was { I: 0.01, II:
+    // 0.02, III: 0.05 } (1% / 2% / 5%).
+    YUKON_CHANCE: { I: 0.005, II: 0.01, III: 0.025 }   // 0.5% / 1% / 2.5% per WINNING resolution
 }
 
 // Rival Bounty Hunters — a Mercenary-exclusive, guild-independent activity layered on top

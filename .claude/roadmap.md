@@ -6889,8 +6889,15 @@ directly against `src/utils/constants.js` (Yukon's own entry, `MercenaryCompanio
 `src/utils/raidFactory.js` (`getMemberRaidPower`/`getEffectiveRaidPowerBreakdown`) rather than
 trusting the systems docs' summaries alone.
 
-- [ ] **Guild Raid Companion ("a guild-level Yukon")** — M — needs a product decision on
-  acquisition scope and benefit magnitude before an architect scopes it in full.
+**Decided 2026-08-31, direct instruction**: halve the proposed odds below (mirroring a matching
+halving of `MercenaryCompanionDrop.YUKON_CHANCE` itself, now 0.5%/1%/2.5% — see
+[mercenary-bounties.md](mercenary-bounties.md#yukon-the-highwayman--the-one-bounty-exclusive-companion)),
+keep perks a/b/c as proposed, and add a fourth mechanic (3d below): on a raid **loss**, the
+member who started that raid may choose to sacrifice the guild companion to void the loss's
+entire potato penalty. Naming decided too — see 5 below.
+
+- [ ] **Guild Raid Companion ("a guild-level Yukon")** — M — acquisition odds, all three passive
+  perks, and the sacrifice mechanic are now confirmed; ready for an architect to scope in full.
 
   **Is a guild-owned companion a new mechanic? Yes — flagging this explicitly, since it changes
   the scoping risk.** Nothing in this codebase today lets a *guild* (as opposed to a user) own a
@@ -6907,9 +6914,11 @@ trusting the systems docs' summaries alone.
   Yukon is a Legendary companion with `dropSource: "bounty"` — the one `Companions` entry
   `companionFactory.getCompanionsByRarity` filters out of the normal `/work` roll entirely. It's
   rolled independently (`MercenaryCompanionDrop.YUKON_CHANCE`, checked once per **winning**
-  `/take-bounty` resolution): **1% / 2% / 5%** at Bounty band I/II/III (B1-4/B5-8/B9-12), buffed
-  up from an original 0.15%/0.4%/1.0% specifically because Bounty's 3600s cooldown made even a
-  "fair" per-attempt rate ~12x slower in real time than a `/work` companion pull. Once owned, it
+  `/take-bounty` resolution): **0.5% / 1% / 2.5%** at Bounty band I/II/III (B1-4/B5-8/B9-12) as
+  of 2026-08-31 (halved alongside this feature's own odds below, from a prior 1%/2%/5% that was
+  itself buffed up from an original 0.15%/0.4%/1.0% — see
+  [mercenary-bounties.md](mercenary-bounties.md#yukon-the-highwayman--the-one-bounty-exclusive-companion)
+  for the full history). Once owned, it
   behaves like any other companion everywhere else (equip, market, `getActivePerkValue`) and
   carries a deliberate **triple**-perk, each one tightly scoped to a mercenary-track mechanic
   (`robChanceFlat`, `bountyRewardPercent`, `rivalSuccessChanceFlat`) rather than anything generic.
@@ -6939,15 +6948,18 @@ trusting the systems docs' summaries alone.
   Bounty win already happen on a directly comparable real-time cadence, unlike Yukon's own
   original mis-tuning (which compared per-attempt rates without accounting for Bounty's cooldown
   being 12x `/work`'s). That parity means Yukon's own final rates are a reasonable **direct**
-  template rather than something to re-derive from scratch:
+  template rather than something to re-derive from scratch. **Halved 2026-08-31, direct
+  instruction, alongside the same halving applied to `MercenaryCompanionDrop.YUKON_CHANCE`
+  itself** — both tracks now sit at exactly the same rate as each other, at half their originally
+  proposed values:
 
-  | Raid-select mode | Recommended roll chance (on a win) | Grounding |
+  | Raid-select mode | Roll chance (on a win) | Grounding |
   |---|---|---|
   | `baby` | **0%, excluded** | Baby is the guaranteed-win, zero-risk on-ramp — Yukon isn't obtainable through Bounty's own zero-risk path either (it drops off any win, but Bounty itself always carries a real fail chance; Baby Raid uniquely doesn't) |
-  | `regular` | 1% | Matches Yukon's Band I (B1-4) rate |
-  | `stat` | 1% | Real risk/cost (a flat potato buy-in, capped 50% success, difficulty 350 — sits between Regular's own T2/T3) even though it isn't tiered; treated as Band-I-equivalent |
-  | `elite` | 2% | Matches Yukon's Band II (B5-8) rate |
-  | `legendary` | 5% | Matches Yukon's Band III (B9-12) rate |
+  | `regular` | 0.5% | Matches Yukon's (now-halved) Band I (B1-4) rate |
+  | `stat` | 0.5% | Real risk/cost (a flat potato buy-in, capped 50% success, difficulty 350 — sits between Regular's own T2/T3) even though it isn't tiered; treated as Band-I-equivalent |
+  | `elite` | 1% | Matches Yukon's (now-halved) Band II (B5-8) rate |
+  | `legendary` | 2.5% | Matches Yukon's (now-halved) Band III (B9-12) rate |
 
   **Recommend one roll per winning raid RESOLUTION, never per participating member.** A guild
   raid's roster can be 1-25 members; rolling once per member (mirroring "Yukon can drop for
@@ -6975,9 +6987,10 @@ trusting the systems docs' summaries alone.
   duplicate as a fresh, independently-leveled instance) — justified because this isn't a
   collection, it's a guild's one mascot.
 
-  **3. Benefits — three tightly-scoped perks, each reusing an existing hook rather than a new
-  parallel economy** (mirroring Yukon's own triple-perk shape: two direct hits on its home
-  system, one adjacent utility perk):
+  **3. Benefits — confirmed 2026-08-31: three ongoing passive perks (mirroring Yukon's own
+  triple-perk shape: two direct hits on its home system, one adjacent utility perk), plus a
+  fourth one-time sacrifice mechanic (d, new), each reusing an existing hook rather than a new
+  parallel economy**:
 
   a. **Raid cooldown reduction** (S). Hooks into the exact spot `startRaid.js` already sums
      three independent, mutually-non-gating cooldown sources: the guild-level curve's own
@@ -7009,6 +7022,29 @@ trusting the systems docs' summaries alone.
      inconsistent with the formula it's extending. Recommend a flat, modest bump instead (e.g.
      +0.02%/member/day, a ~20% relative bump over the base rate) — one line, no new scaling
      table needed for this one.
+  d. **Sacrifice-on-loss (new, direct instruction 2026-08-31)** — a fourth mechanic, structurally
+     different from a/b/c: a one-time, consumable escape hatch rather than an ongoing passive.
+     "On a raid loss, allow the user that started the raid to have the option of sacrificing
+     their guild companion in exchange for not losing any potatoes from the raid loss." Hooks
+     into `startRaid.js`'s `removeFromBankOrPurse` (see its own comment above this section on
+     draining the bank first, then splitting any shortfall across members) — the one shared
+     function every loss branch across all ~15 scenario closures already funnels through, same
+     reuse rationale as the acquisition roll in 2 above. Recommend: immediately after a loss
+     resolves and `totalRaidCost` (the penalty, always negative) is known, but *before*
+     `removeFromBankOrPurse` is called, check `guild.guildCompanion != null` — if so, show the
+     raid-starting member (identified the same way `startRaid.js` already tracks who ran the
+     command; not any other roster member) an ephemeral confirm prompt with Yes/No buttons
+     (`startRaid.js` already uses `ButtonBuilder`/`awaitMessageComponent` elsewhere in this same
+     file — reuse that pattern, including a timeout that defaults to "No" exactly like Tower's
+     own collector-timeout convention this session established for exactly this "don't leave a
+     player stuck" reason). Accepting: set `guild.guildCompanion = null` (permanently gone —
+     see "one-time, consumable" framing above) and skip the `removeFromBankOrPurse` call
+     entirely for this loss (equivalent to `totalRaidCost = 0`) — the guild owes nothing, no
+     bank drain, no member split. Declining or timing out: completely normal loss, penalty
+     applies exactly as it does today, companion is untouched. Recommend the prompt only
+     appears when the penalty is nonzero (the `stat` mode's baby-adjacent zero-penalty branches,
+     if any, have nothing to sacrifice for) and only on an actual loss, never pre-emptively
+     offered before the roll resolves.
 
   **4. Balance shape: level-scaled for (a)/(b), flat for (c) — and deliberately zero new
   leveling state either way.** Recommend the two raid-facing perks scale with the guild's own
@@ -7023,15 +7059,32 @@ trusting the systems docs' summaries alone.
   formula is flat — scaling it would be inventing an inconsistency the original formula doesn't
   have.
 
-  **5. Naming: "dragon potato" doesn't quite fit the existing convention, but the concept does.**
-  Every companion in `Companions` (`constants.js`) is a **named individual** — a potato-variety
-  or vegetable-pun proper noun plus a title ("Yukon, the Highwayman," "Rootcarver, the Cellar
-  Keeper," "Mochi, the Undying Stray") — never a bare species/type name. "Dragon Potato" reads
-  like a species, not a character. Recommend keeping "dragon" as the **visual/flavor concept**
-  (a wyrm-shaped tuber, in the same vein as Guild Raid's own T4 bosses — Marrowveil, Solara,
-  Umbrathorn) while giving it a proper name + title in the established mold for its actual
-  display name. Non-blocking, and no art exists for this yet regardless — same placeholder-first
-  convention as everything else built this session (Tower's Elite banding, the T4 raid bosses).
+  **5. Naming: decided 2026-08-31 — "Cinderroot, the Hoardwarden."** "Dragon potato" doesn't
+  quite fit the existing convention: every companion in `Companions` (`constants.js`) is a
+  **named individual** — a potato-variety or vegetable-pun proper noun plus a title ("Yukon, the
+  Highwayman," "Rootcarver, the Cellar Keeper," "Mochi, the Undying Stray") — never a bare
+  species/type name, and "Dragon Potato" reads like a species, not a character. "Cinderroot"
+  keeps the dragon flavor (cinder/scorch imagery) fused with the established root/spud pun
+  convention (Rootcarver, Spudsprite); "the Hoardwarden" doubles as flavor (a dragon guarding a
+  hoard) and a direct nod to what it actually does mechanically — guarding the guild's raid
+  spoils and treasury (perks a/b/c) and, in the one moment that matters most, guarding the
+  guild's bank from a loss entirely by giving itself up (perk d).
+
+  Suggested flavor text, matching the tone of Yukon's own entry
+  (`description`/`scavengeFlavor`) and the T4 raid bosses' (Marrowveil/Solara/Umbrathorn):
+  - **Description**: "A wyrm-shaped tuber said to slumber beneath the deepest raid vaults,
+    hoarding a sliver of every victory it's ever seen — a guild has to prove itself across
+    enough raids before it rises to guard their spoils instead of someone else's."
+  - **Drop flavor** (shown the moment a guild wins the roll, mirroring Yukon's own
+    `scavengeFlavor`): "Something ancient and scorch-scaled stirs in the raid's aftermath —
+    Cinderroot has decided your guild's hoard is worth guarding."
+  - **Sacrifice flavor** (shown when the starter accepts the prompt in 3d above): "Cinderroot
+    coils around the guild's stash one last time, shielding it with its own scorched hide —
+    then goes still. The raid's cost is paid in full, and Cinderroot pays it alone."
+
+  No art exists for this yet, same placeholder-first convention as everything else built this
+  session (Tower's Elite banding, the T4 raid bosses) — thumbnail can reuse an existing
+  raid-boss or Elite placeholder until real art is supplied.
 
   **What this is explicitly NOT trying to do** (bounding the target for the architect/developer):
   - **Not** a second full companion roster with rarity tiers, duplicate instances, leveling, or
@@ -7073,21 +7126,36 @@ trusting the systems docs' summaries alone.
     but don't build any hook toward it now; Guild vs. Guild Raids itself remains undesigned in
     important ways (open challenges vs. matchmaking, mismatched guild sizes) and coupling this
     feature to it would inherit that uncertainty for no immediate benefit.
-  - Naming — literally call it a "Dragon Potato"? **Recommend no**, per the naming discussion
-    above — a proper name + title in the existing roster's mold, "dragon" kept as flavor/visual
-    concept rather than the literal display name.
+  - Naming — literally call it a "Dragon Potato"? **Decided: no** — "Cinderroot, the
+    Hoardwarden," per the naming section above.
+  - Is the sacrifice option (3d) reusable, or a permanent one-time consumption? **Recommend
+    one-time** — once sacrificed, `guild.guildCompanion` is set back to `null` for good (the
+    guild has to earn a new one from scratch via the acquisition roll in 2). A reusable
+    "sacrifice with a cooldown" variant was considered and set aside: it would need its own new
+    cooldown-tracking field for a single-use narrative beat ("the dragon dies protecting the
+    hoard") that reads oddly as a repeatable ability, and undercuts the weight of the choice —
+    keep a guild-wide history/log entry (reusing whatever pattern `raidHistory` already uses)
+    so the moment is visible after the fact, instead.
+  - Who decides whether to sacrifice it — only the raid-starting member, or any officer/owner?
+    **Recommend only the raid-starting member**, exactly as asked — they're the one already
+    looking at the loss result and already the one `startRaid.js` treats as the interaction
+    owner for every other post-raid prompt in this file.
 
-  **Touches (once acquisition/benefit specifics are confirmed):** `constants.js` (new
-  `guild.guildCompanion` default shape via `getDefaultGuildFields`; a small standalone
-  guild-companion data record — deliberately **not** appended to the `Companions` array; a
+  **Touches — everything below is now confirmed, ready for the architect to scope in full:**
+  `constants.js` (new `guild.guildCompanion` default shape, `null` by default, via
+  `getDefaultGuildFields`; a small standalone guild-companion data record with the name/flavor
+  text from 5 above — deliberately **not** appended to the `Companions` array; a
   `GuildCompanionScaling`-style level-indexed array mirroring `GuildBuffScaling`'s exact shape
-  for perks a/b; a flat per-mode drop-chance map mirroring `MercenaryCompanionDrop.YUKON_CHANCE`'s
-  shape for acquisition); `startRaid.js` (one post-`runStartRaidFlow` acquisition-roll hook
-  reusing `raidHistory`'s own win/mode-diffing technique; one additive term where the cooldown
-  reduction is already summed; one multiplicative term where `raidRewardMultiplier` is already
-  applied); `dynamoHandler.js` (`applyGuildTreasuryInterest`'s one-line rate bump;
-  `getDefaultGuildFields`/`findGuildById`'s already-generic self-heal loop picks up the new field
-  automatically); `guildBuffFactory.js` or a new small `guildCompanionFactory.js` (architect's
-  call) for the level-scaled lookup, mirroring `getGuildBuffValue`'s exact shape; `/guild`'s
-  embed (`embedFactory.js`) to display it; a new `systems/` doc or a new section in
-  [guilds.md](guilds.md), architect's call depending on final surface area.
+  for perks a/b; a flat per-mode drop-chance map mirroring the now-halved
+  `MercenaryCompanionDrop.YUKON_CHANCE`'s exact shape and values for acquisition); `startRaid.js`
+  (one post-`runStartRaidFlow` acquisition-roll hook reusing `raidHistory`'s own win/mode-diffing
+  technique; one additive term where the cooldown reduction is already summed; one multiplicative
+  term where `raidRewardMultiplier` is already applied; a new pre-`removeFromBankOrPurse` loss
+  branch for the 3d sacrifice prompt, reusing this same file's existing
+  `ButtonBuilder`/`awaitMessageComponent` pattern with a default-to-"No" timeout); `dynamoHandler.js`
+  (`applyGuildTreasuryInterest`'s one-line rate bump; `getDefaultGuildFields`/`findGuildById`'s
+  already-generic self-heal loop picks up the new field automatically); `guildBuffFactory.js` or a
+  new small `guildCompanionFactory.js` (architect's call) for the level-scaled lookup, mirroring
+  `getGuildBuffValue`'s exact shape; `/guild`'s embed (`embedFactory.js`) to display Cinderroot
+  once owned; a new `systems/` doc or a new section in [guilds.md](guilds.md), architect's call
+  depending on final surface area.

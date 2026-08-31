@@ -562,12 +562,14 @@ logic:
   everywhere else.
 
 **Odds** (`MercenaryCompanionDrop.YUKON_CHANCE`, checked once per win, independent of the
-stat-reward roll): **1% / 2% / 5%** for Tier I/II/III. Buffed 2026-08-23, direct
+stat-reward roll): **0.5% / 1% / 2.5%** for Tier I/II/III. Buffed 2026-08-23, direct
 instruction, up from the original 0.15% / 0.4% / 1.0% — that original sizing deliberately
 aimed for per-attempt parity with Legendary's real per-`/work`-call rate (0.12%), but still
 left Yukon ~12x slower to obtain in real time purely because Bounty attempts run on a 3600s
-cooldown vs. `/work`'s 300s. This buff abandons that parity goal outright in favor of making
-Yukon noticeably more attainable given how infrequent Bounty runs are.
+cooldown vs. `/work`'s 300s. That buff abandoned the parity goal outright in favor of making
+Yukon noticeably more attainable given how infrequent Bounty runs are. Halved again
+2026-08-31, direct instruction, alongside setting the new Guild Raid Companion's proposed
+odds (see roadmap.md) to the same rate.
 
 Duplicate pulls while the owned Yukon is out scavenging or listed on the market both work
 correctly, with no special-casing needed:
