@@ -1,10 +1,11 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep } = require("../../utils/constants")
+const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
+const guildCompanionFactory = require("../../utils/guildCompanionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -189,7 +190,21 @@ function calculateRaidSuccessChance(totalMultiplier, raidDifficulty, maximumSucc
 // completely unchanged. Both default to the even-split path so statRaidScenarios (which
 // deliberately always passes 'even', [] explicitly — see its own comment) and any other
 // caller that hasn't been updated still gets today's behavior.
-async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost, raidSplitMode = 'even', raidListByMulti = []) {
+// sacrificeOffer (new, optional, default null — same "default to old behavior" precedent
+// as raidSplitMode/raidListByMulti/houseUserId above): { interaction, starterUserId,
+// guildCompanion } captured once near the top of runStartRaidFlow — see systems/guilds.md's
+// "Guild Raid Companion" design, section 7. Only ever passed by the 4 win/loss call sites
+// (baby/regular/elite/legendary) on an actual loss (totalRaidCost < 0) — statRaidScenarios'
+// own call is an unconditional flat buy-in charged win-or-lose, never a loss penalty, and
+// deliberately never passes this.
+async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost, raidSplitMode = 'even', raidListByMulti = [], sacrificeOffer = null) {
+    if (sacrificeOffer && sacrificeOffer.guildCompanion != null && totalRaidCost < 0) {
+        const accepted = await promptCompanionSacrifice(sacrificeOffer);
+        if (accepted) {
+            await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', null);
+            return 'sacrificed';   // sentinel — never collides with a real raidSplit (always an array or null)
+        }
+    }
     let raidSplit = null;
     if (guildBankStored + totalRaidCost >= 0) {
         guildBankStored += totalRaidCost;
@@ -204,6 +219,30 @@ async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRa
             : await raidFactory.handlePotatoSplit(raidList, shortfall);
     }
     return raidSplit
+}
+
+// Prompts the raid-starting member (sacrificeOffer.starterUserId) to sacrifice Cinderroot,
+// the Hoardwarden to void this loss's entire potato penalty — see systems/guilds.md's
+// "Guild Raid Companion" design, section 7. Mirrors the exact pattern the raid-start
+// confirm/cancel prompt above uses (buildConfirmCancelRow, awaitMessageComponent with a
+// 30-second window, default-to-decline-on-timeout via .catch(() => null)). Lives here
+// rather than guildCompanionFactory.js since it needs ButtonBuilder/awaitMessageComponent/
+// embedFactory — no existing factory file touches Discord.js primitives.
+async function promptCompanionSacrifice({ interaction, starterUserId }) {
+    const promptEmbed = embedFactory.createGuildCompanionSacrificePromptEmbed();
+    const promptRow = buildConfirmCancelRow('cinderroot_sacrifice', 'Sacrifice Cinderroot', 'Take the loss');
+    const promptMessage = await interaction.followUp({ embeds: [promptEmbed], components: [promptRow], ephemeral: true }).catch(() => null);
+    if (!promptMessage) return false;
+
+    const filter = i => i.user.id === starterUserId;   // the raid-starting member — same identity
+                                                         // already gated on at the raid-start collectorFilter
+    const choice = await promptMessage.awaitMessageComponent({ filter, time: 30_000 }).catch(() => null);
+    if (!choice || choice.customId === 'cinderroot_sacrifice_cancel') {
+        if (choice) await choice.update({ content: 'Cinderroot stays coiled around the hoard — the loss is paid in full.', embeds: [], components: [] }).catch(() => {});
+        return false;   // decline or timeout: identical outcome, normal penalty applies
+    }
+    await choice.update({ embeds: [embedFactory.createGuildCompanionSacrificeResultEmbed()], components: [] }).catch(() => {});
+    return true;
 }
 
 // Same fix, mirrored for rewards: fills the bank up to capacity first, only spilling the
@@ -256,7 +295,7 @@ async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, ra
 
 const regularRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
@@ -287,7 +326,7 @@ const regularRaidScenarios = [
     {
         // Ultra-late-game bracket — see Raid.T4_RAID_DIFFICULTY's comment. Its own
         // dedicated boss lives at regularRaidMobs[3].
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(regularRaidMobs[3]);
@@ -302,8 +341,14 @@ const regularRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = ultimateRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = ultimateRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -319,7 +364,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T4_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(regularRaidMobs[2]);
@@ -334,8 +379,14 @@ const regularRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T3_RAID_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = hardRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = hardRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -346,7 +397,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T3_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(regularRaidMobs[1]);
@@ -361,8 +412,14 @@ const regularRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T2_RAID_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = mediumRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = mediumRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -373,7 +430,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T2_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs[0]);
@@ -388,8 +445,14 @@ const regularRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.T1_RAID_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = regularRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = regularRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -428,7 +491,7 @@ const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]
 // (see runStartRaidFlow below and raidFactory.js's getUnlockedRaidModes).
 const eliteRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -460,7 +523,7 @@ const eliteRaidScenarios = [
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[3]);
@@ -475,8 +538,14 @@ const eliteRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.ELITE_T4_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = ultimateRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = ultimateRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -488,7 +557,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
@@ -503,8 +572,14 @@ const eliteRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.ELITE_T3_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = hardRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = hardRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -515,7 +590,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
@@ -530,8 +605,14 @@ const eliteRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.ELITE_T2_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = mediumRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = mediumRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -542,7 +623,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
@@ -557,8 +638,14 @@ const eliteRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.ELITE_T1_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = regularRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = regularRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -578,7 +665,7 @@ const eliteRaidScenarios = [
 // raidFactory.js's getUnlockedRaidModes) still depends on it.
 const legendaryRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -610,7 +697,7 @@ const legendaryRaidScenarios = [
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[3]);
@@ -625,8 +712,14 @@ const legendaryRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T4_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = ultimateRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = ultimateRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -638,7 +731,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
@@ -653,8 +746,14 @@ const legendaryRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T3_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = hardRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = hardRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -665,7 +764,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
@@ -680,8 +779,14 @@ const legendaryRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T2_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = mediumRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = mediumRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -692,7 +797,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
@@ -707,8 +812,14 @@ const legendaryRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
             } else {
                 totalRaidSplit = Math.round(Raid.LEGENDARY_T1_PENALTY * randomMultiplier);
-                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti);
-                raidResultDescription = regularRaidMob.failureDescription;
+                raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+                if (raidSplit === 'sacrificed') {
+                    totalRaidSplit = 0;
+                    raidSplit = null;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                } else {
+                    raidResultDescription = regularRaidMob.failureDescription;
+                }
             }
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription);
             interaction.editReply({ embeds: [embed], components: [] });
@@ -935,7 +1046,13 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: raidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    const { level: guildLevel, multiplier: rawRaidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    // Cinderroot, the Hoardwarden's perk 3b (see systems/guilds.md's "Guild Raid Companion"
+    // design) — pre-adjusted here, once, before raidRewardMultiplier is threaded as a plain
+    // value into every scenario closure and the raid preview embed below, so neither needs
+    // any changes of its own to pick up the boosted number.
+    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
+    const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
 
     // Elite/Legendary gated by guild level, not by how much totalMultiplier the
     // roster brings — below the derived level, the tier's success-rate cap sits
@@ -956,6 +1073,12 @@ async function runStartRaidFlow(interaction, raidSelection) {
     let raidList = await getLiveRaidRoster(guild);
     let raidCount = guild.raidCount;
     const raidCountBeforeThisRaid = raidCount;
+    // Cinderroot's sacrifice mechanic (3d, see systems/guilds.md's "Guild Raid Companion"
+    // design, section 7) — removeFromBankOrPurse is a plain top-level function with no
+    // lexical access to this function's own guild/userId/interaction, so this context is
+    // passed in explicitly per call rather than via shared mutable module state (which
+    // would race across concurrent guild raids).
+    const sacrificeOffer = { interaction, starterUserId: userId, guildCompanion: guild.guildCompanion };
     let guildTotalEarnings = guild.totalEarnings;
     let guildBankStored = guild.bankStored;
     let guildBankCapacity = guild.bankCapacity;
@@ -1058,7 +1181,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
         // never-gated T1 entry, so there's nothing to filter by guild level.
         for (const scenario of babyRaidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer);
                 break;
             }
         }
@@ -1067,7 +1190,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'regular') {
         for (const scenario of getWeightedScenarios(regularRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer);
                 break;
             }
         }
@@ -1076,7 +1199,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'elite') {
         for (const scenario of getWeightedScenarios(eliteRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer);
                 break;
             }
         }
@@ -1085,7 +1208,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'legendary') {
         for (const scenario of getWeightedScenarios(legendaryRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer);
                 break;
             }
         }
@@ -1108,15 +1231,33 @@ async function runStartRaidFlow(interaction, raidSelection) {
     // staying a bare number).
     const freshGuild = await dynamoHandler.findGuildById(guildId);
     const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
+    // Whether THIS resolution's Cinderroot sacrifice fired — free reuse of the same
+    // freshGuild fetch already happening for the win/loss diff, rather than a second DB
+    // round-trip, and without threading a new field through any scenario closure's return
+    // value (which stays a bare number, per the comment above). See systems/guilds.md's
+    // "Guild Raid Companion" design, section 4.
+    const companionSacrificedThisRaid = !wonThisRaid && guild.guildCompanion != null && freshGuild?.guildCompanion == null;
     const raidHistoryEntry = {
         timestamp: Date.now(),
         raidTier: raidSelection,
         won: wonThisRaid,
-        potatoDelta: potatoesGained
+        potatoDelta: potatoesGained,
+        companionSacrificed: companionSacrificedThisRaid   // always boolean, only ever true on the resolution the sacrifice happened
     };
     const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
     const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
     await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
+
+    // Cinderroot's acquisition roll (see systems/guilds.md's "Guild Raid Companion"
+    // design, section 4) — one call, no closures touched. interaction.followUp (not a
+    // second editReply) posts a distinct, additional message announcing the drop, since
+    // every scenario closure above has already called its own interaction.editReply with
+    // the raid's result embed by the time control returns here.
+    const companionDrop = await guildCompanionFactory.rollGuildCompanionDrop(guild, raidSelection, wonThisRaid);
+    if (companionDrop.awarded) {
+        const def = guildCompanionFactory.getGuildCompanionById(companionDrop.companion.id);
+        await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, def)] }).catch(() => {});
+    }
 
     // Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat, holder-wide
     // perk on top of whichever guild-buff reduction already applies above, live only
@@ -1129,10 +1270,20 @@ async function runStartRaidFlow(interaction, raidSelection) {
         ? spudKeepCooldownBuff.value
         : 0;
     const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
+    // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
+    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
     // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent (2026-08-30, direct
     // instruction) — automatic, level-scaled, stacks additively alongside the guild's
     // SELECTED buff and Spud Keep's own cooldown perk; none of the three gate each other.
-    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * (guildBuffRaidTimerReduction + spudKeepRaidTimerReduction + guildLevelRaidTimerReduction)));
+    // Explicit floor (2026-08-31, direct ask) — current real max (30% + 25% + 8% + 8% =
+    // 71%) doesn't need it today, but this guards any future fifth stacking source from
+    // silently pushing the total to/past 100% (a raid available immediately, or
+    // "negative" cooldown debt).
+    const totalRaidTimerReduction = Math.min(
+        guildBuffRaidTimerReduction + spudKeepRaidTimerReduction + guildLevelRaidTimerReduction + companionCooldownReduction,
+        0.90
+    );
+    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalRaidTimerReduction));
 
     // No raidList to clear anymore — the roster is computed live from each member's
     // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so

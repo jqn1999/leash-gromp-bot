@@ -763,3 +763,45 @@ convention.
 | `src/commands/guilds/startRaid.js` | `raidRewardMultiplier` pre-adjustment (1 line); cooldown-reduction additive term + floor (a few lines); acquisition roll + `companionSacrificed` history field (after existing `raidHistory` write); `removeFromBankOrPurse` new optional param + sacrifice branch; new `promptCompanionSacrifice` helper; `sacrificeOffer` threaded through ~14 closure signatures and 4 call sites; 12 real loss bodies handle the `'sacrificed'` sentinel |
 | `src/utils/embedFactory.js` | `createGuildEmbed` new field; new `createGuildCompanionDropEmbed`/`createGuildCompanionSacrificePromptEmbed`/`createGuildCompanionSacrificeResultEmbed` |
 | Tests | new `guildCompanionFactory.test.js`; additions to existing `startRaid*.test.js` files; a self-heal regression case |
+
+### Shipped (2026-08-31)
+
+Built exactly as designed above, all 9 sections in order. Full suite after implementation:
+**918/918** (892 baseline + 26 new: 11 in `guildCompanionFactory.test.js`, 12 in a new dedicated
+`src/commands/guilds/__tests__/startRaidGuildCompanion.test.js`, 3 added to `dynamoHandler.test.js`
+for perk 3c and the `guildCompanion` self-heal case).
+
+No logic deviations from the design doc — every formula, gate, and sentinel shape (the `'sacrificed'`
+return value, the `!= null` loose checks, the `Math.min(..., 0.90)` cooldown floor, the 4-call-site/
+~14-signature threading for `sacrificeOffer`, `stat` mode's exclusion from both the sacrifice offer
+and nothing-else-needed treatment) landed byte-for-byte as specified. Notes on what *did* need a
+developer-level call, all cosmetic/mechanical rather than logic changes:
+
+- **Placement of `GuildCompanions`/`GuildCompanionDrop`/`GuildCompanionScaling`** in `constants.js`:
+  the design doc's snippet referenced `metalKingRaidBoss.thumbnailUrl` as the placeholder art, but
+  `metalKingRaidBoss` is declared with `const` *after* the natural spot for these new blocks (right
+  before that declaration) — a `const` reference to a not-yet-initialized `const` in the same module
+  scope throws a TDZ `ReferenceError` at load time, not just at first use. Fixed by inlining the same
+  URL string as a literal instead of referencing the identifier, with a comment noting it's a copy of
+  `metalKingRaidBoss.thumbnailUrl`.
+- **Line numbers throughout section 5's snippets** (`~line 938`, `~line 1135`) drifted by roughly a
+  dozen lines from prior unrelated edits to `startRaid.js` since the doc was written — the surrounding
+  code shape (the `getRaidLevelInfo` destructure, the additive cooldown-reduction sum immediately
+  before the `raidTimer` write) matched exactly, so no logic judgment call was needed, just re-locating
+  by content instead of line number.
+- **Test-suite home for the new coverage**: rather than splitting the new `startRaid.js` cases across
+  the existing `startRaidSplitMode.test.js`/`startRaidPayoutMode.test.js`/`startRaidStaticRewards.test.js`
+  files (none of which are topically about a guild companion), all of section 9's `startRaid.js`-side
+  cases landed in one new `startRaidGuildCompanion.test.js`, per the task's own "or add a new dedicated
+  file if that's cleaner" allowance — this feature's test surface (3a/3b numeric checks, all three
+  sacrifice outcomes, and the 4-way acquisition-roll wiring matrix) was large enough to warrant its own
+  home rather than diluting three files that are each about an unrelated axis (split mode/payout
+  mode/static rewards).
+- **Guaranteed-roll test technique for the acquisition roll**: rather than sequencing `Math.random()`
+  call-by-call, tests use one fixed low draw (0.001) for the *entire* flow — cheap because it
+  simultaneously (a) lands the roll in Metal King's own flat, weighting-independent 1% bucket, (b)
+  clears that bracket's success check for a deliberately overpowered fixture roster (successChance
+  capped at `REGULAR_MAXIMUM_RAID_SUCCESS_RATE`), and (c) reuses that same draw for
+  `rollGuildCompanionDrop`'s own internal roll, which is `>= 0.005` (regular's own chance) at that
+  value. A zero-power roster (`workMultiplierAmount: 0`, `totalMultiplier` computes to exactly `0`) is
+  used the same way for every guaranteed-LOSS case, regardless of which `Math.random()` draw is active.

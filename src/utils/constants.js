@@ -399,6 +399,12 @@ const Bank = {
     // memberCap upgrade. Applied fractionally on the same 5-minute tick
     // passivePotatoHandler already uses (288x/day), never past bankCapacity.
     GUILD_TREASURY_DAILY_RATE_PER_MEMBER: .001,
+    // Flat bump to the per-member daily treasury rate for a guild that owns Cinderroot, the
+    // Hoardwarden (guild.guildCompanion) — see systems/guilds.md's "Guild Raid Companion"
+    // design. Deliberately not level-scaled, unlike the companion's other two perks: the base
+    // formula itself is flat, so scaling only this bonus would introduce an inconsistency the
+    // original formula doesn't have.
+    GUILD_COMPANION_TREASURY_RATE_BUMP: 0.0002,
     // bankCapacity used to default to 0 — /bank's deposit check is `remainingBankSpace >
     // 0`, so a brand-new account could not protect a single potato from /rob until their
     // first Bank Shop purchase landed (~44 /work calls on average, hours of grinding).
@@ -2121,6 +2127,46 @@ const GuildBuffDescriptions = {
     workMulti: { sign: "+", text: "effective work multiplier" },
 }
 
+// Cinderroot, the Hoardwarden — a single, singleton, permanently-guild-bound companion a guild
+// can win off a rare drop roll on a winning raid resolution (see
+// systems/guilds.md's "Guild Raid Companion" design). Deliberately its own small array, NOT
+// merged into Companions above — that array is entirely userDetails-scoped and everything that
+// reads it (getActivePerkValue, the companion market, /help topic:companions) goes through
+// getActiveCompanion(userDetails); a guild-owned singleton needs its own shape rather than being
+// force-fit into machinery built around one user's own owned/equipped instances. Shaped as an
+// array (not a bare object) purely so a future second guild companion doesn't require
+// restructuring, mirroring Companions/getCompanionById's own id-lookup convention.
+const GuildCompanions = [
+    {
+        id: "cinderroot",
+        name: "Cinderroot, the Hoardwarden",
+        // placeholder until real art exists — reuses Metal King Potato's raid-boss thumbnail
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
+        description: "A wyrm-shaped tuber said to slumber beneath the deepest raid vaults, hoarding a sliver of every victory it's ever seen — a guild has to prove itself across enough raids before it rises to guard their spoils instead of someone else's.",
+        dropFlavor: "Something ancient and scorch-scaled stirs in the raid's aftermath — Cinderroot has decided your guild's hoard is worth guarding.",
+        sacrificeFlavor: "Cinderroot coils around the guild's stash one last time, shielding it with its own scorched hide — then goes still. The raid's cost is paid in full, and Cinderroot pays it alone."
+    }
+];
+
+// Drop chance for Cinderroot, keyed by raid-select mode instead of Bounty band letter, mirroring
+// MercenaryCompanionDrop.YUKON_CHANCE's exact shape and its own halved 2026-08-31 rate
+// (0.5%/1%/2.5%). Checked once per WINNING raid resolution, gated off entirely once a guild
+// already owns one. Baby excluded (0% — see systems/guilds.md's "Verification note" on why):
+// still the right call since it's the cheapest, least risky bracket to farm repeatedly, even
+// though Baby is NOT literally guaranteed to win (it reuses Regular's own T1 closure).
+const GuildCompanionDrop = {
+    CHANCE: { baby: 0, regular: 0.005, stat: 0.005, elite: 0.01, legendary: 0.025 }
+};
+
+// Level-scaled perk values for Cinderroot's two scaling perks, mirroring GuildBuffScaling's
+// exact shape (index 0 = level 1, looked up live from guild.raidCount via RaidLevel.THRESHOLDS'
+// 10-level curve). Perk 3c (treasury interest) is flat, not level-scaled — see
+// Bank.GUILD_COMPANION_TREASURY_RATE_BUMP above.
+const GuildCompanionScaling = {
+    raidCooldownReductionPercent: [0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08],
+    raidRewardBonusPercent:      [0.03, 0.035, 0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+};
+
 const metalKingRaidBoss = {
     name: "Metal King Potato",
     thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
@@ -2758,6 +2804,9 @@ module.exports = {
     GuildHistory,
     GuildBuffScaling,
     GuildBuffDescriptions,
+    GuildCompanions,
+    GuildCompanionDrop,
+    GuildCompanionScaling,
     RaidLevel,
     Rob,
     Rebirth,

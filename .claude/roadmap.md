@@ -6896,8 +6896,15 @@ keep perks a/b/c as proposed, and add a fourth mechanic (3d below): on a raid **
 member who started that raid may choose to sacrifice the guild companion to void the loss's
 entire potato penalty. Naming decided too — see 5 below.
 
-- [ ] **Guild Raid Companion ("a guild-level Yukon")** — M — acquisition odds, all three passive
-  perks, and the sacrifice mechanic are now confirmed; ready for an architect to scope in full.
+- [x] **Guild Raid Companion ("a guild-level Yukon")** — M — **Done**
+  What: Cinderroot, the Hoardwarden — a single, singleton, guild-bound companion won off a rare
+  drop roll (0.5%/0.5%/1%/2.5% for regular/stat/elite/legendary, baby excluded) on a winning raid
+  resolution. Three passive perks (raid cooldown reduction, raid reward bonus, +0.02%/member/day
+  guild treasury interest, all level-scaled off the guild's own `raidCount` level except the flat
+  treasury bump) plus a one-time mechanic: the raid-starting member may sacrifice it on a loss to
+  void that loss's entire potato penalty. See
+  [systems/guilds.md](systems/guilds.md#guild-raid-companion-technical-design-2026-08-31) for the
+  full design and its "Shipped" note (918/918 tests, no logic deviations from the design doc).
 
   **Is a guild-owned companion a new mechanic? Yes — flagging this explicitly, since it changes
   the scoping risk.** Nothing in this codebase today lets a *guild* (as opposed to a user) own a

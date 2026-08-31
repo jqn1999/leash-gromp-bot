@@ -816,7 +816,11 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
         if (bankStored <= 0) return;
 
         const memberCount = Array.isArray(guild.memberList) ? guild.memberList.length : 0;
-        const dailyRate = Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER * memberCount;
+        // guild here comes from getGuilds()'s raw scan (unhealed) — guildCompanion can be
+        // undefined (never healed) as well as null (healed, never won one), so this must use
+        // the loose `!= null` check, not `!== null` — see systems/guilds.md's "Guild Raid
+        // Companion" design.
+        const dailyRate = (Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER + (guild.guildCompanion != null ? Bank.GUILD_COMPANION_TREASURY_RATE_BUMP : 0)) * memberCount;
         const interest = Math.round(bankStored * dailyRate / timesInADay);
         if (interest <= 0) return;
 
@@ -1434,7 +1438,9 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
             completed: false
         },
         raidHistory: [],       // most recent HISTORY_MAX_ENTRIES guild raids — see startRaid.js
-        contractHistory: []    // most recent HISTORY_MAX_ENTRIES completed Guild Contracts — see guildContractFactory.js
+        contractHistory: [],   // most recent HISTORY_MAX_ENTRIES completed Guild Contracts — see guildContractFactory.js
+        guildCompanion: null   // { id, acquiredAt, acquiredRaidTier } once won — see systems/guilds.md's
+                                // "Guild Raid Companion" design / guildCompanionFactory.js
     };
 }
 

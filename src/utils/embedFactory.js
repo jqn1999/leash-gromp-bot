@@ -1,10 +1,11 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const guildCompanionFactory = require("../utils/guildCompanionFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
@@ -851,6 +852,21 @@ class EmbedFactory {
             inline: false
         })
 
+        // guild can be findGuildById- (healed, guildCompanion is null/object) or
+        // findGuildByName-sourced (raw scan, guildCompanion can be undefined if never
+        // healed) — a plain truthy check handles both the healed-null and unhealed-undefined
+        // cases identically, showing nothing rather than crashing either way.
+        if (guild.guildCompanion) {
+            const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
+            const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
+            const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
+            fields.push({
+                name: `Guild Companion:`,
+                value: `${def?.name ?? guild.guildCompanion.id} — -${cooldownPct}% raid cooldown, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+                inline: false
+            });
+        }
+
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
             .setDescription(`Below is guild information for guild '${guild.guildName}'`)
@@ -1010,6 +1026,48 @@ class EmbedFactory {
             .setTitle(`${guildName}'s raid was not started`)
             .setDescription(`No roll happened — the raid roster is untouched, start it again whenever ready.`)
             .setColor("Grey")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Announces Cinderroot's acquisition roll firing — see startRaid.js's
+    // rollGuildCompanionDrop call and systems/guilds.md's "Guild Raid Companion" design.
+    // Posted via a followUp, distinct from the raid result message.
+    createGuildCompanionDropEmbed(guildName, def) {
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName} has won ${def.name}!`)
+            .setDescription(def.dropFlavor)
+            .setColor("Gold")
+            .setThumbnail(def.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Shown when a raid loss offers the raid-starting member the choice to sacrifice
+    // Cinderroot to void the loss's entire penalty — see startRaid.js's
+    // promptCompanionSacrifice.
+    createGuildCompanionSacrificePromptEmbed() {
+        const def = GuildCompanions[0];
+        const embed = new EmbedBuilder()
+            .setTitle(`Sacrifice ${def.name}?`)
+            .setDescription(`Your guild's raid has failed. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose the companion in exchange. This choice is yours alone to make; you have 30 seconds to decide.`)
+            .setColor("Orange")
+            .setThumbnail(def.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Shown after accepting the sacrifice — see startRaid.js's promptCompanionSacrifice.
+    createGuildCompanionSacrificeResultEmbed() {
+        const def = GuildCompanions[0];
+        const embed = new EmbedBuilder()
+            .setTitle(`${def.name} has been sacrificed`)
+            .setDescription(def.sacrificeFlavor)
+            .setColor("Red")
+            .setThumbnail(def.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;

@@ -476,6 +476,72 @@ describe('applyGuildTreasuryInterest', () => {
 
         expect(docClient.update).not.toHaveBeenCalled();
     });
+
+    // Cinderroot, the Hoardwarden's perk 3c (see systems/guilds.md's "Guild Raid
+    // Companion" design) — a flat rate bump on top of the base per-member daily rate for
+    // any guild that owns the companion. getGuilds() is a raw scanAll (unhealed), so
+    // guildCompanion can be undefined on a never-healed record as well as null on a
+    // healed-but-never-won one — both must be treated identically (no bump), only a
+    // real object should bump the rate.
+    test('credits the bumped rate for a guild that owns the companion vs. the base rate for one without', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [
+                { guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } },
+                { guildId: 'g2', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: null },
+            ],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        const updateByGuildId = Object.fromEntries(docClient.update.mock.calls.map(([params]) => [params.Key.guildId, Object.values(params.ExpressionAttributeValues)[0]]));
+        // g1 (owns companion): dailyRate = (.001 + .0002) * 2 = .0024; per-tick = 1,000,000 * .0024 / 288 ≈ 8.33 -> 8
+        expect(updateByGuildId.g1).toBe(1000008);
+        // g2 (no companion): dailyRate = .001 * 2 = .002; per-tick = 1,000,000 * .002 / 288 ≈ 6.94 -> 7
+        expect(updateByGuildId.g2).toBe(1000007);
+    });
+
+    // Never-healed record (guildCompanion undefined, not null) must be treated identically
+    // to "healed, never won one" — see systems/guilds.md's loose `!= null` caveat.
+    test('treats an unhealed record (guildCompanion undefined) the same as never owning one', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }] }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
+        expect(newValue).toBe(1000007);
+    });
+});
+
+// Cinderroot, the Hoardwarden — guildCompanion self-heals to null for a guild record that
+// predates this feature (see systems/guilds.md's "Guild Raid Companion" design, section 1).
+// Mirrors findUser's own healing test convention above.
+describe('findGuildById self-healing', () => {
+    test('backfills a missing guildCompanion field to null on an existing guild record', async () => {
+        const existingGuild = {
+            guildId: 'g1', guildName: 'Test Guild', guildNameLowercase: 'test guild',
+            memberCap: 5, memberList: [{ id: 'leader', username: 'Leader', role: 'Leader' }],
+            bankCapacity: 1000000, bankCapacityBonus: 1000000, bankStored: 0,
+            raidCount: 0, thumbnailUrl: 'thumb.png', raidTimer: 0, inviteList: [],
+            guildBuff: 'workMulti', raidSplitMode: 'even', raidPayoutMode: 'bank',
+            guildVersion: 0,
+            guildContract: { templateId: null, rotationDate: null, memberBaselines: {}, frozenContribution: 0, completed: false },
+            raidHistory: [], contractHistory: []
+            // guildCompanion intentionally missing — predates this feature
+        };
+        docClient.query.mockReturnValue(resolved({ Items: [existingGuild] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const guild = await dynamoHandler.findGuildById('g1');
+
+        expect(guild.guildCompanion).toBeNull();
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).toContain('guildCompanion');
+    });
 });
 
 describe('calculateWorkTimerValue', () => {
