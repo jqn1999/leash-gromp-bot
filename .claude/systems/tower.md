@@ -1039,3 +1039,52 @@ dedicated tests for `investment`/`scalingFactor`/`scaleReward` themselves (table
 values, the extrapolation-past-600 branch, the `PAYOUT.WORK_MULTIPLIER`-stays-unscaled case,
 and the gate constant being read from `tC.ENTRY_GATE_MULTI` in `enter-tower.js` rather than a
 hardcoded `20`), but nothing in the existing 44 needs its own expectations rewritten.
+
+## Tower Revamp: Reward Value Scaling — Shipped (2026-08-31)
+
+Built exactly per the design above (parts 1-3), plus one implementation-level fix the design
+didn't anticipate.
+
+- **`towerConstants.js`**: added `ENTRY_GATE_MULTI` (20), the 24-entry `SCALING_ANCHOR_TABLE`,
+  `SCALING_ANCHOR_INVESTMENT` (76,250,000), `SCALED_PAYOUT_TYPES` (a `Set` of `PAYOUT.POTATOES`/
+  `PAYOUT.PASSIVE_INCOME`/`PAYOUT.BANK_CAPACITY`), and `SCALING_EXPONENT` (0.83), all exported.
+- **`towerFactory.js`**: module-level `investment(M)`/`scalingFactor(M)` (exported alongside
+  `getFloor`/`getEliteTier`/`pickElite`/`pickChoiceIndex`), `this.scalingFactor =
+  Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)` added to the constructor right after
+  `this.multi = multi`, and the new `scaleReward(outcomeIndex, rawValue)` instance method. Wired
+  into exactly the 4 call sites the design specified: `updateValue`'s `default` branch and its
+  `PAYOUT.ELITE_KILL` (King Kiwi) branch (both wrapping the existing `decayValue` call),
+  `updateTransaction`'s payout branch (same wrap, `price` line left untouched), and `execElite`'s
+  win branch (a genuinely new call site — Elite rewards were never routed through `decayValue`,
+  and stay that way, but now do go through `scaleReward`).
+- **`enter-tower.js`**: the hardcoded `if (userMultiplier < 20)` gate and its `20x` message
+  string both now read `tC.ENTRY_GATE_MULTI`.
+
+**Deviation from the design doc (a floating-point fix, not a formula change)**: the design's own
+`investment(M)` code, run for real, does not produce an exact `scalingFactor(20) = 1.0` as its
+prose claims — `Math.log`/`Math.exp`'s round-trip leaves a ~1e-13 relative error
+(`1.0000000000000013`), which broke 2 of the existing 44 tests that assert exact reward amounts
+via `toBe()` at `multi = 20` (`9 * 30000 + 150000` and `30000`, both off by a sub-cent fraction).
+Rather than loosening those assertions to `toBeCloseTo` — which would quietly concede the design's
+own "no existing test needs its numbers changed" claim wasn't literally true — `investment(M)`
+gained an exact-match short-circuit: if `M` equals a table checkpoint exactly, return that
+checkpoint's literal value before ever touching `log`/`exp`. This makes `scalingFactor(20) ===
+1.0` and `Math.pow(1.0, 0.83) === 1.0` bit-for-bit, so the design's stated invariant holds
+literally, not just to within a rounding tolerance, and both existing tests pass completely
+unmodified. No other deviations — every constant name, formula, and call-site wiring matches the
+design doc exactly.
+
+**Testing**: `towerFactory.test.js` grew from 44 to 56. New coverage: `investment(M)` at exact
+table-boundary values (including the `ENTRY_GATE_MULTI` anchor itself), a log-log-interpolated
+gap value independently recomputed from the raw formula (not re-deriving from the table constant
+the implementation itself reads), the past-600 extrapolation continuing the table's own trend
+(strictly greater than `investment(600)`, matching an independently recomputed expected value)
+rather than flatlining, and the sub-table defensive floor. `scalingFactor(M)` coverage: exactly
+`1.0` at the gate, monotonically increasing through and past 600. `towerFactory.scaleReward`
+coverage: a true no-op at the gate multi, all three `SCALED_PAYOUT_TYPES` currencies scaling
+together at `multi = 100`, and both `PAYOUT.WORK_MULTIPLIER`/`MODIFIER.WORK_MULTIPLIER` staying
+completely unscaled even at `multi = 600`'s large `scalingFactor`. A live end-to-end wiring pair:
+`updateValue` on a Baby Broccoli COMBAT floor at `multi = 100` produces a reward strictly greater
+than the raw 30,000 (and matching `30000 * this.scalingFactor` exactly), while the identical call
+at `multi = 20` reproduces the exact pre-feature `30000` — proving the 4 call sites are actually
+live, not just that the pure functions are correct in isolation. Full suite: **887/887**.

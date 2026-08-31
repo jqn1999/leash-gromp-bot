@@ -1,4 +1,4 @@
-const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex } = require('../towerFactory');
+const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex, investment, scalingFactor } = require('../towerFactory');
 const tC = require('../towerConstants');
 
 // Off-by-one fix (2026-08-31) — getFloor()'s cumulative-weight comparison used to be `<=`
@@ -328,6 +328,116 @@ describe('difficulty curve', () => {
         const { Raid } = require('../constants');
         expect(tC.ELITE_SUCCESS_CAP).toBe(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
         expect(tC.ELITE_SUCCESS_CAP).toBe(0.9);
+    });
+});
+
+// Tower Revamp: Reward Value Scaling (2026-08-31) — investment/scalingFactor are pure
+// module-level functions (same testing precedent as getFloor/pickElite), and scaleReward is
+// a pure instance method keyed off this.scalingFactor, computed once at construction time.
+describe('investment', () => {
+    test('exact table-boundary values return the literal table entry, no floating-point drift', () => {
+        expect(investment(20)).toBe(76250000);
+        expect(investment(20)).toBe(tC.SCALING_ANCHOR_INVESTMENT);
+        expect(investment(1.5)).toBe(50000);
+        expect(investment(600)).toBe(460201102807);
+        expect(investment(100)).toBe(2251250000);
+    });
+
+    test('interpolates log-log linearly between two checkpoints in a gap', () => {
+        // Between the 15 (26,250,000) and 20 (76,250,000) checkpoints, independently
+        // recomputed via the same log-log formula rather than re-deriving from the table
+        // constant used inside the implementation itself.
+        const lo = [15, 26250000], hi = [20, 76250000];
+        const M = 17.5;
+        const t = (Math.log(M) - Math.log(lo[0])) / (Math.log(hi[0]) - Math.log(lo[0]));
+        const expected = Math.exp(Math.log(lo[1]) + t * (Math.log(hi[1]) - Math.log(lo[1])));
+        expect(investment(M)).toBeCloseTo(expected, 0);
+        // Sanity: strictly between the two checkpoint values, not clamped to either one.
+        expect(investment(M)).toBeGreaterThan(lo[1]);
+        expect(investment(M)).toBeLessThan(hi[1]);
+    });
+
+    test('extrapolates past the table\'s top entry (600) using the final segment\'s log-log slope, rather than flatlining', () => {
+        const prev = [500, 341213142698], top = [600, 460201102807];
+        const M = 1200;
+        const slope = (Math.log(top[1]) - Math.log(prev[1])) / (Math.log(top[0]) - Math.log(prev[0]));
+        const expected = Math.exp(Math.log(top[1]) + slope * (Math.log(M) - Math.log(top[0])));
+        expect(investment(M)).toBeCloseTo(expected, 0);
+        // Continuous with the table's own trend, not flat: strictly greater than investment(600).
+        expect(investment(M)).toBeGreaterThan(investment(600));
+    });
+
+    test('defensive floor below the table\'s smallest checkpoint returns that checkpoint\'s value (never hit in real play)', () => {
+        expect(investment(0)).toBe(50000);
+        expect(investment(1)).toBe(50000);
+    });
+});
+
+describe('scalingFactor', () => {
+    test('is exactly 1.0 at ENTRY_GATE_MULTI (20) — the anchor divided by itself', () => {
+        expect(scalingFactor(tC.ENTRY_GATE_MULTI)).toBe(1);
+        expect(Math.pow(scalingFactor(tC.ENTRY_GATE_MULTI), tC.SCALING_EXPONENT)).toBe(1);
+    });
+
+    test('grows with M, and the extrapolated region past 600 keeps growing rather than flattening out', () => {
+        expect(scalingFactor(50)).toBeGreaterThan(scalingFactor(20));
+        expect(scalingFactor(600)).toBeGreaterThan(scalingFactor(100));
+        expect(scalingFactor(1200)).toBeGreaterThan(scalingFactor(600));
+    });
+});
+
+describe('towerFactory.scaleReward', () => {
+    function makeFactory(multi) {
+        return new towerFactory({}, 'tester', multi);
+    }
+
+    test('scalingFactor is 1.0 (true no-op) at the entry-gate multi', () => {
+        const tF = makeFactory(tC.ENTRY_GATE_MULTI);
+        expect(tF.scalingFactor).toBe(1);
+        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 1000)).toBe(1000);
+    });
+
+    test('scales all three SCALED_PAYOUT_TYPES currencies at a multi above the gate', () => {
+        const tF = makeFactory(100);
+        expect(tF.scalingFactor).toBeGreaterThan(1);
+        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
+        expect(tF.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
+        expect(tF.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
+    });
+
+    test('PAYOUT.WORK_MULTIPLIER always passes through completely unscaled, regardless of a large scalingFactor', () => {
+        const tF = makeFactory(600); // scalingFactor(600)^0.83 is large — see Sanity check table (~1374x)
+        expect(tF.scalingFactor).toBeGreaterThan(1);
+        expect(tF.scaleReward(tC.PAYOUT.WORK_MULTIPLIER, 0.2)).toBe(0.2);
+    });
+
+    test('MODIFIER.WORK_MULTIPLIER (the temp in-run buff) also passes through unscaled — not one of SCALED_PAYOUT_TYPES', () => {
+        const tF = makeFactory(600);
+        expect(tF.scaleReward(tC.MODIFIER.WORK_MULTIPLIER, 5)).toBe(5);
+    });
+});
+
+// End-to-end wiring check: proves scaleReward is actually invoked from the real call sites
+// (updateValue's default branch here), not just correct in isolation as a pure function.
+describe('reward value scaling — live end-to-end wiring', () => {
+    test('a multi well above the entry gate (100) yields a larger scaled reward than the raw, unscaled value', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 100);
+        tF.floor = 1; // well within the no-decay grace window, isolates scaling from decay
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli'); // choices[0].value = 30000
+        const outcome = await tF.updateValue(fl, 0, 'Orange', true);
+
+        expect(outcome.amount).toBeGreaterThan(30000);
+        expect(outcome.amount).toBeCloseTo(30000 * tF.scalingFactor);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBeCloseTo(outcome.amount);
+    });
+
+    test('the gate multi (20) produces an unscaled reward, matching pre-feature behavior exactly', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 1;
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli');
+        const outcome = await tF.updateValue(fl, 0, 'Orange', true);
+
+        expect(outcome.amount).toBe(30000);
     });
 });
 

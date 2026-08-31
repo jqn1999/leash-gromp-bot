@@ -19,6 +19,10 @@ class towerFactory{
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
+        // Reward VALUE scaling (2026-08-31) — computed once, here, from the same one-time
+        // this.multi snapshot execElite's success-chance formula already relies on never
+        // changing mid-run. See tower.md's "Tower Revamp: Reward Value Scaling" section.
+        this.scalingFactor = Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)
         this.difficulty = tC.TOWER_ELITE_DIFFICULTY_INITIAL
         this.died = false
         // Persistent account-level toggle (see /tower-settings) — skips the dedicated
@@ -214,7 +218,11 @@ class towerFactory{
             return false
         }
         if (Math.random() < success){
-            this.run[tC.PAYOUT.POTATOES] += fl.choices[0].value
+            // Elite fight rewards were deliberately never routed through decayValue (floor-
+            // depth decay explicitly exempts them, since Elites already carry their own risk
+            // throttle via the difficulty curve) — but that exemption is about floor DEPTH,
+            // a different axis than player POWER, so scaleReward still applies here.
+            this.run[tC.PAYOUT.POTATOES] += this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value)
             // handle reward payouts
             this.checkElitePayout()
             return this.createNextEmbed(fl, fl.choices[0].result, "Green")
@@ -239,6 +247,19 @@ class towerFactory{
         const floorsPastGrace = Math.max(0, this.floor - tC.TOWER_REWARD_GRACE_FLOOR)
         const decayMultiplier = Math.pow(tC.TOWER_REWARD_DECAY_RATIO, floorsPastGrace)
         return value * decayMultiplier
+    }
+
+    // Reward VALUE scaling (2026-08-31) — a different axis than decayValue above (that one
+    // decays by floor DEPTH; this one scales by player POWER, via this.scalingFactor, which
+    // is derived once at construction time from this.multi). A reward's raw value is
+    // multiplied by this.scalingFactor only when its outcome index is one of the three
+    // "economy-facing" currencies (see tower.md part 2) — PAYOUT.WORK_MULTIPLIER and
+    // MODIFIER.WORK_MULTIPLIER both pass through completely unscaled.
+    scaleReward(outcomeIndex, rawValue){
+        if(!tC.SCALED_PAYOUT_TYPES.has(outcomeIndex)){
+            return rawValue
+        }
+        return rawValue * this.scalingFactor
     }
 
     // Shared by every non-Elite resolution branch that would otherwise always show a dedicated
@@ -276,7 +297,7 @@ class towerFactory{
                 let nextElite = (Math.floor(this.floor / 10) + 1) * 10
                 // Decayed once, at the floor the promise is made — checkElitePayout itself
                 // needs zero changes, it just adds whatever number is already in the queue.
-                let amount = this.decayValue(choice.type, choice.value)
+                let amount = this.scaleReward(choice.type, this.decayValue(choice.type, choice.value))
                 let elite_kill = [nextElite, choice.type, amount]
                 this.run[tC.PAYOUT.ELITE_KILL].push(elite_kill)
                 if(silent){
@@ -285,7 +306,7 @@ class towerFactory{
                 return this.resolveNext(fl, choice.result, color)
             }
             default: {
-                let value = this.decayValue(choice.outcome, choice.value)
+                let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))
                 this.run[choice.outcome] += value
                 if(silent){
                     return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: value }
@@ -327,9 +348,10 @@ class towerFactory{
             return this.resolveNext(fl, fl.poor, color)
         }
 
-        // update outcome + value then subtract price — only the value bought decays, never
-        // the price itself (see tower.md's reward-safeguard scope).
-        let value = this.decayValue(choice.outcome, choice.value)
+        // update outcome + value then subtract price — only the value bought decays/scales,
+        // never the price itself (see tower.md's reward-safeguard scope and the reward-value-
+        // scaling section's identical scope decision for the same field).
+        let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))
         this.run[choice.outcome] += value
         this.run[tC.PAYOUT.POTATOES]-= choice.price
         if(silent){
@@ -718,6 +740,47 @@ function applyOutcomeToSummary(summary, outcome) {
     if (outcome.pricePaid) summary.potatoes -= outcome.pricePaid
 }
 
+// Reward VALUE scaling (2026-08-31) — module-level, exported for testing (same precedent as
+// getFloor/pickElite). Real cumulative potato investment required to reach a given
+// workMultiplierAmount, log-log linearly interpolated between whichever two
+// SCALING_ANCHOR_TABLE checkpoints M falls between — see tower.md part 1 for why a closed-
+// form power-law fit was checked and rejected in favor of the real table.
+function investment(M) {
+    const table = tC.SCALING_ANCHOR_TABLE
+    // Exact-match short-circuit: a live M that lands precisely on a table checkpoint (e.g.
+    // ENTRY_GATE_MULTI's own 20) returns that checkpoint's literal value rather than
+    // round-tripping through log/exp, which introduces a ~1e-13 relative floating-point
+    // error that would otherwise make scalingFactor(20) infinitesimally off from the exact
+    // 1.0 the design relies on (see tower.md's "no existing test needs its numbers changed"
+    // claim, which depends on this being exact, not merely close).
+    const exact = table.find(([m]) => m === M)
+    if (exact) return exact[1]
+    if (M <= table[0][0]) return table[0][1]                 // defensive floor, never hit in
+                                                                // real play (ENTRY_GATE_MULTI's
+                                                                // own gate keeps live M above it)
+    const top = table[table.length - 1]
+    if (M >= top[0]) {
+        // Live workMultiplierAmount is NOT hard-capped at 600 in practice — that's only the
+        // shop+regrade portion; sweetPotatoBuffs stacks on top of it uncapped, same as every
+        // other permanent stat track. Extrapolate the final segment's log-log slope forever
+        // past the table's own top entry rather than flatlining scalingFactor there.
+        const prev = table[table.length - 2]
+        const slope = (Math.log(top[1]) - Math.log(prev[1])) / (Math.log(top[0]) - Math.log(prev[0]))
+        return Math.exp(Math.log(top[1]) + slope * (Math.log(M) - Math.log(top[0])))
+    }
+    for (let i = 0; i < table.length - 1; i++) {
+        const [lo, hi] = [table[i], table[i + 1]]
+        if (M >= lo[0] && M <= hi[0]) {
+            const t = (Math.log(M) - Math.log(lo[0])) / (Math.log(hi[0]) - Math.log(lo[0]))
+            return Math.exp(Math.log(lo[1]) + t * (Math.log(hi[1]) - Math.log(lo[1])))
+        }
+    }
+}
+
+function scalingFactor(M) {
+    return investment(M) / tC.SCALING_ANCHOR_INVESTMENT
+}
+
 function mergeFastForwardSummaries(target, source) {
     target.floorsResolved += source.floorsResolved
     target.potatoes += source.potatoes
@@ -733,5 +796,7 @@ module.exports = {
     getFloor,
     getEliteTier,
     pickElite,
-    pickChoiceIndex
+    pickChoiceIndex,
+    investment,
+    scalingFactor
 }

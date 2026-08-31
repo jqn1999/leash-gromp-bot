@@ -73,8 +73,8 @@ module.exports = {
         if (!userDetails) return;
         let userMultiplier = userDetails.workMultiplierAmount;
 
-        if (userMultiplier < 20) {
-            interaction.editReply(`${userDisplayName} you are barred entry due to being too weak, reach 20x multiplier before you can enter!`)
+        if (userMultiplier < tC.ENTRY_GATE_MULTI) {
+            interaction.editReply(`${userDisplayName} you are barred entry due to being too weak, reach ${tC.ENTRY_GATE_MULTI}x multiplier before you can enter!`)
             return;
         }
 

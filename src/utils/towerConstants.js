@@ -60,6 +60,75 @@ const ELITE_TIER_BANDS = [
 const TOWER_REWARD_GRACE_FLOOR = 100     // floors 1-100 pay full value, no decay
 const TOWER_REWARD_DECAY_RATIO = 0.95    // per floor past the grace floor
 
+// Reward VALUE scaling (2026-08-31) — see tower.md's "Tower Revamp: Reward Value Scaling"
+// section for the full derivation. A completely different axis from the reward-decay
+// safeguard above (that one decays by floor DEPTH; this one scales by player POWER, fixing
+// the fact that every reward VALUE in this file was flat regardless of workMultiplierAmount).
+//
+// ENTRY_GATE_MULTI is the single source of truth for both enter-tower.js's gate check AND
+// the scaling anchor below — moving the gate only ever requires changing this one line (plus
+// a matching manual update to SCALING_ANCHOR_INVESTMENT, since that value is intentionally
+// not derived from the table at runtime).
+const ENTRY_GATE_MULTI = 20
+
+// Real cumulative potato investment required to reach a given workMultiplierAmount — the
+// shop's own tier checkpoints (1, 1.5, 3, 5, 10, 15, 20, 25, 30, 50, 100) plus every regrade
+// checkpoint reachable by chaining workRegradeTiers' fixed `increase` amounts on top of the
+// shop's 100 cap, up to 600 (REGRADE_CAPS.workMulti (500) + the shop's own 100 cap — the
+// literal maximum obtainable via shop+regrade alone). A power-law fit across this whole range
+// was checked and rejected (30%+ off at multi 50) because the shop's tier costs are
+// hand-tuned, not a smooth curve — see tower.md part 1 for the full rejection rationale.
+const SCALING_ANCHOR_TABLE = [
+    [1.5, 50000],
+    [3,   250000],
+    [5,   1250000],
+    [10,  6250000],
+    [15,  26250000],
+    [20,  76250000],
+    [25,  151250000],
+    [30,  251250000],
+    [50,  751250000],
+    [100, 2251250000],
+    [110, 3180681658],
+    [120, 4191869071],
+    [130, 6405293965],
+    [140, 8844020147],
+    [160, 13018976591],
+    [180, 20254014446],
+    [210, 31533366214],
+    [250, 51790419545],
+    [300, 85759997213],
+    [350, 135202541500],
+    [400, 201125933884],
+    [450, 267049326267],
+    [500, 341213142698],
+    [600, 460201102807]
+]
+
+// investment(ENTRY_GATE_MULTI) — MUST equal SCALING_ANCHOR_TABLE's value at the
+// ENTRY_GATE_MULTI key above. Kept as its own named constant, not read out of the table at
+// runtime, purely so a developer can see at a glance what everything else is divided by.
+const SCALING_ANCHOR_INVESTMENT = 76250000
+
+// Which of the 4 PAYOUT.* currencies scale by scalingFactor. PAYOUT.WORK_MULTIPLIER is
+// deliberately excluded — it's a permanent stat increase, not an accumulating economy
+// resource, and this codebase's established convention is "stat bonuses are flat, not
+// scaled" (see tower.md part 2 for the full rationale, including the compounding-feedback-
+// loop risk of scaling the very stat that measures player power).
+const SCALED_PAYOUT_TYPES = new Set([PAYOUT.POTATOES, PAYOUT.PASSIVE_INCOME, PAYOUT.BANK_CAPACITY])
+
+// Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper
+// run survives more forced Elites along the way, each worth a fixed undecayed amount, so
+// EV_old(M) itself already creeps up with M even before any scaling is applied — applying
+// the full, undampened scalingFactor on top of that double-counts a small part of the growth
+// and leaves a real residual upward drift in EV/investment, verified by simulation — see
+// tower.md). Calibrated by real Monte Carlo: 1.0 (no dampening) leaves EV/investment
+// drifting ~7.5x from the gate to multi 600; 0.83 flattens it to a ~2.2x hump peaking around
+// multi 100-150 and returning to the gate's own ratio by multi 600. Applied once, multiplied
+// into the cached scalingFactor itself (see towerFactory.js's constructor) — scaleReward's
+// own body needs no separate awareness of it.
+const SCALING_EXPONENT = 0.83
+
 //const
 
 const RUN = {
@@ -395,6 +464,11 @@ module.exports = {
     TOWER_REWARD_DECAY_RATIO,
     FAST_FORWARD,
     SAFE_POLICY,
-    GREEDY_POLICY
+    GREEDY_POLICY,
+    ENTRY_GATE_MULTI,
+    SCALING_ANCHOR_TABLE,
+    SCALING_ANCHOR_INVESTMENT,
+    SCALED_PAYOUT_TYPES,
+    SCALING_EXPONENT
 }
 

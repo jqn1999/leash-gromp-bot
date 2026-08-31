@@ -6765,3 +6765,54 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   player never saw it. Fixed to only show the summary in the one case nothing has displayed a
   terminal screen yet. See [systems/tower.md](systems/tower.md#tower-revamp-shipped-2026-08-31) for
   the full writeup and the two regression tests added.
+
+- [x] **Tower Reward Value Scaling** — S/M — **Done (2026-08-31, same day)**. A separate axis from
+  the reward-decay safeguard above (that one decays by floor DEPTH; this one scales by player
+  POWER): every reward VALUE in `towerConstants.js` (`COMBATS`/`ENCOUNTERS`/`TRANSACTIONS`/
+  `REWARDS`/`ELITES`) was flat, with zero dependency on `workMultiplierAmount` — unlike `/work`'s
+  own reward, which scales directly with player power. Verified by real 15,000-trial-per-multi
+  Monte Carlo (reusing the shipped `getFloor`/`pickElite`/`pickChoiceIndex`): `EV/investment`
+  collapsed ~1,300x from a fresh multi-20 entrant to a multi-600 veteran under the old flat values.
+  Fix: `towerFactory`'s constructor now computes `this.scalingFactor = scalingFactor(this.multi) **
+  SCALING_EXPONENT` once, from the run's own frozen `multi` snapshot (the same never-changes-mid-run
+  guarantee `execElite`'s success chance already relied on); `scalingFactor(M) = investment(M) /
+  SCALING_ANCHOR_INVESTMENT`, where `investment(M)` log-log-interpolates a 24-entry table of real
+  cumulative shop+regrade potato costs (a closed-form power-law fit was checked and rejected — 30%+
+  off at multi 50, since the shop's tiers are hand-tuned, not a smooth curve) and extrapolates past
+  the table's own top entry (600) using the final segment's slope rather than flatlining. A new
+  `scaleReward(outcomeIndex, rawValue)` instance method multiplies by `this.scalingFactor` only for
+  `PAYOUT.POTATOES`/`PAYOUT.PASSIVE_INCOME`/`PAYOUT.BANK_CAPACITY` (`SCALED_PAYOUT_TYPES`) — never
+  `PAYOUT.WORK_MULTIPLIER` or `MODIFIER.WORK_MULTIPLIER`, both permanent-stat/temp-buff exemptions
+  matching this codebase's "stat bonuses are flat, not scaled" convention and avoiding a compounding
+  feedback loop (scaling the very stat that measures player power). Wired into 4 call sites:
+  `updateValue`'s default and King-Kiwi branches, `updateTransaction`'s payout branch (its `price`
+  line stays untouched, by design — only the value bought scales, never the cost), and `execElite`'s
+  win branch (a new call site — Elite rewards never needed `decayValue`'s floor-depth exemption, but
+  do need power scaling, a different axis). `enter-tower.js`'s hardcoded `20` entry gate became
+  `tC.ENTRY_GATE_MULTI`, the single source of truth both the gate check and the scaling anchor read.
+  `SCALING_EXPONENT` (0.83) dampens `scalingFactor`'s raw growth against `EV_old`'s own mild
+  secondary growth (more forced Elites survived deeper into a run, undecayed, already creep EV up
+  with `M`) — calibrated by a second Monte Carlo pass: undampened left a residual ~7.5x drift gate-
+  to-600, `^0.83` flattens it to a ~2.2x hump peaking around multi 100-150 and returning to the
+  gate's own ratio by 600.
+  Notable design points: no new persisted data (`workMultiplierAmount` is already loaded before
+  `towerFactory` is constructed). A genuine floating-point artifact surfaced during implementation,
+  not anticipated by the design doc: `investment(M)`'s log-log interpolation round-trips through
+  `Math.log`/`Math.exp`, which left `scalingFactor(20)` at `1.0000000000000013` instead of the exact
+  `1.0` the design's own "no existing test needs its numbers changed" claim depends on (12 of 14
+  `towerFactory.test.js` call sites construct at `multi=20`) — broke 2 existing strict-`toBe()`
+  assertions. Fixed with an exact-match short-circuit in `investment(M)` (return a table
+  checkpoint's literal value when `M` lands exactly on one, before ever touching log/exp) rather
+  than loosening the test assertions — this is a pure floating-point-precision fix, not a formula
+  change, and it makes the design's own stated invariant literally true instead of "true to 1e-13."
+  See [systems/tower.md](systems/tower.md#tower-revamp-reward-value-scaling-2026-08-31) for the full
+  design, worked EV table, and this fix.
+  Tests: `towerFactory.test.js` grew from 44 to 56 — new `investment`/`scalingFactor` pure-function
+  coverage (exact table-boundary values, a log-log-interpolated gap independently recomputed rather
+  than re-deriving from the implementation, the past-600 extrapolation continuing the table's trend
+  rather than flattening, the sub-table defensive floor), `scaleReward` coverage (a true no-op at
+  the entry gate, all three `SCALED_PAYOUT_TYPES` currencies scaling together, `PAYOUT.WORK_MULTIPLIER`/
+  `MODIFIER.WORK_MULTIPLIER` staying unscaled even at a large `scalingFactor`), and a live
+  end-to-end wiring check (`updateValue` at `multi=100` produces a reward strictly larger than the
+  raw table value, and `multi=20` reproduces the exact pre-feature number) to prove the call sites
+  are actually wired, not just correct in isolation. Full suite: **887/887**.
