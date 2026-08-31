@@ -307,21 +307,32 @@ describe('towerFactory.decayValue', () => {
 // Tower Revamp (2026-08-31) — difficulty curve rework. Two-line change: geometric climb
 // instead of a flat +4.5, and a 90% cap instead of 100%.
 describe('difficulty curve', () => {
-    test('constructor starts at TOWER_ELITE_DIFFICULTY_INITIAL (4.0), not the old flat 1', () => {
-        const tF = new towerFactory({}, 'tester', 20);
+    test('constructor starts at TOWER_ELITE_DIFFICULTY_INITIAL (3.0), not the old flat 1', () => {
+        // 3.0 (not the pre-2026-08-31-gate-drop 4.0) — paired with ENTRY_GATE_MULTI moving to 15
+        // so the fresh-entrant floor-10 coinflip stays calibrated: 15 / (3.0 * 10) = 0.50 exactly,
+        // matching the original 20 / (4.0 * 10) = 0.50.
+        const tF = new towerFactory({}, 'tester', tC.ENTRY_GATE_MULTI);
         expect(tF.difficulty).toBe(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
-        expect(tF.difficulty).toBe(4.0);
+        expect(tF.difficulty).toBe(3.0);
     });
 
-    test('matches the documented worked numbers for this.difficulty(N) = 4.0 * 1.45^(N-1)', () => {
+    test('matches the documented worked numbers for this.difficulty(N) = 3.0 * 1.45^(N-1)', () => {
         const initial = tC.TOWER_ELITE_DIFFICULTY_INITIAL;
         const ratio = tC.TOWER_ELITE_DIFFICULTY_RATIO;
         const difficultyAt = (N) => initial * Math.pow(ratio, N - 1);
-        expect(difficultyAt(1)).toBeCloseTo(4.00, 2);
-        expect(difficultyAt(2)).toBeCloseTo(5.80, 2);
-        expect(difficultyAt(3)).toBeCloseTo(8.41, 2);
-        expect(difficultyAt(5)).toBeCloseTo(17.68, 2);
-        expect(difficultyAt(10)).toBeCloseTo(113.36, 1);
+        expect(difficultyAt(1)).toBeCloseTo(3.00, 2);
+        expect(difficultyAt(2)).toBeCloseTo(4.35, 2);
+        expect(difficultyAt(3)).toBeCloseTo(6.31, 2);
+        expect(difficultyAt(5)).toBeCloseTo(13.26, 2);
+        expect(difficultyAt(10)).toBeCloseTo(85.00, 1);
+    });
+
+    test('the entry-gate multi produces exactly a 50% success chance on the very first forced Elite (floor 10, N=1)', () => {
+        // The invariant TOWER_ELITE_DIFFICULTY_INITIAL is paired against: a fresh legal entrant's
+        // very first Elite (tier-1 elite.difficulty=10.0, no MODIFIER.WORK_MULTIPLIER accrued yet)
+        // should be a real coinflip, exactly as it was at the old gate/difficulty pairing (20/4.0).
+        const success = tC.ENTRY_GATE_MULTI / (tC.TOWER_ELITE_DIFFICULTY_INITIAL * 10);
+        expect(success).toBeCloseTo(0.5, 10);
     });
 
     test('ELITE_SUCCESS_CAP is 0.9, reused directly from Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE', () => {
@@ -337,7 +348,9 @@ describe('difficulty curve', () => {
 describe('investment', () => {
     test('exact table-boundary values return the literal table entry, no floating-point drift', () => {
         expect(investment(20)).toBe(76250000);
-        expect(investment(20)).toBe(tC.SCALING_ANCHOR_INVESTMENT);
+        // Anchor now re-points at the table's [15, 26250000] entry (ENTRY_GATE_MULTI == 15).
+        expect(investment(tC.ENTRY_GATE_MULTI)).toBe(tC.SCALING_ANCHOR_INVESTMENT);
+        expect(investment(15)).toBe(26250000);
         expect(investment(1.5)).toBe(50000);
         expect(investment(600)).toBe(460201102807);
         expect(investment(100)).toBe(2251250000);
@@ -473,7 +486,9 @@ describe('towerFactory Discord-interaction flows', () => {
             choice('fight'),         // the forced Elite at floor 10
             choice('leave'),         // the post-Elite-win Continue/Leave screen
         ]);
-        const tF = new towerFactory(interaction, 'tester', 20);
+        // Use the live entry-gate multi (scale-neutral, scalingFactor === 1) so the reward
+        // assertion below can compare against raw, unscaled values.
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
         const [run, floor, died] = await tF.startRun();
 
         expect(tF.policy).toBe(tC.POLICY.SAFE);
@@ -522,7 +537,9 @@ describe('towerFactory Discord-interaction flows', () => {
             choice('Fight'),            // floor 1's own COMBAT choice (Baby Broccoli's only choice)
             choice('leave'),            // floor 2's LEAVE button (present because autoContinue is on)
         ]);
-        const tF = new towerFactory(interaction, 'tester', 20, true);
+        // Use the live entry-gate multi (scale-neutral, scalingFactor === 1) so the reward
+        // assertion below can compare against the raw, unscaled value.
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI, true);
         const [run, floor, died] = await tF.startRun();
 
         expect(died).toBe(false);
@@ -577,7 +594,9 @@ describe('towerFactory Discord-interaction flows', () => {
     });
 
     test('a King Kiwi promise decays based on the floor the promise was made on, stored pre-decayed in the queue', async () => {
-        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 20);
+        // Use the live entry-gate multi (scale-neutral, scalingFactor === 1) so the amount
+        // reflects decay alone, isolating it from reward-value scaling.
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
         tF.floor = 150; // well past the grace floor
         const fl = tC.REWARDS.find(r => r.name === 'King Kiwi');
         const outcome = await tF.updateValue(fl, 1, 'Purple', true); // index 1 = 300,000 passive income

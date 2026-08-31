@@ -1088,3 +1088,69 @@ completely unscaled even at `multi = 600`'s large `scalingFactor`. A live end-to
 than the raw 30,000 (and matching `30000 * this.scalingFactor` exactly), while the identical call
 at `multi = 20` reproduces the exact pre-feature `30000` — proving the 4 call sites are actually
 live, not just that the pure functions are correct in isolation. Full suite: **887/887**.
+
+## Entry Gate Lowered to 15 (2026-08-31)
+
+Direct instruction: "lets make multi 15 the gate." Resolves the open `20 -> 15` question both the
+Reward Value Scaling design's `ENTRY_GATE_MULTI` comment and its "Note on multi 15" flagged as a
+likely follow-up. Three constant changes in `towerConstants.js`, one code file touched (zero lines
+— `enter-tower.js` already read `tC.ENTRY_GATE_MULTI` dynamically, exactly per that design's own
+intent):
+
+- **`ENTRY_GATE_MULTI`: `20 -> 15`.** Single source of truth for both `enter-tower.js`'s gate check
+  (and its rejection message text, e.g. "reach 15x multiplier before you can enter!") and the
+  reward-scaling anchor below — both update automatically from this one constant.
+- **`SCALING_ANCHOR_INVESTMENT`: `76,250,000 -> 26,250,000`** — re-pointed at
+  `SCALING_ANCHOR_TABLE`'s `[15, 26250000]` entry (was `[20, 76250000]`), preserving the invariant
+  that this constant always equals `investment(ENTRY_GATE_MULTI)`. The table itself is unchanged —
+  15 was already an authored checkpoint.
+- **`TOWER_ELITE_DIFFICULTY_INITIAL`: `4.0 -> 3.0` — a PAIRED change, not optional.** This constant
+  exists solely to keep a fresh entrant's very first forced Elite (floor 10, `N=1`, tier-1
+  `elite.difficulty = 10.0`) calibrated at exactly a 50% coinflip: `success = min((multi + modifier)
+  / (difficulty(N) * elite.difficulty), ELITE_SUCCESS_CAP)`, and at `N=1`, `difficulty(1) =
+  TOWER_ELITE_DIFFICULTY_INITIAL`. At the old pairing, `20 / (4.0 * 10) = 0.50` exactly. Lowering
+  only the gate without this pairing would have dropped a fresh multi-15 entrant's first-Elite odds
+  to `15 / (4.0 * 10) = 0.375` — a meaningfully *harder* on-ramp than the game was ever tuned to
+  present, turning an intended QoL loosening into a stealth difficulty regression. Dropping the
+  initial to `3.0` restores it exactly: `15 / (3.0 * 10) = 0.50`. `TOWER_ELITE_DIFFICULTY_RATIO`
+  (`1.45`) is untouched — the geometric climb's *shape* past floor 10 doesn't need to change, only
+  where it starts.
+
+**`SCALING_EXPONENT` re-validated, left at `0.83` — no refit needed.** The Reward Value Scaling
+design's own caveat was that `0.83` was calibrated against the 20-anchored curve's specific shape
+and wasn't guaranteed to transfer unchanged to a 15-anchored one. Re-ran the identical checkpoint-EV
+Monte Carlo methodology (SAFE policy, bank at the objectively best forced-Elite-clear depth,
+15,000 trials per multi, reusing the real exported `getFloor`/`pickElite`/`pickChoiceIndex`/
+`investment`/`scalingFactor` and the real `towerFactory` instance methods end-to-end — no
+hand-rolled approximation) against the new anchor:
+
+| Multi | `investment(M)` | EV (checkpoint-optimal) | Best bank depth | EV/investment |
+|---|---|---|---|---|
+| 15 (gate) | 26,250,000 | 316,806 | floor 10 | 1.2069% |
+| 35 | 349,663,626 | 8,166,209 | floor 20 | 2.3354% |
+| 50 | 751,250,000 | 20,866,140 | floor 30 | 2.7775% |
+| 100 | 2,251,250,000 | 68,496,934 | floor 50 | 3.0426% |
+| 250 | 51,790,419,545 | 1,184,344,127 | floor 70 | 2.2868% |
+| 400 | 201,125,933,884 | 3,745,147,996 | floor 80 | 1.8621% |
+| 600 | 460,201,102,807 | 7,461,222,038 | floor 90 | 1.6213% |
+
+The ratio still traces a shallow hump — `1.21% -> 2.34% -> 2.78% -> 3.04% -> 2.29% -> 1.86% ->
+1.62%` — peaking around multi 100 and settling back down by 600, not a monotonic drift in either
+direction. Total spread (max/min across the range) is **2.52x**, comfortably inside the ~2.2-2.9x
+spread the 20-anchored curve itself produced and well under the ~3x "still reasonably flat"
+threshold — so `SCALING_EXPONENT` did not need to be refit. `scalingFactor(15) = 1.0` exactly (the
+anchor divided by itself, via `investment`'s exact-checkpoint short-circuit), so the gate's own
+baseline EV is unaffected by this change, same as the original 20-anchored calibration guaranteed
+for the old gate.
+
+**Test impact.** `towerFactory.test.js`'s difficulty-curve and reward-scaling-anchor tests had
+hardcoded expected values tied to the old `20`/`4.0` pairing and needed updating to the new
+`15`/`3.0` pairing (not weakened — recomputed from the new constants, including a new dedicated
+test asserting the paired 50%-floor-10-coinflip invariant itself, generically off
+`tC.ENTRY_GATE_MULTI`/`tC.TOWER_ELITE_DIFFICULTY_INITIAL` rather than a literal). Three integration
+tests that previously used a hardcoded `multi = 20` purely as "a legal, scale-neutral entry multi"
+(to assert an unscaled reward amount, e.g. `9 * 30000 + 150000`) were switched to read
+`tC.ENTRY_GATE_MULTI` directly instead — `multi = 20` is no longer scale-neutral now that the
+anchor moved to 15, so those tests needed to track the live gate constant to keep asserting the
+same "reward exactly equals the raw undecayed/unscaled value at the gate" invariant they were
+written to lock in. Full suite: **888/888**.

@@ -6816,3 +6816,31 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   end-to-end wiring check (`updateValue` at `multi=100` produces a reward strictly larger than the
   raw table value, and `multi=20` reproduces the exact pre-feature number) to prove the call sites
   are actually wired, not just correct in isolation. Full suite: **887/887**.
+- [x] **Tower Entry Gate Lowered to 15** — S — **Done (2026-08-31, same day)**. Direct instruction:
+  "lets make multi 15 the gate." Three `towerConstants.js` changes, zero code changes elsewhere
+  (`enter-tower.js` already read `tC.ENTRY_GATE_MULTI` dynamically, exactly per the Reward Value
+  Scaling design's own intent): `ENTRY_GATE_MULTI` `20 -> 15`; `SCALING_ANCHOR_INVESTMENT`
+  `76,250,000 -> 26,250,000` (re-pointed at `SCALING_ANCHOR_TABLE`'s already-authored `[15,
+  26250000]` entry, preserving the "must equal `investment(ENTRY_GATE_MULTI)`" invariant);
+  `TOWER_ELITE_DIFFICULTY_INITIAL` `4.0 -> 3.0`, a **paired, non-optional** change — it exists only
+  to keep a fresh entrant's very first forced Elite (floor 10) calibrated at exactly a 50%
+  coinflip (`success = multi / (difficulty(1) * elite.difficulty)`); dropping the gate alone would
+  have silently made floor 10 harder for a fresh entrant (`15/40=37.5%`) instead of easier, exactly
+  the regression the design's own pairing was meant to prevent. Re-validated `SCALING_EXPONENT`
+  against the new 15-anchored curve via the same checkpoint-EV Monte Carlo methodology (SAFE
+  policy, bank-at-best-depth, 15,000 trials/multi, real exported factory functions) — spread across
+  multi 15/35/50/100/250/400/600 came out to 2.52x (1.21% -> 2.34% -> 2.78% -> 3.04% -> 2.29% ->
+  1.86% -> 1.62%), a shallow hump comparable to the original 20-anchored curve's ~2.2-2.9x spread,
+  so `0.83` was left unchanged, no refit needed.
+  Notable design points: the pairing rationale is the entire point of this change — a developer
+  extending Tower's difficulty curve in the future must remember `TOWER_ELITE_DIFFICULTY_INITIAL`
+  and `ENTRY_GATE_MULTI` are locked together by the "50% floor-10 coinflip for a fresh legal
+  entrant" invariant, not independent knobs. See
+  [systems/tower.md](systems/tower.md#entry-gate-lowered-to-15-2026-08-31) for the full EV table
+  and test-impact notes.
+  Tests: 3 existing `towerFactory.test.js` tests had hardcoded `multi = 20` used purely as "a
+  legal, scale-neutral entry multi" (asserting an unscaled reward amount) — switched to read
+  `tC.ENTRY_GATE_MULTI` directly, since `multi = 20` stopped being scale-neutral once the anchor
+  moved to 15. Difficulty-curve tests' hardcoded `4.0`-derived expected values were recomputed for
+  `3.0` (not weakened), plus a new dedicated test locking in the paired 50%-coinflip invariant
+  itself, generically off the live constants rather than a literal. Full suite: **888/888**.
