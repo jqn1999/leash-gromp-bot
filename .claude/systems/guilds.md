@@ -255,3 +255,511 @@ highest-first (`GuildContractFactory.getMemberBreakdown`, read-only, same per-me
 - `guild.contractHistory` — appended in `guildContractFactory.js`'s `checkAndClaimContract`, only on
   the branch that actually wins the completion race (so it can't double-append the way a naive check
   on every caller would). Each entry: `{ templateName, rotationDate, completedAt, reward }`.
+
+## Guild Raid Companion: Technical Design (2026-08-31)
+
+Converts the fully-decided 2026-08-31 roadmap brainstorm ("Guild Raid Companion") into buildable
+code shapes. Every hook cited below was verified directly against `src/` (not just the roadmap's own
+summary of itself) — see the "Verification notes" callouts for the handful of places the roadmap's
+framing needed correcting.
+
+**What this is**: a single, singleton, permanently-guild-bound companion ("Cinderroot, the
+Hoardwarden") a guild can win off a rare drop roll on a winning raid resolution. Three ongoing
+passive perks (raid cooldown reduction, raid reward bonus, guild treasury interest bump) plus a
+fourth one-time mechanic: the raid-starting member may sacrifice it on a loss to void that loss's
+entire potato penalty. Deliberately **not** added to the player-facing `Companions` array in
+`constants.js` — that array and everything that reads it (`getActivePerkValue`, the companion
+market, `/help topic:companions`) is entirely `userDetails`-scoped (`getActiveCompanion(userDetails)`
+is the one function every consumer goes through); a guild-owned singleton needs its own small,
+separate shape rather than being force-fit into machinery built around one user's own
+owned/equipped instances.
+
+### 1. Data model
+
+**New guild field**, added to `getDefaultGuildFields` in `dynamoHandler.js` (default `null`,
+parallel to `guild.guildContract`'s own pattern) — picked up automatically for every pre-existing
+guild by `findGuildById`'s already-generic diff-and-heal loop (it diffs `Object.keys(defaults)`
+against the stored item and heals one field at a time via `updateGuildDatabase`, with no
+per-field-type logic to update — confirmed generic, the roadmap's claim holds):
+
+```js
+guildCompanion: null,   // { id, acquiredAt, acquiredRaidTier } once won — see this section
+```
+
+Once won, the stored shape is:
+
+```js
+{
+    id: "cinderroot",                 // looked up against the new GuildCompanions[] below
+    acquiredAt: 1735689600000,        // Date.now() at the winning resolution
+    acquiredRaidTier: "regular"       // raidSelection value at the time it dropped: regular|elite|legendary|stat
+}
+```
+
+**Read-path caveat — use loose `!= null` / truthy checks everywhere, never `!== null`.** Two guild
+read paths bypass `findGuildById`'s self-heal entirely and will hand back a raw scanned item where
+`guildCompanion` is `undefined` (never healed), not `null`:
+- `dynamoHandler.applyGuildTreasuryInterest` iterates `getGuilds()` (a raw `scanAll`, no healing).
+- `/guild guild-name:<x>` (`guild.js`) calls `findGuildByName`, also a raw, unhealed `scan`; only the
+  no-argument `/guild` (via `findGuildById`) is healed.
+
+`undefined != null` and `null != null` both evaluate `false` in JS, so a plain `guild.guildCompanion
+!= null` (or a truthy `if (guild.guildCompanion)` check for display code) already treats "never
+healed" and "healed, never won one" identically and correctly — no special-casing needed, but every
+call site below must use the loose form, not `!== null`.
+
+**New standalone flavor/definition record** in `constants.js` — deliberately its own small array,
+shaped like a one-level-simplified `Companions` entry (id/name/thumbnail/description/flavor text),
+*not* merged into `Companions` itself:
+
+```js
+const GuildCompanions = [
+    {
+        id: "cinderroot",
+        name: "Cinderroot, the Hoardwarden",
+        thumbnailUrl: "<placeholder — reuse an existing raid-boss/Elite thumbnail until real art exists>",
+        description: "A wyrm-shaped tuber said to slumber beneath the deepest raid vaults, hoarding a sliver of every victory it's ever seen — a guild has to prove itself across enough raids before it rises to guard their spoils instead of someone else's.",
+        dropFlavor: "Something ancient and scorch-scaled stirs in the raid's aftermath — Cinderroot has decided your guild's hoard is worth guarding.",
+        sacrificeFlavor: "Cinderroot coils around the guild's stash one last time, shielding it with its own scorched hide — then goes still. The raid's cost is paid in full, and Cinderroot pays it alone."
+    }
+];
+```
+
+Shaped as an array (not a bare object) even though there's exactly one entry today, purely so a
+future second guild companion doesn't require restructuring — mirrors `Companions`/`getCompanionById`'s
+own id-lookup convention.
+
+**New drop-chance map**, mirroring `MercenaryCompanionDrop.YUKON_CHANCE`'s exact shape, keyed by
+`raid-select` mode instead of Bounty band letter (values already halved per the roadmap's 2026-08-31
+decision, matching `MercenaryCompanionDrop.YUKON_CHANCE`'s own now-current 0.5%/1%/2.5%):
+
+```js
+const GuildCompanionDrop = {
+    CHANCE: { baby: 0, regular: 0.005, stat: 0.005, elite: 0.01, legendary: 0.025 }
+    // baby excluded — see "Verification note" below on why the roadmap's own stated
+    // rationale for this exclusion needs a correction, even though the exclusion itself stands.
+};
+```
+
+**New level-scaled arrays** for perks (a)/(b), mirroring `GuildBuffScaling`'s exact shape (index 0 =
+level 1, looked up live from `guild.raidCount` via the existing `RaidLevel.THRESHOLDS`
+10-level curve — confirmed exactly 10 levels, level 10 = max):
+
+```js
+const GuildCompanionScaling = {
+    raidCooldownReductionPercent: [0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08],
+    raidRewardBonusPercent:      [0.03, 0.035, 0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+};
+```
+
+**Pinned numbers and why** (see "Balance sanity check" below for the arithmetic):
+- **3a, cooldown reduction: 2% (level 1) → 8% (level 10).** Exactly the roadmap's own illustrative
+  array — verified safe: the other three additive cooldown-reduction sources
+  (`RaidLevel.THRESHOLDS`' own `raidCooldownReductionPercent` max 30%, `GuildBuffScaling.raidTimer`
+  max 25%, Spud Keep's flat `SpudKeep.COOLDOWN_BUFF_VALUE` 8%) sum to a **63%** max, not the "north
+  of 80%" `guilds.md` currently claims (see Verification note below) — so there was actually *more*
+  headroom than the roadmap assumed, but 8% is still the right modest number regardless.
+- **3b, raid reward bonus: 3% (level 1) → 10% (level 10).** A clean array with the roadmap's stated
+  endpoints, deliberately smaller than Yukon's flat 13.5% per the roadmap's own instruction, and
+  shaped with the same "flatter early, steeper late" acceleration `GuildBuffScaling`'s own arrays use.
+- **3c, treasury interest bump: flat +0.02%/member/day** (a new `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP:
+  0.0002`, alongside the existing `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER: 0.001`) — a ~20%
+  relative bump over the 0.1% base rate, one line, no scaling table (the base formula itself is flat,
+  so scaling only this bonus would introduce an inconsistency the original formula doesn't have).
+
+### 2. Balance sanity check (perk 3b vs. the "uncapped bonus on an already-scaling multiplier" failure mode)
+
+The specific failure mode this codebase has hit before (Metal/Ancient Potato's history, Prospector's
+original Metal-only kit) is a bonus whose *effective* size grows unboundedly because it's pegged to
+an external stat that itself has no ceiling. Perk 3b does **not** have that shape: it's a fixed,
+level-indexed lookup capped at 10% forever once a guild hits level 10 — structurally identical to how
+`workMulti`'s own guild buff is deliberately "the tamest curve... so it doesn't outscale the other
+three." It cannot compound further no matter how much raid history a guild accumulates past level 10.
+
+Concrete numbers, Legendary T2 raid (`Raid.LEGENDARY_T2_REWARD = 103,693,000`), max-level guild
+(`raidRewardMultiplier = 10.00x`), average `randomMultiplier` roll (1.0):
+- Without companion: `103,693,000 × 1.0 × 10.00 = 1,036,930,000` potatoes to the winning side.
+- With companion at level 10 (+10%): `1,036,930,000 × 1.10 = 1,140,623,000` — **+103,693,000**, i.e.
+  exactly +10% by construction, on top of guild leveling's own 10x (900%) contribution. The
+  companion's ceiling is small relative to what leveling itself already contributes, and — unlike the
+  flagged failure mode — can never grow past that fixed 10% ceiling.
+
+### 3. Where the level-scaled lookups live: new `src/utils/guildCompanionFactory.js` (not `guildBuffFactory.js`)
+
+Checked `guildBuffFactory.js` first, per the roadmap's "architect's call": it's a tiny (41-line),
+tightly single-purpose file — three functions (`getGuildLevel`, `getGuildBuffValue`,
+`getGuildBuffLabel`), all scoped to exactly one concept, the player-selected `guild.guildBuff` string
+and `GuildBuffScaling`. It is **not** a general "guild-level-scaled things" dumping ground. Given this
+feature also needs an acquisition-roll function with its own DB write and a companion-lookup-by-id
+function — neither of which is a "guild buff" in any sense — bolting them onto `guildBuffFactory.js`
+would break its current single-concept scoping for no reuse benefit. This codebase's own convention
+is one factory per system (`workFactory.js`, `raidFactory.js`, `companionFactory.js`,
+`questFactory.js`...); a guild-owned companion is exactly that: a new system, deserving its own file.
+
+`guildCompanionFactory.js` stays Discord.js-free and embed-free, matching the fact that **no existing
+factory file** (`companionFactory.js`, `raidFactory.js`, `guildBuffFactory.js`) imports `discord.js`
+or `embedFactory.js` — confirmed by grep; that's exclusively command-file territory in this codebase.
+It requires only `constants.js`, `guildBuffFactory.js` (for `getGuildLevel`, reused rather than
+re-implemented a third time — safe to require, since `guildBuffFactory.js` itself only requires
+`constants.js`, so no cycle), and `dynamoHandler.js` (for the one write in the acquisition roll).
+
+```js
+// src/utils/guildCompanionFactory.js
+const { GuildCompanions, GuildCompanionDrop, GuildCompanionScaling } = require("./constants");
+const dynamoHandler = require("./dynamoHandler");
+
+function getGuildCompanionById(id) {
+    return GuildCompanions.find(c => c.id === id) || null;
+}
+
+// Mirrors guildBuffFactory.getGuildBuffValue's exact clamp shape.
+function getGuildCompanionScalingValue(scaleKey, level) {
+    const scale = GuildCompanionScaling[scaleKey];
+    if (!scale) return 0;
+    const clampedLevel = Math.min(Math.max(level, 1), scale.length);
+    return scale[clampedLevel - 1];
+}
+
+function getRaidCooldownReduction(guild, level) {
+    if (guild.guildCompanion == null) return 0;
+    return getGuildCompanionScalingValue('raidCooldownReductionPercent', level);
+}
+
+function getRaidRewardBonus(guild, level) {
+    if (guild.guildCompanion == null) return 0;
+    return getGuildCompanionScalingValue('raidRewardBonusPercent', level);
+}
+
+// One roll per winning raid RESOLUTION (never per member — see roadmap's fairness
+// reasoning), gated off entirely once a guild already owns one. Call with the SAME
+// pre-raid `guild` object runStartRaidFlow already has in scope (its guildCompanion
+// field can't change mid-resolution on a WIN — only a LOSS's sacrifice path touches it).
+async function rollGuildCompanionDrop(guild, raidSelection, wonThisRaid) {
+    if (!wonThisRaid || guild.guildCompanion != null) return { awarded: false };
+    const chance = GuildCompanionDrop.CHANCE[raidSelection] ?? 0;
+    if (chance <= 0 || Math.random() >= chance) return { awarded: false };
+    const companion = { id: "cinderroot", acquiredAt: Date.now(), acquiredRaidTier: raidSelection };
+    await dynamoHandler.updateGuildDatabase(guild.guildId, 'guildCompanion', companion);
+    return { awarded: true, companion };
+}
+
+module.exports = {
+    getGuildCompanionById,
+    getGuildCompanionScalingValue,
+    getRaidCooldownReduction,
+    getRaidRewardBonus,
+    rollGuildCompanionDrop,
+};
+```
+
+### 4. Acquisition roll hook in `startRaid.js`
+
+Reuses `raidHistory`'s own diffing technique exactly, at the exact same spot — **inside**
+`runStartRaidFlow` itself, not from some external wrapper (one correction to the roadmap's phrasing:
+it describes this as "re-fetching the guild and diffing `raidCount` before/after `runStartRaidFlow`
+resolves" as if from outside that function; in the real code the diff happens at the *end* of
+`runStartRaidFlow`'s own body, using a `freshGuild` re-fetch and a `raidCountBeforeThisRaid` captured
+at the top of the same function — same technique, just internal to one function rather than a
+wrapper around it). Add the roll immediately after the existing `raidHistory` write:
+
+```js
+// existing code, unchanged:
+const freshGuild = await dynamoHandler.findGuildById(guildId);
+const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
+// NEW — free reuse of the same freshGuild fetch already happening for the win/loss diff,
+// rather than a second DB round-trip: whether THIS resolution's sacrifice fired, without
+// threading a new field through any scenario closure's return value (which stays a bare
+// number, per the existing comment on why raidHistory's own signal avoids that).
+const companionSacrificedThisRaid = !wonThisRaid && guild.guildCompanion != null && freshGuild?.guildCompanion == null;
+const raidHistoryEntry = {
+    timestamp: Date.now(),
+    raidTier: raidSelection,
+    won: wonThisRaid,
+    potatoDelta: potatoesGained,
+    companionSacrificed: companionSacrificedThisRaid   // NEW field, always boolean, only ever true on the resolution the sacrifice happened
+};
+const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
+const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
+await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
+
+// NEW — acquisition roll, one call, no closures touched:
+const companionDrop = await guildCompanionFactory.rollGuildCompanionDrop(guild, raidSelection, wonThisRaid);
+if (companionDrop.awarded) {
+    const def = guildCompanionFactory.getGuildCompanionById(companionDrop.companion.id);
+    await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, def)] }).catch(() => {});
+}
+```
+
+`raidSelection` (the mode string already passed into `runStartRaidFlow`) is exactly the signal
+`GuildCompanionDrop.CHANCE` is keyed by — no new state needed. `interaction.followUp` (ephemeral:
+false) is correct here rather than a second `editReply`, since every scenario closure has already
+called its own `interaction.editReply(...)` with the raid's result embed by the time control returns
+to this point — a `followUp` posts a distinct, additional message announcing the drop rather than
+fighting over the same reply message.
+
+**Verification note on why Baby is excluded**: the roadmap's stated rationale — "Baby's own defining
+trait is guaranteed, zero-risk success" — does **not** match the real code. `babyRaidScenarios =
+[regularRaidScenarios[regularRaidScenarios.length - 1]]` reuses the literal T1 closure object, whose
+own `successChance` is computed by `calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY,
+Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)`, capped at `REGULAR_MAXIMUM_RAID_SUCCESS_RATE = 0.9` — never
+100%. Baby is guaranteed to land in the T1 *bracket* (never rolls into Metal King/T4/T3/T2), not
+guaranteed to *win* — a weak roster's Baby raid can and does lose. **The actual decision to exclude
+Baby from the acquisition roll (0% chance) still stands** — it's the cheapest, least risky bracket to
+farm repeatedly, so excluding it from a rare-drop source is still the right call — but flag this
+discrepancy to the product owner: the stated justification was inaccurate, even though the policy
+itself needed no change. One direct consequence: because Baby reuses the exact same closure object as
+Regular's own T1 entry, the sacrifice mechanic (3d, section 5 below) automatically applies to Baby
+losses too, for free — no special-casing needed, since it's the same code path.
+
+### 5. Perks 3a/3b hooks — genuinely zero-touch to any scenario closure
+
+Unlike 3d below, perks (a) and (b) really are single-hook-point changes, because both
+`raidRewardMultiplier` and the cooldown-reduction terms are computed **once** near the top of
+`runStartRaidFlow` and then threaded as plain values into every closure — pre-adjusting the value
+before it's threaded through requires touching zero closures.
+
+**3b (reward bonus)** — at the existing `getRaidLevelInfo` destructure (`runStartRaidFlow`, ~line 938):
+
+```js
+const { level: guildLevel, multiplier: rawRaidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
+const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
+```
+
+Every closure and the raid preview embed (`buildRaidPreview`/`createRaidPreviewEmbed`) already
+consumes `raidRewardMultiplier` by value — they pick up the boosted number automatically, including
+the pre-raid preview shown before the player confirms (a nice side effect: the player sees the
+boosted numbers up front, not just after the fact).
+
+**3a (cooldown reduction)** — at the existing additive-sum cooldown write (~line 1135):
+
+```js
+const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
+const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
+// Explicit floor per the roadmap's own ask — current real max (30% + 25% + 8% + 8% = 71%) doesn't
+// need it today, but this guards any future fifth stacking source from silently pushing the total
+// to/past 100% (a raid available immediately, or "negative" cooldown debt).
+const totalRaidTimerReduction = Math.min(
+    guildBuffRaidTimerReduction + spudKeepRaidTimerReduction + guildLevelRaidTimerReduction + companionCooldownReduction,
+    0.90
+);
+await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalRaidTimerReduction));
+```
+
+**Verification note**: `guilds.md`'s existing "Guild level" section claims the three pre-existing
+cooldown sources can already stack to "north of 80%." The real numbers (`RaidLevel.THRESHOLDS` max
+30%, `GuildBuffScaling.raidTimer` max 25%, `SpudKeep.COOLDOWN_BUFF_VALUE` flat 8%) sum to **63%**, not
+>80% — a pre-existing doc inaccuracy, not something this feature caused. Worth a follow-up fix to that
+section independent of this feature; noted here since it directly informed the "is there room for a
+4th term" question.
+
+### 6. Perk 3c hook in `dynamoHandler.js`
+
+One-line change inside `applyGuildTreasuryInterest`:
+
+```js
+const dailyRate = (Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER + (guild.guildCompanion != null ? Bank.GUILD_COMPANION_TREASURY_RATE_BUMP : 0)) * memberCount;
+```
+
+No call into `guildCompanionFactory.js` needed — this perk is flat, not level-scaled, so the constant
+is read directly. `guild` here comes from `getGuilds()`'s raw scan (unhealed) — `!= null` (loose)
+handles both `undefined` and `null` identically, exactly the caveat from section 1.
+
+### 7. Sacrifice mechanic (3d) — the one genuinely new pattern, and the one perk that DOES touch every scenario closure
+
+**Correction to the roadmap's framing**: the roadmap describes this as reusing "the one shared
+function every loss branch already funnels through" with the same low-touch cost as the acquisition
+roll. That's true for *where the prompt UI logic is written* (once, inside `removeFromBankOrPurse`,
+not duplicated 12 times) — but it is **not** true that this needs zero call-site changes, unlike the
+acquisition roll. `removeFromBankOrPurse` and `addToBankOrPurse` are plain top-level functions (not
+closures nested inside `runStartRaidFlow`), so they have no lexical access to `runStartRaidFlow`'s
+local `guild`/`userId`/`interaction` — passing that context in requires a new parameter, and every one
+of the ~14 win/loss scenario closures (`regularRaidScenarios`/`eliteRaidScenarios`/
+`legendaryRaidScenarios`, `babyRaidScenarios` free-rides on `regularRaidScenarios`' own T1 entry) is
+invoked through one of 4 shared call sites with a fixed positional-argument shape, so the new
+parameter has to be threaded through **every closure's signature**, even the ones (Metal King's three
+variants) that never use it, for the call sites to keep working. This is still a small, entirely
+mechanical, low-risk diff (append one parameter name per signature, one argument per call site, and
+real logic only in the 12 closures that actually call `removeFromBankOrPurse` with a nonzero
+penalty) — but it is a materially different, larger cost than 3a/3b/the acquisition roll, and the
+developer should scope it as such rather than expecting a single-hook-point change.
+
+Also considered and rejected: a module-level mutable variable in `startRaid.js` set once per
+`runStartRaidFlow` call, read by `removeFromBankOrPurse` without any new parameter. Rejected because
+this is a Discord bot serving many guilds concurrently — two guilds raiding at the same moment would
+race on the same module-level slot, a real correctness bug this codebase's existing
+`updateGuildFieldsWithLock`/optimistic-locking discipline elsewhere works hard to avoid. Don't
+introduce shared mutable module state to save a parameter.
+
+**Exact shape**:
+
+1. Near the top of `runStartRaidFlow`, once `guild`/`userId` are known (same spot
+   `raidCountBeforeThisRaid` is captured):
+
+   ```js
+   const sacrificeOffer = { interaction, starterUserId: userId, guildCompanion: guild.guildCompanion };
+   ```
+
+2. `removeFromBankOrPurse`'s signature gets one new optional trailing parameter, default `null` (same
+   "default to old behavior" precedent already used for `raidSplitMode`/`raidListByMulti`/`houseUserId`
+   on this exact function/its sibling `addToBankOrPurse`):
+
+   ```js
+   async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost, raidSplitMode = 'even', raidListByMulti = [], sacrificeOffer = null) {
+       if (sacrificeOffer && sacrificeOffer.guildCompanion != null && totalRaidCost < 0) {
+           const accepted = await promptCompanionSacrifice(sacrificeOffer);
+           if (accepted) {
+               await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', null);
+               return 'sacrificed';   // sentinel — never collides with a real raidSplit (always an array or null)
+           }
+       }
+       // ...unchanged body below, exactly as today
+   }
+   ```
+
+3. New helper `promptCompanionSacrifice`, defined in `startRaid.js` itself (not
+   `guildCompanionFactory.js` — it needs `ButtonBuilder`/`awaitMessageComponent`/`embedFactory`, and no
+   existing factory file touches Discord.js primitives; keeping it here also colocates it with this
+   file's own existing raid-start confirm/cancel prompt). Mirrors the exact pattern at the raid-start
+   confirmation (`reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() =>
+   null)`, `buildConfirmCancelRow`) — same 30-second window, same default-to-decline-on-timeout
+   behavior via `.catch(() => null)`:
+
+   ```js
+   async function promptCompanionSacrifice({ interaction, starterUserId }) {
+       const promptEmbed = embedFactory.createGuildCompanionSacrificePromptEmbed();
+       const promptRow = buildConfirmCancelRow('cinderroot_sacrifice', 'Sacrifice Cinderroot', 'Take the loss');
+       const promptMessage = await interaction.followUp({ embeds: [promptEmbed], components: [promptRow], ephemeral: true }).catch(() => null);
+       if (!promptMessage) return false;
+
+       const filter = i => i.user.id === starterUserId;   // the raid-starting member — same identity
+                                                            // already gated on at line 1037's collectorFilter
+       const choice = await promptMessage.awaitMessageComponent({ filter, time: 30_000 }).catch(() => null);
+       if (!choice || choice.customId === 'cinderroot_sacrifice_cancel') {
+           if (choice) await choice.update({ content: 'Cinderroot stays coiled around the hoard — the loss is paid in full.', embeds: [], components: [] }).catch(() => {});
+           return false;   // decline or timeout: identical outcome, normal penalty applies
+       }
+       await choice.update({ embeds: [embedFactory.createGuildCompanionSacrificeResultEmbed()], components: [] }).catch(() => {});
+       return true;
+   }
+   ```
+
+   "Raid-starting member" identity: confirmed as `userId` from `getUserInteractionDetails(interaction)`
+   at the very top of `runStartRaidFlow` — the same identity `interaction.user.id` already resolves to
+   throughout this file (e.g. the raid-start confirm/cancel `collectorFilter` at line 1037), since only
+   the person who ran `/start-raid` is ever the `interaction` owner here. No separate "who's the
+   starter" tracking needed — it's already `interaction.user.id` everywhere in this file.
+
+4. Every closure in `regularRaidScenarios`/`eliteRaidScenarios`/`legendaryRaidScenarios` gets
+   `sacrificeOffer` appended as a new trailing parameter (mechanical, ~14 signatures, only 12 bodies
+   use it); the 4 call sites (baby/regular/elite/legendary — **not** `stat`, whose own
+   `removeFromBankOrPurse` call at line 759 is an unconditional flat buy-in charged win-or-lose, never
+   a "loss," and must NOT get a `sacrificeOffer` at all) pass it through. Example, mirroring the T4
+   regular-mode loss branch exactly (the other 11 real loss bodies are byte-identical in shape):
+
+   ```js
+   action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer) => {
+       // ...unchanged success branch...
+       } else {
+           totalRaidSplit = Math.round(Raid.T4_RAID_PENALTY * randomMultiplier);
+           raidSplit = await removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidSplit, raidSplitMode, raidListByMulti, sacrificeOffer);
+           if (raidSplit === 'sacrificed') {
+               totalRaidSplit = 0;
+               raidSplit = null;
+               raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+           } else {
+               raidResultDescription = ultimateRaidMob.failureDescription;
+           }
+       }
+       // ...unchanged embed/return...
+   }
+   ```
+
+   Metal King's three variants (regular/elite/legendary) need the trailing parameter added to their
+   signatures for the shared call site to keep working, but their bodies are untouched — a Metal King
+   "loss" already sets `totalRaidSplit = 0` directly and never calls `removeFromBankOrPurse` at all, so
+   there's genuinely nothing to sacrifice against there (matches the roadmap's "only when the penalty
+   is nonzero" rule for free).
+
+**Confirmed outcomes**:
+- **Accept** → `guild.guildCompanion` set to `null` permanently; `removeFromBankOrPurse` returns
+  `'sacrificed'`; the closure zeroes the displayed cost and appends the sacrifice flavor text; no bank
+  drain, no member split.
+- **Decline** → normal loss, penalty applies exactly as today, companion untouched.
+- **Timeout** (30s, same window as every other collector in this file) → identical to decline, via the
+  same `.catch(() => null)` pattern this file already uses everywhere else for "don't leave a player
+  stuck."
+
+### 8. `/guild` embed (`embedFactory.js`)
+
+New field appended to `createGuildEmbed` (`guild.js`'s only caller passes either a `findGuildById`- or
+`findGuildByName`-sourced `guild` — use a plain truthy check, which handles both the healed-`null` and
+unhealed-`undefined` cases identically):
+
+```js
+if (guild.guildCompanion) {
+    const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
+    const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
+    const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
+    fields.push({
+        name: `Guild Companion:`,
+        value: `${def?.name ?? guild.guildCompanion.id} — -${cooldownPct}% raid cooldown, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+        inline: false
+    });
+}
+```
+
+Shows the **actual current numbers**, not just "you have a companion" — `cooldownPct`/`rewardPct` are
+already level-scaled via the same guild's `raidLevelInfo.level` `createGuildEmbed` already computes
+for its existing "Guild Level"/"Reward Multiplier" fields. `embedFactory.js` requiring
+`guildCompanionFactory.js` here is safe (no cycle): `guildCompanionFactory.js` never requires
+`embedFactory.js` back (see section 7's decision to keep the sacrifice-prompt UI in `startRaid.js`
+instead) — the same reasoning `embedFactory.js` already relies on to safely require `guildBuffFactory.js`
+for `getGuildBuffLabel`.
+
+Two new small `embedFactory.js` methods needed for section 4/7's `followUp` calls:
+`createGuildCompanionDropEmbed(guildName, def)` (shows `def.dropFlavor`) and
+`createGuildCompanionSacrificePromptEmbed()` / `createGuildCompanionSacrificeResultEmbed()` (shows
+`GuildCompanions[0].sacrificeFlavor`) — purely presentational, no logic, matching this file's existing
+convention.
+
+### 9. Test coverage a developer should add
+
+- **`guildCompanionFactory.test.js`** (new file):
+  - `rollGuildCompanionDrop` never awards when `wonThisRaid` is `false`.
+  - Never awards when `guild.guildCompanion` is already non-null (gated off entirely, regardless of
+    roll outcome — stub `Math.random` to always "win" the roll and confirm it still doesn't fire).
+  - Never awards on `raidSelection: 'baby'` (chance is `0`) even on a stubbed guaranteed-roll.
+  - Awards at the documented rate per mode (statistical assertion over many trials, or a stubbed
+    `Math.random` boundary check against `GuildCompanionDrop.CHANCE`).
+  - `getRaidCooldownReduction`/`getRaidRewardBonus` return `0` when `guildCompanion` is `null`, and the
+    correct `GuildCompanionScaling` value (with correct clamping at level 1 and level 10/max) when owned.
+- **`startRaid.js` test additions** (existing `__tests__/startRaid*.test.js` files already cover
+  win/loss branches — extend rather than duplicate):
+  - 3a: a companion-owning guild's post-raid `raidTimer` write reflects the extra additive reduction
+    term at its current level.
+  - 3b: a companion-owning guild's winning-side reward reflects the `(1 + companionBonus)` factor.
+  - 3c: `applyGuildTreasuryInterest` credits the bumped rate for a companion-owning guild vs. the base
+    rate for one without.
+  - 3d, all three outcomes: accept (companion set to `null`, `removeFromBankOrPurse` short-circuits,
+    zero bank drain/member split), decline (companion untouched, normal penalty), timeout (identical to
+    decline — stub `awaitMessageComponent` to resolve `null`).
+  - Acquisition roll fires only on a win, never on `baby`, never once already owned — exercised through
+    `runStartRaidFlow` itself (stub `Math.random` at the roll boundary), not just unit-tested in
+    isolation, since the real risk is the wiring at the call site, not the pure function.
+- **Self-heal**: extend whatever existing `findGuildById` healing test covers guild-field backfill (see
+  `guild-contracts.md`'s own self-healing writeup) with a guild record missing `guildCompanion`
+  entirely — assert it comes back `null` after one `findGuildById` call, and that `guild.js`'s no-name
+  path (`findGuildById`) shows it correctly while the by-name path (`findGuildByName`) still displays
+  correctly via the truthy-check fallback (no companion field shown, not a crash).
+
+### Summary of what touches what
+
+| File | Change |
+|---|---|
+| `src/utils/constants.js` | `GuildCompanions[]`, `GuildCompanionDrop.CHANCE`, `GuildCompanionScaling`, `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` |
+| `src/utils/dynamoHandler.js` | `getDefaultGuildFields`'s `guildCompanion: null`; one-line rate bump in `applyGuildTreasuryInterest` |
+| `src/utils/guildCompanionFactory.js` (new) | `getGuildCompanionById`, `getGuildCompanionScalingValue`, `getRaidCooldownReduction`, `getRaidRewardBonus`, `rollGuildCompanionDrop` |
+| `src/commands/guilds/startRaid.js` | `raidRewardMultiplier` pre-adjustment (1 line); cooldown-reduction additive term + floor (a few lines); acquisition roll + `companionSacrificed` history field (after existing `raidHistory` write); `removeFromBankOrPurse` new optional param + sacrifice branch; new `promptCompanionSacrifice` helper; `sacrificeOffer` threaded through ~14 closure signatures and 4 call sites; 12 real loss bodies handle the `'sacrificed'` sentinel |
+| `src/utils/embedFactory.js` | `createGuildEmbed` new field; new `createGuildCompanionDropEmbed`/`createGuildCompanionSacrificePromptEmbed`/`createGuildCompanionSacrificeResultEmbed` |
+| Tests | new `guildCompanionFactory.test.js`; additions to existing `startRaid*.test.js` files; a self-heal regression case |
