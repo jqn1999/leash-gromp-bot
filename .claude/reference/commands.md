@@ -85,6 +85,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 |---|---|---|
 | `enter-tower.js` | `/enter-tower` | Starts the daily floor-by-floor roguelike run |
 | `tower-leaderboard.js` | `/tower-leaderboard` | Shows today's in-progress Tater Tower standings (survived runs only) — see [systems/tower.md](../systems/tower.md#daily-leaderboard) |
+| `tower-settings.js` | `/tower-settings` | Toggle auto-continuing past non-Elite floors — see [systems/tower.md](../systems/tower.md#tower-revamp-technical-design-2026-08-31) |
 
 ## `betting/` — [systems/betting-and-games.md](../systems/betting-and-games.md)
 

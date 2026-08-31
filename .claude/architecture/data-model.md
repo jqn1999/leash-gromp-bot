@@ -150,6 +150,7 @@ Created by `addUser` in `dynamoHandler.js`:
   loginStreak: 0,             // consecutive-day count, see systems/daily-streak.md
   lastLoginDate: null,        // "YYYY-MM-DD" in EST, or null pre-first-claim
   towerChampionCount: 0,      // # of daily Tater Tower #1 finishes, see systems/tower.md
+  autoTowerContinue: false,   // toggled by /tower-settings, see systems/tower.md#tower-revamp
   webLinkToken: null,         // added externally, outside this knowledge base's scope
   quests: {},                 // per-quest-id progress snapshots, see systems/quests.md
   guildRaidWinCount: 0,       // wins across all raid-select tiers, see systems/raids-and-world-events.md

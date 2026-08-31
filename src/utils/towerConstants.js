@@ -1,4 +1,5 @@
 const { ButtonBuilder, ButtonStyle } = require("discord.js")
+const { Raid } = require("./constants")
 
 const PAYOUT = {
     POTATOES: 0,
@@ -23,7 +24,43 @@ const REWARD_PAYOUT = {
     AMOUNT: 2
 }
 
-//const 
+// Tower Revamp (2026-08-31) — see systems/tower.md's "Tower Revamp: Technical Design" section.
+const POLICY = {
+    SAFE: 'safe',
+    GREEDY: 'greedy'
+}
+
+// Elite success-chance cap. Reused, not duplicated: imports Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
+// directly (0.9), the same constant mercenaryFactory.js's Bounty success-chance calc already
+// reuses, rather than a second independent 90% magic number drifting out of sync with it later.
+const ELITE_SUCCESS_CAP = Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
+
+// Replaces this.difficulty's old starting value of 1 and its old flat `+= 4.5` per forced Elite
+// with a constant-ratio geometric climb — see systems/tower.md's "Difficulty curve rework" for the
+// full rationale (arithmetic growth's ratio between consecutive Elites approaches 1 as N grows,
+// which is the "flattens out later" dead zone this replaces).
+const TOWER_ELITE_DIFFICULTY_INITIAL = 4.0
+const TOWER_ELITE_DIFFICULTY_RATIO = 1.45
+
+// Elite content banding — tier is a pure content/flavor selector, NEVER a balance input
+// (elite.difficulty itself stays flat ~10.0 on every entry, in every band — see tower.md).
+// maxN is inclusive; bands are walked in order, first match wins.
+const ELITE_TIER_BANDS = [
+    { maxN: 3,        tier: 1 },   // forced-elite # 1-3  (floors 10-30)
+    { maxN: 8,        tier: 2 },   // forced-elite # 4-8  (floors 40-80)
+    { maxN: 20,       tier: 3 },   // forced-elite # 9-20 (floors 90-200)
+    { maxN: Infinity, tier: 4 }    // forced-elite # 21+  (floors 210+, reused forever)
+]
+
+// Reward-decay safeguard — a per-run diminishing multiplier on non-Elite floor payouts past a
+// floor threshold, so the difficulty-curve rework's "more players survive deeper" doesn't also
+// mean "unbounded risk-free persistent income." See tower.md's "Reward safeguard" section for the
+// closed-form ceiling this produces (~19 full-value floors' worth of extra reward, no matter how
+// many floors past the grace point a run survives).
+const TOWER_REWARD_GRACE_FLOOR = 100     // floors 1-100 pay full value, no decay
+const TOWER_REWARD_DECAY_RATIO = 0.95    // per floor past the grace floor
+
+//const
 
 const RUN = {
     [PAYOUT.POTATOES]: 0,
@@ -54,6 +91,19 @@ const COMBATS = [
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208522991315587132/pngtree-image-of-broccoli-angry-vector-or-color-illustration-png-image_5274821.png?ex=65e397be&is=65d122be&hm=5b0e7253cfa86ed6fe7c168fb69beaf8292c7be0c16e988a842b7223c27c990e&",
         description: `As you ascend the tower's winding floors, you encounter a Blighted Broccoli, once an innocent baby broccoli now twisted by a dark curse, its presence unsettling. Prepare for combat!`,
         choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 45000, result: "With the defeat of the Blighted Broccoli, the curse that plagued the baby broccoli lifts, allowing the tower floor to regain its tranquility and purity." }]
+    },
+    {
+        // Content widening (2026-08-31) — see tower.md part 3.
+        name: "Ferocious Fennel",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208522991315587132/pngtree-image-of-broccoli-angry-vector-or-color-illustration-png-image_5274821.png?ex=65e397be&is=65d122be&hm=5b0e7253cfa86ed6fe7c168fb69beaf8292c7be0c16e988a842b7223c27c990e&",
+        description: `As you ascend the tower's floors, you encounter a Ferocious Fennel, bristling with sharpened fronds. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 40000, result: "With the defeat of the Ferocious Fennel, its bristling fronds go still and the tower floor grows quiet once more." }]
+    },
+    {
+        name: "Ravenous Rhubarb",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208520322609848330/image.png?ex=65e39542&is=65d12042&hm=32442c7b1cd2b37d59df9989915c32237019e62c8926d48d12f659b8edbe6e3b&",
+        description: `As you ascend the tower's floors, you encounter a Ravenous Rhubarb, snapping wildly at anything within reach. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 50000, result: "With the defeat of the Ravenous Rhubarb, its wild snapping finally stops." }]
     }
 ]
 
@@ -113,6 +163,39 @@ const ENCOUNTERS = [
         description: "You enter a dense forest and before long, you seem to be lost within the trees. You eventually find your way to a path with two choices....\n\nWhich path will you take?",
         choices: [{ name: 'Left!', outcome: CHOICES.ELITE, result: `The path leads you to the lair of a ferious elite......prepare for combat!` },
         { name: 'Right!', outcome: CHOICES.EXIT, result: `You find your way back onto the main path and manage to leave the forest!` }]
+    },
+    {
+        // Content widening (2026-08-31) — Grouchy Garlic, a Magic-Mango-shaped encounter (one
+        // EXIT choice, one MODIFIER.WORK_MULTIPLIER choice). Mirrored pair below keeps the
+        // deterministic-by-index convention every ENCOUNTERS entry relies on.
+        name: "Grouchy Garlic",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "A grouchy clove of garlic guards two baskets, one holding 2x work modifier and the other holding nothing.\n\nWhich basket will you check?",
+        choices: [{ name: 'This basket!', outcome: CHOICES.EXIT, result: "You check this basket but do not find anything......" },
+        { name: 'That basket!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "Behind this basket you find 2x work modifier!" }],
+    },
+    {
+        name: "Grouchy Garlic",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "A grouchy clove of garlic guards two baskets, one holding 2x work modifier and the other holding nothing.\n\nWhich basket will you check?",
+        choices: [{ name: 'This basket!', outcome: MODIFIER.WORK_MULTIPLIER, value: 2, result: "Behind this basket you find 2x work modifier!" },
+        { name: 'That basket!', outcome: CHOICES.EXIT, result: "You check this basket but do not find anything......" }],
+    },
+    {
+        // Ominous Onion, a Despicable-Dragonfruit-shaped encounter (both choices the same
+        // outcome type, one positive/one negative).
+        name: "Ominous Onion",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "An ominous onion rolls to a stop in front of you, layers rustling. What will you do?",
+        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You peel back its layers and find 100,000 potatoes tucked inside." },
+        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You kick the onion and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." }]
+    },
+    {
+        name: "Ominous Onion",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
+        description: "An ominous onion rolls to a stop in front of you, layers rustling. What will you do?",
+        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You peel back its layers and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." },
+        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You kick the onion and it splits open, revealing 100,000 potatoes inside." }]
     }
 ]
 
@@ -144,7 +227,16 @@ const TRANSACTIONS = [
         poor: "As much as you want to buy the work multiplier, you don't have enough potatoes to buy it",
         poor_outcome: CHOICES.EXIT
     },
-
+    {
+        // Content widening (2026-08-31) — see tower.md part 3.
+        name: "The Baron's Beet",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
+        description: "A well-dressed beet offers you 1 million PERMANENT bank capacity for 450,000 potatoes.\n\nWill you take the offer?",
+        choices: [{ name: 'Yes', outcome: PAYOUT.BANK_CAPACITY, value: 1000000, price: 450000, result: `You buy the permanent bank capacity upgrade from the baron!` },
+        { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the baron's offer and depart` }],
+        poor: "As much as you want to buy the bank capacity, you don't have enough potatoes to buy it",
+        poor_outcome: CHOICES.EXIT
+    }
 ]
 
 const REWARDS = [
@@ -165,9 +257,23 @@ const REWARDS = [
         choices: [{name: '0.2 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.2, result: "The king agrees to give you some work multiplier if you defeat the elite."},
         {name: '300,000 passive income', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 300000, result: "The king agrees to give you some passive if you defeat the elite."},
         {name: '2 million bank capacity', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 2000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
+    },
+    {
+        // Content widening (2026-08-31) — a plain, non-conditional third REWARD so the pool
+        // isn't just Fairy Fig/King Kiwi. See tower.md part 3.
+        name: "Golden Ginger",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
+        description: "A radiant ginger root offers you 200,000 passive income or 1.5 million bank capacity, both permanent.\n\nWhat will you take?",
+        kill_elite: false,
+        choices: [{ name: '200,000 passive income', outcome: PAYOUT.PASSIVE_INCOME, value: 200000, result: "The ginger dissolves into golden light, granting you 200,000 passive income!" },
+        { name: '1.5 million bank capacity', outcome: PAYOUT.BANK_CAPACITY, value: 1500000, result: "The ginger dissolves into golden light, granting you 1.5 million bank capacity!" }],
     }
 ]
 
+// Elite content banding (2026-08-31) — `tier` is a pure content-selection tag, never a balance
+// input; every entry's `difficulty` stays flat ~10.0 deliberately (see tower.md part 3/4). Tiers
+// 2-4 are placeholder flavor/thumbnails per the design's own "you do not need to author real
+// names/flavor/thumbnails" allowance — structure is what matters here.
 const ELITES = [
     {
         name: "Celerity, the Swift Stalk",
@@ -175,7 +281,62 @@ const ELITES = [
         description: `You encounter the powerful Celerity. Prepare for combat!`,
         choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over Celerity!" }],
         difficulty: 10.0,
-        lose: "You lost, better luck next time!"
+        lose: "You lost, better luck next time!",
+        tier: 1
+    },
+    {
+        name: "Rancid Radish",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the reeking Rancid Radish. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Rancid Radish!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 1
+    },
+    {
+        name: "Grumpy Gourd",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the towering Grumpy Gourd. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Grumpy Gourd!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 2
+    },
+    {
+        name: "Sour Squash",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the venomous Sour Squash. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Sour Squash!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 2
+    },
+    {
+        name: "Ancient Artichoke",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the ageless Ancient Artichoke. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Ancient Artichoke!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 3
+    },
+    {
+        name: "Corrupted Cauliflower",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the writhing Corrupted Cauliflower. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Corrupted Cauliflower!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 3
+    },
+    {
+        name: "The Eternal Eggplant",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
+        description: `You encounter the unending Eternal Eggplant. Prepare for combat!`,
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Eternal Eggplant!" }],
+        difficulty: 10.0,
+        lose: "You lost, better luck next time!",
+        tier: 4
     }
 ]
 
@@ -194,6 +355,21 @@ const LEAVE = new ButtonBuilder()
     .setLabel('LEAVE')
     .setStyle(ButtonStyle.Danger);
 
+const FAST_FORWARD = new ButtonBuilder()
+    .setCustomId('fast_forward')
+    .setLabel('Fast Forward to Next Elite')
+    .setStyle(ButtonStyle.Secondary)
+
+const SAFE_POLICY = new ButtonBuilder()
+    .setCustomId('policy_safe')
+    .setLabel('Play it safe')
+    .setStyle(ButtonStyle.Primary)
+
+const GREEDY_POLICY = new ButtonBuilder()
+    .setCustomId('policy_greedy')
+    .setLabel('Go for it')
+    .setStyle(ButtonStyle.Danger)
+
 module.exports = {
     ENCOUNTERS,
     PAYOUT,
@@ -209,6 +385,16 @@ module.exports = {
     ELITES,
     REWARDS,
     FIGHT,
-    REWARD_PAYOUT
+    REWARD_PAYOUT,
+    POLICY,
+    ELITE_SUCCESS_CAP,
+    TOWER_ELITE_DIFFICULTY_INITIAL,
+    TOWER_ELITE_DIFFICULTY_RATIO,
+    ELITE_TIER_BANDS,
+    TOWER_REWARD_GRACE_FLOOR,
+    TOWER_REWARD_DECAY_RATIO,
+    FAST_FORWARD,
+    SAFE_POLICY,
+    GREEDY_POLICY
 }
 

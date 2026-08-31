@@ -441,6 +441,12 @@ function getDefaultUserFields(userId, username) {
         // guild.memberList filtered to whoever currently has this on — see
         // raidFactory.js's getLiveRaidRoster.
         autoJoinRaids: false,
+        // Persistent opt-in toggled by /tower-settings — skips Tower's dedicated
+        // Continue/Leave screen after a non-Elite floor (Elite fights are always a real
+        // decision regardless of this toggle). Same off-by-default precedent as
+        // autoJoinRaids — an unmodified account gets today's exact two-click-per-floor
+        // behavior. See systems/tower.md's "Tower Revamp" section.
+        autoTowerContinue: false,
         rebirthCount: 0,
         records: {                  // all-time personal bests, see architecture/data-model.md
             highestTowerFloor: 0,

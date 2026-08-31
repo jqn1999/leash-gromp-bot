@@ -6553,8 +6553,9 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   `towerFactory.js` (`createNextEmbed`'s hardcoded color → floor-type-keyed color, `getFloor`'s
   comparison operator if fixed there instead).
 
-- [ ] **Tower Click-Fatigue Rework, Elite/Content Depth** — M/L once a direction is picked — the
-  headline ask, needs a product decision before an architect scopes it.
+- [x] **Tower Click-Fatigue Rework, Elite/Content Depth** — M/L once a direction is picked — the
+  headline ask, needs a product decision before an architect scopes it. **Done (2026-08-31)** — see
+  the writeup at the end of this entry.
 
   **The problem, grounded in the actual numbers, not just the "feels slow" complaint**: every
   single floor costs **two** full Discord round-trips — `createFloorEmbed`'s own choice buttons,
@@ -6720,3 +6721,47 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   policy-driven auto-choice logic, summary-embed construction), `towerConstants.js` (if content
   depth work is picked up alongside), `enter-tower.js` (the up-front policy choice, if per-run per
   the recommendation above), `systems/tower.md` (documenting whichever shape ships).
+
+  **Done (2026-08-31)** — built from the concrete technical design in
+  [systems/tower.md](systems/tower.md#tower-revamp-technical-design-2026-08-31) (Option B+E: fast-
+  forward + a once-per-run risk policy, plus Option A auto-continue built alongside it, plus Elite
+  banding, plus the geometric difficulty curve + reward-decay safeguard this entry's own "Other
+  balance observations" flagged above), in the order that doc specified: (1) difficulty curve —
+  `this.difficulty` now starts at 4.0 and climbs `*= 1.45` per forced Elite instead of a flat
+  `+4.5`, and the Elite success cap dropped from 100% to 90% (reusing
+  `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`, matching this entry's own "arithmetic growth flattens
+  out later" observation directly); (2) a `decayValue` reward safeguard (0.95 per floor past floor
+  100, exempting the temp `MODIFIER.WORK_MULTIPLIER` buff, a `TRANSACTION`'s price, and Elite fight
+  rewards) so the curve fix's "more players survive deeper" doesn't also mean unbounded risk-free
+  income — closed-form-bounded at ~19 full-value floors' worth of extra reward, no matter how deep a
+  run goes; (3) Elite content banding — `ELITES` grew from Celerity-only to 7 entries across 4
+  tiers (`pickElite(N)`/`getEliteTier(N)`), `tier` a pure content selector, `difficulty` staying
+  flat 10.0 on every entry exactly per this entry's own King-Kiwi-floor-matching caution; (4) a
+  persistent `autoTowerContinue` toggle via a new `/tower-settings` command (a direct `/join-raid`
+  clone); (5) the fast-forward button + risk-policy prompt themselves — `pickChoiceIndex` resolves
+  every non-Elite floor deterministically per policy (confirmed during design: no
+  `ENCOUNTERS`/`TRANSACTIONS`/`REWARDS` choice actually rolls randomness at click time, so a policy
+  never needs to gamble), `fastForwardToNextElite`/`runFastForward` batch through to the next forced
+  Elite (or an earlier greedy-triggered mid-chain one) making zero Discord round-trips along the way,
+  then still stop for a real Fight/Leave decision exactly as today; (6) content widening —
+  `COMBATS` 3→5, `ENCOUNTERS` 4→6 unique flavors, `TRANSACTIONS` 3→4, `REWARDS` 2→3. Full detail,
+  worked numbers, and the judgment calls made on the design's own ambiguous connective-tissue prose
+  are in [systems/tower.md](systems/tower.md#tower-revamp-shipped-2026-08-31).
+  Tests: `towerFactory.test.js` grew from 2 tests to 44 (exhaustive `pickChoiceIndex` coverage
+  against every real entry plus the generic-fallback rule, `getEliteTier`/`pickElite` band-boundary
+  and band-gap-fallback coverage, `decayValue` against the doc's own worked numbers including the
+  closed-form ~19-floor ceiling, the difficulty curve's worked numbers, and full-Discord-mocked
+  integration tests for fast-forward-to-a-forced-Elite-win, an immediate LEAVE, a timed-out
+  risk-policy default, `autoTowerContinue`'s screen-skip + result prefacing, King Kiwi's
+  promise-then-payout across a decayed floor, a TRANSACTION's undecayed price vs. decayed value,
+  both `poor_outcome` branches, a mid-chain-Elite fast-forward stop on both a win and a loss, and
+  the 90% cap actually taking effect); new `tower-settings.test.js` (4 tests) covers the toggle both
+  directions, the undefined-defaults-to-off case, and the database-error path. Full suite:
+  **875/875**.
+
+  **Review fix (2026-08-31, same day)**: caught a real bug before merge — `runFastForward`
+  unconditionally showed the fast-forward summary embed even after a mid-chain Elite had already run
+  for real and shown its OWN terminal embed (win or, worse, death), silently overwriting it so the
+  player never saw it. Fixed to only show the summary in the one case nothing has displayed a
+  terminal screen yet. See [systems/tower.md](systems/tower.md#tower-revamp-shipped-2026-08-31) for
+  the full writeup and the two regression tests added.

@@ -604,3 +604,116 @@ with zero additional logic.
    entries, more `ELITES` entries per band). Purely additive, no code dependencies on anything
    above — can happen any time, including in parallel with 1-5, but is most worth doing *after*
    fast-forward ships, since that's what makes the current thin pool most visible.
+
+## Tower Revamp: Shipped (2026-08-31)
+
+All six pieces above built in order, exactly as scoped, with one real bug caught during review
+(documented below since it's directly relevant to anyone extending the fast-forward machinery
+further).
+
+**Bug found and fixed during review (post-implementation, pre-merge)**: `runFastForward` originally
+called `createFastForwardSummaryEmbed(summary)` **unconditionally** after resolving `cont`, including
+in both `triggeredElite` cases (the clicked floor itself routed straight into an Elite, or
+`fastForwardToNextElite` stopped mid-chain on one). In both of those cases `execElite` had *already*
+run for real and shown its own terminal embed via a genuine Discord round-trip — a win screen, or
+worse, the death embed. The unconditional summary call then immediately overwrote that screen with
+the generic "Fast Forward Summary" embed before the player could ever see it, silently hiding wins
+and, most importantly, deaths. No existing test caught this because none asserted on the actual
+*content* of the final `editReply` call for a fast-forward-into-Elite flow — only on `died`/`floor`/
+`difficulty` state. Fixed by restructuring `runFastForward` to `return` immediately in both
+`triggeredElite` cases (nothing left to show), and only calling `createFastForwardSummaryEmbed`
+in the one remaining branch — reaching the pending forced Elite with no mid-chain detour — where
+`execElite` hasn't run yet and the summary is genuinely the correct thing to show before it does.
+Two new regression tests lock this in: a mid-chain Elite **win** and a mid-chain Elite **loss**
+during fast-forward, both asserting the final `editReply` call's embed is never titled "Fast Forward
+Summary". Full suite after the fix: 875/875.
+
+- **Difficulty curve + reward safeguard (1-2)**: `towerFactory`'s constructor now starts
+  `this.difficulty` at `tC.TOWER_ELITE_DIFFICULTY_INITIAL` (4.0) instead of `1`, `startRun`'s forced-
+  Elite branch multiplies by `tC.TOWER_ELITE_DIFFICULTY_RATIO` (1.45) instead of adding a flat 4.5,
+  and `execElite`'s cap check compares against `tC.ELITE_SUCCESS_CAP` (0.9, imported from
+  `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`) instead of `1`. `decayValue(outcomeIndex, rawValue)` is
+  a new instance method wired into `updateValue`'s `default`/`PAYOUT.ELITE_KILL` branches and
+  `updateTransaction`'s payout branch — never applied to `MODIFIER.WORK_MULTIPLIER`, a
+  `TRANSACTION`'s `price`, or an Elite fight's own reward, exactly per spec.
+- **Elite banding (3)**: `getEliteTier(N)`/`pickElite(N)` are new module-level functions in
+  `towerFactory.js` (exported for testing), `execElite` now calls `pickElite(Math.floor(this.floor
+  / 10))` instead of a flat random pick across a single entry. `ELITES` grew from 1 entry to 7 (2
+  each in tiers 1-3, 1 in tier 4 — "The Eternal Eggplant"), all sharing `difficulty: 10.0` per the
+  "tier is a pure content selector" rule. The band-with-zero-authored-content fallback (reuse the
+  deepest authored tier) is real, tested code, not just a hypothetical — verified with a
+  `jest.doMock`'d `towerConstants` fixture missing tiers 3/4.
+- **Persistent auto-continue toggle (4)**: `autoTowerContinue: false` added to
+  `getDefaultUserFields`/`architecture/data-model.md` (heals automatically via `findUser`'s existing
+  generic missing-field loop — no special-casing needed). New `src/commands/tower/tower-settings.js`,
+  a direct `/join-raid` clone (no guild-membership gate, since Tower doesn't need one).
+  `enter-tower.js` reads `userDetails.autoTowerContinue` and passes it as the `towerFactory`
+  constructor's 4th arg. `createFloorEmbed` appends `tC.LEAVE` to its button row when
+  `this.autoContinue` is true; a shared `resolveNext(fl, resultText, color)` helper (used by every
+  non-Elite resolution branch that used to unconditionally call `createNextEmbed`) skips that screen
+  and stashes `resultText` on `this.lastResultText`, which `createFloorEmbed` prefaces onto its next
+  description (`${lastResultText}\n\n---\n\n${description}`) and clears.
+- **Fast-forward + risk policy (5)**: `chooseRiskPolicy()` runs once at the top of `startRun`,
+  before the floor loop, setting `this.policy`. `createFloorEmbed`'s row always includes
+  `tC.FAST_FORWARD` now. `execNormalFloor(floor_type, silent, policy)` gained the `leave`/
+  `fast_forward` branches described above; a new `runFastForward(floor_type, fl, color)` method
+  fully owns one fast-forward chain end-to-end (resolves the clicked floor via `pickChoiceIndex`,
+  hands off to `fastForwardToNextElite()` for everything after it, runs the forced/mid-chain Elite
+  for real, shows `createFastForwardSummaryEmbed`) and returns the same plain continue/leave boolean
+  every other `execNormalFloor` path returns — `startRun`'s own `while` loop needed **zero**
+  structural changes as a result, since it never has to distinguish "fast-forwarded" from "clicked
+  through" floors. `pickChoiceIndex(fl, policy)` implements the fast-forward table via an
+  explicit `fl.name`-keyed lookup (`Wandering Woods`, `Sales Spinach`, `The Wizard Lime`, `The
+  Traveling Turnip`, `The Baron's Beet`, `Fairy Fig`, `King Kiwi`) plus a generic fallback for
+  anything else — the lookup exists because a naive "always take the higher raw value" comparison
+  is unsound whenever two choices are different *outcome types* (e.g. Fairy Fig's 500,000 potatoes
+  vs. 5 work-multiplier points has no meaningful numeric comparison), which is exactly the case for
+  every table entry that needed hardcoding; the remaining `ENCOUNTERS` entries (Magic Mango, Wacky
+  Watermelon, Despicable Dragonfruit, Grouchy Garlic, Ominous Onion) and all `COMBATS` verify
+  correctly against the generic fallback alone and don't need an entry.
+- **Content widening (6)**: `COMBATS` 3→5, `ENCOUNTERS` 4→6 unique flavors (12 mirrored entries,
+  mirrored-pair convention preserved), `TRANSACTIONS` 3→4 (`The Baron's Beet`, a permanent bank-
+  capacity purchase), `REWARDS` 2→3 (`Golden Ginger`, a plain non-conditional choice between
+  permanent passive income and bank capacity). New content reuses existing thumbnail URLs as
+  placeholders per the design's own explicit allowance.
+
+**Judgment calls made where the design's own prose was ambiguous about connective tissue** (the
+design gave exact formulas/tables/method contracts but described the fast-forward orchestration in
+prose that could be read two ways):
+- The design's "Code shape" bullets describe `execNormalFloor`'s `fast_forward` branch resolving the
+  clicked floor and "handing off to `fastForwardToNextElite()`," while a separate sentence says
+  "`startRun()`'s own loop calls this when `execNormalFloor` returns `'fast_forward'`." These two
+  descriptions don't literally compose (the second implies `startRun` inspects a return value the
+  first implies `execNormalFloor` never returns). Built it as: `execNormalFloor`'s `fast_forward`
+  branch calls the new `runFastForward` helper, which fully owns the chain (resolves the clicked
+  floor, calls `fastForwardToNextElite()`, runs the stopping Elite for real, shows the summary) and
+  returns a plain boolean — `startRun`'s loop is completely unchanged. Chosen because it's the
+  smallest possible diff to `startRun` and keeps the fast-forward orchestration testable as one unit.
+- `fastForwardToNextElite()`'s outcome objects need a summary bucket to fold into; the design says
+  "fold `outcome.amount` into the matching summary total by outcome type" without giving the
+  bucket-mapping function. Added `summaryKeyForOutcome`/`applyOutcomeToSummary`/
+  `mergeFastForwardSummaries` as the connective tissue, plus a `pricePaid` field on a silent
+  `updateTransaction` purchase's result object so a `TRANSACTION`'s potato cost (never decayed) and
+  its bought value (decayed) fold into the summary as two separate deltas instead of being
+  conflated.
+- The default-timeout behavior of `createFloorEmbed` (defaults to choice index 0) was left
+  unchanged even now that a `LEAVE` button can be present on that same row — the design didn't ask
+  for this default to change, and index-0 remains a defined, harmless choice on every floor type
+  including today's, so this preserves the pre-existing cheap-fixes behavior rather than guessing at
+  a new one.
+
+**Testing**: `src/utils/__tests__/towerFactory.test.js` grew from 2 tests (the pre-existing
+`getFloor` off-by-one coverage) to 44 (43 from the initial build, +1 from the review bugfix above) —
+exhaustive per-entry coverage of `pickChoiceIndex` against every real `ENCOUNTERS`/`TRANSACTIONS`/
+`REWARDS`/`COMBATS` entry plus the generic-fallback rule in isolation, `getEliteTier`/`pickElite`
+band-boundary and band-gap-fallback coverage, `decayValue` against the doc's own worked numbers
+(including the closed-form ~19-floor-equivalent ceiling check), the difficulty curve's worked
+numbers, and a set of full-Discord-interaction-mocked integration tests (fast-forward from floor 1
+through a forced Elite win, an immediate `LEAVE`, a timed-out risk-policy prompt,
+`autoTowerContinue`'s screen-skip + result-text prefacing, a King Kiwi promise paying out on the
+correct floor and decaying correctly when made deep into a run, a `TRANSACTION`'s price staying
+undecayed while its value decays, both `poor_outcome` branches, a mid-chain Elite correctly stopping
+a fast-forward chain on both a win and a loss with the real terminal embed verified as the final
+screen, and the 90% success cap actually taking effect). New
+`src/commands/tower/__tests__/tower-settings.test.js` (4 tests) covers the toggle both directions,
+the undefined-defaults-to-off case, and the database-error path. Full suite: 875/875.

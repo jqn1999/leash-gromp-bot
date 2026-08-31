@@ -85,7 +85,7 @@ module.exports = {
         }
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
-        let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount)
+        let tF = new towerFactory(interaction, username, userDetails.workMultiplierAmount, userDetails.autoTowerContinue)
         let tower_out = await tF.startRun()
         let rewards = tower_out[0];
         let floor = tower_out[1];
