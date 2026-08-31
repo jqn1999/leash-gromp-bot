@@ -6877,3 +6877,217 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   formula rather than a stubbed return value), and a player at/above the raw threshold with no
   rebirth/companion bonus to confirm identical gate/construction behavior to before. Full suite:
   **891/891**.
+
+## Guild Raid Companion (2026-08-31 brainstorm, requested)
+
+Direct ask: "plan out a potential GUILD level companion such as a dragon potato or something of
+some sorts? it should be similar in chance to getting yukon for mercs but for guilds and raiding.
+Im not sure on what benefits it should provide the guild but get back to me on ideas." Verified
+directly against `src/utils/constants.js` (Yukon's own entry, `MercenaryCompanionDrop`,
+`GuildBuffScaling`, `RaidLevel`), `src/utils/companionFactory.js` (`getCompanionsByRarity`'s
+`dropSource` filter), `src/utils/guildBuffFactory.js` (`getGuildBuffValue`/`getGuildLevel`), and
+`src/utils/raidFactory.js` (`getMemberRaidPower`/`getEffectiveRaidPowerBreakdown`) rather than
+trusting the systems docs' summaries alone.
+
+- [ ] **Guild Raid Companion ("a guild-level Yukon")** — M — needs a product decision on
+  acquisition scope and benefit magnitude before an architect scopes it in full.
+
+  **Is a guild-owned companion a new mechanic? Yes — flagging this explicitly, since it changes
+  the scoping risk.** Nothing in this codebase today lets a *guild* (as opposed to a user) own a
+  discrete item/pet/companion. The closest existing "one shared thing per guild" shapes are all
+  either a single scalar field (`guild.guildBuff`, `guild.raidSplitMode`, `guild.raidPayoutMode`)
+  or an aggregate progress tracker (`guild.guildContract`) — none of them are an *acquired,
+  rare-rolled entity* the way a companion is for a player. This is genuinely new structural
+  ground, not a reskin of something that already exists, and the roadmap has no other item
+  proposing it (searched for "guild companion"/"guild pet"/"guild mascot"/"dragon" across this
+  file — nothing).
+
+  **The precedent being mirrored, precisely** (see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md#yukon-the-highwayman--the-one-bounty-exclusive-companion)):
+  Yukon is a Legendary companion with `dropSource: "bounty"` — the one `Companions` entry
+  `companionFactory.getCompanionsByRarity` filters out of the normal `/work` roll entirely. It's
+  rolled independently (`MercenaryCompanionDrop.YUKON_CHANCE`, checked once per **winning**
+  `/take-bounty` resolution): **1% / 2% / 5%** at Bounty band I/II/III (B1-4/B5-8/B9-12), buffed
+  up from an original 0.15%/0.4%/1.0% specifically because Bounty's 3600s cooldown made even a
+  "fair" per-attempt rate ~12x slower in real time than a `/work` companion pull. Once owned, it
+  behaves like any other companion everywhere else (equip, market, `getActivePerkValue`) and
+  carries a deliberate **triple**-perk, each one tightly scoped to a mercenary-track mechanic
+  (`robChanceFlat`, `bountyRewardPercent`, `rivalSuccessChanceFlat`) rather than anything generic.
+
+  **1. What "a guild owns a companion" means, structurally.** Recommend a single new field,
+  `guild.guildCompanion` (default `null`), parallel to `guild.guildContract` — self-heals for
+  every existing guild automatically via `findGuildById`'s already-generic diff-and-heal loop
+  (see [guild-contracts.md](guild-contracts.md#guild-self-healing-a-gap-this-feature-had-to-close-first),
+  which explicitly notes "this fixes the gap for every future guild field too"). **Singleton, not
+  a collection** — exactly one companion slot per guild, ever, unlike a player's `companions.owned`
+  array which holds unlimited independently-leveled instances. **Permanently bound, never
+  tradeable** — no companion-market equivalent for guilds is proposed here; that would be a second
+  marketplace system for what is functionally a one-off trophy, disproportionate to the ask.
+  Survives membership churn and even `/disband-guild` (which already leaves the guild record
+  itself intact with an empty `memberList` — see [guilds.md](guilds.md#membership-commands) — so
+  a disbanded guild's companion just sits there inert, same as its `raidHistory`/`guildContract`
+  already do). **Recommend it is NOT added to the shared `Companions` array in `constants.js` at
+  all** — that array (and everything that reads it: `getActivePerkValue`, the market, `/help
+  topic:companions`) is entirely `userDetails`-scoped; a guild-owned entity needs its own small,
+  separate data shape and lookup rather than being force-fit into machinery built around one
+  user's own owned/equipped instance.
+
+  **2. Acquisition — the "similar chance to Yukon" ask, made concrete.**
+  `Raid.RAID_TIMER_SECONDS` (3600s, before reductions) and `Bounty.BOUNTY_TIMER_SECONDS` (3600s)
+  are the same base cooldown, and both are per-*entity* (one guild-wide `raidTimer`, one
+  per-mercenary `bountyTimer`) rather than per-participant — so a guild raid win and a solo
+  Bounty win already happen on a directly comparable real-time cadence, unlike Yukon's own
+  original mis-tuning (which compared per-attempt rates without accounting for Bounty's cooldown
+  being 12x `/work`'s). That parity means Yukon's own final rates are a reasonable **direct**
+  template rather than something to re-derive from scratch:
+
+  | Raid-select mode | Recommended roll chance (on a win) | Grounding |
+  |---|---|---|
+  | `baby` | **0%, excluded** | Baby is the guaranteed-win, zero-risk on-ramp — Yukon isn't obtainable through Bounty's own zero-risk path either (it drops off any win, but Bounty itself always carries a real fail chance; Baby Raid uniquely doesn't) |
+  | `regular` | 1% | Matches Yukon's Band I (B1-4) rate |
+  | `stat` | 1% | Real risk/cost (a flat potato buy-in, capped 50% success, difficulty 350 — sits between Regular's own T2/T3) even though it isn't tiered; treated as Band-I-equivalent |
+  | `elite` | 2% | Matches Yukon's Band II (B5-8) rate |
+  | `legendary` | 5% | Matches Yukon's Band III (B9-12) rate |
+
+  **Recommend one roll per winning raid RESOLUTION, never per participating member.** A guild
+  raid's roster can be 1-25 members; rolling once per member (mirroring "Yukon can drop for
+  whichever mercenary is running the bounty") would systematically hand bigger rosters
+  proportionally better odds per raid than smaller ones, for a resource that's shared guild-wide
+  regardless of roster size either way — the opposite of what a fair shared-drop mechanic should
+  do. One roll per resolution keeps it fair across guild sizes and matches Bounty's own "exactly
+  one actor, one roll" shape as closely as a multi-member system can.
+
+  **Implementation detail worth flagging to the architect, not a design question**: don't
+  thread the roll into all ~15 individual scenario closures in `startRaid.js`
+  (regular/elite/legendary × Metal King/T4/T3/T2/T1, plus 2 stat variants) the way each one's
+  own win/loss reward logic lives. `guild.raidHistory`'s own entry already solved this exact
+  problem by re-fetching the guild and diffing `raidCount` before/after `runStartRaidFlow`
+  resolves, specifically to avoid touching every closure — reuse that same technique for the
+  drop roll (mode is already known from whichever `raid-select` was passed in). This is why the
+  recommendation above rolls by **mode**, not by internal bracket (Metal King vs. a regular
+  T1-T4 hit) — telling those apart would need the exact per-closure signal `raidHistory` chose
+  not to add, at the same cost. A Metal-King-specific bonus rate is a fine future refinement if
+  that signal ever gets threaded through for other reasons, not a v1 requirement.
+
+  **Once the guild already owns one, stop rolling entirely** (gate on `guild.guildCompanion ==
+  null`) — no dupe-handling complexity needed for a singleton. This is a deliberate, real
+  divergence from how personal companions work (which always keep rolling and always accept a
+  duplicate as a fresh, independently-leveled instance) — justified because this isn't a
+  collection, it's a guild's one mascot.
+
+  **3. Benefits — three tightly-scoped perks, each reusing an existing hook rather than a new
+  parallel economy** (mirroring Yukon's own triple-perk shape: two direct hits on its home
+  system, one adjacent utility perk):
+
+  a. **Raid cooldown reduction** (S). Hooks into the exact spot `startRaid.js` already sums
+     three independent, mutually-non-gating cooldown sources: the guild-level curve's own
+     `raidCooldownReductionPercent` (0%→30% via `getRaidLevelInfo`), the guild's selected
+     `raidTimer` buff (`GuildBuffScaling.raidTimer`, 6%→25%), and Spud Keep's holder perk (flat
+     8%) — see [guilds.md](guilds.md#guild-level) ("all three stack additively and none of them
+     gate any other"). Add a **fourth** additive term, scaled by the guild's own level exactly
+     like `GuildBuffScaling` already is (reuse `guildBuffFactory.getGuildLevel(raidCount)`):
+     recommend a small array, e.g. `[0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08]`
+     (2% at level 1 → 8% at level 10) — modest specifically because it stacks on top of a
+     combination the docs already describe as reaching "north of 80%" without it; the architect
+     should confirm there's a floor so total reduction can never reach or exceed 100% of the base
+     cooldown.
+  b. **Raid reward bonus, winning side only** (S). Hooks in next to where the guild-level
+     `raidRewardMultiplier` (1.00x→10.00x) is already applied in `startRaid.js` — one more
+     multiplicative factor, `(1 + companionBonus)`, same shape Yukon's own `bountyRewardPercent`
+     already uses on a computed payout. **Recommend keeping this smaller than Yukon's flat 13.5%**
+     (e.g. an array from 3% at level 1 to 10% at level 10) — it's multiplying an amount that's
+     already been multiplied by up to 10x from guild level, so the absolute value compounds much
+     faster than Yukon's single flat percentage on an unmultiplied Bounty payout does. Recommend
+     a balance-auditor sanity pass before shipping, same discipline every other reward-side
+     percentage in this game gets — this codebase has a real history of exactly this shape
+     (an uncapped bonus stacking on top of an already-scaling multiplier) needing a nerf after
+     the fact (Metal/Ancient Potato's own history, Prospector's original Metal-only kit).
+  c. **Guild treasury interest bump** (S) — the one non-raid-specific perk, giving the companion
+     value even for a guild between raids. `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` (0.1%/
+     member/day, applied in `dynamoHandler.applyGuildTreasuryInterest`) is itself a flat
+     constant, not guild-level-scaled — so bolting a level-scaled bonus onto it would be
+     inconsistent with the formula it's extending. Recommend a flat, modest bump instead (e.g.
+     +0.02%/member/day, a ~20% relative bump over the base rate) — one line, no new scaling
+     table needed for this one.
+
+  **4. Balance shape: level-scaled for (a)/(b), flat for (c) — and deliberately zero new
+  leveling state either way.** Recommend the two raid-facing perks scale with the guild's own
+  already-tracked level (`guild.raidCount` → `getRaidLevelInfo`/`getGuildLevel`), the exact same
+  curve every other level-gated guild number already reads — **not** a new companion-specific
+  leveling counter. This means a guild that gets lucky early (low level, just found the
+  companion) gets a genuinely modest version of the buff at first, and it grows automatically as
+  the guild's real raid win history grows — zero new persisted state, pure reuse of what's
+  already tracked, exactly the "favor mechanics that reuse tracked state" principle this
+  project's history already establishes (Quests/Guild Contracts reusing counters instead of
+  inventing currencies). The treasury perk (c) stays flat specifically because its own base
+  formula is flat — scaling it would be inventing an inconsistency the original formula doesn't
+  have.
+
+  **5. Naming: "dragon potato" doesn't quite fit the existing convention, but the concept does.**
+  Every companion in `Companions` (`constants.js`) is a **named individual** — a potato-variety
+  or vegetable-pun proper noun plus a title ("Yukon, the Highwayman," "Rootcarver, the Cellar
+  Keeper," "Mochi, the Undying Stray") — never a bare species/type name. "Dragon Potato" reads
+  like a species, not a character. Recommend keeping "dragon" as the **visual/flavor concept**
+  (a wyrm-shaped tuber, in the same vein as Guild Raid's own T4 bosses — Marrowveil, Solara,
+  Umbrathorn) while giving it a proper name + title in the established mold for its actual
+  display name. Non-blocking, and no art exists for this yet regardless — same placeholder-first
+  convention as everything else built this session (Tower's Elite banding, the T4 raid bosses).
+
+  **What this is explicitly NOT trying to do** (bounding the target for the architect/developer):
+  - **Not** a second full companion roster with rarity tiers, duplicate instances, leveling, or
+    a marketplace — one singleton mascot per guild, full stop.
+  - **Not** a change to `guild.guildBuff`'s single-active-buff model — none of the three perks
+    require a guild to choose the companion over its existing selected buff; all three apply
+    through independent hooks that already coexist with `guildBuff` (the raid-cooldown-reduction
+    stacking precedent this reuses is proof that a fourth independent source is safe to add).
+  - **Not** touching raid-tier eligibility/gating — leaves the already-open "Guild Raid:
+    T2/T3/`stat`-Mode Eligibility Gating" item (above, in "Needs more design discussion") alone.
+  - **Not** a Guild vs. Guild "steal the mascot" mechanic — see open question 7 below.
+  - **Not** a new command — recommend folding a companion display (name, current level-scaled
+    perk values) into `/guild`'s existing embed, the same "show what's already baked in"
+    treatment that command already gives guild level/raid reward multiplier.
+
+  **Open questions, with a recommendation on each:**
+  - Which raid modes should be eligible to drop it? **Recommend all winning resolutions except
+    Baby** (see the odds table above) — Baby's own defining trait is guaranteed, zero-risk
+    success, which shouldn't be a rare-drop source.
+  - Per-raid-resolution roll or per-participating-member roll? **Recommend per-resolution,
+    independent of roster size** — see the fairness reasoning above.
+  - Should the roll distinguish a Metal King win from a same-mode tier win (matching Yukon's
+    finer-grained banding)? **Recommend no, for v1** — the signal isn't available at the one
+    cheap hook point without paying the same per-closure cost `raidHistory`'s own design
+    explicitly avoided; a flat per-mode rate is a reasonable approximation.
+  - What happens on a second roll once a guild already owns one? **Recommend the roll simply
+    doesn't happen** (gated on `guild.guildCompanion == null`) — no wasted-roll messaging to
+    design for a singleton.
+  - Is the reward-bonus perk's magnitude safe against this codebase's own "uncapped bonus
+    compounding on an already-scaling multiplier" failure mode? **Recommend a explicit
+    balance-auditor pass before shipping**, sized well below Yukon's own flat 13.5% for the
+    reasons given in 3b above.
+  - Tradeable or transferable between guilds? **Recommend no** — permanently bound to the guild
+    that earned it, survives membership churn and disband, no new marketplace.
+  - Does this tie into the shelved "Guild vs. Guild Raids" item (e.g., a challenge winner takes
+    the loser's companion)? **Recommend explicitly out of scope for v1** — flag as a natural
+    future tie-in *if* that shelved item is ever revisited (see
+    [Discussed earlier, not picked up in this pass](#discussed-earlier-not-picked-up-in-this-pass)),
+    but don't build any hook toward it now; Guild vs. Guild Raids itself remains undesigned in
+    important ways (open challenges vs. matchmaking, mismatched guild sizes) and coupling this
+    feature to it would inherit that uncertainty for no immediate benefit.
+  - Naming — literally call it a "Dragon Potato"? **Recommend no**, per the naming discussion
+    above — a proper name + title in the existing roster's mold, "dragon" kept as flavor/visual
+    concept rather than the literal display name.
+
+  **Touches (once acquisition/benefit specifics are confirmed):** `constants.js` (new
+  `guild.guildCompanion` default shape via `getDefaultGuildFields`; a small standalone
+  guild-companion data record — deliberately **not** appended to the `Companions` array; a
+  `GuildCompanionScaling`-style level-indexed array mirroring `GuildBuffScaling`'s exact shape
+  for perks a/b; a flat per-mode drop-chance map mirroring `MercenaryCompanionDrop.YUKON_CHANCE`'s
+  shape for acquisition); `startRaid.js` (one post-`runStartRaidFlow` acquisition-roll hook
+  reusing `raidHistory`'s own win/mode-diffing technique; one additive term where the cooldown
+  reduction is already summed; one multiplicative term where `raidRewardMultiplier` is already
+  applied); `dynamoHandler.js` (`applyGuildTreasuryInterest`'s one-line rate bump;
+  `getDefaultGuildFields`/`findGuildById`'s already-generic self-heal loop picks up the new field
+  automatically); `guildBuffFactory.js` or a new small `guildCompanionFactory.js` (architect's
+  call) for the level-scaled lookup, mirroring `getGuildBuffValue`'s exact shape; `/guild`'s
+  embed (`embedFactory.js`) to display it; a new `systems/` doc or a new section in
+  [guilds.md](guilds.md), architect's call depending on final surface area.
