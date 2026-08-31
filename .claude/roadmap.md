@@ -6487,3 +6487,205 @@ back into the priority list.
 technical design (new `gvgFactory.js`, cross-guild match state via a new stats-table doc, ante
 escrow via a conditional atomic write) before being shelved — not rejected for being a bad idea,
 just deprioritized for now. If revisited, the design work doesn't need to restart from scratch.
+
+## Tower revamp (2026-08-31 brainstorm, requested)
+
+Two entries below — one's ready to hand an architect today, the other needs a direction picked
+first. Full baseline design: [systems/tower.md](systems/tower.md); verified directly against
+`src/utils/towerFactory.js`/`towerConstants.js` rather than trusting the doc summary alone.
+
+- [ ] **Tower Reskin & Cheap Balance Fixes** — S — ready to scope directly, no design discussion
+  needed first (separable from the click-fatigue rework below).
+  What: (1) Replace the single reused "isolated-mussels-seafood-cartoon" thumbnail currently shared
+  across **every** `ENCOUNTERS` entry in `towerConstants.js` (Magic Mango x2, Wacky Watermelon x2,
+  Despicable Dragonfruit x2, Wandering Woods x2 — 8 entries, 1 image, and it's thematically
+  unrelated to any of them) with real per-encounter art — at minimum one distinct image per the 4
+  unique encounter names (the x2 entries are just the same encounter with choice order swapped, so
+  they can share an image with each other without it reading as a placeholder). (2) Give "The
+  Wizard Lime" and "The Traveling Turnip" (`TRANSACTIONS`) their own distinct thumbnails instead of
+  sharing one — "Sales Spinach" already has its own, so this is the one remaining gap in that array.
+  (3) Fix `getFloor()`'s off-by-one: `FLOOR_WEIGHTS = [9, 12, 15, 18]` combined with `random =
+  Math.floor(Math.random() * 18)` (range 0-17, not 0-18) and a `<=` comparison makes COMBAT land on
+  random values 0-9 (10/18 ≈ 55.6%) instead of the intended 9/18 (50%), and REWARD only ever lands
+  on 16-17 (2/18 ≈ 11.1%) instead of the intended 3/18 (≈16.7%) — a one-line fix (`<` instead of
+  `<=`, or roll inclusive of the full weight range). (4) `createNextEmbed` (the Continue/Leave
+  screen shown after every floor) is hardcoded `Green` regardless of what floor type just resolved,
+  unlike every floor's own initial embed (COMBAT Orange / ENCOUNTER Yellow / TRANSACTION Blue /
+  REWARD Purple / ELITE Red) — worth carrying the floor's own color through so a fast-reading player
+  can tell what just happened from the result screen alone without having to remember which button
+  they clicked. More useful the more players start skimming through floors quickly (see the
+  click-fatigue item below), but a fine improvement on its own regardless of whether any
+  fast-forward mode ships.
+  Why now: none of these require deciding anything about the pacing rework — they're isolated art/
+  one-line-logic fixes an architect could hand a developer today.
+  Touches: `towerConstants.js` (thumbnail URLs, `FLOOR_WEIGHTS`/`getFloor` comparison),
+  `towerFactory.js` (`createNextEmbed`'s hardcoded color → floor-type-keyed color, `getFloor`'s
+  comparison operator if fixed there instead).
+
+- [ ] **Tower Click-Fatigue Rework, Elite/Content Depth** — M/L once a direction is picked — the
+  headline ask, needs a product decision before an architect scopes it.
+
+  **The problem, grounded in the actual numbers, not just the "feels slow" complaint**: every
+  single floor costs **two** full Discord round-trips — `createFloorEmbed`'s own choice buttons,
+  then a separate `createNextEmbed` Continue/Leave click before the next floor even generates
+  (Elite fights are the same two-click shape: `createEliteEmbed`'s Fight/Leave, then whatever
+  follows). Only ELITE floors (every 10th) carry any real risk at all — COMBAT/ENCOUNTER/
+  TRANSACTION/REWARD are guaranteed-outcome-from-a-menu, never a chance of losing the run. A
+  player's own Elite success chance is `(multi + run's temp WORK_MULTIPLIER bonus) / (this.difficulty
+  * elite.difficulty)`, capped at 100%, where `this.difficulty` starts at `1` and climbs by a flat
+  `+4.5` every 10 floors and `elite.difficulty` is a flat `10.0` (the game's only Elite, "Celerity,
+  the Swift Stalk," refought forever). Solving for the floor at which Elites stop being
+  mathematically guaranteed for a given `multi` (ignoring in-run bonuses, which only push this
+  further out): the Nth Elite's denominator is `10 * (1 + 4.5*(N-1))`, so Elites stay capped at
+  100% until floor `10 * (1 + (multi/10 - 1)/4.5)`. At the game's own entry minimum
+  (`workMultiplierAmount >= 20`, `enter-tower.js`), that's floor 10 exactly — **every player who can
+  legally enter Tower at all has a mathematically guaranteed win at the very first Elite** (this is
+  really the same finding as the reskin entry's fix #3, called out again here because it's directly
+  relevant to how much of a run is genuinely risk-free). At `multi=100` it's around floor 30; at
+  `multi=1000` (the "hundreds of work multi" player this ask is about) it's around floor 230.
+  That's **~230 floors × 2 clicks = ~460 button presses** before a multi-1000 player's run contains
+  a single real decision — at even a brisk ~3 seconds/click (read the embed, click), that's
+  **~23 minutes**, matching your own 20-30 minute estimate almost exactly.
+
+  **This may already be a hard failure, not just friction.** `enter-tower.js` calls
+  `interaction.deferReply()` exactly once at the top, and the entire run — however many floors —
+  rides that same interaction's `editReply`/`followUp` calls, with no time option ever passed to
+  any of `towerFactory.js`'s `awaitMessageComponent` calls (unlike `/achievements`/`/quests`, which
+  both cap their own collectors at a 60s idle timeout). Discord's interaction webhook tokens expire
+  **~15 minutes** after the interaction was created, regardless of activity on it. A run that takes
+  longer than that to click through — which the math above says is a completely ordinary outcome
+  for exactly the high-multi players this ask is about — risks every `editReply`/`followUp` call
+  past that point silently failing, with no try/catch anywhere in `towerFactory.js` to catch it.
+  **Flagging this as something to verify directly (I haven't reproduced it live), not a confirmed
+  bug** — but if true, cutting real-world run duration isn't just a UX nicety, it's fixing an
+  outright breakage for the game's own more-developed players, which reframes this from "nice to
+  have" to "worth prioritizing."
+
+  **What this is not trying to do**: remove Elite fights from being the one real risk in the game,
+  add a whole new parallel difficulty system, or take away the click-by-click experience from a
+  player who wants it — a fresh multi-20 entrant's early Elites are genuinely uncertain and the
+  full floor-by-floor pacing is part of the point for them. The goal is specifically to stop
+  charging a "solved" player 20+ minutes of clicking through content that carries zero decision
+  weight for them.
+
+  **Option groups, light to heavy** (not mutually exclusive — B/C/D below are largely different
+  implementations of the same underlying idea, pick one, not all three):
+
+  A. **Persistent "auto-continue" toggle** (Light). Mirrors `/join-raid`'s own persistent-boolean-
+     toggle precedent (`autoJoinRaids`) rather than a per-run setting. When on, `createNextEmbed`'s
+     Continue/Leave screen is skipped entirely for a non-Elite floor — the run advances straight to
+     the next floor's own choice buttons after that floor's outcome is shown for a beat (or folded
+     into one embed). Still one click per floor (the floor's own choice buttons stay, since those
+     are real content), down from two — an immediate 50% cut with the smallest possible
+     implementation surface. Doesn't touch Elites at all; the Fight/Leave decision every 10th floor
+     is completely unchanged.
+  B. **"Fast-forward to next Elite" button + a chosen risk policy** (Medium) — **the option I'd lead
+     with**. A second button on a run's very first floor embed (and reappearing after every Elite):
+     "Fast Forward to Next Elite." Clicking it auto-resolves every COMBAT/ENCOUNTER/TRANSACTION/
+     REWARD floor between here and the next forced Elite using a policy the player picked once up
+     front (see E below) — no per-floor embeds shown along the way — then stops and shows the real
+     Fight/Leave Elite decision exactly as today, plus one combined summary embed listing everything
+     gained/lost across the skipped floors. This targets the actual shape of the problem precisely:
+     Elites are the only floors with real risk, so this removes 100% of the risk-free clicking while
+     changing literally nothing about how an Elite fight itself plays out. Reuses this codebase's own
+     "auto-resolve a bounded chain, one summary" precedent — the companion `workCooldownSkipChance`
+     chain in `work.js`, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` purely as an engineering
+     safety valve, not a balance limit — as prior art for the shape (though Tower's own chain length
+     is bounded naturally by "until the next Elite," so no separate cap constant is likely needed).
+  C. **Generic "Continue x10/x25" batch button** (Medium) — functionally very close to B, just not
+     pinned to the Elite cadence: resolves a fixed number of floors at once (auto-picking the chosen
+     policy for floor-level choices), stopping early and asking for real input if an Elite is hit
+     inside the batch. More flexible batch size, but doesn't map as cleanly onto "the only floors
+     that matter are Elites" — I'd only build this instead of B if there's a reason to want batch
+     sizes that don't line up with the every-10th-floor Elite cadence, which nothing in the current
+     design suggests.
+  D. **Pre-commit "auto-play until I lose or reach floor X"** (Medium) — a single up-front
+     confirmation instead of a repeatable button, functionally near-identical to B/C in what it
+     produces, differing mainly in whether the player can retake control mid-run before hitting the
+     target or an Elite loss. I'd fold this into whichever of B/C ships rather than build it
+     separately — the "let me set it and walk away" framing is really just B/C's stopping condition
+     phrased as a single choice instead of a repeated button.
+  E. **A once-per-run risk-policy choice** (Light, meant to pair with B/C/D, not stand alone) —
+     before the first fast-forward/batch action, a single choice (e.g. a 2-button prompt: "Play it
+     safe" vs. "Go for it") that decides how ENCOUNTER/TRANSACTION/REWARD floors resolve themselves
+     when auto-picked during a fast-forward — "safe" always takes the guaranteed/non-negative
+     option (e.g. Wacky Watermelon's non-negative slice, Despicable Dragonfruit's non-loss choice,
+     declining a Transaction rather than risking an Elite on a `poor_outcome`), "greedy" always takes
+     the higher-EV/bigger-permanent-multiplier option regardless of its own risk. This is what keeps
+     the skipped floors from being arbitrary to the player — they're choosing a policy once, not
+     losing agency, just not re-asked floor by floor.
+
+  **I'd lead with B+E together**: it's the smallest change that removes 100% of the actual
+  risk-free clicking while leaving the one place tension exists (Elites) completely untouched, reuses
+  an existing "bounded auto-chain + one summary" shape this codebase already has precedent for, and
+  needs only one new per-run choice (E) rather than a parallel batch-size UI. If that's still more
+  than wanted for a first pass, **A alone** is a safe, cheap fallback — it halves click count
+  immediately with the least implementation risk, and doesn't foreclose layering B on top later.
+
+  **Open questions, with a recommendation on each**:
+  - Should the risk policy (E) be a persistent account-level setting, or chosen fresh at the start
+    of each day's run? **Recommend per-run** — a single button/select at the very start, mirroring
+    how `/start-raid`'s mode choice and `/rob-npc`'s heist-tier choice are both made fresh per
+    attempt rather than as a saved preference; cheaper (no new persisted field) and lets a player
+    play a "careful climb" one day and a "blast through" the next without a settings command.
+  - Does King Kiwi's `PAYOUT.ELITE_KILL` queue (a reward that only actually pays out if a
+    **specific future Elite floor** is survived, matched by floor number in `checkElitePayout`)
+    still resolve correctly when the intervening floors are fast-forwarded rather than shown one at
+    a time? **Recommend: this is a pure implementation detail, not a design question** —
+    `checkElitePayout` already runs its floor-number match internally regardless of whether the UI
+    batches the display, so this should just need verification once built, not a design call now.
+    Flagging only so it isn't missed.
+  - Should the fast-forward option be gated behind some floor/multi threshold so a brand-new
+    multi-20 entrant experiences the click-by-click version at least once? **Recommend no gating** —
+    a fresh player has no reason to reach for it yet (their own early Elites are genuinely
+    uncertain, which is the whole point), so this resolves itself naturally without a rule that
+    would just be one more number to tune for no clear benefit.
+  - Should declining to fight an Elite mid-fast-forward (a real, existing "voluntary retreat" option
+    today) still be offered, or does reaching an Elite always force a real Fight/Leave choice
+    either way? **Recommend it stays exactly as it is today** — nothing about fast-forwarding
+    changes what happens AT an Elite, only what happens between them.
+
+  **Content depth — flag now, don't solve here.** The existing pool is thin for a floor-uncapped
+  minigame even today (3 `COMBATS`, 4 unique `ENCOUNTERS` flavors each mirrored once for choice
+  order, 3 `TRANSACTIONS`, 2 `REWARDS`, and exactly **one** `ELITES` entry re-fought forever with
+  only the difficulty number climbing) — and fast-forwarding makes this MORE visible, not less: a
+  player blowing through 200+ floors in a few clicks will notice "the same boss again" far faster
+  than one clicking through it floor by floor over 20 minutes. Compare to how this game already
+  handles the equivalent problem elsewhere: Guild Raid's own T4 bracket gets a dedicated named boss
+  per raid mode (Marrowveil/Solara/Umbrathorn for Regular/Elite/Legendary, sharing one difficulty
+  *structure* but not one flavor), and World Bosses ship 4 distinct-flavored bosses on a shared
+  difficulty gradient rather than one boss whose only variable is a number. Two directions, neither
+  picked here:
+  1. **Light-touch (cosmetic only)**: keep the single Elite mechanically, but rotate in
+     alternate name/flavor-text/thumbnail skins as the fight repeats (e.g. every 3rd or 5th
+     encounter) — zero new balance surface, purely a "doesn't feel like the identical fight" fix,
+     cheapest possible version of "more content."
+  2. **Heavier**: author 2-3 more `ELITES` entries at different difficulty tiers and roll among
+     them based on which difficulty band the run is currently in (an early Elite draws from an
+     easier-flavored pool, a late one from a harder-flavored pool) — genuinely more content, but a
+     real authoring/art lift and a new axis to balance (how many bands, how they're apportioned).
+  Same applies to `COMBATS`/`ENCOUNTERS`/`TRANSACTIONS`/`REWARDS` — the pool itself is just thin;
+  widening it is a bounded, incremental content-writing task (more entries in the existing arrays,
+  no structural change) independent of whichever fast-forward option ships.
+
+  **Other balance observations, flagged for awareness, not proposed fixes**:
+  - Tower's Elite difficulty grows **arithmetically** (`+4.5` flat per Elite, so the ratio between
+    consecutive Elites' difficulty shrinks from 5.5x at the very first step toward 1x as the run
+    goes deeper) — the opposite shape from every other risk-calibrated ladder in this codebase
+    (Guild Raid's T1-T4, the 12-tier Bounty ladder), both of which were deliberately reworked to be
+    **geometric** specifically because an uneven/arithmetic spacing was found to create exactly the
+    "steep cliff early, flattens out later" dead zones those reworks fixed (see
+    [raids-and-world-events.md](raids-and-world-events.md)'s ladder-smoothing history). Tower's own
+    curve has that same inverted shape today, compounded by an uncapped in-run `WORK_MULTIPLIER`
+    modifier from Encounter/Transaction/Reward floors that only pushes success further toward 100%
+    the deeper a run goes. Worth a genuine EV-sweep balance pass if Elite variety (above) is ever
+    built, not something to patch as a side effect of the click-fatigue work.
+  - `checkElitePayout`'s conditional-future-payout mechanic (King Kiwi) is unique to Tower — no
+    other system in this game has a reward that's promised now but only resolves on a specific
+    later event. Not a problem, just worth the architect's awareness if Elite variety (multiple
+    named Elites) is ever built, so King Kiwi's floor-number matching still lines up correctly.
+
+  Touches (once a direction is picked): `towerFactory.js` (the fast-forward/batch loop itself,
+  policy-driven auto-choice logic, summary-embed construction), `towerConstants.js` (if content
+  depth work is picked up alongside), `enter-tower.js` (the up-front policy choice, if per-run per
+  the recommendation above), `systems/tower.md` (documenting whichever shape ships).
