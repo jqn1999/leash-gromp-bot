@@ -26,6 +26,33 @@ floor — see "King Kiwi" below).
   `FLOOR_WEIGHTS = [9, 12, 15, 18]` (cumulative): COMBAT `9/18 = 50%`, ENCOUNTER `≈17%`,
   TRANSACTION `≈17%`, REWARD `≈17%`. ELITE is never randomly rolled (its weight index is out of
   bounds of the 4-length array) — it only happens on the forced-every-10th-floor rule above.
+  **Fixed off-by-one (2026-08-31)** — `getFloor()`'s comparison against the cumulative weights was
+  `<=` against a uniform `[0, 18)` roll, which actually skewed COMBAT to `10/18 = 55.6%` and REWARD
+  down to `2/18 = 11.1%` (ENCOUNTER/TRANSACTION happened to land correctly by coincidence). Now a
+  strict `<` (matching the cumulative-chance convention every other weighted roll in this codebase
+  uses, e.g. `spudKeepFactory.rollLottery`), giving the intended `9/3/3/3` of 18 exactly — see
+  `towerFactory.test.js`'s exhaustive per-value sweep.
+
+## Cheap fixes (2026-08-31)
+
+- **Every `awaitMessageComponent` call in `towerFactory.js` now has an explicit `time: 30_000` +
+  `.catch(() => null)`** — previously the only collectors in this entire codebase with no timeout
+  at all, meaning an AFK/slow player's run could hang indefinitely. A timeout defaults to the safest
+  option per screen: the floor-choice screen picks index 0, the Continue/Leave and Elite Fight/Leave
+  screens both default to LEAVE (banks whatever's accumulated / declines the fight), and the
+  single-button "forced into an Elite" screen just proceeds. This also narrows the risk window for
+  Discord's ~15-minute interaction webhook token expiry (flagged during the Tower revamp brainstorm,
+  `roadmap.md`, as a likely cause of silently-lost runs for exactly the high-floor-count players the
+  click-fatigue rework targets) — not a full fix (the run can still exceed 15 minutes total), but a
+  real mitigation once combined with the click-reduction work below.
+- **`createDeathEmbed` no longer waits for a click at all** — its single LEAVE button was
+  decorative (`startRun()` returns `false` regardless of what's clicked), so this used to cost a
+  real button press for a decision that was never actually the player's to make.
+- **The Continue/Leave result screen (`createNextEmbed`) now uses the floor's own color** instead
+  of being hardcoded green regardless of floor type (COMBAT Orange / ENCOUNTER Yellow / TRANSACTION
+  Blue / REWARD Purple / a won Elite stays Green) — `execNormalFloor`/`updateValue`/
+  `updateTransaction` thread the originating color through. Matters more once players start
+  fast-forwarding through floors quickly (below) and need to skim results at a glance.
 
 ## Floor types
 

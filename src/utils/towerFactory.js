@@ -43,24 +43,24 @@ class towerFactory{
                 // think we just throw a normal mob from /work that you cant fail
                 fl = tC.COMBATS[Math.floor(Math.random() * tC.COMBATS.length)]
                 index = await this.createFloorEmbed(fl, "COMBAT", "Orange", fl.description)
-                return this.updateValue(fl, index)
+                return this.updateValue(fl, index, "Orange")
             case "ENCOUNTER":
                 fl = tC.ENCOUNTERS[Math.floor(Math.random() * tC.ENCOUNTERS.length)]
                 index = await this.createFloorEmbed(fl, "ENCOUNTER", "Yellow", fl.description)
-                return this.updateValue(fl, index)
+                return this.updateValue(fl, index, "Yellow")
             case "TRANSACTION":
                 fl = tC.TRANSACTIONS[Math.floor(Math.random() * tC.TRANSACTIONS.length)]
                 index = await this.createFloorEmbed(fl, `TRANSACTION (${this.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes)`, "Blue", fl.description)
-                return this.updateTransaction(fl, index)
+                return this.updateTransaction(fl, index, "Blue")
             case "REWARD":
                 fl = tC.REWARDS[Math.floor(Math.random() * tC.REWARDS.length)]
                 if(fl.kill_elite == true){
                     let nextElite = (Math.floor(this.floor / 10) + 1) * 10
                     index = await this.createFloorEmbed(fl, "REWARD", "Purple", fl.description + `${nextElite}` + fl.description2)
-                    return this.updateValue(fl, index)
+                    return this.updateValue(fl, index, "Purple")
                 }
                 index = await this.createFloorEmbed(fl, "REWARD", "Purple", fl.description)
-                return this.updateValue(fl, index)
+                return this.updateValue(fl, index, "Purple")
         }
     }
 
@@ -80,7 +80,7 @@ class towerFactory{
             this.run[tC.PAYOUT.POTATOES] += fl.choices[0].value
             // handle reward payouts
             this.checkElitePayout()
-            return this.createNextEmbed(fl, fl.choices[0].result)
+            return this.createNextEmbed(fl, fl.choices[0].result, "Green")
         }
         this.run[tC.PAYOUT.WORK_MULTIPLIER] = 0
         this.run[tC.PAYOUT.PASSIVE_INCOME] = 0
@@ -90,10 +90,10 @@ class towerFactory{
 
     }
 
-    async updateValue(fl, index){
+    async updateValue(fl, index, color = "Green"){
         switch(fl.choices[index].outcome){
             case tC.CHOICES.EXIT:
-                return this.createNextEmbed(fl, fl.choices[index].result)
+                return this.createNextEmbed(fl, fl.choices[index].result, color)
             case tC.CHOICES.ELITE:
                 await this.createEliteEncounter(fl, fl.choices[index].result)
                 return this.execElite(this.difficulty)
@@ -101,17 +101,17 @@ class towerFactory{
                 let nextElite = (Math.floor(this.floor / 10) + 1) * 10
                 let elite_kill = [nextElite, fl.choices[index].type, fl.choices[index].value]
                 this.run[tC.PAYOUT.ELITE_KILL].push(elite_kill)
-                return this.createNextEmbed(fl, fl.choices[index].result)
+                return this.createNextEmbed(fl, fl.choices[index].result, color)
             default:
                 this.run[fl.choices[index].outcome] += fl.choices[index].value
-                return this.createNextEmbed(fl, fl.choices[index].result)
+                return this.createNextEmbed(fl, fl.choices[index].result, color)
         }
     }
 
-    async updateTransaction(fl, index){
+    async updateTransaction(fl, index, color = "Green"){
         let poor = this.run[tC.PAYOUT.POTATOES] < fl.choices[index].price
         if(fl.choices[index].outcome == tC.CHOICES.EXIT){
-            return this.createNextEmbed(fl, fl.choices[index].result)
+            return this.createNextEmbed(fl, fl.choices[index].result, color)
         }else if(fl.choices[index].outcome==tC.CHOICES.ELITE ){
             await this.createEliteEncounter(fl, fl.choices[index].result)
             return this.execElite(this.difficulty)
@@ -122,13 +122,13 @@ class towerFactory{
                 await this.createEliteEncounter(fl, fl.poor)
                 return this.execElite(this.difficulty)
             }
-            return this.createNextEmbed(fl, fl.poor)
+            return this.createNextEmbed(fl, fl.poor, color)
         }
 
         // update outcome + value then subtract price
         this.run[fl.choices[index].outcome] += fl.choices[index].value
         this.run[tC.PAYOUT.POTATOES]-= fl.choices[index].price
-        return this.createNextEmbed(fl, fl.choices[index].result)
+        return this.createNextEmbed(fl, fl.choices[index].result, color)
     }
 
     async checkElitePayout(){
@@ -171,8 +171,15 @@ class towerFactory{
         });
 
         const collectorFilter = i => i.user.id === this.interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
-    
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        // A timed-out/unresponsive click defaults to the floor's first listed choice
+        // rather than hanging the run forever or throwing on the next editReply once the
+        // interaction token has gone stale.
+        if(!confirmation){
+            await this.interaction.editReply({ components: [] }).catch(() => {});
+            return 0
+        }
         for (var i in fl.choices){
             if(confirmation.customId == fl.choices[i].name){
                 await confirmation.update({content: '', components: []})
@@ -181,11 +188,11 @@ class towerFactory{
         }
     }
 
-    async createNextEmbed(fl, description){
+    async createNextEmbed(fl, description, color = 'Green'){
         const embed = new EmbedBuilder()
             .setTitle(`FLOOR ${this.floor.toLocaleString()}: ${fl.name}\n${this.username}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
             .setDescription(`${description}`)
-            .setColor('Green')
+            .setColor(color)
             .setTimestamp(Date.now())
             .setThumbnail("https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png")
             .setFooter({text: `Tater Tower: ${this.username}`})
@@ -219,8 +226,16 @@ class towerFactory{
         });
     
         const collectorFilter = i => i.user.id === this.interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
-        
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        // A timed-out/unresponsive click is treated as LEAVE — banks whatever's already
+        // accumulated rather than losing it to an expired interaction token further down
+        // the run (Discord's webhook token is only good for ~15 minutes total; safest
+        // default is to stop here, not silently hang or throw).
+        if(!confirmation){
+            await this.interaction.editReply({ components: [] }).catch(() => {});
+            return false
+        }
         if(confirmation.customId == "continue"){
             await confirmation.update({content: '', components: []})
             return true
@@ -246,8 +261,14 @@ class towerFactory{
         });
 
         const collectorFilter = i => i.user.id === this.interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
-    
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        // Timed out -> declines the fight, same as an explicit Leave (never risk a run
+        // dying to an unresponsive click).
+        if(!confirmation){
+            await this.interaction.editReply({ components: [] }).catch(() => {});
+            return false
+        }
         if(confirmation.customId == "fight"){
             await confirmation.update({content: '', components: []})
             return true
@@ -273,14 +294,24 @@ class towerFactory{
         });
     
         const collectorFilter = i => i.user.id === this.interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
-        
+        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+        // Only one button exists here (forced continuation into an Elite fight already
+        // committed to) — a timeout just proceeds the same as clicking it.
+        if(!confirmation){
+            await this.interaction.editReply({ components: [] }).catch(() => {});
+            return true
+        }
         if(confirmation.customId == "continue"){
             await confirmation.update({content: '', components: []})
             return true
         }
     }
 
+    // No collector here — the single LEAVE button was decorative (startRun() returns
+    // false regardless of what's clicked, since there's only one option), so this used to
+    // cost the player a real button click for a decision that was never actually theirs to
+    // make. Just shows the death embed and ends the run immediately.
     async createDeathEmbed(description){
         const embed = new EmbedBuilder()
             .setTitle(`FLOOR ${this.floor.toLocaleString()}`)
@@ -289,31 +320,33 @@ class towerFactory{
             .setTimestamp(Date.now())
             .setThumbnail("https://cdn.discordapp.com/attachments/1146091052781011026/1207183304286277685/skull.png?ex=65deb810&is=65cc4310&hm=51a9b329d50a101665716d8fb73b35b95a172b3de732e4f7f9e69f31d5c41980&")
             .setFooter({text: `Tater Tower: ${this.username}`});
-    
-        const row = new ActionRowBuilder().addComponents(tC.LEAVE)
-        const reply = await this.interaction.editReply({
+
+        await this.interaction.editReply({
             embeds: [embed],
-            components: [row],
+            components: [],
         });
-    
-        const collectorFilter = i => i.user.id === this.interaction.user.id;
-        const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter})
-        
-        await confirmation.update({content: '', components: []})
+
         this.floor--
         return false
-        
     }
 }
 
+// Off-by-one fix (2026-08-31): `random` is uniform over [0, 18) (18 integer values), but
+// `<=` against cumulative weights [9,12,15,18] gave COMBAT 10/18 values (0-9, 55.6%,
+// intended 9/18=50%) and REWARD only 2/18 (16-17, 11.1%, intended 3/18≈16.7%) — a strict
+// `<` makes every band exactly its intended width (COMBAT 0-8, ENCOUNTER 9-11,
+// TRANSACTION 12-14, REWARD 15-17 — 9/3/3/3 of 18), matching the cumulative-chance
+// convention every other weighted roll in this codebase already uses (e.g.
+// spudKeepFactory.rollLottery's `roll < cumulative`).
 function getFloor() {
     var random = Math.floor(Math.random() * tC.FLOOR_WEIGHTS[tC.FLOOR_WEIGHTS.length - 1]);
     for (var i = 0; i < tC.FLOOR_WEIGHTS.length; i++)
-        if (random <= tC.FLOOR_WEIGHTS[i])
+        if (random < tC.FLOOR_WEIGHTS[i])
             break;
     return tC.FLOOR_TYPES[i];
 }
 
 module.exports = {
-    towerFactory
+    towerFactory,
+    getFloor
 }

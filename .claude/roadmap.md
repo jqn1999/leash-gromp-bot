@@ -6512,8 +6512,11 @@ Two entries below — one's ready to hand an architect today, the other needs a 
 first. Full baseline design: [systems/tower.md](systems/tower.md); verified directly against
 `src/utils/towerFactory.js`/`towerConstants.js` rather than trusting the doc summary alone.
 
-- [ ] **Tower Reskin & Cheap Balance Fixes** — S — ready to scope directly, no design discussion
-  needed first (separable from the click-fatigue rework below).
+- [x] **Tower Reskin & Cheap Balance Fixes** — S — **logic/UX half done 2026-08-31** (items 3, 4,
+  and the collector-safety-net bonus below); items 1-2 (real per-encounter/transaction art) still
+  need actual image assets, same as every other art-swap this session — not blocked on anything,
+  just waiting on someone to hand over URLs.
+  What: (1) Replace the single reused "isolated-mussels-seafood-cartoon" thumbnail currently shared
   What: (1) Replace the single reused "isolated-mussels-seafood-cartoon" thumbnail currently shared
   across **every** `ENCOUNTERS` entry in `towerConstants.js` (Magic Mango x2, Wacky Watermelon x2,
   Despicable Dragonfruit x2, Wandering Woods x2 — 8 entries, 1 image, and it's thematically
@@ -6536,6 +6539,16 @@ first. Full baseline design: [systems/tower.md](systems/tower.md); verified dire
   fast-forward mode ships.
   Why now: none of these require deciding anything about the pacing rework — they're isolated art/
   one-line-logic fixes an architect could hand a developer today.
+  **Done (2026-08-31)**: items 3 and 4 shipped exactly as scoped, plus a bonus find while in
+  there — every `awaitMessageComponent` call in `towerFactory.js` had NO timeout at all (the only
+  collectors in the whole codebase like that), so an AFK player's run could hang indefinitely and
+  silently brush against Discord's ~15-minute interaction token expiry. Added `time: 30_000` +
+  `.catch(() => null)` to all five, each defaulting to the safest option on a timeout (floor choice
+  → index 0, Continue/Leave and Elite Fight/Leave → LEAVE, the single-button forced-Elite screen →
+  proceed). Also deleted `createDeathEmbed`'s pointless click (its one LEAVE button was decorative —
+  `startRun()` returns `false` regardless of what's clicked). New test file `towerFactory.test.js`
+  (exhaustive per-value sweep locking in the corrected 9/3/3/3-of-18 floor-weight split, plus ELITE
+  never rolling randomly). Full suite: 829/829. See [systems/tower.md](systems/tower.md#cheap-fixes-2026-08-31).
   Touches: `towerConstants.js` (thumbnail URLs, `FLOOR_WEIGHTS`/`getFloor` comparison),
   `towerFactory.js` (`createNextEmbed`'s hardcoded color → floor-type-keyed color, `getFloor`'s
   comparison operator if fixed there instead).
