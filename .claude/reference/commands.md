@@ -11,7 +11,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `bank.js` | `/bank` | Deposit (taxed) or withdraw potatoes to/from protected storage |
 | `give.js` | `/give` | Transfer potatoes (30% tax) or starches (10% tax) to another user, supports `all`/`half`/exact |
 | `rob.js` | `/rob` | Attempt to steal potatoes from another user, 1hr cooldown, risk of penalty |
-| `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch leaderboard, highlights requester's rank |
+| `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch / mercenary bounty-win leaderboard, highlights requester's rank (mercenary option shows a fallback line instead when the requester has 0 wins) |
 | `profile.js` | `/profile` | Full profile embed (stats, buffs, guild) for self or a mentioned user |
 | `stats.js` | `/user-stats` | Base+buff+regrade breakdown plus live effective totals (guild buff/companion/rebirth folded in, same modifiers `/profile` uses) for self or a target user |
 | `achievements.js` | `/achievements` | Full achievement list (unlocked + locked-with-progress) for self or a target user — see [systems/achievements.md](../systems/achievements.md) |

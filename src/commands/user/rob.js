@@ -211,6 +211,12 @@ module.exports = {
             null,
             "robChanceFlat"
         );
+        // "did the equipped companion actually train" readout for the result embed — see
+        // companionFactory.getAppliedCompanionXpGain's own comment. Shared by both the win
+        // and fail branches below, since the grant itself is computed once, unconditionally,
+        // above.
+        const companionXpGained = companionFactory.getAppliedCompanionXpGain(freshUserDetails.companions, leveledCompanions);
+        const companionName = companionFactory.getActiveCompanion(freshUserDetails)?.name || null;
 
         // TODO: Move each of these into flows functions in future
         if (userSuccessfulRob) {
@@ -242,7 +248,7 @@ module.exports = {
                 })
             ]);
 
-            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
             await interaction.editReply({ embeds: [embed], components: [] });
         } else {
             const fineAmount = calculateFailedRobPenalty(userPotatoes);
@@ -263,7 +269,7 @@ module.exports = {
                 companions: leveledCompanions
             });
 
-            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay);
+            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
             await interaction.editReply({ embeds: [embed], components: [] });
         }
     }

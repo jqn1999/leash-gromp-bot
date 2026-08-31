@@ -841,3 +841,49 @@ describe('passivePotatoHandler passive-pet leveling', () => {
         expect(docClient.update).toHaveBeenCalledTimes(2);
     });
 });
+
+// Mercenary Leaderboard (2026-08-31) — live full-scan + sort, exact mirror of
+// getSortedGuildsByLevelAndRaidCount's own shape. Filtered to mercenaryBountyWinCount > 0
+// (not isMercenary === true) since /retire-mercenary leaves the win count untouched while
+// flipping isMercenary to false — a retired champion must still show up on their own
+// leaderboard.
+describe('getSortedMercenariesByBountyWins', () => {
+    test('sorts descending by mercenaryBountyWinCount', async () => {
+        const users = [
+            { userId: 'u1', username: 'Low', mercenaryBountyWinCount: 5, isMercenary: true },
+            { userId: 'u2', username: 'High', mercenaryBountyWinCount: 50, isMercenary: true },
+            { userId: 'u3', username: 'Mid', mercenaryBountyWinCount: 20, isMercenary: true },
+        ];
+        docClient.scan.mockReturnValue(resolved({ Items: users }));
+
+        const sorted = await dynamoHandler.getSortedMercenariesByBountyWins();
+
+        expect(sorted.map(u => u.userId)).toEqual(['u2', 'u3', 'u1']);
+    });
+
+    test('excludes users with mercenaryBountyWinCount 0 or unset (never a mercenary)', async () => {
+        const users = [
+            { userId: 'u1', username: 'NeverMerc', mercenaryBountyWinCount: 0, isMercenary: false },
+            { userId: 'u2', username: 'NoFieldAtAll' },
+            { userId: 'u3', username: 'RealMerc', mercenaryBountyWinCount: 3, isMercenary: true },
+        ];
+        docClient.scan.mockReturnValue(resolved({ Items: users }));
+
+        const sorted = await dynamoHandler.getSortedMercenariesByBountyWins();
+
+        expect(sorted.map(u => u.userId)).toEqual(['u3']);
+    });
+
+    // The whole reason for filtering on the win count rather than isMercenary — a retired
+    // mercenary's win count is explicitly left untouched by /retire-mercenary.
+    test('includes a retired mercenary (isMercenary: false) as long as their win count is still > 0', async () => {
+        const users = [
+            { userId: 'u1', username: 'Retired', mercenaryBountyWinCount: 40, isMercenary: false },
+        ];
+        docClient.scan.mockReturnValue(resolved({ Items: users }));
+
+        const sorted = await dynamoHandler.getSortedMercenariesByBountyWins();
+
+        expect(sorted.map(u => u.userId)).toEqual(['u1']);
+    });
+});

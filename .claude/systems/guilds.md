@@ -228,6 +228,17 @@ a monotonic function of it, sorting by level-then-raidCount and sorting by raidC
 the identical order, so the old two-key sort was simplified to one), and `start-raid`'s actual
 reward calculation.
 
+**Next-raid cooldown shown in the result embed** (2026-08-31, direct instruction — "so users don't
+have to immediately check raid after a raid completion"). All four reduction terms above (guild
+level, selected `raidTimer` guild buff, Spud Keep's holder perk, Cinderroot's companion perk) are
+computed once, at the TOP of `runStartRaidFlow` (right after `guildLevel`/`companionRewardBonus`,
+before the pre-raid preview embed) rather than at the bottom after a scenario resolves — none of
+them depend on win/loss/tier/`potatoesGained`. The resulting `nextRaidAvailableAt` (ms since epoch)
+is reused both for the actual `raidTimer` DB write and threaded as a trailing parameter into every
+scenario's `createRaidEmbed` call, so the two can never drift apart. Displayed as a Discord relative
+timestamp (`<t:UNIX:R>`, same convention Spud Keep's own buff-expiry/last-resolved displays already
+use), shown unconditionally on win OR loss since the cooldown reset itself is unconditional.
+
 ## Guild Contracts
 
 A shared, weekly, guild-wide objective tracked in aggregate across the member roster — the same
@@ -545,6 +556,12 @@ const totalRaidTimerReduction = Math.min(
 );
 await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalRaidTimerReduction));
 ```
+
+**Superseded by the "Next-raid cooldown shown in the result embed" feature above (2026-08-31,
+later the same day)**: this exact computation was hoisted from ~line 1135 to the TOP of
+`runStartRaidFlow` (right after `guildLevel` is known) so the same `nextRaidAvailableAt` value could
+also be displayed on the result embed — the formula/terms themselves are unchanged, only *where* in
+the function they're computed.
 
 **Verification note**: `guilds.md`'s existing "Guild level" section claims the three pre-existing
 cooldown sources can already stack to "north of 80%." The real numbers (`RaidLevel.THRESHOLDS` max

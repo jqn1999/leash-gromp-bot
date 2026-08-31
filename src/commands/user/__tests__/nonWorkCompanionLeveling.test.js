@@ -134,6 +134,42 @@ describe('/rob levels an equipped robChanceFlat companion (Barn Owl/Yukon/Elder 
         expect(written.companions.owned).toEqual([]);
         expect(written.companions.active).toBeNull();
     });
+
+    // Companion "Work Count" -> "XP" Rename, Part 2 (2026-08-31) — the result embed's own
+    // "Companion XP" field, gated on getAppliedCompanionXpGain's real diff rather than a
+    // hardcoded assumption. embedFactory is NOT mocked in this file, so this exercises the
+    // real end-to-end wiring: rob.js computing the diff and passing it into
+    // createRobEmbed's two new trailing params.
+    test('the result embed shows the Companion XP field with the real grant amount and companion name when equipped with robChanceFlat', async () => {
+        mockUsers(actingUser(), targetUser());
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await callback({ user: { id: 'bot-1' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        const field = embed.data.fields.find(f => f.name.includes('Companion XP'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain(`+${ROB_GRANT}`);
+        expect(field.value).toContain('Barn Owl');
+    });
+
+    test('the result embed omits the Companion XP field when nothing is equipped', async () => {
+        mockUsers(actingUser({ companions: NOTHING_EQUIPPED }), targetUser());
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        try {
+            await callback({ user: { id: 'bot-1' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
+    });
 });
 
 describe('/sell-starch levels an equipped starchSellBonusPercent companion (Mole/Rootcarver/Elder Rootbeard), scaled by starches sold', () => {

@@ -444,3 +444,149 @@ describe('createSpudKeepCollectEmbed', () => {
         expect(embed.data.description).toContain('12,345');
     });
 });
+
+// Mercenary Leaderboard (2026-08-31) — mirrors createGuildLeaderboardEmbed's own per-entry
+// shape (medal rank label, name, a derived readout, a count). mercenaryFactory is
+// jest-mocked at the top of this file, so getMercenaryRankInfo's return is stubbed here.
+describe('createMercenaryLeaderboardEmbed', () => {
+    const mercenaryFactory = require('../mercenaryFactory');
+
+    beforeEach(() => {
+        mercenaryFactory.getMercenaryRankInfo.mockImplementation((wins) => ({
+            rank: wins >= 50 ? 3 : 1,
+            rewardMultiplier: wins >= 50 ? 1.35 : 1.00,
+            rivalSuccessBonus: { easy: 0, medium: 0, hard: 0 },
+            cooldownReductionPercent: 0,
+            winsToNextRank: null,
+        }));
+    });
+
+    const mercs = [
+        { userId: 'u1', username: 'TopMerc', mercenaryBountyWinCount: 60, isMercenary: true },
+        { userId: 'u2', username: 'MidMerc', mercenaryBountyWinCount: 20, isMercenary: true },
+    ];
+
+    test('shows a medal-ranked entry per mercenary with their win count', () => {
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(mercs, -1);
+        const first = embed.data.fields[0];
+        expect(first.name).toContain('🥇');
+        expect(first.name).toContain('TopMerc');
+        expect(first.value).toContain('60');
+        expect(first.value).toContain('Rank 3');
+    });
+
+    test('tags a retired mercenary (isMercenary: false) with "(Retired)"', () => {
+        const retiredMercs = [{ userId: 'u1', username: 'OldChamp', mercenaryBountyWinCount: 40, isMercenary: false }];
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(retiredMercs, -1);
+        expect(embed.data.fields[0].name).toContain('(Retired)');
+    });
+
+    test('does not tag an active mercenary with "(Retired)"', () => {
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(mercs, -1);
+        expect(embed.data.fields[0].name).not.toContain('(Retired)');
+    });
+
+    test('shows a "You haven\'t won a bounty yet" fallback when userIndex is the -1 sentinel (caller not in the sorted list)', () => {
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(mercs, -1);
+        const fallback = embed.data.fields.find(f => f.name === 'Your Rank');
+        expect(fallback).toBeDefined();
+        expect(fallback.value).toContain("haven't won a bounty yet");
+    });
+
+    test('marks the caller with "(You)" and skips the fallback when they ARE in the sorted list', () => {
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(mercs, 1);
+        expect(embed.data.fields.find(f => f.name === 'Your Rank')).toBeUndefined();
+        expect(embed.data.fields[1].name).toContain('(You)');
+    });
+});
+
+// Raid Result Embed Shows Next-Raid Cooldown (2026-08-31) — nextRaidAvailableAt is a new
+// trailing optional param, default null (same "default to old behavior" precedent
+// raidRewardMultiplier/sacrificeOffer already set) — shown unconditionally (win or loss)
+// as a Discord relative timestamp when provided.
+describe('createRaidEmbed next-raid cooldown field', () => {
+    const raidList = [{ id: 'u1', username: 'Raider' }];
+    const mob = { name: 'Test Mob', description: 'flavor', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('shows the Next Raid Available field as a Discord relative timestamp when provided', () => {
+        const nextRaidAvailableAt = Date.now() + 1_548_000;
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!', null, null, null, nextRaidAvailableAt);
+        const field = embed.data.fields.find(f => f.name.includes('Next Raid Available'));
+        expect(field).toBeDefined();
+        expect(field.value).toBe(`<t:${Math.floor(nextRaidAvailableAt / 1000)}:R>`);
+    });
+
+    test('omits the field entirely when nextRaidAvailableAt is not passed (defaults to null)', () => {
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!');
+        expect(embed.data.fields.find(f => f.name.includes('Next Raid Available'))).toBeUndefined();
+    });
+
+    test('still shows the field on a loss — the cooldown reset is unconditional on win/loss', () => {
+        const nextRaidAvailableAt = Date.now() + 1_548_000;
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, -500, null, mob, 0.5, 'Loss!', null, null, null, nextRaidAvailableAt);
+        expect(embed.data.fields.find(f => f.name.includes('Next Raid Available'))).toBeDefined();
+    });
+});
+
+// Companion "Work Count" -> "XP" Rename + Show XP Gained in Result Embeds (2026-08-31).
+// Part 2: the 5 non-/work commands get a real distinct "Companion XP" field, gated on
+// companionXpGained > 0 (a no-op restriction/nothing-equipped grant shows nothing).
+describe('companion XP display gating on companion equipped', () => {
+    const bountyScenario = { name: 'a rival gang', winFlavor: 'You win.', loseFlavor: 'You lose.', currency: 'potato' };
+    function baseBountyResult(overrides = {}) {
+        return {
+            tier: 1, mode: 'regular', won: true, successChance: 0.5, scenario: bountyScenario,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+            currency: 'potato', rewardAmount: 1000, penaltyAmount: 0, statReward: null,
+            ...overrides,
+        };
+    }
+
+    test('createBountyResultEmbed shows the Companion XP field when a companion actually trained', () => {
+        const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult(), null, 1000, 0, 5, 'Yukon');
+        const field = embed.data.fields.find(f => f.name.includes('Companion XP'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('+5 XP');
+        expect(field.value).toContain('Yukon');
+    });
+
+    test('createBountyResultEmbed omits the Companion XP field when nothing was equipped (companionXpGained 0, default)', () => {
+        const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult());
+        expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
+    });
+
+    test('createRobNpcResultEmbed shows the Companion XP field only when companionXpGained > 0', () => {
+        const tier = { key: 'corner_store', label: 'Corner Store' };
+        const result = { won: true, successChance: 0.8, amount: 5000, rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 }, penaltyAmount: 0, statReward: null };
+
+        const withXp = embedFactory.createRobNpcResultEmbed('User', result, tier, 3, 'Barn Owl');
+        expect(withXp.data.fields.find(f => f.name.includes('Companion XP'))).toBeDefined();
+
+        const withoutXp = embedFactory.createRobNpcResultEmbed('User', result, tier);
+        expect(withoutXp.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
+    });
+
+    // /work is the structural exception — folded into the existing "Work Count:" field's
+    // value string rather than a new field, since this grant is always exactly +1 whenever
+    // any companion is equipped at all on the bot's highest-traffic embed.
+    describe('createWorkEmbed (folded into the existing Work Count field, no new field)', () => {
+        const mob = { name: 'Regular Potato', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
+
+        test('folds "+N XP: Name" into the Work Count field value when a companion is equipped', () => {
+            const embed = embedFactory.createWorkEmbed('User', 142, 100, mob, null, 1, 'Sprout');
+            const field = embed.data.fields.find(f => f.name === 'Work Count:');
+            expect(field.value).toBe('142 (+1 XP: Sprout)');
+        });
+
+        test('shows the plain count with no suffix when nothing is equipped (companionXpGained 0, default)', () => {
+            const embed = embedFactory.createWorkEmbed('User', 142, 100, mob);
+            const field = embed.data.fields.find(f => f.name === 'Work Count:');
+            expect(field.value).toBe('142');
+        });
+
+        test('never adds a second, standalone "Companion XP" field on /work\'s own embed', () => {
+            const embed = embedFactory.createWorkEmbed('User', 142, 100, mob, null, 1, 'Sprout');
+            expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
+        });
+    });
+});

@@ -149,6 +149,12 @@ module.exports = {
             companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
             'yukon'
         );
+        // "did Yukon actually train" readout for the result embed — see
+        // companionFactory.getAppliedCompanionXpGain's own comment. Computed right after the
+        // leveling call above, before yukonAward (if any) potentially appends a further
+        // companions write below, so this stays a pure diff of THIS call's own grant.
+        const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+        const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
 
         // Yukon, the Highwayman — obtained via a dedicated roll on a winning Bounty
         // resolution only (dropSource "bounty", never the normal /work roll — see
@@ -183,7 +189,7 @@ module.exports = {
             }
         }
 
-        const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount);
+        const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName);
         await interaction.editReply({ embeds: [embed] });
 
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);

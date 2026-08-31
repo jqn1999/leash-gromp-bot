@@ -208,6 +208,53 @@ the other).
   `/rob`'s reasoning above), so it's unconditional on success/fail and fires once per attempt
   in all three tracks.
 
+**Display: "XP," not "Work Count" (2026-08-31, direct ask — "make companion works just
+called exp or something since it goes up through many different means now")** —
+display-text-only rename, the underlying field stays `companions.owned[].workCount`
+everywhere internally. **Deliberately NOT a real field rename** — `userDetails.workCount`
+(a totally different, unrelated field: the player's own lifetime count of `/work` command
+invocations, used for achievements/the catch-up formula) shares the exact same literal
+string `workCount` and must never be touched by this. Renaming the real stored key would
+also mean either a one-time migration script (a pattern this codebase has never used) or
+permanent dual-read compatibility code forever, for what's purely a cosmetic ask — same
+"internal name stays, display word changes" precedent `mercenaryBountyWinCount` (displayed
+as "Mercenary Rank") already sets. Changed: the companion list embed's progress text
+(`X / Y /work calls to Lv. Z` → `X / Y XP to Lv. Z`; `/work calls — max level` → `XP — max
+level`) and the Scavenge Return embed's "Work Count:" field label → "XP:". **NOT** changed:
+`/work`'s own result embeds' "Work Count:" field — that label reads a completely different
+counter (the server-wide `work` stat document's lifetime `/work`-call tally,
+`dynamoHandler.getStatDatabase('work').workCount`), not a companion's, so it keeps its
+existing name; the profile embed's own "Work Count:" field (`userDetails.workCount`) is
+likewise untouched.
+
+**Showing XP gained in result embeds** — `companionFactory.getAppliedCompanionXpGain(companionsBefore,
+companionsAfter)` diffs the active instance's own `workCount` before vs. after a
+`levelActiveCompanion` call (via `getActiveInstance`), returning 0 uniformly whenever nothing
+was equipped or a `restrictToCompanionId`/`restrictToPerkType` gate blocked the grant — both
+cases already hand back the exact same `companions` object reference from
+`levelActiveCompanion`, so a plain identity check short-circuits the common no-op case.
+5 of the 6 leveling call sites (`/take-bounty`, `/rob-npc`, `/rob`, `/sell-starch`,
+`/regrade`) already compute the leveling grant BEFORE building their result embed, so each
+calls this helper right after its own `levelActiveCompanion` call and passes the delta plus
+`companionFactory.getActiveCompanion(...)?.name` into its embed builder as two new trailing
+optional params (`companionXpGained = 0`, `companionName = null`); each embed shows a real,
+distinct "🐾 Companion XP: +N XP (Name)" field only when `companionXpGained > 0`.
+**`/work` is the one structural exception** — its companion-leveling write happens AFTER the
+result embed is already sent (a separate, `updatedUserDetails`-based call, unconditional, always
+a flat `+1` whenever any companion is equipped), so the real grant isn't known at embed-build
+time. Rather than restructuring `workFactory.js`'s scenario handlers, this mirrors the file's
+own existing `_cooldownSkippedByCompanion` pattern instead: `userDetails._companionXpGained`
+is stamped once near the top of `performWork` (`= 1` if `companions?.active` is truthy, else
+`0` — a reliable predictor since no scenario handler changes `companions.active` mid-call) and
+read directly at all 12 of `work.js`'s own `createWorkEmbed`/`createPoisonPotatoEmbed`/
+`createCompanionEncounterEmbed`/`createAncientPotatoEmbed` call sites, same as
+`_cooldownSkippedByCompanion` already is. **Folded into the existing "Work Count:" field's
+value** (e.g. `142 (+1 XP: Sprout)`) rather than a new standalone field, per an explicit UX
+flag: `/work` is the bot's highest-frequency command and this grant is always exactly `+1`
+whenever any companion is equipped at all (true for most active players most of the time), so
+a full new field on every single result risked feeling noisy in a way the rarer,
+sometimes-zero grants on the other 5 commands don't.
+
 **Passive-pet leveling (2026-08-30, direct instruction)** — every leveling path above is
 action-gated, but `passiveIncomePercent` (Rootcarver/Elder Rootbeard/Mochi) is earned purely by
 sitting equipped, no action required. That mismatch meant a player who genuinely wanted the

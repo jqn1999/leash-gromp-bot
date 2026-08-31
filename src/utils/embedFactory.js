@@ -172,6 +172,22 @@ function buildCooldownSkipField(cooldownSkipSource) {
     };
 }
 
+// Folds a companion's XP gain from THIS /work call into the existing "Work Count:"
+// field's value (e.g. "142 (+1 XP: Sprout)") rather than a new standalone field — /work is
+// by far the highest-frequency command in the game and this grant is always exactly +1
+// whenever any companion is equipped at all (true for most active players most of the
+// time), so a full new field on every single result risked feeling noisy/repetitive in a
+// way the rarer, cooldown-gated, sometimes-zero grants on Bounty/Heist/Rob/Sell-Starch/
+// Regrade don't (see roadmap's "Companion 'Work Count' -> 'XP' Rename" entry's own UX flag).
+// Note: "Work Count:" here is deliberately NOT renamed to "XP:" — newWorkCount is the
+// server-wide 'work' stat document's own lifetime /work-call tally (dynamoHandler.
+// getStatDatabase('work').workCount), a completely different counter from the equipped
+// companion's own workCount/XP this function is folding in alongside it.
+function formatWorkCountValue(newWorkCount, companionXpGained, companionName) {
+    const xpSuffix = companionXpGained > 0 ? ` (+${companionXpGained.toLocaleString()} XP: ${companionName})` : '';
+    return `${newWorkCount.toLocaleString()}${xpSuffix}`;
+}
+
 // Server-wide World Boss buff descriptions (systems/raids-and-world-events.md#server-wide-buff)
 // — one line per buffType, used by createWorldResultEmbed's announcement.
 const WORLD_BUFF_DESCRIPTIONS = {
@@ -561,6 +577,55 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(userList)
+        return embed;
+    }
+
+    // Mercenary Leaderboard — live full-scan + sort (dynamoHandler.getSortedMercenariesByBountyWins
+    // already filters to mercenaryBountyWinCount > 0), same shape as createUserLeaderboardEmbed/
+    // createGuildLeaderboardEmbed. Mercenary Rank is shown as a derived readout of the sorted win
+    // count (getMercenaryRankInfo), same relationship createGuildLeaderboardEmbed's own Level
+    // column has to raidCount. "(Retired)" is a purely cosmetic tag off isMercenary — win count
+    // itself is untouched by /retire-mercenary.
+    createMercenaryLeaderboardEmbed(sortedMercs, userIndex) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+        const topCount = Math.min(5, sortedMercs.length);
+        const formatEntry = (element, index) => {
+            const isYou = index === userIndex;
+            const rankInfo = mercenaryFactory.getMercenaryRankInfo(element.mercenaryBountyWinCount);
+            const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+            const retiredTag = element.isMercenary ? '' : ' (Retired)';
+            return {
+                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}${retiredTag}`,
+                value: `Rank ${rankInfo.rank} — ${title} • ${element.mercenaryBountyWinCount.toLocaleString()} bounty win${element.mercenaryBountyWinCount === 1 ? '' : 's'}`,
+                inline: false,
+            };
+        };
+
+        let mercList = [];
+        for (let index = 0; index < topCount; index++) {
+            mercList.push(formatEntry(sortedMercs[index], index));
+        }
+
+        // userIndex is -1 (not just "beyond top 5") for a caller with 0 wins, since the
+        // sorted list itself excludes them entirely — findUserIndex can't be trusted to
+        // return a meaningful position for someone not present in the array at all.
+        if (userIndex >= topCount) {
+            mercList.push({ name: '​', value: '​', inline: false });
+            const youEntry = formatEntry(sortedMercs[userIndex], userIndex);
+            mercList.push({ name: `Your Rank — ${youEntry.name}`, value: youEntry.value, inline: false });
+        } else if (userIndex === -1) {
+            mercList.push({ name: '​', value: '​', inline: false });
+            mercList.push({ name: 'Your Rank', value: "You haven't won a bounty yet — try `/take-bounty`!", inline: false });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🎯 Mercenary Leaderboard`)
+            .setDescription(`${sortedMercs.length.toLocaleString()} mercenaries, ranked by bounty wins`)
+            .setColor("Gold")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(mercList)
         return embed;
     }
 
@@ -1090,8 +1155,15 @@ class EmbedFactory {
 
     }
 
+    // nextRaidAvailableAt (new, optional, default null — same "default to old behavior"
+    // precedent raidRewardMultiplier/sacrificeOffer already established): the guild's
+    // freshly-written raidTimer, in ms since epoch, computed once by runStartRaidFlow
+    // BEFORE any scenario resolves (none of the four reduction terms feeding it depend on
+    // win/loss/tier) and reused for both the actual DB write and this display — see
+    // roadmap's "Raid Result Embed Shows Next-Raid Cooldown" entry. Shown unconditionally
+    // (win or loss) since the cooldown reset itself is unconditional.
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
-        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null) {
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
         const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
@@ -1170,6 +1242,14 @@ class EmbedFactory {
             value: `${(raidCount).toLocaleString()}`,
             inline: true,
         })
+
+        if (Number.isFinite(nextRaidAvailableAt)) {
+            fields.push({
+                name: `Next Raid Available:`,
+                value: `<t:${Math.floor(nextRaidAvailableAt / 1000)}:R>`,
+                inline: true,
+            })
+        }
 
         if (mob.credit) {
             footerText = mob.credit;
@@ -1286,12 +1366,12 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
             name: `Work Count:`,
-            value: `${newWorkCount.toLocaleString()}`,
+            value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
             inline: true,
         })
         const gainOrLoss = potatoesGained >= 0 ? 'Gained' : 'Lost'
@@ -1364,11 +1444,11 @@ class EmbedFactory {
     // shared weekly counter): { reduction, lockoutSeconds, hitNumberThisWeek,
     // milestoneJustReached, rebatePercent, escalationMultiplier }, rebatePercent/
     // escalationMultiplier only non-null when immune.
-    createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null) {
+    createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
         const { potatoesGained, immune, mitigationInfo } = result;
         let fields = [{
             name: `Work Count:`,
-            value: `${newWorkCount.toLocaleString()}`,
+            value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
             inline: true,
         }];
 
@@ -1443,11 +1523,11 @@ class EmbedFactory {
     // no bonus workCount to any existing copy — so it gets the same "go equip it" framing
     // rather than a before/after progress readout. See
     // systems/companions.md#duplicate-companions-are-real-separate-instances.
-    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null) {
+    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
         const { isNew, companion } = result;
         let fields = [{
             name: `Work Count:`,
-            value: `${newWorkCount.toLocaleString()}`,
+            value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
             inline: true,
         }];
 
@@ -1500,12 +1580,12 @@ class EmbedFactory {
         const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
         const nextThreshold = companionFactory.getNextLevelThreshold(workCountAfter);
         const progress = nextThreshold
-            ? `${workCountAfter.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
-            : `${workCountAfter.toLocaleString()} /work calls — max level`;
+            ? `${workCountAfter.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} XP to Lv. ${nextThreshold.level}`
+            : `${workCountAfter.toLocaleString()} XP — max level`;
 
         const fields = [
             {
-                name: `Work Count:`,
+                name: `XP:`,
                 value: `${workCountBefore.toLocaleString()} → ${workCountAfter.toLocaleString()} (+${(workCountAfter - workCountBefore).toLocaleString()})`,
                 inline: true,
             },
@@ -1558,11 +1638,11 @@ class EmbedFactory {
     // regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease,
     // guildRaidReady } from workFactory.js's handleAncientPotato — exactly one of
     // regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
-    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null) {
+    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
         const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady } = result;
         let fields = [{
             name: `Work Count:`,
-            value: `${newWorkCount.toLocaleString()}`,
+            value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
             inline: true,
         }];
 
@@ -1680,7 +1760,11 @@ class EmbedFactory {
     // result.rewardAmount/0 so any call site that hasn't been updated still shows the
     // pre-tax number rather than crashing — same default-to-untaxed shape
     // createBuyOrSellStarchEmbed's own taxAmount param already uses.
-    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0) {
+    // companionXpGained/companionName (new, optional, default 0/null — same "default to
+    // untaxed"-style precedent netRewardAmount/taxAmount already set): from
+    // companionFactory.getAppliedCompanionXpGain, diffed right after the Bounty's own
+    // levelActiveCompanion (Yukon-restricted) call — shown only when it actually applied.
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null) {
         const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
@@ -1739,6 +1823,14 @@ class EmbedFactory {
             });
         }
 
+        if (companionXpGained > 0) {
+            fields.push({
+                name: '🐾 Companion XP:',
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
+                inline: true,
+            });
+        }
+
         fields.push({
             name: 'Mercenary Rank:',
             value: `Rank ${rankInfo.rank}${won ? ' (win recorded!)' : ''}`,
@@ -1775,7 +1867,9 @@ class EmbedFactory {
     // Since roadmap #50's Heist Ladder, a whiff is only harmless on Tier I (Corner Store) —
     // Tiers II-IV carry a real penalty, same "Potatoes Lost" branch createBountyResultEmbed
     // already needs for a Bounty loss.
-    createRobNpcResultEmbed(userDisplayName, result, tier) {
+    // companionXpGained/companionName (new, optional, default 0/null) — see
+    // createBountyResultEmbed's own comment on the same pair.
+    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null) {
         const { won, successChance, amount, rankInfo, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : (penaltyAmount > 0 ? 'Red' : 'Grey');
         const fields = [
@@ -1783,6 +1877,9 @@ class EmbedFactory {
             { name: 'Chance:', value: `${(successChance * 100).toFixed(2)}%`, inline: true },
             { name: 'Mercenary Rank:', value: `Rank ${rankInfo.rank}`, inline: true },
         ];
+        if (companionXpGained > 0) {
+            fields.push({ name: '🐾 Companion XP:', value: `+${companionXpGained.toLocaleString()} XP (${companionName})`, inline: true });
+        }
         if (won) {
             fields.push({ name: 'Potatoes Gained:', value: `${amount.toLocaleString()} potatoes`, inline: false });
             if (statReward) {
@@ -2065,8 +2162,8 @@ class EmbedFactory {
             const isMaxLevel = level === MAX_COMPANION_LEVEL;
             const nextThreshold = companionFactory.getNextLevelThreshold(workCount);
             const progress = nextThreshold
-                ? `${workCount.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} /work calls to Lv. ${nextThreshold.level}`
-                : `${workCount.toLocaleString()} /work calls — max level`;
+                ? `${workCount.toLocaleString()} / ${nextThreshold.workCountRequired.toLocaleString()} XP to Lv. ${nextThreshold.level}`
+                : `${workCount.toLocaleString()} XP — max level`;
             // One-time cosmetic tag (Option A3 of the 2026-08-23 Scavenging brainstorm) —
             // hasScavenged is set uniformly on any scavenge return (see
             // companionFactory.resolveScavengeReward), but only ever rendered for
@@ -2394,7 +2491,9 @@ class EmbedFactory {
         return embed;
     }
 
-    createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob) {
+    // companionXpGained/companionName (new, optional, default 0/null) — see
+    // createBountyResultEmbed's own comment on the same pair.
+    createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob, companionXpGained = 0, companionName = null) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
@@ -2426,6 +2525,13 @@ class EmbedFactory {
             value: `${userPotatoes.toLocaleString()} potatoes`,
             inline: true,
         })
+        if (companionXpGained > 0) {
+            fields.push({
+                name: `🐾 Companion XP:`,
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
+                inline: true,
+            })
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} ${robResultLabel} ${targetUserDisplayName}!`)
@@ -2779,7 +2885,9 @@ class EmbedFactory {
         return embed;
     }
 
-    createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost) {
+    // companionXpGained/companionName (new, optional, default 0/null) — see
+    // createBountyResultEmbed's own comment on the same pair.
+    createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost, companionXpGained = 0, companionName = null) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const color = increaseAmount > 0 ? 'Green' : 'Red';
         const succeededOrFailed = increaseAmount > 0 ? 'Succeeded' : 'Failed';
@@ -2824,6 +2932,13 @@ class EmbedFactory {
             value: `${(successChance*100).toFixed(2)}% (+${(failStack*100).toFixed(2)}%)`,
             inline: false,
         })
+        if (companionXpGained > 0) {
+            fields.push({
+                name: `🐾 Companion XP:`,
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
+                inline: true,
+            })
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} ${succeededOrFailed} a ${regradeType} regrade!`)
@@ -2836,7 +2951,11 @@ class EmbedFactory {
         return embed;
     }
 
-    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice, taxAmount = 0) {
+    // companionXpGained/companionName (new, optional, default 0/null) — only ever nonzero
+    // on a sell (sellStarch.js's own call site; buyStarch.js omits them, same "buy never
+    // taxes/trains" precedent taxAmount already established). See createBountyResultEmbed's
+    // own comment on the same pair.
+    createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes, userStarches, currentType, starchAmount, starchPrice, totalPrice, taxAmount = 0, companionXpGained = 0, companionName = null) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const color = currentType == 'buy' ? 'Green' : 'Orange';
         const starchesText = starchAmount > 1 ? 'starches' : 'starch';
@@ -2860,6 +2979,13 @@ class EmbedFactory {
             fields.push({
                 name: `Kingdom Tax:`,
                 value: `-${taxAmount.toLocaleString()} potatoes (5%)`,
+                inline: true,
+            })
+        }
+        if (companionXpGained > 0) {
+            fields.push({
+                name: `🐾 Companion XP:`,
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
                 inline: true,
             })
         }

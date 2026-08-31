@@ -7169,6 +7169,17 @@ entire potato penalty. Naming decided too — see 5 below.
 
 ## Mercenary Leaderboard (2026-08-31, requested)
 
+- [x] **Mercenary Leaderboard** — S — **Shipped 2026-08-31**. Built exactly as designed below: a
+  fourth `mercenary-leaderboard` option on `/leaderboard`, `dynamoHandler.getSortedMercenariesByBountyWins`
+  (live full-scan + sort, filtered to `mercenaryBountyWinCount > 0`), and `embedFactory.createMercenaryLeaderboardEmbed`
+  (medal rank, username, Mercenary Rank readout, win count, "(Retired)" tag). "Your Rank" fallback
+  uses a `-1` sentinel (not `findUserIndex`'s own out-of-range fallback, which would silently point
+  at the wrong/last entry) when the caller isn't in the sorted list at all. No logic deviations from
+  the design. See [systems/mercenary-bounties.md](systems/mercenary-bounties.md) for the shipped
+  shape. Tests: `getSortedMercenariesByBountyWins` sort/filter/retired-inclusion cases in
+  `dynamoHandler.test.js`, `createMercenaryLeaderboardEmbed` rendering/retired-tag/fallback cases in
+  `embedFactory.test.js`, and command-dispatch cases in a new `leaderboard.test.js`.
+
 Direct ask: "Add a merc leaderboard based on merc successes bounty and level." Verified against
 `src/utils/mercenaryFactory.js` (`getMercenaryRankInfo`), `src/commands/user/takeBounty.js`,
 `src/utils/dynamoHandler.js` (`getSortedUsers`/`getSortedGuildsByLevelAndRaidCount`/`getUsers`),
@@ -7241,6 +7252,23 @@ number via `mercenaryFactory.getMercenaryRankInfo`, win count, "(Retired)" tag w
 `getMercenaryRankInfo` is already exported and already exactly what the embed needs.
 
 ## Raid Result Embed Shows Next-Raid Cooldown (2026-08-31, requested)
+
+- [x] **Raid Result Embed Shows Next-Raid Cooldown** — S/M — **Shipped 2026-08-31**. Built exactly
+  as designed below: the four-term `totalRaidTimerReduction`/`nextRaidAvailableAt` computation was
+  hoisted from the bottom of `runStartRaidFlow` to the top (right after `guildLevel`/
+  `companionRewardBonus`), the now-duplicate bottom computation removed, and `nextRaidAvailableAt`
+  threaded as a new trailing parameter through all 5 `scenario.action(...)` call sites, all 15
+  regular/elite/legendary scenario closures' own signatures, the 2 `statRaidScenarios` closures, and
+  all 22 real `createRaidEmbed(...)` call sites (the design's own "~14 closures/~25 call sites"
+  estimate — actual counts land close enough that this is line-number-style drift, not a scope
+  change). `createRaidEmbed` gained one new trailing `nextRaidAvailableAt = null` param and a "Next
+  Raid Available:" field using `<t:UNIX:R>`, shown unconditionally on win or loss. No logic
+  deviations from the design. See [systems/guilds.md](systems/guilds.md#guild-level) for the shipped
+  shape (added right after the existing "Raid cooldown reduction" section, with a pointer from the
+  now-superseded Guild Raid Companion design snippet that showed the old bottom-of-function
+  location). Tests: a new `startRaidNextRaidCooldown.test.js` (displayed value matches the written
+  value on a win/loss/stat-mode raid, plus a regression guard that both come from a single
+  `Date.now()` sample) and new `createRaidEmbed` field-presence cases in `embedFactory.test.js`.
 
 Direct ask: "Have the final raid embed say how long until the next raid is available so users
 don't have to immediately check raid after a raid completion." Verified against
@@ -7318,6 +7346,25 @@ call); `src/utils/embedFactory.js` (`createRaidEmbed` gets one new trailing defa
 1000)}:R>` when non-null).
 
 ## Companion "Work Count" → "XP" Rename + Show XP Gained in Result Embeds (2026-08-31, requested)
+
+- [x] **Companion "Work Count" → "XP" Rename + Show XP Gained in Result Embeds** — S/M —
+  **Shipped 2026-08-31**. Built exactly as designed below: display-text-only rename (companion list
+  embed's progress text, Scavenge Return embed's field label) — `companions.owned[].workCount` and
+  `userDetails.workCount` both stay untouched internally, and `/work`'s own result embeds' "Work
+  Count:" field (the unrelated server-wide `work` stat document's lifetime tally) correctly kept its
+  existing label. New `companionFactory.getAppliedCompanionXpGain` helper wired into all 5 non-`/work`
+  commands (`/take-bounty`, `/rob-npc`, `/rob`, `/sell-starch`, `/regrade`) as a real, distinct
+  "🐾 Companion XP: +N XP (Name)" field, gated on `companionXpGained > 0`. `/work` uses the design's
+  own recommended `_companionXpGained` in-memory flag (mirroring `_cooldownSkippedByCompanion`'s
+  existing pattern) folded into the existing "Work Count:" field's value (e.g. `142 (+1 XP: Sprout)`)
+  rather than a new field, per the design's own UX flag. No logic deviations from the design. See
+  [systems/companions.md](systems/companions.md#leveling) for the shipped shape. Tests:
+  `getAppliedCompanionXpGain` unit cases in `companionFactory.test.js`; embed-level display-gating
+  cases (`createBountyResultEmbed`/`createRobNpcResultEmbed`/`createWorkEmbed` fold-in) in
+  `embedFactory.test.js`; end-to-end command-wiring cases added to `nonWorkCompanionLeveling.test.js`
+  (`/rob`'s result embed) and a new `workCompanionXpDisplay.test.js` (`/work`'s fold-in, real
+  `performWork`/`embedFactory`, only `dynamoHandler`/`WorkFactory`/achievement/quest factories
+  mocked).
 
 Direct ask, user's own words: "Make companion works just called exp or something since it goes up
 through many different means now. For each of those include the companion xp gained if possible in

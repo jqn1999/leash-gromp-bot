@@ -16,6 +16,7 @@ const {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    getAppliedCompanionXpGain,
     applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
@@ -796,6 +797,43 @@ describe('levelActiveCompanion', () => {
             const companions = { owned: [], active: null };
             expect(levelActiveCompanion(companions, 8, null, 'robChanceFlat')).toBe(companions);
         });
+    });
+});
+
+// getAppliedCompanionXpGain — the "did this actually train the equipped companion, and by
+// how much" readout Bounty/Heist/Rob/Sell-Starch/Regrade's result embeds use, per the
+// roadmap's "Companion 'Work Count' -> 'XP' Rename" entry. Diffs the active instance's own
+// workCount before vs. after a levelActiveCompanion call rather than re-deriving each call
+// site's own restriction logic.
+describe('getAppliedCompanionXpGain', () => {
+    test('returns the real delta when the grant applied', () => {
+        const before = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a' };
+        const after = levelActiveCompanion(before, 12);
+        expect(getAppliedCompanionXpGain(before, after)).toBe(12);
+    });
+
+    test('returns 0 when nothing was equipped (levelActiveCompanion no-op, same reference back)', () => {
+        const before = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: null };
+        const after = levelActiveCompanion(before, 12);
+        expect(getAppliedCompanionXpGain(before, after)).toBe(0);
+    });
+
+    test('returns 0 when a restrictToCompanionId gate blocked the grant (same reference back)', () => {
+        const before = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a' };
+        const after = levelActiveCompanion(before, 12, 'yukon');
+        expect(getAppliedCompanionXpGain(before, after)).toBe(0);
+    });
+
+    test('returns 0 when a restrictToPerkType gate blocked the grant (same reference back)', () => {
+        // Sprout only carries workMultiplierPercent, not robChanceFlat.
+        const before = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a' };
+        const after = levelActiveCompanion(before, 8, null, 'robChanceFlat');
+        expect(getAppliedCompanionXpGain(before, after)).toBe(0);
+    });
+
+    test('returns 0 (not undefined/NaN) when companionsBefore itself has nothing active', () => {
+        const before = { owned: [], active: null };
+        expect(getAppliedCompanionXpGain(before, before)).toBe(0);
     });
 });
 

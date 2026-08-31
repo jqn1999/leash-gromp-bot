@@ -126,6 +126,10 @@ module.exports = {
             companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
             'yukon'
         );
+        // "did Yukon actually train" readout for the result embed — see
+        // companionFactory.getAppliedCompanionXpGain's own comment.
+        const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, setAttributes.companions);
+        const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
         // npcRobTimer resets on every outcome the same as every other cooldown-gated action
         // in this bot, win, whiff, or loss alike.
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
@@ -141,7 +145,7 @@ module.exports = {
             }
         }
 
-        const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier);
+        const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName);
         interaction.editReply({ embeds: [embed] });
 
         // Achievement check — /rob-npc never had one before at all. Re-fetches (same

@@ -93,6 +93,10 @@ module.exports = {
                         "regradeChanceFlat"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
+                    // "did the equipped companion actually train" readout for the result
+                    // embed — see companionFactory.getAppliedCompanionXpGain's own comment.
+                    const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+                    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.workMulti.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.workMulti.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
@@ -102,11 +106,11 @@ module.exports = {
 
                         const newMultiplier = userDetails.workMultiplierAmount + currentTier.increase;
                         await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", newMultiplier);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Work Multiplier', newMultiplier, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Work Multiplier', newMultiplier, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     } else {
                         userRegrades.workMulti.failStack += currentTier.failStackIncrease;
                         await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Work Multiplier', userDetails.workMultiplierAmount, 0, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Work Multiplier', userDetails.workMultiplierAmount, 0, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     }
                     interaction.editReply({ embeds: [embed]});
                 }
@@ -129,6 +133,10 @@ module.exports = {
                         "regradeChanceFlat"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
+                    // "did the equipped companion actually train" readout for the result
+                    // embed — see companionFactory.getAppliedCompanionXpGain's own comment.
+                    const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+                    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.passiveAmount.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
@@ -138,11 +146,11 @@ module.exports = {
 
                         const newPassive = userDetails.passiveAmount + currentTier.increase;
                         await dynamoHandler.updateUserDatabase(userId, "passiveAmount", newPassive);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', newPassive, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', newPassive, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     } else {
                         userRegrades.passiveAmount.failStack += currentTier.failStackIncrease;
                         await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', userDetails.passiveAmount, 0, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Passive Amount', userDetails.passiveAmount, 0, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     }
                     interaction.editReply({ embeds: [embed]});
                 }
@@ -165,6 +173,10 @@ module.exports = {
                         "regradeChanceFlat"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
+                    // "did the equipped companion actually train" readout for the result
+                    // embed — see companionFactory.getAppliedCompanionXpGain's own comment.
+                    const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+                    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.bankCapacity.failStack;
                     let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
                     if (Math.random() < chanceOfSuccess) {
@@ -174,11 +186,11 @@ module.exports = {
 
                         const newBank = userDetails.bankCapacity + currentTier.increase;
                         await dynamoHandler.updateUserDatabase(userId, "bankCapacity", newBank);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', newBank, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', newBank, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     } else {
                         userRegrades.bankCapacity.failStack += currentTier.failStackIncrease;
                         await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
-                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', userDetails.bankCapacity, 0, chanceOfSuccess, failStack, -currentTier.cost)
+                        embed = embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes-currentTier.cost, 'Bank Capacity', userDetails.bankCapacity, 0, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName)
                     }
                     interaction.editReply({ embeds: [embed]});
                 }

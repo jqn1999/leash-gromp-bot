@@ -38,6 +38,10 @@ module.exports = {
                 {
                     name: 'starch-leaderboard',
                     value: 'starch-leaderboard'
+                },
+                {
+                    name: 'mercenary-leaderboard',
+                    value: 'mercenary-leaderboard'
                 }
             ]
         }
@@ -65,6 +69,17 @@ module.exports = {
                 const totalStarches = await dynamoHandler.getServerTotalStarches();
                 const userStarchIndex = findUserIndex(sortedUserStarches, interaction.user.id);
                 embed = embedFactory.createUserStarchLeaderboardEmbed(sortedUserStarches, totalStarches, userStarchIndex);
+                interaction.editReply({ embeds: [embed] });
+                break;
+            case 'mercenary-leaderboard':
+                const sortedMercs = await dynamoHandler.getSortedMercenariesByBountyWins();
+                // findUserIndex assumes the caller is present in the array — a non-mercenary
+                // (or 0-win mercenary) never is, since the sorted list excludes 0-win users
+                // entirely, so guard with an explicit membership check first rather than
+                // trusting findUserIndex's own fallback (it'd return sortedMercs.length).
+                const isRankedMerc = sortedMercs.some(merc => merc.userId == interaction.user.id);
+                const mercIndex = isRankedMerc ? findUserIndex(sortedMercs, interaction.user.id) : -1;
+                embed = embedFactory.createMercenaryLeaderboardEmbed(sortedMercs, mercIndex);
                 interaction.editReply({ embeds: [embed] });
                 break;
         }

@@ -1512,6 +1512,20 @@ const getSortedGuildsByLevelAndRaidCount = async function () {
     return allGuilds.sort((a, b) => b.raidCount - a.raidCount);
 }
 
+// mercenaryBountyWinCount is a lifetime, already-persisted per-user counter (exactly like
+// guild.raidCount) — Mercenary Rank is purely a live readout of it (mercenaryFactory's
+// getMercenaryRankInfo), so this mirrors getSortedGuildsByLevelAndRaidCount's exact shape:
+// live full-scan + sort, no stored snapshot, no reset. Filtered to > 0 wins rather than
+// isMercenary === true — /retire-mercenary explicitly leaves mercenaryBountyWinCount
+// untouched while flipping isMercenary to false, so filtering on isMercenary would drop
+// retired champions off their own leaderboard.
+const getSortedMercenariesByBountyWins = async function () {
+    let allUsers = await getUsers();
+    return allUsers
+        .filter(user => (user.mercenaryBountyWinCount || 0) > 0)
+        .sort((a, b) => b.mercenaryBountyWinCount - a.mercenaryBountyWinCount);
+}
+
 const getSortedGuildsById = async function () {
     let allGuilds = await getGuilds();
     const sortedUsers = allGuilds.sort((a, b) => parseFloat(b.guildId) - parseFloat(a.guildId));
@@ -1734,6 +1748,7 @@ module.exports = {
     getCachedServerTotal,
     getServerTotalStarches,
     getSortedUsers,
+    getSortedMercenariesByBountyWins,
     getSortedUserStarches,
     getSortedGuildsByLevelAndRaidCount,
     getSortedGuildsById,

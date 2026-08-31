@@ -103,6 +103,10 @@ module.exports = {
             null,
             "starchSellBonusPercent"
         );
+        // "did the equipped companion actually train" readout for the result embed — see
+        // companionFactory.getAppliedCompanionXpGain's own comment.
+        const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+        const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
 
         await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
         await dynamoHandler.updateUserDatabase(userId, "starches", userStarches);
@@ -122,7 +126,7 @@ module.exports = {
             await dynamoHandler.updateUserDatabase(userId, "totalLosses", userTotalLosses + profitOrLoss);
         }
         embed = embedFactory.createBuyOrSellStarchEmbed(userDisplayName, userId, userAvatar, userPotatoes,
-            userStarches, 'sell', starches, sellPrice, netSellValue, starchSaleTax);
+            userStarches, 'sell', starches, sellPrice, netSellValue, starchSaleTax, companionXpGained, companionName);
         interaction.editReply({ embeds: [embed] });
     }
 }

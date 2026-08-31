@@ -75,7 +75,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
@@ -86,7 +86,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
             const poisonResult = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
-            embed = embedFactory.createPoisonPotatoEmbed(userDisplayName, newWorkCount, poisonResult, poisonPotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createPoisonPotatoEmbed(userDisplayName, newWorkCount, poisonResult, poisonPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return poisonResult.potatoesGained;
         },
@@ -96,7 +96,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
@@ -112,7 +112,7 @@ var workScenarios = [
             if (metalSuccessRoll < BASE_METAL_SUCCESS_CHANCE) {
                 const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 potatoesGained = metalResult.potatoesGained;
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             } else {
                 potatoesGained = 0;
 
@@ -122,7 +122,7 @@ var workScenarios = [
                 const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
                 await dynamoHandler.updateUserFields(userId, { workScenarioCounts, workTimer });
 
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, userDetails._cooldownSkippedByCompanion);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             }
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
@@ -133,7 +133,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleSweetPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
@@ -149,7 +149,7 @@ var workScenarios = [
         // normal roll inside handleCompanionEncounter.
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const companionResult = await workFactory.handleCompanionEncounter(userDetails, forcedCompanionId);
-            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             // A companion encounter (new or duplicate) never pays potatoes anymore — a
             // duplicate grants a spare instead (see handleCompanionEncounter) — so this
@@ -163,7 +163,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return starchesGained;
         },
@@ -173,7 +173,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return ancientResult.potatoesGained;
         },
@@ -188,7 +188,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleMimicPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
@@ -198,7 +198,7 @@ var workScenarios = [
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return starchesGained;
         },
@@ -209,7 +209,7 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus);
             const regularMob = chooseMobFromList(regularWorkMobs);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, userDetails._cooldownSkippedByCompanion);
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },
@@ -239,6 +239,22 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         }
         return;
     }
+
+    // Companion XP display (roadmap's "Companion 'Work Count' -> 'XP' Rename" entry) —
+    // /work's own companion-leveling write happens AFTER the result embed is already sent
+    // (see the re-fetch/levelActiveCompanion call further below), so the real grant amount
+    // isn't known yet at embed-build time the way it is for Bounty/Heist/Rob/Sell-Starch/
+    // Regrade. Mirrors this file's own existing _cooldownSkippedByCompanion pattern instead
+    // of threading a new formal parameter through every scenario closure: a non-persisted,
+    // in-memory-only flag stamped onto userDetails once here and read directly at each of
+    // the 12 createWorkEmbed/createPoisonPotatoEmbed/createCompanionEncounterEmbed/
+    // createAncientPotatoEmbed call sites below. /work's own grant is unconditional and flat
+    // (no perk-type/companion-id gate, unlike the other 5 commands), and no scenario handler
+    // changes companions.active mid-call (Companion Encounter only appends a new UNEQUIPPED
+    // instance — see applyCompanionAward's own "does not auto-equip" comment), so
+    // companions?.active's truthiness right here is already a reliable predictor of what
+    // that later write will grant.
+    userDetails._companionXpGained = userDetails.companions?.active ? 1 : 0;
 
     const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
     if (timeUntilWorkAvailableInMS > 0) {

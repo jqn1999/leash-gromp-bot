@@ -323,6 +323,33 @@ function levelActiveCompanion(companions, workCountGained, restrictToCompanionId
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
 }
 
+// Shared "did this actually train the equipped companion, and by how much" readout —
+// diffs the active INSTANCE's own workCount before vs. after a levelActiveCompanion call,
+// rather than each of the 6 call sites (Bounty/Heist/Rob/Sell-Starch/Regrade/Scavenging)
+// duplicating its own restrictToCompanionId/restrictToPerkType gate logic just to know
+// whether the grant actually applied. Returns 0 uniformly whenever nothing was equipped
+// (levelActiveCompanion's own `if (!activeInstanceId) return companions` no-op) OR the
+// restriction gate didn't match (its other two early returns) — both cases already hand
+// back the exact same `companions` object reference, so a straight identity check short-
+// circuits the common no-op path for free before ever touching getActiveInstance.
+// companionsBefore/companionsAfter are the raw `companions` objects (not full userDetails)
+// — callers pass `userDetails.companions` and whatever levelActiveCompanion just returned.
+function getAppliedCompanionXpGain(companionsBefore, companionsAfter) {
+    if (companionsBefore === companionsAfter) {
+        return 0;
+    }
+    const activeInstanceId = companionsBefore?.active;
+    if (!activeInstanceId) {
+        return 0;
+    }
+    const before = (companionsBefore.owned ?? []).find(c => c.instanceId === activeInstanceId);
+    const after = (companionsAfter?.owned ?? []).find(c => c.instanceId === activeInstanceId);
+    if (!before || !after) {
+        return 0;
+    }
+    return (after.workCount || 0) - (before.workCount || 0);
+}
+
 // Passive-pet leveling (2026-08-30, direct instruction — see CompanionLeveling.PASSIVE_
 // LEVEL_SECONDS_PER_WORK_COUNT's own comment in constants.js for the full rationale/ratio
 // derivation). Called from dynamoHandler.passivePotatoHandler's existing 5-minute server
@@ -612,6 +639,7 @@ module.exports = {
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
     levelActiveCompanion,
+    getAppliedCompanionXpGain,
     applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,

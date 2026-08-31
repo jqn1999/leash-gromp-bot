@@ -710,6 +710,19 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Corner Store\|Payroll Truck\|Armored Vault\|The Big Score>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Big Score + (on a win, Rank 2+) a cooldown-reduction callout). |
 
+**Mercenary Leaderboard** (2026-08-31) lives on the existing `/leaderboard` command, not
+here — a fourth `mercenary-leaderboard` option alongside `user-leaderboard`/
+`guild-leaderboard`/`starch-leaderboard`. Ranked purely by `mercenaryBountyWinCount`
+(live full-scan + sort, `dynamoHandler.getSortedMercenariesByBountyWins`, filtered to
+`> 0` wins — same live-query precedent as the guild/user leaderboards, NOT a Tower-style
+daily snapshot), with Mercenary Rank shown as a derived readout
+(`mercenaryFactory.getMercenaryRankInfo`) next to each entry, same relationship the Guild
+Leaderboard's own Level column has to `raidCount`. Filtering on win count rather than
+`isMercenary` is deliberate — `/retire-mercenary` leaves the win count untouched while
+flipping `isMercenary` to `false`, so a retired champion still shows up, tagged
+"(Retired)". See `embedFactory.createMercenaryLeaderboardEmbed` and
+`src/commands/user/leaderboard.js`.
+
 ## Data model
 
 All new fields are top-level except `records.largestBountyReward`, which nests one level
