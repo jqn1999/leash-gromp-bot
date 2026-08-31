@@ -7596,3 +7596,176 @@ roulette math that happens to land right on this game's own everywhere-else ~5% 
 is a good second target once a balance pass is budgeted for the payout table. Spud Blackjack is
 real but bigger and riskier than either — hold it until Potato High-Low has shipped and there's
 actual player demand for a second card game.
+
+## Potato Roulette + Golden Reels — technical design (2026-08-31, architect pass)
+
+Follow-up to the brainstorm above, now made buildable. Verified against
+`src/commands/games/coinflip.js`, `src/commands/games/rps.js`, `src/utils/embedFactory.js`,
+`src/utils/dynamoHandler.js` (`getStatDatabase`/`updateStatDatabase`), `src/utils/helperCommands.js`,
+`src/commands/user/work.js` (`workScenarios`), and `.claude/systems/tower.md`'s fast-forward
+sections. No shared bet-parsing helper exists in `helperCommands.js` today (`coinflip.js`/`rps.js`
+both inline the identical `all`/`half`/numeric parse+validate block) — see the shared-helper
+call-out at the end.
+
+### Game 1: Potato Roulette
+
+**File**: `src/commands/games/potatoRoulette.js`, `name: "potato-roulette"` (camelCase filename /
+kebab command name, matching `adminGive.js` → `"admin-give"`). Options: `bet-amount` (String,
+required, same `all|half|<number>` contract as `coinflip.js`), `color` (String, choices
+`golden`/`dirt`, optional — defaults to `golden` if omitted, mirroring coinflip's `heads` default).
+
+**Wheel**: `const pocketIndex = Math.floor(Math.random() * 38);` (0–37). Mapping: `0–17` → `golden`
+(18 pockets), `18–35` → `dirt` (18 pockets), `36–37` → `rotten` (2 house pockets, no color wins).
+This is exactly American double-zero roulette's 38-pocket structure. A color bet wins on `18/38 =
+47.368...%` of spins; the house wins on ties to neither color `2/38 = 5.263...%` of the time,
+which *is* the edge — confirmed by EV: win pays `+1×bet` (stake returned + 1× profit, no tax line),
+loss costs `-1×bet`. `EV = (18/38)(+bet) + (20/38)(-bet) = -bet × (2/38) = -0.05263×bet`, a clean
+5.26% edge on turnover, same order of magnitude as `/coinflip`'s ~2.5%-on-turnover / 5%-on-winnings
+skim but delivered via odds, not a tax multiplier — do not apply any additional tax on top of this;
+the pockets alone are the edge.
+
+**Resolve/stat/embed shape**: mirror `coinflip.js`'s `handleWinningBet`/`handleLosingBet` structure
+exactly — win: `userPotatoes += bet` (full bet as profit, stake untouched, no `*.95`), stat
+`totalPayout += bet`; loss: `userPotatoes -= bet`, stat `totalReceived -= bet`. New stats doc
+`'roulette'` (via `getStatDatabase`/`updateStatDatabase`, same as `'coinflip'`) with fields
+`goldenCount`, `dirtCount`, `rottenCount`, `totalPayout`, `totalReceived` — no new user-record
+fields, matching the brainstorm's own touch list.
+
+**Embed**: `embedFactory.createPotatoRouletteEmbed(pocketColor, colorSelected, goldenCount,
+dirtCount, rottenCount, userPotatoes, amount)` — same field layout as `createCoinflipEmbed`
+(two count fields + a gained/lost field), swap the coin thumbnail for a golden/dirt/rotten potato
+icon per pocket result.
+
+**Constants** (`constants.js`, new `Roulette` group): `POCKET_COUNT: 38`, `GOLDEN_POCKETS: 18`,
+`DIRT_POCKETS: 18` (rotten pockets are the 38-minus-both remainder, not a stored constant, so the
+math can't drift if someone edits one side without the other).
+
+### Game 2: Golden Reels
+
+**File**: `src/commands/games/goldenReels.js`, `name: "golden-reels"`. Options: `bet-amount`
+(String, required, same parse contract), `spins` (Integer, required, min 1, **max 10** — enforced
+both in the slash-command option definition via `minValue`/`maxValue` and again defensively in the
+callback body).
+
+**Pinned jackpot rarity**: confirmed in `src/commands/user/work.js`'s `workScenarios` — Golden
+Potato is `chance: .001`, a flat 0.1% (not the brainstorm's loose "~0–0.1%"; it's an exact table
+slice, not a range). Golden Reels' top symbol reuses this exact 0.001 probability verbatim.
+
+**Paytable** — a single hand-tuned weighted draw per spin (not 3 independent reels, per the
+brainstorm's own recommendation — three independent 0.001 rolls would make the jackpot
+1-in-a-billion and never hit). Cumulative-threshold roll exactly like `workScenarios`' own
+`chance:` convention (strict `<`, per the tower off-by-one fix's now-established idiom):
+
+| Symbol | Probability | Payout (×bet) | EV contribution |
+|---|---|---|---|
+| Golden Potato (jackpot) | 0.001 | 200× | 0.200 |
+| Metal Potato | 0.006 | 40× | 0.240 |
+| Large Potato | 0.04 | 6× | 0.240 |
+| Regular Potato | 0.18 | 1.5× | 0.270 |
+| No match (loss) | 0.773 | 0 (lose bet) | 0 |
+
+Probabilities sum to exactly 1.0; **RTP = 0.200+0.240+0.240+0.270 = 0.950 → exactly 95% RTP, a 5%
+house edge**, landing on the same skim this codebase uses everywhere else. This is an *exact*
+analytic expectation, not a simulated approximation — the outcome is a single categorical draw with
+no compounding/multi-stage RNG (unlike raid/tower chains), so a weighted sum is the precise EV and a
+Monte Carlo would only converge to this same number; I could not run one this session (Bash was
+unavailable), so I'm flagging that instead of hand-waving it — recommend the developer runs a quick
+10k-100k-iteration sim during implementation as a regression check on the constant table, same
+discipline as this session's other balance passes, even though the math here doesn't require it to
+be *found*. Note the Metal/Large tier probabilities were deliberately chosen close to `/work`'s own
+real Metal (0.01 slice) and Large (0.04 slice, exact match) rarities so "Golden reused verbatim,
+Metal/Large in the same neighborhood" reads as one consistent rarity language across `/work` and
+this game, per the brainstorm's own stated goal.
+
+**Constants** (`constants.js`, new `GoldenReels` group):
+```js
+GoldenReels: {
+    SYMBOLS: [
+        { name: 'Golden Potato', chance: .001, payoutMultiplier: 200 },
+        { name: 'Metal Potato',  chance: .006, payoutMultiplier: 40  },
+        { name: 'Large Potato',  chance: .04,  payoutMultiplier: 6   },
+        { name: 'Regular Potato',chance: .18,  payoutMultiplier: 1.5 },
+    ],
+    MAX_SPINS: 10,
+    SPIN_DELAY_MS: 2000,
+}
+```
+Roll: cumulative-sum the `chance` values (`.001, .007, .047, .227`) and compare a `Math.random()`
+draw the same way `workScenarios` does; falling past `.227` is a loss.
+
+**Per-spin vs. total bet — recommend per-spin.** `bet-amount` and `spins` are two independent,
+orthogonal inputs (exactly the brainstorm's phrasing) — each spin wagers the full `bet-amount`, not
+`bet-amount / spins`. This is simpler to reason about (`/golden-reels bet-amount:1000 spins:5` reads
+as "risk up to 5000, 1000 at a time," not a derived fraction), matches how a real slot machine's
+"bet per line/spin" control works, and avoids a rounding-remainder edge case a split would introduce
+on the last spin.
+
+**Auto-run pacing — a genuinely new pattern for this codebase, flag accordingly.** Tower's
+fast-forward (`.claude/systems/tower.md`) was the closest existing precedent and it does the
+*opposite* of what's needed here: zero Discord round-trips, one aggregated summary embed at the
+end, explicitly because a per-floor reveal list risks embed limits at depth. There is no existing
+"`interaction.editReply` on a fixed timer to pace a reveal" pattern anywhere in `src/commands/`
+(grepped for `setTimeout`/`new Promise(resolve => setTimeout` — zero hits) or in `rps.js` (its
+multi-turn loop waits on player *button clicks*, not a timer). Golden Reels needs a straightforward
+new loop:
+```js
+for (let i = 1; i <= spinsToRun; i++) {
+    if (bet > userPotatoes) { /* stop early, see below */ break; }
+    // roll, apply win/loss to userPotatoes, persist via updateUserDatabase
+    await interaction.editReply({ embeds: [embedFactory.createGoldenReelsSpinEmbed(i, spinsRequested, symbolName, payoutMultiplier, delta, userPotatoes)] });
+    if (i < spinsToRun) await new Promise(resolve => setTimeout(resolve, GoldenReels.SPIN_DELAY_MS));
+}
+await interaction.editReply({ embeds: [embedFactory.createGoldenReelsSummaryEmbed(spinsRun, netTotal, jackpotHits, stoppedEarly)] });
+```
+Two embed methods needed: `createGoldenReelsSpinEmbed` (per-spin reveal: spin N/total, symbol,
+delta, running balance) and `createGoldenReelsSummaryEmbed` (final tally: spins run vs. requested,
+net won/lost, jackpot count, early-stop reason if any) — mirrors Tower's own split between
+per-step and aggregate-summary embeds.
+
+**Spin cap: 10. Delay: 2000ms.** At 2s/spin, 10 spins is ~20s of total runtime — long enough to
+read each result, comfortably clear of Discord's ~15-minute interaction webhook token expiry (the
+same constraint tower.md flags), and each edit is spaced far enough apart that back-to-back
+`editReply` calls never risk Discord's per-channel edit rate limit (unlike a tight/no-delay loop
+would). A cap of 10 also bounds the worst case a player can do to their own balance in one command
+to 10× their stated bet, and bounds the bot's work per invocation to 10 sequential API calls — both
+trivially safe. 20 was considered and rejected: it doubles both the balance-drain worst case and the
+edit count for a real command (Discord validates `min/maxValue` before the callback ever runs, so
+this isn't just a soft suggestion) with only marginal "watch more spins" upside; 10 is the sane
+middle the ask's own examples ("watch each round") don't clearly need more of.
+
+**Mid-run bust handling**: check `bet <= userPotatoes` before *each* spin (balance is written after
+every spin, so this reads live, not a stale pre-loop snapshot). If the player can no longer afford
+the next spin, stop the loop immediately and say so plainly in the summary embed ("Stopped after 4
+of 10 spins — not enough potatoes left for another 500-potato spin"), not an error/exception. This
+is the same "stop, don't throw" shape `requireUserDetails`/`requireUserGuild` already use for
+recoverable preconditions elsewhere.
+
+**Interruption — recommend NOT supporting cancellation for v1.** The 10-spin/2s cap already bounds
+worst-case runtime to ~20 seconds; adding a "Stop" button means racing a `ButtonInteractionCollector`
+against the `setTimeout` loop (checking the collector after every spin, tearing down cleanly either
+way) for a scenario that saves a player at most ~16 seconds and a few hundred/thousand potatoes of
+further loss. That complexity is worth adding only if the cap grows later (e.g. a future "spins:20"
+tier) — not justified at v1's scale.
+
+### Shared helper worth extracting
+
+`helperCommands.js` has no bet-amount parser today — `coinflip.js` and `rps.js` both inline the
+identical 12-line `all`/`half`/`Number()`/`isNaN`/positive/affordability block verbatim. Both new
+commands need the exact same block a third and fourth time. **Recommend extracting
+`parseAndValidateBet(betString, userPotatoes, userDisplayName, interaction)` into
+`helperCommands.js` now**, returning `{ bet }` on success or `null` after already sending the
+appropriate `editReply` error (same "return null after replying" contract
+`requireUserDetails`/`requireUserGuild` already establish) — four call sites is past the point
+where copy-paste is cheaper than a shared helper, and it's a pure extraction with no behavior change
+against the two existing commands (worth a quick follow-up refactor PR on `coinflip.js`/`rps.js`
+themselves once it exists, so there's only one copy of this logic instead of four).
+
+### Touches summary
+
+`src/commands/games/potatoRoulette.js` (new), `src/commands/games/goldenReels.js` (new),
+`src/utils/embedFactory.js` (`createPotatoRouletteEmbed`, `createGoldenReelsSpinEmbed`,
+`createGoldenReelsSummaryEmbed`), `src/utils/constants.js` (`Roulette`, `GoldenReels` groups),
+`src/utils/helperCommands.js` (`parseAndValidateBet`, optionally back-ported into `coinflip.js`/
+`rps.js`), two new stats docs (`'roulette'`, `'goldenReels'`) via existing
+`getStatDatabase`/`updateStatDatabase` — no `dynamoHandler.js` changes, no new user-record fields,
+no cron/background hook for either game.
