@@ -717,3 +717,325 @@ a fast-forward chain on both a win and a loss with the real terminal embed verif
 screen, and the 90% success cap actually taking effect). New
 `src/commands/tower/__tests__/tower-settings.test.js` (4 tests) covers the toggle both directions,
 the undefined-defaults-to-off case, and the database-error path. Full suite: 875/875.
+
+## Tower Revamp: Reward Value Scaling (2026-08-31)
+
+**The problem, precisely.** The shipped revamp above fixed reward decay *by floor depth*
+(`decayValue`, part 4) — a completely different axis from this one. It did not touch the fact
+that every single reward VALUE in `towerConstants.js` (`COMBATS`/`ENCOUNTERS`/`TRANSACTIONS`/
+`REWARDS`/`ELITES`) is a flat, hardcoded number with zero dependency on the player's own
+`workMultiplierAmount` — unlike `/work`'s own `calculateGainAmount` (`workFactory.js`), whose
+payout is `base × multiplier × userMultiplier`, i.e. scales directly with player power. Verified
+numerically (see "Sanity check" below): a run's expected value barely grows at all from a
+multi-20 entrant to a multi-600 (shop+regrade-maxed) veteran, while the potato investment
+required to *reach* multi 600 is over 6,000× what it costs to reach the entry gate — so
+EV-per-investment collapses by roughly three orders of magnitude the deeper into the game a
+player already is. Direct instruction: "rework values and come up with something that feels
+good. it should be roughly the same 'value' at each multi you are just scaling to whatever part
+of the game you're currently at going all the way until the upper regrade tiers of 600+ multi."
+
+### 1. The scaling formula, and where it's evaluated
+
+**Anchor: the real cumulative potato cost to reach a given `workMultiplierAmount`, not a
+closed-form fit.** A single power-law fit across the whole 1–600 range was checked and rejected:
+fitting `investment(M) = a·M^b` off the endpoints at multi 20 and 100 predicts `investment(50) ≈
+522,600,000`, but the real cumulative shop cost to reach multi 50 is `751,250,000` — a 30%+ miss,
+because the shop's own tier costs are hand-tuned, not a smooth curve, and the regrade track's
+pity/fail-stack mechanic bends the curve differently again past multi 100. A fit would silently
+misprice the exact thing this feature needs to get right, so the design uses the real numbers
+instead: a lookup table of `[multiplier, cumulativeInvestment]` pairs at every *actually
+achievable* checkpoint — the shop's own tier amounts (`1, 1.5, 3, 5, 10, 15, 20, 25, 30, 50,
+100`) and every regrade checkpoint reachable by chaining `workRegradeTiers`' fixed `increase`
+amounts on top of the shop's 100 cap (`110, 120, 130, 140, 160, 180, 210, 250, 300, 350, 400,
+450, 500, 600` — `600` being `REGRADE_CAPS.workMulti` (500) plus the shop's own 100 cap, i.e. the
+literal maximum obtainable via shop+regrade alone) — with **log-log linear interpolation**
+between whichever two checkpoints a live player's multi falls between. This is exact at every
+checkpoint and a good local approximation everywhere else, which matters because most real
+players' live `workMultiplierAmount` is *not* exactly one of these checkpoints — `sweetPotatoBuffs`'
+many small flat stat grants (quests, Metal/Sweet Potato, Mercenary Bounties, Tower's own past
+`PAYOUT.WORK_MULTIPLIER` rewards, etc.) constantly nudge it off the ladder.
+
+```js
+// towerConstants.js
+const ENTRY_GATE_MULTI = 20   // single source of truth — enter-tower.js's gate check AND the
+                               // scaling anchor below both read this constant. If the open
+                               // 20->15 entry-gate question resolves to 15, this is the ONLY
+                               // line that needs to change — SCALING_ANCHOR_INVESTMENT must be
+                               // updated to match (26,250,000, the table's value at 15) in the
+                               // same commit, but the formula itself needs zero rework.
+
+const SCALING_ANCHOR_TABLE = [
+    [1.5, 50000],
+    [3,   250000],
+    [5,   1250000],
+    [10,  6250000],
+    [15,  26250000],
+    [20,  76250000],
+    [25,  151250000],
+    [30,  251250000],
+    [50,  751250000],
+    [100, 2251250000],
+    [110, 3180681658],
+    [120, 4191869071],
+    [130, 6405293965],
+    [140, 8844020147],
+    [160, 13018976591],
+    [180, 20254014446],
+    [210, 31533366214],
+    [250, 51790419545],
+    [300, 85759997213],
+    [350, 135202541500],
+    [400, 201125933884],
+    [450, 267049326267],
+    [500, 341213142698],
+    [600, 460201102807]
+]
+
+// investment(ENTRY_GATE_MULTI) — MUST equal SCALING_ANCHOR_TABLE's value at the
+// ENTRY_GATE_MULTI key above (kept as its own named constant, not read out of the table at
+// runtime, purely so a developer can see at a glance what everything else is divided by).
+const SCALING_ANCHOR_INVESTMENT = 76250000
+
+// Which of the 4 PAYOUT.* currencies scale — see part 2 below.
+const SCALED_PAYOUT_TYPES = new Set([PAYOUT.POTATOES, PAYOUT.PASSIVE_INCOME, PAYOUT.BANK_CAPACITY])
+
+// Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper run
+// survives more forced Elites along the way, each worth a fixed undecayed amount, so EV_old(M)
+// itself already creeps up with M even before any scaling is applied — applying the full,
+// undampened scalingFactor on top of that double-counts a small part of the growth and leaves a
+// real residual upward drift in EV/investment, verified by simulation below). Calibrated by
+// real Monte Carlo (not analytic estimate — see part 4): 1.0 (no dampening) leaves EV/investment
+// drifting ~7.5x from the gate to multi 600; 0.83 flattens it to a ~2.2x hump peaking around
+// multi 100-150 and returning to the gate's own ratio by multi 600. Applied once, multiplied
+// into the cached scalingFactor itself (see towerFactory.js constructor below) — scaleReward's
+// own body needs no separate awareness of it.
+const SCALING_EXPONENT = 0.83
+```
+
+```js
+// towerFactory.js — module-level, exported for testing (same precedent as getFloor/pickElite)
+function investment(M) {
+    const table = tC.SCALING_ANCHOR_TABLE
+    if (M <= table[0][0]) return table[0][1]                 // defensive floor, never hit in
+                                                                // real play (ENTRY_GATE_MULTI's
+                                                                // own gate keeps live M above it)
+    const top = table[table.length - 1]
+    if (M >= top[0]) {
+        // Live workMultiplierAmount is NOT hard-capped at 600 in practice — that's only the
+        // shop+regrade portion; sweetPotatoBuffs stacks on top of it uncapped, same as every
+        // other permanent stat track. Extrapolate the final segment's log-log slope forever
+        // past the table's own top entry rather than flatlining scalingFactor there.
+        const prev = table[table.length - 2]
+        const slope = (Math.log(top[1]) - Math.log(prev[1])) / (Math.log(top[0]) - Math.log(prev[0]))
+        return Math.exp(Math.log(top[1]) + slope * (Math.log(M) - Math.log(top[0])))
+    }
+    for (let i = 0; i < table.length - 1; i++) {
+        const [lo, hi] = [table[i], table[i + 1]]
+        if (M >= lo[0] && M <= hi[0]) {
+            const t = (Math.log(M) - Math.log(lo[0])) / (Math.log(hi[0]) - Math.log(lo[0]))
+            return Math.exp(Math.log(lo[1]) + t * (Math.log(hi[1]) - Math.log(lo[1])))
+        }
+    }
+}
+
+function scalingFactor(M) {
+    return investment(M) / tC.SCALING_ANCHOR_INVESTMENT
+}
+```
+
+**Evaluated once, at run start, in the constructor — never per-floor, never re-read.**
+
+```js
+// towerFactory.js constructor, alongside the existing this.multi = multi assignment
+this.scalingFactor = Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)
+```
+
+`this.multi` is already a snapshot of `userDetails.workMultiplierAmount` taken once at
+`enter-tower.js`'s call site and never mutated for the rest of the run (it's already load-bearing
+for `execElite`'s success-chance formula, which relies on exactly this snapshot-once behavior).
+`this.scalingFactor` is computed from that same frozen snapshot, so it inherits the identical
+"can't move mid-run" guarantee for free — see "Interaction safety" below for why this matters.
+
+New instance method, called from every reward-application site (part 3):
+
+```js
+// A reward's raw value is multiplied by this.scalingFactor only when its outcome index is one
+// of the three "economy-facing" currencies (see part 2) — PAYOUT.WORK_MULTIPLIER and
+// MODIFIER.WORK_MULTIPLIER both pass through completely unscaled.
+scaleReward(outcomeIndex, rawValue) {
+    if (!tC.SCALED_PAYOUT_TYPES.has(outcomeIndex)) return rawValue
+    return rawValue * this.scalingFactor
+}
+```
+
+### 2. Which currencies scale, and why
+
+**`PAYOUT.POTATOES`, `PAYOUT.PASSIVE_INCOME`, `PAYOUT.BANK_CAPACITY` scale by `scalingFactor`.
+`PAYOUT.WORK_MULTIPLIER` does not.**
+
+These three are ordinary accumulating economy resources — exactly the kind of thing `/work`'s
+own reward already scales with player power (`calculateGainAmount`'s `base × multiplier ×
+userMultiplier`), so scaling them the same way is a straight reuse of an existing pattern, not a
+new one.
+
+`PAYOUT.WORK_MULTIPLIER` is different in kind: it's a **permanent stat increase**, and this
+codebase has one established, explicit convention for exactly that shape of reward — "**Stat
+bonuses are flat, not scaled**... this is the one established convention for 'permanent stat
+increase,' reused by Metal Potato, Sweet Potato, weekly quests, and Tower rewards alike."
+Scaling `PAYOUT.WORK_MULTIPLIER` by the player's own current `workMultiplierAmount` would break
+that convention specifically for Tower, and would also open a compounding feedback loop this
+codebase has otherwise avoided: a higher multi would let a player earn *more* multi from the
+exact same content, which earns them an even bigger scaling factor next run, forever. This is
+the same reasoning `decayValue` already applied to `MODIFIER.WORK_MULTIPLIER` (exempt from
+floor-depth decay because it's a survival tool, not economy income) — `PAYOUT.WORK_MULTIPLIER`
+gets the analogous exemption from *power* scaling, for the analogous reason (it's the stat that
+measures power in the first place; scaling it by itself is circular). Concretely: Traveling
+Turnip's `0.2` and King Kiwi's `0.2` stay exactly `0.2` at multi 20 and at multi 600 — deliberately
+tiny and flat everywhere, matching every other permanent-multiplier grant in the game.
+
+**One anchor stat (`workMultiplierAmount`) drives scaling for all three scaled currencies, not
+three separate track-specific curves.** `passiveIncomeShop`/`passiveRegradeTiers` and
+`bankShop`/`bankRegradeTiers` each have their own independent cost curves, so in principle
+`PAYOUT.PASSIVE_INCOME` could scale off the passive track's own investment curve and
+`PAYOUT.BANK_CAPACITY` off the bank track's. Rejected in favor of a single work-multi-derived
+`scalingFactor` for all three, for the same reason Tower already treats `workMultiplierAmount` as
+its one universal "how strong is this player" proxy: it's the *only* stat Tower's entry gate and
+Elite difficulty formula (`(multi + modifier) / (difficulty(N) × elite.difficulty)`) already key
+off. A player who dumped everything into `workMultiplierAmount` and ignored the passive/bank
+shops entirely (a completely normal, common build) would otherwise get full-strength potato
+rewards but crippled passive/bank rewards from the exact same Tower run, for no reason connected
+to anything the run itself measures — Tower doesn't test passive or bank power at any point, only
+work power. A single proxy is also simply less code: one `scalingFactor`, one constructor-time
+computation, one anchor table, instead of three.
+
+### 3. Exact code changes
+
+**`towerConstants.js`**:
+- Add `ENTRY_GATE_MULTI`, `SCALING_ANCHOR_TABLE`, `SCALING_ANCHOR_INVESTMENT`,
+  `SCALED_PAYOUT_TYPES`, `SCALING_EXPONENT` (part 1's code block) — placed after the existing
+  `PAYOUT`/`MODIFIER` block since `SCALED_PAYOUT_TYPES` references `PAYOUT.*`.
+- Export all five from `module.exports`.
+
+**`towerFactory.js`**:
+- Add module-level `investment(M)` and `scalingFactor(M)` (part 1's code block), exported
+  alongside `getFloor`/`getEliteTier`/`pickElite`/`pickChoiceIndex` for direct unit testing.
+- Constructor: add `this.scalingFactor = Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)`
+  right after the existing `this.multi = multi` line.
+- Add instance method `scaleReward(outcomeIndex, rawValue)` (part 1's code block).
+- **`updateValue`'s `default` branch** (non-Elite-kill payout): change
+  `let value = this.decayValue(choice.outcome, choice.value)` to
+  `let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))`.
+- **`updateValue`'s `PAYOUT.ELITE_KILL` (King Kiwi) branch**: change
+  `let amount = this.decayValue(choice.type, choice.value)` to
+  `let amount = this.scaleReward(choice.type, this.decayValue(choice.type, choice.value))` — the
+  amount stored in the queued `[nextElite, type, amount]` tuple is now decayed-then-scaled at
+  the floor the promise is made, exactly mirroring how it's already decayed-once-at-promise-time
+  today. `checkElitePayout` itself needs zero changes.
+- **`updateTransaction`'s payout branch**: change
+  `let value = this.decayValue(choice.outcome, choice.value)` to
+  `let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))`.
+  The `price` line immediately below (`this.run[tC.PAYOUT.POTATOES] -= choice.price`) is
+  untouched — transaction **prices stay flat, deliberately, at every multi**, the same scope
+  decision `decayValue` already made for the same field (only the value *bought* is subject to
+  either kind of adjustment, never the cost). This is an intentional, organic side effect worth
+  calling out explicitly: at multi 600, Wizard Lime's flat 1,000,000-potato toll is trivial
+  relative to a scaled run's own income, which is fine — it's meant to represent an
+  Elite-avoidance tax, not a wealth-proportional cost.
+- **`execElite`'s win branch**: change
+  `this.run[tC.PAYOUT.POTATOES] += fl.choices[0].value` to
+  `this.run[tC.PAYOUT.POTATOES] += this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value)`.
+  This is a **new call site** — Elite fight rewards were deliberately never routed through
+  `decayValue` (floor-depth decay explicitly exempts them, since Elites already carry their own
+  risk throttle via the difficulty curve), but that exemption is about a *different axis*
+  (floor depth) than this one (player power) — an Elite's raw `150,000` is exactly as flat and
+  undifferentiated-by-power as every other reward in this file, so it needs `scaleReward` even
+  though it correctly never needed `decayValue`.
+
+**`enter-tower.js`**: replace the hardcoded gate check
+`if (userMultiplier < 20)` with `if (userMultiplier < tC.ENTRY_GATE_MULTI)`, and the message
+string's hardcoded `20x` with `` `${tC.ENTRY_GATE_MULTI}x` `` — `tC` (towerConstants) is already
+imported in this file. This is what makes the "open dependency" (whether the gate moves to 15)
+a genuinely zero-formula-rework change: both the entry check and the scaling anchor read the
+same constant, so moving the gate automatically re-anchors `scalingFactor` at the new gate value
+(only `SCALING_ANCHOR_INVESTMENT` needs a matching manual update, per part 1's comment, since
+that value is intentionally not derived at runtime).
+
+**No new persisted data.** Unlike most features in this codebase, this one needs no new
+DynamoDB field, no `getDefaultUserFields` addition, and no `dynamoHandler.js` change — every
+input (`workMultiplierAmount`) is already loaded into `userDetails` before `towerFactory` is
+constructed, and `scalingFactor` is purely a transient, run-scoped computation.
+
+### 4. Sanity check: EV per run, OLD (flat) vs. NEW (scaled)
+
+**Verified by real Monte Carlo, not analytic approximation.** A standalone script reused the
+actual shipped `towerConstants.js` content and `towerFactory.js`'s real exported
+`getFloor`/`pickElite`/`pickChoiceIndex`, re-implementing only `decayValue`/`scaleReward`/
+`investment`/`scalingFactor` verbatim from parts 1 and this section — 15,000 trials per multi
+value, SAFE policy, using the same "checkpoint-EV" methodology from the difficulty-curve work
+earlier this session: at every forced-Elite-clear depth, record `P(reach that depth) × E[potato
+value accumulated so far | reached it]`, and take the max over depth (i.e. the EV of banking at
+the objectively best stopping point for that multi — the fair way to compare across multis whose
+optimal depth itself shifts).
+
+The first pass (plain `scalingFactor(M)`, no dampening) confirmed the collapse but showed more
+residual drift than the original hand-estimate: `EV/investment` fell from `0.40%` at the gate to
+`0.0003%` at multi 600 under OLD (a ~1,300× crash, matching the flagged problem), while the
+naively-scaled NEW version instead *rose* from `0.39%` to `2.95%` (~7.5×) over the same range —
+better than a 1,300× collapse, but a bigger residual drift than "roughly the same" implies. That
+gap is exactly what `SCALING_EXPONENT` (part 1) exists to close, and re-running the identical
+simulation with `scalingFactor(M)^0.83` in place of the raw factor gives the final, shipped
+numbers:
+
+| Multi | `scalingFactor(M)` | dampened factor (`^0.83`) | `investment(M)` | EV (OLD, flat) | EV (NEW, dampened) | OLD: EV/investment | NEW: EV/investment |
+|---|---|---|---|---|---|---|---|
+| 20 (gate) | 1.00 | 1.00 | 76,250,000 | 301,824 | 310,120 | 0.396% | 0.407% |
+| 35 | 4.59 | 3.54 | 349,663,626 | 633,455 | 2,224,769 | 0.181% | 0.636% |
+| 50 | 9.85 | 6.68 | 751,250,000 | 929,626 | 6,282,486 | 0.124% | 0.836% |
+| 100 | 29.52 | 16.61 | 2,251,250,000 | 1,169,740 | 19,572,213 | 0.052% | 0.869% |
+| 250 | 679.22 | 224.17 | 51,790,419,545 | 1,291,967 | 293,167,570 | 0.0025% | 0.566% |
+| 600 | 6035.42 | 1374.00 | 460,201,102,807 | 1,298,915 | 1,822,566,961 | 0.0003% | 0.396% |
+
+**What this shows.** Under OLD, `EV/investment` collapses ~1,300× from the gate to multi 600 —
+the exact problem flagged. Under NEW (dampened), the ratio traces a shallow hump — `0.41% → 0.64%
+→ 0.84% → 0.87% → 0.57% → 0.40%` — peaking around multi 100-150 and landing back at essentially
+the gate's own ratio by multi 600, a ~2.2× total spread instead of a 1,300× or even a 7.5× one.
+This is the real, verified meaning of "roughly the same value at each multi... going all the way
+until the upper regrade tiers of 600+ multi." `scalingFactor(20) = 1.0` (and hence the dampened
+factor too, since `1^0.83 = 1`) means the gate's own baseline EV is essentially unchanged by this
+feature — nothing about the early game moves.
+
+**Note on multi 15**: below today's `ENTRY_GATE_MULTI` (20), so not a reachable Tower state right
+now — not included in the table above since it can't be simulated (Tower rejects entry). If the
+open 20→15 gate question resolves to 15, `SCALING_ANCHOR_INVESTMENT` moves to the table's value
+at 15 (`26,250,000`) per part 1's comment, and `SCALING_EXPONENT` should be re-validated against
+a fresh simulation run with the new anchor — dampening was calibrated against the 20-anchored
+curve's specific shape and isn't guaranteed to transfer unchanged to a differently-anchored one,
+though the same methodology (fit `p` so the two endpoints' ratios match, verify the interior
+points form a shallow hump rather than a monotonic drift) applies directly.
+
+### 5. Interaction safety and test impact
+
+**No mid-run regrade exploit.** `this.scalingFactor` is computed once, in the constructor, from
+`this.multi` — itself already a one-time snapshot of `userDetails.workMultiplierAmount` taken
+before the run begins and never re-read from the database for the rest of the run (it's already
+load-bearing for `execElite`'s success-chance formula, which relies on exactly this same
+never-changes-mid-run property). Buying a regrade via `/regrade` in a separate command while a
+Tower run is in progress writes to the player's DB record, but the already-running
+`towerFactory` instance holds `this.multi`/`this.scalingFactor` in JS memory, untouched by that
+write — the *next* `/enter-tower` run picks up the new value, the *current* one doesn't. This
+introduces no new exploit surface; it's a direct reuse of a guarantee this file already depends
+on elsewhere.
+
+**Existing test impact: none of the 44 tests in `towerFactory.test.js` need their expected
+numbers changed.** Checked directly: 12 of the file's 14 `new towerFactory(...)` call sites
+construct with `multi = 20` — exactly `ENTRY_GATE_MULTI` — so `scalingFactor(20) = 1.0` exactly
+(the anchor divided by itself), meaning `scaleReward` is a true no-op at every one of those call
+sites and every existing assertion on `run[...]` totals stays numerically identical. The other 2
+call sites use `multi = 1000` and `multi = 1_000_000`, but neither test asserts on a reward
+*amount* — one asserts `outcome.triggeredElite`/`outcome.cont`/that a Discord round-trip
+happened, the other asserts the Elite success-chance embed text reads `"90.00%"` (the
+`ELITE_SUCCESS_CAP`, unaffected by reward scaling). The developer should still add new,
+dedicated tests for `investment`/`scalingFactor`/`scaleReward` themselves (table-boundary
+values, the extrapolation-past-600 branch, the `PAYOUT.WORK_MULTIPLIER`-stays-unscaled case,
+and the gate constant being read from `tC.ENTRY_GATE_MULTI` in `enter-tower.js` rather than a
+hardcoded `20`), but nothing in the existing 44 needs its own expectations rewritten.
