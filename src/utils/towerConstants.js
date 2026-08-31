@@ -40,13 +40,13 @@ const ELITE_SUCCESS_CAP = Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
 // full rationale (arithmetic growth's ratio between consecutive Elites approaches 1 as N grows,
 // which is the "flattens out later" dead zone this replaces).
 //
-// PAIRED with ENTRY_GATE_MULTI below (2026-08-31, "Entry Gate Lowered to 15") — this value exists
-// to preserve the calibrated 50% success chance on a fresh entrant's very first forced Elite
-// (floor 10, N=1, tier-1 elite.difficulty=10.0): success = min(ENTRY_GATE_MULTI / (INITIAL * 10),
-// CAP). Whenever ENTRY_GATE_MULTI changes, this must be recalculated to keep that invariant —
-// currently 15 / (3.0 * 10) = 0.50 exactly, matching the original 20 / (4.0 * 10) = 0.50 gate
-// calibration. See systems/tower.md's "Entry Gate Lowered to 15" note.
-const TOWER_ELITE_DIFFICULTY_INITIAL = 3.0
+// PAIRED with ENTRY_GATE_MULTI below — this value exists to preserve the calibrated 50%
+// success chance on a fresh entrant's very first forced Elite (floor 10, N=1, tier-1
+// elite.difficulty=10.0): success = min(ENTRY_GATE_MULTI / (INITIAL * 10), CAP). Whenever
+// ENTRY_GATE_MULTI changes, this must be recalculated to keep that invariant — currently
+// 20 / (4.0 * 10) = 0.50 exactly. Gate reverted 15 -> 20 (2026-08-31, direct instruction),
+// restoring this to its original 4.0 (it had briefly been 3.0 while the gate sat at 15).
+const TOWER_ELITE_DIFFICULTY_INITIAL = 4.0
 const TOWER_ELITE_DIFFICULTY_RATIO = 1.45
 
 // Elite content banding — tier is a pure content/flavor selector, NEVER a balance input
@@ -77,10 +77,10 @@ const TOWER_REWARD_DECAY_RATIO = 0.95    // per floor past the grace floor
 // a matching manual update to SCALING_ANCHOR_INVESTMENT, since that value is intentionally
 // not derived from the table at runtime).
 //
-// Lowered 20 -> 15 (2026-08-31, "Entry Gate Lowered to 15") — see systems/tower.md's note of
-// the same name. Paired with TOWER_ELITE_DIFFICULTY_INITIAL above (4.0 -> 3.0) to keep the
-// fresh-entrant floor-10 Elite coinflip calibrated at exactly 50%.
-const ENTRY_GATE_MULTI = 15
+// Reverted 15 -> 20 (2026-08-31, direct instruction) after a brief period at 15 — paired
+// with TOWER_ELITE_DIFFICULTY_INITIAL above (3.0 -> 4.0) to keep the fresh-entrant floor-10
+// Elite coinflip calibrated at exactly 50%.
+const ENTRY_GATE_MULTI = 20
 
 // Real cumulative potato investment required to reach a given workMultiplierAmount — the
 // shop's own tier checkpoints (1, 1.5, 3, 5, 10, 15, 20, 25, 30, 50, 100) plus every regrade
@@ -119,8 +119,9 @@ const SCALING_ANCHOR_TABLE = [
 // investment(ENTRY_GATE_MULTI) — MUST equal SCALING_ANCHOR_TABLE's value at the
 // ENTRY_GATE_MULTI key above. Kept as its own named constant, not read out of the table at
 // runtime, purely so a developer can see at a glance what everything else is divided by.
-// Re-pointed at the table's [15, 26250000] entry (2026-08-31) when ENTRY_GATE_MULTI moved to 15.
-const SCALING_ANCHOR_INVESTMENT = 26250000
+// Re-pointed back at the table's [20, 76250000] entry (2026-08-31) when ENTRY_GATE_MULTI
+// reverted to 20.
+const SCALING_ANCHOR_INVESTMENT = 76250000
 
 // Which of the 4 PAYOUT.* currencies scale by scalingFactor. PAYOUT.WORK_MULTIPLIER is
 // deliberately excluded — it's a permanent stat increase, not an accumulating economy

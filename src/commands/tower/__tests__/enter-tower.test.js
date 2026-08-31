@@ -71,7 +71,7 @@ test('a player at or above ENTRY_GATE_MULTI on raw workMultiplierAmount with no 
 
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone clears the gate once their live rebirth bonus is folded in, and towerFactory is constructed with the effective (not raw) power', async () => {
     // rebirthCount 6 -> BASE_BONUS_PERCENT + 5*BONUS_PERCENT_STEP = 0.05 + 0.475 = 52.5% live bonus.
-    const rawMulti = 10; // below ENTRY_GATE_MULTI (15) on its own
+    const rawMulti = 15; // below ENTRY_GATE_MULTI (20) on its own
     const rebirthCount = 6;
     const expectedPercent = Rebirth.BASE_BONUS_PERCENT + (rebirthCount - 1) * Rebirth.BONUS_PERCENT_STEP;
     const expectedEffectivePower = rawMulti * (1 + expectedPercent);

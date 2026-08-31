@@ -314,24 +314,23 @@ describe('towerFactory.decayValue', () => {
 // Tower Revamp (2026-08-31) — difficulty curve rework. Two-line change: geometric climb
 // instead of a flat +4.5, and a 90% cap instead of 100%.
 describe('difficulty curve', () => {
-    test('constructor starts at TOWER_ELITE_DIFFICULTY_INITIAL (3.0), not the old flat 1', () => {
-        // 3.0 (not the pre-2026-08-31-gate-drop 4.0) — paired with ENTRY_GATE_MULTI moving to 15
-        // so the fresh-entrant floor-10 coinflip stays calibrated: 15 / (3.0 * 10) = 0.50 exactly,
-        // matching the original 20 / (4.0 * 10) = 0.50.
+    test('constructor starts at TOWER_ELITE_DIFFICULTY_INITIAL (4.0), not the old flat 1', () => {
+        // 4.0, paired with ENTRY_GATE_MULTI (back to 20 as of 2026-08-31) so the fresh-entrant
+        // floor-10 coinflip stays calibrated: 20 / (4.0 * 10) = 0.50 exactly.
         const tF = new towerFactory({}, 'tester', tC.ENTRY_GATE_MULTI);
         expect(tF.difficulty).toBe(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
-        expect(tF.difficulty).toBe(3.0);
+        expect(tF.difficulty).toBe(4.0);
     });
 
-    test('matches the documented worked numbers for this.difficulty(N) = 3.0 * 1.45^(N-1)', () => {
+    test('matches the documented worked numbers for this.difficulty(N) = 4.0 * 1.45^(N-1)', () => {
         const initial = tC.TOWER_ELITE_DIFFICULTY_INITIAL;
         const ratio = tC.TOWER_ELITE_DIFFICULTY_RATIO;
         const difficultyAt = (N) => initial * Math.pow(ratio, N - 1);
-        expect(difficultyAt(1)).toBeCloseTo(3.00, 2);
-        expect(difficultyAt(2)).toBeCloseTo(4.35, 2);
-        expect(difficultyAt(3)).toBeCloseTo(6.31, 2);
-        expect(difficultyAt(5)).toBeCloseTo(13.26, 2);
-        expect(difficultyAt(10)).toBeCloseTo(85.00, 1);
+        expect(difficultyAt(1)).toBeCloseTo(4.00, 2);
+        expect(difficultyAt(2)).toBeCloseTo(5.80, 2);
+        expect(difficultyAt(3)).toBeCloseTo(8.41, 2);
+        expect(difficultyAt(5)).toBeCloseTo(17.68, 2);
+        expect(difficultyAt(10)).toBeCloseTo(113.34, 1);
     });
 
     test('the entry-gate multi produces exactly a 50% success chance on the very first forced Elite (floor 10, N=1)', () => {
