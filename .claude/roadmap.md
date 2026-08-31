@@ -7502,3 +7502,97 @@ call + two new args into their existing embed call, at each of their respective 
 each existing embed call site); no changes to `dynamoHandler.js`, no new persisted fields, no
 changes to `constants.js`'s `CompanionLeveling` values themselves (only its `workCountRequired`
 label text is display-affected, not the numbers).
+
+## More Gambling Games (2026-08-31 brainstorm, requested)
+
+Direct ask, user's own words: "can you add more gambling games for players to spend potatoes on?
+they should always have a slight edge whether it be mechanically or via tax on winnings." Verified
+against `src/commands/games/coinflip.js`, `src/commands/games/rps.js`,
+[systems/betting-and-games.md](systems/betting-and-games.md), and `src/utils/constants.js`
+(`Give.POTATO_TAX_PERCENT`, `Bounty.WIN_TAX_PERCENT`).
+
+**Correction to my own brief, mid-task.** I was initially told to treat `/coinflip` as having no
+house edge today and flag that as a pre-existing gap. That premise is wrong — `coinflip.js`'s
+`handleWinningBet` does `Math.round(bet*.95)` on a win (the original bet is never staked/removed,
+only 95% of it is credited as the win), which is already a genuine 5% tax on winnings, the exact
+same shape as `Bounty.WIN_TAX_PERCENT` (added this same day) and `Give.POTATO_TAX_PERCENT`. Worth
+stating precisely rather than just "confirmed, moving on": because the tax only bites the winning
+half of a 50/50 flip, the *effective* expected-value edge per potato wagered is ~2.5%
+(0.5×0.95 − 0.5×1), not a full 5% — same family of magnitude as the game's other skims, just don't
+conflate "5% tax on winnings" with "5% edge on turnover" when tuning a new game against it. No code
+or doc change needed here — [systems/betting-and-games.md](betting-and-games.md) already documents
+this correctly. Flagging only so it isn't mistaken for an open gap.
+
+**Overlap check: item #9 above, "Potato High-Low," is already a queued, not-yet-built game that
+explicitly reuses "the same 95% house edge `/coinflip` already uses."** No file for it exists yet
+under `src/commands/games/`, so it's a live, unclaimed backlog item, not something already shipped.
+The two proposals below deliberately use the *other* edge shape the ask calls out — skewed odds,
+not a tax line — so the bot ends up with both archetypes represented instead of three variations on
+the same tax-on-winnings mechanic.
+
+- [ ] **Potato Roulette** — S — **recommend building first**
+  What: `/potato-roulette bet-amount:<all|half|amount> color:<golden|dirt>` — one command, resolves
+  immediately, no confirm step, same shape as `/coinflip` (defaults to a color if omitted, same
+  `all`/`half`/exact bet-string parsing). A 38-pocket wheel: 18 Golden pockets, 18 Dirt pockets, and
+  2 "Rotten Potato" pockets that belong to the house alone. Betting Golden or Dirt is even money on
+  a win (+1x bet, no tax) and a full loss otherwise — but the 2 house pockets mean a color bet only
+  wins 18/38 (47.37%) of spins.
+  Why: this is the American-roulette house-edge shape almost verbatim — 2 house pockets out of 38
+  gives a 5.26% edge, not a made-up number — and it lands almost exactly on the ~5% figure this
+  codebase already uses everywhere (`Bank.TAX_PERCENT`, `Give`/`Bounty`'s skims, starch's
+  `SELL_TAX_PERCENT`), so "the house takes about a twentieth" stays consistent in-fiction even
+  though this edge comes from odds rather than a tax line. It's also the cheapest of these three to
+  build: one command, one resolve, no multi-turn state, structurally the closest thing to
+  `/coinflip` itself.
+  Touches: one new command in `games/`, a new embed, a `roulette` global-stats doc mirroring
+  `coinflipStats.heads/tails` (golden/dirt/rotten spin counts) — no new user-record fields.
+  Open question: color-only for v1, or also a single-pocket "call your number" bet (1-36, ~2.63% win
+  chance, 35:1 payout)? **Recommend color-only for v1** — mirrors coinflip's own binary simplicity;
+  a 35:1 payout needs its own bet-size sanity pass before it ships and can be a fast follow-up once
+  the base command is live.
+
+- [ ] **Golden Reels** — M
+  What: `/slots bet-amount:<all|half|amount>` — a single 3-reel spin drawing from a weighted symbol
+  table that reuses this game's own established rarity language: Regular Potato (common), Large
+  Potato (uncommon), Metal Potato (rare), Golden Potato (jackpot symbol, anchored to the same
+  ~0-0.1% chance `/work`'s own Golden Potato encounter already uses — see
+  [economy-and-work.md](economy-and-work.md)'s odds table). Three of a kind pays a multiplier
+  (Golden highest, Regular lowest/near-breakeven); anything else loses the bet.
+  Why: the same "spend potatoes for a shot at a rare multiplier" fantasy the shop/regrade gacha
+  already trades on, in a single-spin format the game doesn't have yet. Anchoring the jackpot symbol
+  to the real Golden Potato rarity keeps "Golden" meaning one consistent thing across the whole game
+  instead of inventing a second, unrelated definition of "rare."
+  Touches: one new command, a new weighted-symbol table in `constants.js`, a new embed showing the 3
+  drawn symbols. Needs a real payout-table balance pass before it ships — same category of pre-launch
+  work item #9 (Potato High-Low) already flags for its own curve — targeting ~95% RTP (5% house
+  edge) as the anchor, not a number to lock in at brainstorm stage.
+  Open question: 3 fully independent reels (so 3x Golden is the real Golden odds cubed — effectively
+  unreachable), or a smaller hand-tuned symbol pool with directly-chosen per-outcome odds (like the
+  roulette wheel above)? **Recommend the hand-tuned pool** — three independently-multiplied real
+  Golden Potato odds would make the jackpot practically unreachable, which isn't fun; a slot
+  machine's advertised odds are conventionally a designed table, not three independent dice.
+
+- [ ] **Spud Blackjack** — flagged, **not recommending as a near-term build**
+  What it would need: a simplified blackjack (hit/stand only, no split/double), reusing `/rps`'s
+  existing sequential-button-interaction pattern for the multi-turn deal/hit/stand/dealer-resolve
+  flow instead of inventing a new one.
+  Why not now: real blackjack's famous ~0.5% house edge only holds if the implementation is
+  faithful, and reproducing it correctly needs its own deck/dealer-AI logic — meaningfully more
+  build surface than either proposal above, closer to a small card-game engine than a wager command.
+  The shortcut real casinos use to juice the edge back up — dealer wins on a push/tie — reads as
+  "the house is cheating" to anyone who knows real blackjack rules, a trust/support-ticket risk in a
+  community bot, not just a balance knob. A flat win-tax instead (mirroring
+  `Bounty.WIN_TAX_PERCENT`) is safer but isn't testing anything mechanically new — it's Potato
+  High-Low's edge shape again in a blackjack costume.
+  Open question: build this at all, or let Potato High-Low (already queued, unbuilt) cover "card
+  game" for now and revisit blackjack only if players ask for it once High-Low has shipped and been
+  played? **Recommend the latter** — two unbuilt card games in the queue at once would itself be
+  scope creep on an ask that was for "more games," not specifically "more card games."
+
+**Recommendation: build Potato Roulette first.** It is the closest in shape/complexity to
+`/coinflip` (the developer's onboarding cost is close to zero), it demonstrates the *other* edge
+mechanic the direct ask called out (skewed odds vs. a tax), and its 5.26% edge is grounded in real
+roulette math that happens to land right on this game's own everywhere-else ~5% skim. Golden Reels
+is a good second target once a balance pass is budgeted for the payout table. Spud Blackjack is
+real but bigger and riskier than either — hold it until Potato High-Low has shipped and there's
+actual player demand for a second card game.
