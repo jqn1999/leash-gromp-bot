@@ -416,12 +416,16 @@ describe('towerFactory.scaleReward', () => {
         expect(tF.scaleReward(tC.PAYOUT.POTATOES, 1000)).toBe(1000);
     });
 
-    test('scales all three SCALED_PAYOUT_TYPES currencies at a multi above the gate', () => {
+    test('scales all three SCALED_PAYOUT_TYPES currencies at a multi above the gate, rounded to a whole number', () => {
         const tF = makeFactory(100);
         expect(tF.scalingFactor).toBeGreaterThan(1);
-        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
-        expect(tF.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
-        expect(tF.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBeCloseTo(1000 * tF.scalingFactor);
+        // Rounded (2026-08-31 bug fix) — scalingFactor is essentially never an integer, and
+        // potatoes/passiveAmount/bankCapacity are real currency, not a display-only stat; a
+        // live run previously credited fractional amounts straight to a player's balance.
+        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 1000)).toBe(Math.round(1000 * tF.scalingFactor));
+        expect(tF.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBe(Math.round(1000 * tF.scalingFactor));
+        expect(tF.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBe(Math.round(1000 * tF.scalingFactor));
+        expect(Number.isInteger(tF.scaleReward(tC.PAYOUT.POTATOES, 1000))).toBe(true);
     });
 
     test('PAYOUT.WORK_MULTIPLIER always passes through completely unscaled, regardless of a large scalingFactor', () => {
@@ -446,8 +450,9 @@ describe('reward value scaling — live end-to-end wiring', () => {
         const outcome = await tF.updateValue(fl, 0, 'Orange', true);
 
         expect(outcome.amount).toBeGreaterThan(30000);
-        expect(outcome.amount).toBeCloseTo(30000 * tF.scalingFactor);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBeCloseTo(outcome.amount);
+        expect(outcome.amount).toBe(Math.round(30000 * tF.scalingFactor));
+        expect(Number.isInteger(outcome.amount)).toBe(true);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(outcome.amount);
     });
 
     test('the gate multi (20) produces an unscaled reward, matching pre-feature behavior exactly', async () => {
@@ -611,7 +616,10 @@ describe('towerFactory Discord-interaction flows', () => {
         const [, type, amount] = tF.run[tC.PAYOUT.ELITE_KILL][0];
         expect(type).toBe(tC.PAYOUT.PASSIVE_INCOME);
         expect(amount).toBeLessThan(300000);
-        expect(amount).toBeCloseTo(300000 * Math.pow(tC.TOWER_REWARD_DECAY_RATIO, 50));
+        // Rounded (2026-08-31 bug fix) — scaleReward now rounds every scaled currency to a
+        // whole number, even at the gate multi where scalingFactor is exactly 1.
+        expect(amount).toBe(Math.round(300000 * Math.pow(tC.TOWER_REWARD_DECAY_RATIO, 50)));
+        expect(Number.isInteger(amount)).toBe(true);
     });
 
     test('a TRANSACTION\'s price is never decayed, only the value bought', async () => {

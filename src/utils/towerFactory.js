@@ -254,12 +254,21 @@ class towerFactory{
     // is derived once at construction time from this.multi). A reward's raw value is
     // multiplied by this.scalingFactor only when its outcome index is one of the three
     // "economy-facing" currencies (see tower.md part 2) — PAYOUT.WORK_MULTIPLIER and
-    // MODIFIER.WORK_MULTIPLIER both pass through completely unscaled.
+    // MODIFIER.WORK_MULTIPLIER both pass through completely unscaled (and unrounded —
+    // work multiplier is legitimately fractional, e.g. Traveling Turnip's flat 0.2).
+    //
+    // Rounded here (2026-08-31, bug fix) — this.scalingFactor is essentially never an
+    // integer, and decayValue above already isn't either past floor 100 (0.95^n). Every
+    // PAYOUT.POTATOES/PASSIVE_INCOME/BANK_CAPACITY addition in this file funnels through
+    // this one function, so rounding here is the single point that guarantees a player's
+    // actual currency balance (potatoes/passiveAmount/bankCapacity are real money, not a
+    // display-only stat) never lands on a fractional value — was previously left fractional
+    // and credited straight to the DB (e.g. a live run crediting 692,258.284 passive income).
     scaleReward(outcomeIndex, rawValue){
         if(!tC.SCALED_PAYOUT_TYPES.has(outcomeIndex)){
             return rawValue
         }
-        return rawValue * this.scalingFactor
+        return Math.round(rawValue * this.scalingFactor)
     }
 
     // Shared by every non-Elite resolution branch that would otherwise always show a dedicated

@@ -1224,3 +1224,20 @@ constant index regardless of policy):
 ```
 Both SAFE and GREEDY now always take passive income for this reward. New test in
 `towerFactory.test.js` locks this in. Full suite: **892/892**.
+
+## Reward Scaling Was Crediting Fractional Currency (2026-08-31, live bug report)
+
+A real run credited a player 692,258.284 passive income and 3,016,664.045 potatoes — fractional
+amounts on currencies that must be whole numbers. `scaleReward` (part 1 above) multiplies by
+`this.scalingFactor`, essentially never an integer, and `decayValue` multiplies by `0.95^n`,
+fractional past floor 100 — neither result was ever rounded before being added to `this.run[...]`
+or credited straight to the DB in `enter-tower.js`'s `processRewardPayouts`. Before reward scaling
+shipped, this was a much rarer, smaller-magnitude issue (only decay, only past floor 100); scaling
+made it hit on nearly every reward for any player above the entry gate.
+
+Fixed at the single point every `PAYOUT.POTATOES`/`PASSIVE_INCOME`/`BANK_CAPACITY` addition in this
+file funnels through — `scaleReward` now returns `Math.round(rawValue * this.scalingFactor)` for
+those three currencies. `PAYOUT.WORK_MULTIPLIER` and `MODIFIER.WORK_MULTIPLIER` are unaffected and
+stay legitimately fractional (e.g. Traveling Turnip's flat `0.2`) — rounding only applies inside
+the `SCALED_PAYOUT_TYPES` branch. 3 existing tests that asserted the old unrounded fractional
+values directly were updated to expect the rounded ones. Full suite: **995/995**.
