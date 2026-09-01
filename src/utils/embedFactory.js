@@ -3666,6 +3666,39 @@ class EmbedFactory {
         return embed;
     }
 
+    // Player-level roster listing (2026-08-31, direct instruction: "add a way to see
+    // players enrolled in the spud keep battle") — appended as additional pages AFTER
+    // whatever number of entrant-summary pages createSpudKeepStatusEmbed above needs,
+    // since each entrant field there only ever shows a roster COUNT per guild/Merc
+    // Faction ("N live raiders"), never the actual usernames. pageRows is a flat slice
+    // across every entrant's roster (see currentSpudKeep.js's flattenRoster) rather than
+    // nested per-guild, so pagination math stays a single flat chunk like every other
+    // paginated list in this file.
+    createSpudKeepRosterEmbed(preview, pageRows, pageIndex, totalPages) {
+        const { currentBuff, entrants, consecutiveHoldCycles } = preview;
+        const isHolderLive = Boolean(currentBuff && currentBuff.holderType && currentBuff.expiresAt > Date.now());
+        const totalEnrolled = entrants.reduce((sum, e) => sum + e.roster.length, 0);
+        const lines = pageRows.map(row => `${row.username} — ${row.entrantType === 'mercenary' ? '⚔️' : '🏰'} ${row.entrantName}`);
+
+        const holderLine = isHolderLive
+            ? `**${currentBuff.holderName}** currently holds the Keep (${consecutiveHoldCycles.toLocaleString()} consecutive cycle${consecutiveHoldCycles === 1 ? '' : 's'} held).`
+            : 'The Keep is currently unclaimed!';
+        const pageLine = totalPages > 1 ? `\nPage ${pageIndex + 1} / ${totalPages}` : '';
+
+        const embed = new EmbedBuilder()
+            .setTitle('🥔🏰 Spud Keep — Enrolled Players')
+            .setDescription(`${holderLine}${pageLine}`)
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields([{
+                name: `Enrolled Players (${totalEnrolled.toLocaleString()} total):`,
+                value: lines.length > 0 ? lines.join('\n') : 'No players enrolled this cycle.',
+                inline: false,
+            }])
+        return embed;
+    }
+
     // Daily 4am UTC cron announcement — `result` is spudKeepFactory.resolveCycle's own
     // return shape (either { skipped: true } or the full resolution result).
     // How many pages of 5 the payout breakdown needs — backgroundEvents.js calls this

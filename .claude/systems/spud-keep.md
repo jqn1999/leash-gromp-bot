@@ -253,6 +253,15 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   list on one embed (used by anything that doesn't need pagination). `createSpudKeepResultEmbed`'s
   own one-shot cron announcement is unchanged — still `buildSpudKeepEntrantFields`' hard 20-field
   cap with a "+N more" line, since a fire-and-forget post can't paginate.
+
+  **Enrolled-player pages (2026-08-31, direct instruction: "add a way to see players enrolled in
+  the spud keep battle in the page 2 and onwards").** Each entrant field above only ever shows a
+  roster COUNT ("N live raiders"), never actual usernames. `currentSpudKeep.js` now appends
+  additional pages AFTER every entrant-summary page — `flattenRoster()` flattens every entrant's
+  `roster` into one player-level list (`username`/`entrantName`/`entrantType`), chunked 20/page
+  and rendered via a new `embedFactory.createSpudKeepRosterEmbed`. Total page count is
+  `entrantPages.length + rosterPages.length`, dispatched through the exact same
+  `buildPaginationRow`/`runPaginatedReply` Previous/Next mechanism — no new interaction pattern.
 - `/spud-keep-collect` (user) — moves a player's own `spudKeepPendingPotatoes` balance into liquid
   `potatoes`/`totalEarnings` (see "Pending balance, not a direct credit" above). No-op reply if
   nothing is pending; the underlying write is an atomic conditional update so a double-submit can't

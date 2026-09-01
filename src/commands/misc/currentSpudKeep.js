@@ -4,6 +4,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 const PAGE_SIZE = 10;
+const ROSTER_PAGE_SIZE = 20;
 
 function chunkArray(array, size) {
     const chunks = [];
@@ -11,6 +12,20 @@ function chunkArray(array, size) {
         chunks.push(array.slice(i, i + size));
     }
     return chunks.length > 0 ? chunks : [[]];
+}
+
+// Flattens every entrant's roster into one player-level list (username + which
+// guild/Merc Faction they're enrolled under) — see embedFactory.createSpudKeepRosterEmbed.
+// Each entrant field on the status page above only shows a roster COUNT, never the
+// actual usernames, which is what this flat list exists to surface.
+function flattenRoster(entrants) {
+    const rows = [];
+    for (const entrant of entrants) {
+        for (const member of entrant.roster) {
+            rows.push({ username: member.username, entrantName: entrant.name, entrantType: entrant.type });
+        }
+    }
+    return rows;
 }
 
 // Read-only status preview, mirroring /current-world-raid/current-raid — current holder,
@@ -37,13 +52,21 @@ module.exports = {
         if (!userDetails) return;
 
         const preview = await spudKeepFactory.buildEntrantPreview();
-        const pages = chunkArray(preview.entrants, PAGE_SIZE);
-        const renderPage = (pageIndex) => embedFactory.createSpudKeepStatusEmbed(preview, pages[pageIndex], pageIndex, pages.length);
+        const entrantPages = chunkArray(preview.entrants, PAGE_SIZE);
+        // Enrolled-player pages come AFTER every entrant-summary page (direct instruction:
+        // "add a way to see players enrolled ... in page 2 and onwards") — the entrant
+        // fields above only ever show a roster COUNT per guild/Merc Faction, never the
+        // actual usernames.
+        const rosterPages = chunkArray(flattenRoster(preview.entrants), ROSTER_PAGE_SIZE);
+        const totalPages = entrantPages.length + rosterPages.length;
+        const renderPage = (pageIndex) => pageIndex < entrantPages.length
+            ? embedFactory.createSpudKeepStatusEmbed(preview, entrantPages[pageIndex], pageIndex, totalPages)
+            : embedFactory.createSpudKeepRosterEmbed(preview, rosterPages[pageIndex - entrantPages.length], pageIndex, totalPages);
 
         const embed = renderPage(0);
-        const components = pages.length > 1 ? [buildPaginationRow('spud_keep_status', 0, pages.length)] : [];
+        const components = totalPages > 1 ? [buildPaginationRow('spud_keep_status', 0, totalPages)] : [];
         const reply = await interaction.editReply({ embeds: [embed], components: components });
 
-        await runPaginatedReply(reply, interaction, 'spud_keep_status', pages.length, renderPage);
+        await runPaginatedReply(reply, interaction, 'spud_keep_status', totalPages, renderPage);
     }
 }

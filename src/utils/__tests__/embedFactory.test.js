@@ -374,6 +374,53 @@ describe('createSpudKeepStatusEmbed pagination', () => {
     });
 });
 
+// Player-level roster listing (2026-08-31, direct instruction: "add a way to see players
+// enrolled in the spud keep battle in the page 2 and onwards") — entrant fields only ever
+// show a roster COUNT per guild/Merc Faction, never the actual usernames.
+describe('createSpudKeepRosterEmbed', () => {
+    function basePreview() {
+        return {
+            currentBuff: null,
+            entrants: [
+                { type: 'guild', name: 'Guild A', roster: [{ id: '1', username: 'Alice' }, { id: '2', username: 'Bob' }] },
+                { type: 'mercenary', name: 'The Merc Faction', roster: [{ id: '3', username: 'Carol' }] },
+            ],
+            consecutiveHoldCycles: 0,
+        };
+    }
+
+    test('lists each player with which entrant they belong to', () => {
+        const preview = basePreview();
+        const pageRows = [
+            { username: 'Alice', entrantName: 'Guild A', entrantType: 'guild' },
+            { username: 'Bob', entrantName: 'Guild A', entrantType: 'guild' },
+            { username: 'Carol', entrantName: 'The Merc Faction', entrantType: 'mercenary' },
+        ];
+        const embed = embedFactory.createSpudKeepRosterEmbed(preview, pageRows, 0, 1);
+        const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
+        expect(field.name).toContain('3 total');
+        expect(field.value).toContain('Alice — 🏰 Guild A');
+        expect(field.value).toContain('Bob — 🏰 Guild A');
+        expect(field.value).toContain('Carol — ⚔️ The Merc Faction');
+    });
+
+    test('shows a Page X / Y line when paginated, and only that page\'s rows', () => {
+        const preview = basePreview();
+        const pageRows = [{ username: 'Carol', entrantName: 'The Merc Faction', entrantType: 'mercenary' }];
+        const embed = embedFactory.createSpudKeepRosterEmbed(preview, pageRows, 1, 2);
+        expect(embed.data.description).toContain('Page 2 / 2');
+        const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
+        expect(field.value).toContain('Carol');
+        expect(field.value).not.toContain('Alice');
+    });
+
+    test('shows a fallback line when the page has no rows (empty cycle)', () => {
+        const embed = embedFactory.createSpudKeepRosterEmbed({ currentBuff: null, entrants: [], consecutiveHoldCycles: 0 }, [], 0, 1);
+        const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
+        expect(field.value).toContain('No players enrolled');
+    });
+});
+
 // Per-player pot payout breakdown (2026-08-30, direct instruction: "a per player amount
 // line", plus the switch from an even split to a workMultiplierAmount-weighted one).
 describe('createSpudKeepResultEmbed payout breakdown', () => {
