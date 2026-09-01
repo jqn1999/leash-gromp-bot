@@ -1,8 +1,10 @@
 // Coverage for /potato-roulette — mirrors setRaidPayout.test.js's shape (jest.mock the
 // whole dynamoHandler module, drive the command purely through its exported `callback`).
-// See the "Potato Roulette + Golden Reels" technical design in roadmap.md: win pays the
-// full bet as profit (no tax), loss costs the full bet, and the wheel's 38 pockets split
-// 18 golden / 18 dirt / 2 rotten (house-only, nobody wins).
+// See the "Potato Roulette + Golden Reels" technical design in roadmap.md: a golden/dirt
+// win pays the full bet as profit (1:1, no tax), a rotten win pays
+// Roulette.ROTTEN_PAYOUT_MULTIPLIER (17:1, added 2026-08-31 — same house edge as the color
+// bet, just expressed as a bigger payout for the rarer 2/38 outcome), any loss costs the
+// full bet, and the wheel's 38 pockets split 18 golden / 18 dirt / 2 rotten.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -200,6 +202,32 @@ describe('/potato-roulette win/loss math (no tax on top of the pocket odds)', ()
         await callback({}, dirtBetInteraction);
 
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'potatoes', 800);
+    });
+
+    test('a rotten bet that hits pays 17:1, not the color bets\' even money', async () => {
+        expect(Roulette.ROTTEN_PAYOUT_MULTIPLIER).toBe(17); // fair-odds derivation, see constants.js
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(randomForPocket(36)); // rotten
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1000, totalEarnings: 50 }));
+        dynamoHandler.getStatDatabase.mockResolvedValue(statsFixture({ totalPayout: 200 }));
+        const interaction = fakeInteraction('100', 'rotten');
+
+        await callback({}, interaction);
+
+        // 100-potato bet, 17x profit = 1700 -> 1000 + 1700 = 2700.
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'potatoes', 2700);
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'totalEarnings', 1750);
+        expect(dynamoHandler.updateStatDatabase).toHaveBeenCalledWith('roulette', 'totalPayout', 1900);
+    });
+
+    test('a rotten bet that misses (golden or dirt hits) costs only the flat bet, not a scaled loss', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(randomForPocket(0)); // golden
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1000 }));
+        dynamoHandler.getStatDatabase.mockResolvedValue(statsFixture());
+        const interaction = fakeInteraction('100', 'rotten');
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'potatoes', 900);
     });
 
     test('color defaults to golden when omitted', async () => {

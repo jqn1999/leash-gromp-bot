@@ -679,3 +679,30 @@ describe('companion XP display gating on companion equipped', () => {
         });
     });
 });
+
+// Golden/dirt pocket icons no longer reuse goldenPotato/largePotato's own /work-encounter
+// art (2026-08-31, direct instruction: "the pictures are very confusing to players" —
+// those images already read as the Golden/Large Potato /work jackpots to players, not as
+// roulette's golden/dirt COLOR concept). rotten is unaffected — poisonPotato's icon was
+// never flagged as confusing.
+describe('createPotatoRouletteEmbed pocket icons', () => {
+    test('golden and dirt no longer use goldenPotato/largePotato\'s own /work-encounter art', () => {
+        const { goldenPotato, largePotato } = require('../constants');
+        const goldenEmbed = embedFactory.createPotatoRouletteEmbed('golden', 'golden', 1, 0, 0, 1000, 100);
+        const dirtEmbed = embedFactory.createPotatoRouletteEmbed('dirt', 'dirt', 0, 1, 0, 1000, 100);
+        expect(goldenEmbed.data.thumbnail.url).not.toBe(goldenPotato.thumbnailUrl);
+        expect(dirtEmbed.data.thumbnail.url).not.toBe(largePotato.thumbnailUrl);
+    });
+
+    test('golden and dirt share the same fallback icon (no dedicated art yet)', () => {
+        const goldenEmbed = embedFactory.createPotatoRouletteEmbed('golden', 'golden', 1, 0, 0, 1000, 100);
+        const dirtEmbed = embedFactory.createPotatoRouletteEmbed('dirt', 'dirt', 0, 1, 0, 1000, 100);
+        expect(goldenEmbed.data.thumbnail.url).toBe(dirtEmbed.data.thumbnail.url);
+    });
+
+    test('rotten keeps poisonPotato\'s icon, unaffected by the golden/dirt swap', () => {
+        const { poisonPotato } = require('../constants');
+        const rottenEmbed = embedFactory.createPotatoRouletteEmbed('rotten', 'rotten', 0, 0, 1, 1000, 1700);
+        expect(rottenEmbed.data.thumbnail.url).toBe(poisonPotato.thumbnailUrl);
+    });
+});

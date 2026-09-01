@@ -39,20 +39,32 @@ Admin-created binary prediction markets:
 
 ### Potato Roulette
 
-`/potato-roulette bet-amount:<all|half|amount> color:<golden|dirt>` (defaults to `golden` if
-omitted). An American-double-zero-style 38-pocket wheel (`Math.floor(Math.random()*38)`):
-pockets `0-17` are Golden (18), `18-35` are Dirt (18), and `36-37` are "Rotten Potato" — the
-house's own 2 pockets, which belong to neither color. A color bet wins on `18/38 = 47.368...%` of
-spins; a win pays the **full bet as profit** (stake untouched, `userPotatoes += bet`, no tax line
-on top — unlike coinflip's `*.95` skim); a loss (including every rotten-pocket spin, regardless of
-which color was picked) costs the full bet. The edge is purely the 2 uncovered pockets: `EV =
--bet * (2/38) ≈ -5.26%` on turnover — a clean, odds-driven edge rather than a tax multiplier, the
-other archetype the coinflip-tax shape doesn't cover. `Roulette` constants (`constants.js`):
-`POCKET_COUNT: 38`, `GOLDEN_POCKETS: 18`, `DIRT_POCKETS: 18` — rotten pockets are deliberately the
-remainder (`POCKET_COUNT - GOLDEN_POCKETS - DIRT_POCKETS`), not their own stored constant, so the
-math can't drift if only one side is edited. Stats doc `'roulette'` (via
+`/potato-roulette bet-amount:<all|half|amount> color:<golden|dirt|rotten>` (defaults to `golden`
+if omitted). An American-double-zero-style 38-pocket wheel (`Math.floor(Math.random()*38)`):
+pockets `0-17` are Golden (18), `18-35` are Dirt (18), and `36-37` are Rotten (2). A color bet
+(golden/dirt) wins on `18/38 = 47.368...%` of spins and pays the **full bet as profit** (stake
+untouched, `userPotatoes += bet`, no tax line on top — unlike coinflip's `*.95` skim). A **rotten
+bet** (added 2026-08-31, direct instruction) wins on the rarer `2/38 = 5.263...%` of spins and
+pays `Roulette.ROTTEN_PAYOUT_MULTIPLIER` (`17`) times the bet as profit — the exact multiplier
+that preserves the SAME `-5.26%` house edge as the color bet (`p*X - (1-p)*1 = -2/38` solved for
+`p=2/38` gives `X=17` exactly), rather than a zero-edge "fair" payout — this is the identical math
+real American roulette uses for a two-number split bet at the same 2/38 odds, which also pays
+17:1. Any loss (a color bet when rotten hits, or a rotten bet when either color hits) costs the
+full bet, no scaling. `Roulette` constants (`constants.js`): `POCKET_COUNT: 38`,
+`GOLDEN_POCKETS: 18`, `DIRT_POCKETS: 18`, `ROTTEN_PAYOUT_MULTIPLIER: 17` — rotten pockets are
+deliberately the remainder (`POCKET_COUNT - GOLDEN_POCKETS - DIRT_POCKETS`), not their own stored
+constant, so the math can't drift if only one side is edited. Stats doc `'roulette'` (via
 `getStatDatabase`/`updateStatDatabase`, same pattern as `'coinflip'`): `goldenCount`, `dirtCount`,
 `rottenCount`, `totalPayout`, `totalReceived`. No new user-record fields.
+
+**Pocket icons (2026-08-31, direct instruction: "the pictures are very confusing to players").**
+Golden and dirt used to reuse `goldenPotato`/`largePotato`'s own `/work`-encounter art —
+players already strongly associate those specific images with the Golden/Large Potato `/work`
+jackpots, not with roulette's golden/dirt COLOR concept. Both now fall back to
+`BOT_AVATAR_FALLBACK` (`embedFactory.js`) instead, pending real commissioned art. Rotten keeps
+`poisonPotato`'s icon — thematically fitting for "something bad happened," never flagged as
+confusing. The result title's old "(house wins)" qualifier on a rotten spin was also removed,
+since it's no longer always true now that rotten is a bettable, winnable outcome.
 
 ### Golden Reels
 

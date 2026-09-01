@@ -20,12 +20,19 @@ function rankLabel(index) {
     return LEADERBOARD_MEDALS[index] || `${index + 1}.`;
 }
 
-// Potato Roulette pocket icons — reuses existing /work encounter art rather than
-// commissioning new icons for a cosmetic thumbnail swap (poisonPotato's icon stands in
-// for "rotten," the one existing icon in this codebase that already reads as spoiled/bad).
+// Shared placeholder for any icon slot with no dedicated commissioned art yet.
+const BOT_AVATAR_FALLBACK = "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png";
+
+// Potato Roulette pocket icons. golden/dirt used to reuse goldenPotato/largePotato's own
+// /work-encounter art — replaced 2026-08-31 (direct instruction: "the pictures are very
+// confusing to players") since those specific images are already strongly associated with
+// the Golden/Large Potato /work jackpots, not with roulette's golden/dirt COLOR concept.
+// Falls back to the bot's own avatar instead, pending real commissioned art. rotten keeps
+// poisonPotato's icon — thematically fitting for "something bad happened," never flagged
+// as confusing.
 const ROULETTE_POCKET_ICONS = {
-    golden: goldenPotato.thumbnailUrl,
-    dirt: largePotato.thumbnailUrl,
+    golden: BOT_AVATAR_FALLBACK,
+    dirt: BOT_AVATAR_FALLBACK,
     rotten: poisonPotato.thumbnailUrl,
 }
 
@@ -34,7 +41,6 @@ const ROULETTE_POCKET_ICONS = {
 // rarity language is shared); "Regular Potato" and a loss have no existing dedicated
 // potato art, so both fall back to the bot's own avatar as a placeholder pending real
 // commissioned icons (same fallback mimicPotato/goldenYam already use elsewhere).
-const BOT_AVATAR_FALLBACK = "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png";
 const GOLDEN_REELS_SYMBOL_ICONS = {
     'Golden Potato': goldenPotato.thumbnailUrl,
     'Metal Potato': metalPotatoSuccess.thumbnailUrl,
@@ -2399,7 +2405,9 @@ class EmbedFactory {
             },
         ];
 
-        const pocketLabel = pocketColor === 'rotten' ? 'rotten potato (house wins)' : pocketColor;
+        // "(house wins)" removed 2026-08-31 — no longer always true now that rotten is a
+        // bettable outcome (a player betting rotten WINS when this happens).
+        const pocketLabel = pocketColor === 'rotten' ? 'rotten potato' : pocketColor;
         const embed = new EmbedBuilder()
             .setTitle(`The wheel landed on... ${pocketLabel}!`)
             .setDescription(`Displayed below are your current potatoes, potatoes gained or lost, and roulette stats.`)

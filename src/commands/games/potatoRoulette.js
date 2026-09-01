@@ -7,7 +7,8 @@ const embedFactory = new EmbedFactory();
 
 // American double-zero roulette's 38-pocket structure (see Roulette in constants.js):
 // 0-17 -> golden (18 pockets), 18-35 -> dirt (18 pockets), the remaining 2 -> rotten
-// (house-only, nobody wins). Deliberately computed from POCKET_COUNT/GOLDEN_POCKETS/
+// (rare, 2/38 — bettable since 2026-08-31 at Roulette.ROTTEN_PAYOUT_MULTIPLIER, see
+// handleWinningBet below). Deliberately computed from POCKET_COUNT/GOLDEN_POCKETS/
 // DIRT_POCKETS rather than hardcoding "36-37" so the rotten-pocket count can't drift out
 // of sync if only one of the other two constants is ever edited.
 function spinWheel() {
@@ -17,15 +18,21 @@ function spinWheel() {
     return 'rotten';
 }
 
-// Win pays the full bet as profit (stake untouched, no tax line) — the 2 rotten pockets
-// alone are the house's 5.26% edge, per the technical design in roadmap.md.
+// A golden/dirt win pays the full bet as profit (1:1, stake untouched, no tax line) — the
+// 2 rotten pockets alone are the house's 5.26% edge on that bet, per the technical design
+// in roadmap.md. A rotten win instead pays Roulette.ROTTEN_PAYOUT_MULTIPLIER (17:1) — the
+// SAME 5.26% house edge, just expressed as a bigger payout for a rarer (2/38) outcome
+// instead of even money for a common (18/38) one. See Roulette's own comment in
+// constants.js for the fairness derivation.
 async function handleWinningBet(bet, userId, userPotatoes, userTotalEarnings, rouletteStats, pocketColor, colorSelected, interaction) {
-    userPotatoes += bet;
-    userTotalEarnings += bet;
-    await dynamoHandler.updateStatDatabase('roulette', 'totalPayout', rouletteStats.totalPayout + bet);
+    const payoutMultiplier = colorSelected === 'rotten' ? Roulette.ROTTEN_PAYOUT_MULTIPLIER : 1;
+    const profit = bet * payoutMultiplier;
+    userPotatoes += profit;
+    userTotalEarnings += profit;
+    await dynamoHandler.updateStatDatabase('roulette', 'totalPayout', rouletteStats.totalPayout + profit);
     await dynamoHandler.updateUserDatabase(userId, "potatoes", userPotatoes);
     await dynamoHandler.updateUserDatabase(userId, "totalEarnings", userTotalEarnings);
-    const embed = embedFactory.createPotatoRouletteEmbed(pocketColor, colorSelected, rouletteStats.goldenCount, rouletteStats.dirtCount, rouletteStats.rottenCount, userPotatoes, bet);
+    const embed = embedFactory.createPotatoRouletteEmbed(pocketColor, colorSelected, rouletteStats.goldenCount, rouletteStats.dirtCount, rouletteStats.rottenCount, userPotatoes, profit);
     interaction.editReply({ embeds: [embed] });
 }
 
@@ -41,7 +48,7 @@ async function handleLosingBet(bet, userId, userPotatoes, userTotalLosses, roule
 
 module.exports = {
     name: "potato-roulette",
-    description: "Bet on golden or dirt in a 38-pocket potato wheel. Rotten pockets belong to the house.",
+    description: "Bet on golden, dirt, or rotten (rare, higher payout) in a 38-pocket potato wheel.",
     options: [
         {
             name: 'bet-amount',
@@ -51,7 +58,7 @@ module.exports = {
         },
         {
             name: 'color',
-            description: 'Color the wheel will land on',
+            description: `Color the wheel will land on — rotten pays ${Roulette.ROTTEN_PAYOUT_MULTIPLIER}:1 (rare, 2/38 odds)`,
             type: ApplicationCommandOptionType.String,
             choices: [
                 {
@@ -61,6 +68,10 @@ module.exports = {
                 {
                     name: 'dirt',
                     value: 'dirt'
+                },
+                {
+                    name: `rotten (pays ${Roulette.ROTTEN_PAYOUT_MULTIPLIER}:1)`,
+                    value: 'rotten'
                 }
             ]
         }

@@ -1138,7 +1138,15 @@ const Give = {
 const Roulette = {
     POCKET_COUNT: 38,
     GOLDEN_POCKETS: 18,
-    DIRT_POCKETS: 18
+    DIRT_POCKETS: 18,
+    // Rotten bet (2026-08-31, direct instruction: "add an option to bet on rotten count
+    // with a fair payout based on odds of course"). "Fair" here means the SAME house edge
+    // as the golden/dirt color bet (5.26%, purely from the 2 rotten pockets never paying a
+    // color bettor), not a zero-edge payout — solving p*X - (1-p)*1 = -2/38 (the color bet's
+    // own EV per potato wagered) for p = 2/38 gives X = 17 exactly. This is not a coincidence:
+    // it's the identical math real American roulette uses for a two-number split bet at the
+    // same 2/38 odds, which also pays 17:1 for the same reason.
+    ROTTEN_PAYOUT_MULTIPLIER: 17
 }
 
 // Golden Reels — a single hand-tuned weighted draw per spin (not 3 independent reels;
