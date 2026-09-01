@@ -102,7 +102,7 @@ describe('attemptJoinGuild', () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ guildMercenarySwitchTimer: Date.now() }));
         const result = await attemptJoinGuild('user-1', 'Newbie', 'Newbie', 'Honest Workers');
         expect(result.ok).toBe(false);
-        expect(result.message).toMatch(/retired as a mercenary too recently/);
+        expect(result.message).toMatch(/recently left a guild or mercenary life/);
     });
 
     test('allows joining once the switch cooldown has fully elapsed', async () => {

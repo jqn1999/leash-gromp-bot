@@ -28,13 +28,14 @@ module.exports = {
             return;
         }
 
-        // Only relevant right after leaving a guild — /leave sets this timer, this is the
-        // other half of the switch-cooldown pair. A fresh account (timer 0) is never
-        // blocked by this.
+        // guildMercenarySwitchTimer is shared between /leave (leaving a guild) and
+        // /retire-mercenary (retiring as a mercenary), so this guard can't tell which one
+        // actually set it — the message stays generic rather than guessing wrong. A fresh
+        // account (timer 0) is never blocked by this.
         const timeSinceSwitchInSeconds = Math.floor((Date.now() - userDetails.guildMercenarySwitchTimer) / 1000);
         const timeUntilSwitchAvailableInSeconds = Bounty.GUILD_SWITCH_COOLDOWN_SECONDS - timeSinceSwitchInSeconds;
         if (timeSinceSwitchInSeconds < Bounty.GUILD_SWITCH_COOLDOWN_SECONDS) {
-            interaction.editReply(`${userDisplayName}, you left your guild too recently — wait ${convertSecondstoMinutes(timeUntilSwitchAvailableInSeconds)} before becoming a mercenary.`);
+            interaction.editReply(`${userDisplayName}, you recently left a guild or mercenary life — wait ${convertSecondstoMinutes(timeUntilSwitchAvailableInSeconds)} before becoming a mercenary.`);
             return;
         }
 

@@ -50,10 +50,15 @@ const GOLDEN_REELS_SYMBOL_ICONS = {
 }
 
 // Used by the bank embeds to show capacity fill at a glance instead of just raw numbers.
+// All red once fully full (a clear "empty me out" signal), otherwise green/black squares
+// scale with fill.
 function buildProgressBar(current, max, length = 10) {
     const ratio = max > 0 ? Math.min(Math.max(current / max, 0), 1) : 0;
+    if (ratio >= 1) {
+        return ':red_square:'.repeat(length);
+    }
     const filled = Math.round(ratio * length);
-    return '█'.repeat(filled) + '░'.repeat(length - filled);
+    return ':green_square:'.repeat(filled) + ':black_medium_square:'.repeat(length - filled);
 }
 
 // Same check bank.js itself makes before treating capacity as Infinity — duplicated here
@@ -71,7 +76,7 @@ function isBankCapacityMaxed(userDetails) {
 // undersell it. Shown as a full bar and "Unlimited" instead.
 function formatBankCapacityField(current, capacity) {
     if (capacity === Infinity) {
-        return `${'█'.repeat(10)} Unlimited\n${current.toLocaleString()} / Unlimited potatoes`;
+        return `${':green_square:'.repeat(10)} Unlimited\n${current.toLocaleString()} / Unlimited potatoes`;
     }
     const bar = buildProgressBar(current, capacity);
     const fillPercent = capacity > 0 ? (current / capacity * 100) : 0;

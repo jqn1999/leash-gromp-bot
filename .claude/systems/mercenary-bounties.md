@@ -56,11 +56,21 @@ top-level default field) is:
   (`convertSecondstoMinutes`) until `Bounty.GUILD_SWITCH_COOLDOWN_SECONDS` (86400s / 24h,
   a starting value, easy to retune) has elapsed since the timer was set.
 
-Only the actual guild↔mercenary *crossing* is gated. Same-side re-entry is deliberately
-not — e.g. retiring as a mercenary and becoming one again without ever touching a guild
-is unaffected, since `guildMercenarySwitchTimer` is only ever read by the opposite side's
-entry check. A fresh account (timer `0`, decades in the past relative to `Date.now()`) is
+`guildMercenarySwitchTimer` is a single shared field — it can't tell which of the two exit
+actions actually set it, so every entry check treats it the same regardless of whether the
+player is crossing sides or re-entering the side they just left (e.g. retiring as a
+mercenary and becoming one again is gated by the same timer `/leave` would have set, and
+vice versa). A fresh account (timer `0`, decades in the past relative to `Date.now()`) is
 never blocked by this.
+
+**Generic wait message (2026-09-01, direct instruction).** Because the timer can't reveal
+which exit action set it, the three entry-check messages (`/become-mercenary`,
+`/create-new-guild`, `/join-guild`) all say the same generic
+`"you recently left a guild or mercenary life — wait <time> before ..."` rather than
+guessing a specific cause. Previously each guessed based on which command was now being
+run (`/become-mercenary` always said "you left your guild too recently," `/join-guild` and
+`/create-new-guild` always said "you retired as a mercenary too recently") — wrong half the
+time, since the timer doesn't actually track which exit action set it.
 
 While adding the `/leave` half of this, found and fixed a pre-existing, unrelated bug:
 `/leave`'s guarded `updateGuildFieldsWithLock` call referenced an undeclared

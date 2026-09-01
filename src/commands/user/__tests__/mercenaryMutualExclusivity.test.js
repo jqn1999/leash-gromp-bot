@@ -79,7 +79,7 @@ describe('/become-mercenary', () => {
 
         await callback({}, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/left your guild too recently/i));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/recently left a guild or mercenary life/i));
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
@@ -146,7 +146,7 @@ describe('/create-new-guild rejects an active mercenary', () => {
 
         await callback({}, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/retired as a mercenary too recently/i));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/recently left a guild or mercenary life/i));
         expect(dynamoHandler.getSortedGuildsById).not.toHaveBeenCalled();
         expect(dynamoHandler.createGuild).not.toHaveBeenCalled();
     });
@@ -189,7 +189,7 @@ describe('/join-guild rejects an active mercenary', () => {
 
         await callback({}, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/retired as a mercenary too recently/i));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/recently left a guild or mercenary life/i));
         expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
     });
 });
