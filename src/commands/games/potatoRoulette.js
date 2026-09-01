@@ -89,7 +89,13 @@ module.exports = {
 
         const pocketColor = spinWheel();
 
-        let rouletteStats = await dynamoHandler.getStatDatabase('roulette');
+        // getStatDatabase returns undefined until this trackingId's row exists in the stats
+        // table — a brand new stat category with no row seeded, so default to a zeroed
+        // stats object rather than crashing on the very first play. updateStatDatabase below
+        // creates the row on its first write regardless (plain DynamoDB UpdateItem upsert).
+        let rouletteStats = await dynamoHandler.getStatDatabase('roulette') || {
+            goldenCount: 0, dirtCount: 0, rottenCount: 0, totalPayout: 0, totalReceived: 0
+        };
         if (pocketColor === 'golden') {
             rouletteStats.goldenCount += 1;
             await dynamoHandler.updateStatDatabase('roulette', 'goldenCount', rouletteStats.goldenCount);

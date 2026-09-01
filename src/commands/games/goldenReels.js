@@ -72,7 +72,14 @@ module.exports = {
         // safe even if that option definition is ever loosened without this file changing.
         spinsRequested = Math.min(Math.max(Math.floor(Number(spinsRequested)) || 1, 1), GoldenReels.MAX_SPINS);
 
-        let goldenReelsStats = await dynamoHandler.getStatDatabase('goldenReels');
+        // getStatDatabase returns undefined until this trackingId's row exists in the stats
+        // table (it returns data.Items[0] from a query with no rows yet) — this is a brand
+        // new stat category with no row seeded, so default to a zeroed stats object rather
+        // than crashing on the very first play. updateStatDatabase below creates the row on
+        // its first write regardless (plain DynamoDB UpdateItem upsert, no ConditionExpression).
+        let goldenReelsStats = await dynamoHandler.getStatDatabase('goldenReels') || {
+            totalPayout: 0, totalReceived: 0, jackpotCount: 0, metalCount: 0, largeCount: 0, regularCount: 0, lossCount: 0
+        };
 
         let spinsRun = 0;
         let netTotal = 0;
