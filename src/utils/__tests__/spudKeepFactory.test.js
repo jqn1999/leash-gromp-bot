@@ -129,6 +129,38 @@ describe('getAttackerBonusMultiplier', () => {
     });
 });
 
+// Holder buff compounding (2026-08-31, direct instruction: "8% ... scale it up to a
+// maximum of 40% each for 5 days held") — same streak-cap shape as
+// getAttackerBonusMultiplier above, verified against both real tracks (passive/cooldown
+// currently share identical base/per-cycle/max constants, but the function itself takes
+// them as plain arguments so it's not coupled to that).
+describe('getCompoundingBuffValue', () => {
+    test('cycle 0 (fresh capture, day 1) is exactly the base value for both tracks', () => {
+        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.08);
+        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.COOLDOWN_BUFF_VALUE, SpudKeep.COOLDOWN_BUFF_PER_HOLD_CYCLE, SpudKeep.COOLDOWN_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.08);
+    });
+
+    test('escalates linearly through days 2-5 (cycles 1-4): 16%, 24%, 32%, 40%', () => {
+        const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
+        expect(value(1)).toBeCloseTo(0.16);
+        expect(value(2)).toBeCloseTo(0.24);
+        expect(value(3)).toBeCloseTo(0.32);
+        expect(value(4)).toBeCloseTo(0.40);
+    });
+
+    test('caps at the max value beyond HOLD_BUFF_STREAK_CAP — day 6+ is identical to day 5', () => {
+        const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
+        expect(value(4)).toBe(value(99));
+        expect(value(99)).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE);
+    });
+
+    test('a NaN/undefined streak is treated as 0, not propagated', () => {
+        const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
+        expect(value(undefined)).toBeCloseTo(0.08);
+        expect(value(NaN)).toBeCloseTo(0.08);
+    });
+});
+
 describe('getMercFactionN', () => {
     test('defaults to MERC_FACTION_MIN_TOP_N when no guilds signed up', () => {
         expect(spudKeepFactory.getMercFactionN([])).toBe(SpudKeep.MERC_FACTION_MIN_TOP_N);
@@ -346,6 +378,25 @@ describe('resolveCycle', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalledWith('m1', expect.objectContaining({ potatoes: expect.any(Number) }));
         expect(result.payoutShares).toEqual([{ id: 'm1', username: 'm1', amount: 900 }]);
         expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('spud_keep', { potPotatoes: -900 });
+    });
+
+    // Proves the compounding wiring is live end-to-end through resolveCycle itself, not
+    // just correct in isolation as a pure function (getCompoundingBuffValue above).
+    test('a successful defense grants the COMPOUNDED buff value, not the flat base', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], mercenaryEntrants: [], potPotatoes: 0 });
+        // Already 3 consecutive holds going in -> this defense makes it 4 (day 5, the cap).
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 3 });
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+
+        const result = await spudKeepFactory.resolveCycle();
+
+        expect(result.consecutiveHoldCycles).toBe(4);
+        expect(result.passiveBuffValue).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE); // 40% at cycle 4
+        expect(result.cooldownBuffValue).toBeCloseTo(SpudKeep.COOLDOWN_BUFF_MAX_VALUE);
+        expect(dynamoHandler.setActiveSpudKeepBuff).toHaveBeenCalledWith(expect.objectContaining({ value: SpudKeep.PASSIVE_BUFF_MAX_VALUE }));
+        expect(dynamoHandler.setActiveSpudKeepCooldownBuff).toHaveBeenCalledWith(expect.objectContaining({ value: SpudKeep.COOLDOWN_BUFF_MAX_VALUE }));
     });
 
     test('a multi-member roster splits the pot by each member\'s own workMultiplierAmount, not evenly', async () => {

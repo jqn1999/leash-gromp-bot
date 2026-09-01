@@ -64,12 +64,26 @@ holderName, buffType, value, expiresAt }` (`spud_keep_buff` additionally carries
 Both halves are live for the exact `SpudKeep.CONTEST_INTERVAL_SECONDS` (24h) contest interval, reset
 outright on EVERY resolution (even a successful defense) — zero coverage gap.
 
-- **`+6%` passive income** (`SpudKeep.PASSIVE_BUFF_VALUE`, matches Mochi's own Mythic-tier
-  `passiveIncomePercent`) — one read inside `dynamoHandler.passivePotatoHandler`'s existing per-user
+**Compounds with consecutive holds (2026-08-31, direct instruction).** Both base values bumped to
+8% (previously passive was 6%, now matching cooldown's own 8% so the two halves stay symmetric),
+and both now scale UP with `consecutiveHoldCycles` (the same counter `getAttackerBonusMultiplier`
+already reads, just applied to the DEFENDING side's reward instead of every attacker's odds):
+`spudKeepFactory.getCompoundingBuffValue(base, perHoldCycle, max, consecutiveHoldCycles)` returns
+`min(base + perHoldCycle * min(cycles, HOLD_BUFF_STREAK_CAP), max)` — at cycles 0/1/2/3/4+ that's
+exactly 8%/16%/24%/32%/40% for either track (day 1 of a fresh capture through day 5+ of an unbroken
+hold). Computed ONCE, in `resolveCycle`, at the moment each buff is granted (using
+`newConsecutiveHoldCycles`) and stored directly as that buff doc's own `value` — every downstream
+consumer (`passivePotatoHandler`, `/work`/raid/Bounty/rob-npc cooldown sites) already just reads
+`buff.value`, so none of them needed any changes. `/current-spud-keep`'s "Holder Buffs" field shows
+the LIVE current value while held (`currentBuff.value`/`cooldownBuff.value`), or the base-to-max
+range when unclaimed, since there's no live streak to read yet.
+
+- **`+8%` (base) passive income** (`SpudKeep.PASSIVE_BUFF_VALUE`) — one read inside
+  `dynamoHandler.passivePotatoHandler`'s existing per-user
   loop, folded additively alongside `passiveIncomePercent`/`rebirthPercent`/the World Boss buff's own
   passive term. The buff doc itself is read ONCE per tick (not per user) — only the predicate's own
   per-user check runs inside the loop, so this costs zero extra reads at scale.
-- **`-8%` cooldown reduction** (`SpudKeep.COOLDOWN_BUFF_VALUE`) — a flat, holder-wide passive perk,
+- **`-8%` (base) cooldown reduction** (`SpudKeep.COOLDOWN_BUFF_VALUE`) — a flat, holder-wide passive perk,
   **unlike Mercenary Rank's own `cooldownReductionPercent`, applies regardless of win/loss** (a
   judgment call — nothing in the design pinned win/loss-gating, and gating it to wins only would
   make the perk invisible on any loss). Folded in at four sites:

@@ -374,6 +374,35 @@ describe('createSpudKeepStatusEmbed pagination', () => {
     });
 });
 
+// Holder buff compounding display (2026-08-31) — shows the LIVE current value (already
+// computed off consecutiveHoldCycles at grant time), not the flat base constant.
+describe('createSpudKeepStatusEmbed Holder Buffs field', () => {
+    test('shows the base range when unclaimed (no live buff to read a current value from)', () => {
+        const preview = { currentBuff: null, cooldownBuff: null, spudKeep: {}, entrants: [], attackerBonusPercent: 0, consecutiveHoldCycles: 0 };
+        const embed = embedFactory.createSpudKeepStatusEmbed(preview);
+        const field = embed.data.fields.find(f => f.name === 'Holder Buffs:');
+        expect(field.value).toContain('+8%');
+        expect(field.value).toContain('-8%');
+        expect(field.value).toContain('40%');
+    });
+
+    test('shows the CURRENT compounded value while held, not the flat base', () => {
+        const preview = {
+            currentBuff: { holderType: 'guild', holderName: 'Guild A', expiresAt: Date.now() + 100000, value: 0.32 },
+            cooldownBuff: { value: 0.24 },
+            spudKeep: {},
+            entrants: [],
+            attackerBonusPercent: 0,
+            consecutiveHoldCycles: 3,
+        };
+        const embed = embedFactory.createSpudKeepStatusEmbed(preview);
+        const field = embed.data.fields.find(f => f.name === 'Holder Buffs:');
+        expect(field.value).toContain('+32%');
+        expect(field.value).toContain('-24%');
+        expect(field.value).not.toContain('+8%');
+    });
+});
+
 // Player-level roster listing (2026-08-31, direct instruction: "add a way to see players
 // enrolled in the spud keep battle in the page 2 and onwards") — entrant fields only ever
 // show a roster COUNT per guild/Merc Faction, never the actual usernames.

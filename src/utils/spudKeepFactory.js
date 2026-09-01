@@ -84,6 +84,20 @@ function getAttackerBonusMultiplier(consecutiveHoldCycles) {
     return 1 + SpudKeep.ATTACKER_BONUS_BASE + SpudKeep.ATTACKER_BONUS_PER_HOLD_CYCLE * cycles;
 }
 
+// Holder's own compounding buff value (2026-08-31, direct instruction: "if players hold
+// the spud keep multiple days in a row, the buff portion compounds ... 8% ... scale it up
+// to a maximum of 40% each for 5 days held") — same consecutiveHoldCycles counter and cap
+// shape as getAttackerBonusMultiplier above, just read by the DEFENDING side's own reward
+// instead of every attacker's odds. Shared by both the passive and cooldown halves of the
+// bundle (called once per track with that track's own base/per-cycle/max constants) since
+// they're deliberately symmetric. At cycles 0/1/2/3/4+ (a fresh capture through 4
+// successful defenses, i.e. day 1 through day 5+ of an unbroken hold) this returns exactly
+// 8%/16%/24%/32%/40% for either track.
+function getCompoundingBuffValue(baseValue, perHoldCycleValue, maxValue, consecutiveHoldCycles) {
+    const cycles = Math.min(toNumber(consecutiveHoldCycles), SpudKeep.HOLD_BUFF_STREAK_CAP);
+    return Math.min(baseValue + perHoldCycleValue * cycles, maxValue);
+}
+
 // N = max(MERC_FACTION_MIN_TOP_N, the largest signed-up guild's own live raid roster
 // headcount that cycle) — computed off the same live rosters the guild-side power calc
 // already fetched, no extra reads.
@@ -265,22 +279,26 @@ async function resolveCycle() {
     const winner = rollLottery(entrants);
 
     // Step 7 — grant both halves of the bundle buff, replacing outright even on a
-    // successful defense (fresh expiresAt, zero coverage gap).
+    // successful defense (fresh expiresAt, zero coverage gap). Both values are computed
+    // off newConsecutiveHoldCycles (not the flat SpudKeep.*_BUFF_VALUE constants) so an
+    // unbroken hold compounds — see getCompoundingBuffValue above.
     const isSameHolder = isCurrentHolderEntrant(currentBuff, winner.type, winner.id);
     const newConsecutiveHoldCycles = isSameHolder ? consecutiveHoldCycles + 1 : 0;
     const expiresAt = Date.now() + SpudKeep.CONTEST_INTERVAL_SECONDS * 1000;
     const holderType = winner.type;
     const holderId = winner.type === 'guild' ? winner.id : null;
     const holderName = winner.name;
+    const passiveBuffValue = getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, newConsecutiveHoldCycles);
+    const cooldownBuffValue = getCompoundingBuffValue(SpudKeep.COOLDOWN_BUFF_VALUE, SpudKeep.COOLDOWN_BUFF_PER_HOLD_CYCLE, SpudKeep.COOLDOWN_BUFF_MAX_VALUE, newConsecutiveHoldCycles);
 
     await dynamoHandler.setActiveSpudKeepBuff({
         holderType, holderId, holderName,
-        buffType: SpudKeep.PASSIVE_BUFF_TYPE, value: SpudKeep.PASSIVE_BUFF_VALUE,
+        buffType: SpudKeep.PASSIVE_BUFF_TYPE, value: passiveBuffValue,
         expiresAt, consecutiveHoldCycles: newConsecutiveHoldCycles
     });
     await dynamoHandler.setActiveSpudKeepCooldownBuff({
         holderType, holderId, holderName,
-        buffType: SpudKeep.COOLDOWN_BUFF_TYPE, value: SpudKeep.COOLDOWN_BUFF_VALUE,
+        buffType: SpudKeep.COOLDOWN_BUFF_TYPE, value: cooldownBuffValue,
         expiresAt
     });
 
@@ -334,8 +352,8 @@ async function resolveCycle() {
         holderChanged: !isSameHolder,
         consecutiveHoldCycles: newConsecutiveHoldCycles,
         expiresAt,
-        passiveBuffValue: SpudKeep.PASSIVE_BUFF_VALUE,
-        cooldownBuffValue: SpudKeep.COOLDOWN_BUFF_VALUE,
+        passiveBuffValue,
+        cooldownBuffValue,
         attackerBonusPercent: preview.attackerBonusPercent,
         entrants: entrants.map(e => ({
             type: e.type, id: e.id, name: e.name, power: e.power, effectivePower: e.effectivePower,
@@ -356,6 +374,7 @@ module.exports = {
     convertStarchesToPotatoesForPot,
     creditSpudKeepPot,
     getAttackerBonusMultiplier,
+    getCompoundingBuffValue,
     getMercFactionN,
     selectTopNMercenaries,
     splitPotByWorkMulti,

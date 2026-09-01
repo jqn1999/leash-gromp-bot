@@ -3625,7 +3625,7 @@ class EmbedFactory {
     // `pageEntrants`; omitted (null) falls back to the full list, so this stays callable
     // the original way too.
     createSpudKeepStatusEmbed(preview, pageEntrants = null, pageIndex = 0, totalPages = 1) {
-        const { currentBuff, spudKeep, entrants, attackerBonusPercent, consecutiveHoldCycles } = preview;
+        const { currentBuff, cooldownBuff, spudKeep, entrants, attackerBonusPercent, consecutiveHoldCycles } = preview;
         const entrantsToShow = pageEntrants || entrants;
         const isHolderLive = Boolean(currentBuff && currentBuff.holderType && currentBuff.expiresAt > Date.now());
         const fields = [];
@@ -3637,9 +3637,15 @@ class EmbedFactory {
                 : 'The Keep is currently unclaimed!',
             inline: false,
         });
+        // Compounds with consecutive holds (2026-08-31) — shows the CURRENT live values
+        // (currentBuff.value/cooldownBuff.value, already computed off consecutiveHoldCycles
+        // at grant time — see spudKeepFactory.getCompoundingBuffValue) while held, or the
+        // base-to-max range when unclaimed, since there's no live streak to read yet.
         fields.push({
             name: 'Holder Buffs:',
-            value: `+${(SpudKeep.PASSIVE_BUFF_VALUE * 100).toFixed(0)}% passive income, -${(SpudKeep.COOLDOWN_BUFF_VALUE * 100).toFixed(0)}% cooldown (work/raid/bounty/heist) while held`,
+            value: isHolderLive
+                ? `+${(currentBuff.value * 100).toFixed(0)}% passive income, -${(cooldownBuff.value * 100).toFixed(0)}% cooldown (work/raid/bounty/heist) while held — compounds up to +${(SpudKeep.PASSIVE_BUFF_MAX_VALUE * 100).toFixed(0)}%/-${(SpudKeep.COOLDOWN_BUFF_MAX_VALUE * 100).toFixed(0)}% at ${SpudKeep.HOLD_BUFF_STREAK_CAP + 1} consecutive cycles held`
+                : `+${(SpudKeep.PASSIVE_BUFF_VALUE * 100).toFixed(0)}% passive income, -${(SpudKeep.COOLDOWN_BUFF_VALUE * 100).toFixed(0)}% cooldown (work/raid/bounty/heist) while held — compounds up to +${(SpudKeep.PASSIVE_BUFF_MAX_VALUE * 100).toFixed(0)}%/-${(SpudKeep.COOLDOWN_BUFF_MAX_VALUE * 100).toFixed(0)}% at ${SpudKeep.HOLD_BUFF_STREAK_CAP + 1} consecutive cycles held`,
             inline: false,
         });
         fields.push({

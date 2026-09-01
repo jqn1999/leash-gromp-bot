@@ -1437,10 +1437,12 @@ const SpudKeep = {
     MERC_FACTION_MIN_TOP_N: 5,
 
     // Part 1 of the bundle reward — a passivePotatoHandler-consumed percent, live for
-    // whichever side currently holds the Keep. Matches Mochi's own Mythic-tier
-    // passiveIncomePercent (constants.js's Companions entry) exactly.
+    // whichever side currently holds the Keep. Bumped 6% -> 8% (2026-08-31, direct
+    // instruction) to match COOLDOWN_BUFF_VALUE's own base — both halves now start
+    // identical and compound identically (see *_PER_HOLD_CYCLE/*_MAX_VALUE below), rather
+    // than passive quietly staying the weaker half of the bundle once holding compounds.
     PASSIVE_BUFF_TYPE: "passiveIncome",
-    PASSIVE_BUFF_VALUE: 0.06,
+    PASSIVE_BUFF_VALUE: 0.08,
 
     // Part 2 of the bundle reward — a flat cooldown shave applied at every /work,
     // guild raidTimer, Bounty, and Heist cooldown-write site, gated by the same
@@ -1450,6 +1452,23 @@ const SpudKeep = {
     // array. Sits just above a level-1 guild workTimer/raidTimer buff's own -6%.
     COOLDOWN_BUFF_TYPE: "cooldownReduction",
     COOLDOWN_BUFF_VALUE: 0.08,
+
+    // Consecutive-day compounding (2026-08-31, direct instruction: "if players hold the
+    // spud keep multiple days in a row, the buff portion compounds ... 8% ... scale it up
+    // to a maximum of 40% each for 5 days held"). Mirrors ATTACKER_BONUS_BASE/
+    // _PER_HOLD_CYCLE/_STREAK_CAP's exact shape below — same underlying
+    // consecutiveHoldCycles counter (0 on a fresh capture, +1 per successful defense),
+    // just read by the DEFENDING side's own reward instead of every attacker's odds.
+    // getCompoundingBuffValue (spudKeepFactory.js) computes
+    // min(BASE + PER_HOLD_CYCLE * min(cycles, STREAK_CAP), MAX_VALUE) — at cycles 0/1/2/3/4+
+    // that's exactly 8%/16%/24%/32%/40%, i.e. day 1 (fresh capture) through day 5+
+    // (4 successful defenses) of a held Keep. Both tracks share one cap constant since
+    // they're deliberately symmetric.
+    PASSIVE_BUFF_PER_HOLD_CYCLE: 0.08,
+    PASSIVE_BUFF_MAX_VALUE: 0.40,
+    COOLDOWN_BUFF_PER_HOLD_CYCLE: 0.08,
+    COOLDOWN_BUFF_MAX_VALUE: 0.40,
+    HOLD_BUFF_STREAK_CAP: 4,
 
     // The accruing pot (Reward Part 2) — while ANY holder is live, this fraction of
     // every one of this game's ~7 house-account tax events is redirected to
