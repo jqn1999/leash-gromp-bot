@@ -89,12 +89,18 @@ module.exports = {
 
         const pocketColor = spinWheel();
 
-        // getStatDatabase returns undefined until this trackingId's row exists in the stats
-        // table — a brand new stat category with no row seeded, so default to a zeroed
-        // stats object rather than crashing on the very first play. updateStatDatabase below
-        // creates the row on its first write regardless (plain DynamoDB UpdateItem upsert).
-        let rouletteStats = await dynamoHandler.getStatDatabase('roulette') || {
-            goldenCount: 0, dirtCount: 0, rottenCount: 0, totalPayout: 0, totalReceived: 0
+        // updateStatDatabase writes ONE field at a time (a plain DynamoDB `SET
+        // #attrName = :attrValue`), so this trackingId's row only ever contains whichever
+        // counters have actually been incremented so far — any field never yet touched
+        // (e.g. rottenCount before anyone's landed on rotten) is simply ABSENT from the row,
+        // not 0, and getStatDatabase itself returns undefined before the row exists at all.
+        // Merge onto a zeroed default object (rather than `|| defaults`) so every individual
+        // field is guaranteed present, not just the object as a whole — an `|| defaults`
+        // fallback only covers the "row doesn't exist yet" case and still crashes the moment
+        // a real-but-partial row is missing just one field the embed below reads.
+        let rouletteStats = {
+            goldenCount: 0, dirtCount: 0, rottenCount: 0, totalPayout: 0, totalReceived: 0,
+            ...(await dynamoHandler.getStatDatabase('roulette') || {})
         };
         if (pocketColor === 'golden') {
             rouletteStats.goldenCount += 1;

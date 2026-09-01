@@ -137,6 +137,19 @@ describe('/golden-reels bet parsing', () => {
         // Only 1 spin requested; "all" bets the full 500 balance on it, a total loss.
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 0, totalLosses: -500 });
     });
+
+    test('a real but partial stats row (only some counters ever incremented) does not crash — regression for the "Cannot read properties of undefined" bug', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(RANDOM_FOR.loss);
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 500 }));
+        // A real DynamoDB row where only jackpotCount has ever been written — lossCount/
+        // totalPayout/totalReceived/etc. are genuinely ABSENT (not 0), exactly what
+        // updateStatDatabase's one-field-at-a-time SET produces on a brand new trackingId.
+        dynamoHandler.getStatDatabase.mockResolvedValue({ trackingId: 'goldenReels', jackpotCount: 1 });
+        const interaction = fakeInteraction(100, 1);
+
+        await expect(runCallback(interaction)).resolves.not.toThrow();
+        expect(interaction.editReply).toHaveBeenCalled();
+    });
 });
 
 describe('/golden-reels win/loss math per symbol (payoutMultiplier is a TOTAL return multiple)', () => {

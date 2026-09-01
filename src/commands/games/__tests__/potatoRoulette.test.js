@@ -120,6 +120,19 @@ describe('/potato-roulette bet parsing', () => {
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'potatoes', 1127);
     });
 
+    test('a real but partial stats row (only some counters ever incremented) does not crash — regression for the "Cannot read properties of undefined (reading toLocaleString)" bug', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(randomForPocket(36)); // rotten
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1000 }));
+        // A real DynamoDB row where only goldenCount has ever been written — dirtCount/
+        // rottenCount/totalPayout/totalReceived are genuinely ABSENT (not 0), exactly what
+        // updateStatDatabase's one-field-at-a-time SET produces on a brand new trackingId.
+        dynamoHandler.getStatDatabase.mockResolvedValue({ trackingId: 'roulette', goldenCount: 3 });
+        const interaction = fakeInteraction(100, 'golden');
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+        expect(interaction.editReply).toHaveBeenCalled();
+    });
+
     test('a non-numeric bet replies with an error and never touches the database', async () => {
         dynamoHandler.findUser.mockResolvedValue(userFixture());
         const interaction = fakeInteraction('banana', 'golden');

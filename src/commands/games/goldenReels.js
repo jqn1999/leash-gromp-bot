@@ -72,13 +72,18 @@ module.exports = {
         // safe even if that option definition is ever loosened without this file changing.
         spinsRequested = Math.min(Math.max(Math.floor(Number(spinsRequested)) || 1, 1), GoldenReels.MAX_SPINS);
 
-        // getStatDatabase returns undefined until this trackingId's row exists in the stats
-        // table (it returns data.Items[0] from a query with no rows yet) — this is a brand
-        // new stat category with no row seeded, so default to a zeroed stats object rather
-        // than crashing on the very first play. updateStatDatabase below creates the row on
-        // its first write regardless (plain DynamoDB UpdateItem upsert, no ConditionExpression).
-        let goldenReelsStats = await dynamoHandler.getStatDatabase('goldenReels') || {
-            totalPayout: 0, totalReceived: 0, jackpotCount: 0, metalCount: 0, largeCount: 0, regularCount: 0, lossCount: 0
+        // updateStatDatabase writes ONE field at a time (a plain DynamoDB `SET
+        // #attrName = :attrValue`), so this trackingId's row only ever contains whichever
+        // counters have actually been incremented so far — any field never yet touched
+        // (e.g. jackpotCount before anyone's hit Golden Potato) is simply ABSENT from the
+        // row, not 0, and getStatDatabase itself returns undefined before the row exists at
+        // all. Merge onto a zeroed default object (rather than `|| defaults`) so every
+        // individual field is guaranteed present, not just the object as a whole — an
+        // `|| defaults` fallback only covers the "row doesn't exist yet" case and still
+        // crashes the moment a real-but-partial row is missing just one field this file reads.
+        let goldenReelsStats = {
+            totalPayout: 0, totalReceived: 0, jackpotCount: 0, metalCount: 0, largeCount: 0, regularCount: 0, lossCount: 0,
+            ...(await dynamoHandler.getStatDatabase('goldenReels') || {})
         };
 
         let spinsRun = 0;
