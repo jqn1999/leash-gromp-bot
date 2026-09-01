@@ -45,51 +45,74 @@ module.exports = async (client) => {
     }, 300000);
 
     schedule.scheduleJob('0 4 * * *', async function () {
+        // Each step below is independently try/caught (2026-08-31 — a Spud Keep
+        // announcement went silently missing with no diagnosable log line). Previously
+        // this whole job was one unguarded sequential await chain: if ANY earlier step
+        // (Tower payout, quest rotation, guild contract rotation) threw, every step after
+        // it — including Spud Keep's own resolution/post and birthdays — silently never
+        // ran, with nothing logged (the per-post .catch(err => console.log(err)) blocks
+        // only ever covered the Discord channel.fetch/send calls, never the resolution
+        // logic feeding them). Isolating each step means one broken step can't take the
+        // rest of the day's cron down with it, and a real failure now logs which specific
+        // step broke instead of vanishing.
+
         // Pay out today's Tater Tower leaderboard winners (survived runs only) before
         // resetting for the new day — see towerLeaderboardFactory.js.
-        const towerWinners = await towerLeaderboardFactory.payoutWinners()
-        if (towerWinners.length > 0) {
+        try {
+            const towerWinners = await towerLeaderboardFactory.payoutWinners()
+            if (towerWinners.length > 0) {
+                client.channels.fetch('1188525931346792498')
+                    .then(async channel => {
+                        const resultsEmbed = embedFactory.createTowerLeaderboardResultsEmbed(towerWinners)
+                        channel.send({ embeds: [resultsEmbed] })
+                    })
+                    .catch(err => {
+                        console.log(err)
+                    });
+            }
+
+            // Reset all user tower entries at midnight 12 AM EST
+            await dynamoHandler.resetAllTowerEntries()
+        } catch (err) {
+            console.log('4am cron: Tower payout/reset step failed:', err)
+        }
+
+        // Rotate the daily quest set (always) and the weekly set (Mondays only) — see
+        // questFactory.js.
+        try {
+            const { activeQuests, weeklyRotated } = await questFactory.rotateQuests()
             client.channels.fetch('1188525931346792498')
                 .then(async channel => {
-                    const resultsEmbed = embedFactory.createTowerLeaderboardResultsEmbed(towerWinners)
-                    channel.send({ embeds: [resultsEmbed] })
+                    const questEmbed = embedFactory.createQuestRotationEmbed(activeQuests, weeklyRotated)
+                    channel.send({ embeds: [questEmbed] })
                 })
                 .catch(err => {
                     console.log(err)
                 });
+        } catch (err) {
+            console.log('4am cron: quest rotation step failed:', err)
         }
-
-        // Reset all user tower entries at midnight 12 AM EST
-        await dynamoHandler.resetAllTowerEntries()
-
-        // Rotate the daily quest set (always) and the weekly set (Mondays only) — see
-        // questFactory.js.
-        const { activeQuests, weeklyRotated } = await questFactory.rotateQuests()
-        client.channels.fetch('1188525931346792498')
-            .then(async channel => {
-                const questEmbed = embedFactory.createQuestRotationEmbed(activeQuests, weeklyRotated)
-                channel.send({ embeds: [questEmbed] })
-            })
-            .catch(err => {
-                console.log(err)
-            });
 
         // Rotate the active Guild Contract — Mondays only, same weekly-only cadence as
         // the quest system's weekly set, reusing this same daily cron — see
         // guildContractFactory.js. Per-guild progress snapshots aren't touched here;
         // each guild lazily establishes its own baseline the first time a member's
         // /work triggers a check against the new rotation.
-        const { activeContract, rotated: contractRotated } = await guildContractFactory.rotateContract()
-        if (contractRotated) {
-            const contractTemplate = GuildContracts.find(contract => contract.id === activeContract.templateId)
-            client.channels.fetch('1188525931346792498')
-                .then(async channel => {
-                    const contractEmbed = embedFactory.createGuildContractRotationEmbed(activeContract, contractTemplate)
-                    channel.send({ embeds: [contractEmbed] })
-                })
-                .catch(err => {
-                    console.log(err)
-                });
+        try {
+            const { activeContract, rotated: contractRotated } = await guildContractFactory.rotateContract()
+            if (contractRotated) {
+                const contractTemplate = GuildContracts.find(contract => contract.id === activeContract.templateId)
+                client.channels.fetch('1188525931346792498')
+                    .then(async channel => {
+                        const contractEmbed = embedFactory.createGuildContractRotationEmbed(activeContract, contractTemplate)
+                        channel.send({ embeds: [contractEmbed] })
+                    })
+                    .catch(err => {
+                        console.log(err)
+                    });
+            }
+        } catch (err) {
+            console.log('4am cron: guild contract rotation step failed:', err)
         }
 
         // Spud Keep's own daily resolution (systems/spud-keep.md) — reuses this same 4am
@@ -98,26 +121,30 @@ module.exports = async (client) => {
         // Posted only on an actual resolution (winner drawn); a skipped cycle (nobody
         // signed up at all) still gets its own announcement so a quiet cycle doesn't
         // look like a missed cron run.
-        const spudKeepResult = await spudKeepFactory.resolveCycle();
-        client.channels.fetch('1188525931346792498')
-            .then(async channel => {
-                // Payout breakdown pagination (2026-08-30, direct instruction: "show 5
-                // players and paginate if more than 5 players") — this is a public,
-                // fire-and-forget cron post with no owning interaction, so it drives
-                // runPaginatedBroadcast (open to any channel viewer) instead of the
-                // interaction-scoped runPaginatedReply every command uses.
-                const totalPayoutPages = spudKeepResult.skipped ? 1 : embedFactory.getSpudKeepPayoutPageCount(spudKeepResult);
-                const spudKeepEmbed = embedFactory.createSpudKeepResultEmbed(spudKeepResult, 0);
-                const components = totalPayoutPages > 1 ? [buildPaginationRow('spud_keep_payout', 0, totalPayoutPages)] : [];
-                const message = await channel.send({ embeds: [spudKeepEmbed], components });
-                if (totalPayoutPages > 1) {
-                    await runPaginatedBroadcast(message, 'spud_keep_payout', totalPayoutPages,
-                        (pageIndex) => embedFactory.createSpudKeepResultEmbed(spudKeepResult, pageIndex));
-                }
-            })
-            .catch(err => {
-                console.log(err)
-            });
+        try {
+            const spudKeepResult = await spudKeepFactory.resolveCycle();
+            client.channels.fetch('1188525931346792498')
+                .then(async channel => {
+                    // Payout breakdown pagination (2026-08-30, direct instruction: "show 5
+                    // players and paginate if more than 5 players") — this is a public,
+                    // fire-and-forget cron post with no owning interaction, so it drives
+                    // runPaginatedBroadcast (open to any channel viewer) instead of the
+                    // interaction-scoped runPaginatedReply every command uses.
+                    const totalPayoutPages = spudKeepResult.skipped ? 1 : embedFactory.getSpudKeepPayoutPageCount(spudKeepResult);
+                    const spudKeepEmbed = embedFactory.createSpudKeepResultEmbed(spudKeepResult, 0);
+                    const components = totalPayoutPages > 1 ? [buildPaginationRow('spud_keep_payout', 0, totalPayoutPages)] : [];
+                    const message = await channel.send({ embeds: [spudKeepEmbed], components });
+                    if (totalPayoutPages > 1) {
+                        await runPaginatedBroadcast(message, 'spud_keep_payout', totalPayoutPages,
+                            (pageIndex) => embedFactory.createSpudKeepResultEmbed(spudKeepResult, pageIndex));
+                    }
+                })
+                .catch(err => {
+                    console.log('4am cron: Spud Keep post failed:', err)
+                });
+        } catch (err) {
+            console.log('4am cron: Spud Keep resolution step failed:', err)
+        }
 
         // Birthday shit
         client.channels.fetch('1188539987118010408')
