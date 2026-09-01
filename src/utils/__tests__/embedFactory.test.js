@@ -190,7 +190,7 @@ describe('createRivalConfrontationResultEmbed rank bonus display', () => {
             scenario: 'hard', won: true, successChance: 0.30, rankSuccessBonus: 0.10, rival,
             rankInfo: { rank: 6, rewardMultiplier: 1.75 }, rewardAmount: 1000, penaltyAmount: 0, statBump: null,
         };
-        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result);
+        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result, 15);
         const field = embed.data.fields.find(f => f.name.includes('Mercenary Rank Bonus'));
         expect(field).toBeDefined();
         expect(field.value).toContain('+10%');
@@ -202,8 +202,21 @@ describe('createRivalConfrontationResultEmbed rank bonus display', () => {
             scenario: 'easy', won: false, successChance: 0.45, rankSuccessBonus: 0, rival,
             rankInfo: { rank: 1, rewardMultiplier: 1.00 }, rewardAmount: 0, penaltyAmount: 500, statBump: null,
         };
-        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result);
+        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result, 0);
         expect(embed.data.fields.find(f => f.name.includes('Mercenary Rank Bonus'))).toBeUndefined();
+    });
+
+    test('Notoriety field shows the actual post-fight count, not a hardcoded "Reset to 0"', () => {
+        const result = {
+            scenario: 'hard', won: true, successChance: 0.30, rankSuccessBonus: 0.10, rival,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75 }, rewardAmount: 1000, penaltyAmount: 0, statBump: null,
+        };
+        // Confrontation subtracts the flat threshold rather than zeroing it out — any
+        // overflow past the threshold carries into the next cycle (see confrontRival.js).
+        const embed = embedFactory.createRivalConfrontationResultEmbed('User', result, 7);
+        const field = embed.data.fields.find(f => f.name === 'Notoriety:');
+        expect(field.value).not.toContain('Reset to 0');
+        expect(field.value).toContain('7');
     });
 });
 

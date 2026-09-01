@@ -79,7 +79,7 @@ module.exports = {
             }
         }
 
-        const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result);
+        const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result, setAttributes.mercenaryNotoriety);
         await interaction.editReply({ embeds: [embed] });
 
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);

@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -2007,7 +2007,7 @@ class EmbedFactory {
     // needs (Rival always pays potatoes and always grants the guaranteed stat bump on a win,
     // so there's no conditional currency branch or rare-roll callout). `result` is
     // mercenaryFactory.resolveRivalConfrontation's own return shape.
-    createRivalConfrontationResultEmbed(userDisplayName, result) {
+    createRivalConfrontationResultEmbed(userDisplayName, result, newNotoriety) {
         const { scenario, won, successChance, rankSuccessBonus, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
         const color = won ? 'Green' : 'Red';
         const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
@@ -2063,7 +2063,7 @@ class EmbedFactory {
 
         fields.push({
             name: 'Notoriety:',
-            value: 'Reset to 0',
+            value: `${newNotoriety.toLocaleString()}/${Rival.CONFRONTATION_THRESHOLD.toLocaleString()}`,
             inline: true,
         });
 
