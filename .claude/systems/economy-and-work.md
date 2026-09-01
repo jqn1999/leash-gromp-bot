@@ -530,3 +530,12 @@ the house account holds two genuinely separate balances, same as any player. (Th
 crediting the Spud Keep POT specifically, which is potato-only — see
 [spud-keep.md](spud-keep.md#the-pot-reward-part-2--a-redirect-not-conjured-money) for
 `convertStarchesToPotatoesForPot`.)
+
+**Every rate in this table (and every other fractional multiplier that touches a real currency field
+anywhere in the codebase) is rounded/floored before its result is added to a running total or written
+to the DB (2026-09-01 audit, prompted by the Tower `scalingFactor` bug + a live "house account has
+0.005 potatoes" report)** — every row above already `Math.floor`s its `taxAmount` before it ever
+reaches `addUserDatabase`, confirmed by reading each site, not by keyword-matching a nearby
+`Math.round`/`Math.floor`. No additional bug was found; see `roadmap.md`'s "Currency-rounding audit"
+entry for the full list of what was checked and the (inconclusive, since no current code path can
+produce it) investigation into the house-account symptom itself.

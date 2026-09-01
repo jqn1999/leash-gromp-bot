@@ -310,3 +310,17 @@ live incident, not a hypothetical): it existed in the table only as `{userId, po
 which silently broke `passivePotatoHandler`'s server-wide aggregate and could force any raid it
 happened to join into a guaranteed failure. See `findUser`'s self-healing behavior above — this is
 the exact scenario it now protects against on every future lookup.
+
+**A live report (2026-09-01) that the house account is sitting on a fractional 0.005-potato
+balance prompted a full audit of every currency-crediting code path in `src/`** (see roadmap.md's
+"Currency-rounding audit" entry) — every current-and-historical version of every site that ever
+credits `client.user.id`/`awsConfigurations.clientId` (`give.js`, `bank.js`, `guildBank.js`,
+`safehouse.js`, `sellStarch.js`, `companionMarket.js`, `startRaid.js`'s `addToBankOrPurse`,
+`takeBounty.js`, `workFactory.js`'s `calculateGainAmount`) already floors its amount before the
+`addUserDatabase` `ADD` call, so no code fix was possible. Since `potatoes` here is populated purely
+via atomic `ADD` (never a `SET`) and DynamoDB keeps no history of what contributed which fraction, a
+single non-integer write at any point — even one that's since been superseded by since-fixed code —
+would leave that fractional remainder in the running total forever, the same "one bad write survives
+indefinitely in a field nothing else fully overwrites" shape `findUser`'s own healing exists to guard
+against for missing fields, just manifesting as a fraction instead of an absence. Flagged as a
+one-time manual DynamoDB correction, not a code task.

@@ -7812,3 +7812,95 @@ table before first use, the same one-time operational step `'coinflip'` itself o
 `getStatDatabase`/the two new commands assume the row already exists, exactly like every other
 existing `getStatDatabase(trackingId)` call site in this codebase (`coinflip.js`, `work.js`, etc.)
 that reads counters off it without a fallback default.
+
+## Currency-rounding audit (2026-09-01, prompted by the Tower `scalingFactor` incident + a live "Leash Gromp has 0.005 potatoes" report)
+
+Triggered by two production symptoms: the Tower `scalingFactor` bug (already fixed 2026-08-31 —
+`towerFactory.js`'s `scaleReward` now `Math.round`s every `PAYOUT.POTATOES`/`PASSIVE_INCOME`/
+`BANK_CAPACITY` addition before it's ever added to `this.run[...]`, see that fix's own comment) and
+a report that the house account (`client.user.id`) is currently sitting on a fractional 0.005-potato
+balance. The ask: systematically audit every currency-crediting code path in `src/` for the same
+"fractional multiplier result written straight to a real-currency field with no
+`Math.round`/`Math.floor`" pattern, fix any real instance found, and try to explain the house-account
+symptom specifically.
+
+**Result: no additional live bugs found.** Every currency-crediting site that was checked (see list
+below) already rounds/floors its result at the point a fractional multiplier's output is computed,
+before it's added to a running total or written to the DB — the codebase's House Account Taxes list
+in [systems/economy-and-work.md](systems/economy-and-work.md#house-account-taxes) and Spud Keep's
+`splitTaxForSpudKeepPot`/`convertStarchesToPotatoesForPot`/`splitPotByWorkMulti` (all in
+`spudKeepFactory.js`) were the areas flagged as highest-risk going in, and all three already guard
+correctly (`Math.floor`, verified by reading, not assumed from the function name). Confirmed already-correct,
+by function:
+
+- `dynamoHandler.js`: `passivePotatoHandler`'s `passiveGain` (`Math.round`, folds in
+  `passiveIncomePercent`/`rebirthPercent`/World Boss buff/Spud Keep buff additively before the one
+  round) and `applyGuildTreasuryInterest`'s `interest` (`Math.round`) — the two "percent × balance"
+  computations the task specifically flagged as classic fractional-currency risks.
+- `workFactory.js`: `calculateGainAmount` (`Math.floor`s the player's gain, then `Math.floor`s the
+  5% house skim off that already-integer value — both integer by construction), `calculatePassiveAmount`/
+  `calculateBankCapacityAmount` (round to the nearest 10,000/50,000 for Sweet/Metal/Ancient Potato's
+  stat grants).
+- `mercenaryFactory.js`: `resolveBountyAttempt`/`resolveNpcRob`/`resolveRivalConfrontation` — every
+  reward/penalty (`Math.round`) and `calculatePercentDelta`'s stat grants (rounds to a fixed
+  increment, mirroring `workFactory.js`'s own two functions above) already correct.
+- `raidFactory.js`: `handlePotatoSplit`/`handlePotatoSplitByShare` both round their per-member split;
+  `startRaid.js`'s ~15 scenario closures all wrap `totalRaidSplit`/penalty in `Math.round` — including
+  the Guild Raid Companion's `getRaidRewardBonus` folded into `raidRewardMultiplier` (a rate, never
+  itself rounded, but every multiplication of it against a reward constant IS rounded before the
+  write) and `addToBankOrPurse`'s 5% raid tax (`Math.floor`).
+- `spudKeepFactory.js`: `splitTaxForSpudKeepPot` (`Math.floor` + subtraction, so `houseAmount +
+  potAmount` always equals the integer `taxAmount` it was given), `convertStarchesToPotatoesForPot`
+  (`Math.floor`), `splitPotByWorkMulti` (`Math.floor` per share). `getCompoundingBuffValue` is
+  correctly left unrounded (it's a rate, not a currency amount) — confirmed its one consumer,
+  `passivePotatoHandler`, only ever uses it as an additive term inside the single final
+  `Math.round`, never writes it directly.
+- `worldFactory.js`, `towerLeaderboardFactory.js`, `guildContractFactory.js`, `questFactory.js`,
+  `dailyStreakFactory.js`, `safehouseFactory.js`, `companionMarketFactory.js`: every reward/
+  tax/fee/split already rounds or floors (or is a flat integer constant with nothing fractional
+  multiplied in at all — guild contract's `BANK_CAPACITY_REWARD`, Rival's stat grants via the same
+  `calculatePercentDelta`-style helper, etc.).
+- Command files: `give.js`, `bank.js`, `guildBank.js`, `safehouse.js`, `sellStarch.js`, `buyStarch.js`,
+  `companionMarket.js`, `companionBuy.js` (retired but still checked), `takeBounty.js`, `robNpc.js`,
+  `confrontRival.js`, `rob.js`, `regrade.js`, `adminGive.js`, `betEnd.js`, `potatoRoulette.js`,
+  `goldenReels.js` — every tax/fee/payout is floored or rounded before the write, verified by reading
+  each site (not inferred from a nearby `Math.round`/`Math.floor` keyword match). `regrade.js`'s costs/
+  increases are flat tier-table constants, nothing fractional multiplied in.
+- Verified the explicit "do NOT touch" list stays untouched: every `workMultiplierAmount` flat grant
+  (Sweet Potato's 0.2, Metal Potato's 0.6, Bounty/Rival's `TIER_*_GRANT.workMultiplierAmount`, Traveling
+  Turnip/King Kiwi's 0.2) is still written unrounded, and every rate constant (`Bounty.WIN_TAX_PERCENT`,
+  `SpudKeep.POT_REDIRECT_PERCENT`, etc.) is unchanged.
+
+**Regression tests**: none added — no fix was made, since no site failed the audit. The Tower fix
+itself already shipped its own regression tests 2026-08-31 (see `towerFactory.test.js`). Full suite
+re-run to confirm the audit made no accidental edits: 1002/1002, unchanged.
+
+**The "Leash Gromp has 0.005 potatoes" symptom — traced as far as static analysis allows, not fully
+resolved.** Every current code path that credits the house account (`client.user.id`/
+`awsConfigurations.clientId` — `give.js`, `bank.js`, `guildBank.js`, `safehouse.js`, `sellStarch.js`,
+`companionMarket.js`, `companionBuy.js`, `startRaid.js`'s `addToBankOrPurse`, `takeBounty.js`,
+`workFactory.js`'s `calculateGainAmount`) computes an integer amount before the `addUserDatabase`
+`ADD` call — confirmed not just in the current source but back through this repo's own git history
+for each of these sites (`git log`/`git show` on `give.js`, `bank.js`, `rob.js`'s now-removed fine
+tax, and `workFactory.js`'s 2026-08-22 skim-removal/restoration pair): every version of every one of
+these sites that has ever existed in this repo already floored its house-account credit. **No commit
+in this repo's history can be shown to have ever written a fractional amount to the house account.**
+
+The house account's `potatoes` field is populated purely via `addUserDatabase`'s atomic `ADD`
+`UpdateExpression` (never a `SET`/overwrite — see
+[architecture/data-model.md](architecture/data-model.md#the-house-account)), which means its stored
+value is a running total with no history of what contributed which fraction. If a single non-integer
+amount were ever added to it even once — by a bug that's since been fixed and left no trace in the
+diffs above (e.g. a since-reverted experiment, a manual DynamoDB console edit, or an admin/test action
+outside this repo's own command code), or by anything that ever ran against this table before its
+earliest commit visible here — that fractional remainder would sit in the total forever, immune to
+every one of today's `Math.floor`/`Math.round` fixes, since rounding a NEW addition never retroactively
+cleans an already-fractional stored value. This is the same structural class of problem
+`findUser`'s self-healing already exists to guard against for missing fields (see
+[architecture/data-model.md](architecture/data-model.md)'s "`findUser` self-heals in one call"
+section) — a one-time bad write surviving indefinitely in a field nothing else ever fully
+overwrites — just manifesting as a fractional value instead of a missing field. **Not fixed here**: the fractional
+remainder itself can't be corrected by any code change (there's no formula bug left to patch, and
+this codebase's own convention is "no one-off migration scripts" — see the project's own developer
+guidelines) — flagging this as a one-time manual DynamoDB correction for whoever owns write access to
+the live table, not a code task.
