@@ -74,9 +74,22 @@ const Work = {
     MIMIC_POTATO_BANK_PERCENT: .03,
     MAX_MIMIC_POTATO_LOSS: 5000000,
     // Taro Trader's rare jackpot counterpart — same random-range shape (getRandomFromInterval
-    // scaled by effectiveMultiplier), just an ~8-10x bigger haul instead of Taro's 1-1.5x.
-    GOLDEN_YAM_MULTIPLIER_MIN: 8,
-    GOLDEN_YAM_MULTIPLIER_MAX: 12
+    // scaled by effectiveMultiplier). Golden Yam and Golden Potato share the exact same 0.1%
+    // workScenarios encounter chance, but Golden Yam pays in starches (a volatile, sell-
+    // window-gated commodity) instead of instant liquid potatoes — the old 8-12 range (a
+    // flat "~8-10x Taro's 1-1.5x" guess, never actually priced against Golden Potato) worked
+    // out to only ~80k-123k potato-equivalent at a representative ~10,000/starch market
+    // price, well under Golden Potato's guaranteed 380k-570k floor-to-ceiling for the same
+    // rarity. Repriced 2026-09-02, direct instruction ("bring it up so if starches were each
+    // worth 13000 the golden tater is equal") — solved so
+    // MIN/MAX * 13,000 potatoes/starch exactly reproduces Golden Potato's own
+    // MAX_GOLDEN_POTATO * {.8, 1.2} luck-roll * .95 house-cut range (380,000/570,000) at
+    // multiplier 1x, so the two jackpots are worth the same at that reference starch price —
+    // still genuinely worth less if the market's actually paying under 13,000 that week,
+    // and worth more above it, since starches (unlike Golden Potato's instant credit) carry
+    // real timing risk/upside Golden Potato never had.
+    GOLDEN_YAM_MULTIPLIER_MIN: 29.23,
+    GOLDEN_YAM_MULTIPLIER_MAX: 43.85
 }
 
 // Each entry's statPath is looked up on the user record via dot notation (e.g.

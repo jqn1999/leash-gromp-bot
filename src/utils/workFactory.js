@@ -324,8 +324,11 @@ class WorkFactory {
         return starchAmount;
     }
 
-    // Taro Trader's rare jackpot counterpart — same random-range shape, just an
-    // ~8-10x bigger haul (GOLDEN_YAM_MULTIPLIER_MIN/MAX vs Taro's implicit 1-1.5x).
+    // Taro Trader's rare jackpot counterpart — same random-range shape, a much bigger haul
+    // (GOLDEN_YAM_MULTIPLIER_MIN/MAX vs Taro's implicit 1-1.5x). Repriced 2026-09-02 so its
+    // starch haul is worth the same as Golden Potato's own 380k-570k range at a 13,000-
+    // potato-per-starch reference price — see constants.js's own comment on
+    // GOLDEN_YAM_MULTIPLIER_MIN/MAX for the derivation.
     async handleGoldenYam(userDetails, catchUpBonus = 0) {
         const userId = userDetails.userId;
         const userMultiplier = userDetails.workMultiplierAmount;

@@ -240,9 +240,19 @@ apply, same reasoning as Poison. Recorded in `totalLosses` like every other loss
 ### Golden Yam (0.1% roll — `workFactory.js`'s `handleGoldenYam`)
 
 Taro Trader's rare jackpot counterpart — same random-range-scaled-by-`effectiveMultiplier` shape as
-Taro, just `Work.GOLDEN_YAM_MULTIPLIER_MIN(8)`–`MAX(12)` instead of Taro's implicit 1–1.5x, so even
-a worst-case Golden Yam roll beats a best-case Taro roll for the same player. Grants starches, not
+Taro, just `Work.GOLDEN_YAM_MULTIPLIER_MIN`–`MAX` instead of Taro's implicit 1–1.5x, so even a
+worst-case Golden Yam roll beats a best-case Taro roll for the same player. Grants starches, not
 potatoes.
+
+**Repriced against Golden Potato (2026-09-02, direct instruction).** Golden Yam shares Golden
+Potato's exact same 0.1% `workScenarios` slice, but the original `MIN(8)`–`MAX(12)` range was never
+actually priced against it — at a representative ~10,000-potato starch price that worked out to
+only ~80k-123k potato-equivalent per hit, well under Golden Potato's guaranteed 380k-570k
+(`MAX_GOLDEN_POTATO(500000) * {.8, 1.2} luck roll * .95` house cut) for the same rarity. Retuned to
+`MIN(29.23)`–`MAX(43.85)` so `MIN/MAX * 13,000 potatoes/starch` exactly reproduces Golden Potato's
+380,000/570,000 range at multiplier 1x — the two jackpots are worth the same at that reference
+starch price, genuinely worth less below it and more above it, since starches (unlike Golden
+Potato's instant credit) carry real sell-timing risk/upside Golden Potato never had.
 
 ### Sweet Potato
 
