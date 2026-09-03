@@ -1451,12 +1451,6 @@ const SpudKeep = {
     // own expiresAt uses, so a successful defense has zero coverage gap.
     CONTEST_INTERVAL_SECONDS: 86400,
 
-    // N = max(this, the largest signed-up guild's own live raid roster headcount that
-    // cycle) — the Merc Faction always counts at least this many of its own top-ranked
-    // signed-up mercenaries (by raidFactory.getMemberRaidPower), never more than the
-    // single largest guild entrant's own headcount.
-    MERC_FACTION_MIN_TOP_N: 5,
-
     // Part 1 of the bundle reward — a passivePotatoHandler-consumed percent, live for
     // whichever side currently holds the Keep. Bumped 6% -> 8% (2026-08-31, direct
     // instruction) to match COOLDOWN_BUFF_VALUE's own base — both halves now start

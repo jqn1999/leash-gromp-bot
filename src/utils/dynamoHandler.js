@@ -528,6 +528,15 @@ function getDefaultUserFields(userId, username) {
         // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,
         // which resets every Monday and can't be used for a lifetime achievement threshold.
         totalPoisonMilestonesReached: 0,
+        // Persistent opt-in toggled by /spud-keep-signup (2026-09-03, direct instruction:
+        // "mercs can either sign up or not as a toggle similar to guilds just being in or
+        // out") — replaces the old per-cycle spud_keep.mercenaryEntrants list (push on
+        // signup, wiped every resolution, requiring a fresh /spud-keep-signup every single
+        // day to keep participating). The live Merc Faction roster is now just every
+        // current mercenary filtered to whoever has this on — same
+        // "computed live off a persistent flag" shape autoJoinRaids/getLiveRaidRoster
+        // already use for guild raids, see spudKeepFactory.js's getLiveMercFactionRoster.
+        autoJoinSpudKeep: false,
         // Spud Keep (systems/spud-keep.md) — the free participation counter, credited only
         // to a guild entrant's own live raid roster or the Merc Faction's counted top-N at
         // each daily resolution (never to every signed-up mercenary, never server-wide —

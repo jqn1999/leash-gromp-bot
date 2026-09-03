@@ -1,16 +1,16 @@
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 
-// Fire-and-forget signup mirroring /join-world-raid exactly — any mercenary can freely
-// sign up, ADD-only, idempotent. Every mercenary who signs up this cycle is collapsed
-// into exactly ONE combined entrant (the Merc Faction) at resolution — only the top-N by
-// power actually count toward the Faction's lottery ticket, see
-// spudKeepFactory.resolveCycle/systems/spud-keep.md for the exact mechanic. Signing up
-// costs nothing and being uncounted this cycle costs nothing either (personal Bounty
-// progression, achievements, etc. are all untouched).
+// Persistent opt-in toggle (2026-09-03, direct instruction: "mercs can either sign up or
+// not as a toggle similar to guilds just being in or out") — mirrors /join-raid's
+// autoJoinRaids exactly. Replaces the old push-once-per-cycle signup (which required
+// re-running this command every single day, since spud_keep.mercenaryEntrants was wiped
+// at every resolution) with a flag that just stays on until the player turns it back off.
+// The live Merc Faction roster is whoever currently has this on — see
+// spudKeepFactory.getLiveMercFactionRoster.
 module.exports = {
     name: "spud-keep-signup",
-    description: "Sign up as a mercenary for today's Spud Keep contest (joins the Merc Faction)",
+    description: "Toggle whether you automatically join the Merc Faction for Spud Keep from now on",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -25,16 +25,11 @@ module.exports = {
             return;
         }
 
-        const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || {};
-        const mercenaryEntrants = spudKeep.mercenaryEntrants || [];
-        if (mercenaryEntrants.some(m => m.id === userId)) {
-            interaction.editReply(`${userDisplayName}, you've already signed up for this cycle's Spud Keep contest — check /current-spud-keep for the live standings.`);
-            return;
-        }
+        const newState = !userDetails.autoJoinSpudKeep;
+        await dynamoHandler.updateUserDatabase(userId, "autoJoinSpudKeep", newState);
 
-        mercenaryEntrants.push({ id: userId, username: username });
-        await dynamoHandler.updateStatFields("spud_keep", { mercenaryEntrants });
-
-        interaction.editReply(`${userDisplayName}, you've joined the Merc Faction for today's Spud Keep contest! ${mercenaryEntrants.length.toLocaleString()} mercenar${mercenaryEntrants.length === 1 ? 'y' : 'ies'} signed up so far — only the top mercenaries by power count toward the Faction's odds at resolution. Check /current-spud-keep for a live preview.`);
+        interaction.editReply(newState
+            ? `${userDisplayName}, you will now automatically join the Merc Faction for every Spud Keep cycle. Run /spud-keep-signup again anytime to opt back out.`
+            : `${userDisplayName}, you will no longer automatically join the Merc Faction for Spud Keep. Run /spud-keep-signup again anytime to opt back in.`);
     }
 }

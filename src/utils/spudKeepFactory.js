@@ -98,12 +98,31 @@ function getCompoundingBuffValue(baseValue, perHoldCycleValue, maxValue, consecu
     return Math.min(baseValue + perHoldCycleValue * cycles, maxValue);
 }
 
-// N = max(MERC_FACTION_MIN_TOP_N, the largest signed-up guild's own live raid roster
-// headcount that cycle) — computed off the same live rosters the guild-side power calc
-// already fetched, no extra reads.
+// N = the largest signed-up guild's own live raid roster headcount that cycle, computed
+// off the same live rosters the guild-side power calc already fetched, no extra reads.
+// No floor (2026-09-03, direct instruction) — if no guild has signed up this cycle (or
+// every signed-up guild's own live roster is currently empty), N is 0 and the Merc
+// Faction counts zero mercenaries, same as any other 0-power entrant (see resolveCycle's
+// own "skip the lottery entirely if every entrant has 0 power" guard).
 function getMercFactionN(guildRosterLengths) {
-    const largest = guildRosterLengths.length > 0 ? Math.max(...guildRosterLengths) : 0;
-    return Math.max(SpudKeep.MERC_FACTION_MIN_TOP_N, largest);
+    return guildRosterLengths.length > 0 ? Math.max(...guildRosterLengths) : 0;
+}
+
+// The live Merc Faction roster: every current mercenary whose persistent autoJoinSpudKeep
+// toggle (/spud-keep-signup) is on, fetched fresh on every call — same "computed live off
+// a persistent flag, no stored per-cycle list" shape raidFactory.getLiveRaidRoster already
+// uses for guild raids (autoJoinRaids). Replaces the old push-on-signup/wiped-every-
+// resolution spud_keep.mercenaryEntrants array, which required a fresh /spud-keep-signup
+// every single cycle just to keep participating. dynamoHandler.getUsers() is a raw,
+// whole-table scan (same cost/precedent as passivePotatoHandler's own per-tick use of it)
+// — filtered here rather than via a guild's small memberList, since mercenaries aren't
+// grouped anywhere else. Returns the same {id, username}[] shape mercenaryEntrants used
+// to, so every downstream consumer is unchanged.
+async function getLiveMercFactionRoster() {
+    const allUsers = await dynamoHandler.getUsers();
+    return allUsers
+        .filter(u => u.isMercenary === true && u.autoJoinSpudKeep === true)
+        .map(u => ({ id: u.userId, username: u.username }));
 }
 
 // Ranked by full computed power (getMemberRaidPower — workMultiplierAmount * (1 +
@@ -197,7 +216,7 @@ function rollLottery(weightedEntrants) {
 // "always read the roster fresh" precedent Guild Raid/guild buffs already follow) —
 // nothing here is snapshotted at signup time.
 async function buildEntrantPreview() {
-    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { guildEntrants: [], mercenaryEntrants: [], potPotatoes: 0 };
+    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { guildEntrants: [], potPotatoes: 0 };
     const currentBuff = await dynamoHandler.getActiveSpudKeepBuff();
     const cooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
 
@@ -216,7 +235,7 @@ async function buildEntrantPreview() {
     }
 
     const mercFactionN = getMercFactionN(guildEntries.map(g => g.roster.length));
-    const mercenaryEntrants = spudKeep.mercenaryEntrants || [];
+    const mercenaryEntrants = await getLiveMercFactionRoster();
     const mercUserDetails = await Promise.all(mercenaryEntrants.map(m => dynamoHandler.findUser(m.id, m.username)));
     const countedMercs = selectTopNMercenaries(mercUserDetails, mercFactionN);
     const mercBreakdown = getEffectiveRaidPowerBreakdown(countedMercs);
@@ -328,12 +347,15 @@ async function resolveCycle() {
         potPotatoesPaid = potPotatoes;
     }
 
-    // Step 8 — clear the per-cycle entrant lists AND subtract exactly what was just paid
-    // out (or forfeited) from the pot — never a blind `set potPotatoes = 0`. A concurrent
-    // tax event's own addStatFields ADD landing between buildEntrantPreview's own read and
-    // this write is NOT destroyed, since subtracting a known exact amount commutes with a
-    // concurrent ADD regardless of ordering.
-    await dynamoHandler.updateStatFields("spud_keep", { guildEntrants: [], mercenaryEntrants: [], lastResolvedAt: Date.now() });
+    // Step 8 — clear the per-cycle guild entrant list AND subtract exactly what was just
+    // paid out (or forfeited) from the pot — never a blind `set potPotatoes = 0`. A
+    // concurrent tax event's own addStatFields ADD landing between buildEntrantPreview's
+    // own read and this write is NOT destroyed, since subtracting a known exact amount
+    // commutes with a concurrent ADD regardless of ordering. Nothing to clear on the
+    // mercenary side anymore — the Merc Faction roster is read live off each mercenary's
+    // own persistent autoJoinSpudKeep toggle (getLiveMercFactionRoster), not a per-cycle
+    // list that needs wiping.
+    await dynamoHandler.updateStatFields("spud_keep", { guildEntrants: [], lastResolvedAt: Date.now() });
     if (potPotatoesPaid > 0) {
         await dynamoHandler.addStatFields("spud_keep", { potPotatoes: -potPotatoesPaid });
     }
@@ -376,6 +398,7 @@ module.exports = {
     getAttackerBonusMultiplier,
     getCompoundingBuffValue,
     getMercFactionN,
+    getLiveMercFactionRoster,
     selectTopNMercenaries,
     splitPotByWorkMulti,
     isCurrentHolderEntrant,

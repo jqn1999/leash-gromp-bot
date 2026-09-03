@@ -25,11 +25,13 @@ mercenaries genuinely compete for the exact same prize.
   {
       trackingId: "spud_keep",
       guildEntrants: [],       // [{ guildId, guildName }], this cycle's signed-up guilds only
-      mercenaryEntrants: [],   // [{ id, username }], this cycle's signed-up mercenaries only
       lastResolvedAt: 0,       // epoch ms, informational only
       potPotatoes: 0           // atomic-ADD-only counter — POTATO-ONLY, see "The pot" below
   }
   ```
+  No `mercenaryEntrants` field anymore (removed 2026-09-03) — the Merc Faction roster is read
+  live off each mercenary's own persistent `autoJoinSpudKeep` toggle instead, see "The Merc
+  Faction" below.
 - `spud_keep_buff` — the granted passive-income buff + the SOLE canonical holder pointer +
   `consecutiveHoldCycles` (the Attacker's Bonus streak). Dedicated wrapper:
   `dynamoHandler.getActiveSpudKeepBuff`/`setActiveSpudKeepBuff`.
@@ -160,7 +162,7 @@ balance; the loser of that race is simply told to try again, mirroring `resolveS
 double-collect guard.
 
 `/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc it
-already reads for `guildEntrants`/`mercenaryEntrants`. The daily resolution announcement
+already reads for `guildEntrants`. The daily resolution announcement
 (`createSpudKeepResultEmbed`) shows a per-player breakdown of who got what
 (`buildSpudKeepPayoutShareField`, sorted by amount descending) alongside the aggregate total.
 
@@ -175,25 +177,39 @@ plain sent message supports the same `awaitMessageComponent`/`edit` API an inter
 
 ## The Merc Faction
 
-Every mercenary who signs up (`/spud-keep-signup`, fire-and-forget, ADD-only, idempotent — mirrors
-`/join-world-raid`) is collapsed into exactly ONE combined pseudo-entrant, not individual lottery
+Every mercenary whose persistent `autoJoinSpudKeep` toggle (`/spud-keep-signup`, 2026-09-03,
+direct instruction: "mercs can either sign up or not as a toggle similar to guilds just being in
+or out") is on gets collapsed into exactly ONE combined pseudo-entrant, not individual lottery
 tickets — a lone mercenary's solo power was a near-token longshot against even a small guild's own
-`teamPower`.
+`teamPower`. `getLiveMercFactionRoster()` fetches this fresh on every call (a whole-table
+`dynamoHandler.getUsers()` scan filtered to `isMercenary === true && autoJoinSpudKeep === true` —
+same cost/precedent as `passivePotatoHandler`'s own per-tick full scan), mirroring
+`raidFactory.getLiveRaidRoster`'s exact "computed live off a persistent flag" shape for guild
+raids — replacing the old push-on-signup `spud_keep.mercenaryEntrants` list, which was wiped every
+resolution and required a fresh `/spud-keep-signup` every single cycle just to keep participating.
 
-- **N = `max(SpudKeep.MERC_FACTION_MIN_TOP_N (5), largest signed-up guild's own live raid roster
-  headcount that cycle)`** (`getMercFactionN`) — a mega-guild fielding 12 raiders can't structurally
-  cap the Faction below its own headcount.
-- Signed-up mercenaries are ranked by `raidFactory.getMemberRaidPower` (full computed power, not the
-  bare stat) and the top N are kept (`selectTopNMercenaries`, no padding if fewer than N signed up).
+- **N = the largest signed-up guild's own live raid roster headcount that cycle, no floor**
+  (`getMercFactionN`, floor removed 2026-09-03, direct instruction — previously
+  `max(SpudKeep.MERC_FACTION_MIN_TOP_N (5), ...)`). A mega-guild fielding 12 raiders can't
+  structurally cap the Faction below its own headcount, same as before — but if NO guild has
+  signed up this cycle (or every signed-up guild's own live roster is currently empty), N is now
+  literally 0: the Merc Faction counts zero mercenaries and contributes 0 power, just like any
+  other 0-power entrant, rather than always guaranteeing at least 5 mercenaries a lottery line.
+  In practice this means the Merc Faction can only ever have real odds in a cycle where at least
+  one guild has also entered.
+- Opted-in mercenaries are ranked by `raidFactory.getMemberRaidPower` (full computed power, not the
+  bare stat) and the top N are kept (`selectTopNMercenaries`, no padding if fewer than N are
+  opted in).
 - The top-N `userDetails` are fed into `raidFactory.getEffectiveRaidPowerBreakdown` — literally the
   same function a guild's own live roster runs through, giving the Faction the identical
   rank-decayed `teamPower` curve and headcount bonus (and the same ~3x-of-top-member ceiling) any
   guild entrant already has.
-- Re-ranked live at resolution time, never snapshotted at signup — a mercenary who buys a
+- Re-ranked live at resolution time, never snapshotted at opt-in — a mercenary who buys a
   work-multiplier upgrade an hour before resolution is counted at their new power.
-- Zero mercenaries signed up → the Faction's power is `getEffectiveRaidPowerBreakdown([])`'s own
-  `0`, via its existing empty-array guard — the Faction still occupies a lottery line item every
-  cycle (structurally always-present, unlike a guild's opt-in entry), just at 0% odds.
+- Zero mercenaries opted in (or N computes to 0) → the Faction's power is
+  `getEffectiveRaidPowerBreakdown([])`'s own `0`, via its existing empty-array guard — the Faction
+  still occupies a lottery line item every cycle (structurally always-present, unlike a guild's
+  opt-in entry), just at 0% odds.
 - The free participation counter (`spudKeepAttemptCount`) is credited ONLY to the counted top-N —
   narrower than the buff grant above, which is server-wide by design.
 
@@ -218,8 +234,9 @@ tickets — a lone mercenary's solo power was a near-token longshot against even
    (`splitPotByWorkMulti`) and credited to `spudKeepPendingPotatoes` (an atomic ADD per person), not
    directly to `potatoes`. Players collect their own share into liquid potatoes whenever they choose
    via `/spud-keep-collect`.
-6. Clear `guildEntrants`/`mercenaryEntrants`, set `lastResolvedAt`, and `addStatFields` a subtraction
-   of exactly what was paid/forfeited — never a blind reset.
+6. Clear `guildEntrants`, set `lastResolvedAt`, and `addStatFields` a subtraction of exactly what
+   was paid/forfeited — never a blind reset. Nothing to clear on the mercenary side — the Merc
+   Faction roster is read live off each mercenary's own persistent toggle, not a per-cycle list.
 7. Increment `spudKeepAttemptCount` for every guild entrant's own roster (auto-re-entered holder
    included) and the Merc Faction's counted top-N.
 8. Return a result object; `backgroundEvents.js` turns it into `embedFactory.createSpudKeepResultEmbed`,
@@ -254,8 +271,9 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
 - `/join-spud-keep` (guilds) — officer-gated (Elder/Co-Leader/Leader, same tier `/start-raid` uses),
   idempotent add of `{guildId, guildName}` to `spud_keep.guildEntrants`. Does NOT touch roster
   composition — that's still entirely each member's own `/join-raid` `autoJoinRaids` toggle.
-- `/spud-keep-signup` (user) — any `isMercenary` user, fire-and-forget idempotent add to
-  `spud_keep.mercenaryEntrants`, mirrors `/join-world-raid` exactly.
+- `/spud-keep-signup` (user) — any `isMercenary` user, persistent opt-in toggle
+  (`autoJoinSpudKeep`), mirrors `/join-raid`'s `autoJoinRaids` exactly rather than requiring a
+  fresh signup every cycle.
 - `/current-spud-keep` (misc) — read-only, `buildEntrantPreview()` live, no state written by viewing
   it: current holder + buff expiry + streak, both buff magnitudes, the live pot total, the Attacker's
   Bonus this cycle would apply, and every entrant's power/breakdown/lottery chance. **Paginated**

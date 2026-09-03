@@ -7904,3 +7904,38 @@ remainder itself can't be corrected by any code change (there's no formula bug l
 this codebase's own convention is "no one-off migration scripts" — see the project's own developer
 guidelines) — flagging this as a one-time manual DynamoDB correction for whoever owns write access to
 the live table, not a code task.
+
+## Merc Faction: persistent opt-in toggle + no-floor N (2026-09-03, direct instruction)
+
+Two changes to `/spud-keep-signup`/`getMercFactionN`, both direct instructions with no open design
+questions:
+
+**1. "mercs can either sign up or not as a toggle similar to guilds just being in or out."**
+`/spud-keep-signup` used to push `{id, username}` onto `spud_keep.mercenaryEntrants`, a per-cycle
+list wiped every resolution (step 6/8) — meaning a mercenary had to re-run the command every single
+day just to keep participating, unlike a guild member's own `/join-raid` `autoJoinRaids` toggle,
+which just stays on until turned off. Replaced with a new persistent `autoJoinSpudKeep` user field
+(default `false`, same `getDefaultUserFields` healing as every other top-level default) that
+`/spud-keep-signup` now flips, mirroring `/join-raid`'s exact toggle shape/messaging. The Merc
+Faction roster is now computed by a new `spudKeepFactory.getLiveMercFactionRoster()` — a whole-table
+`dynamoHandler.getUsers()` scan filtered to `isMercenary === true && autoJoinSpudKeep === true`,
+mirroring `raidFactory.getLiveRaidRoster`'s "computed live off a persistent flag" shape (that one
+filters a guild's own small `memberList`; this one has to scan the whole user table since
+mercenaries aren't grouped anywhere else — same cost/precedent `passivePotatoHandler` already pays
+per tick). `spud_keep.mercenaryEntrants` is now dead — no longer read, written, or cleared anywhere.
+
+**2. "make the number of mercs counted = to the member count of the highest guild participating
+with no floor."** `getMercFactionN` used to be `max(SpudKeep.MERC_FACTION_MIN_TOP_N (5), largest
+signed-up guild's own live roster headcount)` — guaranteeing the Faction at least 5 lottery-counted
+mercenaries even with no guilds around. Now it's just the largest signed-up guild's own live roster
+headcount, full stop — `Math.max(...guildRosterLengths)` with no floor term, and `0` if
+`guildRosterLengths` is empty. `MERC_FACTION_MIN_TOP_N` removed from `constants.js` entirely (dead
+once the only caller stopped reading it).
+
+**Interaction worth flagging**: combined, these two changes mean the Merc Faction can only ever have
+nonzero odds in a cycle where at least one guild has ALSO signed up that cycle — if zero guilds
+enter, N computes to 0 regardless of how many mercenaries have `autoJoinSpudKeep` on, the Faction's
+`getEffectiveRaidPowerBreakdown([])` is 0, and (if no guild is a live holder either) the whole cycle
+hits the existing "every entrant has 0 power" skip path with no resolution at all. This is a direct
+consequence of "no floor" as literally requested, not an oversight — flagged here in case a
+guild-less cycle turns out to skip more often than intended once live.
