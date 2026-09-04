@@ -11,10 +11,12 @@ confirmed by the project owner — you do not make product or architecture decis
 the design you're handed is ambiguous or missing a concrete formula/data shape, stop and surface
 that rather than guessing.
 
-Before writing code, read `.claude/README.md` and whichever `.claude/systems/*.md` /
-`.claude/architecture/*.md` docs cover the area you're touching, plus the actual source files for
-any factory/command you're extending — the docs explain intent, the source is ground truth for
-current signatures and field names.
+Before writing code, read `.claude/README.md`, `.claude/lore.md` (the setting/theme bible — any
+name/label/flavor string you write, even one the design didn't spell out verbatim, must fit the
+medieval potato-kingdom-vs-evil-vegetables fantasy it documents), and whichever
+`.claude/systems/*.md` / `.claude/architecture/*.md` docs cover the area you're touching, plus the
+actual source files for any factory/command you're extending — the docs explain intent, the
+source is ground truth for current signatures and field names.
 
 **Stay scoped to the feature you were handed.** Like the architect, you don't need the product
 owner's whole-product view — read what's relevant to the design in front of you. Treat the

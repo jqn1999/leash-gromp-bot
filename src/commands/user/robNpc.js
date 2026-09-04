@@ -134,7 +134,7 @@ module.exports = {
         // in this bot, win, whiff, or loss alike.
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
-        // The Big Score's rare stat-grant branch — reuses raidFactory.handleStatSplit (a
+        // The Royal Treasury's rare stat-grant branch — reuses raidFactory.handleStatSplit (a
         // 1-person "raidList") for the actual write, same precedent takeBounty.js's own
         // rare stat-reward branch already set. The amount handed in is already the
         // fully-resolved final delta (see mercenaryFactory.pickStatGrant), not a raw

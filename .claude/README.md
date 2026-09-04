@@ -12,6 +12,10 @@ those AWS services.
 
 ## Contents
 
+- **[lore.md](lore.md) — the setting/theme bible. Read this before naming or writing flavor text for
+  ANYTHING new (a command, a constant, an embed title, an item, a boss, a companion). The Potato
+  Kingdom is a medieval fantasy setting where evil vegetables/fruits are the villains — no modern
+  vehicles, retail, finance, or technology in any player-facing name or line, ever.**
 - [architecture/bootstrap.md](architecture/bootstrap.md) — how the process starts, how commands/events
   are discovered and registered with Discord, how interactions get routed.
 - [architecture/data-model.md](architecture/data-model.md) — DynamoDB tables, item shapes, and the
@@ -51,6 +55,12 @@ those AWS services.
 
 ## Orientation for future changes
 
+- **Naming/flavor text for anything new goes through [lore.md](lore.md) first** — this is a
+  standing requirement, not optional polish. A 2026-09-04 pass found `RobNpc.TIERS`' own tier
+  names ("Corner Store," "Payroll Truck," "Armored Vault," "The Big Score") had drifted into
+  modern heist-movie language despite the rest of the game being a consistent medieval
+  potato-kingdom-vs-evil-vegetables fantasy — fixed alongside writing that doc (see
+  [systems/mercenary-bounties.md](systems/mercenary-bounties.md)).
 - Game balance numbers live almost entirely in [src/utils/constants.js](../src/utils/constants.js) —
   check there before hardcoding a new number elsewhere.
 - All persistence goes through [src/utils/dynamoHandler.js](../src/utils/dynamoHandler.js) — there is

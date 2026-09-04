@@ -7939,3 +7939,45 @@ enter, N computes to 0 regardless of how many mercenaries have `autoJoinSpudKeep
 hits the existing "every entrant has 0 power" skip path with no resolution at all. This is a direct
 consequence of "no floor" as literally requested, not an oversight — flagged here in case a
 guild-less cycle turns out to skip more often than intended once live.
+
+## Setting/theme bible + Heist tier re-theme (2026-09-04, direct instruction)
+
+Two-part request: "make sure that for all future work the overall fantasy of potatoes, evil
+vegetables/fruits, etc is kept in tact whether it be an md or memory... with potato kingdoms and
+medieval such things," then "rework the commands and all things mercenary related to be more in
+line with that — things like armored trucks and stuff dont match."
+
+**Part 1 — `.claude/lore.md`** (new): a setting/theme bible documenting what's already established
+(potato-folk heroes, evil-vegetable/fruit villains, medieval institutions — Kingdom/Guilds/Spud
+Keep/mercenaries/Royal Treasury, potatoes-as-currency + starch-as-commodity, the existing
+`BountyScenarios`/`RivalMercenaries`/`worldBossMobs` voice) and a hard-no list of anachronisms
+(modern vehicles, retail, finance, technology, real-world brands/politics) with a one-line test:
+"could this sentence appear in a storybook about a kingdom of talking potatoes fighting off evil
+vegetables?" Wired into `.claude/README.md`'s Contents + Orientation sections (front and center,
+not buried) and into all three subagent instructions (`product-owner.md`/`architect.md`/
+`developer.md`) as a required read before naming or writing flavor text for anything new — this is
+meant to actually change future output, not just exist as a reference nobody opens.
+
+**Part 2 — `RobNpc.TIERS` re-theme** (the concrete anachronism that prompted this): the 4
+`/rob-npc` heist tiers were named "Corner Store" / "Payroll Truck" / "Armored Vault" / "The Big
+Score" — modern heist-movie language, jarring against a game where everything else (Bounty's
+`Kennebec Pete`/`Baron Russet`, World Bosses' `Griseous`/`Raikon`/`Yamsalot`, Rival Bounty
+Hunters' `Turnipbeard`/`Taromire`) is consistently medieval-fantasy-potato-kingdom. Renamed,
+mechanics/odds/payouts/keys' STRUCTURE completely unchanged (pure re-skin):
+
+| Old | New |
+|---|---|
+| `corner_store` / "Corner Store" | `market_stall` / "Market Stall" |
+| `payroll_truck` / "Payroll Truck" | `merchant_wagon` / "Merchant's Wagon" |
+| `armored_vault` / "Armored Vault" | `noble_vault` / "Noble's Vault" |
+| `big_score` / "The Big Score" | `royal_treasury` / "The Royal Treasury" |
+
+Also rewrote `embedFactory.js`'s per-tier win/loss flavor lines (previously literally said
+"payroll truck's lockbox," "the vault door... the alarm," "The Big Score is yours") to match —
+e.g. Noble's Vault: "The vault door gives way — you're in and out with a fortune before the
+manor's alarm bell even finishes ringing." Confirmed everything else mercenary-related
+(`BountyScenarios`, `RivalMercenaries`, `MERCENARY_RANK_TITLES`) was ALREADY on-theme — this was
+the one genuine anachronism, not a sign of a wider problem. `.claude/systems/mercenary-bounties.md`
+and `.claude/reference/commands.md` updated to match; 4 test files' hardcoded tier-key/label
+literals renamed mechanically (`sed`, verified no leftovers/double-replace artifacts). Full suite
+re-run clean (1023/1023, no behavior change — this was naming only).

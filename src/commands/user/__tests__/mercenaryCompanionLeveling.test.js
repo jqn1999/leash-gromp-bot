@@ -203,7 +203,7 @@ describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on a
     test('a win bumps Yukon by the Heist-scaled grant', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
         try {
             await callback({}, interaction);
@@ -218,7 +218,7 @@ describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on a
     test('a whiff still bumps Yukon by the same grant — unconditional on outcome', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // guarantees a whiff
         try {
             await callback({}, interaction);
@@ -233,7 +233,7 @@ describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on a
     test('a non-Yukon equipped companion does not level at all', async () => {
         const user = sproutUser();
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         try {
             await callback({}, interaction);
@@ -269,7 +269,7 @@ describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on a
     test('does nothing to companions when nothing is equipped', async () => {
         const user = baseUser({ companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 } });
         dynamoHandler.findUser.mockResolvedValue(user);
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         try {
             await callback({}, interaction);

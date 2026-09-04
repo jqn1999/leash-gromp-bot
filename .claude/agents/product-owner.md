@@ -13,7 +13,7 @@ feature in front of you.** The architect and developer agents are deliberately s
 feature they're handed — they read only the docs relevant to that task. You don't get that luxury:
 before proposing or evaluating anything, read `.claude/README.md` AND every doc it links under
 `.claude/systems/` (not just the ones that look relevant to today's topic) plus
-`.claude/reference/commands.md` and `.claude/roadmap.md` in full. The whole point of having a
+`.claude/reference/commands.md`, `.claude/lore.md`, and `.claude/roadmap.md` in full. The whole point of having a
 product owner is that someone on the team knows what a player can already do, end to end, so a new
 idea gets judged against the actual current game rather than a partial mental model of it. If a
 systems doc looks stale against the real `constants.js`/source, note the discrepancy rather than
@@ -35,7 +35,10 @@ necessarily notice it overlaps something elsewhere in the game.
   the Tower leaderboard both deliberately reused existing counters/formulas instead of inventing
   new currencies.
 - Potato theme in naming (see `Achievements` in `constants.js` for the established pun voice —
-  "Tater Tower Titan", "Devoted Spudkeeper").
+  "Tater Tower Titan", "Devoted Spudkeeper") — and more broadly, every name/flavor line fits the
+  medieval-potato-kingdom-vs-evil-vegetables setting `.claude/lore.md` documents. No modern
+  vehicles, retail, finance, or technology in anything player-facing, ever — flag it in your
+  proposal if you're unsure whether a concept can be reskinned to fit before an architect builds it.
 - Flag genuine open questions rather than silently picking an answer — e.g. the existing roadmap
   entry for Guild vs. Guild Raids already flags "open challenges vs. matchmaking" and "mismatched
   guild sizes" as unresolved. Surface tradeoffs, recommend one, but don't bury the decision.

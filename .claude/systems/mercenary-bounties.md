@@ -486,15 +486,15 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
 
 | Tier | Rank | Base / +per-rank / cap | Payout cap | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|
-| Corner Store | 1+ | 30% / +10% / 80% | 5,000 | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Payroll Truck | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
-| Armored Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 baseline | +3 | — |
-| The Big Score | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Market Stall | 1+ | 30% / +10% / 80% | 5,000 | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
+| Merchant's Wagon | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
+| Noble's Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 baseline | +3 | — |
+| The Royal Treasury | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
 defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
 (`mercenaryFactory.getMercenaryRankInfo`) is equivalent to gating on that win count
-directly, with no second counter to track. **Tier I ("Corner Store") is unchanged from
+directly, with no second counter to track. **Tier I ("Market Stall") is unchanged from
 before this ladder existed** — same base/rank chance curve, same payout cap, still
 whiff-only — it stays the safe, always-available intro action with zero regression for
 anyone who only ever ran the single flat `/rob-npc` this replaced. Real stakes only start
@@ -540,10 +540,10 @@ still near-zero-wealth server simply grows into full tier differentiation over t
 same "`*_MAX_*` caps the base, not the final payout" behavior Metal/Ancient/Golden Potato
 already have at low server wealth.
 
-The Big Score's stat-grant branch is the one thing Tiers I-III never offer — reuses
+The Royal Treasury's stat-grant branch is the one thing Tiers I-III never offer — reuses
 `BountyStatReward`'s existing `TIER_I_GRANT` pool (no new grant table), applied via
 `raidFactory.handleStatSplit` the same way `takeBounty.js`'s own rare stat-reward branch
-already writes it. Gives Rank 6 a reason to keep pulling The Big Score past "same payout as
+already writes it. Gives Rank 6 a reason to keep pulling The Royal Treasury past "same payout as
 every other Rank 6 win."
 
 `mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, heistTierKey)`
@@ -551,7 +551,7 @@ is the single resolve function `/rob-npc` calls — `workGainAmount`/`catchUpBon
 computed by the caller the same way `work.js`'s callback computes them for a real `/work`
 call, kept as params rather than fetched internally so the function stays testable without
 mocking `dynamoHandler.getCachedServerTotal` for every case. `heistTierKey` defaults to
-Tier I (`'corner_store'`) so any pre-ladder call site keeps behaving exactly as it did
+Tier I (`'market_stall'`) so any pre-ladder call site keeps behaving exactly as it did
 before this rework.
 
 ## Yukon, the Highwayman — the one Bounty-exclusive companion
@@ -718,7 +718,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/retire-mercenary` | No args, no confirm. Rejects if not currently a mercenary. Progress persists. |
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
 | `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
-| `/rob-npc heist-type:<Corner Store\|Payroll Truck\|Armored Vault\|The Big Score>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Big Score + (on a win, Rank 2+) a cooldown-reduction callout). |
+| `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
 
 **Mercenary Leaderboard** (2026-08-31) lives on the existing `/leaderboard` command, not
 here — a fourth `mercenary-leaderboard` option alongside `user-leaderboard`/
@@ -807,7 +807,7 @@ of labor:
 
 - `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
 - `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/2/3/4 for Corner
-  Store/Payroll Truck/Armored Vault/The Big Score — see `/rob-npc (RobNpc)` below). Used to
+  Store/Merchant's Wagon/Noble's Vault/The Royal Treasury — see `/rob-npc (RobNpc)` below). Used to
   be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1) before the Heist Ladder rework
   (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor of each `RobNpc.TIERS`
   entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s own per-tier shape.

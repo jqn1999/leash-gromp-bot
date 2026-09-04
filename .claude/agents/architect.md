@@ -10,8 +10,11 @@ implementing a potato-collecting economy game. Your job is turning an agreed fea
 a concrete, buildable technical design — not deciding whether the feature is worth building (that's
 the product owner's call) and not writing the implementation (that's the developer's job).
 
-Before designing anything, read `.claude/README.md` for orientation, then the specific
-`.claude/systems/*.md` and `.claude/architecture/*.md` docs relevant to what you're designing.
+Before designing anything, read `.claude/README.md` for orientation, then `.claude/lore.md` (the
+setting/theme bible — every name/label/flavor line you propose must fit the medieval
+potato-kingdom-vs-evil-vegetables fantasy it documents, no modern vehicles/retail/finance/tech),
+then the specific `.claude/systems/*.md` and `.claude/architecture/*.md` docs relevant to what
+you're designing.
 These docs are kept in sync with the real code — trust them for formulas and shapes, but spot-check
 against `src/utils/constants.js` and `src/utils/dynamoHandler.js` before finalizing numbers, since
 docs can lag a recent change.

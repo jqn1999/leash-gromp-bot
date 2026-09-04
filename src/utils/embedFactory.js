@@ -1956,7 +1956,7 @@ class EmbedFactory {
     // /rob-npc's own result embed. `result` is mercenaryFactory.resolveNpcRob's own return
     // shape; `tier` is the matching RobNpc.TIERS entry (robNpc.js already looked it up to
     // gate the attempt, so it's passed in rather than re-derived from result.tier here).
-    // Since roadmap #50's Heist Ladder, a whiff is only harmless on Tier I (Corner Store) —
+    // Since roadmap #50's Heist Ladder, a whiff is only harmless on Tier I (Market Stall) —
     // Tiers II-IV carry a real penalty, same "Potatoes Lost" branch createBountyResultEmbed
     // already needs for a Bounty loss.
     // companionXpGained/companionName (new, optional, default 0/null) — see
@@ -1977,7 +1977,7 @@ class EmbedFactory {
             if (statReward) {
                 const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
                 const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
-                fields.push({ name: '🏅 The Big Score — Permanent Stat Reward!', value: statText, inline: false });
+                fields.push({ name: '🏅 The Royal Treasury — Permanent Stat Reward!', value: statText, inline: false });
             }
             // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) only
             // ever applies on a win — surfaced explicitly, same as createBountyResultEmbed's
@@ -1995,16 +1995,16 @@ class EmbedFactory {
         }
 
         const winFlavor = {
-            corner_store: `You ambush a passing supply wagon and make off clean before anyone's the wiser.`,
-            payroll_truck: `You crack the payroll truck's lockbox and vanish into the crowd with a real haul.`,
-            armored_vault: `The vault door gives way — you're in and out with a fortune before the alarm even finishes ringing.`,
-            big_score: `Every detail lands perfectly. The Big Score is yours, and it'll be talked about for a long time.`
+            market_stall: `You lift a sack clean off a roadside stall and vanish into the market crowd before the vendor even turns around.`,
+            merchant_wagon: `You crack the merchant's strongbox mid-journey and slip away with a real haul before the caravan guards notice.`,
+            noble_vault: `The vault door gives way — you're in and out with a fortune before the manor's alarm bell even finishes ringing.`,
+            royal_treasury: `Every detail lands perfectly. The Royal Treasury is yours, and it'll be sung about in taverns for years.`
         };
         const loseFlavor = {
-            corner_store: `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`,
-            payroll_truck: `The truck's guards spot you first — you barely escape, and it costs you.`,
-            armored_vault: `The vault's defenses catch you mid-break-in — a costly, narrow escape.`,
-            big_score: `The Big Score falls apart at the worst possible moment — an expensive, humbling failure.`
+            market_stall: `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`,
+            merchant_wagon: `The caravan's guards spot you first — you barely escape, and it costs you.`,
+            noble_vault: `The vault's wards catch you mid-break-in — a costly, narrow escape.`,
+            royal_treasury: `The Royal Treasury heist falls apart at the worst possible moment — an expensive, humbling failure.`
         };
 
         const embed = new EmbedBuilder()

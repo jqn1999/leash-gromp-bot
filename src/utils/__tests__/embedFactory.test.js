@@ -262,7 +262,7 @@ describe('createBountyResultEmbed cooldown bonus display', () => {
 });
 
 describe('createRobNpcResultEmbed cooldown bonus display', () => {
-    const tier = { key: 'corner_store', label: 'Corner Store' };
+    const tier = { key: 'market_stall', label: 'Market Stall' };
 
     test('shows the Mercenary Rank Cooldown Bonus field on a win at Rank 6', () => {
         const result = {
@@ -645,7 +645,7 @@ describe('companion XP display gating on companion equipped', () => {
     });
 
     test('createRobNpcResultEmbed shows the Companion XP field only when companionXpGained > 0', () => {
-        const tier = { key: 'corner_store', label: 'Corner Store' };
+        const tier = { key: 'market_stall', label: 'Market Stall' };
         const result = { won: true, successChance: 0.8, amount: 5000, rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 }, penaltyAmount: 0, statReward: null };
 
         const withXp = embedFactory.createRobNpcResultEmbed('User', result, tier, 3, 'Barn Owl');

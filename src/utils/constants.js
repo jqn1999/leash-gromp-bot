@@ -1866,7 +1866,7 @@ const BountyStatReward = {
 // rank (mercenaryFactory.getMercenaryRankInfo) is equivalent to gating on that win count
 // directly, with no second counter to track.
 //
-// Tier I ("Corner Store") is UNCHANGED from before this ladder existed — same base/rank
+// Tier I ("Market Stall") is UNCHANGED from before this ladder existed — same base/rank
 // chance curve, same payout cap, still whiff-only (no loss) — it stays the safe,
 // always-available intro action with zero regression for anyone who only ever ran the
 // single flat /rob-npc this replaced. Real stakes (a genuine loss on a whiff, matching the
@@ -1905,8 +1905,8 @@ const RobNpc = {
     LOSS_MULTIPLIER_SCALING: 0.15,
     TIERS: [
         {
-            key: 'corner_store',
-            label: 'Corner Store',
+            key: 'market_stall',
+            label: 'Market Stall',
             rankRequired: 1,
             baseChance: 0.30,
             chancePerRank: 0.10,
@@ -1917,8 +1917,8 @@ const RobNpc = {
             statGrantChanceOnWin: 0
         },
         {
-            key: 'payroll_truck',
-            label: 'Payroll Truck',
+            key: 'merchant_wagon',
+            label: 'Merchant\'s Wagon',
             rankRequired: 2,          // Rank 2 = MercenaryRank.THRESHOLDS' own 15-win threshold
             baseChance: 0.20,
             chancePerRank: 0.08,
@@ -1929,8 +1929,8 @@ const RobNpc = {
             statGrantChanceOnWin: 0
         },
         {
-            key: 'armored_vault',
-            label: 'Armored Vault',
+            key: 'noble_vault',
+            label: 'Noble\'s Vault',
             rankRequired: 4,          // Rank 4 = MercenaryRank.THRESHOLDS' own 125-win threshold
             baseChance: 0.12,
             chancePerRank: 0.06,
@@ -1941,8 +1941,8 @@ const RobNpc = {
             statGrantChanceOnWin: 0
         },
         {
-            key: 'big_score',
-            label: 'The Big Score',
+            key: 'royal_treasury',
+            label: 'The Royal Treasury',
             rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
             baseChance: 0.06,
             chancePerRank: 0.04,      // still technically "+/rank" for shape consistency with the other 3 tiers,
@@ -2000,7 +2000,7 @@ const Rival = {
     // than a tier letter the resolver itself no longer produces.
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
     // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
-    // notorietyPerWin (1/2/3/4 for Corner Store/Payroll Truck/Armored Vault/The Big Score)
+    // notorietyPerWin (1/2/3/4 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury)
     // instead of a single flat constant here — removed alongside roadmap #50's Heist
     // Ladder rework, mirroring NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
     CONFRONTATION_THRESHOLD: 20,

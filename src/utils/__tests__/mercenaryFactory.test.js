@@ -525,17 +525,17 @@ describe('Bounty.TIERS ladder shape', () => {
 });
 
 describe('resolveNpcRob', () => {
-    const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'corner_store');
-    const PAYROLL_TRUCK = RobNpc.TIERS.find(t => t.key === 'payroll_truck');
-    const ARMORED_VAULT = RobNpc.TIERS.find(t => t.key === 'armored_vault');
-    const BIG_SCORE = RobNpc.TIERS.find(t => t.key === 'big_score');
+    const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'market_stall');
+    const PAYROLL_TRUCK = RobNpc.TIERS.find(t => t.key === 'merchant_wagon');
+    const ARMORED_VAULT = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+    const BIG_SCORE = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
 
-    test('defaults to Tier I (corner_store) when no heist tier is passed — pre-ladder call sites unaffected', () => {
+    test('defaults to Tier I (market_stall) when no heist tier is passed — pre-ladder call sites unaffected', () => {
         return (async () => {
             const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
             try {
                 const result = await mercenaryFactory.resolveNpcRob(baseUser({ mercenaryBountyWinCount: 0 }), 1000, 0);
-                expect(result.tier).toBe('corner_store');
+                expect(result.tier).toBe('market_stall');
                 expect(result.successChance).toBeCloseTo(CORNER_STORE.baseChance);
             } finally {
                 randomSpy.mockRestore();
@@ -550,22 +550,22 @@ describe('resolveNpcRob', () => {
             const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // force a whiff so we don't need to mock server totals
             try {
                 const rank1User = baseUser({ mercenaryBountyWinCount: 0 });
-                const rank1 = await mercenaryFactory.resolveNpcRob(rank1User, 1000, 0, 'corner_store');
+                const rank1 = await mercenaryFactory.resolveNpcRob(rank1User, 1000, 0, 'market_stall');
                 expect(rank1.successChance).toBeCloseTo(CORNER_STORE.baseChance);
 
                 const rank3Wins = MercenaryRank.THRESHOLDS.find(t => t.rank === 3).winsRequired;
                 const rank3User = baseUser({ mercenaryBountyWinCount: rank3Wins });
-                const rank3 = await mercenaryFactory.resolveNpcRob(rank3User, 1000, 0, 'corner_store');
+                const rank3 = await mercenaryFactory.resolveNpcRob(rank3User, 1000, 0, 'market_stall');
                 expect(rank3.successChance).toBeCloseTo(CORNER_STORE.baseChance + CORNER_STORE.chancePerRank * 2);
 
                 const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
                 const maxRankUser = baseUser({ mercenaryBountyWinCount: maxRankWins + 999999 });
-                const maxRankResult = await mercenaryFactory.resolveNpcRob(maxRankUser, 1000, 0, 'corner_store');
+                const maxRankResult = await mercenaryFactory.resolveNpcRob(maxRankUser, 1000, 0, 'market_stall');
                 expect(maxRankResult.successChance).toBeCloseTo(CORNER_STORE.maxChance);
 
                 // Tier IV (Rank 6 required) — only reachable at max rank, so base/perRank/cap
                 // collapse to the same flat number in practice, but the formula still runs.
-                const bigScoreResult = await mercenaryFactory.resolveNpcRob(maxRankUser, 1000, 0, 'big_score');
+                const bigScoreResult = await mercenaryFactory.resolveNpcRob(maxRankUser, 1000, 0, 'royal_treasury');
                 expect(bigScoreResult.successChance).toBeCloseTo(BIG_SCORE.maxChance);
             } finally {
                 randomSpy.mockRestore();
@@ -585,18 +585,18 @@ describe('resolveNpcRob', () => {
                 mercenaryBountyWinCount: 0,
                 companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 0 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 1 },
             });
-            const result = await mercenaryFactory.resolveNpcRob(userWithYukon, 1000, 0, 'corner_store');
+            const result = await mercenaryFactory.resolveNpcRob(userWithYukon, 1000, 0, 'market_stall');
             expect(result.successChance).toBeCloseTo(CORNER_STORE.baseChance + 0.12);
         } finally {
             randomSpy.mockRestore();
         }
     });
 
-    test('a Tier I (Corner Store) whiff costs nothing — amount and penaltyAmount both stay 0', async () => {
+    test('a Tier I (Market Stall) whiff costs nothing — amount and penaltyAmount both stay 0', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         let result;
         try {
-            result = await mercenaryFactory.resolveNpcRob(baseUser(), 1000, 0, 'corner_store');
+            result = await mercenaryFactory.resolveNpcRob(baseUser(), 1000, 0, 'market_stall');
         } finally {
             randomSpy.mockRestore();
         }
@@ -616,7 +616,7 @@ describe('resolveNpcRob', () => {
         try {
             result = await mercenaryFactory.resolveNpcRob(
                 baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 1 }),
-                1000, 0, 'payroll_truck'
+                1000, 0, 'merchant_wagon'
             );
         } finally {
             randomSpy.mockRestore();
@@ -641,7 +641,7 @@ describe('resolveNpcRob', () => {
         try {
             result = await mercenaryFactory.resolveNpcRob(
                 baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 5.4 }),
-                1000, 0, 'payroll_truck'
+                1000, 0, 'merchant_wagon'
             );
         } finally {
             randomSpy.mockRestore();
@@ -664,7 +664,7 @@ describe('resolveNpcRob', () => {
             result = await mercenaryFactory.resolveNpcRob(
                 baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired, workMultiplierAmount: 5.4 }),
                 1000, 5, // a large catchUpBonus — must have zero effect on the penalty
-                'payroll_truck'
+                'merchant_wagon'
             );
         } finally {
             randomSpy.mockRestore();
@@ -677,7 +677,7 @@ describe('resolveNpcRob', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit, minimal multiplier roll
         let result;
         try {
-            result = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'corner_store');
+            result = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'market_stall');
         } finally {
             randomSpy.mockRestore();
         }
@@ -691,10 +691,10 @@ describe('resolveNpcRob', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         const rank6User = baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired, workMultiplierAmount: 1 });
         try {
-            const cornerStore = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'corner_store');
-            const payrollTruck = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'payroll_truck');
-            const armoredVault = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'armored_vault');
-            const bigScore = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'big_score');
+            const cornerStore = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'market_stall');
+            const payrollTruck = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'merchant_wagon');
+            const armoredVault = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'noble_vault');
+            const bigScore = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'royal_treasury');
             expect(cornerStore.amount).toBeLessThan(payrollTruck.amount);
             expect(payrollTruck.amount).toBeLessThan(armoredVault.amount);
             expect(armoredVault.amount).toBeLessThan(bigScore.amount);
@@ -703,9 +703,9 @@ describe('resolveNpcRob', () => {
         }
     });
 
-    // The Big Score's one distinguishing extra over Tiers I-III — a rare stat-grant roll on
+    // The Royal Treasury's one distinguishing extra over Tiers I-III — a rare stat-grant roll on
     // a win, reusing BountyStatReward's own TIER_I_GRANT pool.
-    test('The Big Score rolls a rare stat grant on a win; other tiers never do', async () => {
+    test('The Royal Treasury rolls a rare stat grant on a win; other tiers never do', async () => {
         const rank6User = baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired });
 
         const hitSpy = jest.spyOn(Math, 'random')
@@ -714,7 +714,7 @@ describe('resolveNpcRob', () => {
             .mockReturnValueOnce(0);  // stat grant roll -> hit (< 0.05)
         let bigScoreHit;
         try {
-            bigScoreHit = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'big_score');
+            bigScoreHit = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'royal_treasury');
         } finally {
             hitSpy.mockRestore();
         }
@@ -727,7 +727,7 @@ describe('resolveNpcRob', () => {
             .mockReturnValueOnce(0.999999); // stat grant roll -> miss
         let bigScoreMiss;
         try {
-            bigScoreMiss = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'big_score');
+            bigScoreMiss = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'royal_treasury');
         } finally {
             missSpy.mockRestore();
         }
@@ -736,7 +736,7 @@ describe('resolveNpcRob', () => {
         const otherTierSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // would trigger a stat grant if the tier rolled one at all
         let armoredVaultHit;
         try {
-            armoredVaultHit = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'armored_vault');
+            armoredVaultHit = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'noble_vault');
         } finally {
             otherTierSpy.mockRestore();
         }
@@ -1189,11 +1189,11 @@ describe('World Boss workMulti buff', () => {
 
         dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
         dynamoHandler.isWorldBuffLive.mockReturnValue(false);
-        const withoutBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'corner_store');
+        const withoutBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'market_stall');
 
         dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 });
         dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
-        const withBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'corner_store');
+        const withBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'market_stall');
 
         randomSpy.mockRestore();
         expect(withBuff.won).toBe(true);

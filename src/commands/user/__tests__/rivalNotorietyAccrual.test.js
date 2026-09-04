@@ -102,11 +102,11 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
 
 describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only', () => {
     const { callback } = require('../robNpc');
-    const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'corner_store');
+    const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'market_stall');
 
     test('a win adds the picked tier\'s notorietyPerWin', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
         try {
             await callback({}, interaction);
@@ -120,7 +120,7 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
 
     test('a whiff adds no mercenaryNotoriety at all', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction({ 'heist-type': 'corner_store' });
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // guarantees a whiff
         try {
             await callback({}, interaction);

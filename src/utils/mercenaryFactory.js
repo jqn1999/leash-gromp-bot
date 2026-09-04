@@ -203,7 +203,7 @@ async function resolveBountyAttempt(userDetails, mode) {
 // without mocking dynamoHandler.getCachedServerTotal for every case.
 //
 // heistTierKey selects which RobNpc.TIERS entry to run (a required `heist-type` option on
-// /rob-npc — see robNpc.js), defaulting to Tier I ('corner_store') so every pre-existing
+// /rob-npc — see robNpc.js), defaulting to Tier I ('market_stall') so every pre-existing
 // call site keeps behaving exactly as it did before roadmap #50's Heist Ladder rework: a
 // whiff-only, no-penalty, 5,000-cap attempt with the same rank-scaled odds it always had.
 async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heistTierKey = RobNpc.TIERS[0].key) {
@@ -272,7 +272,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
 
     result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, multiplier, effectiveMultiplier, userDetails);
 
-    // The Big Score's one distinguishing extra — see RobNpc.TIERS' own comment in
+    // The Royal Treasury's one distinguishing extra — see RobNpc.TIERS' own comment in
     // constants.js. 0 for every other tier, so this is a no-op everywhere else.
     if (tier.statGrantChanceOnWin > 0 && Math.random() < tier.statGrantChanceOnWin) {
         result.statReward = pickStatGrant('I', userDetails);
