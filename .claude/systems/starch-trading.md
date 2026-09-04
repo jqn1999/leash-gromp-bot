@@ -22,11 +22,15 @@ tenth-to-hundredth the old scale:
 | Tier | Old | New |
 |---|---|---|
 | Start | 25,000 | 250 |
-| 1 (Robinhood) | →50,000 / 125,000,000 | →500 / 1,000,000 |
-| 2 (Ally Invest) | →75,000 / 187,500,000 | →1,000 / 3,000,000 |
-| 3 (Fidelity) | →100,000 / 250,000,000 | →2,500 / 10,000,000 |
-| 4 (Charles Schwab) | →150,000 / 500,000,000 | →5,000 / 30,000,000 |
-| 5 (Vanguard) | →200,000 / 750,000,000 | →10,000 / 75,000,000 |
+| 1 (The Rickety Root Cellar) | →50,000 / 125,000,000 | →500 / 1,000,000 |
+| 2 (The Sturdier Starch Cellar) | →75,000 / 187,500,000 | →1,000 / 3,000,000 |
+| 3 (The Merchant Guild's Starch Exchange) | →100,000 / 250,000,000 | →2,500 / 10,000,000 |
+| 4 (The Ironroot Trading House) | →150,000 / 500,000,000 | →5,000 / 30,000,000 |
+| 5 (The Sovereign Starch Vault) | →200,000 / 750,000,000 | →10,000 / 75,000,000 |
+
+(Tier names above were real-world brokerage brands — Robinhood/Ally Invest/Fidelity/Charles
+Schwab/Vanguard — until a 2026-09-04 theme pass renamed them to fit the medieval setting; see
+`.claude/lore.md` and that date's roadmap entry.)
 
 `Starch.STARTING_CAPACITY` is the single shared source for the default (`dynamoHandler.
 getDefaultUserFields`) and rebirth's reset value (`rebirthFactory.computeRebirthState`) — same
@@ -207,6 +211,6 @@ the rest), so every pattern below `SMALL_SPIKE` keeps its exact prior odds uncha
   current buy or sell price (whichever window is active) plus the max amount the user could
   currently buy or sell.
 
-Max starch capacity is upgraded through the `starchShop` in `constants.js`: Robinhood (25,000 cap,
-125,000,000 cost) → Ally Invest → Fidelity → Charles Schwab → Vanguard (200,000 cap, 750,000,000
-cost).
+Max starch capacity is upgraded through the `starchShop` in `constants.js`: The Rickety Root Cellar
+(25,000 cap, 125,000,000 cost) → The Sturdier Starch Cellar → The Merchant Guild's Starch Exchange →
+The Ironroot Trading House → The Sovereign Starch Vault (200,000 cap, 750,000,000 cost).

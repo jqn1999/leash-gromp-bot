@@ -7981,3 +7981,49 @@ the one genuine anachronism, not a sign of a wider problem. `.claude/systems/mer
 and `.claude/reference/commands.md` updated to match; 4 test files' hardcoded tier-key/label
 literals renamed mechanically (`sed`, verified no leftovers/double-replace artifacts). Full suite
 re-run clean (1023/1023, no behavior change — this was naming only).
+
+## Whole-app theme audit + shop-tier re-theme (2026-09-04, direct instruction)
+
+Follow-up to the lore.md pass above: "can you analyze the rest of the whole app and see if
+anything else is weird." Dispatched a full-codebase sweep (constants.js's every flavor-bearing
+group, every command file, embedFactory.js, event announcements) against `lore.md`'s rubric.
+Confirmed clean: Achievements, Quests/GuildContracts, Safehouse, Companions, GuildCompanions,
+every `/work` encounter table, Guild Raid mobs (`regularRaidMobs`/`eliteRaidMobs`/
+`legendaryRaidMobs`/`metalKingRaidBoss`), `workShop`'s other 9 tiers, Roulette/Golden Reels, Tower
+flavor (King Kiwi, Traveling Turnip, etc.), HelpTopics, and every command name/description.
+
+**Found and fixed — three shop tables in `constants.js` (`shops`) had drifted into modern
+real-world branding/jargon, all purely cosmetic renames (matched by `currentAmount`/`amount`
+values, never by `name` — confirmed safe by the full suite staying green, 1023/1023, with zero
+test changes needed):**
+
+- **`starchShop`** — all 5 tiers were literal real-world stock-brokerage brands: Robinhood → The
+  Rickety Root Cellar, Ally Invest → The Sturdier Starch Cellar, Fidelity → The Merchant Guild's
+  Starch Exchange, Charles Schwab → The Ironroot Trading House, Vanguard → The Sovereign Starch
+  Vault. Also dropped "retail investors" from tier 3's description.
+- **`bankShop`** tiers 7-10 — "Lazy Town Bank" (TV-show reference) → The Countinghouse of Kings;
+  **"Chinese Restaurant"** (a real-world ethnic stereotype used as a money-laundering-front joke —
+  the single worst find of the whole audit, not just off-theme but genuinely in poor taste) → The
+  Grand Bazaar; "The Norman Manor" → Ashcroft Manor; **"The Huang Estate"** (real surname + "well
+  funded gentlemen's club" euphemism, same crime-front joke pattern) → The Gilded Court.
+  Descriptions rewritten to match (kept each tier's original joke — "surprisingly high volume of
+  money flowing through" for the bazaar, "old money" for the manor, "exclusive wealthy circle" for
+  the court — just re-skinned onto the Kingdom instead of the real world).
+- **`passiveIncomeShop`** — "Spud Team Six" (Seal Team Six reference) → The Sixth Harvest
+  Battalion; "Cultivation Conglomerate" (modern corporate/supply-chain jargon) → The Grand
+  Cultivation Guild; "Potato Wedge Fund" (hedge-fund pun + "hedging strategies"/"exceptional
+  returns" finance jargon) → The Order of the Golden Wedge, kept the "shrewd former apprentice"
+  flavor but swapped the jargon for "market maneuvers and clever gambits."
+- **`workShop`** tier 10 — "Alien Armaments of Tuber Termination" (sci-fi) → Otherworldly Armaments
+  of Tuber Termination, reusing "otherworldly" straight from its own existing description rather
+  than inventing new flavor.
+
+Also updated: `.claude/systems/starch-trading.md`'s tier-name table and prose (both referenced the
+old brokerage names as current fact, not history — corrected, with a one-line note on why the
+names changed). Confirmed zero other references to any of the old names anywhere in `src/` or
+`.claude/` (tests match shop tiers by `currentAmount`/`type`, never by name string).
+
+**Explicitly out of scope, flagged not fixed**: `linkWeb.js`'s "Beggar Financial" branding for the
+companion web dashboard — this is the bot's own out-of-fiction product/tool name (like a website
+title), not in-story game flavor a player encounters inside Discord, so it wasn't treated as part
+of this pass. Worth a look if that page's copy is ever otherwise being touched.

@@ -2486,7 +2486,7 @@ const shops = [
                 cost: 1500000000,
                 description: "This assortment of otherworldly equipment exudes unimaginable ferocity, striking fear into the hearts of friends and foes alike in the Potato Kingdom.",
                 id: 10,
-                name: "Alien Armaments of Tuber Termination",
+                name: "Otherworldly Armaments of Tuber Termination",
                 type: "workMultiplierAmount"
             }
         ],
@@ -2527,9 +2527,9 @@ const shops = [
                 currentAmount: 180000,
                 amount: 500000,
                 cost: 5000000,
-                description: "A skilled squad of trained professionals in the art of potato cultivationn",
+                description: "A skilled squad of trained professionals in the art of potato cultivation",
                 id: 4,
-                name: "Spud Team Six",
+                name: "The Sixth Harvest Battalion",
                 type: "passiveAmount"
             },
             {
@@ -2554,18 +2554,18 @@ const shops = [
                 currentAmount: 3000000,
                 amount: 7000000,
                 cost: 75000000,
-                description: "An integrated network of potato scientists, farmers, and distributors capable of supporting the global potato economy with their robust supply chain",
+                description: "An integrated network of potato sages, farmers, and traders capable of supplying the entire Kingdom with their tireless harvest",
                 id: 7,
-                name: "Cultivation Conglomerate",
+                name: "The Grand Cultivation Guild",
                 type: "passiveAmount"
             },
             {
                 currentAmount: 7000000,
                 amount: 14000000,
                 cost: 100000000,
-                description: "Led by your once apprentice turned genius investor, this fund employs complex starch trading and hedging strategies to generate exceptional returns each day",
+                description: "Led by your once-apprentice turned shrewd starch trader, this order deals in complex market maneuvers and clever gambits to multiply your daily yield",
                 id: 8,
-                name: "Potato Wedge Fund",
+                name: "The Order of the Golden Wedge",
                 type: "passiveAmount"
             },
             {
@@ -2655,36 +2655,36 @@ const shops = [
                 currentAmount: 50000000,
                 amount: 250000000,
                 cost: 500000000,
-                description: "Cookin by the book",
+                description: "Every potato counted twice, ledgered thrice, and never once misplaced",
                 id: 7,
-                name: "Lazy Town Bank",
+                name: "The Countinghouse of Kings",
                 type: "bankCapacity"
             },
             {
                 currentAmount: 250000000,
                 amount: 500000000,
                 cost: 1000000000,
-                description: "A lot of money flowin through here",
+                description: "Word has it more potatoes change hands here in a single afternoon than most kingdoms see in a year",
                 id: 8,
-                name: "Chinese Restaurant",
+                name: "The Grand Bazaar",
                 type: "bankCapacity"
             },
             {
                 currentAmount: 500000000,
                 amount: 750000000,
                 cost: 1500000000,
-                description: "Money n such",
+                description: "An old-money estate whose vaults have quietly outgrown the family still living in them",
                 id: 9,
-                name: "The Norman Manor",
+                name: "Ashcroft Manor",
                 type: "bankCapacity"
             },
             {
                 currentAmount: 750000000,
                 amount: 1000000000,
                 cost: 2000000000,
-                description: "Well funded gentlemen's club",
+                description: "An exclusive circle of the Kingdom's wealthiest tuber nobility, where potatoes are currency, gossip, and social rank all at once",
                 id: 10,
-                name: "The Huang Estate",
+                name: "The Gilded Court",
                 type: "bankCapacity"
             }
         ],
@@ -2709,45 +2709,45 @@ const shops = [
                 currentAmount: 250,
                 amount: 500,
                 cost: 1000000,
-                description: "Better than nothin",
+                description: "Better than nothin'",
                 id: 1,
-                name: "Robinhood",
+                name: "The Rickety Root Cellar",
                 type: "maxStarches"
             },
             {
                 currentAmount: 500,
                 amount: 1000,
                 cost: 3000000,
-                description: "Slightly better than Robinhood... slightly",
+                description: "Slightly better than the last one... slightly",
                 id: 2,
-                name: "Ally Invest",
+                name: "The Sturdier Starch Cellar",
                 type: "maxStarches"
             },
             {
                 currentAmount: 1000,
                 amount: 2500,
                 cost: 10000000,
-                description: "Trusted by many retail investors for their investment needs",
+                description: "Trusted by traders and farmers alike for their starch-holding needs",
                 id: 3,
-                name: "Fidelity",
+                name: "The Merchant Guild's Starch Exchange",
                 type: "maxStarches"
             },
             {
                 currentAmount: 2500,
                 amount: 5000,
                 cost: 30000000,
-                description: "A good firm for holding large amounts of starches",
+                description: "A respected house for holding large stores of starch",
                 id: 4,
-                name: "Charles Schwab",
+                name: "The Ironroot Trading House",
                 type: "maxStarches"
             },
             {
                 currentAmount: 5000,
                 amount: 10000,
                 cost: 75000000,
-                description: "The best investment firm for holding your large stash of starches",
+                description: "The finest vault in the realm for safeguarding your stash of starch",
                 id: 5,
-                name: "Vanguard",
+                name: "The Sovereign Starch Vault",
                 type: "maxStarches"
             }
         ],
