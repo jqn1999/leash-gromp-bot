@@ -768,6 +768,17 @@ Ladybug/Mochi's own `passiveIncomePercent` companion perks).
 - **Announcement**: folded into the existing `createWorldResultEmbed` (posted to the events channel
   on every World Boss resolution) rather than a new message — a "🌍 Server-Wide Blessing" field on
   a win, naming the buff granted.
+- **Persistent status line (2026-09-04, direct instruction)**: the announcement above was the ONLY
+  place the buff was ever shown — once it scrolled by, a player had no way to check whether one was
+  still live. `/profile` (`createUserEmbed`, page 1) and `/user-stats` (`createUserStatsEmbed`) both
+  now append a `🌍 {bossName}'s Blessing:` field, built by `embedFactory.buildActiveWorldBuffField`
+  off a fresh `dynamoHandler.getActiveWorldBuff()` read, showing the buff's live effect (a distinct,
+  concise phrasing per `buffType` — `WORLD_BUFF_STATUS_DESCRIPTIONS`, separate from the
+  announcement's own `WORLD_BUFF_DESCRIPTIONS` since that one hardcodes "for the next 24h") and its
+  actual remaining time (`convertSecondstoMinutes`). Omitted entirely — never a stale "0% left"
+  line — once `expiresAt` has passed, matching `isWorldBuffLive`'s own "expired reads identically to
+  no buff at all" precedent (the doc is never actively cleared, just left stale until the next kill
+  overwrites it).
 
 ## Background scheduled jobs
 

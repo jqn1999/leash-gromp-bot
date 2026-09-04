@@ -706,3 +706,90 @@ describe('createPotatoRouletteEmbed pocket icons', () => {
         expect(rottenEmbed.data.thumbnail.url).toBe(poisonPotato.thumbnailUrl);
     });
 });
+
+// World Boss's server-wide buff (2026-09-04, direct instruction) — previously granted by
+// worldFactory.js's startWorldBoss and shown exactly once in the kill announcement embed,
+// with no way for a player to check afterward whether one was still live. createUserEmbed
+// (/profile) and createUserStatsEmbed (/user-stats) now both append a status line built
+// off dynamoHandler.getActiveWorldBuff(), omitted entirely once the buff has expired.
+describe('World Boss buff status line (createUserEmbed / createUserStatsEmbed)', () => {
+    function baseUserDetails(overrides = {}) {
+        return {
+            rebirthCount: 0,
+            companions: { ownedCount: 0 },
+            guildId: 0,
+            isMercenary: false,
+            potatoes: 0,
+            bankStored: 0,
+            starches: 0,
+            workMultiplierAmount: 1,
+            passiveAmount: 0,
+            bankCapacity: 50000,
+            maxStarches: 250,
+            workCount: 0,
+            loginStreak: 0,
+            records: {},
+            totalEarnings: 0,
+            totalLosses: 0,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides
+        };
+    }
+
+    const dynamoHandler = require('../dynamoHandler');
+
+    beforeEach(() => {
+        const rebirthFactory = require('../rebirthFactory');
+        const companionFactory = require('../companionFactory');
+        rebirthFactory.getLiveRebirthPercent.mockReturnValue(0);
+        companionFactory.getActivePerkValue.mockReturnValue(0);
+        companionFactory.getActiveCompanion.mockReturnValue(null);
+    });
+
+    test('createUserEmbed shows a status line for a live buff, with the correct amount', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({
+            bossName: 'Brassica', buffType: 'passiveBoost', value: 0.15, expiresAt: Date.now() + 3600 * 1000
+        });
+
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 0);
+
+        const field = embed.data.fields.find(f => f.name.includes("Brassica's Blessing"));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('+15% passive income for everyone');
+    });
+
+    test('createUserStatsEmbed shows the same status line for a live buff', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({
+            bossName: 'Brassica', buffType: 'workMulti', value: 0.1, expiresAt: Date.now() + 3600 * 1000
+        });
+
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails());
+
+        const field = embed.data.fields.find(f => f.name.includes("Brassica's Blessing"));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('+10% work multiplier for everyone');
+    });
+
+    test('omits the field entirely once the buff has expired — never a stale/0% line', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({
+            bossName: 'Brassica', buffType: 'passiveBoost', value: 0.15, expiresAt: Date.now() - 1000
+        });
+
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 0);
+
+        expect(embed.data.fields.find(f => f.name.includes('Blessing'))).toBeUndefined();
+    });
+
+    test('omits the field entirely when no World Boss has ever been killed', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails());
+
+        expect(embed.data.fields.find(f => f.name.includes('Blessing'))).toBeUndefined();
+    });
+});

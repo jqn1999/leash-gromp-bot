@@ -235,6 +235,36 @@ function describeWorldBuff(worldBuff) {
     return WORLD_BUFF_DESCRIPTIONS[worldBuff.buffType](worldBuff.value);
 }
 
+// Short-form status-line phrasing for the World Boss buff (2026-09-04, direct
+// instruction — the buff was only ever shown once, in createWorldResultEmbed's one-shot
+// kill announcement, with no way to check it afterward). Distinct from
+// WORLD_BUFF_DESCRIPTIONS above, which hardcodes "for the next 24h" (true at the moment
+// of the announcement) — a persistent status line instead needs to show the buff's ACTUAL
+// remaining time, computed fresh at render time.
+const WORLD_BUFF_STATUS_DESCRIPTIONS = {
+    starchDiscount: value => `Buying is ${(value * 100).toFixed(0)}% cheaper, selling pays ${(value * 100).toFixed(0)}% more`,
+    cooldownSkip: value => `+${(value * 100).toFixed(0)}% chance to skip your /work cooldown`,
+    workMulti: value => `+${(value * 100).toFixed(0)}% work multiplier for everyone`,
+    passiveBoost: value => `+${(value * 100).toFixed(0)}% passive income for everyone`
+};
+
+// Returns null (never an empty/placeholder field) whenever no buff is currently live —
+// dynamoHandler.getActiveWorldBuff() never clears an expired buff, it's just left stale
+// until the next kill overwrites it (see isWorldBuffLive's own comment), so an expired
+// buff must read as "nothing to show" here rather than as a real 0%/negative-time line.
+function buildActiveWorldBuffField(worldBuff) {
+    if (!worldBuff || !worldBuff.expiresAt || worldBuff.expiresAt <= Date.now()) return null;
+    const remainingSeconds = Math.floor((worldBuff.expiresAt - Date.now()) / 1000);
+    const description = WORLD_BUFF_STATUS_DESCRIPTIONS[worldBuff.buffType]
+        ? WORLD_BUFF_STATUS_DESCRIPTIONS[worldBuff.buffType](worldBuff.value)
+        : 'Active';
+    return {
+        name: `🌍 ${worldBuff.bossName}'s Blessing:`,
+        value: `${description} — ${convertSecondstoMinutes(remainingSeconds)} left`,
+        inline: false,
+    };
+}
+
 // Shared by createSpudKeepStatusEmbed and createSpudKeepResultEmbed so the two never show
 // conflicting numbers for the same entrant shape (spudKeepFactory.buildEntrantPreview's
 // own `entrants` array — see systems/spud-keep.md). Reuses getEffectiveRaidPowerBreakdown's
@@ -430,6 +460,13 @@ class EmbedFactory {
                     inline: false,
                 });
             }
+
+            // World Boss's server-wide buff (2026-09-04, direct instruction) — previously
+            // only ever shown once, in the one-shot kill announcement, with no way to
+            // check afterward whether one is still live. Omitted entirely (not a "no buff
+            // active" placeholder line) whenever nothing is currently live.
+            const activeWorldBuffField = buildActiveWorldBuffField(await dynamoHandler.getActiveWorldBuff());
+            if (activeWorldBuffField) fields.push(activeWorldBuffField);
         } else {
             description = `Activity & Records\nPage 2 / ${totalPages}`;
             fields.push({
@@ -497,6 +534,48 @@ class EmbedFactory {
         const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
         const liveBankBonus = bankCapacityMaxed ? 0 : Math.round(userDetails.bankCapacity * totalBankPercent);
 
+        const fields = [
+            {
+                name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
+                value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
+                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth)` : ''),
+                inline: false,
+            },
+            {
+                name: "Current Passive Income Upgrade:",
+                value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()} + ${userDetails.regrades.passiveAmount.regradeAmount.toLocaleString()}) potatoes = ${userDetails.passiveAmount.toLocaleString()}`
+                    + (livePassiveBonus > 0 ? `\nLive: ${(userDetails.passiveAmount + livePassiveBonus).toLocaleString()} potatoes per day (+${livePassiveBonus.toLocaleString()})` : ''),
+                inline: false,
+            },
+            {
+                name: "Current Bank Capacity Upgrade:",
+                value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes = `
+                    + (bankCapacityMaxed ? `Unlimited (regrade maxed)` : `${userDetails.bankCapacity.toLocaleString()}`)
+                    + (liveBankBonus > 0 ? `\nLive: ${(userDetails.bankCapacity + liveBankBonus).toLocaleString()} potatoes (+${liveBankBonus.toLocaleString()})` : ''),
+                inline: false,
+            },
+            {
+                name: "Current Starch Capacity Upgrade:",
+                value: `${starchName}\n(${userBaseMaxStarches.toLocaleString()} + 0 + 0) starches`,
+                inline: false,
+            },
+            {
+                name: "Total Earnings:",
+                value: `${userDetails.totalEarnings.toLocaleString()} potatoes`,
+                inline: false,
+            },
+            {
+                name: "Total Losses:",
+                value: `${userDetails.totalLosses.toLocaleString()} potatoes`,
+                inline: false,
+            }
+        ];
+
+        // World Boss's server-wide buff (2026-09-04, direct instruction) — see
+        // createUserEmbed's own identical block for why this needed adding at all.
+        const activeWorldBuffField = buildActiveWorldBuffField(await dynamoHandler.getActiveWorldBuff());
+        if (activeWorldBuffField) fields.push(activeWorldBuffField);
+
         const embed = new EmbedBuilder()
             .setTitle(`${currentName}`)
             .setDescription("This is your stats profile where\nyou can view your total gains and losses")
@@ -504,42 +583,7 @@ class EmbedFactory {
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
-            .addFields(
-                {
-                    name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
-                    value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
-                        + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth)` : ''),
-                    inline: false,
-                },
-                {
-                    name: "Current Passive Income Upgrade:",
-                    value: `${passiveName}\n(${userBasePassiveIncome.toLocaleString()} + ${userDetails.sweetPotatoBuffs.passiveAmount.toLocaleString()} + ${userDetails.regrades.passiveAmount.regradeAmount.toLocaleString()}) potatoes = ${userDetails.passiveAmount.toLocaleString()}`
-                        + (livePassiveBonus > 0 ? `\nLive: ${(userDetails.passiveAmount + livePassiveBonus).toLocaleString()} potatoes per day (+${livePassiveBonus.toLocaleString()})` : ''),
-                    inline: false,
-                },
-                {
-                    name: "Current Bank Capacity Upgrade:",
-                    value: `${bankName}\n(${userBaseBankCapacity.toLocaleString()} + ${userDetails.sweetPotatoBuffs.bankCapacity.toLocaleString()} + ${userDetails.regrades.bankCapacity.regradeAmount.toLocaleString()}) potatoes = `
-                        + (bankCapacityMaxed ? `Unlimited (regrade maxed)` : `${userDetails.bankCapacity.toLocaleString()}`)
-                        + (liveBankBonus > 0 ? `\nLive: ${(userDetails.bankCapacity + liveBankBonus).toLocaleString()} potatoes (+${liveBankBonus.toLocaleString()})` : ''),
-                    inline: false,
-                },
-                {
-                    name: "Current Starch Capacity Upgrade:",
-                    value: `${starchName}\n(${userBaseMaxStarches.toLocaleString()} + 0 + 0) starches`,
-                    inline: false,
-                },
-                {
-                    name: "Total Earnings:",
-                    value: `${userDetails.totalEarnings.toLocaleString()} potatoes`,
-                    inline: false,
-                },
-                {
-                    name: "Total Losses:",
-                    value: `${userDetails.totalLosses.toLocaleString()} potatoes`,
-                    inline: false,
-                }
-            );
+            .setFields(fields);
         return embed;
     }
 
