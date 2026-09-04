@@ -1,5 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { RaidFactory, getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPowerBreakdown } = require("../utils/raidFactory");
+const { getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
 const { SpudKeep } = require("../utils/constants");
 
 const raidFactory = new RaidFactory();
@@ -256,9 +257,18 @@ async function buildEntrantPreview() {
     const consecutiveHoldCycles = toNumber(currentBuff && currentBuff.consecutiveHoldCycles);
     const attackerBonusMultiplier = getAttackerBonusMultiplier(consecutiveHoldCycles);
 
+    // World Boss's workMulti buff (2026-09-04, direct instruction) — applied uniformly to
+    // every entrant BEFORE the Attacker's Bonus split (unlike that bonus, this isn't a
+    // targeted-at-challengers mechanic — it's a real, current strength boost that applies
+    // equally whether you're holding the Keep or attacking it), same "fetched once,
+    // multiplied in separately" shape startRaid.js/mercenaryFactory.js use rather than
+    // folded into raidFactory.getEffectiveRaidPowerBreakdown itself (reused as-is by
+    // Tower's entry gate, which deliberately excludes it).
+    const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+
     const weightedEntrants = entrants.map(e => {
         const isHolder = isCurrentHolderEntrant(currentBuff, e.type, e.id);
-        const power = e.breakdown.effectivePower;
+        const power = e.breakdown.effectivePower * (1 + worldBuffPercent);
         return {
             ...e,
             power,

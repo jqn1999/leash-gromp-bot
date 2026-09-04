@@ -765,6 +765,49 @@ Ladybug/Mochi's own `passiveIncomePercent` companion perks).
   - `dynamoHandler.passivePotatoHandler` — one global `getActiveWorldBuff` read outside the per-user
     loop (the buff isn't user-specific), folded additively into the same term as
     `passiveIncomePercent`/`rebirthPercent` in each user's passive-gain calc.
+  - **`workFactory.getWorldBuffWorkMultiPercent()`** (2026-09-04, direct instruction — "fix it in
+    all calculations across the app that might use stuff like the work multi boost for determining
+    strength of things") — the raw `workMulti` buff percent (0 if none live), for callers applying
+    it as a multiplier against an ALREADY-AGGREGATED power figure rather than as an absolute add-on
+    to one player's raw stat (that's `getWorldBuffWorkMulti` above). An audit found the buff live in
+    `/work`'s own `effectiveMultiplier` and the passive tick, but missing from every OTHER
+    "how strong is this player/roster right now" calculation, silently understating real
+    odds/rewards whenever a `workMulti` buff was active:
+    - `startRaid.js`'s Guild Raid success-chance/reward `totalMultiplier` — fetched once, multiplied
+      in right after Firefly's own `guildRaidMultiplierPercent` boost (same "fetched once, applied
+      separately" shape), never inside `raidFactory.js` itself (see below for why).
+    - `currentRaid.js`'s pre-raid preview — same fold-in, kept in sync with the real roll above so
+      the preview doesn't understate odds.
+    - `mercenaryFactory.js`'s `resolveBountyAttempt` (`effectiveBountyPower`, driving both tier
+      selection and success chance) and its Taro-shaped starch-currency reward branch (which was
+      ALSO separately missing a plain `workFactory.getWorldBuffWorkMulti` term, same absolute-amount
+      shape every other `/work`-style reward already uses), and `resolveNpcRob`'s `developedMultiplier`
+      (scales both the win-side reward and the loss-side penalty).
+    - `spudKeepFactory.js`'s `buildEntrantPreview` — applied uniformly to every entrant's `power`
+      BEFORE the Attacker's Bonus split (unlike that bonus, this isn't a challengers-only mechanic).
+    - `embedFactory.js`'s `createUserEmbed`/`createUserStatsEmbed` "Live:" bonus figures (Work
+      Multiplier via `getWorldBuffWorkMulti`, Passive Income via the raw `passiveBoost` percent) —
+      these were already folding in guild/companion/rebirth but not the World Boss buff itself.
+
+    **Deliberately NOT folded into `raidFactory.getMemberRaidPower`/`getEffectiveRaidPower`
+    themselves** — those two are reused as-is by Tower's entry gate (`enter-tower.js`), which
+    explicitly excludes guild/world buffs by design (see `tower.md`'s "Entry Gate Uses Effective
+    Power" section: a temporary buff shouldn't single-handedly unlock or inflate a personal
+    minigame run). Every consumer above instead fetches the percent once and multiplies it in
+    separately, at the point each system actually turns power into an outcome — mirroring how
+    Firefly's own contextual boost was already layered on top of `getEffectiveRaidPower`'s result
+    rather than baked into the shared function.
+
+    **Explicitly left untouched, by existing design**: `enter-tower.js`'s entry gate (above);
+    `mercenaryFactory.resolveRivalConfrontation` (its own comment already documents that Rival Bounty
+    Hunters reads no live modifier at all — not rebirth, not `effectiveRaidPower` — as a deliberate
+    judgment call, not an oversight); real `/rob` (`calculateRobChance` is wealth-ratio-based,
+    never work-multiplier-based); `spudKeepFactory.splitPotByWorkMulti` (deliberately splits by each
+    winner's raw `workMultiplierAmount` "at the time of the battle," not any live-modified figure).
+    Also flagged but NOT fixed here as a separate, larger pre-existing gap: `worldFactory.js`'s own
+    World Raid `totalMultiplier` sums raw `workMultiplierAmount` only — it doesn't even use
+    `getMemberRaidPower`/rebirth/companion bonuses the way Guild Raids and everything else do, let
+    alone the World Boss buff — a bigger, separate rework than today's ask.
 - **Announcement**: folded into the existing `createWorldResultEmbed` (posted to the events channel
   on every World Boss resolution) rather than a new message — a "🌍 Server-Wide Blessing" field on
   a win, naming the buff granted.

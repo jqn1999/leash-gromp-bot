@@ -3,6 +3,7 @@ const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = requ
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
 const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPowerBreakdown, getRaidLevelInfo, getUnlockedRaidModes } = require("../../utils/raidFactory");
+const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { runStartRaidFlow } = require("./startRaid");
 const embedFactory = new EmbedFactory();
@@ -74,7 +75,13 @@ module.exports = {
         // players can see what the Total Multiplier is actually made of — rank-weighted
         // team power plus a headcount bonus — instead of an opaque single figure.
         const powerBreakdown = getEffectiveRaidPowerBreakdown(raidMemberDetails);
-        const totalMultiplier = powerBreakdown.effectivePower;
+        // World Boss's workMulti buff (2026-09-04, direct instruction) — applied to the
+        // final displayed number only, same as startRaid.js's own real roll, so this
+        // preview doesn't understate the real odds while a buff is live. The breakdown
+        // above stays unscaled (it's explaining what makes up the BASE team power, same
+        // as how Firefly's own guildRaidMultiplierPercent boost is handled).
+        const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+        const totalMultiplier = powerBreakdown.effectivePower * (1 + worldBuffPercent);
 
         const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown, guild.raidSplitMode, guild.raidPayoutMode);
 

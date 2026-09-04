@@ -1,7 +1,7 @@
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
-const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti } = require("../utils/workFactory");
+const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 
@@ -113,7 +113,13 @@ async function resolveBountyAttempt(userDetails, mode) {
     // getEffectiveRaidPower is already generic over an array of userDetails, not
     // guild-shaped (confirmed directly against raidFactory.js — no changes needed there
     // at all). The headcount bonus is 0 for a length-1 array by construction.
-    const effectiveBountyPower = getEffectiveRaidPower([userDetails]);
+    //
+    // World Boss's workMulti buff (2026-09-04, direct instruction) applied the same way
+    // startRaid.js applies Firefly's guildRaidMultiplierPercent — multiplied in AFTER
+    // getEffectiveRaidPower, never inside raidFactory.js itself (that function is reused
+    // as-is by Tower's entry gate, which deliberately excludes guild/world buffs).
+    const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+    const effectiveBountyPower = getEffectiveRaidPower([userDetails]) * (1 + worldBuffPercent);
     const tierEntry = mode === 'baby'
         ? Bounty.TIERS[0]
         : rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
@@ -164,7 +170,11 @@ async function resolveBountyAttempt(userDetails, mode) {
                                                                                               // even though resolveNpcRob
                                                                                               // and resolveYukonAward
                                                                                               // both already include it
-            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier;
+            // World Boss's workMulti buff (2026-09-04, direct instruction) — same absolute-
+            // amount shape every /work-shaped reward already uses (workFactory.js's own
+            // effectiveMultiplier), was missing here the same way companionMultiplier was.
+            const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier + worldBuffMultiplier;
             const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[bandLetter];
             result.rewardAmount = Math.round(base * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
         }
@@ -223,7 +233,10 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 — a mercenary can never be guilded
     const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
     const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier;
+    // World Boss's workMulti buff (2026-09-04, direct instruction) — same absolute-amount
+    // shape every /work-shaped reward already uses, was missing here too.
+    const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier;
 
     const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null };
     if (!won) {

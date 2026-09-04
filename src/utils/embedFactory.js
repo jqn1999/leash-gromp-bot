@@ -382,15 +382,21 @@ class EmbedFactory {
                 value: `${userDetails.starches.toLocaleString()} starches`,
                 inline: false,
             });
-            // Every live modifier (guild buff, companion perk, rebirth's live %) gets
-            // folded into these three display lines the same way — otherwise the number
-            // shown would understate what /work, the passive tick, and /bank actually use.
+            // Every live modifier (guild buff, companion perk, rebirth's live %, World
+            // Boss's own buff) gets folded into these three display lines the same way —
+            // otherwise the number shown would understate what /work, the passive tick,
+            // and /bank actually use. World Boss buff added 2026-09-04, direct instruction
+            // — it was already live in /work's own effectiveMultiplier but missing here,
+            // so this "Live:" figure understated reality whenever one was active. Fetched
+            // once and reused below for the status line too, rather than a second read.
             const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+            const activeWorldBuff = await dynamoHandler.getActiveWorldBuff();
 
             const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
             const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
-            const totalWorkBonus = additionalWorkMulti + companionWorkMulti + rebirthWorkMulti;
+            const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
+            const totalWorkBonus = additionalWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
             const workMultiLabel = totalWorkBonus > 0
                 ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (+${totalWorkBonus.toFixed(2)}x)`
                 : `${(userDetails.workMultiplierAmount).toFixed(2)}x`;
@@ -400,7 +406,8 @@ class EmbedFactory {
                 inline: false,
             });
 
-            const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent;
+            const worldBuffPassivePercent = dynamoHandler.isWorldBuffLive(activeWorldBuff, "passiveBoost") ? activeWorldBuff.value : 0;
+            const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent;
             const passiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
             const passiveLabel = passiveBonus > 0
                 ? `${(userDetails.passiveAmount + passiveBonus).toLocaleString()} potatoes per day (+${passiveBonus.toLocaleString()})`
@@ -461,11 +468,12 @@ class EmbedFactory {
                 });
             }
 
-            // World Boss's server-wide buff (2026-09-04, direct instruction) — previously
-            // only ever shown once, in the one-shot kill announcement, with no way to
-            // check afterward whether one is still live. Omitted entirely (not a "no buff
-            // active" placeholder line) whenever nothing is currently live.
-            const activeWorldBuffField = buildActiveWorldBuffField(await dynamoHandler.getActiveWorldBuff());
+            // World Boss's server-wide buff status line (2026-09-04, direct instruction) —
+            // previously only ever shown once, in the one-shot kill announcement, with no
+            // way to check afterward whether one is still live. Omitted entirely (not a
+            // "no buff active" placeholder line) whenever nothing is currently live.
+            // Reuses activeWorldBuff fetched above rather than a second read.
+            const activeWorldBuffField = buildActiveWorldBuffField(activeWorldBuff);
             if (activeWorldBuffField) fields.push(activeWorldBuffField);
         } else {
             description = `Activity & Records\nPage 2 / ${totalPages}`;
@@ -522,12 +530,18 @@ class EmbedFactory {
         let starchName = findShopItemName(userBaseMaxStarches, shops[3].items);
 
         const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
+        // World Boss's own buff (2026-09-04, direct instruction) — was already live in
+        // /work's own effectiveMultiplier but missing from this "Live:" figure, understating
+        // reality whenever one was active. Fetched once, reused below for the status line.
+        const activeWorldBuff = await dynamoHandler.getActiveWorldBuff();
         const guildWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
         const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
         const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
-        const liveWorkBonus = guildWorkMulti + companionWorkMulti + rebirthWorkMulti;
+        const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
+        const liveWorkBonus = guildWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
 
-        const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent;
+        const worldBuffPassivePercent = dynamoHandler.isWorldBuffLive(activeWorldBuff, "passiveBoost") ? activeWorldBuff.value : 0;
+        const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent;
         const livePassiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
 
         const bankCapacityMaxed = isBankCapacityMaxed(userDetails);
@@ -538,7 +552,7 @@ class EmbedFactory {
             {
                 name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
                 value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
-                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth)` : ''),
+                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth/world buff)` : ''),
                 inline: false,
             },
             {
@@ -571,9 +585,9 @@ class EmbedFactory {
             }
         ];
 
-        // World Boss's server-wide buff (2026-09-04, direct instruction) — see
-        // createUserEmbed's own identical block for why this needed adding at all.
-        const activeWorldBuffField = buildActiveWorldBuffField(await dynamoHandler.getActiveWorldBuff());
+        // World Boss's server-wide buff status line — reuses activeWorldBuff fetched
+        // above rather than a second read. See createUserEmbed's own identical block.
+        const activeWorldBuffField = buildActiveWorldBuffField(activeWorldBuff);
         if (activeWorldBuffField) fields.push(activeWorldBuffField);
 
         const embed = new EmbedBuilder()

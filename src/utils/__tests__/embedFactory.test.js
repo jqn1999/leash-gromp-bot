@@ -749,6 +749,11 @@ describe('World Boss buff status line (createUserEmbed / createUserStatsEmbed)',
         rebirthFactory.getLiveRebirthPercent.mockReturnValue(0);
         companionFactory.getActivePerkValue.mockReturnValue(0);
         companionFactory.getActiveCompanion.mockReturnValue(null);
+        // Real-shaped default (not just an auto-mock stub) so the "Live:" bonus
+        // calculations below — which read isWorldBuffLive directly, unlike
+        // buildActiveWorldBuffField's own inline expiry check — actually exercise the
+        // buff-type-matching logic in these tests.
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type && buff.expiresAt > Date.now()));
     });
 
     test('createUserEmbed shows a status line for a live buff, with the correct amount', async () => {
@@ -791,5 +796,32 @@ describe('World Boss buff status line (createUserEmbed / createUserStatsEmbed)',
         const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails());
 
         expect(embed.data.fields.find(f => f.name.includes('Blessing'))).toBeUndefined();
+    });
+
+    // The status line above just describes the buff itself — these confirm the SEPARATE
+    // "Live:" bonus figures (Current Work Multiplier / Current Passive Income) actually
+    // fold the buff in too, matching what /work and the passive tick really use. Before
+    // this fix these numbers silently understated reality whenever a buff was active.
+    test('createUserEmbed\'s Current Work Multiplier "Live:" figure includes an active workMulti buff', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({
+            bossName: 'Brassica', buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 3600 * 1000
+        });
+
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workMultiplierAmount: 10 }), 0);
+
+        const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
+        // 10x base + 5x (50% of 10) from the buff, no other modifiers active.
+        expect(field.value).toBe('15.00x (+5.00x)');
+    });
+
+    test('createUserStatsEmbed\'s Current Passive Income "Live:" figure includes an active passiveBoost buff', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({
+            bossName: 'Brassica', buffType: 'passiveBoost', value: 0.25, expiresAt: Date.now() + 3600 * 1000
+        });
+
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails({ passiveAmount: 100000 }));
+
+        const field = embed.data.fields.find(f => f.name.startsWith('Current Passive Income Upgrade'));
+        expect(field.value).toContain('Live: 125,000 potatoes per day (+25,000)');
     });
 });

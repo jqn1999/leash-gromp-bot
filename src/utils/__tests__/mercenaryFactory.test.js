@@ -1130,3 +1130,74 @@ describe('resolveRivalConfrontation', () => {
         expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0] + 0.05 + 0.20);
     });
 });
+
+// World Boss's workMulti buff (2026-09-04, direct instruction) — was already live in
+// /work's own effectiveMultiplier but missing from Bounty/Heist entirely, understating a
+// mercenary's real odds/rewards whenever one was active. Deliberately excludes
+// resolveRivalConfrontation, which never reads any live modifier at all by explicit design
+// (see that function's own comment on rebirth/effectiveRaidPower being kept out on
+// purpose) — Rival Bounty Hunters' formula is untouched here.
+describe('World Boss workMulti buff', () => {
+    const dynamoHandler = require('../dynamoHandler');
+
+    afterEach(() => {
+        // No global beforeEach/clearMocks in this file — reset explicitly so a "buff
+        // live" mock never leaks into an unrelated test declared later.
+        dynamoHandler.getActiveWorldBuff.mockReset();
+        dynamoHandler.isWorldBuffLive.mockReset();
+    });
+
+    test('resolveBountyAttempt: raises effectiveBountyPower, and therefore successChance, for a mercenary not already at the success cap', async () => {
+        const weakUser = baseUser({ workMultiplierAmount: 5 }); // 5 / Tier 1 difficulty 10 = .5, well under the .9 cap
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        const withoutBuff = await mercenaryFactory.resolveBountyAttempt(weakUser, 'baby');
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const withBuff = await mercenaryFactory.resolveBountyAttempt(weakUser, 'baby');
+
+        expect(withBuff.successChance).toBeGreaterThan(withoutBuff.successChance);
+    });
+
+    test('resolveBountyAttempt: raises a starch-flavored win reward too', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, base range roll, stat-reward miss, yukon miss
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        let randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withoutBuff = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+        randomSpy.mockRestore();
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withBuff = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+        randomSpy.mockRestore();
+
+        expect(withoutBuff.currency).toBe('starch');
+        expect(withBuff.currency).toBe('starch');
+        expect(withBuff.rewardAmount).toBeGreaterThan(withoutBuff.rewardAmount);
+    });
+
+    test('resolveNpcRob: raises the reward on a win', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit, minimal multiplier roll
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        const withoutBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'corner_store');
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const withBuff = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'corner_store');
+
+        randomSpy.mockRestore();
+        expect(withBuff.won).toBe(true);
+        expect(withoutBuff.won).toBe(true);
+        expect(withBuff.amount).toBeGreaterThan(withoutBuff.amount);
+    });
+});

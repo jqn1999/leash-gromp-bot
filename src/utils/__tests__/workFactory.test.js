@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent } = require('../workFactory');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
@@ -476,6 +476,29 @@ describe('getWorldBuffWorkMulti (via handleRegularWork)', () => {
         const noBuff = await workFactory.handleRegularWork(baseUser({ workMultiplierAmount: 10 }), 1000, 1, 0);
 
         expect(withMismatchedBuff).toBe(noBuff);
+    });
+});
+
+// Raw-percent form (2026-09-04) — for callers applying the buff as a multiplier against an
+// already-aggregated power figure (Guild Raids' totalMultiplier, Bounty's
+// effectiveBountyPower, Spud Keep's entrant power) instead of an absolute add-on to one
+// player's raw workMultiplierAmount. See raidFactory.js/mercenaryFactory.js/
+// spudKeepFactory.js/startRaid.js/currentRaid.js for the actual consumers.
+describe('getWorldBuffWorkMultiPercent', () => {
+    test('returns the raw buff value when a workMulti buff is live', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.12, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        expect(await getWorldBuffWorkMultiPercent()).toBe(0.12);
+    });
+
+    test('returns 0 when no buff is live, or the live buff is a different type', async () => {
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        expect(await getWorldBuffWorkMultiPercent()).toBe(0);
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'passiveBoost', value: 0.2, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        expect(await getWorldBuffWorkMultiPercent()).toBe(0);
     });
 });
 

@@ -24,6 +24,10 @@ beforeEach(() => {
     // default to nobody opted in; individual tests override this to exercise a nonzero
     // Merc Faction roster.
     dynamoHandler.getUsers.mockResolvedValue([]);
+    // World Boss's workMulti buff (2026-09-04) — default to no buff live; individual
+    // tests override this to exercise the buff's effect on entrant power.
+    dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+    dynamoHandler.isWorldBuffLive.mockReturnValue(false);
 });
 
 describe('isSpudKeepBuffLiveForUser', () => {
@@ -338,6 +342,31 @@ describe('buildEntrantPreview', () => {
         const challenger = preview.entrants.find(e => e.id === 'g2');
         expect(holder.effectivePower).toBe(holder.power); // unchanged
         expect(challenger.effectivePower).toBeCloseTo(challenger.power * (1 + SpudKeep.ATTACKER_BONUS_BASE));
+    });
+
+    // 2026-09-04, direct instruction — was already live in /work's own effectiveMultiplier
+    // but missing here, understating everyone's real odds whenever a workMulti buff was
+    // active.
+    test('World Boss workMulti buff scales every entrant\'s power uniformly, applied to holder and challenger alike', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
+        dynamoHandler.getUsers.mockResolvedValue([{ userId: 'mc1', username: 'mc1', isMercenary: true, autoJoinSpudKeep: true }]);
+
+        const withoutBuff = await spudKeepFactory.buildEntrantPreview();
+
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.2, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const withBuff = await spudKeepFactory.buildEntrantPreview();
+
+        const guildWithout = withoutBuff.entrants.find(e => e.id === 'g1');
+        const guildWith = withBuff.entrants.find(e => e.id === 'g1');
+        expect(guildWith.power).toBeCloseTo(guildWithout.power * 1.2);
+
+        const mercWithout = withoutBuff.entrants.find(e => e.type === 'mercenary');
+        const mercWith = withBuff.entrants.find(e => e.type === 'mercenary');
+        expect(mercWith.power).toBeCloseTo(mercWithout.power * 1.2);
     });
 });
 

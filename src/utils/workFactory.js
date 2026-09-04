@@ -765,6 +765,24 @@ async function getWorldBuffWorkMulti(userMultiplier) {
     return dynamoHandler.isWorldBuffLive(buff, "workMulti") ? userMultiplier * buff.value : 0;
 }
 
+// Same buff, raw percent form (0 if none live) — for callers applying it as a multiplier
+// against an ALREADY-AGGREGATED power figure (Guild Raids' totalMultiplier, Bounty's
+// effectiveBountyPower, Spud Keep's entrant power) rather than as an absolute add-on to
+// one player's raw workMultiplierAmount. 2026-09-04, direct instruction — the buff was
+// live in /work's own effectiveMultiplier but missing from every other "how strong is this
+// player/roster right now" calculation across the app, understating real odds/rewards
+// whenever a workMulti buff was active. Deliberately NOT folded into
+// raidFactory.getMemberRaidPower/getEffectiveRaidPower themselves — those are reused as-is
+// by Tower's entry gate, which explicitly excludes guild/world buffs by design (see
+// tower.md's "Entry Gate Uses Effective Power" section) — so every consumer below applies
+// this the same way Firefly's guildRaidMultiplierPercent perk already gets applied in
+// startRaid.js: fetched once, multiplied in separately, after the shared power figure is
+// computed.
+async function getWorldBuffWorkMultiPercent() {
+    const buff = await dynamoHandler.getActiveWorldBuff();
+    return dynamoHandler.isWorldBuffLive(buff, "workMulti") ? buff.value : 0;
+}
+
 const metalPotatoRewards = {
     workMultiplierReward: 0.6,
     passiveReward: 1.5,
@@ -821,5 +839,6 @@ module.exports = {
     applyCatchUp,
     getGuildWorkMulti,
     getCompanionWorkMulti,
-    getWorldBuffWorkMulti
+    getWorldBuffWorkMulti,
+    getWorldBuffWorkMultiPercent
 }

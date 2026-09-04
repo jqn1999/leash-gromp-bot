@@ -3,6 +3,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
+const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const guildCompanionFactory = require("../../utils/guildCompanionFactory");
@@ -1152,6 +1153,16 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
     if (raidCompanionBoost > 0) {
         totalMultiplier *= (1 + raidCompanionBoost);
+    }
+
+    // World Boss's workMulti buff (2026-09-04, direct instruction) — same "fetched once,
+    // multiplied in separately" shape as Firefly's boost just above, rather than folded
+    // into raidFactory.getEffectiveRaidPower itself (that function is reused as-is by
+    // Tower's entry gate, which deliberately excludes guild/world buffs — see tower.md's
+    // "Entry Gate Uses Effective Power" section).
+    const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+    if (worldBuffPercent > 0) {
+        totalMultiplier *= (1 + worldBuffPercent);
     }
 
     // Per-member RAW power (deliberately NOT the rank-decayed teamPower above —
