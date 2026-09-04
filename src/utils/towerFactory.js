@@ -33,6 +33,15 @@ class towerFactory{
         // The previous floor's result text, prefaced onto the next floor's own embed when
         // autoContinue is on and its dedicated result screen was skipped. See resolveNext.
         this.lastResultText = null
+        // Per-run REWARD variety cap (2026-09-04, direct instruction) — without this, a single
+        // deep run can roll the same REWARDS entry (e.g. Golden Ginger) over and over, each hit
+        // stacking another PERMANENT passive income/bank capacity grant with no bound. Tracks
+        // which REWARDS entries (by name) this run has already offered; execNormalFloor's REWARD
+        // branch excludes them from the pool until every entry has come up once, then resets so
+        // a very long run doesn't run out of REWARD content. Shared by both the interactive and
+        // fastForwardToNextElite's silent path, since both funnel through execNormalFloor on the
+        // same instance.
+        this.usedRewards = new Set()
     }
 
     async startRun(){
@@ -107,11 +116,18 @@ class towerFactory{
                 type = `TRANSACTION (${this.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes)`
                 color = "Blue"
                 break
-            case "REWARD":
-                fl = tC.REWARDS[Math.floor(Math.random() * tC.REWARDS.length)]
+            case "REWARD": {
+                let pool = tC.REWARDS.filter(r => !this.usedRewards.has(r.name))
+                if(pool.length === 0){
+                    this.usedRewards.clear()
+                    pool = tC.REWARDS
+                }
+                fl = pool[Math.floor(Math.random() * pool.length)]
+                this.usedRewards.add(fl.name)
                 type = "REWARD"
                 color = "Purple"
                 break
+            }
         }
 
         let description = fl.description

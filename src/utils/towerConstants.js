@@ -311,9 +311,14 @@ const TRANSACTIONS = [
     },
     {
         // Content widening (2026-08-31) — see tower.md part 3.
+        // Description reworded (2026-09-04) to drop the "1 million" figure — BANK_CAPACITY is a
+        // SCALED_PAYOUT_TYPE, so the actual amount granted is scaleReward(this.decayValue(...))
+        // at the floor where it's bought, not the raw constants.js value; the old text promised a
+        // fixed number that was only ever true right at the entry-gate anchor multi on an early
+        // floor. Only the price (450,000, never decayed/scaled) stays a hard number. See tower.md.
         name: "The Baron's Beet",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A well-dressed beet offers you 1 million PERMANENT bank capacity for 450,000 potatoes.\n\nWill you take the offer?",
+        description: "A well-dressed beet offers you a permanent boost to your bank capacity for 450,000 potatoes.\n\nWill you take the offer?",
         choices: [{ name: 'Yes', outcome: PAYOUT.BANK_CAPACITY, value: 1000000, price: 450000, result: `You buy the permanent bank capacity upgrade from the baron!` },
         { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the baron's offer and depart` }],
         poor: "As much as you want to buy the bank capacity, you don't have enough potatoes to buy it",
@@ -321,34 +326,43 @@ const TRANSACTIONS = [
     }
 ]
 
+// Reworded (2026-09-04) — Fairy Fig's potato figure and King Kiwi's/Golden Ginger's passive
+// income and bank capacity figures used to state a fixed number, but POTATOES/PASSIVE_INCOME/
+// BANK_CAPACITY are all SCALED_PAYOUT_TYPEs: the amount actually credited is
+// scaleReward(decayValue(rawValue)), computed per-player from this.scalingFactor (power) and
+// the floor it's resolved on (depth decay), so the printed number was only ever literally true
+// at the entry-gate anchor multi on an early floor. Dropped the specific figures rather than
+// computing/injecting the true live number into every button label — see roadmap.md. (Work
+// multiplier figures are untouched: MODIFIER.WORK_MULTIPLIER never decays and PAYOUT.WORK_
+// MULTIPLIER is explicitly excluded from SCALED_PAYOUT_TYPES, so those numbers stay accurate.)
 const REWARDS = [
     {
         name: "Fairy Fig",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: "A flying fig offers you 500,000 potatoes or 5 work modifier on this run.\n\nWhat will you take?",
+        description: "A flying fig offers you a pile of potatoes or 5 work modifier on this run.\n\nWhat will you take?",
         kill_elite: false,
-        choices: [{ name: '500,000 potatoes', outcome: PAYOUT.POTATOES, value: 500000, result: "The fig turned into dust and granted you 500,000 potatoes!" },
+        choices: [{ name: 'A pile of potatoes', outcome: PAYOUT.POTATOES, value: 500000, result: "The fig turned into dust and granted you a pile of potatoes!" },
         { name: '5 work multiplier', outcome: MODIFIER.WORK_MULTIPLIER, value: 5, result: "The fig turned into dust and granted you 5 work modifier!" }],
     },
     {
         name: "King Kiwi",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.2 work multiplier, 300,000 passive income, or 2 million bank capacity if you manage to defeat elite on floor `,
+        description: `The King Kiwi, king of the Kiwi Plains, offers you either 0.2 work multiplier, a boost to your passive income, or a boost to your bank capacity if you manage to defeat elite on floor `,
         description2: `.\n\nWhat will you choose?`,
         kill_elite: true,
         choices: [{name: '0.2 work multiplier', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.WORK_MULTIPLIER, value: 0.2, result: "The king agrees to give you some work multiplier if you defeat the elite."},
-        {name: '300,000 passive income', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 300000, result: "The king agrees to give you some passive if you defeat the elite."},
-        {name: '2 million bank capacity', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 2000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
+        {name: 'Passive income boost', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.PASSIVE_INCOME, value: 300000, result: "The king agrees to give you some passive if you defeat the elite."},
+        {name: 'Bank capacity boost', outcome: PAYOUT.ELITE_KILL, type: PAYOUT.BANK_CAPACITY, value: 2000000, result: "The king agrees to give you some bank capacity if you defeat the elite."}],
     },
     {
         // Content widening (2026-08-31) — a plain, non-conditional third REWARD so the pool
         // isn't just Fairy Fig/King Kiwi. See tower.md part 3.
         name: "Golden Ginger",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
-        description: "A radiant ginger root offers you 200,000 passive income or 1.5 million bank capacity, both permanent.\n\nWhat will you take?",
+        description: "A radiant ginger root offers you a boost to your passive income or your bank capacity, both permanent.\n\nWhat will you take?",
         kill_elite: false,
-        choices: [{ name: '200,000 passive income', outcome: PAYOUT.PASSIVE_INCOME, value: 200000, result: "The ginger dissolves into golden light, granting you 200,000 passive income!" },
-        { name: '1.5 million bank capacity', outcome: PAYOUT.BANK_CAPACITY, value: 1500000, result: "The ginger dissolves into golden light, granting you 1.5 million bank capacity!" }],
+        choices: [{ name: 'Passive income boost', outcome: PAYOUT.PASSIVE_INCOME, value: 200000, result: "The ginger dissolves into golden light, granting you a boost to your passive income!" },
+        { name: 'Bank capacity boost', outcome: PAYOUT.BANK_CAPACITY, value: 1500000, result: "The ginger dissolves into golden light, granting you a boost to your bank capacity!" }],
     }
 ]
 

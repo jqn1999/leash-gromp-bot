@@ -69,6 +69,9 @@ floor — see "King Kiwi" below).
   it promises a stat reward that's pushed onto the `PAYOUT.ELITE_KILL` queue as `[floor, type, amount]`
   and only actually pays out if the player survives the *next* elite floor
   (`checkElitePayout` matches `this.floor` against queued entries when an elite is beaten).
+  **Variety-capped per run (2026-09-04)** — see "REWARD Variety Cap + Wording Fix" below:
+  `this.usedRewards` excludes an entry from the pool once it's come up, resetting only after
+  every entry has appeared once.
 - **ELITE** — fight from `tC.ELITES` (currently one: "Celerity, the Swift Stalk", difficulty `10.0`,
   reward `150,000` potatoes). Success chance:
   `(multi + run's WORK_MULTIPLIER modifier) / (this.difficulty * elite.difficulty)`, capped at 100%.
@@ -1241,3 +1244,47 @@ those three currencies. `PAYOUT.WORK_MULTIPLIER` and `MODIFIER.WORK_MULTIPLIER` 
 stay legitimately fractional (e.g. Traveling Turnip's flat `0.2`) — rounding only applies inside
 the `SCALED_PAYOUT_TYPES` branch. 3 existing tests that asserted the old unrounded fractional
 values directly were updated to expect the rounded ones. Full suite: **995/995**.
+
+## REWARD Variety Cap + Wording Fix (2026-09-04, direct instruction)
+
+A player reported the passive income/bank capacity REWARD scenarios "say take X or Y but its
+really not those numbers." Root cause: `PAYOUT.POTATOES`, `PAYOUT.PASSIVE_INCOME`, and
+`PAYOUT.BANK_CAPACITY` are `SCALED_PAYOUT_TYPES` — the amount actually credited is
+`scaleReward(decayValue(rawValue))`, driven by the player's own `scalingFactor` (power) and the
+floor it resolves on (depth decay), never the raw `value` written in `towerConstants.js`. The
+flavor text for four entries stated that raw value as if it were a fixed promise:
+
+- **Fairy Fig** (`REWARDS`) — "500,000 potatoes" (its "5 work multiplier" option is unaffected —
+  `MODIFIER.WORK_MULTIPLIER` never decays or scales)
+- **King Kiwi** (`REWARDS`) — "300,000 passive income" / "2 million bank capacity" (its "0.2 work
+  multiplier" option decays by floor depth only, a much smaller and pre-existing drift, left as-is)
+- **Golden Ginger** (`REWARDS`) — "200,000 passive income" / "1.5 million bank capacity"
+- **The Baron's Beet** (`TRANSACTIONS`) — "1 million PERMANENT bank capacity" (its 450,000-potato
+  price is never decayed/scaled, so that number stays accurate)
+
+Presented two fixes: compute and inject the true live number into the description/button label
+before each choice (more work, fully accurate, sets a template pattern for any future scaled
+content), or drop the specific figures and go generic. **Chosen: drop the figures.** Reworded all
+four entries' `description`/`choices[].name`/`choices[].result` in `towerConstants.js` to describe
+the reward by kind ("a boost to your passive income", "a pile of potatoes") rather than a number —
+several of the `result` strings (King Kiwi's, the Baron's "Yes") were already number-free and
+needed no change. No numeric `value` fields touched; `scaleReward`/`decayValue` themselves are
+unchanged. One test comment (`towerFactory.test.js`) referencing the old label text updated to
+match.
+
+**Second, related ask**: since REWARD floors were pure `Math.random()` picks from `tC.REWARDS`
+with no memory across a run, a lucky run could roll e.g. Golden Ginger many times in a row, each
+hit stacking another PERMANENT passive income/bank capacity grant — no bound beyond needing to
+survive to the next REWARD floor (dying wipes the *whole* run's accumulated stat gains, not
+per-reward, so it isn't a real brake on repeat-stacking a single entry). Added `this.usedRewards`
+(a `Set`, constructed empty per run) to `towerFactory`: `execNormalFloor`'s `"REWARD"` branch now
+filters `tC.REWARDS` down to entries not yet used this run, and only resets (clears the set, back
+to the full pool) once every entry has come up — so a run can't repeat the same REWARD scenario
+back-to-back, but a very long run doesn't permanently run out of REWARD content either. Shared
+automatically by the interactive and `fastForwardToNextElite`'s silent path, since both call
+`execNormalFloor` on the same instance. Decay/scaling and the floor-type weights
+(`FLOOR_WEIGHTS`) are untouched — this bounds *which* REWARD entries repeat, not how often a
+REWARD floor itself comes up. 2 new tests added (`towerFactory.test.js`): one lap through
+`tC.REWARDS.length * 2` REWARD floors hits every entry exactly once per lap with no repeats
+within a lap; `usedRewards` is confirmed shared across silent and interactive calls on the same
+instance. Full suite re-run clean.

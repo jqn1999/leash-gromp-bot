@@ -8055,3 +8055,30 @@ these via `Work.MIMIC_POTATO_BANK_PERCENT`/`Work.MAX_MIMIC_POTATO_LOSS` symbolic
 literals needed updating) — only a stale comment in `workFactory.test.js` ("3% of 0 rounds to
 -0") needed a wording fix since the percent is no longer literally 3%. Full suite re-run clean
 (1023/1023).
+
+## Tower REWARD wording fix + variety cap (2026-09-04, direct instruction)
+
+"is tower wording wrong on some scenarios rn? someone said the passive/bank capacity scenario
+says take x or y but its really not those numbers." Confirmed: Fairy Fig, King Kiwi, Golden
+Ginger, and The Baron's Beet all stated a fixed reward number (e.g. "300,000 passive income",
+"1 million PERMANENT bank capacity") that no longer matches what's actually credited, since
+`PAYOUT.POTATOES`/`PASSIVE_INCOME`/`BANK_CAPACITY` are scaled by the player's own power
+(`scaleReward`) and decayed by floor depth (`decayValue`) — the printed number was only ever
+literally true at the entry-gate anchor multi, on an early floor.
+
+Offered two fixes: compute and show the real live number per-choice, or drop the specific
+figures and go generic. User chose **generic** — reworded all four entries' description/button
+text in `towerConstants.js` to describe the reward by kind rather than an exact amount (King
+Kiwi's smaller, decay-only work-multiplier drift left alone — much less noticeable, out of
+scope for this pass).
+
+Follow-up ask in the same message: "can you add certain limits on how many passive/work
+multi/etc scenarios pop up in a given run? or should we leave it uncapped." REWARD floors were
+pure `Math.random()` picks with no run memory, so a lucky run could roll the same entry (e.g.
+Golden Ginger) repeatedly, each hit stacking another PERMANENT grant. Added a per-run
+`usedRewards` Set to `towerFactory` — each REWARDS entry can come up at most once per run until
+every entry has appeared, then the pool resets. Floor-type weights and the underlying
+decay/scaling formulas are untouched; this only bounds repeat picks of the *same* REWARD
+scenario. `.claude/systems/tower.md` updated with a new dated section covering both changes; 2
+new tests added to `towerFactory.test.js` for the variety cap, plus 1 stale test comment fixed
+for the reworded King Kiwi label. Full suite re-run clean (1025/1025).

@@ -610,7 +610,7 @@ describe('towerFactory Discord-interaction flows', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
         tF.floor = 150; // well past the grace floor
         const fl = tC.REWARDS.find(r => r.name === 'King Kiwi');
-        const outcome = await tF.updateValue(fl, 1, 'Purple', true); // index 1 = 300,000 passive income
+        const outcome = await tF.updateValue(fl, 1, 'Purple', true); // index 1 = passive income boost
 
         expect(outcome.notableText).toMatch(/King Kiwi/);
         const [, type, amount] = tF.run[tC.PAYOUT.ELITE_KILL][0];
@@ -732,5 +732,46 @@ describe('towerFactory Discord-interaction flows', () => {
 
         const embedArg = interaction.editReply.mock.calls[0][0];
         expect(embedArg.embeds[0].data.description).toContain('Success Chance: 90.00%');
+    });
+});
+
+describe('REWARD variety cap (2026-09-04)', () => {
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    test('does not repeat a REWARDS entry until every entry has come up once, then cycles again', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.policy = tC.POLICY.SAFE;
+
+        const picks = [];
+        for (let i = 0; i < tC.REWARDS.length * 2; i++) {
+            const outcome = await tF.execNormalFloor('REWARD', true, tF.policy);
+            picks.push(outcome.name);
+        }
+
+        // First lap covers every REWARDS entry exactly once, in some order, with no repeats.
+        const firstLap = picks.slice(0, tC.REWARDS.length);
+        expect(new Set(firstLap).size).toBe(tC.REWARDS.length);
+        // Second lap also covers every entry exactly once — the pool reset rather than
+        // staying permanently exhausted or permanently favoring whatever's left.
+        const secondLap = picks.slice(tC.REWARDS.length);
+        expect(new Set(secondLap).size).toBe(tC.REWARDS.length);
+    });
+
+    test('usedRewards is shared across silent (fast-forward) and interactive calls on the same run', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.policy = tC.POLICY.SAFE;
+
+        const first = await tF.execNormalFloor('REWARD', true, tF.policy);
+        expect(tF.usedRewards.has(first.name)).toBe(true);
+        expect(tF.usedRewards.size).toBe(1);
+
+        const second = await tF.execNormalFloor('REWARD', true, tF.policy);
+        expect(second.name).not.toBe(first.name);
+        expect(tF.usedRewards.size).toBe(2);
     });
 });
