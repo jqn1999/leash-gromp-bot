@@ -709,9 +709,19 @@ Brassica and Yamsalot were added to give the pool an actual difficulty gradient 
 both sat at difficulty 1800 with no easier/harder alternative. `thumbnailUrl` for both is currently a
 placeholder (the bot's generic avatar); they need real commissioned artwork like Griseous/Raikon's.
 
-Success chance: `min(totalMultiplier/difficulty, .75)`. Unlike guild raids, reward is split
-**proportionally by each participant's work-multiplier share** (`handlePotatoSplitByShare`), and
-there is currently no penalty on failure (`potatoPenalty: 0`).
+Success chance: `min(totalMultiplier/difficulty, .75)`, where `totalMultiplier` is the sum of every
+participant's `raidFactory.getMemberRaidPower(userDetails)` (raw stat + live rebirth/companion
+`workMultiplierPercent` bonuses — same formula Guild Raids/Bounty/Spud Keep/Tower's entry gate all
+use), with the World Boss's own `workMulti` buff (if live) multiplied in on top of the aggregate
+only (2026-09-04 fix — see "World Boss buff" consumers list below; previously summed raw
+`workMultiplierAmount` alone, silently ignoring rebirth/companion bonuses AND the buff entirely).
+Each participant's own `multiplier`/`raidShare` fields stay unbuffed — the world buff is uniform
+across the roster so it cancels out of any individual's share, and a share is meant to reflect a
+raider's own real contribution, not one temporarily inflated by a server-wide buff (same "raw
+power, not buff-inflated" precedent `spudKeepFactory.splitPotByWorkMulti` already sets for its own
+per-member split). Unlike guild raids, reward is split **proportionally by each participant's own
+share** (`handlePotatoSplitByShare`), and there is currently no penalty on failure
+(`potatoPenalty: 0`).
 `join-world-raid` / `current-world-raid` mirror the guild raid join/status commands but operate
 against the `world` stats doc instead of a guild record.
 
@@ -804,10 +814,20 @@ Ladybug/Mochi's own `passiveIncomePercent` companion perks).
     judgment call, not an oversight); real `/rob` (`calculateRobChance` is wealth-ratio-based,
     never work-multiplier-based); `spudKeepFactory.splitPotByWorkMulti` (deliberately splits by each
     winner's raw `workMultiplierAmount` "at the time of the battle," not any live-modified figure).
-    Also flagged but NOT fixed here as a separate, larger pre-existing gap: `worldFactory.js`'s own
-    World Raid `totalMultiplier` sums raw `workMultiplierAmount` only — it doesn't even use
+    **Follow-up fix (2026-09-04, direct instruction: "can you fix the world power calc")**:
+    `worldFactory.js`'s own World Raid `totalMultiplier` used to sum raw `workMultiplierAmount`
+    only — flagged above as a bigger, separate pre-existing gap since it didn't even use
     `getMemberRaidPower`/rebirth/companion bonuses the way Guild Raids and everything else do, let
-    alone the World Boss buff — a bigger, separate rework than today's ask.
+    alone the World Boss buff. Now fixed: each participant's own contribution is
+    `raidFactory.getMemberRaidPower(userDetails)` (also simplifies away the old
+    `Number.isFinite(userDetails?.workMultiplierAmount)` NaN-guard — `getMemberRaidPower` already
+    returns 0 for a malformed/missing record on its own), and the World Boss's `workMulti` buff is
+    multiplied into the summed `totalMultiplier` afterward, same "fetched once, applied separately"
+    shape every other consumer above uses. Per-participant `multiplier`/`raidShare` stay unbuffed
+    (see the World Raid section above for why). `worldFactory.test.js`'s `jest.mock('../raidFactory')`
+    was updated to spread `jest.requireActual` so `getMemberRaidPower` stays real while
+    `RaidFactory`'s instance methods stay mocked — same pattern `startRaidGuildCompanion.test.js`
+    already established.
 - **Announcement**: folded into the existing `createWorldResultEmbed` (posted to the events channel
   on every World Boss resolution) rather than a new message — a "🌍 Server-Wide Blessing" field on
   a win, naming the buff granted.

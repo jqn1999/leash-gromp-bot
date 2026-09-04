@@ -1,5 +1,6 @@
 const dynamoHandler = require("./dynamoHandler");
-const { RaidFactory } = require("./raidFactory");
+const { RaidFactory, getMemberRaidPower } = require("./raidFactory");
+const { getWorldBuffWorkMultiPercent } = require("./workFactory");
 const { EmbedFactory } = require("./embedFactory");
 const { Raid } = require("../utils/constants")
 const { getRandomFromInterval } = require("../utils/helperCommands")
@@ -51,17 +52,33 @@ async function startWorldBoss(world, mob){
         const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
         raidList.forEach((element, index) => {
             const userDetails = raidMemberDetails[index];
-            // A malformed participant record (missing workMultiplierAmount) would
-            // otherwise poison totalMultiplier to NaN for every participant, which
-            // guarantees the raid resolves as a failure (Math.random() < NaN is always
-            // false) regardless of anyone else's actual multiplier.
-            const memberMultiplier = Number.isFinite(userDetails?.workMultiplierAmount) ? userDetails.workMultiplierAmount : 0;
+            // Full effective power (raw stat + live rebirth/companion workMultiplierPercent
+            // bonuses) — same raidFactory.getMemberRaidPower every other raid-shaped
+            // contest (Guild Raids, Bounty, Spud Keep) already uses, rather than the raw
+            // workMultiplierAmount this used to read directly. That raw-only version
+            // silently ignored a rebirther's or companion-perk-user's real strength — the
+            // exact bug already fixed for Guild Raids/Tower's entry gate (see tower.md's
+            // "Entry Gate Uses Effective Power" section) but never carried over here.
+            // getMemberRaidPower already returns 0 for a malformed/missing userDetails —
+            // no separate Number.isFinite guard needed anymore.
+            const memberMultiplier = getMemberRaidPower(userDetails);
             totalMultiplier += memberMultiplier;
             raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier})
         })
         for (const element of raidListByMulti) {
             element.raidShare = totalMultiplier > 0 ? element.multiplier / totalMultiplier : 0;
         }
+    }
+    // World Boss's own workMulti buff (2026-09-04, direct instruction) — applied ONLY to
+    // the aggregate totalMultiplier that drives successChance, never to each participant's
+    // own multiplier/raidShare above: it's a uniform percentage, so folding it into every
+    // member equally would cancel out in the ratio anyway, and raidShare/multiplier are
+    // meant to reflect each raider's own real contribution, not one inflated by a
+    // temporary server-wide buff (same "raw power, not buff-inflated" precedent
+    // spudKeepFactory.splitPotByWorkMulti already sets for its own per-member split).
+    const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+    if (worldBuffPercent > 0) {
+        totalMultiplier *= (1 + worldBuffPercent);
     }
     const randomMultiplier = getRandomFromInterval(.8, 1.2);
     const successChance = determinRaidSuccessChance(totalMultiplier, mob.difficulty);

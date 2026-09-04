@@ -3,13 +3,21 @@ const mockHandleStatSplit = jest.fn(async () => {});
 const mockIncrementCounter = jest.fn(async () => {});
 
 jest.mock('../dynamoHandler');
-jest.mock('../raidFactory', () => ({
-    RaidFactory: jest.fn().mockImplementation(() => ({
-        handlePotatoSplitByShare: mockHandlePotatoSplitByShare,
-        handleStatSplit: mockHandleStatSplit,
-        incrementCounter: mockIncrementCounter,
-    })),
-}));
+// getMemberRaidPower must stay the REAL implementation (startWorldBoss now reuses it,
+// same "Full effective power" fix Guild Raids/Tower's entry gate already got) — only
+// RaidFactory's own instance methods (the potato/stat split side effects) are mocked, same
+// pattern startRaidGuildCompanion.test.js already established.
+jest.mock('../raidFactory', () => {
+    const actual = jest.requireActual('../raidFactory');
+    return {
+        ...actual,
+        RaidFactory: jest.fn().mockImplementation(() => ({
+            handlePotatoSplitByShare: mockHandlePotatoSplitByShare,
+            handleStatSplit: mockHandleStatSplit,
+            incrementCounter: mockIncrementCounter,
+        })),
+    };
+});
 
 const dynamoHandler = require('../dynamoHandler');
 const { worldFactory, worldBossMobs, WORLD_BUFF_DURATION_SECONDS } = require('../worldFactory');
@@ -21,6 +29,10 @@ beforeEach(() => {
     mockHandlePotatoSplitByShare.mockImplementation(async (raidListByMulti) => raidListByMulti);
     mockHandleStatSplit.mockImplementation(async () => {});
     mockIncrementCounter.mockImplementation(async () => {});
+    // World Boss's own workMulti buff (2026-09-04) — default to no buff live; individual
+    // tests override this to exercise its effect on the aggregate totalMultiplier.
+    dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+    dynamoHandler.isWorldBuffLive.mockReturnValue(false);
 });
 
 // A guaranteed win: one participant with a real multiplier (so totalMultiplier > 0, and
@@ -163,5 +175,73 @@ describe('World Boss server-wide buff', () => {
         await factory.popWorldBoss();
 
         expect(dynamoHandler.setActiveWorldBuff).not.toHaveBeenCalled();
+    });
+});
+
+// 2026-09-04, direct instruction ("can you fix the world power calc") — totalMultiplier
+// used to sum raw workMultiplierAmount only, silently ignoring rebirth/companion bonuses
+// (the exact bug already fixed for Guild Raids/Tower's entry gate) and the World Boss's
+// own workMulti buff entirely. successChance isn't returned directly, so these spy on
+// EmbedFactory.prototype.createWorldResultEmbed (real EmbedFactory, not mocked in this
+// file) to read the successChance argument each real popWorldBoss() call actually used.
+describe('World power calc (2026-09-04 fix)', () => {
+    const { EmbedFactory } = require('../embedFactory');
+
+    function mockWinnableRaid(worldIndex, participants) {
+        dynamoHandler.getStatDatabase.mockResolvedValue({
+            world_active: true,
+            world_index: worldIndex,
+            world_list: participants.map(p => ({ id: p.id, username: p.id })),
+        });
+        dynamoHandler.findUser.mockImplementation(async (id) => participants.find(p => p.id === id));
+        jest.spyOn(Math, 'random').mockReturnValue(0.999999); // never wins outright — isolates successChance itself
+    }
+
+    afterEach(() => {
+        if (Math.random.mockRestore) Math.random.mockRestore();
+        if (EmbedFactory.prototype.createWorldResultEmbed.mockRestore) EmbedFactory.prototype.createWorldResultEmbed.mockRestore();
+    });
+
+    test('a participant\'s live rebirth bonus raises totalMultiplier (and therefore successChance), same fix already applied to Guild Raids/Tower', async () => {
+        const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
+        const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');
+
+        mockWinnableRaid(griseousIndex, [{ id: 'a', workMultiplierAmount: 100, rebirthCount: 0 }]);
+        const factory1 = new worldFactory();
+        await factory1.popWorldBoss();
+        const [, , , noRebirthChance] = spy.mock.calls[0];
+
+        spy.mockClear();
+        mockWinnableRaid(griseousIndex, [{ id: 'a', workMultiplierAmount: 100, rebirthCount: 1 }]);
+        const factory2 = new worldFactory();
+        await factory2.popWorldBoss();
+        const [, , , withRebirthChance] = spy.mock.calls[0];
+
+        expect(withRebirthChance).toBeGreaterThan(noRebirthChance);
+    });
+
+    test('a live workMulti World Boss buff raises totalMultiplier further, without changing any participant\'s own raidShare', async () => {
+        const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
+        const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');
+        const participants = [{ id: 'a', workMultiplierAmount: 100, rebirthCount: 0 }, { id: 'b', workMultiplierAmount: 50, rebirthCount: 0 }];
+
+        mockWinnableRaid(griseousIndex, participants);
+        const factory1 = new worldFactory();
+        await factory1.popWorldBoss();
+        const [rosterWithoutBuff, , , chanceWithoutBuff] = spy.mock.calls[0];
+
+        spy.mockClear();
+        mockWinnableRaid(griseousIndex, participants);
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue({ buffType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 });
+        dynamoHandler.isWorldBuffLive.mockImplementation((buff, type) => Boolean(buff && buff.buffType === type));
+        const factory2 = new worldFactory();
+        await factory2.popWorldBoss();
+        const [rosterWithBuff, , , chanceWithBuff] = spy.mock.calls[0];
+
+        expect(chanceWithBuff).toBeGreaterThan(chanceWithoutBuff);
+        // The buff is uniform across the roster — it must cancel out of each individual
+        // participant's own share of the reward, not just inflate the aggregate.
+        expect(rosterWithBuff.find(m => m.id === 'a').raidShare).toBeCloseTo(rosterWithoutBuff.find(m => m.id === 'a').raidShare);
+        expect(rosterWithBuff.find(m => m.id === 'a').multiplier).toBeCloseTo(rosterWithoutBuff.find(m => m.id === 'a').multiplier);
     });
 });
