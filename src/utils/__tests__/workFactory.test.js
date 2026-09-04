@@ -898,7 +898,7 @@ describe('handleMimicPotato', () => {
         const lost = await workFactory.handleMimicPotato(userDetails);
 
         // Math.abs sidesteps -0 vs 0 (Object.is treats them as distinct, but they're
-        // behaviorally identical here) — 3% of 0 rounds to -0 via -Math.min(0, cap).
+        // behaviorally identical here) — a percent of 0 rounds to -0 via -Math.min(0, cap).
         expect(Math.abs(lost)).toBe(0);
     });
 

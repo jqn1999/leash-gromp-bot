@@ -232,10 +232,19 @@ regrade.js's tier data.
 
 A second flavor of loss alongside Poison Potato, but it raids `bankStored` instead of liquid
 `potatoes` — the bank protects from `/rob`, not from this. Loss is `bankStored *
-Work.MIMIC_POTATO_BANK_PERCENT(.03)`, capped at `Work.MAX_MIMIC_POTATO_LOSS(5000000)` so one unlucky
-roll can't gut a well-off player's entire bank in a single hit. A player with nothing banked simply
-loses nothing — no special-casing, the math resolves to 0 on its own. Catch-up intentionally doesn't
-apply, same reasoning as Poison. Recorded in `totalLosses` like every other loss.
+Work.MIMIC_POTATO_BANK_PERCENT(.015)`, capped at `Work.MAX_MIMIC_POTATO_LOSS(2500000)` so one
+unlucky roll can't gut a well-off player's entire bank in a single hit. A player with nothing
+banked simply loses nothing — no special-casing, the math resolves to 0 on its own. Catch-up
+intentionally doesn't apply, same reasoning as Poison. Recorded in `totalLosses` like every other
+loss.
+
+**Halved 2026-09-04, direct instruction** ("the scaling potato hit on it is getting very high for
+players and its feeling a bit too painful") — was `.03`/`5000000`. Unlike Poison Potato (same 1%
+rarity tier), Mimic has no weekly bad-luck mitigation
+(`PoisonMitigation`'s escalating-then-capped relief) and no companion counterplay (nothing plays
+Guinea Pig's role here) — every hit lands at full, unmitigated force every time. A straight numbers
+cut (both the percent and the cap) was the requested fix rather than adding a new mitigation
+mechanic; that remains an option if the pain persists.
 
 ### Golden Yam (0.1% roll — `workFactory.js`'s `handleGoldenYam`)
 

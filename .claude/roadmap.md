@@ -8027,3 +8027,31 @@ names changed). Confirmed zero other references to any of the old names anywhere
 companion web dashboard — this is the bot's own out-of-fiction product/tool name (like a website
 title), not in-story game flavor a player encounters inside Discord, so it wasn't treated as part
 of this pass. Worth a look if that page's copy is ever otherwise being touched.
+
+## Mimic Potato rebalance (2026-09-04, direct instruction)
+
+"can you look into reworking mimic potato? the scaling potato hit on it is getting very high for
+players and its feeling a bit too painful." Mimic Potato (1% rarity tier, same as Poison Potato)
+deducts `min(bankStored * MIMIC_POTATO_BANK_PERCENT, MAX_MIMIC_POTATO_LOSS)` from `bankStored`
+(not liquid `potatoes` — the bank protects from `/rob`, not from this). Diagnosed the deeper
+structural cause: unlike Poison Potato (same rarity tier), Mimic has no weekly bad-luck mitigation
+(`PoisonMitigation`'s escalating-then-capped relief ladder) and no companion counterplay (nothing
+plays Guinea Pig's immunity/rebate role here) — every hit lands at full, unmitigated force, every
+time, forever.
+
+Presented the user a real choice via `AskUserQuestion`: lower the raw numbers, add a weekly
+mitigation mechanic, or both. User chose **"Lower the numbers (Recommended)"** — the simpler,
+more conservative fix. Implemented a straight halving:
+
+| Constant | Before | After |
+| --- | --- | --- |
+| `Work.MIMIC_POTATO_BANK_PERCENT` | `.03` | `.015` |
+| `Work.MAX_MIMIC_POTATO_LOSS` | `5,000,000` | `2,500,000` |
+
+No mechanic changes — `handleMimicPotato` itself is untouched, only the constants it reads.
+`.claude/systems/economy-and-work.md` updated to match, with the asymmetry vs. Poison Potato
+noted as a still-available follow-up if the pain persists after this cut. Test files reference
+these via `Work.MIMIC_POTATO_BANK_PERCENT`/`Work.MAX_MIMIC_POTATO_LOSS` symbolically (no hardcoded
+literals needed updating) — only a stale comment in `workFactory.test.js` ("3% of 0 rounds to
+-0") needed a wording fix since the percent is no longer literally 3%. Full suite re-run clean
+(1023/1023).

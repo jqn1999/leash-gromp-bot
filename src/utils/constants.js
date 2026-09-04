@@ -71,8 +71,13 @@ const Work = {
     // bank protects from /rob, not from this. Percent-of-banked rather than flat so it
     // scales with wealth like every other late-game number, capped so one unlucky roll
     // can't gut a whale's entire bank in a single hit.
-    MIMIC_POTATO_BANK_PERCENT: .03,
-    MAX_MIMIC_POTATO_LOSS: 5000000,
+    // Halved 2026-09-04, direct instruction ("the scaling potato hit on it is getting
+    // very high for players and its feeling a bit too painful") — was .03/5,000,000.
+    // Unlike Poison Potato (same 1% rarity tier), Mimic has no weekly bad-luck mitigation
+    // and no companion counterplay/immunity, so every hit lands at full force forever —
+    // a straight numbers cut was the requested fix, not a new mitigation mechanic.
+    MIMIC_POTATO_BANK_PERCENT: .015,
+    MAX_MIMIC_POTATO_LOSS: 2500000,
     // Taro Trader's rare jackpot counterpart — same random-range shape (getRandomFromInterval
     // scaled by effectiveMultiplier). Golden Yam and Golden Potato share the exact same 0.1%
     // workScenarios encounter chance, but Golden Yam pays in starches (a volatile, sell-
