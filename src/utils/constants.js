@@ -994,8 +994,14 @@ const Companions = [
         // starchSellBonusPercent for the same reason as Mole's redesign (see Mole's own
         // comment) — kept the same 15% figure as robChanceFlat, its fellow "one of four"
         // diversified perk on this companion.
+        // Regrade perk reworked 2026-09-04, direct instruction — was regradeChanceFlat
+        // (0.03, ADDED onto a regrade tier's own chance, e.g. 50% -> 53%). Renamed to
+        // regradeChanceBoostPercent (0.5) and now MULTIPLIES the tier's own chance instead
+        // (regrade.js: `currentTier.chance * (1 + boost) + failStack`) — 50% -> 75%, 10% ->
+        // 15%, matching every other tier proportionally rather than a flat +3 points that
+        // barely mattered on high-roll tiers and did nothing for the sub-5% late tiers.
         perks: [
-            { type: "regradeChanceFlat", value: 0.03 },
+            { type: "regradeChanceBoostPercent", value: 0.5 },
             { type: "passiveIncomePercent", value: 0.10 },
             { type: "robChanceFlat", value: 0.15 },
             { type: "starchSellBonusPercent", value: 0.15 }

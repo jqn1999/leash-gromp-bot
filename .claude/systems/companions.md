@@ -185,7 +185,7 @@ the other).
   as "one sell action ≈ one work action, scaled by size" rather than "proportional to how long
   it took to earn these starches"). Floored at 1 so even a tiny sell still trains the companion
   a little.
-- **`/regrade`** — `regradeChanceFlat` (currently only Elder Rootbeard, wired generically by
+- **`/regrade`** — `regradeChanceBoostPercent` (currently only Elder Rootbeard, wired generically by
   perk type so it's future-proof for any later companion granting it). Also has no cooldown,
   so `companionFactory.getRegradeWorkCountGrant(currentTierCost, cheapestTierCost) = max(1,
   round(CompanionLeveling.REGRADE_BASE_GRANT * (currentTierCost / cheapestTierCost) ^
@@ -265,7 +265,7 @@ currently active if (and only if) it carries `passiveIncomePercent` — **additi
 never a replacement for, ordinary action-based leveling, per direct instruction (the broader of
 two scoping options): a passiveIncomePercent companion also actively used for `/work`/Bounty/etc.
 still levels from that too, which also means its OTHER perks (Rootcarver's
-`starchSellBonusPercent`, Elder Rootbeard's `regradeChanceFlat`/`robChanceFlat`, Mochi's
+`starchSellBonusPercent`, Elder Rootbeard's `regradeChanceBoostPercent`/`robChanceFlat`, Mochi's
 `workMultiplierPercent`/`workCooldownSkipChance`/`rebirthBonusPercent`) can grow just from
 sitting equipped too — an accepted tradeoff of the chosen scope, not an oversight.
 
@@ -331,7 +331,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Golden/Poison/Large/Companion/Taro/Mimic/Golden Yam's own encounter chance — Metal/Sweet/Ancient excluded, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
-| Elder Rootbeard | Mythic | `regradeChanceFlat` +3% + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
+| Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +50% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 75%) + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 **Yukon, the Highwayman** (Legendary, **triple**-perk — a deliberate exception to the
@@ -629,7 +629,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | `workCooldownSkipChance` | `dynamoHandler.calculateWorkTimerValue` — rolled first, short-circuits to "ready now" on a hit (stacks with, doesn't fold into, the guild `workTimer` buff). Stashes the active companion's own `id` in a transient `userDetails._cooldownSkippedByCompanion` (never persisted) so `embedFactory.js`'s `buildCooldownSkipField` can show that specific companion's own emoji/name/flavor line — Fieldmouse/Spudsprite/Mochi each read differently, not one shared "Fieldmouse" message regardless of which one actually triggered. `work.js`'s `performWork` also reads this flag to auto-chain another full `/work` resolution as a followUp message (recursing again if *that* roll also skips) — deliberately not a power increase, since the player could already get the exact same odds/outcome by just running `/work` again themselves at zero cost; this only automates the manual re-click. Capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (15) purely as an engineering safety valve against a pathological run of luck, not a balance limit — even Mochi's 20% chance has a vanishingly small chance of ever approaching it |
 | `passiveIncomePercent` | `dynamoHandler.passivePotatoHandler`'s per-user passive tick |
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
-| `regradeChanceFlat` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks |
+| `regradeChanceBoostPercent` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks — multiplies the tier's own chance (`currentTier.chance * (1 + boost) + failStack`), not a flat add |
 | `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple companions with this perk couldn't stack into an unintended snowball. Currently dormant: Firefly (the original holder) was reassigned to `workMultiplierPercent`, so no companion grants this perk right now — the wiring stays in place for a future one |
 | `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion). Currently dormant, same as `guildRaidMultiplierPercent` above: Mole and Elder Rootbeard (its only two holders) were both reassigned to `starchSellBonusPercent` in a balance pass — the wiring stays in place for a future companion |
 | `starchSellBonusPercent` | `sellStarch.js` — folded directly into the per-unit `starch_sell` price before computing payout, so the displayed price and the actual credit never disagree |

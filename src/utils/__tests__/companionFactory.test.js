@@ -788,9 +788,9 @@ describe('levelActiveCompanion', () => {
         });
 
         test('a different perk type check does not level a companion missing that specific perk, even if it carries other perks', () => {
-            // Mole carries starchSellBonusPercent, not regradeChanceFlat.
+            // Mole carries starchSellBonusPercent, not regradeChanceBoostPercent.
             const companions = { owned: [{ instanceId: 'mole-a', id: 'mole', workCount: 10 }], active: 'mole-a' };
-            expect(levelActiveCompanion(companions, 2, null, 'regradeChanceFlat')).toBe(companions);
+            expect(levelActiveCompanion(companions, 2, null, 'regradeChanceBoostPercent')).toBe(companions);
         });
 
         test('is a no-op when nothing is equipped', () => {

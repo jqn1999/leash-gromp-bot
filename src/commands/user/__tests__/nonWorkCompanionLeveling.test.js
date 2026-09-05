@@ -228,7 +228,7 @@ describe('/sell-starch levels an equipped starchSellBonusPercent companion (Mole
     });
 });
 
-describe('/regrade levels an equipped regradeChanceFlat companion (Elder Rootbeard), scaled by cost-ratio, unconditional on success/fail', () => {
+describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder Rootbeard), scaled by cost-ratio, unconditional on success/fail', () => {
     const { callback } = require('../../buying/regrade');
 
     const workShop = shops.find(s => s.shopId === 'workShop');
@@ -364,7 +364,7 @@ describe('/regrade levels an equipped regradeChanceFlat companion (Elder Rootbea
         }
     });
 
-    test('an equipped companion without regradeChanceFlat (Sprout) does not level at all', async () => {
+    test('an equipped companion without regradeChanceBoostPercent (Sprout) does not level at all', async () => {
         const tier = workRegradeTiers[0];
         dynamoHandler.findUser.mockResolvedValue(regradeUser({
             companions: companionsWith('sprout', 'sprout-a'),
@@ -408,7 +408,7 @@ describe('/regrade levels an equipped regradeChanceFlat companion (Elder Rootbea
     });
 });
 
-// Elder Rootbeard carries robChanceFlat + starchSellBonusPercent + regradeChanceFlat all at
+// Elder Rootbeard carries robChanceFlat + starchSellBonusPercent + regradeChanceBoostPercent all at
 // once — confirms the per-command, per-perk-type checks don't interfere with each other:
 // leveling through one command doesn't require, block, or get confused by the other two
 // perk types it also happens to carry.

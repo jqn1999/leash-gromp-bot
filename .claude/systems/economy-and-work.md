@@ -373,10 +373,13 @@ Success chance decreases across tiers (from 50% down to 0.5%). Failures build a 
 (pity counter) that's added to the *next* attempt's chance — resets to 0 on success. This is the
 only progression path once a stat has exhausted its shop tiers.
 
-Also levels the player's equipped companion if it carries `regradeChanceFlat` (currently only
-Elder Rootbeard), scaled by this attempt's cost relative to that track's own cheapest tier and
+Also levels the player's equipped companion if it carries `regradeChanceBoostPercent` (currently
+only Elder Rootbeard), scaled by this attempt's cost relative to that track's own cheapest tier and
 unconditional on success/fail (the cost is a guaranteed sunk cost regardless of outcome) — see
-[companions.md#leveling](companions.md#leveling).
+[companions.md#leveling](companions.md#leveling). That perk itself **multiplies** the tier's own
+chance rather than adding a flat amount (2026-09-04, direct instruction) —
+`currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 50% base value turns a 50%
+tier into 75%, a 10% tier into 15%, etc.
 
 ## Rebirth (prestige reset)
 

@@ -81,7 +81,7 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBaseWorkMultiplier, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
-                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceBoostPercent)
                     // — the cost above is a guaranteed sunk cost regardless of outcome, so this
                     // grant is unconditional on success/fail too. Scales by this attempt's cost
                     // relative to this TRACK's own cheapest tier. Restricted by PERK TYPE, not a
@@ -90,7 +90,7 @@ module.exports = {
                         userDetails.companions,
                         companionFactory.getRegradeWorkCountGrant(currentTier.cost, workRegradeTiers[0].cost),
                         null,
-                        "regradeChanceFlat"
+                        "regradeChanceBoostPercent"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     // "did the equipped companion actually train" readout for the result
@@ -98,7 +98,11 @@ module.exports = {
                     const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
                     const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.workMulti.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.workMulti.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
+                    // regradeChanceBoostPercent (2026-09-04, direct instruction) MULTIPLIES
+                    // the tier's own chance rather than adding a flat amount — 50% * 1.5 =
+                    // 75%, 10% * 1.5 = 15%. failStack (pity) still adds on top, unaffected.
+                    let regradeChanceBoostPercent = companionFactory.getActivePerkValue(userDetails, "regradeChanceBoostPercent");
+                    let chanceOfSuccess = currentTier.chance * (1 + regradeChanceBoostPercent) + userRegrades.workMulti.failStack;
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.workMulti.regradeAmount += currentTier.increase;
                         userRegrades.workMulti.failStack = 0;
@@ -124,13 +128,13 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBasePassiveIncome, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
-                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceBoostPercent)
                     // — see the work-multi track above for the full rationale.
                     const leveledCompanions = companionFactory.levelActiveCompanion(
                         userDetails.companions,
                         companionFactory.getRegradeWorkCountGrant(currentTier.cost, passiveRegradeTiers[0].cost),
                         null,
-                        "regradeChanceFlat"
+                        "regradeChanceBoostPercent"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     // "did the equipped companion actually train" readout for the result
@@ -138,7 +142,11 @@ module.exports = {
                     const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
                     const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.passiveAmount.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.passiveAmount.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
+                    // regradeChanceBoostPercent (2026-09-04, direct instruction) MULTIPLIES
+                    // the tier's own chance rather than adding a flat amount — see the
+                    // work-multi track above for the full rationale.
+                    let regradeChanceBoostPercent = companionFactory.getActivePerkValue(userDetails, "regradeChanceBoostPercent");
+                    let chanceOfSuccess = currentTier.chance * (1 + regradeChanceBoostPercent) + userRegrades.passiveAmount.failStack;
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.passiveAmount.regradeAmount += currentTier.increase;
                         userRegrades.passiveAmount.failStack = 0;
@@ -164,13 +172,13 @@ module.exports = {
                 canRegrade = hasRequiredBaseAmount(userBaseBankCapacity, requiredBaseAmount, interaction, userDisplayName);
                 if (userHasEnough && canRegrade) {
                     await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
-                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceFlat)
+                    // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceBoostPercent)
                     // — see the work-multi track above for the full rationale.
                     const leveledCompanions = companionFactory.levelActiveCompanion(
                         userDetails.companions,
                         companionFactory.getRegradeWorkCountGrant(currentTier.cost, bankRegradeTiers[0].cost),
                         null,
-                        "regradeChanceFlat"
+                        "regradeChanceBoostPercent"
                     );
                     await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
                     // "did the equipped companion actually train" readout for the result
@@ -178,7 +186,11 @@ module.exports = {
                     const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
                     const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
                     let failStack = userRegrades.bankCapacity.failStack;
-                    let chanceOfSuccess = currentTier.chance + userRegrades.bankCapacity.failStack + companionFactory.getActivePerkValue(userDetails, "regradeChanceFlat");
+                    // regradeChanceBoostPercent (2026-09-04, direct instruction) MULTIPLIES
+                    // the tier's own chance rather than adding a flat amount — see the
+                    // work-multi track above for the full rationale.
+                    let regradeChanceBoostPercent = companionFactory.getActivePerkValue(userDetails, "regradeChanceBoostPercent");
+                    let chanceOfSuccess = currentTier.chance * (1 + regradeChanceBoostPercent) + userRegrades.bankCapacity.failStack;
                     if (Math.random() < chanceOfSuccess) {
                         userRegrades.bankCapacity.regradeAmount += currentTier.increase;
                         userRegrades.bankCapacity.failStack = 0;

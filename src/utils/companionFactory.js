@@ -283,7 +283,7 @@ function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor =
 // grant to one specific companion, this pins it to whichever equipped companion happens to
 // carry a given PERK TYPE — direct instruction/product confirmation: the restriction is by
 // perk, not by a hardcoded companion id, so any current or future companion granting
-// robChanceFlat/starchSellBonusPercent/regradeChanceFlat trains from the matching command,
+// robChanceFlat/starchSellBonusPercent/regradeChanceBoostPercent trains from the matching command,
 // not just one named companion the way Yukon is pinned to Bounty/Heist. Checked against the
 // ROSTER definition's own `perks` array (via getCompanionById), not the owned instance —
 // perks live on the roster entry, an owned instance only carries { instanceId, id,
@@ -408,7 +408,7 @@ function getStarchSellWorkCountGrant(starches) {
 }
 
 // Regrade attempt cost -> companion XP grant, for whichever equipped companion carries
-// regradeChanceFlat (currently only Elder Rootbeard, wired generically by perk type so it's
+// regradeChanceBoostPercent (currently only Elder Rootbeard, wired generically by perk type so it's
 // future-proof) when /regrade runs. Normalized against that TRACK's own cheapest tier's cost
 // (not an absolute potato figure), so this self-corrects if a track's tier table is ever
 // rebalanced, rather than needing a re-tune alongside it. sqrt on the cost ratio deliberately

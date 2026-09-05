@@ -121,7 +121,11 @@ const PERK_LABELS = {
     starchSellBonusPercent: value => `+${(value * 100).toFixed(1)}% Starch Sell Value`,
     guildRaidMultiplierPercent: value => `+${(value * 100).toFixed(1)}% Guild Raid Success Chance`,
     bankCapacityPercent: value => `+${(value * 100).toFixed(1)}% Bank Capacity`,
-    regradeChanceFlat: value => `+${(value * 100).toFixed(1)}% Regrade Success Chance`,
+    // Multiplicative, not additive (2026-09-04 rework) — boosts a regrade tier's own chance
+    // by this percent (50% tier -> 75%) rather than adding flat percentage points, so the
+    // label reads as a relative boost rather than the "+X%" flat-add convention every other
+    // entry here uses.
+    regradeChanceBoostPercent: value => `Regrade Success Chance boosted by ${(value * 100).toFixed(1)}%`,
     rebirthBonusPercent: value => `+${(value * 100).toFixed(1)}% Rebirth Bonus`,
     // The one perk that doesn't scale as a single multiplied-up value (see
     // companionFactory.getGuineaPigRebate) — takes { rebatePercent } instead of a plain

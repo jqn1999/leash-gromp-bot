@@ -8116,3 +8116,33 @@ Re-simulated after shipping: bank-capacity-focused play now caps out at exactly 
 3,000,000 from multi 35 onward. `.claude/systems/tower.md` updated with a full dated writeup
 (formulas, simulation numbers, before/after). 7 new tests added to `towerFactory.test.js`. Full
 suite re-run clean (1032/1032).
+
+## Elder Rootbeard's regrade perk reworked: flat add -> relative multiply (2026-09-04, direct instruction)
+
+"Can you update rootbeard so that instead of a flat 3% regrade chance increase it is 50%? I.e.
+for the regrades that is normally 50% it's 75%, for 10% it's now 15% etc." Elder Rootbeard's
+regrade perk used to add a flat `0.03` onto whichever regrade tier's own chance
+(`currentTier.chance + failStack + 0.03`) — a 50% tier became 53%, a 10% tier became 13%. Per
+the requested behavior, this needed to become a **relative** boost instead: the tier's own
+chance multiplied by 1.5, so 50% -> 75% and 10% -> 15%, matching the examples exactly.
+
+Renamed the perk type `regradeChanceFlat` -> `regradeChanceBoostPercent` (value `0.03` -> `0.5`)
+since it's no longer a flat add — kept the naming honest, matching this session's "names must
+describe what they actually do" standard. Changed the formula in all 3 `/regrade` tracks
+(work-multi/passive-income/bank-capacity) in `regrade.js` from
+`currentTier.chance + failStack + perkValue` to `currentTier.chance * (1 + perkValue) +
+failStack` — failStack (the pity counter) still adds on top, unaffected. Companion leveling
+(the perk-type-gated XP grant Elder Rootbeard earns from spending on a regrade attempt) updated
+to check for the new perk type name so it doesn't silently stop leveling. Updated the perk's
+display label in `embedFactory.js`'s `PERK_LABELS` to read as a relative boost rather than the
+"+X%" flat-add phrasing every other perk entry uses. `companions.md` and `economy-and-work.md`
+updated to match.
+
+The companion-level scaling this perk already had (its base value multiplied up by
+`getLevelMultiplier`, same as every other companion perk) is untouched — a level-1 Elder
+Rootbeard grants exactly the requested 50%/1.5x, a maxed-out (level 10) one grants
+`0.5 * 1.45 = 72.5%` (1.725x). 3 new tests added (`src/commands/buying/__tests__/regrade.test.js`,
+a new file — no dedicated `/regrade` test file existed before this), locking in the actual
+`chanceOfSuccess` value passed to the result embed (not just the constant) and proving the boost
+changes a real success/fail roll outcome, not just a displayed number. Full suite re-run clean
+(1035/1035).
