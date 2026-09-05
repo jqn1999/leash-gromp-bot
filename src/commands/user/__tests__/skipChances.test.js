@@ -50,6 +50,17 @@ beforeEach(() => {
 });
 
 describe('/skip-chances', () => {
+    // Ephemeral (direct instruction, 2026-09-05) — a personal stat check, not a public
+    // result worth broadcasting to the channel.
+    test('defers ephemerally', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    });
+
     test('a non-mercenary, no-guild player sees the /work section plus how-to-unlock lines for the other two', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
         const interaction = fakeInteraction();

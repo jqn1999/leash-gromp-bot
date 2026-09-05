@@ -21,7 +21,9 @@ module.exports = {
     deleted: false,
     options: [],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        // Ephemeral (direct instruction, 2026-09-05) — a personal stat check like
+        // /help's own topic view, not a public result worth broadcasting to the channel.
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);

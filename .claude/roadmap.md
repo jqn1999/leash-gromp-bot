@@ -8350,7 +8350,9 @@ never rolls or writes anything, same "viewing never claims/spends anything" prec
 `Bounty & Heist` (shown as a real % if `isMercenary`, else a "run /become-mercenary" line),
 and `Guild Raid` (shown as a real % if in a guild, else a "join or create one" line) — each
 with a combined % in the field name and a per-source breakdown (only sources with a nonzero
-chance) in the value.
+chance) in the value. Ephemeral (`deferReply({ ephemeral: true })`, same-day direct
+instruction follow-up) — same "personal stat check, not a public result" treatment `/help`'s
+own topic view already gets.
 
 **Centralized the source-gathering to guarantee no drift**: each of the four systems used to
 compute its own skip-chance `sources` array inline, right where it rolled — duplicating this
@@ -8377,12 +8379,12 @@ computation into its own exported, roll-free function that BOTH the real command
   `raidFactory.js` — `spudKeepFactory.js` already requires `raidFactory.js`, so adding
   `raidFactory.js` → `spudKeepFactory.js` would have been circular.
 
-**Tests**: new `skipChances.test.js` (4 tests, real command wiring, dynamoHandler mocked but
+**Tests**: new `skipChances.test.js` (5 tests, real command wiring, dynamoHandler mocked but
 mercenaryFactory/spudKeepFactory/guildBuffFactory/guildCompanionFactory/raidFactory left
-real); new `createSkipChancesEmbed` describe block in `embedFactory.test.js` (6 tests); new
-`getWorkCooldownSkipSources`/`getMercenaryCooldownSkipSources`/`getRaidCooldownSkipSources`
-describe blocks (3/3/3 tests) in their respective existing test files. Full suite green
-(1094/1094, up from 1075).
+real, including a `deferReply({ ephemeral: true })` assertion); new `createSkipChancesEmbed`
+describe block in `embedFactory.test.js` (6 tests); new `getWorkCooldownSkipSources`/
+`getMercenaryCooldownSkipSources`/`getRaidCooldownSkipSources` describe blocks (3/3/3 tests)
+in their respective existing test files. Full suite green (1095/1095, up from 1075).
 
 **Docs**: `.claude/systems/economy-and-work.md`, `guilds.md`, `raids-and-world-events.md`,
 and `companions.md` all updated wherever they quoted the old 90%/15 numbers.
