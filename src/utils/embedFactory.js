@@ -1059,9 +1059,13 @@ class EmbedFactory {
             const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
             const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
             const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
+            // cooldownPct is a chance to skip the raid cooldown entirely on a win
+            // (2026-09-05 cooldown-skip overhaul), not a guaranteed reduction — phrased as a
+            // chance here so this preview never promises a number that isn't actually
+            // guaranteed (same fix as /bounty-board's own cooldown line).
             fields.push({
                 name: `Guild Companion:`,
-                value: `${def?.name ?? guild.guildCompanion.id} — -${cooldownPct}% raid cooldown, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+                value: `${def?.name ?? guild.guildCompanion.id} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
                 inline: false
             });
         }

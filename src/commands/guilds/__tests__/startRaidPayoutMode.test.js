@@ -167,21 +167,57 @@ describe('/start-raid reward-payout-mode routing', () => {
     });
 
     // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent (0-30% across guild levels
-    // 1-10, new 2026-08-30) — automatic and additive alongside the guild's own SELECTED
-    // 'raidTimer' buff, neither one gating the other.
-    test('a max-level guild raid win gets both its selected raidTimer buff AND the automatic level-based cooldown reduction, stacked additively', async () => {
+    // 1-10) and the guild's own SELECTED 'raidTimer' buff used to shave raidTimer
+    // deterministically and additively; both are now skip-chance SOURCES combined into one
+    // roll (2026-09-05 cooldown-skip overhaul) — neither one gates the other, they just both
+    // feed the same combined chance. Sequenced Math.random() the same way
+    // takeBountyCooldownSkip.test.js/startRaidCooldownSkip.test.js do to force a hit/miss.
+    test('a max-level guild raid win: the combined guildBuff+guildLevel skip chance rolling a HIT clears raidTimer to ready-now', async () => {
         const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: maxTier.winsRequired, guildBuff: 'raidTimer' }));
         const interaction = fakeInteraction();
         const fixedNow = 1_700_000_000_000;
         const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(fixedNow);
 
+        // Sequence: raidScenarioRoll, randomMultiplier, mob pick, success check (win),
+        // skip roll (HIT — 0.0001 is below any nonzero combined chance), pickSkipSource
+        // attribution. Base fallback (0.999999) makes any further draws — i.e. a chained
+        // attempt's own success check — a guaranteed loss, so the chain stops at one link.
+        randomSpy.mockReturnValue(0.999999)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.0001)
+            .mockReturnValueOnce(0.5);
+
         await runStartRaidFlow(interaction, 'baby');
 
-        const guildBuffReduction = guildBuffFactory.getGuildBuffValue('raidTimer', maxTier.level);
-        const totalReduction = guildBuffReduction + maxTier.raidCooldownReductionPercent;
-        const expectedTimer = fixedNow + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalReduction);
-        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'raidTimer', expectedTimer);
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'raidTimer', fixedNow);
+
+        nowSpy.mockRestore();
+    });
+
+    test('a max-level guild raid win: the combined guildBuff+guildLevel skip chance rolling a MISS keeps the full cooldown', async () => {
+        const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: maxTier.winsRequired, guildBuff: 'raidTimer' }));
+        const interaction = fakeInteraction();
+        const fixedNow = 1_700_000_000_000;
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(fixedNow);
+
+        // 0.95 is above cooldownFactory's own DEFAULT_SKIP_CHANCE_CAP (0.90) — a guaranteed
+        // miss no matter how large guildBuffReduction + maxTier.raidCooldownReductionPercent
+        // happen to sum to.
+        randomSpy.mockReturnValue(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.95);
+
+        await runStartRaidFlow(interaction, 'baby');
+
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'raidTimer', fixedNow + Raid.RAID_TIMER_SECONDS * 1000);
 
         nowSpy.mockRestore();
     });

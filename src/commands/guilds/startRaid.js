@@ -1,16 +1,39 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions } = require("../../utils/constants")
+const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions, Work } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const guildCompanionFactory = require("../../utils/guildCompanionFactory");
+const cooldownFactory = require("../../utils/cooldownFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
 const spudKeepFactory = require("../../utils/spudKeepFactory");
+
+// isChainedReply distinguishes the original /start-raid (or /current-raid button) invocation
+// (edits the deferred reply, clearing the confirm buttons) from an auto-chained extra
+// attempt triggered by a cooldown skip (see resolveRaid below) — a chained result is always
+// a brand new message via followUp, mirroring work.js's sendWorkResult/performWork and
+// takeBounty.js's sendBountyResult/runBountyAttempt convention exactly.
+async function sendRaidResult(interaction, embed, isChainedReply = false) {
+    if (isChainedReply) {
+        try {
+            await interaction.followUp({ embeds: [embed] });
+        } catch (err) {
+            console.log(`startRaid.js chained reply failed: ${err}`);
+        }
+        return;
+    }
+    try {
+        await interaction.editReply({ embeds: [embed], components: [] });
+    } catch (err) {
+        console.log(`startRaid.js editReply failed, falling back to followUp: ${err}`);
+        await interaction.followUp({ embeds: [embed] }).catch(() => {});
+    }
+}
 
 const regularRaidMobs = [
     [
@@ -296,7 +319,7 @@ async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, ra
 
 const regularRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
@@ -311,15 +334,17 @@ const regularRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD, nextRaidAvailableAt);
+                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD, nextRaidAvailableAt, cooldownSkipSource);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
             }
-            interaction.editReply({ embeds: [embed], components: [] });
+            await sendResult(embed);
             return totalRaidSplit;
         },
         chance: .01
@@ -327,7 +352,7 @@ const regularRaidScenarios = [
     {
         // Ultra-late-game bracket — see Raid.T4_RAID_DIFFICULTY's comment. Its own
         // dedicated boss lives at regularRaidMobs[3].
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(regularRaidMobs[3]);
@@ -351,8 +376,9 @@ const regularRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial now — getWeightedScenarios (see runStartRaidFlow/
@@ -365,7 +391,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T4_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(regularRaidMobs[2]);
@@ -389,8 +415,9 @@ const regularRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see the T4 entry's comment above.
@@ -398,7 +425,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T3_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(regularRaidMobs[1]);
@@ -422,8 +449,9 @@ const regularRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see the T4 entry's comment above.
@@ -431,7 +459,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T2_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs[0]);
@@ -455,8 +483,9 @@ const regularRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see the T4 entry's comment above.
@@ -492,7 +521,7 @@ const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]
 // (see runStartRaidFlow below and raidFactory.js's getUnlockedRaidModes).
 const eliteRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -510,21 +539,23 @@ const eliteRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
             }
-            interaction.editReply({ embeds: [embed], components: [] });
+            await sendResult(embed);
             return totalRaidSplit;
         },
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[3]);
@@ -548,8 +579,9 @@ const eliteRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -558,7 +590,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
@@ -582,8 +614,9 @@ const eliteRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -591,7 +624,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
@@ -615,8 +648,9 @@ const eliteRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -624,7 +658,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
@@ -648,8 +682,9 @@ const eliteRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -666,7 +701,7 @@ const eliteRaidScenarios = [
 // raidFactory.js's getUnlockedRaidModes) still depends on it.
 const legendaryRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -684,21 +719,23 @@ const legendaryRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
             }
-            interaction.editReply({ embeds: [embed], components: [] });
+            await sendResult(embed);
             return totalRaidSplit;
         },
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[3]);
@@ -722,8 +759,9 @@ const legendaryRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -732,7 +770,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
@@ -756,8 +794,9 @@ const legendaryRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -765,7 +804,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
@@ -789,8 +828,9 @@ const legendaryRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -798,7 +838,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
@@ -822,8 +862,9 @@ const legendaryRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
-            interaction.editReply({ embeds: [embed], components: [] });
+            const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
+            await sendResult(embed);
             return totalRaidSplit;
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
@@ -834,7 +875,7 @@ const legendaryRaidScenarios = [
 
 const statRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, resolveRaidCooldown, sendResult) => {
             let raidSplit = 0, totalRaidSplit = 0, raidResultDescription;
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
             const successfulRaid = Math.random() < successChance;
@@ -849,19 +890,21 @@ const statRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, workMultiReward, passiveReward, bankReward, nextRaidAvailableAt);
+                    raidResultDescription, workMultiReward, passiveReward, bankReward, nextRaidAvailableAt, cooldownSkipSource);
             } else {
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
             }
-            interaction.editReply({ embeds: [embed], components: [] });
+            await sendResult(embed);
             return totalRaidSplit;
         },
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, nextRaidAvailableAt) => {
+        action: async (guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, resolveRaidCooldown, sendResult) => {
             let raidSplit, totalRaidCost, raidResultDescription;
             const regularStatRaidMob = chooseMobFromList(regularStatRaidMobs);
             totalRaidCost = Math.round(Raid.REGULAR_STAT_RAID_COST * raidList.length);
@@ -878,12 +921,14 @@ const statRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 raidResultDescription = regularStatRaidMob.successDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, Raid.REGULAR_STAT_RAID_REWARD, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, Raid.REGULAR_STAT_RAID_REWARD, null, null, nextRaidAvailableAt, cooldownSkipSource);
             } else {
                 raidResultDescription = regularStatRaidMob.failureDescription;
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt);
+                const { nextRaidAvailableAt, cooldownSkipSource } = resolveRaidCooldown(successfulRaid);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource);
             }
-            interaction.editReply({ embeds: [embed], components: [] });
+            await sendResult(embed);
         },
         chance: 1
     }
@@ -1047,44 +1092,13 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: rawRaidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
     // Cinderroot, the Hoardwarden's perk 3b (see systems/guilds.md's "Guild Raid Companion"
     // design) — pre-adjusted here, once, before raidRewardMultiplier is threaded as a plain
     // value into every scenario closure and the raid preview embed below, so neither needs
     // any changes of its own to pick up the boosted number.
     const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
     const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
-
-    // Next-raid cooldown — computed here, once, rather than at the bottom of this function
-    // after a scenario resolves: none of these four reduction terms depend on win/loss,
-    // which scenario/tier gets rolled, or potatoesGained (see roadmap's "Raid Result Embed
-    // Shows Next-Raid Cooldown" entry for the full verification). Reused below both for the
-    // real raidTimer DB write and threaded into every scenario's createRaidEmbed call so the
-    // displayed number can never drift from what actually gets written.
-    // Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat, holder-wide perk
-    // on top of whichever guild-buff reduction already applies, live only while this GUILD
-    // is the current Keep holder. Checked against a synthetic { guildId } "userDetails" —
-    // isSpudKeepBuffLiveForUser's guild branch only ever reads .guildId, and raidTimer is a
-    // whole-guild cooldown with no single user to key off of.
-    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
-    const spudKeepRaidTimerReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, { guildId }, SpudKeep.COOLDOWN_BUFF_TYPE)
-        ? spudKeepCooldownBuff.value
-        : 0;
-    const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
-    // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
-    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
-    // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent (2026-08-30, direct
-    // instruction) — automatic, level-scaled, stacks additively alongside the guild's
-    // SELECTED buff and Spud Keep's own cooldown perk; none of the three gate each other.
-    // Explicit floor (2026-08-31, direct ask) — current real max (30% + 25% + 8% + 8% =
-    // 71%) doesn't need it today, but this guards any future fifth stacking source from
-    // silently pushing the total to/past 100% (a raid available immediately, or
-    // "negative" cooldown debt).
-    const totalRaidTimerReduction = Math.min(
-        guildBuffRaidTimerReduction + spudKeepRaidTimerReduction + guildLevelRaidTimerReduction + companionCooldownReduction,
-        0.90
-    );
-    const nextRaidAvailableAt = Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * totalRaidTimerReduction);
 
     // Elite/Legendary gated by guild level, not by how much totalMultiplier the
     // roster brings — below the derived level, the tier's success-rate cap sits
@@ -1216,6 +1230,223 @@ async function runStartRaidFlow(interaction, raidSelection) {
 
     await confirmation.deferUpdate();
 
+    // resolveRaid takes it from here — the actual scenario roll, cooldown resolution, and
+    // DB writes. Split out into its own function (2026-09-05 cooldown-skip overhaul) since
+    // a chained cooldown-skip attempt (see resolveRaid's own bottom-of-function recursion)
+    // has no confirm button to click and needs to jump straight to resolution using the
+    // same raidSelection — mirrors work.js's callback/performWork split and takeBounty.js's
+    // callback/runBountyAttempt split exactly.
+    await resolveRaid(interaction, raidSelection, false, 0);
+}
+
+// Resolution-only half of the raid flow — everything that used to live after
+// `await confirmation.deferUpdate();` in runStartRaidFlow above, PLUS everything a chained
+// cooldown-skip attempt needs with no confirm step at all. Re-derives every piece of guild/
+// roster/buff state from scratch on every call, including chain links, exactly like /work's
+// performWork and takeBounty.js's runBountyAttempt already do — guild state (bank, roster,
+// buffs, companion) can change between chain links, so nothing from the original
+// invocation's preview (or an earlier chain link) is trusted here.
+//
+// isChainedReply/chainDepth: same shape as every other converted cooldown-skip command —
+// isChainedReply distinguishes the original resolution (shows a user-facing error on an
+// unexpected failure) from an auto-chained one (silently aborts with a console.log, mirroring
+// performWork/runBountyAttempt/runNpcRobAttempt exactly, since there's no fresh interaction
+// context to usefully show a chained failure on).
+async function resolveRaid(interaction, raidSelection, isChainedReply, chainDepth) {
+    const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+
+    const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
+    if (!userDetails) return;
+
+    const guild = await requireUserGuild(interaction, userDetails, userDisplayName, "you have no guild to start the raid of!");
+    if (!guild) return;
+    const guildId = guild.guildId;
+    const guildName = guild.guildName;
+    const memberList = guild.memberList;
+    const { level: guildLevel, multiplier: rawRaidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
+    const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
+
+    // Cooldown-skip overhaul (2026-09-05, direct instruction: "on a loss there is no
+    // cooldown skip and no auto trigger") — the same 4 terms that used to shave raidTimer
+    // deterministically are now skip-chance SOURCES, summed and rolled only once a scenario
+    // below already knows it won (see resolveRaidCooldown just below). Recomputed fresh on
+    // every call (including chain links) since guild buffs/Spud Keep/companion state can
+    // change between them. See cooldownFactory.js and systems/guilds.md's "Guild raid
+    // cooldown skip" section for the full writeup.
+    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+    const spudKeepRaidTimerReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, { guildId }, SpudKeep.COOLDOWN_BUFF_TYPE)
+        ? spudKeepCooldownBuff.value
+        : 0;
+    const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
+    // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
+    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
+    const sources = [
+        { key: 'guildBuff', chance: guildBuffRaidTimerReduction },
+        { key: 'spudKeep', chance: spudKeepRaidTimerReduction },
+        { key: 'guildLevel', chance: guildLevelRaidTimerReduction },
+        { key: 'guildCompanion', chance: companionCooldownReduction }
+    ];
+
+    let shouldChain = false;
+    let finalNextRaidAvailableAt = null;
+    // Resolves the cooldown situation at the exact moment a scenario closure below already
+    // knows its own win/loss — a loss NEVER rolls a skip at all (direct instruction, so
+    // combineSkipChance/rollCooldownSkip aren't even called in that branch), a win rolls the
+    // combined chance and, on a hit, backdates the cooldown to ready-now, attributes the
+    // skip to whichever source won the weighted pick (cosmetic only — see
+    // cooldownFactory.pickSkipSource), and flags this call to chain another attempt once
+    // resolution finishes below.
+    function resolveRaidCooldown(won) {
+        if (!won) {
+            finalNextRaidAvailableAt = Date.now() + Raid.RAID_TIMER_SECONDS * 1000;
+            return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource: null };
+        }
+        const totalSkipChance = cooldownFactory.combineSkipChance(sources);
+        if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
+            const winningSource = cooldownFactory.pickSkipSource(sources);
+            let cooldownSkipSource;
+            if (winningSource === 'guildBuff') {
+                cooldownSkipSource = { source: 'guildBuff', label: guildName };
+            } else if (winningSource === 'spudKeep') {
+                cooldownSkipSource = { source: 'spudKeep' };
+            } else if (winningSource === 'guildLevel') {
+                cooldownSkipSource = { source: 'guildLevel', label: `Guild Level ${guildLevel}` };
+            } else {
+                cooldownSkipSource = { source: 'guildCompanion', label: 'Cinderroot, the Hoardwarden' };
+            }
+            finalNextRaidAvailableAt = Date.now();
+            shouldChain = true;
+            return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource };
+        }
+        finalNextRaidAvailableAt = Date.now() + Raid.RAID_TIMER_SECONDS * 1000;
+        return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource: null };
+    }
+
+    // Pre-bound to this call's own interaction/isChainedReply so every scenario closure
+    // below (baby/regular/elite/legendary/stat) can send its result without needing its own
+    // copy of the editReply-vs-followUp switch.
+    function sendResult(embed) {
+        return sendRaidResult(interaction, embed, isChainedReply);
+    }
+
+    // Elite/Legendary gated by guild level, not by how much totalMultiplier the roster
+    // brings — re-checked here (not just at the preview stage) since guild level can change
+    // between chain links.
+    if (raidSelection === 'elite' || raidSelection === 'legendary') {
+        const penaltyMult = raidSelection === 'elite' ? Raid.ELITE_PENALTY_INCREASE : Raid.LEGENDARY_PENALTY_INCREASE;
+        const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
+        const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+        if (guildLevel < requiredLevel) {
+            if (!isChainedReply) {
+                interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
+            } else {
+                console.log(`startRaid.js chain link ${chainDepth} aborted: guild level dropped below the ${raidSelection} gate for guild ${guildId}`);
+            }
+            return;
+        }
+    }
+
+    let raidList = await getLiveRaidRoster(guild);
+    let raidCount = guild.raidCount;
+    const raidCountBeforeThisRaid = raidCount;
+    const sacrificeOffer = { interaction, starterUserId: userId, guildCompanion: guild.guildCompanion };
+    let guildTotalEarnings = guild.totalEarnings;
+    let guildBankStored = guild.bankStored;
+    let guildBankCapacity = guild.bankCapacity;
+    let remainingBankSpace = guildBankCapacity - guildBankStored;
+
+    if (raidList.length == 0) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
+        } else {
+            console.log(`startRaid.js chain link ${chainDepth} aborted: no members left in the raid list for guild ${guildId}`);
+        }
+        return;
+    }
+
+    const member = memberList.find((currentMember) => currentMember.id == userId)
+    if (!member) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName} there was an error retrieving your member data in your guild. Let an admin know!`);
+        } else {
+            console.log(`startRaid.js chain link ${chainDepth} aborted: starting member no longer found in guild ${guildId}`);
+        }
+        return;
+    }
+
+    let canStartRaids = member.role == GuildRoles.LEADER || member.role == GuildRoles.COLEADER || member.role == GuildRoles.ELDER;
+    if (!canStartRaids) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName} you must be an elder, co-leader, or the guild leader to start a raid!`);
+        } else {
+            console.log(`startRaid.js chain link ${chainDepth} aborted: starting member lost raid-start permissions in guild ${guildId}`);
+        }
+        return;
+    }
+
+    const timeUntilRaidAvailableInMS = guild.raidTimer - Date.now()
+    if (timeUntilRaidAvailableInMS > 0) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName}, your guild has raided recently and must wait ${convertSecondstoMinutes(Math.floor(timeUntilRaidAvailableInMS / 1000))} before raiding again!`);
+        } else {
+            console.log(`startRaid.js chain link ${chainDepth} aborted: cooldown unexpectedly not ready for guild ${guildId}`);
+        }
+        return;
+    }
+
+    const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+    // Rank-weighted teamPower (top raider full weight, each next-strongest at
+    // RAID_TEAM_DECAY of the rank above them) plus a headcount bonus for roster size —
+    // see raidFactory.js's getEffectiveRaidPower, shared with currentRaid.js so the two
+    // commands never show conflicting numbers.
+    let totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
+
+    // Firefly — whichever participant has the best guildRaidMultiplierPercent perk
+    // active lifts the whole raid, same multiplicative shape as the guild raidMulti
+    // buff. Takes the best rather than summing everyone's, so multiple members
+    // equipping Firefly doesn't stack into an unintended snowball.
+    const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
+    if (raidCompanionBoost > 0) {
+        totalMultiplier *= (1 + raidCompanionBoost);
+    }
+
+    // World Boss's workMulti buff (2026-09-04, direct instruction) — same "fetched once,
+    // multiplied in separately" shape as Firefly's boost just above, rather than folded
+    // into raidFactory.getEffectiveRaidPower itself (that function is reused as-is by
+    // Tower's entry gate, which deliberately excludes guild/world buffs — see tower.md's
+    // "Entry Gate Uses Effective Power" section).
+    const worldBuffPercent = await getWorldBuffWorkMultiPercent();
+    if (worldBuffPercent > 0) {
+        totalMultiplier *= (1 + worldBuffPercent);
+    }
+
+    // Per-member RAW power (deliberately NOT the rank-decayed teamPower above —
+    // contribution share is meant to reflect each person's own raw strength, undiluted by
+    // the team-combination weighting) — only consulted when the guild has opted into
+    // raidSplitMode: 'share' (see setRaidSplit.js), but built unconditionally since it's
+    // cheap and keeps this one spot as the single source of truth for both split modes.
+    // Division-by-zero guarded the same way worldFactory.js's own raidShare calc is.
+    const totalMemberPower = raidMemberDetails.reduce((sum, m) => sum + getMemberRaidPower(m), 0);
+    const raidListByMulti = raidList.map((member, index) => {
+        const multiplier = getMemberRaidPower(raidMemberDetails[index]);
+        return { id: member.id, username: member.username, multiplier, raidShare: totalMemberPower > 0 ? multiplier / totalMemberPower : 0 };
+    });
+    const raidSplitMode = guild.raidSplitMode === 'share' ? 'share' : 'even';
+
+    // raidPayoutMode: guild's opt-in toggle (see setRaidPayout.js/guild.raidPayoutMode) for
+    // whether a raid REWARD fills the bank first ('bank', default) or is paid straight to
+    // raiders every time, bypassing the bank regardless of remaining space ('direct').
+    // Rewards only — implemented entirely by zeroing out remainingBankSpace before it's
+    // threaded into every scenario below; addToBankOrPurse's "excess" branch then handles
+    // the full reward exactly like today's "reward bigger than remaining space" case.
+    // removeFromBankOrPurse (penalties) is untouched — a full bank still absorbs raid
+    // losses first under both payout modes.
+    const raidPayoutMode = guild.raidPayoutMode === 'direct' ? 'direct' : 'bank';
+    if (raidPayoutMode === 'direct') {
+        remainingBankSpace = 0;
+    }
+
     const raidScenarioRoll = Math.random();
     let potatoesGained = 0;
     if (raidSelection == 'baby') {
@@ -1223,7 +1454,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
         // never-gated T1 entry, so there's nothing to filter by guild level.
         for (const scenario of babyRaidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
                 break;
             }
         }
@@ -1232,7 +1463,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'regular') {
         for (const scenario of getWeightedScenarios(regularRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
                 break;
             }
         }
@@ -1241,7 +1472,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'elite') {
         for (const scenario of getWeightedScenarios(eliteRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
                 break;
             }
         }
@@ -1250,7 +1481,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'legendary') {
         for (const scenario of getWeightedScenarios(legendaryRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, nextRaidAvailableAt);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
                 break;
             }
         }
@@ -1259,7 +1490,7 @@ async function runStartRaidFlow(interaction, raidSelection) {
     } else if (raidSelection == 'stat') {
         for (const scenario of statRaidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                await scenario.action(guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, nextRaidAvailableAt);
+                await scenario.action(guildId, guildName, guildBankStored, raidList, raidCount, totalMultiplier, interaction, resolveRaidCooldown, sendResult);
                 break;
             }
         }
@@ -1293,22 +1524,31 @@ async function runStartRaidFlow(interaction, raidSelection) {
     // Cinderroot's acquisition roll (see systems/guilds.md's "Guild Raid Companion"
     // design, section 4) — one call, no closures touched. interaction.followUp (not a
     // second editReply) posts a distinct, additional message announcing the drop, since
-    // every scenario closure above has already called its own interaction.editReply with
-    // the raid's result embed by the time control returns here.
+    // every scenario closure above has already sent its own result via sendResult by the
+    // time control returns here.
     const companionDrop = await guildCompanionFactory.rollGuildCompanionDrop(guild, raidSelection, wonThisRaid);
     if (companionDrop.awarded) {
         const def = guildCompanionFactory.getGuildCompanionById(companionDrop.companion.id);
         await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, def)] }).catch(() => {});
     }
 
-    // totalRaidTimerReduction/nextRaidAvailableAt were already computed at the top of this
-    // function (before the preview embed) — reused here rather than recomputed, so the
-    // write can never drift from what every scenario's embed already displayed.
-    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', nextRaidAvailableAt);
+    // finalNextRaidAvailableAt is set by whichever resolveRaidCooldown call the winning
+    // scenario branch actually made above — reused here rather than recomputed, so the
+    // write can never drift from what the result embed already displayed.
+    await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', finalNextRaidAvailableAt);
 
     // No raidList to clear anymore — the roster is computed live from each member's
     // persistent autoJoinRaids toggle (getLiveRaidRoster), not a stored array, so
     // whoever's still opted in stays opted in for the next raid automatically.
+
+    // Cooldown-skip overhaul (2026-09-05, direct instruction: "on a loss there is no
+    // cooldown skip and no auto trigger") — shouldChain is only ever set true inside
+    // resolveRaidCooldown's own WIN branch on a roll hit, so a loss (or a win that missed
+    // the roll) never reaches here. Mirrors takeBounty.js's runBountyAttempt/robNpc.js's
+    // runNpcRobAttempt chain check exactly.
+    if (shouldChain && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+        await resolveRaid(interaction, raidSelection, true, chainDepth + 1);
+    }
 }
 
 module.exports = {

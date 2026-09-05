@@ -8146,3 +8146,90 @@ a new file — no dedicated `/regrade` test file existed before this), locking i
 `chanceOfSuccess` value passed to the result embed (not just the constant) and proving the boost
 changes a real success/fail roll outcome, not just a displayed number. Full suite re-run clean
 (1035/1035).
+
+## Cooldown-reduction overhaul: percent reductions -> skip chance + auto-chain (2026-09-05, direct instruction)
+
+"Can you plan out balancing and architecture wise how to implement an overhaul of everything in
+the app that is current cooldown reductions to instead be chances of skipping cooldown with auto
+chain command usage similar to companion skipping." Every percent-based "reduce cooldown by X%"
+mechanic across the app is converted into "chance to skip the cooldown entirely, then auto-chain
+another attempt on a hit" — generalizing `/work`'s pre-existing `workCooldownSkipChance`
+(companion perk) / World Boss `cooldownSkip` buff pattern, which already worked this way.
+
+**Scope decided during planning**: converted `/work` (guild `workTimer` buff, Spud Keep),
+`/take-bounty` and `/rob-npc` (Mercenary Rank, Spud Keep), and Guild Raid (guild's selected
+`raidTimer` buff, Spud Keep, `RaidLevel.THRESHOLDS`' automatic bonus, Cinderroot's guild
+companion perk). Explicitly **excluded**: Poison Potato's weekly bad-luck mitigation (shortens a
+punishment, not a gate to something worth re-triggering) and Companion Scavenging's level-based
+speed bonus (no "re-run the same action" analog — a scavenge trip isn't a zero-cost repeat).
+
+**Balance conversion**: every existing percent value carries over unchanged as the new skip
+chance — a flat `X%` cooldown reduction and a chained `X%` skip chance both multiply expected
+resolutions/day by the same `1/(1-X)` factor, so this is EV-neutral by construction at the
+population-average level. What changes is the *shape*: a guaranteed partial discount every time
+becomes a full-or-nothing roll with the same average — an accepted, deliberate variance increase,
+not an oversight. Multiple sources still stack by naive addition-then-cap (0.90, matching Guild
+Raid's own existing reduction-cap convention) rather than switching to the probabilistically
+"correct" `1-∏(1-pᵢ)` formula, specifically so already-tuned values aren't silently redistributed.
+
+**Explicit follow-up rule (direct instruction, after the initial plan shipped)**: "on a loss
+there is no cooldown skip and no auto trigger." For Bounty/Heist/Guild Raid, the skip chance is
+**never even rolled** on a loss — a loss always resets the full cooldown, full stop. This also
+means Spud Keep's cooldown perk (previously always-on regardless of outcome) no longer helps on a
+loss for these three commands — a deliberate simplification, one rule with no exceptions. `/work`
+is unaffected by this rule (it has no win/loss concept the same way).
+
+**Architecture**:
+- New `src/utils/cooldownFactory.js` — `combineSkipChance(sources, cap)` (sum + cap, default
+  0.90), `rollCooldownSkip(totalSkipChance)`, `pickSkipSource(sources)` (cosmetic-only weighted
+  attribution of which source gets credited in the result embed, decided AFTER the roll already
+  happened — never affects whether the skip occurred).
+- `dynamoHandler.calculateWorkTimerValue` — folds the guild `workTimer` buff and Spud Keep's
+  cooldown perk into the SAME combined roll `workCooldownSkipChance`/the World Boss buff already
+  used, replacing their old `time -= cooldownTime * 1000 * reduction` subtraction.
+- `/take-bounty`/`/rob-npc` — split into `callback` + a recursive `runBountyAttempt`/
+  `runNpcRobAttempt`, mirroring `work.js`'s `performWork` exactly (`isChainedReply`/`chainDepth`,
+  `editReply` for the original call vs. `followUp` for every chained link, capped at
+  `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`).
+- Guild Raid — the hardest of the four, since it has an extra confirm-button step and ~17
+  separate scenario-outcome handlers (baby/regular/elite/legendary/stat) that each build and send
+  their own result embed inline. `runStartRaidFlow` now handles only the preview+confirm; a new
+  recursive `resolveRaid(interaction, raidSelection, isChainedReply, chainDepth)` handles
+  everything after confirmation (and every chained link), re-deriving all guild/roster/buff state
+  fresh each call. Since a scenario's own win/loss isn't knowable at the top of the function
+  (each scenario rolls its own outcome internally, in the same branch that builds its embed), a
+  `resolveRaidCooldown(won)` closure is threaded into every scenario action as a new trailing
+  parameter (replacing the old precomputed `nextRaidAvailableAt` value) — called at the exact
+  moment each scenario already knows its own outcome. A sibling `sendResult(embed)` closure
+  (built on `sendRaidResult`, the same editReply-vs-followUp switch as `/work`/Bounty/Heist) is
+  threaded in alongside it, replacing all 17 inline `interaction.editReply({embeds:[embed],
+  components:[]})` calls.
+- `embedFactory.js`'s `buildCooldownSkipField` (already existed for `/work`'s two sources)
+  extended with `guildBuff`/`spudKeep`/`mercenaryRank`/`guildLevel`/`guildCompanion` branches,
+  reused across all four converted commands. `createRaidEmbed`/`createBountyResultEmbed`/
+  `createRobNpcResultEmbed` all gained a `cooldownSkipSource` param, shown only when a skip
+  actually happened that call — replacing several now-misleading deterministic displays: Bounty's
+  "Mercenary Rank Cooldown Bonus" field, `/bounty-board`'s "-X% cooldown on a win" preview line,
+  and `/guild`'s "Cinderroot — -X% raid cooldown" line (all reworded to describe a chance, not a
+  guaranteed number — same "displayed number must match what's credited" principle the Tower
+  REWARD wording fix established earlier this session).
+
+**Implementation split**: `/work`'s fold-in, `/take-bounty`, and `/rob-npc` were implemented
+directly; Guild Raid's conversion (the largest, most mechanically repetitive piece — 17 scenario
+handlers) was delegated to a developer subagent with a fully-specified architecture (this session
+had already worked out the exact design through conversation before handing it off), then
+reviewed and verified directly afterward — including fixing one item the agent correctly flagged
+but left out of its own scope (the `/guild` embed's stale Cinderroot cooldown text).
+
+**Tests**: new `cooldownFactory.test.js` (12 tests, pure combine/roll/attribution math); new
+`takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`/`startRaidCooldownSkip.test.js` (3
+tests each: loss never rolls, win+miss keeps full cooldown, win+hit clears to ready-now and
+chains exactly once); `dynamoHandler.test.js`'s Spud Keep/guild-buff cooldown tests rewritten from
+deterministic-value assertions to hit/miss `Math.random` sequencing; several pre-existing Guild
+Raid tests (`startRaidGuildCompanion.test.js`, `startRaidPayoutMode.test.js`) updated for the
+probabilistic mechanic and an extra guild re-fetch `resolveRaid` now does. Full suite: 1060/1060,
+up from 1035 before this overhaul began.
+
+**Docs**: `.claude/systems/economy-and-work.md`, `mercenary-bounties.md`, `guilds.md`, and
+`raids-and-world-events.md` all updated with dated sections describing the new mechanic in place
+of the old deterministic one.

@@ -111,6 +111,12 @@ the scaled value, `getGuildBuffLabel(buffType, level)` builds the human-readable
 `workMulti` deliberately uses a plain linear curve (+1%/level) capped at 15%, tamer than the other
 three's accelerating shape, so it can't outscale them.
 
+**`raidTimer`'s value is now a skip CHANCE, not a flat reduction** (2026-09-05 cooldown-skip
+overhaul — see [Guild level](#guild-level)'s "Raid cooldown reduction" section below for the full
+writeup). The percentages in the table above are unchanged; only what they mean changed — a guild
+that selected `raidTimer` no longer shaves a guaranteed slice off every raid's cooldown, it instead
+contributes that percentage to a combined chance of skipping the cooldown entirely on a win.
+
 `raidMulti` (used to directly boost a guild's raid *success chance* — "+15% total raid success
 multiplier", applied in `start-raid`/`current-raid`) was **retired entirely**, not left dormant —
 guild buffs can no longer make raids easier, only reward/cooldown/utility stats. `getGuildBuffValue`
@@ -212,6 +218,21 @@ guild currently holds the Keep) — all three stack additively and none of them 
 max-level guild that has also selected the `raidTimer` buff and holds Spud Keep can stack all three
 for a combined reduction north of 80% off the base 1-hour cooldown.
 
+**Reworked 2026-09-05 (cooldown-skip overhaul, direct instruction)** — this table's own
+`raidCooldownReductionPercent`, the guild's selected `raidTimer` buff, Spud Keep's holder-wide
+cooldown perk, and Cinderroot's guild-companion perk (3a, see the "Guild Raid Companion" design
+below) are no longer additive REDUCTIONS to `raidTimer`. All four are now skip-chance SOURCES fed
+into `cooldownFactory.combineSkipChance`/`rollCooldownSkip` (summed and capped at 90%, same
+`DEFAULT_SKIP_CHANCE_CAP` this stacking already used as a reduction cap) and rolled **once, only on
+a WIN** — see [raids-and-world-events.md](raids-and-world-events.md#guild-raid-cooldown-skip) for
+the full mechanic. Per explicit follow-up instruction ("on a loss there is no cooldown skip and no
+auto trigger"), **none of these four sources are even consulted for a skip roll on a loss** — a
+loss always resets the full `Raid.RAID_TIMER_SECONDS`, no exceptions. A hit backdates `raidTimer`
+to `Date.now()` (ready immediately, not a partial discount) and auto-chains one more raid attempt
+at the SAME `raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — implemented by
+`startRaid.js`'s `resolveRaid`, which recurses exactly like `/work`'s `performWork`/`takeBounty.js`'s
+`runBountyAttempt`.
+
 Deliberately computed, not stored — a second write path to keep `level` in sync with `raidCount`
 would just reintroduce the same class of sync-drift bug that left the old fields dead in the first
 place. The multiplier scales **only the winning side** of a guild raid — every scenario closure in
@@ -229,15 +250,24 @@ the identical order, so the old two-key sort was simplified to one), and `start-
 reward calculation.
 
 **Next-raid cooldown shown in the result embed** (2026-08-31, direct instruction — "so users don't
-have to immediately check raid after a raid completion"). All four reduction terms above (guild
-level, selected `raidTimer` guild buff, Spud Keep's holder perk, Cinderroot's companion perk) are
-computed once, at the TOP of `runStartRaidFlow` (right after `guildLevel`/`companionRewardBonus`,
-before the pre-raid preview embed) rather than at the bottom after a scenario resolves — none of
-them depend on win/loss/tier/`potatoesGained`. The resulting `nextRaidAvailableAt` (ms since epoch)
-is reused both for the actual `raidTimer` DB write and threaded as a trailing parameter into every
-scenario's `createRaidEmbed` call, so the two can never drift apart. Displayed as a Discord relative
-timestamp (`<t:UNIX:R>`, same convention Spud Keep's own buff-expiry/last-resolved displays already
-use), shown unconditionally on win OR loss since the cooldown reset itself is unconditional.
+have to immediately check raid after a raid completion"). Originally all four reduction terms above
+were computed once, at the TOP of `runStartRaidFlow`, since none of them depended on win/loss/tier —
+**superseded by the 2026-09-05 cooldown-skip overhaul**, since the terms are no longer deterministic
+reductions and the cooldown outcome now genuinely depends on whether the scenario won. The cooldown
+is now resolved per-scenario, at the exact moment a scenario closure already knows its own win/loss,
+via a `resolveRaidCooldown(won)` callback `startRaid.js`'s `resolveRaid` builds and threads into
+every scenario action as a new trailing parameter (see
+[raids-and-world-events.md](raids-and-world-events.md#guild-raid-cooldown-skip)): a loss always
+returns the full cooldown with no roll, a win rolls the combined skip chance and returns either
+`Date.now()` (ready immediately, on a hit) or the full cooldown (on a miss). Both the
+`nextRaidAvailableAt` value AND a `cooldownSkipSource` (only non-null on a hit) are passed as the
+last two arguments to `createRaidEmbed`, so the displayed cooldown field and the eventual
+`raidTimer` DB write (captured in an outer `finalNextRaidAvailableAt`, written after the whole
+scenario dispatch/chain resolves) can never drift apart. Displayed as a Discord relative timestamp
+(`<t:UNIX:R>`, same convention Spud Keep's own buff-expiry/last-resolved displays already use),
+shown unconditionally on win OR loss since the cooldown reset itself is unconditional — only the
+`cooldownSkipSource` field (via `embedFactory.buildCooldownSkipField`) is conditional on a skip
+having actually happened.
 
 ## Guild Contracts
 
@@ -563,6 +593,12 @@ later the same day)**: this exact computation was hoisted from ~line 1135 to the
 also be displayed on the result embed — the formula/terms themselves are unchanged, only *where* in
 the function they're computed.
 
+**Further superseded by the 2026-09-05 cooldown-skip overhaul**: `totalRaidTimerReduction` and the
+deterministic subtraction above are gone entirely. `companionCooldownReduction` (renamed nowhere,
+same variable) is now one of 4 `{key, chance}` sources fed into `cooldownFactory.combineSkipChance`/
+`rollCooldownSkip` inside `resolveRaid`, rolled only on a win — see the "Raid cooldown reduction"
+section above and [raids-and-world-events.md](raids-and-world-events.md#guild-raid-cooldown-skip).
+
 **Verification note**: `guilds.md`'s existing "Guild level" section claims the three pre-existing
 cooldown sources can already stack to "north of 80%." The real numbers (`RaidLevel.THRESHOLDS` max
 30%, `GuildBuffScaling.raidTimer` max 25%, `SpudKeep.COOLDOWN_BUFF_VALUE` flat 8%) sum to **63%**, not
@@ -733,6 +769,13 @@ for its existing "Guild Level"/"Reward Multiplier" fields. `embedFactory.js` req
 `embedFactory.js` back (see section 7's decision to keep the sacrifice-prompt UI in `startRaid.js`
 instead) — the same reasoning `embedFactory.js` already relies on to safely require `guildBuffFactory.js`
 for `getGuildBuffLabel`.
+
+**Fixed 2026-09-05, same day** — this label used to read `-${cooldownPct}% raid cooldown`, which
+became misleading the moment the cooldown-skip overhaul turned Cinderroot's cooldown perk (and the
+guild's own selected `raidTimer` buff, and RaidLevel's automatic reduction) into skip-chance
+CONTRIBUTIONS rather than guaranteed reductions. Now reads `${cooldownPct}% chance to skip raid
+cooldown on a win`, matching the same "describe it as a chance, not a promise" fix `/bounty-board`'s
+own Mercenary Rank cooldown line already got.
 
 Two new small `embedFactory.js` methods needed for section 4/7's `followUp` calls:
 `createGuildCompanionDropEmbed(guildName, def)` (shows `def.dropFlavor`) and

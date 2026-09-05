@@ -113,33 +113,49 @@ beforeEach(() => {
     strongRosterSetup();
 });
 
-describe('Cinderroot perk 3a: raid cooldown reduction', () => {
-    test("a companion-owning guild's post-raid raidTimer write reflects the extra additive reduction term at its current level", async () => {
-        const FIXED_NOW = 1_000_000_000_000;
-        const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
-        // Guaranteed baby-mode T1 bracket roll+success for this roster (win/loss doesn't
-        // matter here — raidTimer is written unconditionally either way).
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
+// Cooldown-skip overhaul (2026-09-05) — Cinderroot's old deterministic raidTimer reduction
+// is now a skip-chance SOURCE (key 'guildCompanion') fed into resolveRaidCooldown alongside
+// the guild's own selected buff/Spud Keep/RaidLevel's automatic reduction, rolled only on a
+// WIN. Exercised the same "sequence Math.random() to force a hit/miss" way
+// takeBountyCooldownSkip.test.js/robNpcCooldownSkip.test.js already establish.
+describe('Cinderroot perk 3a: raid cooldown reduction (now a skip-chance source)', () => {
+    test("a companion-owning guild's win, when the skip roll hits, attributes the skip to Cinderroot, backdates raidTimer to ready-now, and chains exactly one more attempt", async () => {
         const guild = guildFixture({ guildCompanion: cinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
+        // A single constant mock stands in for every findGuildById call across both the
+        // original resolution and its one chained link (resolveRaid re-fetches on every
+        // call) — the win/loss diff this produces isn't asserted here, only the cooldown
+        // write/embed/chain-count are.
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
 
         const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)      // raidScenarioRoll (babyRaidScenarios has a single chance:1 entry)
+            .mockReturnValueOnce(0.5)      // randomMultiplier (getRandomFromInterval)
+            .mockReturnValueOnce(0.5)      // mob pick
+            .mockReturnValueOnce(0.1)      // success check -> WIN (strongRosterSetup, cap ~.9)
+            .mockReturnValueOnce(0.001)    // skip roll -> HIT (only active source: Cinderroot, 2%)
+            .mockReturnValueOnce(0.5)      // pickSkipSource attribution (only one active source)
+            .mockReturnValue(0.999999);    // everything else (the chained attempt) misses/loses, ending the chain there
+
         await runStartRaidFlow(interaction, 'baby');
-
         randomSpy.mockRestore();
-        dateSpy.mockRestore();
 
-        const raidTimerCall = dynamoHandler.updateGuildDatabase.mock.calls.find(([, field]) => field === 'raidTimer');
-        expect(raidTimerCall).toBeDefined();
-        // Level 1: no guildBuff('raidTimer' not selected), no Spud Keep holder, RaidLevel's
-        // own level-1 reduction is 0 — only Cinderroot's own level-1 term (2%) applies.
-        const expectedReduction = GuildCompanionScaling.raidCooldownReductionPercent[0];
-        const expectedValue = FIXED_NOW + Raid.RAID_TIMER_SECONDS * 1000 - (Raid.RAID_TIMER_SECONDS * 1000 * expectedReduction);
-        expect(raidTimerCall[2]).toBe(expectedValue);
+        const raidTimerCalls = dynamoHandler.updateGuildDatabase.mock.calls.filter(([, field]) => field === 'raidTimer');
+        // Exactly one write per resolution: the win+hit, then the chained loss — proves the
+        // chain fired exactly once and stopped (a loss never chains further).
+        expect(raidTimerCalls).toHaveLength(2);
+        expect(raidTimerCalls[0][2]).toBeGreaterThanOrEqual(Date.now() - 1000);
+        expect(raidTimerCalls[0][2]).toBeLessThanOrEqual(Date.now() + 1000);
+        // The chained (loss) resolution gets the full, un-skipped cooldown.
+        expect(raidTimerCalls[1][2]).toBeGreaterThanOrEqual(Date.now() + Raid.RAID_TIMER_SECONDS * 1000 - 1000);
+
+        const lastEditReplyCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const resultEmbed = lastEditReplyCall[0].embeds[0];
+        const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cinderroot'));
+        expect(cooldownField).toBeDefined();
     });
 
-    test('a guild without the companion gets no extra reduction', async () => {
+    test('a guild without the companion gets no extra skip chance', async () => {
         const FIXED_NOW = 1_000_000_000_000;
         const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
@@ -216,7 +232,10 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
 
         const guild = guildFixture({ guildCompanion: cinderroot });
         const freshGuildAfter = { ...guild, guildCompanion: null };
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(freshGuildAfter);
+        // 3 sequenced fetches for one non-chained resolution: runStartRaidFlow's own preview
+        // fetch, resolveRaid's own re-fetch right after confirm (still the "before" state),
+        // then the post-resolution freshGuild diff (the "after" state).
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(freshGuildAfter);
 
         const interaction = fakeInteraction({ sacrificeChoice: 'accept' });
         await runStartRaidFlow(interaction, 'baby');
@@ -237,7 +256,7 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const guild = guildFixture({ guildCompanion: cinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
 
         const interaction = fakeInteraction({ sacrificeChoice: 'decline' });
         await runStartRaidFlow(interaction, 'baby');
@@ -258,7 +277,7 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const guild = guildFixture({ guildCompanion: cinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
 
         const interaction = fakeInteraction({ sacrificeChoice: 'timeout' });
         await runStartRaidFlow(interaction, 'baby');
@@ -275,7 +294,7 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const guild = guildFixture({ guildCompanion: null });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
 
         const interaction = fakeInteraction({ sacrificeChoice: 'accept' }); // would accept if ever asked
         await runStartRaidFlow(interaction, 'baby');
@@ -298,7 +317,7 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow)', () => {
     test('fires on a win (regular mode, guild does not yet own one)', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
         const guild = guildFixture({ guildCompanion: null });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
 
         const interaction = fakeInteraction();
         await runStartRaidFlow(interaction, 'regular');
@@ -314,7 +333,7 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow)', () => {
         weakRosterSetup();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
         const guild = guildFixture({ guildCompanion: null });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild); // raidCount unchanged -> loss
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild); // raidCount unchanged -> loss
 
         const interaction = fakeInteraction();
         await runStartRaidFlow(interaction, 'regular');
@@ -327,7 +346,7 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow)', () => {
     test('never fires on baby mode, even on a guaranteed win with a guaranteed roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
         const guild = guildFixture({ guildCompanion: null });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
 
         const interaction = fakeInteraction();
         await runStartRaidFlow(interaction, 'baby');
@@ -340,7 +359,7 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow)', () => {
     test('never fires once a guild already owns the companion, even on a guaranteed win with a guaranteed roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
         const guild = guildFixture({ guildCompanion: cinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
 
         const interaction = fakeInteraction();
         await runStartRaidFlow(interaction, 'regular');

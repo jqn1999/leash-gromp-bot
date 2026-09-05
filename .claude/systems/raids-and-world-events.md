@@ -66,8 +66,9 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   check is authoritative either way. The roster embed also shows a one-line reward-split-mode
   indicator (see "Reward split mode" in [guilds.md](guilds.md#raid-reward-split-mode)).
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
-  `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600`, reduced by the `raidTimer` buff's level-scaled
-  value — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
+  `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600` — see "Guild Raid cooldown skip" below for how a
+  win can clear it to ready-now instead of just shortening it, via the `raidTimer` buff and 3
+  other sources — see [systems/guilds.md](guilds.md#guild-buffs)). Takes
   `raid-select` ∈ `baby` / `regular` / `elite` / `legendary` / `stat`.
 - **`baby` mode (2026-08-25)** is the easiest raid-select option, meant as a safe on-ramp for a
   guild too weak to gamble on Regular's full five-bracket table. `startRaid.js`'s
@@ -685,6 +686,76 @@ not part of that pass's scope and wasn't called out in its own "confirmed unaffe
 sits ABOVE T3 (215) rather than between T2 and T3, quietly inverting half the original design
 intent ("never as hard as T3"). Not fixed as part of that pass — flagged here as an open,
 unresolved balance question for the product owner/architect, not silently corrected.
+
+### Guild Raid cooldown skip
+
+**2026-09-05 cooldown-skip overhaul (direct instruction)** — the same conversion `/work` pioneered
+(`workCooldownSkipChance`) and `/take-bounty`/`/rob-npc` already received (see
+[mercenary-bounties.md](mercenary-bounties.md)), applied to Guild Raid's `raidTimer`. Before this,
+4 additive terms shaved a deterministic percentage off every raid's `Raid.RAID_TIMER_SECONDS`
+cooldown regardless of win or loss: the guild's own selected `raidTimer` buff
+(`guildBuffFactory.getGuildBuffValue`), Spud Keep's holder-wide cooldown perk
+(`spudKeepFactory.isSpudKeepBuffLiveForUser`), `RaidLevel.THRESHOLDS`' own automatic
+`raidCooldownReductionPercent` (0%→30% across guild levels 1-10), and Cinderroot the Hoardwarden's
+guild-companion perk 3a (`guildCompanionFactory.getRaidCooldownReduction`, 2%→8%) — see
+[systems/guilds.md](guilds.md#guild-level) for where each one is still documented.
+
+All 4 are now skip-chance SOURCES (`{key, chance}`) fed into `src/utils/cooldownFactory.js`'s
+`combineSkipChance` (summed, capped at `DEFAULT_SKIP_CHANCE_CAP = 0.90`, the exact cap this
+stacking already used as a reduction ceiling) and `rollCooldownSkip`, rolled **once, and only on a
+WIN** — per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
+trigger"), a loss never even attempts the roll, always resetting the full
+`Raid.RAID_TIMER_SECONDS` with no exceptions. A hit backdates `raidTimer` to `Date.now()` (ready
+immediately, not a partial discount) and auto-chains one more raid attempt at the same
+`raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (15) — a miss (or any loss)
+gets the full, un-skipped cooldown and no chain.
+
+**Why this one was the hardest of the four conversions**: unlike `/work`/`/take-bounty`/`/rob-npc`
+(each a single resolution per call, easy to wrap in a recursive `performX` function),
+`startRaid.js` has an extra confirm-button step (`runStartRaidFlow` shows a preview, awaits a
+Start/Cancel click) AND ~17 separate scenario-outcome handlers (5 brackets × baby/regular/elite/
+legendary, roughly, plus `statRaidScenarios`) that each independently roll their own win/loss and
+build+send their own result embed. `runStartRaidFlow` was split into itself (preview + confirm
+only, unchanged in shape) plus a new recursive `resolveRaid(interaction, raidSelection,
+isChainedReply, chainDepth)` covering everything from the confirm click onward — a chained attempt
+has no confirm button to click, so it jumps straight into `resolveRaid` with `isChainedReply: true`.
+`resolveRaid` re-derives ALL guild/roster/buff state from scratch on every call (including every
+chain link), the same defensive-re-check discipline `/work`'s `performWork` and `takeBounty.js`'s
+`runBountyAttempt` already use — guild state (bank, roster, buffs, companion) can change between
+chain links, so nothing from an earlier call is trusted.
+
+Each of the ~17 scenario actions gained exactly 2 new trailing parameters in place of the old
+precomputed `nextRaidAvailableAt` value:
+- **`resolveRaidCooldown(won)`** — a closure `resolveRaid` builds once per call (closing over that
+  call's own freshly-fetched `sources` array and outer `shouldChain`/`finalNextRaidAvailableAt`
+  variables). Called by the scenario action at the exact moment it already knows its own win/loss
+  (its own local `successfulRaid`-style boolean), right before building its result embed. Returns
+  `{ nextRaidAvailableAt, cooldownSkipSource }` — a loss returns the full cooldown and a null
+  source with no roll at all; a win rolls the combined chance and returns either `Date.now()` +
+  the winning source's attribution (`{source: 'guildBuff'|'spudKeep'|'guildLevel'|'guildCompanion',
+  label}`, matching the shapes `embedFactory.buildCooldownSkipField` already supports) on a hit, or
+  the full cooldown and a null source on a miss.
+- **`sendResult(embed)`** — a thin closure over `sendRaidResult(interaction, embed, isChainedReply)`
+  (the same `editReply`-vs-`followUp` switch every other converted command's `send*Result` helper
+  uses), so each scenario didn't need its own copy of that branch or a 3rd new parameter.
+
+Both `nextRaidAvailableAt` and `cooldownSkipSource` are passed as the trailing two arguments to
+`embedFactory.createRaidEmbed` (already updated to accept and display them). The scenario dispatch
+loops replace the old `interaction.editReply({ embeds: [embed], components: [] })` call with
+`await sendResult(embed)`. `resolveRaid` captures whichever `resolveRaidCooldown` call the winning
+branch actually made in an outer `finalNextRaidAvailableAt`, used for the real `raidTimer` DB write
+after the whole scenario dispatch (and any chain) resolves — so the write can never drift from what
+the result embed displayed.
+
+Chain-link defensive checks mirror `performWork`/`runBountyAttempt`/`runNpcRobAttempt` exactly: on
+an unexpected failure mid-chain (guild vanished, cooldown somehow not ready, no members left, a
+guild-level gate no longer clears), a chained call (`isChainedReply: true`) `console.log`s a note
+and returns silently rather than showing the player an error — only the original invocation shows
+a user-facing message for these checks.
+
+Cinderroot's sacrifice mechanic (`promptCompanionSacrifice`, only ever offered on a LOSS) is
+unaffected by this conversion — a loss never chains under the new rule, so the sacrifice prompt can
+never be interrupted by (or itself trigger) a zero-click chained attempt.
 
 ## World raids
 
