@@ -8265,3 +8265,25 @@ return shape. Full suite green (1064/1064, up from 1060).
 
 **Docs**: `.claude/systems/economy-and-work.md`'s Mimic Potato section updated with a dated
 subsection describing the mitigation, matching the existing Poison Potato write-up's structure.
+
+## Fix: /sell-starch granting XP for selling as few as 1 starch (2026-09-05, player-reported)
+
+Player report: "users selling 1 starch at a time getting 1xp? it should be 10 for 1xp. Mod it so
+it has to be at least 10 for xp." `companionFactory.getStarchSellWorkCountGrant(starches)` used
+`Math.max(1, Math.round(starches / CompanionLeveling.STARCH_SELL_REFERENCE_YIELD))` — the
+unconditional `max(1, ...)` floor meant any sell from 1–14 starches all rounded up to the exact
+same 1 workCount grant a real ~10-starch batch gets, letting a player farm companion XP by
+spamming 1-starch sells for free (no cooldown on `/sell-starch` to gate the spam).
+
+Fixed by requiring at least the full `STARCH_SELL_REFERENCE_YIELD` (10) starches sold before any
+grant at all — below that, returns 0. At or above 10, behavior is unchanged (still floored at 1
+via `max` for a below-exact-multiple sell like 11, same as before).
+
+**Tests**: `companionFactory.test.js`'s `getStarchSellWorkCountGrant` describe block updated —
+removed the old "3 starches floors at 1" case, added a new sub-test asserting 0/1/3/9 starches
+all grant 0. `nonWorkCompanionLeveling.test.js`'s `/sell-starch` integration test updated the same
+way (3 starches now expects +0 workCount, not +1; added a 1-starch case). Full suite green
+(1068/1068, up from 1064).
+
+**Docs**: `.claude/systems/companions.md`'s `/sell-starch` leveling bullet updated with the new
+threshold and a dated fix note.

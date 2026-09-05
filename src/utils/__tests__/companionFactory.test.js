@@ -912,14 +912,20 @@ describe('applyPassiveCompanionTick', () => {
 });
 
 describe('getStarchSellWorkCountGrant', () => {
-    // Verified via node -e execution: 10 starches -> 1, 25 -> 3, 80 -> 8, 3 -> floors at 1.
+    // Verified via node -e execution: 10 starches -> 1, 25 -> 3, 80 -> 8.
+    // Below the 10-starch reference yield grants 0 — fixed 2026-09-05 (player-reported:
+    // selling a single starch used to round up to a full 1 workCount grant, same as a real
+    // 10-14 starch sell).
     test.each([
         [10, 1],
         [25, 3],
         [80, 8],
-        [3, 1],
     ])('%i starches sold grants %i workCount', (starches, expectedGrant) => {
         expect(getStarchSellWorkCountGrant(starches)).toBe(expectedGrant);
+    });
+
+    test.each([0, 1, 3, 9])('selling %i starches (below the 10-starch reference yield) grants no XP at all', (starches) => {
+        expect(getStarchSellWorkCountGrant(starches)).toBe(0);
     });
 });
 

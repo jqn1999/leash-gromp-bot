@@ -402,8 +402,16 @@ function applyPassiveCompanionTick(companions, tickSeconds) {
 // (a player typically equips a work-multiplier companion while grinding, then swaps to a
 // starch-focused one just for the /sell-starch moment), so this reads as "one sell action ~
 // one work action, scaled by size" rather than "proportional to how long it took to earn
-// these starches." Floored at 1 so even a tiny sell still trains the companion a little.
+// these starches." Requires selling at least a full STARCH_SELL_REFERENCE_YIELD (10) worth
+// before any XP is granted at all — previously the old `Math.max(1, Math.round(...))` floor
+// let selling as little as a single starch round up to a full 1 workCount grant, identical
+// to selling a real batch of 10-14 (2026-09-05, player-reported: "users selling 1 starch at
+// a time getting 1xp... should be 10 for 1xp"). Above that floor, still floored at 1 (via
+// Math.max) rather than truncating to 0 on a below-exact-multiple sell like 11.
 function getStarchSellWorkCountGrant(starches) {
+    if (starches < CompanionLeveling.STARCH_SELL_REFERENCE_YIELD) {
+        return 0;
+    }
     return Math.max(1, Math.round(starches / CompanionLeveling.STARCH_SELL_REFERENCE_YIELD));
 }
 

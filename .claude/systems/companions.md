@@ -174,17 +174,21 @@ the other).
   outcome.
 - **`/sell-starch`** — `starchSellBonusPercent` (Mole/Rootcarver/Elder Rootbeard). Has no
   cooldown to scale a grant against the way Bounty/Heist/`/rob` do, so
-  `companionFactory.getStarchSellWorkCountGrant(starches) = max(1, round(starches /
-  CompanionLeveling.STARCH_SELL_REFERENCE_YIELD))` scales by the resource VALUE MOVED in that
-  specific call instead — starches sold, not a flat per-call amount (product-confirmed design
-  point). `STARCH_SELL_REFERENCE_YIELD` (10) is calibrated so ~10 starches sold —
-  `workFactory.handleTaroTrader`'s own average yield (`round(uniform(8,12))` averages to 10) —
-  nets roughly the same grant a single `/work` call does; this is a size reference, **not** a
-  real-time-effort calibration (a player typically equips a work-multiplier companion while
-  grinding, then swaps to a starch-focused one just for the `/sell-starch` moment, so this reads
-  as "one sell action ≈ one work action, scaled by size" rather than "proportional to how long
-  it took to earn these starches"). Floored at 1 so even a tiny sell still trains the companion
-  a little.
+  `companionFactory.getStarchSellWorkCountGrant(starches) = starches < STARCH_SELL_REFERENCE_YIELD
+  ? 0 : max(1, round(starches / CompanionLeveling.STARCH_SELL_REFERENCE_YIELD))` scales by the
+  resource VALUE MOVED in that specific call instead — starches sold, not a flat per-call amount
+  (product-confirmed design point). `STARCH_SELL_REFERENCE_YIELD` (10) is calibrated so ~10
+  starches sold — `workFactory.handleTaroTrader`'s own average yield (`round(uniform(8,12))`
+  averages to 10) — nets roughly the same grant a single `/work` call does; this is a size
+  reference, **not** a real-time-effort calibration (a player typically equips a work-multiplier
+  companion while grinding, then swaps to a starch-focused one just for the `/sell-starch`
+  moment, so this reads as "one sell action ≈ one work action, scaled by size" rather than
+  "proportional to how long it took to earn these starches"). Above that floor, still floored at
+  1 (via `max`) so a below-exact-multiple sell like 11 still rounds up rather than truncating to
+  0. **Fixed 2026-09-05, player-reported**: selling as little as a single starch used to round
+  up through the old unconditional `max(1, ...)` and grant a full 1 workCount — identical to
+  selling a real 10-14 starch batch. Now requires selling at least the full 10-starch reference
+  yield before any XP is granted at all.
 - **`/regrade`** — `regradeChanceBoostPercent` (currently only Elder Rootbeard, wired generically by
   perk type so it's future-proof for any later companion granting it). Also has no cooldown,
   so `companionFactory.getRegradeWorkCountGrant(currentTierCost, cheapestTierCost) = max(1,

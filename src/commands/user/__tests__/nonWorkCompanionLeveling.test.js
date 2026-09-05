@@ -206,7 +206,11 @@ describe('/sell-starch levels an equipped starchSellBonusPercent companion (Mole
         [10, 1],
         [25, 3],
         [80, 8],
-        [3, 1], // floors at 1 for a tiny sell
+        // Below the 10-starch reference yield grants nothing at all — fixed 2026-09-05
+        // (player-reported: selling a single starch used to round up to a full 1 workCount
+        // grant, the same as selling a real 10-14 starch batch).
+        [3, 0],
+        [1, 0],
     ])('selling %i starches grants %i workCount', async (starches, expectedGrant) => {
         dynamoHandler.findUser.mockResolvedValue(sellerUser());
         await callback({}, fakeInteraction(starches));
