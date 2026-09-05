@@ -34,7 +34,8 @@ jest.mock('../../../utils/raidFactory', () => {
 });
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { runStartRaidFlow } = require('../startRaid');
+const { runStartRaidFlow, getRaidCooldownSkipSources } = require('../startRaid');
+const { getRaidLevelInfo } = require('../../../utils/raidFactory');
 const { Raid, SpudKeep, GuildCompanionScaling } = require('../../../utils/constants');
 
 const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' };
@@ -219,5 +220,49 @@ describe('/start-raid cooldown skip', () => {
         const firstResultEmbed = lastEditReplyCall[0].embeds[0];
         const cooldownField = firstResultEmbed.data.fields.find(f => f.name.includes('Cinderroot'));
         expect(cooldownField).toBeDefined();
+    });
+});
+
+// getRaidCooldownSkipSources (2026-09-05, direct instruction — "can we get all the user's
+// skip chances for all the various mechanics somewhere") — the exact same source-gathering
+// resolveRaid rolls against, extracted so /skip-chances can preview it without performing
+// a roll or requiring a raid roster/confirm step.
+describe('getRaidCooldownSkipSources', () => {
+    test('reflects Cinderroot\'s guild-companion perk with no other source active', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        const guild = guildFixture({ guildCompanion: cinderroot });
+        const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
+
+        const sources = await getRaidCooldownSkipSources(guild, guildLevel);
+
+        expect(sources).toEqual([
+            { key: 'guildBuff', chance: 0, label: guild.guildName },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+            { key: 'guildLevel', chance: 0, label: `Guild Level ${guildLevel}` },
+            { key: 'guildCompanion', chance: expect.any(Number), label: 'Cinderroot, the Hoardwarden' },
+        ]);
+        expect(sources.find(s => s.key === 'guildCompanion').chance).toBeGreaterThan(0);
+    });
+
+    test('reflects the guild\'s own selected raidTimer buff', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        const guild = guildFixture({ guildBuff: 'raidTimer' });
+        const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
+
+        const sources = await getRaidCooldownSkipSources(guild, guildLevel);
+
+        expect(sources.find(s => s.key === 'guildBuff').chance).toBeGreaterThan(0);
+    });
+
+    test('a live Spud Keep buff held by this exact guild shows its own chance', async () => {
+        const guild = guildFixture();
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue({
+            buffType: SpudKeep.COOLDOWN_BUFF_TYPE, holderType: 'guild', holderId: guild.guildId, value: 0.08, expiresAt: Date.now() + 60000,
+        });
+        const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
+
+        const sources = await getRaidCooldownSkipSources(guild, guildLevel);
+
+        expect(sources.find(s => s.key === 'spudKeep')).toEqual({ key: 'spudKeep', chance: 0.08, label: 'Spud Keep' });
     });
 });

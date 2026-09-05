@@ -9,6 +9,7 @@ const guildCompanionFactory = require("../utils/guildCompanionFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
+const cooldownFactory = require("../utils/cooldownFactory");
 const safehouseFactory = require("../utils/safehouseFactory");
 const shopFactory = require("../utils/shopFactory");
 const eventFactory = new EventFactory();
@@ -2208,6 +2209,72 @@ class EmbedFactory {
             .setTitle(`${userDisplayName}'s Notoriety`)
             .setDescription(rankLine)
             .setColor(confrontable ? 'Green' : 'Yellow')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // /skip-chances (2026-09-05, direct instruction — "can we get all the user's skip
+    // chances for all the various mechanics somewhere... a dedicated embed to make it
+    // easier"). Read-only, never rolls anything — workSources/mercenarySources/raidSources
+    // are the exact same sources arrays /work, /take-bounty & /rob-npc, and Guild Raid
+    // actually roll against (dynamoHandler.getWorkCooldownSkipSources/mercenaryFactory.
+    // getMercenaryCooldownSkipSources/startRaid.getRaidCooldownSkipSources), so this can
+    // never show a number that disagrees with what those commands actually do. mercenary/
+    // raidSources are null when that system isn't unlocked yet for this player (not a
+    // mercenary / not in a guild) rather than an empty array, so the field can explain why
+    // instead of just showing 0%.
+    createSkipChancesEmbed(userDisplayName, workSources, mercenarySources, raidSources) {
+        const formatSources = (sources) => {
+            const active = sources.filter(s => s.chance > 0);
+            if (active.length === 0) return 'No active skip-chance sources right now.';
+            return active.map(s => `${s.label}: ${(s.chance * 100).toFixed(0)}%`).join('\n');
+        };
+
+        const fields = [];
+
+        const workTotal = cooldownFactory.combineSkipChance(workSources);
+        fields.push({
+            name: `🔨 /work — ${(workTotal * 100).toFixed(0)}% chance to skip cooldown`,
+            value: formatSources(workSources),
+            inline: false,
+        });
+
+        if (mercenarySources) {
+            const mercTotal = cooldownFactory.combineSkipChance(mercenarySources);
+            fields.push({
+                name: `🏹 Bounty & Heist — ${(mercTotal * 100).toFixed(0)}% chance to skip cooldown on a win`,
+                value: formatSources(mercenarySources),
+                inline: false,
+            });
+        } else {
+            fields.push({
+                name: `🏹 Bounty & Heist:`,
+                value: `Not currently a mercenary — run /become-mercenary to unlock this.`,
+                inline: false,
+            });
+        }
+
+        if (raidSources) {
+            const raidTotal = cooldownFactory.combineSkipChance(raidSources);
+            fields.push({
+                name: `⚔️ Guild Raid — ${(raidTotal * 100).toFixed(0)}% chance to skip cooldown on a win`,
+                value: formatSources(raidSources),
+                inline: false,
+            });
+        } else {
+            fields.push({
+                name: `⚔️ Guild Raid:`,
+                value: `Not currently in a guild — join or create one to unlock this.`,
+                inline: false,
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Cooldown Skip Chances`)
+            .setDescription(`A hit clears that cooldown to ready-now and lets you go again immediately. Each system's combined chance is capped at ${(cooldownFactory.DEFAULT_SKIP_CHANCE_CAP * 100).toFixed(0)}%. Bounty/Heist and Guild Raid only ever roll on a WIN — a loss always gets the full cooldown.`)
+            .setColor('Blue')
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)

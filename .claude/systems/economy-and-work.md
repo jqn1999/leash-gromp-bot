@@ -130,8 +130,10 @@ of the loss). Two changes, both in `workFactory.js`:
    subtraction inside `calculateWorkTimerValue` — are now folded into the SAME combined roll
    the companion perk and World Boss buff already used, via the new
    `src/utils/cooldownFactory.js` (`combineSkipChance`/`rollCooldownSkip`/`pickSkipSource`):
-   all four sources' chances are summed and capped at 90% (`DEFAULT_SKIP_CHANCE_CAP`, matching
-   the cap Guild Raid's own reduction-stacking already used), rolled ONCE, and on a hit the
+   all four sources' chances are summed and capped at 60% (`DEFAULT_SKIP_CHANCE_CAP`, lowered
+   from 90% on 2026-09-05, direct instruction, alongside `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`
+   15 → 10 — both were the tail end of this same overhaul, pulled in once every source in the
+   app had been folded into this one mechanic), rolled ONCE, and on a hit the
    winning source is picked (weighted by its own raw chance, cosmetic only — never affects
    whether the skip happened) purely to pick which flavor line shows in the result embed. A
    miss now gets the FULL cooldown, never a partial reduction — this is a real behavior change

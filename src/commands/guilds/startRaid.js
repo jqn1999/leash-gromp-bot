@@ -1239,6 +1239,29 @@ async function runStartRaidFlow(interaction, raidSelection) {
     await resolveRaid(interaction, raidSelection, false, 0);
 }
 
+// Shared cooldown-skip SOURCES for Guild Raid (2026-09-05 cooldown-skip overhaul) —
+// centralized here (rather than left inline in resolveRaid below) so /skip-chances
+// (skipChances.js, a preview-only command with no roll of its own) reads the exact same
+// formula resolveRaid actually rolls against, instead of risking drift between two copies
+// on a future rebalance. guildLevel is passed in rather than recomputed since callers
+// already have it from getRaidLevelInfo (needed separately for the reward multiplier too).
+async function getRaidCooldownSkipSources(guild, guildLevel) {
+    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+    const spudKeepRaidTimerReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, { guildId: guild.guildId }, SpudKeep.COOLDOWN_BUFF_TYPE)
+        ? spudKeepCooldownBuff.value
+        : 0;
+    const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
+    // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
+    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
+    const { raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    return [
+        { key: 'guildBuff', chance: guildBuffRaidTimerReduction, label: guild.guildName },
+        { key: 'spudKeep', chance: spudKeepRaidTimerReduction, label: 'Spud Keep' },
+        { key: 'guildLevel', chance: guildLevelRaidTimerReduction, label: `Guild Level ${guildLevel}` },
+        { key: 'guildCompanion', chance: companionCooldownReduction, label: 'Cinderroot, the Hoardwarden' }
+    ];
+}
+
 // Resolution-only half of the raid flow — everything that used to live after
 // `await confirmation.deferUpdate();` in runStartRaidFlow above, PLUS everything a chained
 // cooldown-skip attempt needs with no confirm step at all. Re-derives every piece of guild/
@@ -1263,7 +1286,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: rawRaidRewardMultiplier, raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
+    const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
     const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
     const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
 
@@ -1274,19 +1297,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // every call (including chain links) since guild buffs/Spud Keep/companion state can
     // change between them. See cooldownFactory.js and systems/guilds.md's "Guild raid
     // cooldown skip" section for the full writeup.
-    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
-    const spudKeepRaidTimerReduction = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, { guildId }, SpudKeep.COOLDOWN_BUFF_TYPE)
-        ? spudKeepCooldownBuff.value
-        : 0;
-    const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
-    // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
-    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
-    const sources = [
-        { key: 'guildBuff', chance: guildBuffRaidTimerReduction },
-        { key: 'spudKeep', chance: spudKeepRaidTimerReduction },
-        { key: 'guildLevel', chance: guildLevelRaidTimerReduction },
-        { key: 'guildCompanion', chance: companionCooldownReduction }
-    ];
+    const sources = await getRaidCooldownSkipSources(guild, guildLevel);
 
     let shouldChain = false;
     let finalNextRaidAvailableAt = null;
@@ -1599,5 +1610,8 @@ module.exports = {
     // Exported for direct unit testing of the preview embed's numbers (see
     // buildRaidPreview.test.js) — same convention runStartRaidFlow above already
     // established for exporting an otherwise-internal function for test coverage.
-    buildRaidPreview
+    buildRaidPreview,
+    // Exported so /skip-chances (skipChances.js) can preview the same combined chance
+    // resolveRaid actually rolls against, without duplicating the formula.
+    getRaidCooldownSkipSources
 }

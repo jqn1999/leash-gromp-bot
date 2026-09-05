@@ -701,14 +701,14 @@ guild-companion perk 3a (`guildCompanionFactory.getRaidCooldownReduction`, 2%→
 [systems/guilds.md](guilds.md#guild-level) for where each one is still documented.
 
 All 4 are now skip-chance SOURCES (`{key, chance}`) fed into `src/utils/cooldownFactory.js`'s
-`combineSkipChance` (summed, capped at `DEFAULT_SKIP_CHANCE_CAP = 0.90`, the exact cap this
-stacking already used as a reduction ceiling) and `rollCooldownSkip`, rolled **once, and only on a
+`combineSkipChance` (summed, capped at `DEFAULT_SKIP_CHANCE_CAP = 0.60`, lowered from `0.90` on
+2026-09-05, direct instruction) and `rollCooldownSkip`, rolled **once, and only on a
 WIN** — per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
 trigger"), a loss never even attempts the roll, always resetting the full
 `Raid.RAID_TIMER_SECONDS` with no exceptions. A hit backdates `raidTimer` to `Date.now()` (ready
 immediately, not a partial discount) and auto-chains one more raid attempt at the same
-`raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (15) — a miss (or any loss)
-gets the full, un-skipped cooldown and no chain.
+`raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (10, lowered from 15 the same
+day) — a miss (or any loss) gets the full, un-skipped cooldown and no chain.
 
 **Why this one was the hardest of the four conversions**: unlike `/work`/`/take-bounty`/`/rob-npc`
 (each a single resolution per call, easy to wrap in a recursive `performX` function),

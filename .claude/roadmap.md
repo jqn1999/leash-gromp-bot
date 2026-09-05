@@ -8328,3 +8328,61 @@ suite green (1075/1075, up from 1068).
 
 **Docs**: `.claude/systems/economy-and-work.md`'s cooldown-skip-overhaul section gained a dated
 "Missed-roll visibility fix" subsection describing the new field and wiring.
+
+## New `/skip-chances` command + cooldown-skip balance pull-in (2026-09-05, direct instruction)
+
+Follow-up to the missed-roll-visibility fix above. Player asked: "can we get all the user's
+skip chances for all the various mechanics somewhere? should it be on something like
+profile/user-stats or should it be just on the commands themselves like we just made or
+should there be a dedicated embed to make it easier" — recommended and built a dedicated
+`/skip-chances` command rather than folding it into `/profile` (these chances are
+situational — equipped companion, live world/guild/Spud Keep buffs, Mercenary Rank, guild
+level/companion — not permanent lifetime stats) or leaving it command-only (can't preview
+before committing an attempt). Mid-build, same turn: "also make the max skip chance on all
+of these 60%, and the maximum skip amount 10 times instead of 15" — `cooldownFactory.js`'s
+`DEFAULT_SKIP_CHANCE_CAP` 0.90 → 0.60, `constants.js`'s `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`
+15 → 10. Applied globally — every one of the four converted systems (`/work`, `/take-bounty`,
+`/rob-npc`, Guild Raid) shares both constants, so this one edit retunes all of them at once.
+
+**New command**: `src/commands/user/skipChances.js` (`/skip-chances`, no options) — read-only,
+never rolls or writes anything, same "viewing never claims/spends anything" precedent
+`/bounty-board`/`/notoriety` already set. Shows three fields: `/work` (always shown),
+`Bounty & Heist` (shown as a real % if `isMercenary`, else a "run /become-mercenary" line),
+and `Guild Raid` (shown as a real % if in a guild, else a "join or create one" line) — each
+with a combined % in the field name and a per-source breakdown (only sources with a nonzero
+chance) in the value.
+
+**Centralized the source-gathering to guarantee no drift**: each of the four systems used to
+compute its own skip-chance `sources` array inline, right where it rolled — duplicating this
+in a fifth, roll-less place for `/skip-chances` would risk the preview silently disagreeing
+with the real roll on a future rebalance. Instead, extracted each system's existing inline
+computation into its own exported, roll-free function that BOTH the real command and
+`/skip-chances` now call:
+- `dynamoHandler.getWorkCooldownSkipSources(userDetails)` — extracted from
+  `calculateWorkTimerValue`, which now calls it internally instead of duplicating the
+  4-source computation. Sources carry a plain-name `label` (companion name / world buff
+  boss name / guild name / "Spud Keep") that `calculateWorkTimerValue`'s own hit-attribution
+  branch now reads directly off the winning source, replacing separately-scoped
+  `worldBuff`/`guild` variables it used to need.
+- `mercenaryFactory.getMercenaryCooldownSkipSources(userDetails)` — extracted from the
+  identical inline block previously duplicated verbatim in both `takeBounty.js`'s
+  `runBountyAttempt` and `robNpc.js`'s `runNpcRobAttempt`; both now call this shared
+  function instead, and their own now-unused `SpudKeep`/`spudKeepFactory` imports were
+  removed. Required adding `dynamoHandler`/`spudKeepFactory` as new top-level requires in
+  `mercenaryFactory.js` — checked for circularity first (neither module requires
+  `mercenaryFactory.js` back) before adding.
+- `startRaid.js`'s own `getRaidCooldownSkipSources(guild, guildLevel)` — extracted from
+  `resolveRaid`'s inline computation (which now just calls it), and exported alongside
+  `runStartRaidFlow`/`buildRaidPreview`. Kept local to `startRaid.js` rather than moved into
+  `raidFactory.js` — `spudKeepFactory.js` already requires `raidFactory.js`, so adding
+  `raidFactory.js` → `spudKeepFactory.js` would have been circular.
+
+**Tests**: new `skipChances.test.js` (4 tests, real command wiring, dynamoHandler mocked but
+mercenaryFactory/spudKeepFactory/guildBuffFactory/guildCompanionFactory/raidFactory left
+real); new `createSkipChancesEmbed` describe block in `embedFactory.test.js` (6 tests); new
+`getWorkCooldownSkipSources`/`getMercenaryCooldownSkipSources`/`getRaidCooldownSkipSources`
+describe blocks (3/3/3 tests) in their respective existing test files. Full suite green
+(1094/1094, up from 1075).
+
+**Docs**: `.claude/systems/economy-and-work.md`, `guilds.md`, `raids-and-world-events.md`,
+and `companions.md` all updated wherever they quoted the old 90%/15 numbers.

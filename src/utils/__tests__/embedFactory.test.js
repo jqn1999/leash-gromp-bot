@@ -889,3 +889,67 @@ describe('World Boss buff status line (createUserEmbed / createUserStatsEmbed)',
         expect(field.value).toContain('Live: 125,000 potatoes per day (+25,000)');
     });
 });
+
+// /skip-chances (2026-09-05, direct instruction — "can we get all the user's skip chances
+// for all the various mechanics somewhere... a dedicated embed to make it easier"). Never
+// rolls anything — just displays whatever sources arrays it's handed.
+describe('createSkipChancesEmbed', () => {
+    const workSources = [
+        { key: 'companion', chance: 0.1, label: 'Fieldmouse' },
+        { key: 'worldBuff', chance: 0, label: null },
+        { key: 'guildBuff', chance: 0, label: null },
+        { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+    ];
+
+    test('shows the combined % and each active source for /work', () => {
+        const embed = embedFactory.createSkipChancesEmbed('User', workSources, null, null);
+        const field = embed.data.fields.find(f => f.name.includes('/work'));
+        expect(field.name).toContain('10%');
+        expect(field.value).toContain('Fieldmouse: 10%');
+        expect(field.value).not.toContain('Spud Keep'); // 0 chance, filtered out
+    });
+
+    test('shows "No active skip-chance sources" when every /work source is 0', () => {
+        const zeroSources = workSources.map(s => ({ ...s, chance: 0 }));
+        const embed = embedFactory.createSkipChancesEmbed('User', zeroSources, null, null);
+        const field = embed.data.fields.find(f => f.name.includes('/work'));
+        expect(field.value).toContain('No active skip-chance sources');
+    });
+
+    test('a non-mercenary sees a how-to-unlock line instead of a 0% Bounty/Heist field', () => {
+        const embed = embedFactory.createSkipChancesEmbed('User', workSources, null, null);
+        const field = embed.data.fields.find(f => f.name.includes('Bounty'));
+        expect(field.value).toContain('/become-mercenary');
+    });
+
+    test('a mercenary sees the real combined chance and breakdown for Bounty/Heist', () => {
+        const mercenarySources = [
+            { key: 'mercenaryRank', chance: 0.3, label: 'Rank 6' },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+        ];
+        const embed = embedFactory.createSkipChancesEmbed('User', workSources, mercenarySources, null);
+        const field = embed.data.fields.find(f => f.name.includes('Bounty'));
+        expect(field.name).toContain('30%');
+        expect(field.value).toContain('Rank 6: 30%');
+    });
+
+    test('a player with no guild sees a how-to-unlock line instead of a 0% Guild Raid field', () => {
+        const embed = embedFactory.createSkipChancesEmbed('User', workSources, null, null);
+        const field = embed.data.fields.find(f => f.name.includes('Guild Raid'));
+        expect(field.value).toContain('join or create one');
+    });
+
+    test('a guild member sees the real combined chance and breakdown for Guild Raid', () => {
+        const raidSources = [
+            { key: 'guildBuff', chance: 0, label: 'Some Guild' },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+            { key: 'guildLevel', chance: 0.05, label: 'Guild Level 3' },
+            { key: 'guildCompanion', chance: 0.02, label: 'Cinderroot, the Hoardwarden' },
+        ];
+        const embed = embedFactory.createSkipChancesEmbed('User', workSources, null, raidSources);
+        const field = embed.data.fields.find(f => f.name.includes('Guild Raid'));
+        expect(field.name).toContain('7%');
+        expect(field.value).toContain('Guild Level 3: 5%');
+        expect(field.value).toContain('Cinderroot, the Hoardwarden: 2%');
+    });
+});

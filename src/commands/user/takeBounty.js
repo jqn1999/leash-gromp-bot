@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Rival, CompanionLeveling, SpudKeep, Work } = require("../../utils/constants");
+const { Bounty, Rival, CompanionLeveling, Work } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -126,14 +126,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     let missedSkipChance = 0;
     let shouldChain = false;
     if (result.won) {
-        const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
-        const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
-            ? spudKeepCooldownBuff.value
-            : 0;
-        const sources = [
-            { key: 'mercenaryRank', chance: result.rankInfo.cooldownReductionPercent },
-            { key: 'spudKeep', chance: spudKeepSkipChance }
-        ];
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
             const winningSource = cooldownFactory.pickSkipSource(sources);

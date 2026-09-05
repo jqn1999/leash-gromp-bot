@@ -1201,3 +1201,46 @@ describe('World Boss workMulti buff', () => {
         expect(withBuff.amount).toBeGreaterThan(withoutBuff.amount);
     });
 });
+
+// getMercenaryCooldownSkipSources (2026-09-05, direct instruction — "can we get all the
+// user's skip chances for all the various mechanics somewhere") — the exact same
+// source-gathering both takeBounty.js's runBountyAttempt and robNpc.js's runNpcRobAttempt
+// roll against, extracted so /skip-chances can preview it without performing a roll.
+describe('getMercenaryCooldownSkipSources', () => {
+    const dynamoHandler = require('../dynamoHandler');
+
+    test('reflects the current Mercenary Rank\'s cooldownReductionPercent with no Spud Keep buff live', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        const userDetails = baseUser({ mercenaryBountyWinCount: 15 }); // Rank 2
+
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+
+        const rankInfo = mercenaryFactory.getMercenaryRankInfo(15);
+        expect(sources).toEqual([
+            { key: 'mercenaryRank', chance: rankInfo.cooldownReductionPercent, label: `Rank ${rankInfo.rank}` },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+        ]);
+    });
+
+    test('a live Spud Keep cooldown buff held by this exact mercenary shows its own chance', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue({
+            buffType: 'cooldownReduction', holderType: 'mercenary', value: 0.08, expiresAt: Date.now() + 60000,
+        });
+        const userDetails = baseUser({ mercenaryBountyWinCount: 0, isMercenary: true });
+
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'spudKeep')).toEqual({ key: 'spudKeep', chance: 0.08, label: 'Spud Keep' });
+    });
+
+    test('a live Spud Keep buff held by a DIFFERENT holder type never shows a chance for a non-mercenary', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue({
+            buffType: 'cooldownReduction', holderType: 'mercenary', value: 0.08, expiresAt: Date.now() + 60000,
+        });
+        const userDetails = baseUser({ mercenaryBountyWinCount: 0, isMercenary: false });
+
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'spudKeep')).toEqual({ key: 'spudKeep', chance: 0, label: 'Spud Keep' });
+    });
+});

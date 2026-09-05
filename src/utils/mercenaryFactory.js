@@ -1,9 +1,11 @@
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries } = require("../utils/constants");
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries, SpudKeep } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
 const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
+const dynamoHandler = require("../utils/dynamoHandler");
+const spudKeepFactory = require("../utils/spudKeepFactory");
 
 // Maps Bounty.TIERS' own numeric 1-12 tier down to the 3-band I/II/III shape
 // BountyScenarios/BountyStatReward/STARCH_TIER_MULTIPLIER/MercenaryCompanionDrop.
@@ -398,9 +400,28 @@ async function resolveRivalConfrontation(userDetails) {
     return result;
 }
 
+// Shared cooldown-skip SOURCES for both /take-bounty and /rob-npc (2026-09-05 cooldown-skip
+// overhaul) — identical for both since they roll against the same Mercenary Rank/Spud Keep
+// terms, previously duplicated verbatim in takeBounty.js's runBountyAttempt and robNpc.js's
+// runNpcRobAttempt. Centralized here so both commands AND /skip-chances (skipChances.js,
+// a preview-only command with no roll of its own) read the exact same formula rather than
+// risking drift between three separate copies on a future rebalance.
+async function getMercenaryCooldownSkipSources(userDetails) {
+    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+    const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
+    const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
+        ? spudKeepCooldownBuff.value
+        : 0;
+    return [
+        { key: 'mercenaryRank', chance: rankInfo.cooldownReductionPercent, label: `Rank ${rankInfo.rank}` },
+        { key: 'spudKeep', chance: spudKeepSkipChance, label: 'Spud Keep' }
+    ];
+}
+
 module.exports = {
     getBandLetter,
     getMercenaryRankInfo,
+    getMercenaryCooldownSkipSources,
     rollBountyStatReward,
     resolveBountyAttempt,
     resolveNpcRob,

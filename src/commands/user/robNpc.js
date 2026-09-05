@@ -1,11 +1,10 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { RobNpc, Work, CompanionLeveling, SpudKeep } = require("../../utils/constants");
+const { RobNpc, Work, CompanionLeveling } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
-const spudKeepFactory = require("../../utils/spudKeepFactory");
 const companionFactory = require("../../utils/companionFactory");
 const cooldownFactory = require("../../utils/cooldownFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
@@ -135,14 +134,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     let missedSkipChance = 0;
     let shouldChain = false;
     if (result.won) {
-        const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
-        const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
-            ? spudKeepCooldownBuff.value
-            : 0;
-        const sources = [
-            { key: 'mercenaryRank', chance: result.rankInfo.cooldownReductionPercent },
-            { key: 'spudKeep', chance: spudKeepSkipChance }
-        ];
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
             const winningSource = cooldownFactory.pickSkipSource(sources);

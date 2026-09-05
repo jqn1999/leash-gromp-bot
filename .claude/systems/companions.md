@@ -504,9 +504,12 @@ check, not a permanent regression" treatment as the original Metal analysis):
    throughput multiplier** rather than simulating it — this understated confidence in the result
    even though the formula turned out to be numerically right.
 2. **Second pass properly simulated the real chain mechanic**: `work.js`'s `performWork` immediately
-   resolves another scenario when a skip procs (capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH=15`),
-   so 1000 Spudsprite *commands* produce ~1177 actual scenario *resolutions* (matching the `1/(1-.15)`
-   formula almost exactly, now verified rather than assumed). At value `1` (double), Prospector
+   resolves another scenario when a skip procs (capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`,
+   lowered from 15 to 10 on 2026-09-05, direct instruction, alongside the skip-chance cap itself
+   90% → 60%), so 1000 Spudsprite *commands* produce ~1177 actual scenario *resolutions* (matching
+   the `1/(1-.15)` formula almost exactly, now verified rather than assumed — this ratio is driven
+   by Spudsprite's own 15% chance, unaffected by either lowered cap since 15% is nowhere near
+   either ceiling). At value `1` (double), Prospector
    landed within single-digit percent of Spudsprite — bouncing both sides of "tied" across separate
    200-trial batches, too close for comfort for a Rare vs. a Legendary.
 3. **Direct instruction to soften the bump** (tested `0.5`, landed ~11% *behind* Spudsprite — clearly
@@ -630,7 +633,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | Perk type | Applied in |
 |---|---|
 | `workMultiplierPercent` | `workFactory.js`'s `getCompanionWorkMulti`, alongside `getGuildWorkMulti` in every `/work` handler; also `raidFactory.js`'s `getMemberRaidPower` (2026-08-24, folded into the shared power formula that drives BOTH guild raid AND Bounty success chance — previously only reward-side formulas read this perk, so it visibly moved reward size but not raid/Bounty odds), and Bounty's own starch-flavored reward formula in `mercenaryFactory.resolveBountyAttempt` (same date, closing the gap with `resolveNpcRob`/`resolveYukonAward` which already included it) |
-| `workCooldownSkipChance` | `dynamoHandler.calculateWorkTimerValue` — rolled first, short-circuits to "ready now" on a hit (stacks with, doesn't fold into, the guild `workTimer` buff). Stashes the active companion's own `id` in a transient `userDetails._cooldownSkippedByCompanion` (never persisted) so `embedFactory.js`'s `buildCooldownSkipField` can show that specific companion's own emoji/name/flavor line — Fieldmouse/Spudsprite/Mochi each read differently, not one shared "Fieldmouse" message regardless of which one actually triggered. `work.js`'s `performWork` also reads this flag to auto-chain another full `/work` resolution as a followUp message (recursing again if *that* roll also skips) — deliberately not a power increase, since the player could already get the exact same odds/outcome by just running `/work` again themselves at zero cost; this only automates the manual re-click. Capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (15) purely as an engineering safety valve against a pathological run of luck, not a balance limit — even Mochi's 20% chance has a vanishingly small chance of ever approaching it |
+| `workCooldownSkipChance` | `dynamoHandler.calculateWorkTimerValue` — rolled first, short-circuits to "ready now" on a hit (stacks with, doesn't fold into, the guild `workTimer` buff). Stashes the active companion's own `id` in a transient `userDetails._cooldownSkippedByCompanion` (never persisted) so `embedFactory.js`'s `buildCooldownSkipField` can show that specific companion's own emoji/name/flavor line — Fieldmouse/Spudsprite/Mochi each read differently, not one shared "Fieldmouse" message regardless of which one actually triggered. `work.js`'s `performWork` also reads this flag to auto-chain another full `/work` resolution as a followUp message (recursing again if *that* roll also skips) — deliberately not a power increase, since the player could already get the exact same odds/outcome by just running `/work` again themselves at zero cost; this only automates the manual re-click. Capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (10, lowered from 15 on 2026-09-05) purely as an engineering safety valve against a pathological run of luck, not a balance limit — even Mochi's 20% chance has a vanishingly small chance of ever approaching it |
 | `passiveIncomePercent` | `dynamoHandler.passivePotatoHandler`'s per-user passive tick |
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
 | `regradeChanceBoostPercent` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks — multiplies the tier's own chance (`currentTier.chance * (1 + boost) + failStack`), not a flat add |

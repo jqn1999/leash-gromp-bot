@@ -287,6 +287,47 @@ const collectSpudKeepReward = async function (userId, amount) {
         });
 }
 
+// Shared cooldown-skip SOURCES for /work (2026-09-05 cooldown-skip overhaul) — centralized
+// here (rather than left inline in calculateWorkTimerValue below) so /skip-chances
+// (skipChances.js, a preview-only command with no roll of its own) reads the exact same
+// formula calculateWorkTimerValue actually rolls against, instead of risking drift between
+// two copies on a future rebalance. `label` on each source is the plain display name (not
+// a decorated phrase) so calculateWorkTimerValue's own hit-attribution branch below can
+// read it straight off the winning source instead of needing separate `worldBuff`/`guild`
+// variables in scope.
+async function getWorkCooldownSkipSources(userDetails) {
+    const companionSkipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
+    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
+
+    const worldBuff = await getActiveWorldBuff();
+    const worldBuffSkipChance = isWorldBuffLive(worldBuff, "cooldownSkip") ? worldBuff.value : 0;
+
+    let guild = null;
+    if (userDetails.guildId) {
+        guild = await findGuildById(userDetails.guildId);
+    }
+    const guildBuffSkipChance = (guild && guild.guildBuff == "workTimer")
+        ? guildBuffFactory.getGuildBuffValue("workTimer", guildBuffFactory.getGuildLevel(guild.raidCount))
+        : 0;
+
+    // Lazily required (not a top-level import) to avoid a circular require —
+    // spudKeepFactory.js itself requires this file for its own dynamoHandler calls, and
+    // this file's own module.exports is only fully built at the bottom of the file, so a
+    // top-level require here would hand spudKeepFactory a half-built dynamoHandler.
+    const spudKeepFactory = require("../utils/spudKeepFactory");
+    const spudKeepCooldownBuff = await getActiveSpudKeepCooldownBuff();
+    const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
+        ? spudKeepCooldownBuff.value
+        : 0;
+
+    return [
+        { key: "companion", chance: companionSkipChance, label: companionName },
+        { key: "worldBuff", chance: worldBuffSkipChance, label: worldBuff ? worldBuff.bossName : null },
+        { key: "guildBuff", chance: guildBuffSkipChance, label: guild ? guild.guildName : null },
+        { key: "spudKeep", chance: spudKeepSkipChance, label: "Spud Keep" }
+    ];
+}
+
 // Computes the work-timer expiry (including the guild workTimer-buff discount) without
 // writing it, so callers can fold the result into a combined updateUserFields call.
 // Cooldown-skip overhaul (2026-09-05, direct instruction) — every source that used to shave
@@ -313,35 +354,7 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     // itself, so it stays skippable exactly as before — that hit was already designed to
     // carry no lockout at all.
     if (cooldownTime === Work.WORK_TIMER_SECONDS) {
-        const companionSkipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
-
-        const worldBuff = await getActiveWorldBuff();
-        const worldBuffSkipChance = isWorldBuffLive(worldBuff, "cooldownSkip") ? worldBuff.value : 0;
-
-        let guild = null;
-        if (userDetails.guildId) {
-            guild = await findGuildById(userDetails.guildId);
-        }
-        const guildBuffSkipChance = (guild && guild.guildBuff == "workTimer")
-            ? guildBuffFactory.getGuildBuffValue("workTimer", guildBuffFactory.getGuildLevel(guild.raidCount))
-            : 0;
-
-        // Lazily required (not a top-level import) to avoid a circular require —
-        // spudKeepFactory.js itself requires this file for its own dynamoHandler calls, and
-        // this file's own module.exports is only fully built at the bottom of the file, so a
-        // top-level require here would hand spudKeepFactory a half-built dynamoHandler.
-        const spudKeepFactory = require("../utils/spudKeepFactory");
-        const spudKeepCooldownBuff = await getActiveSpudKeepCooldownBuff();
-        const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
-            ? spudKeepCooldownBuff.value
-            : 0;
-
-        const sources = [
-            { key: "companion", chance: companionSkipChance },
-            { key: "worldBuff", chance: worldBuffSkipChance },
-            { key: "guildBuff", chance: guildBuffSkipChance },
-            { key: "spudKeep", chance: spudKeepSkipChance }
-        ];
+        const sources = await getWorkCooldownSkipSources(userDetails);
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         // Stamped unconditionally (hit or miss) — same transient, never-persisted pattern as
         // `_cooldownSkippedByCompanion` below, so work.js can show the % chance that was
@@ -352,12 +365,13 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
         userDetails._cooldownSkipChance = totalSkipChance;
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
             const winningSource = cooldownFactory.pickSkipSource(sources);
+            const winningLabel = sources.find(s => s.key === winningSource)?.label;
             if (winningSource === "companion") {
                 userDetails._cooldownSkippedByCompanion = companionFactory.getActiveCompanion(userDetails).id;
             } else if (winningSource === "worldBuff") {
-                userDetails._cooldownSkippedByCompanion = { worldBuffBossName: worldBuff.bossName };
+                userDetails._cooldownSkippedByCompanion = { worldBuffBossName: winningLabel };
             } else if (winningSource === "guildBuff") {
-                userDetails._cooldownSkippedByCompanion = { source: "guildBuff", label: guild.guildName };
+                userDetails._cooldownSkippedByCompanion = { source: "guildBuff", label: winningLabel };
             } else if (winningSource === "spudKeep") {
                 userDetails._cooldownSkippedByCompanion = { source: "spudKeep" };
             }
@@ -1732,6 +1746,7 @@ const setActiveSpudKeepCooldownBuff = async function (buff) {
 module.exports = {
     addUserDatabase,
     calculateWorkTimerValue,
+    getWorkCooldownSkipSources,
     updateUserDatabase,
     updateUserFields,
     claimDailyStreak,

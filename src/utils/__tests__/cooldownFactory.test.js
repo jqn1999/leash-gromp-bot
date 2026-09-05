@@ -9,7 +9,7 @@ describe('combineSkipChance', () => {
         expect(combineSkipChance([{ key: 'a', chance: 0.1 }, { key: 'b', chance: 0 }, { key: 'c', chance: -0.5 }])).toBeCloseTo(0.1);
     });
 
-    test('caps at the default 0.90', () => {
+    test('caps at the default (0.60, lowered from 0.90 2026-09-05)', () => {
         expect(combineSkipChance([{ key: 'a', chance: 0.6 }, { key: 'b', chance: 0.6 }])).toBe(DEFAULT_SKIP_CHANCE_CAP);
     });
 

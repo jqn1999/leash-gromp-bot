@@ -13,7 +13,11 @@
 // combine N independent chances is 1-∏(1-pᵢ), not a sum) — kept anyway for consistency with
 // the reduction-stacking convention every one of these sources was originally tuned against,
 // rather than silently drifting their balance by switching formulas mid-conversion.
-const DEFAULT_SKIP_CHANCE_CAP = 0.90; // matches the existing Guild Raid reduction cap
+// Lowered 90% -> 60%, 2026-09-05, direct instruction, alongside Work.MAX_COOLDOWN_SKIP_
+// CHAIN_LENGTH 15 -> 10 — both together pull in the tail end of the skip-chance overhaul
+// (a near-guaranteed 90%-every-time skip, chained up to 15 deep, was too strong once every
+// source in the app got folded into this single mechanic).
+const DEFAULT_SKIP_CHANCE_CAP = 0.60;
 
 function combineSkipChance(sources, cap = DEFAULT_SKIP_CHANCE_CAP) {
     const total = sources.reduce((sum, s) => sum + (s.chance > 0 ? s.chance : 0), 0);

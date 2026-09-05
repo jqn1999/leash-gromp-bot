@@ -838,6 +838,55 @@ describe('calculateWorkTimerValue guild workTimer buff', () => {
     });
 });
 
+// getWorkCooldownSkipSources (2026-09-05, direct instruction — "can we get all the user's
+// skip chances for all the various mechanics somewhere... a dedicated embed") — the exact
+// same source-gathering calculateWorkTimerValue rolls against, extracted so /skip-chances
+// can preview it without performing a roll. No Math.random mocking needed here since this
+// function never rolls anything itself.
+describe('getWorkCooldownSkipSources', () => {
+    test('returns all four sources at 0 chance and null labels when nothing is active', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff
+        const userDetails = {};
+
+        const sources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
+        expect(sources).toEqual([
+            { key: 'companion', chance: 0, label: null },
+            { key: 'worldBuff', chance: 0, label: null },
+            { key: 'guildBuff', chance: 0, label: null },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+        ]);
+    });
+
+    test('a live World Boss cooldownSkip buff shows its own chance and boss name', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Items: [{ trackingId: 'world_buff', bossName: 'Griseous, the Dragon Fruit', buffType: 'cooldownSkip', value: 0.05, expiresAt: Date.now() + 3600000 }]
+        }));
+        const userDetails = {};
+
+        const sources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
+        const worldBuffSource = sources.find(s => s.key === 'worldBuff');
+        expect(worldBuffSource).toEqual({ key: 'worldBuff', chance: 0.05, label: 'Griseous, the Dragon Fruit' });
+    });
+
+    test('a guild with the workTimer buff selected shows its own chance and guild name', async () => {
+        docClient.query.mockImplementation((params) => {
+            if (params.ExpressionAttributeValues && ':guildId' in params.ExpressionAttributeValues) {
+                return resolved({ Items: [{ guildId: 'g1', guildName: 'Spud Squad', guildBuff: 'workTimer', raidCount: 0 }] });
+            }
+            return resolved({ Items: [] });
+        });
+        const userDetails = { guildId: 'g1' };
+
+        const sources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
+        const guildBuffSource = sources.find(s => s.key === 'guildBuff');
+        expect(guildBuffSource.label).toBe('Spud Squad');
+        expect(guildBuffSource.chance).toBeGreaterThan(0);
+    });
+});
+
 // Brassica's passiveBoost buff (systems/raids-and-world-events.md#server-wide-buff) folds
 // additively into passivePotatoHandler's per-user passive gain, same site as
 // passiveIncomePercent/rebirthPercent.

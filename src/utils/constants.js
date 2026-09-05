@@ -10,7 +10,10 @@ const Work = {
     // zero extra cost. A run of N skips in a row has probability chance^N, astronomically
     // unlikely to ever approach this cap even at Mochi's 20% — this just bounds the
     // pathological tail so a freak streak can't spam the channel or chew through rate limits.
-    MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 15,
+    // Lowered 15 -> 10, 2026-09-05, direct instruction, alongside cooldownFactory.js's
+    // DEFAULT_SKIP_CHANCE_CAP 90% -> 60% — both still purely safety valves at these odds,
+    // just tighter ones now that the combined chance itself is capped lower.
+    MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 10,
     // Guinea Pig's poison rebate base — the fraction of a hit's raw (unmitigated) loss
     // it converts into a gain instead, at level 1 and hit #1 this week. Scales UP with
     // level via companionFactory.getGuineaPigRebate (level 10 = this * 1.45 =
