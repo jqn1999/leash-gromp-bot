@@ -8082,3 +8082,37 @@ decay/scaling formulas are untouched; this only bounds repeat picks of the *same
 scenario. `.claude/systems/tower.md` updated with a new dated section covering both changes; 2
 new tests added to `towerFactory.test.js` for the variety cap, plus 1 stale test comment fixed
 for the reworded King Kiwi label. Full suite re-run clean (1025/1025).
+
+## Tower per-run maximum gain caps (2026-09-04, direct instruction)
+
+Follow-up to the REWARD wording fix above: "the numbers are getting very high and unreasonable
+for game balance. Someone gained 15 million bank capacity today and another gained 3 million
+passive... roughly their stats in game [Work Multiplier live 37.16x]." Simulated the real
+`towerFactory` class (not a hand estimate) driving a player who always takes Bank Capacity/
+Passive Income whenever offered: at multi 35, median bank capacity gained in ONE run already
+exceeded 12,000,000 with a P99 near 50,000,000 — not rare luck, just the intended-feeling play
+pattern. For scale, one *paid, risky* regrade success grants a flat 200,000,000 bank capacity /
+12,000,000 passive income; Tower is free and had no ceiling at all.
+
+Shared the full regrade tables (`workRegradeTiers`/`passiveRegradeTiers`/`bankRegradeTiers`) so
+the game's owner could set the caps directly against them:
+
+- Work Multiplier: **10x** max gained per Tower run
+- Passive Income: **3,000,000** max gained per Tower run
+- Bank Capacity: **50,000,000** max gained per Tower run
+
+Per explicit direction on overflow handling ("convert to potatoes or something else or just
+don't give them the scenario"): added `towerFactory.creditRunPayout(type, amount)`, the single
+point every WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY credit now funnels through. Passive
+income/bank capacity overflow converts 1:1 into potatoes (both are already potato-denominated,
+so this isn't an invented exchange rate); work multiplier overflow is simply dropped (no potato
+equivalent, and the 10x cap is generous enough it almost never engages — simulated real play
+topped out under 2.2x even at multi 600). Also fixed a smaller related bug while wiring this in:
+the Fast Forward summary embed used to report the raw pre-cap reward value for a floor's delta;
+it now reports what was actually applied post-cap.
+
+Re-simulated after shipping: bank-capacity-focused play now caps out at exactly 50,000,000
+(median hits the cap outright from multi 50 onward), passive-income-focused play caps at exactly
+3,000,000 from multi 35 onward. `.claude/systems/tower.md` updated with a full dated writeup
+(formulas, simulation numbers, before/after). 7 new tests added to `towerFactory.test.js`. Full
+suite re-run clean (1032/1032).

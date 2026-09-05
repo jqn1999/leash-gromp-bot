@@ -130,6 +130,23 @@ const SCALING_ANCHOR_INVESTMENT = 76250000
 // loop risk of scaling the very stat that measures player power).
 const SCALED_PAYOUT_TYPES = new Set([PAYOUT.POTATOES, PAYOUT.PASSIVE_INCOME, PAYOUT.BANK_CAPACITY])
 
+// Per-run maximum gain caps (2026-09-04, direct instruction) — a single Tower run had no
+// ceiling on how much permanent WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY it could hand
+// out. Simulation showed a player who simply always picks Bank Capacity/Passive Income
+// whenever offered can, at a fairly ordinary multi (~35), MEDIAN over 12M bank capacity and
+// 1.7M passive income in ONE run — not a rare outlier, just the intended-feeling play
+// pattern — versus a paid, risky regrade success granting a flat 200M bank capacity / 12M
+// passive income at the cheapest tier. Values below are explicit, absolute per-run ceilings
+// (not scaled by multi) picked directly by the game's owner against the regrade tables in
+// constants.js (workRegradeTiers/passiveRegradeTiers/bankRegradeTiers). PAYOUT.POTATOES is
+// deliberately not capped here — only untradeable PERMANENT stat currencies are. See
+// towerFactory.js's creditRunPayout and tower.md.
+const TOWER_RUN_CAPS = {
+    [PAYOUT.WORK_MULTIPLIER]: 10,
+    [PAYOUT.PASSIVE_INCOME]: 3000000,
+    [PAYOUT.BANK_CAPACITY]: 50000000
+}
+
 // Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper
 // run survives more forced Elites along the way, each worth a fixed undecayed amount, so
 // EV_old(M) itself already creeps up with M even before any scaling is applied — applying
@@ -496,6 +513,7 @@ module.exports = {
     SCALING_ANCHOR_TABLE,
     SCALING_ANCHOR_INVESTMENT,
     SCALED_PAYOUT_TYPES,
-    SCALING_EXPONENT
+    SCALING_EXPONENT,
+    TOWER_RUN_CAPS
 }
 

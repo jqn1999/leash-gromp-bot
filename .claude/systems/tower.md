@@ -1288,3 +1288,84 @@ REWARD floor itself comes up. 2 new tests added (`towerFactory.test.js`): one la
 `tC.REWARDS.length * 2` REWARD floors hits every entry exactly once per lap with no repeats
 within a lap; `usedRewards` is confirmed shared across silent and interactive calls on the same
 instance. Full suite re-run clean.
+
+## Per-Run Maximum Gain Caps (2026-09-04, direct instruction)
+
+Follow-up to the REWARD wording fix above: "the numbers are getting very high and unreasonable
+for game balance. Someone gained 15 million bank capacity today and another gained 3 million
+passive" from a single Tower run at a fairly ordinary multi (~35, matching the reported "Live:
+37.16x").
+
+**Simulated the real game logic (not a hand estimate)** — drove the actual `towerFactory` class
+through hundreds of trials per multi with a fake interaction that always picks Bank Capacity (or
+Passive Income) whenever a floor offers it, fighting every Elite until death, tracking the best
+running total reached before each run's death-wipe (i.e. what a player who banks at the ideal
+moment would walk away with). Result: at multi 35, a player who simply always takes Bank Capacity
+when offered has a **median** outcome over 12,000,000 and a P99 near 50,000,000 in ONE run — not
+a rare unlucky-for-the-house outlier, just the ordinary result of the intended-feeling play
+pattern. For comparison, `bankRegradeTiers`' cheapest tier grants a flat 200,000,000 for a paid
+(500,000,000-potato), 50%-chance regrade roll; `passiveRegradeTiers`' cheapest tier grants
+12,000,000 the same way. Tower costs nothing and has no cost/chance gate at all, so it could
+comfortably out-earn regrade grinding in a single sitting.
+
+Full regrade tables (`workRegradeTiers`/`passiveRegradeTiers`/`bankRegradeTiers` in
+`constants.js`) were shared with the game's owner, who set the caps directly:
+
+```js
+const TOWER_RUN_CAPS = {
+    [PAYOUT.WORK_MULTIPLIER]: 10,
+    [PAYOUT.PASSIVE_INCOME]: 3000000,
+    [PAYOUT.BANK_CAPACITY]: 50000000
+}
+```
+
+**Overflow handling, per explicit direction** ("convert to potatoes or something else or just
+don't give them the scenario"): rather than filtering REWARD/TRANSACTION content out of the pool
+once a currency is capped (more invasive — would need per-choice, not per-entry, filtering, since
+e.g. Golden Ginger offers both a capped and an uncapped option), the cap is enforced at the single
+point every WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY credit in `towerFactory.js` already
+funnels through — `updateValue`'s default branch, `updateTransaction`, and `checkElitePayout`
+(King Kiwi's deferred payout) — via a new `creditRunPayout(type, amount)` instance method:
+
+```js
+creditRunPayout(type, amount){
+    const cap = tC.TOWER_RUN_CAPS[type]
+    if(cap === undefined){
+        this.run[type] += amount
+        return amount
+    }
+    const room = Math.max(0, cap - this.run[type])
+    const applied = Math.min(amount, room)
+    this.run[type] += applied
+    const overflow = amount - applied
+    if(overflow > 0 && (type === tC.PAYOUT.PASSIVE_INCOME || type === tC.PAYOUT.BANK_CAPACITY)){
+        this.run[tC.PAYOUT.POTATOES] += overflow
+    }
+    return applied
+}
+```
+
+PASSIVE_INCOME and BANK_CAPACITY overflow converts 1:1 into POTATOES — not an invented exchange
+rate, since both are already potato-denominated (bank capacity IS a potato count the bank can
+hold, passive income IS potatoes/day; the overflow is just handed over immediately instead of
+into that bucket). WORK_MULTIPLIER has no natural potato equivalent, so its overflow is simply not
+granted — acceptable since the 10x cap is generous enough that live play never gets close (the
+same simulation topped out under 2.2x even at multi 600). `PAYOUT.POTATOES` itself has no entry in
+`TOWER_RUN_CAPS` and stays fully uncapped, same as before.
+
+`creditRunPayout` returns the amount actually applied (post-cap), not the raw pre-cap value —
+`updateValue`/`updateTransaction`'s silent-mode `outcome.amount` (read by the Fast Forward summary
+embed) now reports that applied amount too, so a capped run's fast-forward summary can't claim
+more than what actually landed in `this.run[type]`, the same "displayed number must match what's
+credited" principle the REWARD wording fix above exists for. (The potatoes-overflow side isn't
+threaded back into that same delta — a much smaller, rarer under-report than the over-claim it
+replaces.)
+
+Re-ran the same simulation after shipping: bank-capacity-focused play now caps out at exactly
+50,000,000 (median hits the cap outright from multi 50 onward), passive-income-focused play caps
+at exactly 3,000,000 from multi 35 onward, work multiplier never approaches its 10x cap. 7 new
+tests added to `towerFactory.test.js` covering `creditRunPayout` directly (uncapped POTATOES,
+PASSIVE_INCOME/BANK_CAPACITY overflow-to-potatoes, WORK_MULTIPLIER overflow dropped, repeated
+credits once already at cap, King Kiwi's deferred payout capped at actual payout time via
+`checkElitePayout`, and a full interactive Golden Ginger pick reporting the applied — not raw —
+amount). Full suite re-run clean.

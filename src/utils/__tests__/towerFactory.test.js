@@ -775,3 +775,85 @@ describe('REWARD variety cap (2026-09-04)', () => {
         expect(tF.usedRewards.size).toBe(2);
     });
 });
+
+describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)', () => {
+    test('PAYOUT.POTATOES has no cap and is credited in full', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const applied = tF.creditRunPayout(tC.PAYOUT.POTATOES, 999999999);
+        expect(applied).toBe(999999999);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(999999999);
+    });
+
+    test('PASSIVE_INCOME is clamped at TOWER_RUN_CAPS, overflow converts 1:1 into POTATOES', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.PASSIVE_INCOME];
+        const applied = tF.creditRunPayout(tC.PAYOUT.PASSIVE_INCOME, cap + 500000);
+
+        expect(applied).toBe(cap);
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(500000);
+    });
+
+    test('BANK_CAPACITY is clamped at TOWER_RUN_CAPS, overflow converts 1:1 into POTATOES', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, cap + 20000000);
+
+        expect(applied).toBe(cap);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(20000000);
+    });
+
+    test('WORK_MULTIPLIER is clamped at TOWER_RUN_CAPS with the overflow simply dropped (no potato equivalent)', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.WORK_MULTIPLIER];
+        const applied = tF.creditRunPayout(tC.PAYOUT.WORK_MULTIPLIER, cap + 5);
+
+        expect(applied).toBe(cap);
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(0);
+    });
+
+    test('repeated credits stop adding once the cap is already reached', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = cap;
+
+        const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, 1000000);
+
+        expect(applied).toBe(0);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1000000);
+    });
+
+    test('a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.PASSIVE_INCOME];
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = cap - 100000;
+        tF.floor = 20;
+        tF.run[tC.PAYOUT.ELITE_KILL].push([20, tC.PAYOUT.PASSIVE_INCOME, 5000000]);
+
+        await tF.checkElitePayout();
+
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(5000000 - 100000);
+        expect(tF.run[tC.PAYOUT.ELITE_KILL]).toHaveLength(0);
+    });
+
+    test('Golden Ginger interactive pick applies the cap end-to-end and reports the applied (not raw) amount', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'Bank capacity boost', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = cap - 200000;
+        const fl = tC.REWARDS.find(r => r.name === 'Golden Ginger');
+        const index = fl.choices.findIndex(c => c.name === 'Bank capacity boost');
+
+        const outcome = await tF.updateValue(fl, index, 'Purple', true);
+
+        expect(outcome.amount).toBe(200000);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1500000 - 200000);
+    });
+});

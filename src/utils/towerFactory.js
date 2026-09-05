@@ -287,6 +287,41 @@ class towerFactory{
         return Math.round(rawValue * this.scalingFactor)
     }
 
+    // Per-run maximum gain cap (2026-09-04, direct instruction) — the single point every
+    // WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY credit in this file funnels through (the
+    // immediate REWARD/TRANSACTION branch in updateValue/updateTransaction, and King Kiwi's
+    // deferred payout in checkElitePayout). Once this.run[type] would exceed
+    // tC.TOWER_RUN_CAPS[type], only the remaining room is credited to that type; for
+    // PASSIVE_INCOME/BANK_CAPACITY the leftover converts 1:1 into POTATOES instead of being
+    // lost outright (both are already potato-denominated — a bank capacity/passive income
+    // amount IS a count of potatoes, just held in a different bucket — so this isn't an
+    // invented exchange rate). WORK_MULTIPLIER has no natural potato equivalent, so its
+    // overflow is simply not granted; the 10x cap is generous enough (real runs top out well
+    // under 2x, see tower.md) that this almost never engages. PAYOUT.POTATOES itself has no
+    // entry in TOWER_RUN_CAPS and is credited in full, uncapped, same as before. Returns the
+    // amount actually applied to `type` (not the raw pre-cap amount) so callers that report a
+    // per-floor delta (updateValue/updateTransaction's silent outcome, read by the Fast
+    // Forward summary embed) can't claim more than what actually landed in this.run[type] —
+    // the same "displayed number must match what's credited" principle the REWARD wording
+    // fix above applies to. The potatoes overflow itself isn't threaded back through that
+    // return value — it would only under-report the summary's potatoes delta in the same rare
+    // case a cap engages, a much smaller and more forgivable gap than over-promising.
+    creditRunPayout(type, amount){
+        const cap = tC.TOWER_RUN_CAPS[type]
+        if(cap === undefined){
+            this.run[type] += amount
+            return amount
+        }
+        const room = Math.max(0, cap - this.run[type])
+        const applied = Math.min(amount, room)
+        this.run[type] += applied
+        const overflow = amount - applied
+        if(overflow > 0 && (type === tC.PAYOUT.PASSIVE_INCOME || type === tC.PAYOUT.BANK_CAPACITY)){
+            this.run[tC.PAYOUT.POTATOES] += overflow
+        }
+        return applied
+    }
+
     // Shared by every non-Elite resolution branch that would otherwise always show a dedicated
     // Continue/Leave screen. When autoContinue is on (and we're not already inside a silent
     // fast-forward batch, which never calls this at all), skips that screen and lets the next
@@ -332,9 +367,9 @@ class towerFactory{
             }
             default: {
                 let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))
-                this.run[choice.outcome] += value
+                let applied = this.creditRunPayout(choice.outcome, value)
                 if(silent){
-                    return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: value }
+                    return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied }
                 }
                 return this.resolveNext(fl, choice.result, color)
             }
@@ -377,10 +412,10 @@ class towerFactory{
         // never the price itself (see tower.md's reward-safeguard scope and the reward-value-
         // scaling section's identical scope decision for the same field).
         let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))
-        this.run[choice.outcome] += value
+        let applied = this.creditRunPayout(choice.outcome, value)
         this.run[tC.PAYOUT.POTATOES]-= choice.price
         if(silent){
-            return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: value, pricePaid: choice.price, notableText: `Bought "${fl.name}" for ${choice.price.toLocaleString()} potatoes` }
+            return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied, pricePaid: choice.price, notableText: `Bought "${fl.name}" for ${choice.price.toLocaleString()} potatoes` }
         }
         return this.resolveNext(fl, choice.result, color)
     }
@@ -391,7 +426,7 @@ class towerFactory{
             // console.log(i)
             // console.log(payout)
             if(this.floor == payout[tC.REWARD_PAYOUT.FLOOR]){
-                this.run[payout[tC.REWARD_PAYOUT.TYPE]] += payout[tC.REWARD_PAYOUT.AMOUNT]
+                this.creditRunPayout(payout[tC.REWARD_PAYOUT.TYPE], payout[tC.REWARD_PAYOUT.AMOUNT])
                 remove_index.push(i)
             }
         }
