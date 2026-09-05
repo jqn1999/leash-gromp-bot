@@ -55,7 +55,9 @@ describe('getGuildBuffValue', () => {
 describe('getGuildBuffLabel', () => {
     test('builds a readable +X%/-X% label with the level noted', () => {
         expect(getGuildBuffLabel('workMulti', 1)).toBe('+6% effective work multiplier (Level 1)');
-        expect(getGuildBuffLabel('workTimer', 10)).toBe('-25% /work cooldown (Level 10)');
+        // workTimer reworded 2026-09-05 (cooldown-skip overhaul) — a chance to skip the
+        // cooldown entirely now, not a guaranteed reduction, so no leading sign.
+        expect(getGuildBuffLabel('workTimer', 10)).toBe('25% chance to skip /work cooldown (Level 10)');
     });
 
     test('returns null for a retired buff type instead of a broken label', () => {

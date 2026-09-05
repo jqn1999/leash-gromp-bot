@@ -1086,7 +1086,7 @@ const HelpTopics = [
         id: "work",
         label: "Work",
         description: "The core /work loop and its bonus encounters",
-        content: "`/work` is the main way to earn potatoes, gated by a cooldown (shortened by guild buffs and some companion perks). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 30-minute cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely, and both the loss and lockout get progressively less painful the more times poison hits you in the same week, resetting every Monday — get hit 10 times in one week and you'll get a much bigger break plus an achievement), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a permanent stat bonus or free shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Some companions (Fieldmouse, Spudsprite, Mochi) can even skip the cooldown outright instead of just shortening it, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
+        content: "`/work` is the main way to earn potatoes, gated by a cooldown that some companion perks and your guild's own buff give you a chance to skip entirely (never a guaranteed shortening — a hit resets it to ready-now and even auto-chains you into another `/work` call for free). Most rolls are a regular payout scaled by your work multiplier, but every `/work` also has a chance at a rare bonus encounter: **Sweet Potato** and **Golden Yam** (bonus potato/starch jackpots), **Poison Potato** (a loss plus a 30-minute cooldown lockout instead of the usual 5 minutes — the right companion can neutralize this entirely, and both the loss and lockout get progressively less painful the more times poison hits you in the same week, resetting every Monday — get hit 10 times in one week and you'll get a much bigger break plus an achievement), **Large/Metal Potato** (bigger risk/reward tiers, with Metal Potato gated behind its own separate success roll on top), **Taro Trader** and **Mimic Potato** (double-or-nothing style swings), **Ancient Potato** (a permanent stat bonus or free shop upgrade, or a big payout once you're fully maxed — and always fully refreshes your guild's raid cooldown), and **Wandering Companion** (a chance to find a new companion). Fieldmouse, Spudsprite, and Mochi are the companions that can proc a cooldown skip, and others change the odds or outcome of specific encounters — see `/help topic:companions` for the full roster."
     },
     {
         id: "companions",
@@ -1109,7 +1109,7 @@ const HelpTopics = [
         id: "raids",
         label: "Raids",
         description: "How guild raids and their tiers work",
-        content: "`/create-raid` starts a raid, `/join-raid` toggles whether you automatically join your guild's raids from now on (no need to re-join by hand every time), and `/start-raid` runs it once enough members are in — `/current-raid` shows the live roster and status. Raids come in four tiers (T1 through T4), each steeper in both difficulty and reward. The higher tiers aren't just about personal stats — they're gated behind your guild's level too, so a guild has to actually level up (not just stack individual work multipliers) before it can safely attempt them, with T4 needing the guild fully invested and most members deep into regrade or rebirth territory."
+        content: "`/start-raid raid-select:<baby|regular|elite|legendary|stat>` starts a raid, `/join-raid` toggles whether you automatically join your guild's raids from now on (no need to re-join by hand every time), and `/current-raid` shows the live roster and status. Regular/Elite/Legendary each roll across 4 internal difficulty brackets (harder brackets pay more), Baby is always the easiest guaranteed bracket for new guilds, and Stat trades potatoes for a permanent stat boost instead of a potato payout. Elite and Legendary aren't just about personal stats — they're gated behind your guild's level too, so a guild has to actually level up (not just stack individual work multipliers) before it can safely attempt them, with the hardest content needing the guild fully invested and most members deep into regrade or rebirth territory. A raid's own cooldown can occasionally be skipped entirely — by a guild buff, Spud Keep, your guild's level, or a lucky Cinderroot roll — letting your guild raid again immediately on a hit."
     },
     {
         id: "economy",
@@ -1121,7 +1121,7 @@ const HelpTopics = [
         id: "mercenary",
         label: "Mercenary Bounties",
         description: "The solo, guild-independent alternative to Guild Raids",
-        content: "`/become-mercenary` opts you into Mercenary Bounties — you can't be in a guild at the same time, but it's fully reversible with `/retire-mercenary` any time, no progress lost. `/bounty-board` shows your Mercenary Rank, which Bounty tiers (I/II/III) you've unlocked, and a live success-chance preview. `/take-bounty tier:<I|II|III>` resolves immediately against a random wanted-poster scenario for that tier, paying potatoes or (occasionally) starches on a win, with a rare chance at a permanent stat bonus or Yukon, the Highwayman — a Legendary companion found ONLY this way. `/rob-npc` is a lower-stakes, no-Rank-required solo heist against a fictional target on its own 30-minute cooldown, separate from Bounty's own 1-hour one — no real player involved, and a miss costs nothing. Winning bounties is deliberately worth less per attempt than a well-organized guild's own raid split, so this complements guild raiding rather than replacing it."
+        content: "`/become-mercenary` opts you into Mercenary Bounties — you can't be in a guild at the same time, but it's fully reversible with `/retire-mercenary` any time, no progress lost. `/bounty-board` shows your Mercenary Rank (which improves both your rewards and your chance to skip Bounty/Heist's cooldown on a win) and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<regular|baby>` resolves immediately — Baby Bounty always rolls the easiest guaranteed tier, Regular Bounty auto-picks a tier weighted toward your own power — paying potatoes or (occasionally) starches on a win, with a rare chance at a permanent stat bonus or Yukon, the Highwayman — a Legendary companion found ONLY this way. `/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` is a separate solo heist on its own 30-minute cooldown (Bounty's is 1 hour) — the easiest tier (Market Stall) needs no Rank and never costs you anything on a miss, while the bigger scores unlock and carry real risk as your Rank climbs. Winning bounties is deliberately worth less per attempt than a well-organized guild's own raid split, so this complements guild raiding rather than replacing it."
     },
     {
         id: "rob-betting",
@@ -2202,8 +2202,13 @@ const GuildBuffScaling = {
 // /guild and /set-buff, so neither shows the raw internal key (e.g. "workMulti") on its own.
 const GuildBuffDescriptions = {
     robChance: { sign: "+", text: "/rob success chance for guild members" },
-    raidTimer: { sign: "-", text: "guild raid cooldown" },
-    workTimer: { sign: "-", text: "/work cooldown" },
+    // raidTimer/workTimer reworded 2026-09-05 (cooldown-skip overhaul) — these values are no
+    // longer a guaranteed reduction, they're a chance to skip the cooldown entirely (folded
+    // into a combined roll alongside Spud Keep/Mercenary Rank/etc. — see
+    // cooldownFactory.js). Empty `sign` since "chance to..." already reads correctly without
+    // a leading +/- the way a percent delta needs one.
+    raidTimer: { sign: "", text: "chance to skip guild raid cooldown on a win" },
+    workTimer: { sign: "", text: "chance to skip /work cooldown" },
     workMulti: { sign: "+", text: "effective work multiplier" },
 }
 
