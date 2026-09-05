@@ -343,6 +343,13 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
             { key: "spudKeep", chance: spudKeepSkipChance }
         ];
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
+        // Stamped unconditionally (hit or miss) — same transient, never-persisted pattern as
+        // `_cooldownSkippedByCompanion` below, so work.js can show the % chance that was
+        // actually rolled on a MISS (2026-09-05, player-reported: "the embeds no longer have
+        // a % cooldown reduction... if it doesn't skip they should at least know what the
+        // chance was so its not hidden"). A hit doesn't need this — buildCooldownSkipField's
+        // flavor text already covers that case.
+        userDetails._cooldownSkipChance = totalSkipChance;
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
             const winningSource = cooldownFactory.pickSkipSource(sources);
             if (winningSource === "companion") {

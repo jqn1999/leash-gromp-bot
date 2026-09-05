@@ -151,6 +151,28 @@ describe('buildCooldownSkipField (via createWorkEmbed)', () => {
         expect(embed.data.fields.find(f => f.name.includes('Blessing'))).toBeUndefined();
         expect(embed.data.fields.find(f => f.name.includes('Fieldmouse'))).toBeUndefined();
     });
+
+    // 2026-09-05, player-reported: "the embeds no longer have a % cooldown reduction...
+    // if it doesn't skip they should at least know what the chance was so its not
+    // hidden" — a miss (no cooldownSkippedByCompanion) with a real nonzero chance now
+    // shows that % instead of silently saying nothing.
+    test('a miss with a real chance to skip shows the % that was rolled', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, null, 0, null, 0.25);
+        const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('25%');
+    });
+
+    test('a hit shows only its own flavor field, not also the % that led to it', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, 'fieldmouse', 0, null, 0.25);
+        expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
+        expect(embed.data.fields.find(f => f.name.includes('Fieldmouse'))).toBeDefined();
+    });
+
+    test('a miss with zero chance (nothing was even in play) shows no field at all', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, null, 0, null, 0);
+        expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
+    });
 });
 
 // createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).
@@ -258,6 +280,20 @@ describe('createBountyResultEmbed cooldown skip display', () => {
         const embed = embedFactory.createBountyResultEmbed('User', result);
         expect(embed.data.fields.find(f => f.name.includes('Rank 6'))).toBeUndefined();
     });
+
+    // 2026-09-05, player-reported: a win that rolled for the skip and missed should still
+    // show the % chance that was actually rolled, not leave the player wondering.
+    test('a win whose skip roll missed shows the % chance that was rolled', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result, null, undefined, 0, 0, null, null, 0.30);
+        const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('30%');
+    });
 });
 
 describe('createRobNpcResultEmbed cooldown skip display', () => {
@@ -283,6 +319,20 @@ describe('createRobNpcResultEmbed cooldown skip display', () => {
         };
         const embed = embedFactory.createRobNpcResultEmbed('User', result, tier);
         expect(embed.data.fields.find(f => f.name.includes('Rank 6'))).toBeUndefined();
+    });
+
+    // 2026-09-05, player-reported: a win that rolled for the skip and missed should still
+    // show the % chance that was actually rolled.
+    test('a win whose skip roll missed shows the % chance that was rolled', () => {
+        const result = {
+            won: true, successChance: 0.8, amount: 5000,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier, 0, null, null, 0.30);
+        const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('30%');
     });
 });
 
@@ -612,6 +662,22 @@ describe('createRaidEmbed next-raid cooldown field', () => {
         const nextRaidAvailableAt = Date.now() + 1_548_000;
         const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, -500, null, mob, 0.5, 'Loss!', null, null, null, nextRaidAvailableAt);
         expect(embed.data.fields.find(f => f.name.includes('Next Raid Available'))).toBeDefined();
+    });
+
+    // 2026-09-05, player-reported: a win whose skip roll missed should still show the %
+    // chance that was rolled, not leave it hidden.
+    test('a win whose skip roll missed shows the % chance that was rolled', () => {
+        const nextRaidAvailableAt = Date.now() + 1_548_000;
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!', null, null, null, nextRaidAvailableAt, null, 0.15);
+        const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('15%');
+    });
+
+    test('a loss never shows the % chance field (a skip is never even rolled on a loss)', () => {
+        const nextRaidAvailableAt = Date.now() + 1_548_000;
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, -500, null, mob, 0.5, 'Loss!', null, null, null, nextRaidAvailableAt, null, 0);
+        expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
     });
 });
 

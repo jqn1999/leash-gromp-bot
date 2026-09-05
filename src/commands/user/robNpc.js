@@ -127,6 +127,12 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     // cooldown (ready now) rather than changing the constant itself, keeping every
     // NPC_ROB_TIMER_SECONDS reader correct without further changes.
     let cooldownSkipSource = null;
+    // Shown on the result embed only when the roll actually happened AND missed — a hit
+    // gets its own flavor field instead, and a loss/whiff never rolls at all, so there's
+    // genuinely no chance to report (2026-09-05, player-reported: "the embeds no longer
+    // have a % cooldown reduction... if it doesn't skip they should at least know what
+    // the chance was so its not hidden").
+    let missedSkipChance = 0;
     let shouldChain = false;
     if (result.won) {
         const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
@@ -146,6 +152,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
             setAttributes.npcRobTimer = Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000;
             shouldChain = true;
         } else {
+            missedSkipChance = totalSkipChance;
             setAttributes.npcRobTimer = Date.now();
         }
     } else {
@@ -206,7 +213,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         }
     }
 
-    const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource);
+    const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance);
     await sendNpcRobResult(interaction, embed, isChainedReply);
 
     // Achievement check — /rob-npc never had one before at all. Re-fetches (same

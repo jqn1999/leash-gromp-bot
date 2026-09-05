@@ -146,6 +146,30 @@ of the loss). Two changes, both in `workFactory.js`:
    cooldown). The same conversion was applied to `/take-bounty`, `/rob-npc`, and Guild Raid —
    see [mercenary-bounties.md](mercenary-bounties.md) and [guilds.md](guilds.md) for those.
 
+   **Missed-roll visibility fix (2026-09-05, player-reported)**: "the embeds no longer have a %
+   cooldown reduction... if it doesn't skip they should at least know what the chance was so its
+   not hidden." Before this, a MISS showed nothing at all — the old deterministic "-X% cooldown"
+   display was gone, but so was any number, leaving a player with an equipped Fieldmouse/Spudsprite/
+   Mochi (or a live guild/Spud Keep buff) with no way to tell whether they even had a real shot.
+   Fixed by stamping the actual combined chance that was rolled, hit or miss, as a second transient
+   field (`userDetails._cooldownSkipChance`, same never-persisted pattern as
+   `_cooldownSkippedByCompanion`, set in `calculateWorkTimerValue` right after `combineSkipChance`
+   runs). `embedFactory.buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0)` now
+   branches three ways: a hit shows its own flavor field (unchanged); a miss with a nonzero chance
+   shows a new "🎲 Cooldown Skip Chance: X% — no luck this time" field; a miss with nothing in play
+   at all (chance is exactly 0) shows nothing, same as before. Every `create*Embed` function that
+   already took `cooldownSkippedByCompanion` gained a new trailing `missedCooldownSkipChance = 0`
+   param threaded through to `buildCooldownSkipField` — `createWorkEmbed`,
+   `createPoisonPotatoEmbed`, `createMimicPotatoEmbed`, `createCompanionEncounterEmbed`,
+   `createAncientPotatoEmbed`, and (via their own `cooldownSkipSource` params)
+   `createBountyResultEmbed`/`createRobNpcResultEmbed`/`createRaidEmbed`. The three non-`/work`
+   commands (`/take-bounty`, `/rob-npc`, Guild Raid) only ever populate this on a WIN whose roll
+   missed — a loss never rolls at all, so there's genuinely nothing to report there (matches the
+   existing win-gated skip rule exactly). 7 new tests across `embedFactory.test.js` (the new
+   branch plus a hit-suppresses-it case) and existing assertions added to
+   `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`/`startRaidCooldownSkip.test.js`'s
+   own win-miss cases. Full suite green (1075/1075, up from 1068).
+
    **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
    cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,
    mitigationInfo }` instead of a plain number (same "return an object, not just the number" shape

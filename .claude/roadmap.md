@@ -8287,3 +8287,44 @@ way (3 starches now expects +0 workCount, not +1; added a 1-starch case). Full s
 
 **Docs**: `.claude/systems/companions.md`'s `/sell-starch` leveling bullet updated with the new
 threshold and a dated fix note.
+
+## Fix: cooldown-skip embeds show no % at all on a miss (2026-09-05, player-reported)
+
+Player report: "the embeds no longer have a % cooldown reduction, can we add the % chance to
+skip? if it skips no need to add the % to the embed but if it doesn't skip they should at least
+know what the chance was so its not hidden." The 2026-09-05 cooldown-skip overhaul (see the two
+entries above) replaced every deterministic "-X% cooldown" display with a hidden coin flip — a
+HIT shows a flavor field, but a MISS showed nothing at all, leaving a player who just watched
+their Fieldmouse/Spudsprite/Mochi, a guild buff, Spud Keep, Mercenary Rank, or Cinderroot whiff
+with no way to tell whether they had a real chance or none.
+
+Fixed by stamping the actual combined chance that was rolled — hit or miss — as a transient
+field: `dynamoHandler.calculateWorkTimerValue` now sets `userDetails._cooldownSkipChance =
+totalSkipChance` unconditionally (mirrors the existing `_cooldownSkippedByCompanion` pattern);
+`takeBounty.js`/`robNpc.js` capture `missedSkipChance = totalSkipChance` in their win-miss `else`
+branch (never set on a loss — no roll ever happens there); `startRaid.js`'s
+`resolveRaidCooldown(won)` closure now also returns `missedSkipChance` (0 on a loss, `0` on a
+hit, `totalSkipChance` on a win-miss). `embedFactory.buildCooldownSkipField(cooldownSkipSource,
+missedSkipChance = 0)` gained a third branch: falsy `cooldownSkipSource` + `missedSkipChance > 0`
+now renders a "🎲 Cooldown Skip Chance: X% — no luck this time, full cooldown applies" field;
+falsy `cooldownSkipSource` + zero chance still renders nothing (unchanged — no source in play at
+all isn't worth a field on every single call). Every embed function that already accepted
+`cooldownSkippedByCompanion`/`cooldownSkipSource` gained a matching trailing
+`missedCooldownSkipChance = 0` param: `createWorkEmbed`, `createPoisonPotatoEmbed`,
+`createMimicPotatoEmbed`, `createCompanionEncounterEmbed`, `createAncientPotatoEmbed`,
+`createBountyResultEmbed`, `createRobNpcResultEmbed`, `createRaidEmbed` — all 8 call sites of
+`buildCooldownSkipField` switched from `if (source) fields.push(buildCooldownSkipField(source))`
+to capturing the return value and pushing only if non-null, since the function itself now decides
+whether there's anything to show.
+
+**Tests**: 7 new tests in `embedFactory.test.js` (a miss-with-chance shows the field, a hit
+suppresses it even with a nonzero missed chance passed, a zero-chance miss shows nothing — across
+`createWorkEmbed`/`createBountyResultEmbed`/`createRobNpcResultEmbed`/`createRaidEmbed`); 2
+existing `dynamoHandler.test.js` tests extended with `_cooldownSkipChance` assertions (stamped on
+a Spud Keep miss, left `undefined` for a non-standard/unskippable Poison lockout cooldown);
+existing win-miss tests in `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`/
+`startRaidCooldownSkip.test.js` extended to assert the embed actually shows the rolled %. Full
+suite green (1075/1075, up from 1068).
+
+**Docs**: `.claude/systems/economy-and-work.md`'s cooldown-skip-overhaul section gained a dated
+"Missed-roll visibility fix" subsection describing the new field and wiring.

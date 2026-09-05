@@ -166,6 +166,14 @@ describe('/start-raid cooldown skip', () => {
         const raidTimerCalls = dynamoHandler.updateGuildDatabase.mock.calls.filter(([, field]) => field === 'raidTimer');
         expect(raidTimerCalls).toHaveLength(1); // no chain
         expect(raidTimerCalls[0][2]).toBe(FIXED_NOW + Raid.RAID_TIMER_SECONDS * 1000);
+
+        // 2026-09-05, player-reported: a miss should still show the % chance that was
+        // actually rolled, not leave the player wondering.
+        const lastEditReplyCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const resultEmbed = lastEditReplyCall[0].embeds[0];
+        const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(cooldownField).toBeDefined();
+        expect(cooldownField.value).toContain('2%');
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and fires exactly one chained resolveRaid attempt', async () => {

@@ -194,9 +194,30 @@ const COOLDOWN_SKIP_FLAVOR = {
 // All reuse the same _cooldownSkippedByCompanion field/parameter rather than parallel ones,
 // so every existing call site's truthiness check and work.js's chain-continuation check
 // keep working unchanged for every source — see dynamoHandler.calculateWorkTimerValue and
-// cooldownFactory.js. A falsy value means none of them happened this call — callers just do
-// `if (cooldownSkippedByCompanion) fields.push(...)`.
-function buildCooldownSkipField(cooldownSkipSource) {
+// cooldownFactory.js.
+//
+// missedSkipChance (2026-09-05, player-reported: "the embeds no longer have a % cooldown
+// reduction... if it doesn't skip they should at least know what the chance was so its not
+// hidden") — the overhaul replaced every deterministic "-X% cooldown" display with a hidden
+// coin flip, and a player who just watched the SAME flip miss over and over had no way to
+// tell whether they even had a real chance or none at all. Only meaningful when
+// cooldownSkipSource is falsy (a hit already gets its own flavor field below, no need to
+// also quote the number that led to it) and only worth showing at all when it was actually
+// > 0 (nothing rolled at all — e.g. Guild Raid/Bounty/Heist's own loss branches never even
+// attempt the roll — has no chance to report). Returns null when there's nothing to show
+// either way; callers just do `const field = buildCooldownSkipField(...); if (field)
+// fields.push(field);`.
+function buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0) {
+    if (!cooldownSkipSource) {
+        if (missedSkipChance > 0) {
+            return {
+                name: `🎲 Cooldown Skip Chance:`,
+                value: `${(missedSkipChance * 100).toFixed(0)}% chance to skip the cooldown — no luck this time, full cooldown applies.`,
+                inline: false,
+            };
+        }
+        return null;
+    }
     if (cooldownSkipSource && typeof cooldownSkipSource === 'object') {
         if (cooldownSkipSource.source === 'guildBuff') {
             return {
@@ -1301,7 +1322,7 @@ class EmbedFactory {
     // roadmap's "Raid Result Embed Shows Next-Raid Cooldown" entry. Shown unconditionally
     // (win or loss) since the cooldown reset itself is unconditional.
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
-        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null, cooldownSkipSource = null) {
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
         const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
@@ -1394,8 +1415,9 @@ class EmbedFactory {
         // skip it entirely, only ever rolled on a WIN (see startRaid.js's resolveRaid) —
         // shown only when a skip actually happened this call, same buildCooldownSkipField
         // every other converted cooldown uses.
-        if (cooldownSkipSource) {
-            fields.push(buildCooldownSkipField(cooldownSkipSource));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         if (mob.credit) {
@@ -1513,7 +1535,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -1531,8 +1553,9 @@ class EmbedFactory {
             inline: true,
         })
 
-        if (cooldownSkippedByCompanion) {
-            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         if (mob.credit) {
@@ -1591,7 +1614,7 @@ class EmbedFactory {
     // shared weekly counter): { reduction, lockoutSeconds, hitNumberThisWeek,
     // milestoneJustReached, rebatePercent, escalationMultiplier }, rebatePercent/
     // escalationMultiplier only non-null when immune.
-    createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+    createPoisonPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
         const { potatoesGained, immune, mitigationInfo } = result;
         let fields = [{
             name: `Work Count:`,
@@ -1642,8 +1665,9 @@ class EmbedFactory {
             }
         }
 
-        if (cooldownSkippedByCompanion) {
-            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         let footerText = "Made by Beggar";
@@ -1670,7 +1694,7 @@ class EmbedFactory {
     // the bank loss itself. result: { potatoesLost, mitigationInfo } from
     // workFactory.handleMimicPotato — mitigationInfo: { reduction, hitNumberThisWeek,
     // milestoneJustReached }.
-    createMimicPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+    createMimicPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
         const { potatoesLost, mitigationInfo } = result;
         let fields = [{
             name: `Work Count:`,
@@ -1704,8 +1728,9 @@ class EmbedFactory {
             }
         }
 
-        if (cooldownSkippedByCompanion) {
-            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         let footerText = "Made by Beggar";
@@ -1732,7 +1757,7 @@ class EmbedFactory {
     // no bonus workCount to any existing copy — so it gets the same "go equip it" framing
     // rather than a before/after progress readout. See
     // systems/companions.md#duplicate-companions-are-real-separate-instances.
-    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+    createCompanionEncounterEmbed(userDisplayName, newWorkCount, result, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
         const { isNew, companion } = result;
         let fields = [{
             name: `Work Count:`,
@@ -1753,8 +1778,9 @@ class EmbedFactory {
             description = `${companion.description}\n\nYou already have a ${companion.name} — this is a separate copy, starting fresh at level 1. Run \`/companion\` to see and equip it individually, or sell it with /companion-sell or /companion-sell-npc.`;
         }
 
-        if (cooldownSkippedByCompanion) {
-            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         const activeEvent = eventFactory.getCurrentEvent();
@@ -1847,7 +1873,7 @@ class EmbedFactory {
     // regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease,
     // guildRaidReady } from workFactory.js's handleAncientPotato — exactly one of
     // regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
-    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+    createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
         const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady } = result;
         let fields = [{
             name: `Work Count:`,
@@ -1883,8 +1909,9 @@ class EmbedFactory {
             });
         }
 
-        if (cooldownSkippedByCompanion) {
-            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         let footerText = "Made by Beggar";
@@ -1976,7 +2003,7 @@ class EmbedFactory {
     // untaxed"-style precedent netRewardAmount/taxAmount already set): from
     // companionFactory.getAppliedCompanionXpGain, diffed right after the Bounty's own
     // levelActiveCompanion (Yukon-restricted) call — shown only when it actually applied.
-    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null) {
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
         const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
@@ -2051,12 +2078,14 @@ class EmbedFactory {
 
         // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) is now
         // a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul), not a
-        // guaranteed reduction — only shown when a skip actually happened THIS call (won
-        // handles that gate: a skip can only ever be rolled on a win), same
-        // buildCooldownSkipField every other converted cooldown uses, so the field never
-        // promises a number that didn't actually land.
-        if (cooldownSkipSource) {
-            fields.push(buildCooldownSkipField(cooldownSkipSource));
+        // guaranteed reduction — a hit shows its own flavor field; a miss shows the %
+        // chance that was actually rolled instead (missedCooldownSkipChance, only ever
+        // nonzero on a WIN — a loss never even attempts the roll, see takeBounty.js's
+        // runBountyAttempt), so the field never promises a number that didn't actually
+        // apply, but also never leaves a miss silently unexplained.
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
         }
 
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
@@ -2078,7 +2107,7 @@ class EmbedFactory {
     // already needs for a Bounty loss.
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
-    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null, cooldownSkipSource = null) {
+    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
         const { won, successChance, amount, rankInfo, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : (penaltyAmount > 0 ? 'Red' : 'Grey');
         const fields = [
@@ -2097,11 +2126,12 @@ class EmbedFactory {
                 fields.push({ name: '🏅 The Royal Treasury — Permanent Stat Reward!', value: statText, inline: false });
             }
             // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) is
-            // now a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul),
-            // same buildCooldownSkipField every other converted cooldown uses — only shown
-            // when a skip actually happened this call, same as createBountyResultEmbed.
-            if (cooldownSkipSource) {
-                fields.push(buildCooldownSkipField(cooldownSkipSource));
+            // now a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul)
+            // — a hit shows its own flavor field, a miss shows the % chance that was rolled
+            // instead (missedCooldownSkipChance), same as createBountyResultEmbed.
+            const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
+            if (cooldownSkipField) {
+                fields.push(cooldownSkipField);
             }
         } else if (penaltyAmount > 0) {
             fields.push({ name: 'Potatoes Lost:', value: `${penaltyAmount.toLocaleString()} potatoes`, inline: false });

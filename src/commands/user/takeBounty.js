@@ -118,6 +118,12 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     // cooldown (ready now) rather than changing the constant itself, keeping bountyBoard.js's
     // remaining-time display and every other BOUNTY_TIMER_SECONDS reader correct unchanged.
     let cooldownSkipSource = null;
+    // Shown on the result embed only when the roll actually happened AND missed — a hit
+    // gets its own flavor field instead (no need to also quote the number), and a loss
+    // never rolls at all, so there's genuinely no chance to report (2026-09-05,
+    // player-reported: "the embeds no longer have a % cooldown reduction... if it doesn't
+    // skip they should at least know what the chance was so its not hidden").
+    let missedSkipChance = 0;
     let shouldChain = false;
     if (result.won) {
         const spudKeepCooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
@@ -137,6 +143,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
             setAttributes.bountyTimer = Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000;
             shouldChain = true;
         } else {
+            missedSkipChance = totalSkipChance;
             setAttributes.bountyTimer = Date.now();
         }
     } else {
@@ -245,7 +252,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         }
     }
 
-    const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName, cooldownSkipSource);
+    const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName, cooldownSkipSource, missedSkipChance);
     await sendBountyResult(interaction, embed, isChainedReply);
 
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);

@@ -89,6 +89,13 @@ describe('/rob-npc cooldown skip', () => {
         const heistWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'npcRobTimer' in setAttrs);
         expect(heistWrites).toHaveLength(1);
         expect(heistWrites[0][1].npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+
+        // 2026-09-05, player-reported: a miss should still show the % chance that was
+        // actually rolled, not leave the player wondering.
+        const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
+        const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(cooldownField).toBeDefined();
+        expect(cooldownField.value).toContain('6%');
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and auto-chains one more attempt', async () => {

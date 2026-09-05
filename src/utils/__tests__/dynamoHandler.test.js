@@ -584,6 +584,9 @@ describe('calculateWorkTimerValue', () => {
 
         expect(result).toBeGreaterThanOrEqual(before + poisonLockoutSeconds * 1000);
         expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+        // Never even rolled for a non-standard cooldown, so there's no % to report either
+        // — see createPoisonPotatoEmbed's own missedCooldownSkipChance handling.
+        expect(userDetails._cooldownSkipChance).toBeUndefined();
     });
 
     // Griseous's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
@@ -766,7 +769,7 @@ describe('calculateWorkTimerValue Spud Keep cooldown term', () => {
         expect(userDetails._cooldownSkippedByCompanion).toEqual({ source: 'spudKeep' });
     });
 
-    test('a live guild-holder cooldown buff leaves the FULL cooldown on a miss (no partial reduction)', async () => {
+    test('a live guild-holder cooldown buff leaves the FULL cooldown on a miss (no partial reduction), but stamps the % chance that was rolled', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
         randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // well above 0.08
         const userDetails = { guildId: 'g1' };
@@ -776,6 +779,10 @@ describe('calculateWorkTimerValue Spud Keep cooldown term', () => {
 
         expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
         expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+        // 2026-09-05, player-reported: a miss should still stamp the % chance that was
+        // rolled (_cooldownSkipChance) so work.js can show it on the result embed instead
+        // of leaving the player wondering whether they even had a real shot.
+        expect(userDetails._cooldownSkipChance).toBeCloseTo(0.08);
     });
 
     test('a live buff held by a DIFFERENT guild never rolls a skip for this user', async () => {

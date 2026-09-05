@@ -100,6 +100,13 @@ describe('/take-bounty cooldown skip', () => {
         const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
         expect(bountyWrites).toHaveLength(1); // no chain
         expect(bountyWrites[0][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+
+        // 2026-09-05, player-reported: a miss should still show the % chance that was
+        // actually rolled, not leave the player wondering.
+        const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
+        const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
+        expect(cooldownField).toBeDefined();
+        expect(cooldownField.value).toContain('6%');
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and auto-chains one more attempt', async () => {
