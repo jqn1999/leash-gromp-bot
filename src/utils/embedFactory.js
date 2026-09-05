@@ -1663,6 +1663,68 @@ class EmbedFactory {
         return embed;
     }
 
+    // Mimic Potato's own weekly bad-luck mitigation (2026-09-05, direct instruction: "the
+    // metal potato weekly penalty decay... similar to poison", corrected to Mimic Potato)
+    // — same escalating-reduction idea as createPoisonPotatoEmbed, but simpler: Mimic has
+    // no cooldown lockout and no companion counterplay to branch on, it only ever softens
+    // the bank loss itself. result: { potatoesLost, mitigationInfo } from
+    // workFactory.handleMimicPotato — mitigationInfo: { reduction, hitNumberThisWeek,
+    // milestoneJustReached }.
+    createMimicPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null) {
+        const { potatoesLost, mitigationInfo } = result;
+        let fields = [{
+            name: `Work Count:`,
+            value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
+            inline: true,
+        }];
+
+        fields.push({
+            name: `Potatoes Lost:`,
+            value: `${potatoesLost.toLocaleString()} potatoes`,
+            inline: true,
+        });
+
+        if (mitigationInfo) {
+            const { reduction, hitNumberThisWeek, milestoneJustReached } = mitigationInfo;
+            const hitContext = reduction > 0
+                ? `hit #${hitNumberThisWeek} this week — ${(reduction * 100).toFixed(0)}% softer`
+                : `hit #${hitNumberThisWeek} this week`;
+            fields.push({
+                name: `Bank Loss:`,
+                value: hitContext,
+                inline: true,
+            });
+
+            if (milestoneJustReached) {
+                fields.push({
+                    name: `🏅 Mimic-Proofed:`,
+                    value: `10 Mimic hits in one week — the bank loss is cut way down for the rest of this week!`,
+                    inline: false,
+                });
+            }
+        }
+
+        if (cooldownSkippedByCompanion) {
+            fields.push(buildCooldownSkipField(cooldownSkippedByCompanion));
+        }
+
+        let footerText = "Made by Beggar";
+        const activeEvent = eventFactory.getCurrentEvent();
+        if (activeEvent) {
+            footerText += ` • 🎉 ${activeEvent}`;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
+            .setDescription(mob.description)
+            .setColor('Red')
+            .setThumbnail(mob.thumbnailUrl)
+            .setFooter({ text: footerText })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // result: { isNew, companion } from workFactory.handleCompanionEncounter. A brand-new
     // companion shows its perk and a reminder to equip it via /companion (won, not
     // auto-equipped — equipping stays a deliberate choice). Since 2026-08-25's instance

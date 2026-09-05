@@ -187,8 +187,9 @@ var workScenarios = [
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            potatoesGained = await workFactory.handleMimicPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mimicPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
+            const mimicResult = await workFactory.handleMimicPotato(userDetails);
+            potatoesGained = mimicResult.potatoesLost;
+            embed = embedFactory.createMimicPotatoEmbed(userDisplayName, newWorkCount, mimicResult, mimicPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },

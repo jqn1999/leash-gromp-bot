@@ -586,6 +586,21 @@ const PoisonMitigation = {
     MILESTONE_REDUCTION: 0.90
 }
 
+// Same weekly bad-luck mitigation as Poison Potato, mirrored (not shared — see
+// isMondayEST's own comment for why this codebase duplicates rather than shares these
+// tiny pure functions) onto Mimic Potato's bank-percentage loss — direct instruction
+// 2026-09-05 ("implement the metal potato weekly penalty decay up to a max of -90%
+// penalty similar to poison", corrected to Mimic Potato). Values kept identical to
+// PoisonMitigation since Mimic shares Poison's same 1% encounter rarity tier and the
+// request explicitly asked for parity ("up to a max of -90%"). No achievement wired up
+// for this one (none was requested) — see workFactory.js's computeMimicMitigation.
+const MimicMitigation = {
+    REDUCTION_PER_HIT: 0.15,
+    MAX_REDUCTION: 0.60,
+    MILESTONE_HIT_THRESHOLD: 10,
+    MILESTONE_REDUCTION: 0.90
+}
+
 // Rolling a companion you already own used to pay out a flat potato consolation off
 // this table (maxGain caps fed into workFactory's calculateGainAmount, same shape as
 // Work.MAX_LARGE_POTATO/MAX_METAL_POTATO/MAX_GOLDEN_POTATO) instead of granting anything
@@ -2899,6 +2914,7 @@ module.exports = {
     CompanionRarityOdds,
     CompanionMarket,
     PoisonMitigation,
+    MimicMitigation,
     CompanionLeveling,
     CompanionScavenging,
     Companions,

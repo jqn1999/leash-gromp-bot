@@ -875,7 +875,7 @@ describe('handleMimicPotato', () => {
     test('deducts a percentage of bankStored, not potatoes', async () => {
         const userDetails = baseUser({ potatoes: 5000, bankStored: 1000000 });
 
-        const lost = await workFactory.handleMimicPotato(userDetails);
+        const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
 
         expect(lost).toBeLessThan(0);
         expect(lost).toBe(-Math.round(1000000 * Work.MIMIC_POTATO_BANK_PERCENT));
@@ -887,7 +887,7 @@ describe('handleMimicPotato', () => {
     test('caps the loss at MAX_MIMIC_POTATO_LOSS for a very large bank', async () => {
         const userDetails = baseUser({ bankStored: 100000000000 });
 
-        const lost = await workFactory.handleMimicPotato(userDetails);
+        const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
 
         expect(lost).toBe(-Work.MAX_MIMIC_POTATO_LOSS);
     });
@@ -895,7 +895,7 @@ describe('handleMimicPotato', () => {
     test('a player with nothing banked loses nothing', async () => {
         const userDetails = baseUser({ bankStored: 0 });
 
-        const lost = await workFactory.handleMimicPotato(userDetails);
+        const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
 
         // Math.abs sidesteps -0 vs 0 (Object.is treats them as distinct, but they're
         // behaviorally identical here) — a percent of 0 rounds to -0 via -Math.min(0, cap).
@@ -905,11 +905,69 @@ describe('handleMimicPotato', () => {
     test('records the loss in totalLosses and increments workScenarioCounts.mimic', async () => {
         const userDetails = baseUser({ bankStored: 1000000, totalLosses: 0, workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, mimic: 2 } });
 
-        const lost = await workFactory.handleMimicPotato(userDetails);
+        const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.totalLosses).toBe(lost);
         expect(setFields.workScenarioCounts.mimic).toBe(3);
+    });
+});
+
+// Regression coverage for Mimic Potato's weekly bad-luck mitigation (2026-09-05, direct
+// instruction — mirrors PoisonMitigation's own escalating-reduction shape, see
+// computeMimicMitigation/MimicMitigation).
+describe('handleMimicPotato weekly mitigation', () => {
+    const { MimicMitigation } = require('../constants');
+
+    test('the 1st hit this week applies no reduction', async () => {
+        const userDetails = baseUser({ bankStored: 1000000, mimicMitigation: undefined });
+
+        const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
+
+        expect(mitigationInfo.reduction).toBe(0);
+        expect(mitigationInfo.hitNumberThisWeek).toBe(1);
+        expect(potatoesLost).toBe(-Math.round(1000000 * Work.MIMIC_POTATO_BANK_PERCENT));
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.mimicMitigation).toEqual({ weekTag: expect.any(String), weeklyHitCount: 1 });
+    });
+
+    test('a repeat hit the same week applies the escalating reduction', async () => {
+        const userDetails = baseUser({
+            bankStored: 100000000000, // forces the MAX_MIMIC_POTATO_LOSS cap
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 2 }
+        });
+
+        const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
+
+        const expectedReduction = 2 * MimicMitigation.REDUCTION_PER_HIT;
+        expect(mitigationInfo.reduction).toBeCloseTo(expectedReduction);
+        expect(mitigationInfo.hitNumberThisWeek).toBe(3);
+        expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - expectedReduction)));
+    });
+
+    test('the 10th hit this week applies the milestone reduction and flags milestoneJustReached', async () => {
+        const userDetails = baseUser({
+            bankStored: 100000000000,
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 }
+        });
+
+        const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
+
+        expect(mitigationInfo.reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(mitigationInfo.milestoneJustReached).toBe(true);
+        expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - MimicMitigation.MILESTONE_REDUCTION)));
+    });
+
+    test('a stale weekTag from a prior week resets the count back to a fresh hit #1', async () => {
+        const userDetails = baseUser({
+            bankStored: 1000000,
+            mimicMitigation: { weekTag: 'some-old-week', weeklyHitCount: 9 }
+        });
+
+        const { mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
+
+        expect(mitigationInfo.hitNumberThisWeek).toBe(1);
+        expect(mitigationInfo.reduction).toBe(0);
     });
 });
 

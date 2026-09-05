@@ -264,12 +264,35 @@ intentionally doesn't apply, same reasoning as Poison. Recorded in `totalLosses`
 loss.
 
 **Halved 2026-09-04, direct instruction** ("the scaling potato hit on it is getting very high for
-players and its feeling a bit too painful") — was `.03`/`5000000`. Unlike Poison Potato (same 1%
-rarity tier), Mimic has no weekly bad-luck mitigation
-(`PoisonMitigation`'s escalating-then-capped relief) and no companion counterplay (nothing plays
-Guinea Pig's role here) — every hit lands at full, unmitigated force every time. A straight numbers
-cut (both the percent and the cap) was the requested fix rather than adding a new mitigation
-mechanic; that remains an option if the pain persists.
+players and its feeling a bit too painful") — was `.03`/`5000000`. At the time Mimic had no weekly
+bad-luck mitigation and no companion counterplay (nothing plays Guinea Pig's role here) — every hit
+landed at full, unmitigated force every time. A straight numbers cut (both the percent and the cap)
+was the requested fix rather than adding a new mitigation mechanic.
+
+**Weekly mitigation added 2026-09-05, direct instruction** ("implement the metal potato weekly
+penalty decay up to a max of -90% penalty similar to poison", corrected to Mimic Potato). Mirrors
+`PoisonMitigation`'s exact escalating-then-capped shape as its own `MimicMitigation` constant
+(`constants.js`) — same numbers, since Mimic shares Poison's 1% rarity tier and the request asked
+for parity: 0% on the 1st hit this week, -15%/-30%/-45% on the 2nd–4th, capped at -60% through the
+9th, then a milestone jump to -90% on the 10th+ hit, resetting every Monday
+(`workFactory.getCurrentWeekTag`). `workFactory.computeMimicMitigation(mimicMitigation, now)` is a
+standalone mirror of `computePoisonMitigation` (not a shared helper — same "mirrored, not shared"
+convention `isMondayEST`'s own comment documents for these tiny per-mechanic pure functions), reading
+a new `mimicMitigation: { weekTag, weeklyHitCount }` user field (defaulted in
+`dynamoHandler.getDefaultUserFields`, same shape as `poisonMitigation`).
+
+Unlike Poison, Mimic has no cooldown lockout to mitigate — the reduction only ever softens the bank
+loss itself, applied *after* the `MAX_MIMIC_POTATO_LOSS` cap (the cap is "the worst a single hit can
+be," mitigation then softens that same worst case further). No companion counterplay exists for
+Mimic (no Guinea-Pig-equivalent), and no new achievement was added for the 10-hit milestone (none was
+requested) — the milestone still surfaces as a one-time embed callout, just without a
+`totalMimicMilestonesReached`-style lifetime counter or achievement unlock behind it.
+
+`handleMimicPotato` now returns `{ potatoesLost, mitigationInfo }` instead of a plain number (same
+shape change `handlePoisonPotato` went through for the same reason — see above). A new
+`embedFactory.createMimicPotatoEmbed` (separate from the generic `createWorkEmbed`) shows a **Bank
+Loss:** field with the hit number this week and the %-softer figure, plus the one-time 🏅 callout on
+the exact hit that crosses the 10-hit milestone.
 
 ### Golden Yam (0.1% roll — `workFactory.js`'s `handleGoldenYam`)
 

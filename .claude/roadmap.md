@@ -8233,3 +8233,35 @@ up from 1035 before this overhaul began.
 **Docs**: `.claude/systems/economy-and-work.md`, `mercenary-bounties.md`, `guilds.md`, and
 `raids-and-world-events.md` all updated with dated sections describing the new mechanic in place
 of the old deterministic one.
+
+## Mimic Potato weekly bad-luck mitigation (2026-09-05, direct instruction)
+
+Direct instruction: "implement the metal potato weekly penalty decay up to a max of -90% penalty
+similar to poison" — corrected the same turn ("Sorry this was a mistake from me, I meant apply
+this logic to mimic potatoes") to target Mimic Potato, not Metal Potato (which has no failure
+penalty of any kind to mitigate — its failure branch is a flat `potatoesGained = 0`).
+
+Mirrors `PoisonMitigation`'s exact shape as a new `MimicMitigation` constant (`constants.js`) —
+same numbers (0% on hit 1, -15%/-30%/-45% on hits 2–4, capped at -60% through hit 9, milestone
+jump to -90% on hit 10+, resetting every Monday), since Mimic shares Poison's 1% rarity tier and
+the request explicitly asked for -90% parity. `workFactory.computeMimicMitigation` is a standalone
+mirror of `computePoisonMitigation` (own copy, not a shared helper — matches the existing
+"mirrored, not shared" convention for these tiny per-mechanic pure functions), reading/writing a
+new `mimicMitigation: { weekTag, weeklyHitCount }` user field (defaulted in
+`dynamoHandler.getDefaultUserFields`).
+
+Unlike Poison, Mimic has no cooldown lockout — the reduction only softens the bank loss, applied
+after the existing `MAX_MIMIC_POTATO_LOSS` cap. No companion counterplay and no new achievement
+were added (neither was requested); the 10-hit milestone still gets a one-time embed callout, just
+without a lifetime counter/achievement behind it. `handleMimicPotato` now returns
+`{ potatoesLost, mitigationInfo }` instead of a plain number, and a new
+`embedFactory.createMimicPotatoEmbed` (mirroring `createPoisonPotatoEmbed`, minus the lockout/
+Guinea-Pig branches Mimic has no equivalent of) surfaces the hit number and %-softer figure.
+
+**Tests**: 4 new tests in `workFactory.test.js`'s `handleMimicPotato weekly mitigation` describe
+block (1st hit unmitigated, escalating repeat hit, 10th-hit milestone, stale-weekTag reset); the 4
+pre-existing `handleMimicPotato` tests updated for the new `{ potatoesLost, mitigationInfo }`
+return shape. Full suite green (1064/1064, up from 1060).
+
+**Docs**: `.claude/systems/economy-and-work.md`'s Mimic Potato section updated with a dated
+subsection describing the mitigation, matching the existing Poison Potato write-up's structure.

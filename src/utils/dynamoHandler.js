@@ -524,6 +524,12 @@ function getDefaultUserFields(userId, username) {
             weekTag: null,
             weeklyHitCount: 0
         },
+        // Same weekly bad-luck mitigation as poisonMitigation above, mirrored onto Mimic
+        // Potato's bank-percentage loss — see workFactory.js's computeMimicMitigation.
+        mimicMitigation: {
+            weekTag: null,
+            weeklyHitCount: 0
+        },
         // Lifetime, never resets — increments the one time per qualifying week a player's
         // weeklyHitCount first reaches PoisonMitigation.MILESTONE_HIT_THRESHOLD, powering
         // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,

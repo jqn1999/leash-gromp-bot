@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, PoisonMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
+const { Work, PoisonMitigation, MimicMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -141,6 +141,28 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
         reduction,
         nextPoisonMitigation: { weekTag, weeklyHitCount: hitNumberThisWeek },
         milestoneJustReached: hitNumberThisWeek === PoisonMitigation.MILESTONE_HIT_THRESHOLD
+    };
+}
+
+// Same weekly bad-luck mitigation as computePoisonMitigation above, mirrored onto Mimic
+// Potato's bank-percentage loss (2026-09-05, direct instruction — see MimicMitigation's
+// own comment in constants.js). Kept as its own copy rather than a shared helper for the
+// same "mirrored, not shared" reason isMondayEST's comment gives — these are tiny pure
+// functions, not worth a generic abstraction over two callers.
+function computeMimicMitigation(mimicMitigation, now = new Date()) {
+    const weekTag = getCurrentWeekTag(now);
+    const isFreshWeek = !mimicMitigation || mimicMitigation.weekTag !== weekTag;
+    const priorHitsThisWeek = isFreshWeek ? 0 : (mimicMitigation.weeklyHitCount || 0);
+    const hitNumberThisWeek = priorHitsThisWeek + 1;
+
+    const reduction = hitNumberThisWeek >= MimicMitigation.MILESTONE_HIT_THRESHOLD
+        ? MimicMitigation.MILESTONE_REDUCTION
+        : Math.min(MimicMitigation.MAX_REDUCTION, priorHitsThisWeek * MimicMitigation.REDUCTION_PER_HIT);
+
+    return {
+        reduction,
+        nextMimicMitigation: { weekTag, weeklyHitCount: hitNumberThisWeek },
+        milestoneJustReached: hitNumberThisWeek === MimicMitigation.MILESTONE_HIT_THRESHOLD
     };
 }
 
@@ -596,13 +618,20 @@ class WorkFactory {
     // being a flat number that's meaningless late-game, capped so one unlucky roll
     // can't gut a whale's entire bank in a single hit. A player with nothing banked
     // naturally loses nothing — no special-casing needed, the math just resolves to 0.
+    // Bad-luck protection — same weekly escalating reduction as Poison Potato (see
+    // computeMimicMitigation above), applied to the already-capped loss so the cap and
+    // the mitigation don't fight over ordering: MAX_MIMIC_POTATO_LOSS is "the worst a
+    // single hit can be," mitigation then softens that same worst case further the more
+    // times it's landed on this player this week.
     async handleMimicPotato(userDetails) {
         const userId = userDetails.userId;
         let userBankStored = userDetails.bankStored;
         let userTotalLosses = userDetails.totalLosses;
 
         const rawLoss = Math.round(userBankStored * Work.MIMIC_POTATO_BANK_PERCENT);
-        const potatoesLost = -Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
+        const cappedLoss = Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
+        const { reduction, nextMimicMitigation, milestoneJustReached } = computeMimicMitigation(userDetails.mimicMitigation);
+        const potatoesLost = -Math.floor(cappedLoss * (1 - reduction));
         userBankStored += potatoesLost;
         userTotalLosses += potatoesLost;
 
@@ -611,14 +640,19 @@ class WorkFactory {
 
         const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
 
+        // Surfaced on the embed (see embedFactory.createMimicPotatoEmbed) so the reduction
+        // is actually visible to the player, not just felt indirectly.
+        const mitigationInfo = { reduction, hitNumberThisWeek: nextMimicMitigation.weeklyHitCount, milestoneJustReached };
+
         await dynamoHandler.updateUserFields(userId, {
             bankStored: userBankStored,
             totalLosses: userTotalLosses,
             workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
+            workTimer: workTimer,
+            mimicMitigation: nextMimicMitigation
         }, { workCount: 1 });
 
-        return potatoesLost;
+        return { potatoesLost, mitigationInfo };
     }
 
     async handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
@@ -830,6 +864,7 @@ module.exports = {
     WorkFactory,
     getCurrentWeekTag,
     computePoisonMitigation,
+    computeMimicMitigation,
     getEffectiveScenarioChances,
     // Widened for Mercenary Bounties (mercenaryFactory.js's /rob-npc payout) to reuse the
     // exact same reward-scaling formula every other /work-shaped reward already uses,
