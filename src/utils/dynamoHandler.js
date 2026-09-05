@@ -2,6 +2,7 @@ const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep } = require("..
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const cooldownFactory = require("../utils/cooldownFactory");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
 
@@ -288,44 +289,71 @@ const collectSpudKeepReward = async function (userId, amount) {
 
 // Computes the work-timer expiry (including the guild workTimer-buff discount) without
 // writing it, so callers can fold the result into a combined updateUserFields call.
-// Every companion that touches the work cooldown now does it through
-// workCooldownSkipChance (Fieldmouse/Spudsprite/Mochi) rather than a percentage
-// reduction — checked first and, on a hit, short-circuits straight to "ready now".
-// Mutates a transient, never-persisted `_cooldownSkippedByCompanion` id onto the same
-// userDetails object reference the caller already holds, so work.js can show which
-// companion actually did it without every /work scenario's handler needing its return
-// shape changed to carry an extra flag through.
+// Cooldown-skip overhaul (2026-09-05, direct instruction) — every source that used to shave
+// a flat percent off this cooldown (the guild's own workTimer buff, Spud Keep's holder-wide
+// perk) is now folded into the SAME combined skip-chance roll workCooldownSkipChance/the
+// World Boss cooldownSkip buff already used, via cooldownFactory.combineSkipChance/
+// rollCooldownSkip — one roll against the sum of all four sources (capped), not four
+// separate mechanisms. A hit sets the cooldown to "ready now"; a miss gets the FULL
+// cooldown, never a partial reduction. Mutates a transient, never-persisted
+// `_cooldownSkippedByCompanion` value onto the same userDetails object reference the caller
+// already holds, so work.js can show which source actually did it (and auto-chain off it)
+// without every /work scenario's handler needing its return shape changed to carry an extra
+// flag through. See cooldownFactory.js and .claude/systems/economy-and-work.md for the full
+// writeup of why this replaced the old flat-reduction mechanics.
 const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     // Only the STANDARD cooldown is skippable — gated on cooldownTime === WORK_TIMER_SECONDS
-    // rather than rolling skipChance unconditionally. A non-immune Poison Potato hit passes
-    // its own elevated lockoutSeconds here (workFactory.js:546, always < POISON_POTATO_
-    // TIMER_INCREASE_SECONDS but never equal to WORK_TIMER_SECONDS), so this now correctly
-    // leaves that punishment alone instead of a companion's workCooldownSkipChance erasing
-    // it — previously a skip proc on a poisoned call set the timer to "ready now" AND (via
-    // work.js's _cooldownSkippedByCompanion chain) fired an immediate follow-up /work call,
-    // whose own normal WORK_TIMER_SECONDS write was the last one to land, so the player saw
-    // a bare 5-minute cooldown after being poisoned instead of the real lockout. Guinea
-    // Pig's immune poison branch (workFactory.js:539) still passes WORK_TIMER_SECONDS
+    // rather than rolling unconditionally. A non-immune Poison Potato hit passes its own
+    // elevated lockoutSeconds here (workFactory.js:546, always < POISON_POTATO_
+    // TIMER_INCREASE_SECONDS but never equal to WORK_TIMER_SECONDS), so this correctly
+    // leaves that punishment alone instead of any of these sources erasing it — a skip proc
+    // on a poisoned call would otherwise collapse the real lockout down to "ready now" and
+    // chain an immediate extra /work call, replacing the punishment with a bare cooldown.
+    // Guinea Pig's immune poison branch (workFactory.js:539) still passes WORK_TIMER_SECONDS
     // itself, so it stays skippable exactly as before — that hit was already designed to
     // carry no lockout at all.
-    const skipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
-    if (cooldownTime === Work.WORK_TIMER_SECONDS && skipChance > 0 && Math.random() < skipChance) {
-        userDetails._cooldownSkippedByCompanion = companionFactory.getActiveCompanion(userDetails).id;
-        return Date.now();
-    }
-
-    // Griseous's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
-    // second, independent roll against the SAME standard cooldown, only reached once the
-    // companion roll above has already missed (or there's no companion perk at all). Reuses
-    // the existing _cooldownSkippedByCompanion field (an object here instead of a companion
-    // id string) rather than a parallel field, specifically so work.js's own chain-
-    // continuation check ("if (userDetails._cooldownSkippedByCompanion) fire a follow-up
-    // /work call") keeps working unchanged for this source too — see
-    // embedFactory.js's buildCooldownSkipField for the display-side branch on this shape.
     if (cooldownTime === Work.WORK_TIMER_SECONDS) {
+        const companionSkipChance = companionFactory.getActivePerkValue(userDetails, "workCooldownSkipChance");
+
         const worldBuff = await getActiveWorldBuff();
-        if (isWorldBuffLive(worldBuff, "cooldownSkip") && Math.random() < worldBuff.value) {
-            userDetails._cooldownSkippedByCompanion = { worldBuffBossName: worldBuff.bossName };
+        const worldBuffSkipChance = isWorldBuffLive(worldBuff, "cooldownSkip") ? worldBuff.value : 0;
+
+        let guild = null;
+        if (userDetails.guildId) {
+            guild = await findGuildById(userDetails.guildId);
+        }
+        const guildBuffSkipChance = (guild && guild.guildBuff == "workTimer")
+            ? guildBuffFactory.getGuildBuffValue("workTimer", guildBuffFactory.getGuildLevel(guild.raidCount))
+            : 0;
+
+        // Lazily required (not a top-level import) to avoid a circular require —
+        // spudKeepFactory.js itself requires this file for its own dynamoHandler calls, and
+        // this file's own module.exports is only fully built at the bottom of the file, so a
+        // top-level require here would hand spudKeepFactory a half-built dynamoHandler.
+        const spudKeepFactory = require("../utils/spudKeepFactory");
+        const spudKeepCooldownBuff = await getActiveSpudKeepCooldownBuff();
+        const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
+            ? spudKeepCooldownBuff.value
+            : 0;
+
+        const sources = [
+            { key: "companion", chance: companionSkipChance },
+            { key: "worldBuff", chance: worldBuffSkipChance },
+            { key: "guildBuff", chance: guildBuffSkipChance },
+            { key: "spudKeep", chance: spudKeepSkipChance }
+        ];
+        const totalSkipChance = cooldownFactory.combineSkipChance(sources);
+        if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
+            const winningSource = cooldownFactory.pickSkipSource(sources);
+            if (winningSource === "companion") {
+                userDetails._cooldownSkippedByCompanion = companionFactory.getActiveCompanion(userDetails).id;
+            } else if (winningSource === "worldBuff") {
+                userDetails._cooldownSkippedByCompanion = { worldBuffBossName: worldBuff.bossName };
+            } else if (winningSource === "guildBuff") {
+                userDetails._cooldownSkippedByCompanion = { source: "guildBuff", label: guild.guildName };
+            } else if (winningSource === "spudKeep") {
+                userDetails._cooldownSkippedByCompanion = { source: "spudKeep" };
+            }
             return Date.now();
         }
     }
@@ -336,34 +364,7 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     // discarded any other value passed in. Poison's per-week-hit-count reduction (see
     // workFactory.js's computePoisonMitigation) now passes a variable lockout, so this
     // just uses whatever cooldownTime the caller actually asked for.
-    let time = Date.now() + cooldownTime * 1000
-
-    const userGuildId = userDetails.guildId;
-    if (userGuildId) {
-        let guild = await findGuildById(userDetails.guildId);
-        if (guild) {
-            if (guild.guildBuff == "workTimer") {
-                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
-                const reduction = guildBuffFactory.getGuildBuffValue("workTimer", level);
-                time -= cooldownTime * 1000 * reduction;
-            }
-        }
-    }
-
-    // Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat, holder-wide
-    // passive perk unlike Mercenary Rank's own cooldownReductionPercent (win-only), so
-    // this applies regardless of anything else that already touched `time` above.
-    // Lazily required (not a top-level import) to avoid a circular require —
-    // spudKeepFactory.js itself requires this file for its own dynamoHandler calls, and
-    // this file's own module.exports is only fully built at the bottom of the file, so a
-    // top-level require here would hand spudKeepFactory a half-built dynamoHandler.
-    const spudKeepFactory = require("../utils/spudKeepFactory");
-    const spudKeepCooldownBuff = await getActiveSpudKeepCooldownBuff();
-    if (spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)) {
-        time -= cooldownTime * 1000 * spudKeepCooldownBuff.value;
-    }
-
-    return time;
+    return Date.now() + cooldownTime * 1000;
 }
 
 // The full default user shape. Extracted so both addUser (brand-new records) and

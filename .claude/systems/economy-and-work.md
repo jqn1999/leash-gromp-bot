@@ -121,6 +121,31 @@ of the loss). Two changes, both in `workFactory.js`:
    `poisonMitigation` at all (there's no loss/lockout to mitigate), so it doesn't build weekly-hit
    progress or count toward the milestone either.
 
+   **Cooldown-skip overhaul (2026-09-05, direct instruction)** — every percent-based "reduce
+   cooldown by X%" mechanic across the app is being converted into a "chance to skip the
+   cooldown entirely, then auto-chain another attempt" mechanic, generalizing this exact
+   `workCooldownSkipChance`/World Boss `cooldownSkip` pattern. For `/work` specifically, the
+   guild's own selected `workTimer` buff (`guildBuffFactory`) and Spud Keep's holder-wide
+   cooldown perk — both previously a deterministic `time -= cooldownTime * 1000 * reduction`
+   subtraction inside `calculateWorkTimerValue` — are now folded into the SAME combined roll
+   the companion perk and World Boss buff already used, via the new
+   `src/utils/cooldownFactory.js` (`combineSkipChance`/`rollCooldownSkip`/`pickSkipSource`):
+   all four sources' chances are summed and capped at 90% (`DEFAULT_SKIP_CHANCE_CAP`, matching
+   the cap Guild Raid's own reduction-stacking already used), rolled ONCE, and on a hit the
+   winning source is picked (weighted by its own raw chance, cosmetic only — never affects
+   whether the skip happened) purely to pick which flavor line shows in the result embed. A
+   miss now gets the FULL cooldown, never a partial reduction — this is a real behavior change
+   from before (a guaranteed partial discount every time, now a full-or-nothing roll with the
+   same average outcome), not just a mechanical reskin. `_cooldownSkippedByCompanion` (kept as
+   the field name for backward compatibility with every existing read site) now also carries
+   `{source:'guildBuff', label}` and `{source:'spudKeep'}` shapes alongside the pre-existing
+   companion-id string and `{worldBuffBossName}` object —
+   `embedFactory.buildCooldownSkipField` branches on all four. 7 new/updated tests in
+   `dynamoHandler.test.js` and a new `cooldownFactory.test.js` (12 tests) cover the combine/roll
+   math directly and the real wiring (guild lookup, attribution shape, miss leaves the full
+   cooldown). The same conversion was applied to `/take-bounty`, `/rob-npc`, and Guild Raid —
+   see [mercenary-bounties.md](mercenary-bounties.md) and [guilds.md](guilds.md) for those.
+
    **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
    cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,
    mitigationInfo }` instead of a plain number (same "return an object, not just the number" shape

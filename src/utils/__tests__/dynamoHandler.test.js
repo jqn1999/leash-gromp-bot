@@ -745,27 +745,89 @@ describe('passivePotatoHandler Spud Keep passive term', () => {
     });
 });
 
-// Spud Keep's cooldown-reduction half (systems/spud-keep.md) — a flat holder-wide perk
-// applied inside calculateWorkTimerValue regardless of anything else already computed.
+// Spud Keep's cooldown-skip half (systems/spud-keep.md) — a flat holder-wide chance folded
+// into calculateWorkTimerValue's single combined roll (cooldown-skip overhaul, 2026-09-05)
+// rather than a deterministic reduction — see the cooldownFactory tests for the combine/roll
+// math itself; these confirm the real wiring (guild lookup + attribution shape).
 describe('calculateWorkTimerValue Spud Keep cooldown term', () => {
-    test('a live guild-holder cooldown buff shaves a member\'s /work cooldown', async () => {
+    let randomSpy;
+    afterEach(() => { if (randomSpy) randomSpy.mockRestore(); });
+
+    test('a live guild-holder cooldown buff can skip a member\'s /work cooldown entirely on a hit', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // well below 0.08
         const userDetails = { guildId: 'g1' };
 
         const before = Date.now();
         const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
 
-        expect(result).toBeLessThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000 - Work.WORK_TIMER_SECONDS * 1000 * 0.08 + 5);
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toEqual({ source: 'spudKeep' });
     });
 
-    test('a live buff held by a DIFFERENT guild never shaves this user\'s cooldown', async () => {
+    test('a live guild-holder cooldown buff leaves the FULL cooldown on a miss (no partial reduction)', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // well above 0.08
+        const userDetails = { guildId: 'g1' };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+    });
+
+    test('a live buff held by a DIFFERENT guild never rolls a skip for this user', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: Date.now() + 60000 }] }));
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // would have hit if it applied
         const userDetails = { guildId: 'g2' };
 
         const before = Date.now();
         const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
 
         expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+    });
+});
+
+// Guild's own selected workTimer buff — same conversion, same combined roll.
+describe('calculateWorkTimerValue guild workTimer buff', () => {
+    let randomSpy;
+    afterEach(() => { if (randomSpy) randomSpy.mockRestore(); });
+
+    function mockGuildQuery(guildBuff) {
+        docClient.query.mockImplementation((params) => {
+            if (params.ExpressionAttributeValues && ':guildId' in params.ExpressionAttributeValues) {
+                return resolved({ Items: [{ guildId: 'g1', guildName: 'Spud Squad', guildBuff, raidCount: 0 }] });
+            }
+            return resolved({ Items: [] }); // no world buff, no Spud Keep buff live
+        });
+    }
+
+    test('a guild with the workTimer buff selected can skip a member\'s cooldown on a hit', async () => {
+        mockGuildQuery('workTimer');
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = { guildId: 'g1' };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toEqual({ source: 'guildBuff', label: 'Spud Squad' });
+    });
+
+    test('a guild with a DIFFERENT buff selected never rolls a workTimer skip', async () => {
+        mockGuildQuery('robChance');
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = { guildId: 'g1' };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
     });
 });
 

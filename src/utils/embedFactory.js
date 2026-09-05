@@ -186,15 +186,53 @@ const COOLDOWN_SKIP_FLAVOR = {
     mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' }
 };
 
-// cooldownSkipSource: either the active companion's id that rolled the skip (string,
-// existing behavior), or `{ worldBuffBossName }` when Griseous's World Boss buff rolled it
-// instead (see dynamoHandler.calculateWorkTimerValue — deliberately reuses the same
-// _cooldownSkippedByCompanion field/parameter for both sources rather than a parallel one,
+// cooldownSkipSource shapes (2026-09-05 cooldown-skip overhaul added the last two):
+// - a companion id string (existing behavior — Fieldmouse/Spudsprite/Mochi)
+// - `{ worldBuffBossName }` when Griseous's World Boss buff rolled it
+// - `{ source: 'guildBuff', label }` when the guild's own selected workTimer buff rolled it
+// - `{ source: 'spudKeep' }` when Spud Keep's holder-wide perk rolled it
+// All reuse the same _cooldownSkippedByCompanion field/parameter rather than parallel ones,
 // so every existing call site's truthiness check and work.js's chain-continuation check
-// keep working unchanged for this source too), or a falsy value if neither happened this
-// call — callers just do `if (cooldownSkippedByCompanion) fields.push(...)`.
+// keep working unchanged for every source — see dynamoHandler.calculateWorkTimerValue and
+// cooldownFactory.js. A falsy value means none of them happened this call — callers just do
+// `if (cooldownSkippedByCompanion) fields.push(...)`.
 function buildCooldownSkipField(cooldownSkipSource) {
     if (cooldownSkipSource && typeof cooldownSkipSource === 'object') {
+        if (cooldownSkipSource.source === 'guildBuff') {
+            return {
+                name: `🏰 ${cooldownSkipSource.label}'s Guild Buff:`,
+                value: `Your guild's own training shaves your cooldown to nothing — go again right away!`,
+                inline: false,
+            };
+        }
+        if (cooldownSkipSource.source === 'spudKeep') {
+            return {
+                name: `👑 Spud Keep:`,
+                value: `Holding the Keep pays off — your cooldown is shaved to nothing, go again right away!`,
+                inline: false,
+            };
+        }
+        if (cooldownSkipSource.source === 'mercenaryRank') {
+            return {
+                name: `⚔️ ${cooldownSkipSource.label}:`,
+                value: `Your reputation precedes you — your cooldown is shaved to nothing, go again right away!`,
+                inline: false,
+            };
+        }
+        if (cooldownSkipSource.source === 'guildLevel') {
+            return {
+                name: `📈 ${cooldownSkipSource.label}:`,
+                value: `Your guild's own experience shows — the cooldown is shaved to nothing, raid again right away!`,
+                inline: false,
+            };
+        }
+        if (cooldownSkipSource.source === 'guildCompanion') {
+            return {
+                name: `🔥 ${cooldownSkipSource.label}:`,
+                value: `Cinderroot's hoard-sense pays off — the cooldown is shaved to nothing, raid again right away!`,
+                inline: false,
+            };
+        }
         return {
             name: `🌍 ${cooldownSkipSource.worldBuffBossName}'s Blessing:`,
             value: `The Kingdom's gratitude shaves your cooldown to nothing — go again right away!`,
@@ -1259,7 +1297,7 @@ class EmbedFactory {
     // roadmap's "Raid Result Embed Shows Next-Raid Cooldown" entry. Shown unconditionally
     // (win or loss) since the cooldown reset itself is unconditional.
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
-        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null) {
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null, cooldownSkipSource = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
         const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
@@ -1345,6 +1383,15 @@ class EmbedFactory {
                 value: `<t:${Math.floor(nextRaidAvailableAt / 1000)}:R>`,
                 inline: true,
             })
+        }
+
+        // Cooldown-skip overhaul (2026-09-05, direct instruction) — the 4 sources that
+        // used to shave raidTimer deterministically are now a single combined chance to
+        // skip it entirely, only ever rolled on a WIN (see startRaid.js's resolveRaid) —
+        // shown only when a skip actually happened this call, same buildCooldownSkipField
+        // every other converted cooldown uses.
+        if (cooldownSkipSource) {
+            fields.push(buildCooldownSkipField(cooldownSkipSource));
         }
 
         if (mob.credit) {
@@ -1806,7 +1853,10 @@ class EmbedFactory {
         // here too, not just on the post-win result embed, so it's visible before taking a
         // Bounty at all (same "make it felt before the fight" reasoning /notoriety's own
         // rivalSuccessBonus preview already established). Omitted at Rank 1 (0%, a no-op).
-        const cooldownBonusText = rankInfo.cooldownReductionPercent > 0 ? `, -${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}% cooldown on a win` : '';
+        // cooldownReductionPercent is a chance to skip the cooldown entirely on a win
+        // (2026-09-05 cooldown-skip overhaul), not a guaranteed reduction — phrased as a
+        // chance here so the preview never promises a number that isn't actually guaranteed.
+        const cooldownBonusText = rankInfo.cooldownReductionPercent > 0 ? `, ${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}% chance to skip cooldown on a win` : '';
         const rankLine = rankInfo.winsToNextRank !== null
             ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, ${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
             : `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, max rank)`;
@@ -1860,7 +1910,7 @@ class EmbedFactory {
     // untaxed"-style precedent netRewardAmount/taxAmount already set): from
     // companionFactory.getAppliedCompanionXpGain, diffed right after the Bounty's own
     // levelActiveCompanion (Yukon-restricted) call — shown only when it actually applied.
-    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null) {
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null) {
         const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
@@ -1933,17 +1983,14 @@ class EmbedFactory {
             inline: true,
         });
 
-        // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) only
-        // ever applies on a win — surfaced explicitly here rather than left for a player to
-        // notice on their own, same "make it felt" reasoning the Rival success bonus's own
-        // display already established.
-        if (won && rankInfo.cooldownReductionPercent > 0) {
-            const reducedCooldownSeconds = Math.round(Bounty.BOUNTY_TIMER_SECONDS * (1 - rankInfo.cooldownReductionPercent));
-            fields.push({
-                name: 'Mercenary Rank Cooldown Bonus:',
-                value: `Next Bounty ready in ${convertSecondstoMinutes(reducedCooldownSeconds)} (-${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}%, Rank ${rankInfo.rank})`,
-                inline: true,
-            });
+        // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) is now
+        // a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul), not a
+        // guaranteed reduction — only shown when a skip actually happened THIS call (won
+        // handles that gate: a skip can only ever be rolled on a win), same
+        // buildCooldownSkipField every other converted cooldown uses, so the field never
+        // promises a number that didn't actually land.
+        if (cooldownSkipSource) {
+            fields.push(buildCooldownSkipField(cooldownSkipSource));
         }
 
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
@@ -1965,7 +2012,7 @@ class EmbedFactory {
     // already needs for a Bounty loss.
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
-    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null) {
+    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null, cooldownSkipSource = null) {
         const { won, successChance, amount, rankInfo, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : (penaltyAmount > 0 ? 'Red' : 'Grey');
         const fields = [
@@ -1983,16 +2030,12 @@ class EmbedFactory {
                 const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
                 fields.push({ name: '🏅 The Royal Treasury — Permanent Stat Reward!', value: statText, inline: false });
             }
-            // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) only
-            // ever applies on a win — surfaced explicitly, same as createBountyResultEmbed's
-            // own field.
-            if (rankInfo.cooldownReductionPercent > 0) {
-                const reducedCooldownSeconds = Math.round(RobNpc.NPC_ROB_TIMER_SECONDS * (1 - rankInfo.cooldownReductionPercent));
-                fields.push({
-                    name: 'Mercenary Rank Cooldown Bonus:',
-                    value: `Next Heist ready in ${convertSecondstoMinutes(reducedCooldownSeconds)} (-${(rankInfo.cooldownReductionPercent * 100).toFixed(0)}%, Rank ${rankInfo.rank})`,
-                    inline: false,
-                });
+            // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) is
+            // now a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul),
+            // same buildCooldownSkipField every other converted cooldown uses — only shown
+            // when a skip actually happened this call, same as createBountyResultEmbed.
+            if (cooldownSkipSource) {
+                fields.push(buildCooldownSkipField(cooldownSkipSource));
             }
         } else if (penaltyAmount > 0) {
             fields.push({ name: 'Potatoes Lost:', value: `${penaltyAmount.toLocaleString()} potatoes`, inline: false });

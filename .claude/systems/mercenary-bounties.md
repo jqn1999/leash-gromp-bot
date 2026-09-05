@@ -901,20 +901,35 @@ so they can be done again sooner"). Lives directly on `MercenaryRank.THRESHOLDS`
 `rewardMultiplier`/`rivalSuccessBonus`, ramping linearly from 0 at Rank 1 to 30% at max Rank
 6 (confirmed via AskUserQuestion against 20%/40% alternatives — 30% stays meaningfully under
 `PoisonMitigation`'s existing 50% cooldown-cut precedent, since that one is punishment relief
-while this is a pure reward). Applies to **both** `/take-bounty`'s `bountyTimer` (3600s base)
-and `/rob-npc`'s `npcRobTimer` (1800s base) — each off its own base, and **only on a WIN** —
-a loss/whiff always resets the full cooldown, same "no discount on the loss side" precedent
-`rewardMultiplier` and Bounty's own flat-loss formula already establish. At Rank 6: Bounty
-60min → 42min, Heist 30min → 21min. Implemented by backdating the stored
-`bountyTimer`/`npcRobTimer` timestamp by the reduced amount at write time
-(`takeBounty.js`/`robNpc.js`) rather than changing `Bounty.BOUNTY_TIMER_SECONDS`/
-`RobNpc.NPC_ROB_TIMER_SECONDS` themselves, so every other reader of those constants
-(`bountyBoard.js`'s remaining-time display, the companion-leveling XP grant's cooldown-scaling
-ratio) keeps reading real elapsed time correctly with no changes needed there. Surfaced
-explicitly on `/bounty-board`'s rank line (a live preview, before attempting) and on both
-`createBountyResultEmbed`/`createRobNpcResultEmbed` (a "Mercenary Rank Cooldown Bonus" field,
-shown only on a win with a nonzero reduction) — same "make it felt" reasoning the Rival
-success bonus display above already established.
+while this is a pure reward).
+
+**Reworked 2026-09-05 (cooldown-skip overhaul, direct instruction)** — this value, and Spud
+Keep's own holder-wide cooldown perk (`SpudKeep.COOLDOWN_BUFF_TYPE`, previously always-on
+regardless of win/loss), are no longer a deterministic reduction. Both are now a single
+combined **chance to skip the cooldown entirely**, rolled once via `cooldownFactory`
+(`combineSkipChance`/`rollCooldownSkip`/`pickSkipSource` — see
+[economy-and-work.md](economy-and-work.md)'s own writeup of the overhaul, which started with
+`/work`'s pre-existing `workCooldownSkipChance` pattern). A hit backdates
+`bountyTimer`/`npcRobTimer` by the FULL cooldown (ready immediately) and auto-chains another
+attempt — `takeBounty.js`'s `runBountyAttempt`/`robNpc.js`'s `runNpcRobAttempt` recurse exactly
+like `/work`'s `performWork`, capped at the same `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`.
+
+Per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
+trigger"), **neither source is even rolled on a loss/whiff** — a loss always resets the full
+`Bounty.BOUNTY_TIMER_SECONDS`/`RobNpc.NPC_ROB_TIMER_SECONDS`, no exceptions, no roll at all
+(this also means Spud Keep's cooldown perk no longer helps on a loss for these two commands —
+a deliberate simplification, one rule with no exceptions, not an oversight). Still applies to
+**both** `/take-bounty` and `/rob-npc`, each off its own base cooldown. Implemented by
+backdating the stored `bountyTimer`/`npcRobTimer` timestamp on a hit (rather than changing
+`Bounty.BOUNTY_TIMER_SECONDS`/`RobNpc.NPC_ROB_TIMER_SECONDS` themselves), so every other
+reader of those constants (`bountyBoard.js`'s remaining-time display, the companion-leveling
+XP grant's cooldown-scaling ratio) keeps reading real elapsed time correctly with no changes
+needed there. `/bounty-board`'s rank-line preview now describes it as "`X`% chance to skip
+cooldown on a win" rather than a guaranteed "-X%"; `createBountyResultEmbed`/
+`createRobNpcResultEmbed` show the cooldown-skip field (via `embedFactory.buildCooldownSkipField`)
+only on a call where a skip actually happened, replacing the old always-shown-at-Rank-2+
+"Mercenary Rank Cooldown Bonus" field that promised a number that no longer matches what's
+guaranteed.
 
 **Yukon's `rivalSuccessChanceFlat` perk** (direct instruction — Yukon previously had no
 Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll and
