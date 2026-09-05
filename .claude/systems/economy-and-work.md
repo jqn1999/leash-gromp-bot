@@ -130,9 +130,11 @@ of the loss). Two changes, both in `workFactory.js`:
    subtraction inside `calculateWorkTimerValue` — are now folded into the SAME combined roll
    the companion perk and World Boss buff already used, via the new
    `src/utils/cooldownFactory.js` (`combineSkipChance`/`rollCooldownSkip`/`pickSkipSource`):
-   all four sources' chances are summed and capped at 60% (`DEFAULT_SKIP_CHANCE_CAP`, lowered
-   from 90% on 2026-09-05, direct instruction, alongside `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`
-   15 → 10 — both were the tail end of this same overhaul, pulled in once every source in the
+   all four sources' chances are combined via `1-∏(1-pᵢ)` (the standard independent-probability
+   formula, switched from a straight sum the same day — see "Stacking formula switched to
+   1-∏(1-pᵢ)" below) and capped at 60% (`DEFAULT_SKIP_CHANCE_CAP`, lowered from 90% on
+   2026-09-05, direct instruction, alongside `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` 15 → 10 —
+   both were the tail end of this same overhaul, pulled in once every source in the
    app had been folded into this one mechanic), rolled ONCE, and on a hit the
    winning source is picked (weighted by its own raw chance, cosmetic only — never affects
    whether the skip happened) purely to pick which flavor line shows in the result embed. A
@@ -171,6 +173,24 @@ of the loss). Two changes, both in `workFactory.js`:
    branch plus a hit-suppresses-it case) and existing assertions added to
    `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`/`startRaidCooldownSkip.test.js`'s
    own win-miss cases. Full suite green (1075/1075, up from 1068).
+
+   **Stacking formula switched to 1-∏(1-pᵢ) (2026-09-05, direct instruction)** — same-day
+   follow-up, after a player asked whether the stacking could be made "logarithmic instead of
+   additive" and a worked example was walked through: 24% (Spud Keep) + 21% (companion) + 9%
+   (guild buff) was a flat 54% under the original sum-then-cap, vs. ~45.4% under
+   `1-(1-.24)(1-.21)(1-.09)` — confirmed, then "lets do that." `cooldownFactory.combineSkipChance`
+   now computes `1 - ∏(1-pᵢ)` (the standard way to combine independent probabilities) instead of
+   summing, still capped at `DEFAULT_SKIP_CHANCE_CAP` (60%) as a hard ceiling on top. The
+   original sum was a knowing simplification kept only for continuity with these same values'
+   prior life as flat percent REDUCTIONS (see `raidFactory`'s old `totalRaidTimerReduction`) —
+   this is the follow-up that actually switches to the probabilistically correct formula, and it
+   naturally produces diminishing returns on its own (each additional source contributes less
+   than its raw chance the more sources are already stacked), rather than relying entirely on
+   the cap to do that job. Every existing caller is unaffected — `combineSkipChance`'s signature
+   and every call site are unchanged, only the math inside changed. 2 new tests in
+   `cooldownFactory.test.js` (the general formula, and the exact worked example from the
+   instruction) plus the existing "sums multiple sources" test rewritten for the new expected
+   value. Full suite green (1096/1096, up from 1095).
 
    **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
    cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,

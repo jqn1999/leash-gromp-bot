@@ -701,8 +701,10 @@ guild-companion perk 3a (`guildCompanionFactory.getRaidCooldownReduction`, 2%→
 [systems/guilds.md](guilds.md#guild-level) for where each one is still documented.
 
 All 4 are now skip-chance SOURCES (`{key, chance}`) fed into `src/utils/cooldownFactory.js`'s
-`combineSkipChance` (summed, capped at `DEFAULT_SKIP_CHANCE_CAP = 0.60`, lowered from `0.90` on
-2026-09-05, direct instruction) and `rollCooldownSkip`, rolled **once, and only on a
+`combineSkipChance` (combined via `1-∏(1-pᵢ)`, not a sum — see
+[economy-and-work.md](economy-and-work.md#cooldown-skip-overhaul) for why — capped at
+`DEFAULT_SKIP_CHANCE_CAP = 0.60`, lowered from `0.90` on 2026-09-05, direct instruction) and
+`rollCooldownSkip`, rolled **once, and only on a
 WIN** — per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
 trigger"), a loss never even attempts the roll, always resetting the full
 `Raid.RAID_TIMER_SECONDS` with no exceptions. A hit backdates `raidTimer` to `Date.now()` (ready

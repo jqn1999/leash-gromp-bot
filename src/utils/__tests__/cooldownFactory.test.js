@@ -1,8 +1,18 @@
 const { DEFAULT_SKIP_CHANCE_CAP, combineSkipChance, rollCooldownSkip, pickSkipSource } = require('../cooldownFactory');
 
 describe('combineSkipChance', () => {
-    test('sums multiple sources', () => {
-        expect(combineSkipChance([{ key: 'a', chance: 0.1 }, { key: 'b', chance: 0.2 }])).toBeCloseTo(0.3);
+    // Switched 2026-09-05, direct instruction ("lets do that", after confirming the concrete
+    // numbers 24%+21%+9% goes from a flat 54% additively to ~45.4% here) from a straight sum
+    // to the standard independent-probability combination 1-∏(1-pᵢ) — naturally diminishing
+    // returns, each additional source contributes less than its raw chance.
+    test('combines multiple sources via 1-∏(1-p), not a sum', () => {
+        // 1 - (1-.1)(1-.2) = 1 - .9*.8 = 1 - .72 = .28 (a plain sum would give .3).
+        expect(combineSkipChance([{ key: 'a', chance: 0.1 }, { key: 'b', chance: 0.2 }])).toBeCloseTo(0.28);
+    });
+
+    test('the worked example from the direct instruction: 24% + 21% + 9% ≈ 45.4%, not 54%', () => {
+        const sources = [{ key: 'spudKeep', chance: 0.24 }, { key: 'companion', chance: 0.21 }, { key: 'guildBuff', chance: 0.09 }];
+        expect(combineSkipChance(sources)).toBeCloseTo(0.453636, 5);
     });
 
     test('ignores zero/negative sources', () => {

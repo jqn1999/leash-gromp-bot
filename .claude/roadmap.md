@@ -8388,3 +8388,38 @@ in their respective existing test files. Full suite green (1095/1095, up from 10
 
 **Docs**: `.claude/systems/economy-and-work.md`, `guilds.md`, `raids-and-world-events.md`,
 and `companions.md` all updated wherever they quoted the old 90%/15 numbers.
+
+## /skip-chances made ephemeral + stacking formula switched to 1-∏(1-pᵢ) (2026-09-05, direct instruction)
+
+Two same-day follow-ups to the `/skip-chances` entry above.
+
+**Ephemeral**: "make the skip chances ephemeral" — `skipChances.js` now defers with
+`{ ephemeral: true }`, matching `/help`'s own topic-view treatment (a personal stat check,
+not a public result). New test asserts the `deferReply` call shape.
+
+**Stacking formula**: player asked "is there a way to change the skip chances to logarithmic
+instead of additive" — answered that the standard fix is the independent-probability
+combination `1-∏(1-pᵢ)` (already called out as the "probabilistically correct" alternative in
+`cooldownFactory.js`'s own comment from the original conversion), which is naturally
+diminishing-returns without leaning on the cap alone. Player then asked for the concrete
+numbers on a real stack (24% Spud Keep + 21% companion + 9% guild buff): 54% under the old sum,
+~45.4% under `1-∏(1-pᵢ)` — confirmed, then "lets do that."
+
+`cooldownFactory.combineSkipChance(sources, cap)` now computes
+`1 - sources.reduce((product, s) => product * (1 - s.chance), 1)` instead of summing, still
+capped at `DEFAULT_SKIP_CHANCE_CAP` (60%) as a hard ceiling. Function signature and every call
+site are unchanged — `dynamoHandler.calculateWorkTimerValue`, `takeBounty.js`, `robNpc.js`,
+`startRaid.js`, and `/skip-chances` itself all pick up the new math for free, no call-site
+changes needed. This is a real balance change (every multi-source stack now rolls a lower
+combined chance than before, the gap widening with more active sources), not just a refactor.
+
+**Tests**: `cooldownFactory.test.js`'s "sums multiple sources" test rewritten for the new
+expected value (0.1+0.2 → ~0.28, not 0.3), plus a new test locking in the exact worked example
+from the instruction (24%/21%/9% → ~45.4%). Ran the full suite afterward specifically to check
+for any OTHER test that hardcoded a multi-source additive expectation — none did (every other
+existing test either used a single source or a stack that already exceeded the cap either way,
+so the formula swap was invisible to them). Full suite green (1096/1096, up from 1095).
+
+**Docs**: `.claude/systems/economy-and-work.md` gained a dated "Stacking formula switched to
+1-∏(1-pᵢ)" subsection; `guilds.md`/`raids-and-world-events.md` updated their own "summed"
+wording to match.
