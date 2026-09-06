@@ -106,26 +106,42 @@ splits `SpudKeep.POT_REDIRECT_PERCENT` (75%) to the pot and the remainder to the
 100% going to the house. When no holder is live, 100% goes to the house exactly as before — nothing
 new is created, only redirected.
 
-**The pot is potato-only** — there is no `potStarches` field. `/give`'s one starch-denominated tax
-site converts its own pot share to potatoes at the CURRENT starch sell price
+**The pot is potato-only** — there is no `potStarches` field. Two tax sites can be
+starch-denominated (`/give`'s starch tax, `/take-bounty`'s tax on a starch-flavored win) — both
+convert the FULL tax to potatoes at the CURRENT starch sell price
 (`dynamoHandler.getStatDatabase("starch").starch_sell`, the same price `/sell-starch` itself reads,
-never the buy price — `spudKeepFactory.convertStarchesToPotatoesForPot`) before crediting
-`potPotatoes`, so a guild's own live roster and the Merc Faction's counted top-N are always paid out
-in one currency regardless of which tax sites fed the pot that cycle.
+never the buy price — `spudKeepFactory.convertStarchesToPotatoesForPot`) **before** splitting into
+`houseAmount`/`potAmount`, not after. **Fixed 2026-09-06, player-reported** ("the gromp bot went
+from 36 to 37 starches" — it should never hold raw starches at all): previously only the POT's
+share of a starch-denominated tax was converted here, while the HOUSE account was still credited
+raw starches (`dynamoHandler.addUserDatabase(client.user.id, 'starches', houseAmount)`) — the house
+account is potato-only, same as the pot, so it should never have held starches at all. Converting
+the whole tax up front means `splitTaxForSpudKeepPot` only ever sees potato-denominated input from
+these two sites now, and both destinations (house AND pot) land in potatoes.
 
-- `splitTaxForSpudKeepPot(taxAmount)` → `{ houseAmount, potAmount }` (same currency as `taxAmount`).
+- `splitTaxForSpudKeepPot(taxAmount)` → `{ houseAmount, potAmount }` — currency-agnostic, just
+  splits a number; callers are responsible for feeding it an already-potato-denominated amount if
+  their own tax was collected in starches.
 - `creditSpudKeepPot(potatoAmount)` → one atomic `dynamoHandler.addStatFields('spud_keep',
   { potPotatoes: potatoAmount })` — never a read-then-write, so many concurrent tax events across the
   whole server land safely.
 
-Every tax site's new shape (`bank.js`, `safehouse.js`, `guildBank.js`, `give.js`,
-`companionMarket.js`, `sellStarch.js`, `startRaid.js`'s `addToBankOrPurse`):
+Every potato-only tax site's shape (`bank.js`, `safehouse.js`, `guildBank.js`, `companionMarket.js`,
+`sellStarch.js`, `startRaid.js`'s `addToBankOrPurse`) is unchanged:
 ```js
 const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
-await dynamoHandler.addUserDatabase(client.user.id, currency, houseAmount);
-await spudKeepFactory.creditSpudKeepPot(currency === 'starches'
-    ? await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount)
-    : potAmount);
+await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+await spudKeepFactory.creditSpudKeepPot(potAmount);
+```
+The two starch-capable sites (`give.js`, `takeBounty.js`) now convert first, then use that exact
+same shape:
+```js
+const taxAmountInPotatoes = isStarchCurrency
+    ? await spudKeepFactory.convertStarchesToPotatoesForPot(taxAmount)
+    : taxAmount;
+const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmountInPotatoes);
+await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+await spudKeepFactory.creditSpudKeepPot(potAmount);
 ```
 See [economy-and-work.md#house-account-taxes](economy-and-work.md#house-account-taxes) for each
 site's own tax rate/shape — only the destination of the redirected share changes, not the amount any

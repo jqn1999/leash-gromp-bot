@@ -8423,3 +8423,44 @@ so the formula swap was invisible to them). Full suite green (1096/1096, up from
 **Docs**: `.claude/systems/economy-and-work.md` gained a dated "Stacking formula switched to
 1-∏(1-pᵢ)" subsection; `guilds.md`/`raids-and-world-events.md` updated their own "summed"
 wording to match.
+
+## Fix: house account was crediting raw starches instead of potatoes (2026-09-06, player-reported)
+
+Player report, worked out from real numbers: won a starch-flavored Bounty, the "Kingdom Tax"
+field showed 2 starches, but the house account ("the gromp bot") only went from 36 to 37 (+1,
+not +2). Diagnosed first as *expected* Spud Keep behavior (75% of any tax redirects to the
+pot when a holder is live — `2 * 0.75 = 1.5` floors to 1 to the pot, 1 to house, matching the
+observed +1 exactly). But the follow-up ask went further: "it should also convert from gromp
+[i.e. the house account]... check anywhere in the code where gromp might be getting starches
+instead of converting to potatoes."
+
+That search found a real bug: `takeBounty.js` and `give.js` — the only two tax sites that can
+ever be starch-denominated — converted only the Spud Keep **pot's** share of a starch tax to
+potatoes (`spudKeepFactory.convertStarchesToPotatoesForPot(potAmount)`), while the **house's**
+share was credited as raw starches (`dynamoHandler.addUserDatabase(client.user.id, 'starches',
+houseAmount)`). The house account is potato-only, same as the pot — it should never have held
+a starches balance at all. This wasn't a display bug or a Spud Keep interaction quirk; it was a
+real, silent accumulation of un-sellable starches sitting on the house account since whenever
+these tax sites shipped.
+
+Fixed in both files by converting the FULL tax to its potato equivalent BEFORE splitting into
+house/pot shares, not after: `taxAmountInPotatoes = isStarchCurrency ?
+await spudKeepFactory.convertStarchesToPotatoesForPot(taxAmount) : taxAmount`, then
+`splitTaxForSpudKeepPot(taxAmountInPotatoes)`, then both `houseAmount` and `potAmount` credited
+as potatoes unconditionally — `splitTaxForSpudKeepPot` itself is currency-agnostic (just splits
+a number), so feeding it an already-converted amount required no changes there. Every other tax
+site (`bank.js`, `safehouse.js`, `guildBank.js`, `companionMarket.js`, `sellStarch.js`,
+`startRaid.js`) was already potato-only and needed no changes — confirmed by grepping every
+`splitTaxForSpudKeepPot`/`addUserDatabase(client.user.id, ...)` call site in the codebase, not
+just the two files already suspected.
+
+**Tests**: `takeBountyTax.test.js`'s starch-win test rewritten to assert the house is credited
+in potatoes (not starches), plus a new test for the Spud-Keep-live + starch-currency case
+(splitting the CONVERTED amount, not converting only the pot's half); new `giveTax.test.js` (4
+tests — potato gift unchanged, starch gift converts before crediting, Spud-Keep-live split,
+recipient's own payout stays starch-denominated and unaffected). Full suite green (1101/1101,
+up from 1096).
+
+**Docs**: `.claude/systems/spud-keep.md`'s "The pot is potato-only" section and
+`economy-and-work.md`'s "Note on currency" both corrected — they previously documented the
+buggy behavior (house crediting raw starches) as the intended design.
