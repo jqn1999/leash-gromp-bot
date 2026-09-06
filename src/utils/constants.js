@@ -802,7 +802,7 @@ const Companions = [
         id: "fieldmouse",
         name: "Fieldmouse",
         rarity: CompanionRarity.COMMON,
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695336160366682/MCZxPTgw.png?ex=6a95cdd0&is=6a947c50&hm=0a555ae59c2aefd8d4cf0d2b48ac45f709f46ecbe924305a396b1ea122a766d7&",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1546243064362967040/bmQuanBnP3Zlcj02.png?ex=6a9f1292&is=6a9dc112&hm=4ff4d3aeaebc918aa4430de46a6cf262390b72b2a5d953faa957aee29055c90e&",
         description: "A quick little fieldmouse that scouts ahead between work sessions — every so often it comes back so fast your cooldown never even starts.",
         // A flat % reduction off a 300-second base cooldown reads as basically nothing
         // to a player (5% of 300s = 15s), and only Legendary+/guild investment can push
