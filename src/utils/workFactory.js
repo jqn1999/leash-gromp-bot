@@ -294,7 +294,7 @@ class WorkFactory {
     // which falls through to the normal roll.
     async handleCompanionEncounter(userDetails, forcedCompanionId = null) {
         const userId = userDetails.userId;
-        const companion = forcedCompanionId ? companionFactory.getCompanionById(forcedCompanionId) : companionFactory.rollCompanion();
+        const companion = forcedCompanionId ? companionFactory.getCompanionById(forcedCompanionId) : companionFactory.rollCompanion(userDetails);
         const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
 
         let workScenarioCounts = userDetails.workScenarioCounts;

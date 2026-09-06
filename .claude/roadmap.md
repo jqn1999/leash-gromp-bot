@@ -8423,3 +8423,89 @@ so the formula swap was invisible to them). Full suite green (1096/1096, up from
 **Docs**: `.claude/systems/economy-and-work.md` gained a dated "Stacking formula switched to
 1-∏(1-pᵢ)" subsection; `guilds.md`/`raids-and-world-events.md` updated their own "summed"
 wording to match.
+
+## Yamimic, the Thousand-Faced — a new Heirloom tier above Mythic (2026-09-06, direct instruction)
+
+Player asked for a companion tier above Mythic that, when equipped, automatically uses whichever
+of the player's OTHER owned companions has the best value for each relevant perk — "make sure all
+actions you do use the best companion boosting stat you have out of your companions." Scoped
+across several follow-up messages before implementation: which 9 perk types to mirror (passive %,
+rebirth bonus %, work multi %, cooldown skip chance, regrade boost, rob success, starch sell
+value, bounty reward, rival confrontation chance — all 9 confirmed to already exist as real
+`Companions` perk types, no new plumbing needed for the values themselves), explicit exclusion of
+Prospector ("Do not consider prospector at all, it is unique" — its one overlapping perk,
+`workMultiplierPercent`, is a negative balance-tradeoff value), the theme (mimicry + fruit/
+vegetable, matching the roster's naming convention), and the own-level scaling curve (80% at level
+1 up to "120% or so, roughly whatever the max level increase % usually is").
+
+**Acquisition — two independent gates, not just rarity odds**: `CompanionRarityOdds` gained a
+`HEIRLOOM` slice (0.2%, exactly 1/10th of Mythic's own remaining 1.8% conditional share — Mythic
+was 2% before this, now split 1.8%/0.2%), but `companionFactory.rollCompanion(userDetails)` only
+ever resolves that rarity for a player who already owns at least one copy of EVERY companion
+currently defined at Mythic rarity (`hasAllMythics`, reading the roster live via
+`Companions.filter(...MYTHIC)`, not a hardcoded id list — a future Mythic addition automatically
+raises the bar). Not meeting the prerequisite collapses that same 0.2% slice into Mythic instead
+of re-rolling or falling through further — every OTHER rarity's odds are completely unaffected
+either way. `rollCompanion` gained `userDetails` as an optional trailing parameter (defaults to
+`null`, which can never pass the gate) — the one real caller, `workFactory.handleCompanionEncounter`,
+already had it in scope, so this was a one-line call-site change.
+
+**The mirroring mechanic reuses the single existing choke point** — every perk consumer already
+calls `companionFactory.getActivePerkValue(userDetails, perkType)`, so none of the ~15 existing
+call sites needed to change. `getActivePerkValue` gained one early branch: when the active
+companion's id is Yamimic's, it routes to a new `getMimicryPerkValue`, which:
+1. Returns 0 outright for any perk type outside the curated 9 (`MimicryCompanion.PERK_TYPES`).
+2. Computes (and caches, per userDetails object) a `{perkType: bestLeveledValue}` map via
+   `computeMimicryBestPerks` — scans `companions.owned` once, skipping `MimicryCompanion.
+   EXCLUDED_IDS` (Prospector + Yamimic's own other copies), keeping the highest
+   `perk.value * getLevelMultiplier(instanceLevel)` seen per type across every other owned
+   instance (so a maxed lower-level companion can beat a higher one still at level 1).
+3. Multiplies the cached best value by Yamimic's OWN `getLevelMultiplier(ownLevel) -
+   MimicryCompanion.SCALE_OFFSET(0.20)` — reusing the exact same +5%/level curve every other
+   companion's leveling already uses, just anchored 20 points lower (80% at level 1, 125% at max
+   level 10 — landing a little over the requested "120% or so" from reusing the standard curve
+   rather than hand-tuning a custom rate to hit the number exactly).
+
+The cache (`userDetails._mimicryBestPerkCache`, transient, never persisted) mirrors the existing
+`_cooldownSkippedByCompanion`/`_cooldownSkipChance` pattern — computed once per command, not once
+per perk-type check. This is a pure in-memory scan over an array `findUser` already loaded (not a
+database cost), so it stays cheap even for a large collection; the cache only avoids redundant
+re-scans within one command, it isn't compensating for a real performance problem.
+
+**Static roster entry, dynamic real value**: Yamimic's own `Companions` array entry lists all 9
+perk types with `value: null` — a manifest of what it supports (read by `getActivePerkValue` to
+route into the mirroring path, and by `levelActiveCompanion`'s `restrictToPerkType` gates, which
+only ever check `.type`) rather than real numbers. `embedFactory.formatCompanionPerks` gained a
+dedicated branch for Yamimic's id to avoid computing `null * multiplier` (`NaN`) — shows a
+descriptive line instead of numbers, since its real value depends on a specific player's actual
+collection, not something a roster-reference display can compute.
+
+**Other constants extended for the new rarity tier**: `CompanionMarket.MINIMUM_PRICE.HEIRLOOM`
+(25,000,000 — continues the ~5x-per-tier progression), `CompanionScavenging.DURATION_SECONDS`/
+`WORK_COUNT_RANGE`/`STARCH_RANGE` all gained a `HEIRLOOM` entry (48h, continuing the doubling-per-
+tier pattern, with the linear-in-duration ranges doubled to match). `embedFactory.js`'s
+`COMPANION_RARITY_COLOR`/`COMPANION_RARITY_LABEL` and `createHelpCompanionsEmbed`'s `rarityOrder`
+all gained Heirloom entries so `/help topic:companions` actually lists Yamimic.
+
+**Deliberately not extended in this pass**: no new achievement/counter (Heirloom does not feed
+`mythicOwnedCount`/`mythicMaxLevelCount`, which are named and scoped to Mythic specifically); no
+live, per-viewer-computed breakdown in `/companion`'s own list embed of which specific companion
+currently backs each of Yamimic's 9 mirrored values (shows the same generic descriptive line
+everywhere) — a real possible enhancement, just not built yet; real artwork still needed
+(`thumbnailUrl: null` as a placeholder, a safe no-op for `EmbedBuilder.setThumbnail`).
+
+**Tests**: `companionFactory.test.js` — `hasAllMythics`/Heirloom-gating describe block (7 tests:
+false for no/partial Mythic ownership, true once complete, `rollCompanion` collapsing into Mythic
+without the prerequisite vs. reaching Yamimic with it, the no-userDetails-argument case); a full
+`Yamimic mirroring` describe block (10 tests: curated-list filtering, cross-companion max-picking,
+same-companion-different-instance-level picking, Prospector/self-exclusion, both ends of the
+80%/125% own-level scale, the cache, and `getActivePerkValue`'s own routing); the pre-existing
+`rollRarity` split test rewritten for the new 65/25/8/1.8/0.2 shape (bumped to 200,000 trials —
+Heirloom's 0.2% slice needs a much larger sample to read reliably). `embedFactory.test.js` — 2 new
+tests confirming `createHelpCompanionsEmbed` shows Yamimic's descriptive line (not `NaN`) and that
+every rarity tier gets its own field. Full suite green (1115/1115, up from 1096).
+
+**Docs**: `.claude/systems/companions.md` gained a full "Yamimic, the Thousand-Faced" design
+section (mirroring the depth of Guinea Pig's/Prospector's own dedicated sections), plus updates
+to "Obtaining a companion," the roster-count callout, the Marketplace price table, and the
+Scavenging numbers table wherever they enumerated rarity tiers.

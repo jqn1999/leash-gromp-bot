@@ -21,14 +21,28 @@ depend on `effective - sweetPotatoBuffs - regradeAmount` staying a clean base va
 Potato and Taro Trader in the roll table — see `eventFactory.js`'s `workChances`) to trigger a
 "Wandering Companion" encounter (`workFactory.handleCompanionEncounter`). On a hit, a companion is
 rolled by rarity (`companionFactory.rollRarity`, cumulative thresholds in `CompanionRarityOdds`:
-Common 65% / Rare 25% / Legendary 8% / Mythic 2%) and then uniformly among that rarity's roster
-(`companionFactory.rollCompanion`). `CompanionRarityOdds` is keyed by rarity *strings*, not
-integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't subject to JS's
-integer-key reordering trap; `Object.keys` already preserves ascending threshold order here.
+Common 65% / Rare 25% / Legendary 8% / Mythic 1.8% / Heirloom 0.2%) and then uniformly among that
+rarity's roster (`companionFactory.rollCompanion`). `CompanionRarityOdds` is keyed by rarity
+*strings*, not integer-like keys, so — unlike `starchFactory.js`'s `PROBABILITY_MATRIX` — it isn't
+subject to JS's integer-key reordering trap; `Object.keys` already preserves ascending threshold
+order here.
+
+**Heirloom (2026-09-06, direct instruction)** — a tier above Mythic, currently just Yamimic, the
+Thousand-Faced (see its own section below). Gated by two independent axes, not just rarity odds:
+`rollCompanion(userDetails)` only ever resolves this rarity for a player who already owns at least
+one copy of **every** companion currently defined at Mythic rarity
+(`companionFactory.hasAllMythics` — reads the roster live via `Companions.filter(...MYTHIC)`, not a
+hardcoded id list, so a future Mythic addition automatically raises the bar without any code
+change). A player who hasn't met that prerequisite who rolls into Heirloom's own 0.2% slice gets
+Mythic instead — every other rarity's own odds are completely unaffected either way, since only
+that one slice's destination changes. `userDetails` is an optional trailing parameter on
+`rollCompanion` (defaults to `null`, which can never pass the gate) so the one real caller
+(`handleCompanionEncounter`, which already has it in scope) was the only site that needed updating.
 
 - **New companion**: added to `owned` as its own instance at `workCount: 0` (level 1), not
   auto-equipped (equipping stays a deliberate choice). Bumps `companions.ownedCount` (and
-  `mythicOwnedCount` for a Mythic) — the achievement counters.
+  `mythicOwnedCount` for a Mythic — Heirloom does **not** feed this counter, since the achievement
+  it backs is named and scoped to Mythic specifically).
 - **Duplicate** (already owned): adds a brand-new, fully independent instance at `workCount: 0`
   (level 1) — it does **not** touch any existing copy's `workCount`, and there's nothing to merge.
   See Duplicate Companions Are Real, Separate Instances below for the full mechanic and its history
@@ -356,6 +370,13 @@ both real `/rob` and `/rob-npc` identically, since mercenaries can still run rea
 [mercenary-bounties.md](mercenary-bounties.md#rival-bounty-hunters), kept modest since Hard's
 own range is only 10 percentage points wide).
 
+**Yamimic, the Thousand-Faced** (Heirloom — above Mythic) is the roster's 14th companion, and
+unlike Yukon it *is* reachable through this table's own `/work` roll — just gated behind
+`companionFactory.hasAllMythics` on top of an already-thinner-than-Mythic 0.2% slice (see
+"Obtaining a companion" above). It carries no fixed perk values of its own — see its own section
+below for the full mirroring mechanic — so it's deliberately left out of both the main roster
+table and the per-perk-type table that follow, which only ever show static numbers.
+
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
 | Perk | Common | Rare | Legendary | Mythic |
@@ -518,6 +539,88 @@ check, not a permanent regression" treatment as the original Metal analysis):
    ≈1.27x, landing Prospector comfortably (~10-15%) behind a Legendary while still meaningfully ahead
    of no companion at all, and still ahead of Spudsprite on starches specifically (Taro
    Trader/Golden Yam are both in the widened set).
+
+### Yamimic, the Thousand-Faced (Heirloom, 2026-09-06, direct instruction)
+
+A yam that's spent so long around Mimic Potatoes it picked up the habit — it doesn't have a shape
+of its own anymore, just wears whichever of the player's other companions' best tricks would help
+most right now. The player-requested premise: "a tier after mythic companion that allows you to
+just equip that single companion and it will automatically make sure all actions you do use the
+best companion boosting stat you have out of your companions."
+
+**Mechanic**: for each of 9 curated perk types (`MimicryCompanion.PERK_TYPES` in `constants.js`),
+Yamimic mirrors whichever OTHER owned companion instance currently resolves to the single highest
+LEVELED value for that type — independently, per type, not a blend. Owning Rootbeard (regrade/
+passive/rob/starch) and Mochi (work-multi/cooldown-skip/rebirth/passive) and equipping Yamimic
+gets the best of BOTH sets simultaneously through one equip slot. The 9 types, chosen because
+they're exactly the perks with real, comparable numeric value across the roster (deliberately
+excludes Prospector's own `specialEncounterMultiplierBonus` and Guinea Pig's `poisonImmunity`,
+neither of which fits the "one number, bigger is better" shape the other 9 share):
+
+`passiveIncomePercent`, `rebirthBonusPercent`, `workMultiplierPercent`, `workCooldownSkipChance`,
+`regradeChanceBoostPercent`, `robChanceFlat`, `starchSellBonusPercent`, `bountyRewardPercent`,
+`rivalSuccessChanceFlat`.
+
+**Exclusions** (`MimicryCompanion.EXCLUDED_IDS`): Prospector and Yamimic's own other owned copies
+are never considered candidates, even for perk types they'd never actually win via a max()
+comparison anyway. Prospector is explicit specifically because its one overlapping perk
+(`workMultiplierPercent`, -8%) is a NEGATIVE balance-tradeoff value (the cost side of its
+encounter-chance buff) — direct instruction: "Do not consider prospector at all, it is unique."
+Excluding Yamimic's own other copies avoids a circular "mirrors itself" edge case.
+
+**Own-level scaling, not a fixed multiplier**: Yamimic's own level (its own `workCount`, leveled
+the same way as any other equipped companion) scales the MIRRORED value by 80% at level 1 up to
+125% at max level 10 — reusing the exact same +5%/level curve every other companion's
+`getLevelMultiplier` already applies (`CompanionLeveling.PERK_BONUS_PER_LEVEL`), just anchored 20
+points lower (`MimicryCompanion.SCALE_OFFSET = 0.20`) rather than a separately authored rate, so a
+future change to the per-level curve keeps this in lockstep instead of silently drifting. This
+was a deliberate design choice, not an afterthought: at level 1, equipping Yamimic instead of the
+real specialist directly is a genuine downgrade (mirroring is never free) — only once fully
+leveled does it become an unambiguous account-wide upgrade. Player's own framing: "start maybe at
+like 80% effectiveness of your other companions and scale to 120% or so or roughly whatever the
+max level increase % usually is" — 125% (not an exact 120%) is what reusing the standard curve
+verbatim actually lands on, chosen over hand-tuning a custom rate to hit the round number exactly.
+
+**Implementation stays a single choke point**: every consumer of a companion perk already goes
+through `companionFactory.getActivePerkValue(userDetails, perkType)` — nothing about the ~15
+existing call sites needed to change. `getActivePerkValue` gained one early branch: when the
+active companion's id is Yamimic's, it routes to `getMimicryPerkValue` instead of the generic
+`perks.find(...)` path. That function:
+1. Returns 0 outright for any perk type outside `MimicryCompanion.PERK_TYPES` — Yamimic doesn't
+   grant types it wasn't designed to mirror, regardless of what any owned companion carries.
+2. Computes (and caches) a `{perkType: bestLeveledValue}` map via `computeMimicryBestPerks` —
+   scans `userDetails.companions.owned` once, skipping `EXCLUDED_IDS`, keeping the highest
+   `perk.value * getLevelMultiplier(instanceLevel)` seen per type.
+3. Multiplies the cached best value by Yamimic's own `getLevelMultiplier(ownLevel) -
+   SCALE_OFFSET`.
+
+The cache (`userDetails._mimicryBestPerkCache`, a transient field, never persisted) is stamped on
+first access and reused for the rest of that same command — same pattern
+`_cooldownSkippedByCompanion`/`_cooldownSkipChance` already use — so a single `/work` call that
+checks several perk types only scans the owned roster once, not once per check. This is a pure
+in-memory scan over an array `findUser` already loaded, not a database cost, so it stays cheap
+even for a large collection; the caching only avoids redundant re-scans within one command, it
+isn't compensating for a real performance problem.
+
+**Static roster entry, dynamic real value**: Yamimic's own `Companions` array entry lists all 9
+perk types with `value: null` — a MANIFEST of what it supports (read by `getActivePerkValue` to
+decide whether to route into the mirroring path, and by `levelActiveCompanion`'s
+`restrictToPerkType` gates, which only ever check `.type`, never `.value` — so e.g. `/sell-starch`
+correctly still trains Yamimic while it's equipped) rather than real numbers. Nothing should ever
+compute `perk.value * multiplier` directly off this array — `embedFactory.formatCompanionPerks`
+special-cases Yamimic's id specifically to avoid that (would otherwise render "NaN%" for every
+entry, since `null * anything` is `NaN`), showing a descriptive line instead of numbers.
+
+**Acquisition is gated on two independent axes**, not just rarity odds — see "Obtaining a
+companion" above for the full mechanic: an ownership prerequisite (own at least one of every
+existing Mythic) on top of an already-thin 0.2% roll slice, so it reads as "you've already built
+a serious collection, AND you got lucky" rather than either alone.
+
+**Deliberately not extended in this pass**: no new achievement/counter (Heirloom does not feed
+`mythicOwnedCount`/`mythicMaxLevelCount`, which are named and scoped to Mythic specifically), and
+`/companion`'s own list embed still shows the generic descriptive line rather than a live,
+per-viewer-computed breakdown of which specific companion currently backs each of Yamimic's 9
+mirrored values — a real possible enhancement, just not built yet.
 
 ### Balance pass: "Income Power" and why capacity perks got redesigned
 
@@ -693,8 +796,9 @@ on the same `listings` array.
   autocomplete on its own. Rejected server-side too (autocomplete only narrows the dropdown, the
   callback still re-validates) if `price` is below that rarity's floor
   (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 / Legendary 1,000,000 /
-  Mythic 5,000,000 — cut another 10x from the original post-launch floors, since even the reduced
-  Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then
+  Mythic 5,000,000 / Heirloom 25,000,000 (continues the same ~5x-per-tier progression) — cut
+  another 10x from the original post-launch floors, since even the reduced Common floor was still
+  ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then
   **escrow removal**: the exact instance is pulled out of `owned` entirely (unequipped first if it
   was active) rather than just balance-checked at purchase time — there's no window where it could
   be equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
@@ -865,10 +969,12 @@ override only `owned`/`active` — regression-tested in `companionMarketFactory.
 | Rare | 6h (21,600s) | 12–20 | 10–20 |
 | Legendary | 12h (43,200s) | 24–40 | 28–52 |
 | Mythic | 24h (86,400s) | 48–80 | 70–130 |
+| Heirloom | 48h (172,800s) | 96–160 | 140–260 |
 
 Duration is a clean doubling per tier — Common at 36x `/work`'s 300s cooldown / 3x the 1hr raid
-timer unambiguously reads as a between-sessions action, and Mythic's 24h lands on the same
-once-a-day check-in cadence `/enter-tower` already uses.
+timer unambiguously reads as a between-sessions action, Mythic's 24h lands on the same once-a-day
+check-in cadence `/enter-tower` already uses, and Heirloom's 48h (added 2026-09-06 alongside
+Yamimic) continues the same doubling pattern one tier further.
 
 `WORK_COUNT_RANGE` is deliberately **never scaled by the scavenging companion's own current
 level** — level-scaling the very counter that *determines* level would be a self-reinforcing

@@ -1,4 +1,4 @@
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, Work } = require("../utils/constants");
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work } = require("../utils/constants");
 
 // Cumulative — same shape as workScenarios' chance field and starchFactory's
 // PROBABILITY_MATRIX. CompanionRarityOdds is keyed by rarity *strings*
@@ -13,7 +13,7 @@ function rollRarity() {
             return rarity;
         }
     }
-    return CompanionRarity.MYTHIC;
+    return CompanionRarity.HEIRLOOM;
 }
 
 // Excludes any companion whose dropSource is explicitly something other than the normal
@@ -27,9 +27,31 @@ function getCompanionsByRarity(rarity) {
     return Companions.filter(c => c.rarity === rarity && c.dropSource !== "bounty");
 }
 
-function rollCompanion() {
+// Heirloom's own ownership-prerequisite gate (2026-09-06, direct instruction) — true only
+// once the player already owns at least one copy of EVERY companion currently defined at
+// Mythic rarity. Reads the roster live (not a hardcoded id list), so a future Mythic
+// addition automatically raises the bar without this needing to change. Guards against a
+// missing/malformed userDetails the same defensive way ownsCompanion already does.
+function hasAllMythics(userDetails) {
+    if (!userDetails) {
+        return false;
+    }
+    const mythics = Companions.filter(c => c.rarity === CompanionRarity.MYTHIC);
+    return mythics.length > 0 && mythics.every(m => ownsCompanion(userDetails, m.id));
+}
+
+// userDetails is optional (default null) so any existing caller/test that doesn't pass
+// one keeps working exactly as before — it just can never roll Heirloom, same as a
+// player who hasn't met the prerequisite. When the roll lands on Heirloom without the
+// prerequisite met, that same tiny slice of the table collapses into Mythic instead of
+// re-rolling or falling through further — every OTHER rarity's own odds are completely
+// unaffected either way (see CompanionRarityOdds' own comment).
+function rollCompanion(userDetails = null) {
     const rarity = rollRarity();
-    const pool = getCompanionsByRarity(rarity);
+    const effectiveRarity = (rarity === CompanionRarity.HEIRLOOM && !hasAllMythics(userDetails))
+        ? CompanionRarity.MYTHIC
+        : rarity;
+    const pool = getCompanionsByRarity(effectiveRarity);
     return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -150,6 +172,13 @@ function getActivePerkValue(userDetails, perkType) {
     if (!active) {
         return 0;
     }
+    // Yamimic, the Thousand-Faced (Heirloom) — routed BEFORE the generic perks.find below,
+    // since its own perks array entries carry `value: null` (a manifest of supported types,
+    // not real numbers — see the Companions entry's own comment) and were never meant to be
+    // read through the generic numeric path.
+    if (active.id === MimicryCompanion.ID) {
+        return getMimicryPerkValue(userDetails, perkType);
+    }
     const perk = active.perks.find(p => p.type === perkType);
     if (!perk) {
         return 0;
@@ -157,6 +186,65 @@ function getActivePerkValue(userDetails, perkType) {
     const activeInstance = getActiveInstance(userDetails);
     const level = getCompanionLevel(activeInstance?.workCount);
     return perk.value * getLevelMultiplier(level);
+}
+
+// Yamimic's own computation — mirrors whichever OTHER owned companion instance has the
+// single highest LEVELED value for this perk type (Prospector and Yamimic's own other
+// copies excluded, see MimicryCompanion.EXCLUDED_IDS), then scales the result by
+// Yamimic's OWN level (80%-125%, see MimicryCompanion.SCALE_OFFSET). Returns 0 outright
+// for any perk type outside MimicryCompanion.PERK_TYPES — Yamimic doesn't grant types it
+// wasn't designed to mirror, regardless of what any owned companion happens to carry.
+function getMimicryPerkValue(userDetails, perkType) {
+    if (!MimicryCompanion.PERK_TYPES.includes(perkType)) {
+        return 0;
+    }
+    // Cached once per userDetails object (a fresh object per command already, per
+    // requireUserDetails/findUser) on a transient, never-persisted field — same pattern
+    // _cooldownSkippedByCompanion/_cooldownSkipChance already use — so a single command
+    // that checks several perk types (like /work) only scans the owned roster once, not
+    // once per perk-type check. Assumes companions.owned doesn't change mid-command after
+    // the first read, same implicit assumption getActiveCompanion/getActiveInstance
+    // already make for the duration of one call.
+    if (!userDetails._mimicryBestPerkCache) {
+        userDetails._mimicryBestPerkCache = computeMimicryBestPerks(userDetails);
+    }
+    const bestValue = userDetails._mimicryBestPerkCache[perkType] || 0;
+    const activeInstance = getActiveInstance(userDetails);
+    const ownLevel = getCompanionLevel(activeInstance?.workCount);
+    const scaleFactor = getLevelMultiplier(ownLevel) - MimicryCompanion.SCALE_OFFSET;
+    return bestValue * scaleFactor;
+}
+
+// Scans every owned instance (excluding MimicryCompanion.EXCLUDED_IDS) and returns a
+// {perkType: bestLeveledValue} map covering MimicryCompanion.PERK_TYPES — the highest
+// value any single owned instance actually resolves to today, computed with the exact
+// same per-instance level scaling getActivePerkValue's own generic path uses. A perk type
+// nobody currently owns lands at 0, same "nothing equipped" baseline as everywhere else.
+function computeMimicryBestPerks(userDetails) {
+    const best = {};
+    for (const type of MimicryCompanion.PERK_TYPES) {
+        best[type] = 0;
+    }
+    for (const instance of userDetails.companions?.owned ?? []) {
+        if (MimicryCompanion.EXCLUDED_IDS.includes(instance.id)) {
+            continue;
+        }
+        const companion = getCompanionById(instance.id);
+        if (!companion) {
+            continue;
+        }
+        const levelMultiplier = getLevelMultiplier(getCompanionLevel(instance.workCount));
+        for (const perk of companion.perks) {
+            if (!(perk.type in best)) {
+                continue;
+            }
+            const value = perk.value * levelMultiplier;
+            if (value > best[perk.type]) {
+                best[perk.type] = value;
+            }
+        }
+    }
+    return best;
 }
 
 // Pure computation of the post-roll companions state — does not touch potatoes.
@@ -642,6 +730,9 @@ module.exports = {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
+    getMimicryPerkValue,
+    computeMimicryBestPerks,
+    hasAllMythics,
     getGuineaPigRebate,
     applyCompanionAward,
     applyMaxLevelTracking,

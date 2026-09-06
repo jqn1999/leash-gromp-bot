@@ -537,17 +537,29 @@ const CompanionRarity = {
     COMMON: 'common',
     RARE: 'rare',
     LEGENDARY: 'legendary',
-    MYTHIC: 'mythic'
+    MYTHIC: 'mythic',
+    // Above Mythic (2026-09-06, direct instruction) — currently just Yamimic, the
+    // Thousand-Faced (see the Companions array / MimicryCompanion below). Gated by two
+    // independent axes, not just rarity odds: companionFactory.rollCompanion only ever
+    // rolls this rarity for a player who already owns at least one of EVERY existing
+    // Mythic (companionFactory.hasAllMythics) — a genuine collection-completion
+    // prerequisite, not just bad luck — and even then it's still the rarest slice of the
+    // roll table. Not meeting the prerequisite collapses this same slice into Mythic
+    // instead, so every OTHER rarity's own odds are completely unaffected either way.
+    HEIRLOOM: 'heirloom'
 }
 
 // Cumulative — rollCompanion() reads these as thresholds against a single roll, same
 // shape as every other cumulative-chance table in this codebase (workScenarios' chance
-// field, starchFactory's PROBABILITY_MATRIX).
+// field, starchFactory's PROBABILITY_MATRIX). HEIRLOOM's own conditional slice (1 - 0.998
+// = 0.2%) is exactly 1/10th of MYTHIC's own conditional slice (0.998 - 0.98 = 1.8%) — an
+// order of magnitude rarer on top of the ownership-prerequisite gate above.
 const CompanionRarityOdds = {
     [CompanionRarity.COMMON]: 0.65,
     [CompanionRarity.RARE]: 0.90,
     [CompanionRarity.LEGENDARY]: 0.98,
-    [CompanionRarity.MYTHIC]: 1
+    [CompanionRarity.MYTHIC]: 0.998,
+    [CompanionRarity.HEIRLOOM]: 1
 }
 
 const CompanionMarket = {
@@ -562,7 +574,8 @@ const CompanionMarket = {
         [CompanionRarity.COMMON]: 50000,
         [CompanionRarity.RARE]: 250000,
         [CompanionRarity.LEGENDARY]: 1000000,
-        [CompanionRarity.MYTHIC]: 5000000
+        [CompanionRarity.MYTHIC]: 5000000,
+        [CompanionRarity.HEIRLOOM]: 25000000 // continues the same ~5x-per-tier progression
     },
     // Instant NPC sale (/companion-sell-npc): a random 30-50% of that rarity's own
     // MINIMUM_PRICE, further scaled by the companion's own level multiplier — but
@@ -721,16 +734,18 @@ const CompanionLeveling = {
 // consistently modest deal at every stage of the game" precedent.
 const CompanionScavenging = {
     DURATION_SECONDS: {
-        [CompanionRarity.COMMON]: 10800,    // 3h
-        [CompanionRarity.RARE]: 21600,      // 6h
-        [CompanionRarity.LEGENDARY]: 43200, // 12h
-        [CompanionRarity.MYTHIC]: 86400     // 24h
+        [CompanionRarity.COMMON]: 10800,     // 3h
+        [CompanionRarity.RARE]: 21600,       // 6h
+        [CompanionRarity.LEGENDARY]: 43200,  // 12h
+        [CompanionRarity.MYTHIC]: 86400,     // 24h
+        [CompanionRarity.HEIRLOOM]: 172800   // 48h — continues the same doubling-per-tier pattern
     },
     WORK_COUNT_RANGE: {
         [CompanionRarity.COMMON]: { min: 6, max: 10 },
         [CompanionRarity.RARE]: { min: 12, max: 20 },
         [CompanionRarity.LEGENDARY]: { min: 24, max: 40 },
-        [CompanionRarity.MYTHIC]: { min: 48, max: 80 }
+        [CompanionRarity.MYTHIC]: { min: 48, max: 80 },
+        [CompanionRarity.HEIRLOOM]: { min: 96, max: 160 } // same strictly-linear-in-duration rule
     },
     // Direct instruction 2026-08-23 ("buff the amount... normal, then 1.5x, then 3x") — a
     // second, independent roll applied on top of the WORK_COUNT_RANGE base roll, same shape
@@ -757,7 +772,8 @@ const CompanionScavenging = {
         [CompanionRarity.COMMON]: { min: 3, max: 7 },
         [CompanionRarity.RARE]: { min: 10, max: 20 },
         [CompanionRarity.LEGENDARY]: { min: 28, max: 52 },
-        [CompanionRarity.MYTHIC]: { min: 70, max: 130 }
+        [CompanionRarity.MYTHIC]: { min: 70, max: 130 },
+        [CompanionRarity.HEIRLOOM]: { min: 140, max: 260 } // same doubling-with-duration pattern
     },
     // Scavenging duration scales DOWN with the dispatched companion's own level — direct
     // instruction: "scale companion scavenging time down with level, say up to 30% faster
@@ -1084,8 +1100,77 @@ const Companions = [
             { type: "bountyRewardPercent", value: 0.135 },
             { type: "rivalSuccessChanceFlat", value: 0.05 }
         ]
+    },
+    {
+        id: "yamimic",
+        name: "Yamimic, the Thousand-Faced",
+        rarity: CompanionRarity.HEIRLOOM,
+        // TODO: needs real artwork — thumbnailUrl left null (a safe no-op for
+        // EmbedBuilder.setThumbnail) rather than a placeholder link.
+        thumbnailUrl: null,
+        description: "A yam that's spent so long around Mimic Potatoes it picked up the habit — it doesn't have a shape of its own anymore, just wears whichever of your other companions' best tricks would help most right now.",
+        scavengeFlavor: "Yamimic came back wearing someone else's face again, the way it always does, and dropped whatever that someone else would have brought.",
+        // Direct instruction (2026-09-06) — a new tier ABOVE Mythic. Rather than carrying
+        // any fixed perk values of its own, this companion MIRRORS whichever of the
+        // player's OTHER owned companions currently has the single highest value for each
+        // of MimicryCompanion.PERK_TYPES below — see companionFactory.js's
+        // getActivePerkValue (the Yamimic-id branch) and computeMimicryBestPerks for the
+        // actual live computation. `value: null` on every entry here is deliberate — it's
+        // a MANIFEST of which perk types Yamimic supports (read by getActivePerkValue to
+        // route into the mirroring path, and by formatCompanionPerks/leveling's own
+        // restrictToPerkType gates, which only check `.type`, never `.value`), not a real
+        // number; nothing should ever compute `perk.value * multiplier` directly off this
+        // array the way every other companion's perks are read; getActivePerkValue's early
+        // branch on `active.id === MimicryCompanion.ID` means the generic numeric path
+        // below it is never reached for Yamimic at all.
+        perks: [
+            { type: "passiveIncomePercent", value: null },
+            { type: "rebirthBonusPercent", value: null },
+            { type: "workMultiplierPercent", value: null },
+            { type: "workCooldownSkipChance", value: null },
+            { type: "regradeChanceBoostPercent", value: null },
+            { type: "robChanceFlat", value: null },
+            { type: "starchSellBonusPercent", value: null },
+            { type: "bountyRewardPercent", value: null },
+            { type: "rivalSuccessChanceFlat", value: null }
+        ]
     }
 ]
+
+// Yamimic, the Thousand-Faced (Heirloom tier, above Mythic) — mirrors whichever OTHER
+// owned companion currently has the single highest LEVELED value for each of these perk
+// types, rather than carrying any fixed values of its own (see the Companions entry
+// above and companionFactory.js's getActivePerkValue/computeMimicryBestPerks).
+const MimicryCompanion = {
+    ID: "yamimic",
+    // Prospector is deliberately excluded even though it's never really at risk of
+    // "winning" a max() comparison — its one overlapping perk here (workMultiplierPercent)
+    // is a NEGATIVE balance-tradeoff value (see Prospector's own comment), never something
+    // a generalist should mirror even hypothetically. Yamimic's own other owned copies are
+    // excluded too — mirroring itself would be circular.
+    EXCLUDED_IDS: ["prospector", "yamimic"],
+    PERK_TYPES: [
+        "passiveIncomePercent",
+        "rebirthBonusPercent",
+        "workMultiplierPercent",
+        "workCooldownSkipChance",
+        "regradeChanceBoostPercent",
+        "robChanceFlat",
+        "starchSellBonusPercent",
+        "bountyRewardPercent",
+        "rivalSuccessChanceFlat"
+    ],
+    // Own-level scaling reuses the EXACT same +5%/level curve every other companion's
+    // companionFactory.getLevelMultiplier already applies (CompanionLeveling.
+    // PERK_BONUS_PER_LEVEL), just anchored 20 points lower rather than a separately
+    // authored rate — a future change to PERK_BONUS_PER_LEVEL automatically keeps this in
+    // lockstep instead of silently drifting. Nets 80% at level 1 (a real downside versus
+    // just equipping the real specialist directly — mirroring is never free) climbing to
+    // 125% at max level 10 (a genuine account-wide upgrade once fully invested — "120% or
+    // so," direct instruction, landing a little over from reusing the standard curve
+    // rather than authoring a custom one to hit the number exactly).
+    SCALE_OFFSET: 0.20
+}
 
 // Static content for /help. Kept data-driven the same way Companions is, so the slash
 // command's `topic` choices and the embed content it renders both stay in sync from one
@@ -2921,6 +3006,7 @@ module.exports = {
     CompanionLeveling,
     CompanionScavenging,
     Companions,
+    MimicryCompanion,
     HelpTopics,
     Give,
     Roulette,
