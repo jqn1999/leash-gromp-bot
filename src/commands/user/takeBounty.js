@@ -164,14 +164,17 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         taxAmount = Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
         netRewardAmount = result.rewardAmount - taxAmount;
         if (taxAmount > 0) {
-            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
-            const balanceField = result.currency === 'potato' ? 'potatoes' : 'starches';
-            await dynamoHandler.addUserDatabase(client.user.id, balanceField, houseAmount);
-            if (result.currency === 'potato') {
-                await spudKeepFactory.creditSpudKeepPot(potAmount);
-            } else {
-                await spudKeepFactory.creditSpudKeepPot(await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount));
-            }
+            // House account is potato-only, same as the Spud Keep pot (2026-09-06,
+            // player-reported: "the gromp bot went from 36 to 37 starches" — it should
+            // never hold raw starches at all). Previously only the POT's share of a
+            // starch-denominated tax was converted, while the house's share was credited
+            // as raw starches — fixed by converting the FULL tax to its potato equivalent
+            // first, then splitting; splitTaxForSpudKeepPot itself is currency-agnostic
+            // (just splits a number), so feeding it the already-converted amount is enough.
+            const taxAmountInPotatoes = result.currency === 'potato' ? taxAmount : await spudKeepFactory.convertStarchesToPotatoesForPot(taxAmount);
+            const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmountInPotatoes);
+            await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+            await spudKeepFactory.creditSpudKeepPot(potAmount);
         }
 
         if (result.currency === 'potato') {

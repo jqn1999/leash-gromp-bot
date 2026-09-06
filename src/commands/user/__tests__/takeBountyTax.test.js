@@ -57,6 +57,7 @@ beforeEach(() => {
     dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
     dynamoHandler.getCachedServerTotal.mockResolvedValue(1000000);
     dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
+    dynamoHandler.getStatDatabase.mockResolvedValue({ starch_sell: 5 }); // used to convert a starch tax to potatoes
 });
 
 describe('/take-bounty win tax', () => {
@@ -89,7 +90,11 @@ describe('/take-bounty win tax', () => {
         expect(setAttributes.potatoes).toBe(1000 + (grossReward - expectedTax));
     });
 
-    test('a starch win credits 5% to the house in starches, not potatoes', async () => {
+    // Fixed 2026-09-06, player-reported ("the gromp bot went from 36 to 37 starches" —
+    // it should never hold raw starches at all): the house account is potato-only, same
+    // as the Spud Keep pot, so a starch-denominated tax is now converted to its potato
+    // equivalent BEFORE crediting the house, not credited as raw starches.
+    test('a starch win converts the tax to potatoes before crediting the house — the house never holds starches', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
         const interaction = fakeInteraction({ mode: 'baby' });
         // Same sequence mercenaryFactory.test.js's own starch-flavored win case uses —
@@ -113,10 +118,42 @@ describe('/take-bounty win tax', () => {
         const grossReward = Math.round(base * 1 * 1);
         const expectedTax = Math.floor(grossReward * Bounty.WIN_TAX_PERCENT);
         expect(expectedTax).toBeGreaterThan(0);
+        const expectedTaxInPotatoes = Math.floor(expectedTax * 5); // starch_sell = 5, no live Spud Keep holder -> 100% to house
 
-        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('house-account', 'starches', expectedTax);
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('house-account', 'potatoes', expectedTaxInPotatoes);
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalledWith('house-account', 'starches', expect.anything());
+        // The winner's own net payout stays starch-denominated and unaffected by the fix —
+        // only where the TAX portion lands changed.
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setAttributes.starches).toBe(0 + (grossReward - expectedTax));
+    });
+
+    test('a starch win with a live Spud Keep holder splits the CONVERTED potato amount between house and pot', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'mercenary', holderId: null, expiresAt: Date.now() + 100000 });
+        const interaction = fakeInteraction({ mode: 'baby' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.15)
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const userMultiplier = 90;
+        const base = Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
+        const grossReward = Math.round(base * 1 * 1);
+        const expectedTax = Math.floor(grossReward * Bounty.WIN_TAX_PERCENT);
+        const taxInPotatoes = Math.floor(expectedTax * 5); // starch_sell = 5, converted BEFORE splitting
+        const expectedPotShare = Math.floor(taxInPotatoes * 0.75); // SpudKeep.POT_REDIRECT_PERCENT
+        const expectedHouseShare = taxInPotatoes - expectedPotShare;
+
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('house-account', 'potatoes', expectedHouseShare);
+        expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('spud_keep', { potPotatoes: expectedPotShare });
     });
 
     test('a loss is untouched by tax — no house credit at all', async () => {

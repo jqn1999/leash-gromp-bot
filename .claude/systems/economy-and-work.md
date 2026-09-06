@@ -640,12 +640,17 @@ explicitly on the result embed as a "Kingdom Tax" field
 (`embedFactory.createBountyResultEmbed`'s new `netRewardAmount`/`taxAmount` params, both defaulting
 to the untaxed shape so a call site that hasn't been updated doesn't crash).
 
-**Note on currency**: a starch-denominated tax (`/give`'s starch tax, a starch-flavored `/take-bounty`
-win's tax) is credited to the house account's own `starches` field, never converted to potatoes —
-the house account holds two genuinely separate balances, same as any player. (The one exception is
-crediting the Spud Keep POT specifically, which is potato-only — see
-[spud-keep.md](spud-keep.md#the-pot-reward-part-2--a-redirect-not-conjured-money) for
-`convertStarchesToPotatoesForPot`.)
+**Note on currency (corrected 2026-09-06, player-reported)**: a starch-denominated tax (`/give`'s
+starch tax, a starch-flavored `/take-bounty` win's tax) is now converted to potatoes BEFORE it's
+credited anywhere — the house account is potato-only, same as the Spud Keep pot, and never holds a
+`starches` balance at all. This reverses what used to be documented here: previously the house
+account's `starches` field WAS credited directly, on the theory that "the house account holds two
+genuinely separate balances, same as any player" — but a player report ("the gromp bot went from 36
+to 37 starches" when the visible Kingdom Tax was 2) surfaced that only the Spud Keep POT's share was
+ever being converted, while the house's own share silently accumulated raw, un-sellable starches
+nobody ever spent. See
+[spud-keep.md](spud-keep.md#the-pot-reward-part-2--a-redirect-not-conjured-money) for the exact
+convert-then-split shape both starch-capable tax sites now use.
 
 **Every rate in this table (and every other fractional multiplier that touches a real currency field
 anywhere in the codebase) is rounded/floored before its result is added to a running total or written

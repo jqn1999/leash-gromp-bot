@@ -122,18 +122,18 @@ module.exports = {
 
         // Spud Keep (systems/spud-keep.md) — while a holder is live, a share of this tax
         // is redirected to the accruing pot instead of the house account; a no-op (100%
-        // to the house, byte-identical to before) whenever no holder is live. The pot is
-        // potato-only — a starch-denominated split (taxAmount here in starches) is
-        // converted to potatoes at the current starch sell price before crediting it, so
-        // houseAmount alone stays starch-denominated and untouched.
-        const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmount);
-        await dynamoHandler.addUserDatabase(client.user.id, balanceField, houseAmount);
-        if (isStarches) {
-            const potPotatoAmount = await spudKeepFactory.convertStarchesToPotatoesForPot(potAmount);
-            await spudKeepFactory.creditSpudKeepPot(potPotatoAmount);
-        } else {
-            await spudKeepFactory.creditSpudKeepPot(potAmount);
-        }
+        // to the house, byte-identical to before) whenever no holder is live. The house
+        // account is potato-only, same as the pot (2026-09-06, player-reported: "the
+        // gromp bot went from 36 to 37 starches" — it should never hold raw starches at
+        // all). Previously only the POT's share of a starch-denominated tax was converted,
+        // while the house's share was credited as raw starches — fixed by converting the
+        // FULL tax to its potato equivalent first, then splitting; splitTaxForSpudKeepPot
+        // itself is currency-agnostic (just splits a number), so feeding it the
+        // already-converted amount is enough.
+        const taxAmountInPotatoes = isStarches ? await spudKeepFactory.convertStarchesToPotatoesForPot(taxAmount) : taxAmount;
+        const { houseAmount, potAmount } = await spudKeepFactory.splitTaxForSpudKeepPot(taxAmountInPotatoes);
+        await dynamoHandler.addUserDatabase(client.user.id, 'potatoes', houseAmount);
+        await spudKeepFactory.creditSpudKeepPot(potAmount);
 
         const currencyLabel = isStarches ? "Starches" : "Potatoes";
         embed = embedFactory.createGiveEmbed(userDisplayName, userId, userAvatar, currencyLabel, amount, taxAmount, receivedAmount, userBalance, targetUserDisplayName, targetUserBalance);
