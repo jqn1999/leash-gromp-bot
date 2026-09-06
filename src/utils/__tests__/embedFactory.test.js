@@ -953,3 +953,37 @@ describe('createSkipChancesEmbed', () => {
         expect(field.value).toContain('Cinderroot, the Hoardwarden: 2%');
     });
 });
+
+// Yamimic, the Thousand-Faced (Heirloom, 2026-09-06) — its own perks array carries
+// `value: null` on every entry (a manifest, not real numbers), so formatCompanionPerks
+// needs its own branch rather than the generic `perk.value * multiplier` path every other
+// companion uses.
+describe('createHelpCompanionsEmbed Yamimic display', () => {
+    beforeEach(() => {
+        // companionFactory is jest.mock'd module-wide in this file — formatCompanionPerks
+        // (private, exercised only through this embed) calls the real per-level formula
+        // for every companion's roster-reference display, not just Yamimic's, so it needs
+        // a real implementation here rather than the default auto-mocked `undefined`.
+        const companionFactory = require('../companionFactory');
+        companionFactory.getLevelMultiplier.mockImplementation(level => 1 + ((level ?? 1) - 1) * 0.05);
+    });
+
+    test('shows a descriptive line for Yamimic instead of computing NaN off its null perk values', () => {
+        const embed = embedFactory.createHelpCompanionsEmbed();
+        const heirloomField = embed.data.fields.find(f => f.name.startsWith('Heirloom'));
+        expect(heirloomField).toBeDefined();
+        expect(heirloomField.value).toContain('Yamimic');
+        expect(heirloomField.value).not.toContain('NaN');
+        expect(heirloomField.value).toContain('80%'); // level 1 (roster-reference default)
+    });
+
+    test('every rarity tier, including Heirloom, gets its own field', () => {
+        const embed = embedFactory.createHelpCompanionsEmbed();
+        const fieldNames = embed.data.fields.map(f => f.name);
+        expect(fieldNames.some(n => n.startsWith('Common'))).toBe(true);
+        expect(fieldNames.some(n => n.startsWith('Rare'))).toBe(true);
+        expect(fieldNames.some(n => n.startsWith('Legendary'))).toBe(true);
+        expect(fieldNames.some(n => n.startsWith('Mythic'))).toBe(true);
+        expect(fieldNames.some(n => n.startsWith('Heirloom'))).toBe(true);
+    });
+});

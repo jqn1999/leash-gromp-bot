@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -89,13 +89,15 @@ const COMPANION_RARITY_COLOR = {
     [CompanionRarity.COMMON]: 'Grey',
     [CompanionRarity.RARE]: 'Blue',
     [CompanionRarity.LEGENDARY]: 'Orange',
-    [CompanionRarity.MYTHIC]: 'Gold'
+    [CompanionRarity.MYTHIC]: 'Gold',
+    [CompanionRarity.HEIRLOOM]: 'DarkPurple'
 };
 const COMPANION_RARITY_LABEL = {
     [CompanionRarity.COMMON]: 'Common',
     [CompanionRarity.RARE]: 'Rare',
     [CompanionRarity.LEGENDARY]: 'Legendary',
-    [CompanionRarity.MYTHIC]: 'Mythic'
+    [CompanionRarity.MYTHIC]: 'Mythic',
+    [CompanionRarity.HEIRLOOM]: 'Heirloom'
 };
 // The top of CompanionLeveling.THRESHOLDS — used by the Max-Level capstone's cosmetic
 // tag/flavor line (see createCompanionListEmbed/createScavengeReturnEmbed) to detect a
@@ -164,6 +166,18 @@ const MERCENARY_RANK_TITLES = {
 // the perk actually resolves to in play — companionFactory.getActivePerkValue applies
 // the exact same scaling at the real usage site, so this never overstates it.
 function formatCompanionPerks(companion, level = 1) {
+    // Yamimic, the Thousand-Faced (Heirloom) — every entry in its own perks array carries
+    // `value: null` (a manifest of supported types, not real numbers — see the Companions
+    // entry's own comment), so the generic `perk.value * multiplier` computation below
+    // would produce "NaN%" for every one of them. Its real value is computed live, per
+    // player, off whichever OTHER companions they actually own (companionFactory.
+    // getMimicryPerkValue) — not something a roster-reference display showing an
+    // arbitrary/no player's collection can compute, so this shows what it DOES rather
+    // than a number.
+    if (companion.id === MimicryCompanion.ID) {
+        const scalePercent = ((companionFactory.getLevelMultiplier(level) - MimicryCompanion.SCALE_OFFSET) * 100).toFixed(0);
+        return `Mirrors your single best Passive Income, Rebirth Bonus, Work Multiplier, /work Cooldown Skip Chance, Regrade Success Boost, Rob Success Chance, Starch Sell Value, Bounty Reward, and Rival Confrontation Success Chance — whichever companion you already have the best of, for each — at ${scalePercent}% effectiveness (scales with its own level, excludes Prospector)`;
+    }
     const multiplier = companionFactory.getLevelMultiplier(level);
     return companion.perks.map(perk => {
         // poisonImmunity doesn't fit the "one value multiplied up" shape every other perk
@@ -2398,7 +2412,7 @@ class EmbedFactory {
     // Full companion roster grouped by rarity, generated straight off the Companions
     // array so it can never fall out of sync with what /companion actually offers.
     createHelpCompanionsEmbed() {
-        const rarityOrder = [CompanionRarity.COMMON, CompanionRarity.RARE, CompanionRarity.LEGENDARY, CompanionRarity.MYTHIC];
+        const rarityOrder = [CompanionRarity.COMMON, CompanionRarity.RARE, CompanionRarity.LEGENDARY, CompanionRarity.MYTHIC, CompanionRarity.HEIRLOOM];
         const fields = rarityOrder.map(rarity => {
             const companionsOfRarity = Companions.filter(c => c.rarity === rarity);
             return {
@@ -2410,7 +2424,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("Leash Gromp — Companions")
-            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market — except Yukon, the Highwayman, who's found only through a winning \`/take-bounty\` roll (see /help topic:mercenary). Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market — except Yukon, the Highwayman, who's found only through a winning \`/take-bounty\` roll (see /help topic:mercenary), and Yamimic, the Thousand-Faced, whose already-rare roll only becomes possible once you own at least one of every Mythic. Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

@@ -12,6 +12,9 @@ const {
     getNextLevelThreshold,
     getLevelMultiplier,
     getActivePerkValue,
+    getMimicryPerkValue,
+    computeMimicryBestPerks,
+    hasAllMythics,
     applyCompanionAward,
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
@@ -27,7 +30,7 @@ const {
     migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 } = require('../companionFactory');
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, Work, Bounty, RobNpc } = require('../constants');
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Bounty, RobNpc } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -43,16 +46,85 @@ describe('rollRarity', () => {
         }
     });
 
-    test('matches the configured 65/25/8/2 split within statistical tolerance over a large sample', () => {
-        const counts = { [CompanionRarity.COMMON]: 0, [CompanionRarity.RARE]: 0, [CompanionRarity.LEGENDARY]: 0, [CompanionRarity.MYTHIC]: 0 };
-        const trials = 20000;
+    // Heirloom carved a 0.2% sliver out of what used to be pure Mythic territory
+    // (2026-09-06, direct instruction) — Mythic's own conditional share is now 1.8%, not
+    // 2%, with Heirloom taking the remaining 0.2% (exactly 1/10th of Mythic's own slice).
+    test('matches the configured 65/25/8/1.8/0.2 split within statistical tolerance over a large sample', () => {
+        const counts = { [CompanionRarity.COMMON]: 0, [CompanionRarity.RARE]: 0, [CompanionRarity.LEGENDARY]: 0, [CompanionRarity.MYTHIC]: 0, [CompanionRarity.HEIRLOOM]: 0 };
+        const trials = 200000; // bumped from 20000 — Heirloom's own 0.2% slice needs a much larger sample to read reliably
         for (let i = 0; i < trials; i++) {
             counts[rollRarity()]++;
         }
         expect(counts[CompanionRarity.COMMON] / trials).toBeCloseTo(0.65, 1);
         expect(counts[CompanionRarity.RARE] / trials).toBeCloseTo(0.25, 1);
         expect(counts[CompanionRarity.LEGENDARY] / trials).toBeCloseTo(0.08, 1);
-        expect(counts[CompanionRarity.MYTHIC] / trials).toBeCloseTo(0.02, 1);
+        expect(counts[CompanionRarity.MYTHIC] / trials).toBeCloseTo(0.018, 2);
+        expect(counts[CompanionRarity.HEIRLOOM] / trials).toBeCloseTo(0.002, 2);
+    });
+});
+
+// Heirloom's ownership-prerequisite gate (2026-09-06, direct instruction) — Yamimic can
+// only ever be rolled by a player who already owns at least one of every existing Mythic.
+describe('hasAllMythics / rollCompanion Heirloom gating', () => {
+    const mythicIds = Companions.filter(c => c.rarity === CompanionRarity.MYTHIC).map(c => c.id);
+
+    function userOwning(ids) {
+        return freshUser({
+            companions: {
+                owned: ids.map(id => ({ instanceId: `${id}-a`, id, workCount: 0 })),
+                active: null, ownedCount: ids.length, mythicOwnedCount: 0
+            }
+        });
+    }
+
+    test('false for a fresh user with no companions at all', () => {
+        expect(hasAllMythics(freshUser())).toBe(false);
+    });
+
+    test('false for null/undefined userDetails', () => {
+        expect(hasAllMythics(null)).toBe(false);
+        expect(hasAllMythics(undefined)).toBe(false);
+    });
+
+    test('false until EVERY existing Mythic is owned, not just one', () => {
+        expect(mythicIds.length).toBeGreaterThan(1); // sanity check the premise of this test
+        expect(hasAllMythics(userOwning([mythicIds[0]]))).toBe(false);
+    });
+
+    test('true once every existing Mythic is owned (order-independent, duplicates fine)', () => {
+        expect(hasAllMythics(userOwning(mythicIds))).toBe(true);
+        expect(hasAllMythics(userOwning([...mythicIds, ...mythicIds]))).toBe(true); // duplicates don't hurt
+    });
+
+    test('rollCompanion never returns Yamimic for a user who has not met the prerequisite, even when the roll lands on Heirloom', () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.9999) // rollRarity() -> HEIRLOOM (last, thinnest slice)
+            .mockReturnValue(0);         // pool-index pick, irrelevant once the pool is just Mythic
+        const companion = rollCompanion(userOwning([])); // owns nothing, prerequisite unmet
+        randomSpy.mockRestore();
+
+        expect(companion.id).not.toBe(MimicryCompanion.ID);
+        expect(companion.rarity).toBe(CompanionRarity.MYTHIC); // collapsed into Mythic instead
+    });
+
+    test('rollCompanion CAN return Yamimic once the prerequisite is met', () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.9999) // rollRarity() -> HEIRLOOM
+            .mockReturnValue(0);         // pool-index pick (only Yamimic in the Heirloom pool anyway)
+        const companion = rollCompanion(userOwning(mythicIds));
+        randomSpy.mockRestore();
+
+        expect(companion.id).toBe(MimicryCompanion.ID);
+    });
+
+    test('rollCompanion with no userDetails argument at all never returns Yamimic', () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.9999)
+            .mockReturnValue(0);
+        const companion = rollCompanion();
+        randomSpy.mockRestore();
+
+        expect(companion.id).not.toBe(MimicryCompanion.ID);
     });
 });
 
@@ -156,6 +228,100 @@ describe('getOwnedEntry / getActiveInstance / getActiveCompanion / getActivePerk
         });
         expect(getActiveInstance(user).instanceId).toBe('sprout-b');
         expect(getActiveInstance(user).workCount).toBe(99999);
+    });
+});
+
+// Yamimic, the Thousand-Faced (Heirloom) — mirrors whichever OTHER owned companion has
+// the single highest LEVELED value for each of MimicryCompanion.PERK_TYPES, then scales
+// the result by Yamimic's OWN level (2026-09-06, direct instruction).
+describe('Yamimic mirroring (getMimicryPerkValue / computeMimicryBestPerks)', () => {
+    function ownedEntry(id, workCount = 0) {
+        return { instanceId: `${id}-a`, id, workCount };
+    }
+
+    function yamimicUser(otherEntries, yamimicWorkCount = 0) {
+        return freshUser({
+            companions: {
+                owned: [ownedEntry('yamimic', yamimicWorkCount), ...otherEntries],
+                active: 'yamimic-a', ownedCount: otherEntries.length + 1, mythicOwnedCount: 0
+            }
+        });
+    }
+
+    test('0 for a perk type outside the curated PERK_TYPES list, even if some owned companion carries it', () => {
+        // specialEncounterMultiplierBonus is Prospector's own perk — not one of the 9
+        // Yamimic is designed to mirror.
+        const user = yamimicUser([ownedEntry('prospector')]);
+        expect(getMimicryPerkValue(user, 'specialEncounterMultiplierBonus')).toBe(0);
+    });
+
+    test('0 for a supported perk type nobody owned carries', () => {
+        const user = yamimicUser([ownedEntry('sprout')]); // only workMultiplierPercent
+        expect(getMimicryPerkValue(user, 'passiveIncomePercent')).toBe(0);
+    });
+
+    test('mirrors the single highest leveled value across owned companions for a given perk type', () => {
+        // Mochi (workMultiplierPercent 0.12) at level 1 vs. Sprout (0.05) at level 1 —
+        // Mochi should win.
+        const user = yamimicUser([ownedEntry('sprout'), ownedEntry('mochi')]);
+        const best = computeMimicryBestPerks(user);
+        expect(best.workMultiplierPercent).toBeCloseTo(0.12);
+    });
+
+    test('picks the higher-leveled of two owned instances of the SAME companion, not just the first found', () => {
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const maxMultiplier = getLevelMultiplier(CompanionLeveling.THRESHOLDS.length); // 1.45x at max level
+        const user = yamimicUser([
+            { instanceId: 'sprout-fresh', id: 'sprout', workCount: 0 },
+            { instanceId: 'sprout-maxed', id: 'sprout', workCount: maxWorkCount },
+        ]);
+        const best = computeMimicryBestPerks(user);
+        expect(best.workMultiplierPercent).toBeCloseTo(0.05 * maxMultiplier);
+    });
+
+    test('excludes Prospector entirely, even though nothing here would naturally beat it via max()', () => {
+        // Prospector's own workMultiplierPercent is -0.08 (a negative balance-tradeoff
+        // value) — included here to prove the exclusion is explicit, not just an
+        // incidental side effect of negative numbers never winning a max() comparison.
+        const user = yamimicUser([ownedEntry('prospector')]);
+        const best = computeMimicryBestPerks(user);
+        expect(best.workMultiplierPercent).toBe(0); // not -0.08, and not counted as a candidate at all
+    });
+
+    test('excludes Yamimic\'s own other owned copies (mirroring itself would be circular)', () => {
+        const user = yamimicUser([ownedEntry('yamimic', 99999)]); // a second, heavily-leveled Yamimic
+        const best = computeMimicryBestPerks(user);
+        expect(best.passiveIncomePercent).toBe(0); // Yamimic's own perks are all null-valued anyway
+    });
+
+    test('scales the mirrored value by its OWN level: 80% at level 1', () => {
+        const user = yamimicUser([ownedEntry('mochi')], 0); // Yamimic at level 1 (workCount 0)
+        const value = getMimicryPerkValue(user, 'workMultiplierPercent');
+        expect(value).toBeCloseTo(0.12 * 0.80);
+    });
+
+    test('scales the mirrored value by its OWN level: 125% at max level', () => {
+        const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+        const user = yamimicUser([ownedEntry('mochi')], maxWorkCount); // Yamimic maxed
+        const value = getMimicryPerkValue(user, 'workMultiplierPercent');
+        expect(value).toBeCloseTo(0.12 * 1.25);
+    });
+
+    test('caches the best-perk map on the userDetails object so a second lookup does not re-scan', () => {
+        const user = yamimicUser([ownedEntry('mochi')]);
+        getMimicryPerkValue(user, 'workMultiplierPercent');
+        expect(user._mimicryBestPerkCache).toBeDefined();
+        // Mutating owned AFTER the first lookup doesn't retroactively change the cached
+        // map within this same object — same "computed once per command" pattern
+        // _cooldownSkippedByCompanion/_cooldownSkipChance already use.
+        user.companions.owned.push(ownedEntry('elder_rootbeard'));
+        const stillCached = getMimicryPerkValue(user, 'regradeChanceBoostPercent');
+        expect(stillCached).toBe(0); // Elder Rootbeard's regradeChanceBoostPercent never got picked up
+    });
+
+    test('getActivePerkValue routes to the mirroring path when Yamimic is the active companion', () => {
+        const user = yamimicUser([ownedEntry('mochi')]);
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBeCloseTo(0.12 * 0.80);
     });
 });
 
