@@ -11,6 +11,10 @@ const {
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,
+    getInstanceLevelMultiplier,
+    clampWorkCountGain,
+    getBreakpointFuel,
+    MAX_LEVEL_WORK_COUNT,
     getActivePerkValue,
     getMimicryPerkValue,
     computeMimicryBestPerks,
@@ -32,7 +36,7 @@ const {
     migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 } = require('../companionFactory');
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Bounty, RobNpc } = require('../constants');
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Bounty, RobNpc, CompanionFusion } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -1269,5 +1273,172 @@ describe('migrateOwnedToInstances', () => {
         expect(migrated.owned[0]).toEqual({ instanceId: 'mole-a', id: 'mole', workCount: 7 });
         expect(migrated.owned[1]).toMatchObject({ id: 'sprout', workCount: 3 });
         expect(migrated.active).toBe(migrated.owned[1].instanceId);
+    });
+});
+
+// Companion Fusion / Ascension (2026-09-07, direct instruction) — see
+// companionFusionFactory.test.js for validateFusionRequest/resolveFusion coverage. This
+// block covers the three new shared primitives companionFactory itself exposes.
+describe('getInstanceLevelMultiplier (Ascension-aware level scaling)', () => {
+    const maxLevelWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
+    const maxLevel = CompanionLeveling.THRESHOLDS.length;
+
+    test('below max level, matches plain getLevelMultiplier regardless of ascensionStars', () => {
+        const instance = { workCount: 50, ascensionStars: 3 }; // level 3, not max
+        expect(getInstanceLevelMultiplier(instance)).toBeCloseTo(getLevelMultiplier(getCompanionLevel(50)));
+    });
+
+    test('at max level with 0 ascension stars, matches the plain max-level multiplier', () => {
+        const instance = { workCount: maxLevelWorkCount, ascensionStars: 0 };
+        expect(getInstanceLevelMultiplier(instance)).toBeCloseTo(getLevelMultiplier(maxLevel));
+    });
+
+    test('at max level, an ascension star REPLACES (not stacks with) the plain max-level multiplier', () => {
+        for (let star = 1; star <= CompanionFusion.ASCENSION_MAX_STARS; star++) {
+            const instance = { workCount: maxLevelWorkCount, ascensionStars: star };
+            expect(getInstanceLevelMultiplier(instance)).toBe(CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[star - 1]);
+        }
+    });
+
+    test('guards against a missing instance the same defensive way getCompanionLevel does', () => {
+        expect(getInstanceLevelMultiplier(null)).toBe(getLevelMultiplier(1));
+        expect(getInstanceLevelMultiplier(undefined)).toBe(getLevelMultiplier(1));
+    });
+});
+
+describe('clampWorkCountGain', () => {
+    test('adds the gain normally while under the level-10 cap', () => {
+        expect(clampWorkCountGain(100, 50)).toBe(150);
+    });
+
+    test('clamps at MAX_LEVEL_WORK_COUNT when the gain would cross it', () => {
+        expect(clampWorkCountGain(MAX_LEVEL_WORK_COUNT - 10, 100)).toBe(MAX_LEVEL_WORK_COUNT);
+    });
+
+    test('stays at the cap when already there', () => {
+        expect(clampWorkCountGain(MAX_LEVEL_WORK_COUNT, 500)).toBe(MAX_LEVEL_WORK_COUNT);
+    });
+
+    test('treats a missing/falsy current workCount as 0', () => {
+        expect(clampWorkCountGain(undefined, 10)).toBe(10);
+        expect(clampWorkCountGain(0, 10)).toBe(10);
+    });
+});
+
+describe('getBreakpointFuel', () => {
+    test('0 for a fresh (workCount 0) companion', () => {
+        expect(getBreakpointFuel(0)).toBe(0);
+    });
+
+    // Direct instruction's own worked example: "a companion between level 7 and 8 would
+    // only give the level 7 worth of fuel" — level 7 is 925, level 8 is 1525.
+    test('a companion between two thresholds only counts the lower one, not raw workCount', () => {
+        expect(getBreakpointFuel(1200)).toBe(925);
+    });
+
+    test('a companion sitting exactly on a threshold counts that threshold', () => {
+        expect(getBreakpointFuel(925)).toBe(925);
+    });
+
+    test('a companion past the top threshold is clamped to the max, not left unbounded', () => {
+        expect(getBreakpointFuel(999999)).toBe(MAX_LEVEL_WORK_COUNT);
+    });
+});
+
+describe('Ascension multiplier replaces base multiplier in real perk consumers', () => {
+    function ascendedUser(companionId, ascensionStars) {
+        return freshUser({
+            companions: {
+                owned: [{ instanceId: `${companionId}-a`, id: companionId, workCount: MAX_LEVEL_WORK_COUNT, ascensionStars }],
+                active: `${companionId}-a`, ownedCount: 1, mythicOwnedCount: 0
+            }
+        });
+    }
+
+    test('getActivePerkValue uses the ascension multiplier once max-level and ascended', () => {
+        const user = ascendedUser('sprout', 3); // sprout: workMultiplierPercent 0.05 base
+        const expected = 0.05 * CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[2];
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBeCloseTo(expected);
+    });
+
+    test('getActivePerkValue falls back to the ordinary max-level multiplier with 0 stars', () => {
+        const user = ascendedUser('sprout', 0);
+        expect(getActivePerkValue(user, 'workMultiplierPercent')).toBeCloseTo(0.05 * getLevelMultiplier(CompanionLeveling.THRESHOLDS.length));
+    });
+
+    test('computeMimicryBestPerks picks up an ascended instance\'s boosted value', () => {
+        const user = freshUser({
+            companions: {
+                owned: [
+                    { instanceId: 'yamimic-a', id: 'yamimic', workCount: 0 },
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: 5 }
+                ],
+                active: 'yamimic-a', ownedCount: 2, mythicOwnedCount: 0
+            }
+        });
+        const best = computeMimicryBestPerks(user);
+        expect(best.workMultiplierPercent).toBeCloseTo(0.05 * CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[4]);
+    });
+
+    test('getMimicryPerkValue scales UP when Yamimic itself is ascended, off its own instance', () => {
+        const lowUser = freshUser({
+            companions: {
+                owned: [
+                    { instanceId: 'yamimic-a', id: 'yamimic', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: 0 },
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0 }
+                ],
+                active: 'yamimic-a', ownedCount: 2, mythicOwnedCount: 0
+            }
+        });
+        const highUser = freshUser({
+            companions: {
+                owned: [
+                    { instanceId: 'yamimic-a', id: 'yamimic', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: 5 },
+                    { instanceId: 'sprout-a', id: 'sprout', workCount: 0 }
+                ],
+                active: 'yamimic-a', ownedCount: 2, mythicOwnedCount: 0
+            }
+        });
+        expect(getMimicryPerkValue(highUser, 'workMultiplierPercent')).toBeGreaterThan(getMimicryPerkValue(lowUser, 'workMultiplierPercent'));
+    });
+});
+
+describe('Non-Fusion leveling paths clamp workCount at MAX_LEVEL_WORK_COUNT (3,725)', () => {
+    test('levelActiveCompanion never pushes workCount past the cap', () => {
+        const companions = { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: MAX_LEVEL_WORK_COUNT - 5 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 };
+        const result = levelActiveCompanion(companions, 500);
+        const entry = result.owned.find(o => o.instanceId === 'sprout-a');
+        expect(entry.workCount).toBe(MAX_LEVEL_WORK_COUNT);
+    });
+
+    test('applyPassiveCompanionTick never pushes workCount past the cap', () => {
+        const companions = {
+            owned: [{ instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT - 1, passiveLevelAccumulatorSeconds: 0 }],
+            active: 'mole-a', ownedCount: 1, mythicOwnedCount: 0
+        };
+        // Mole doesn't carry passiveIncomePercent — use a companion that does. Reuse
+        // Guinea Pig's own passive-perk mirror is out of scope here; pick any roster
+        // companion with passiveIncomePercent (Mochi does).
+        const passiveCompanions = {
+            owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: MAX_LEVEL_WORK_COUNT - 1, passiveLevelAccumulatorSeconds: 0 }],
+            active: 'mochi-a', ownedCount: 1, mythicOwnedCount: 0
+        };
+        const hugeTickSeconds = CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT * 100;
+        const result = applyPassiveCompanionTick(passiveCompanions, hugeTickSeconds);
+        const entry = result.owned.find(o => o.instanceId === 'mochi-a');
+        expect(entry.workCount).toBe(MAX_LEVEL_WORK_COUNT);
+    });
+
+    test('resolveScavengeReward never pushes workCount past the cap', () => {
+        const user = freshUser({
+            companions: {
+                owned: [{ instanceId: 'legendary-a', id: 'yukon', workCount: MAX_LEVEL_WORK_COUNT - 1 }],
+                active: null, ownedCount: 1, mythicOwnedCount: 0,
+                scavenging: { instanceId: 'legendary-a', rarity: CompanionRarity.LEGENDARY, returnsAt: Date.now() - 1000 }
+            }
+        });
+        const result = resolveScavengeReward(user, 0);
+        const entry = result.owned.find(o => o.instanceId === 'legendary-a');
+        expect(entry.workCount).toBeLessThanOrEqual(MAX_LEVEL_WORK_COUNT);
     });
 });

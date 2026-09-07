@@ -1,4 +1,12 @@
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Rival } = require("../utils/constants");
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Rival, CompanionFusion } = require("../utils/constants");
+
+// Shared with companionFusionFactory.js/embedFactory.js — the top of CompanionLeveling.
+// THRESHOLDS, same lookup embedFactory.js's own (previously private) MAX_COMPANION_LEVEL
+// const already computed independently. MAX_LEVEL_WORK_COUNT (3,725) is the point past
+// which every non-Fusion leveling path in this file clamps (see clampWorkCountGain) —
+// only Fusion's own ascensionFuel field is allowed to keep growing past it.
+const MAX_COMPANION_LEVEL = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
+const MAX_LEVEL_WORK_COUNT = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
 
 // Cumulative — same shape as workScenarios' chance field and starchFactory's
 // PROBABILITY_MATRIX. CompanionRarityOdds is keyed by rarity *strings*
@@ -135,6 +143,25 @@ function getLevelMultiplier(level) {
     return 1 + (level - 1) * CompanionLeveling.PERK_BONUS_PER_LEVEL;
 }
 
+// Companion Fusion / Ascension (2026-09-07, direct instruction) — the level-scaling entry
+// point every real perk consumer below should use instead of getLevelMultiplier(level)
+// directly, once an owned INSTANCE (not just a bare level number) is available. Below max
+// level, or at max level with no ascension stars yet, this is identical to
+// getLevelMultiplier(getCompanionLevel(instance.workCount)) — nothing changes for the
+// vast majority of owned companions. Once an instance is BOTH at max level AND carries at
+// least one ascension star, its star multiplier REPLACES (never stacks with) the ordinary
+// 1.45x max-level value — see CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR's own comment.
+// Guards against a missing/malformed instance the same defensive way every other lookup in
+// this file does (getCompanionLevel already tolerates undefined workCount).
+function getInstanceLevelMultiplier(instance) {
+    const level = getCompanionLevel(instance?.workCount);
+    const ascensionStars = instance?.ascensionStars || 0;
+    if (level >= MAX_COMPANION_LEVEL && ascensionStars > 0) {
+        return CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[ascensionStars - 1];
+    }
+    return getLevelMultiplier(level);
+}
+
 // Guinea Pig is the one companion whose perk doesn't scale the ordinary
 // getActivePerkValue way — see workFactory.js's handlePoisonPotato, the only caller.
 // rebateBasePercent is passed in rather than imported here so this stays a pure function
@@ -151,7 +178,7 @@ function getGuineaPigRebate(userDetails, rebateBasePercent) {
     }
     const activeInstance = getActiveInstance(userDetails);
     const level = getCompanionLevel(activeInstance?.workCount);
-    const multiplier = getLevelMultiplier(level);
+    const multiplier = getInstanceLevelMultiplier(activeInstance);
     return {
         level,
         // Multiplies UP as usual — same direction every other perk in the roster scales.
@@ -184,8 +211,7 @@ function getActivePerkValue(userDetails, perkType) {
         return 0;
     }
     const activeInstance = getActiveInstance(userDetails);
-    const level = getCompanionLevel(activeInstance?.workCount);
-    return perk.value * getLevelMultiplier(level);
+    return perk.value * getInstanceLevelMultiplier(activeInstance);
 }
 
 // Yamimic's own computation — mirrors whichever OTHER owned companion instance has the
@@ -210,8 +236,12 @@ function getMimicryPerkValue(userDetails, perkType) {
     }
     const bestValue = userDetails._mimicryBestPerkCache[perkType] || 0;
     const activeInstance = getActiveInstance(userDetails);
-    const ownLevel = getCompanionLevel(activeInstance?.workCount);
-    const scaleFactor = getLevelMultiplier(ownLevel) - MimicryCompanion.SCALE_OFFSET;
+    // getInstanceLevelMultiplier here (not the plain getLevelMultiplier(ownLevel) this
+    // used before Ascension existed) so an ascended Yamimic scales its OWN mirrored output
+    // up too, same as every other companion's own perk value does — still entirely
+    // Yamimic's own instance state, not the mirrored companion's (see this function's own
+    // top comment on that distinction).
+    const scaleFactor = getInstanceLevelMultiplier(activeInstance) - MimicryCompanion.SCALE_OFFSET;
     return bestValue * scaleFactor;
 }
 
@@ -233,7 +263,7 @@ function computeMimicryBestPerks(userDetails) {
         if (!companion) {
             continue;
         }
-        const levelMultiplier = getLevelMultiplier(getCompanionLevel(instance.workCount));
+        const levelMultiplier = getInstanceLevelMultiplier(instance);
         for (const perk of companion.perks) {
             if (!(perk.type in best)) {
                 continue;
@@ -303,9 +333,8 @@ function applyCompanionAward(userDetails, companion, workCount = 0) {
 // below) can run this unconditionally after any workCount bump without pre-checking level
 // itself first — same "cheap to skip a write" pattern migrateOwnedToInstances already uses.
 function applyMaxLevelTracking(companions, instanceId) {
-    const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
     const entry = (companions.owned ?? []).find(c => c.instanceId === instanceId);
-    if (!entry || entry.hasReachedMaxLevel || getCompanionLevel(entry.workCount) < maxLevel) {
+    if (!entry || entry.hasReachedMaxLevel || getCompanionLevel(entry.workCount) < MAX_COMPANION_LEVEL) {
         return companions;
     }
     const companion = getCompanionById(entry.id);
@@ -406,7 +435,7 @@ function levelActiveCompanion(companions, workCountGained, restrictToCompanionId
     // directly — see that file's own comment.
     const now = Date.now();
     const leveledOwned = (companions.owned ?? []).map(o =>
-        o.instanceId === activeInstanceId ? { ...o, workCount: (o.workCount || 0) + workCountGained, lastUsedAt: now } : o
+        o.instanceId === activeInstanceId ? { ...o, workCount: clampWorkCountGain(o.workCount, workCountGained), lastUsedAt: now } : o
     );
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
 }
@@ -473,7 +502,7 @@ function applyPassiveCompanionTick(companions, tickSeconds) {
     const now = Date.now();
     const leveledOwned = companions.owned.map(o =>
         o.instanceId === activeInstanceId
-            ? { ...o, workCount: (o.workCount || 0) + workCountGained, passiveLevelAccumulatorSeconds: accumulator, lastUsedAt: now }
+            ? { ...o, workCount: clampWorkCountGain(o.workCount, workCountGained), passiveLevelAccumulatorSeconds: accumulator, lastUsedAt: now }
             : o
     );
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
@@ -560,11 +589,37 @@ function isScavenging(userDetails, instanceId) {
 // itself (its last entry) rather than hardcoding 10, so this stays correct if the
 // leveling curve ever grows/shrinks.
 function getScavengeSpeedBonus(level) {
-    const maxLevel = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].level;
-    if (level >= maxLevel) {
+    if (level >= MAX_COMPANION_LEVEL) {
         return CompanionScavenging.SPEED_BONUS_MAX_LEVEL;
     }
     return (level - 1) * CompanionScavenging.SPEED_BONUS_PER_LEVEL;
+}
+
+// Every non-Fusion leveling path caps workCount at the level-10 threshold — 2026-09-07,
+// direct instruction ("make sure that xp from every non fusion is capped at 3725"), so a
+// companion sitting well past max level from years of accumulated /work doesn't just grow
+// its raw workCount number forever for no effect (level, and every level-scaled perk, are
+// already clamped at MAX_COMPANION_LEVEL regardless of how high workCount climbs) — only
+// Fusion's own ascensionFuel field (see companionFusionFactory.js) is allowed to keep
+// growing past this point, via whatever fuel a fusion's clamp here couldn't absorb into
+// workCount.
+function clampWorkCountGain(currentWorkCount, gain) {
+    return Math.min(MAX_LEVEL_WORK_COUNT, (currentWorkCount || 0) + gain);
+}
+
+// The highest CompanionLeveling.THRESHOLDS entry's own workCountRequired that workCount has
+// already reached — NOT raw workCount itself. Powers Fusion's sacrifice-fuel calculation
+// (companionFusionFactory.getFusionFuelValue): direct instruction, "only the level
+// breakpoints provide fuel up to that breakpoint — a companion between level 7 and 8 would
+// only give the level 7 worth of fuel" — so a companion sitting at, say, workCount 1200
+// (between level 7's 925 and level 8's 1525) contributes exactly 925, not 1200, discouraging
+// sacrificing a companion machine-gunned right up to the edge of its next level for a
+// slightly bigger number. Same reverse-sorted-find shape as getCompanionLevel, just
+// returning the threshold's workCountRequired instead of its level.
+function getBreakpointFuel(workCount) {
+    const count = Number.isFinite(workCount) ? workCount : 0;
+    const sorted = CompanionLeveling.THRESHOLDS;
+    return [...sorted].reverse().find(t => count >= t.workCountRequired).workCountRequired;
 }
 
 // The { instanceId, rarity, returnsAt } record /companion-scavenge writes on dispatch —
@@ -678,7 +733,7 @@ function resolveScavengeReward(userDetails, effectiveMultiplier = 0) {
 
     const leveledOwned = userDetails.companions.owned.map(c =>
         c.instanceId === instanceId
-            ? { ...c, workCount: (c.workCount || 0) + workCountGained, hasScavenged: true }
+            ? { ...c, workCount: clampWorkCountGain(c.workCount, workCountGained), hasScavenged: true }
             : c
     );
     // Max-Level capstone — a companion can reach max level via Scavenging alone (leveling
@@ -763,6 +818,8 @@ function migrateOwnedToInstances(companions) {
 }
 
 module.exports = {
+    MAX_COMPANION_LEVEL,
+    MAX_LEVEL_WORK_COUNT,
     rollRarity,
     getCompanionsByRarity,
     rollCompanion,
@@ -775,6 +832,9 @@ module.exports = {
     getCompanionLevel,
     getNextLevelThreshold,
     getLevelMultiplier,
+    getInstanceLevelMultiplier,
+    clampWorkCountGain,
+    getBreakpointFuel,
     getActivePerkValue,
     getMimicryPerkValue,
     computeMimicryBestPerks,

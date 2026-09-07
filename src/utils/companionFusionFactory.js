@@ -1,0 +1,153 @@
+const { CompanionFusion } = require("./constants");
+const companionFactory = require("./companionFactory");
+
+// Companion Fusion / Ascension (2026-09-07, direct instruction) — see systems/companions.md
+// for the full design writeup. Lets a player permanently sacrifice an owned Common/Rare/
+// Legendary companion instance as XP "fuel" into another owned instance, giving otherwise-
+// dead overflow companions (duplicates found while Prospector-hunting for Mythics) a use
+// beyond NPC-selling/market-listing.
+//
+// Below the target's max level, fuel just accelerates ordinary leveling like any other
+// workCount grant — through the exact same MAX_LEVEL_WORK_COUNT clamp every other leveling
+// path already respects (companionFactory.clampWorkCountGain). Once the target is already
+// at (or gets pushed to) max level, whatever fuel the clamp couldn't absorb into workCount
+// instead accumulates toward Ascension — a 5-star track that raises the target's own
+// level-10 perk multiplier from the ordinary 1.45x up to as much as 2.40x (see
+// CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR).
+//
+// Mythic/Heirloom companions can never be the sacrifice (see CompanionFusion.BASE_FUEL —
+// they simply have no entry, "too valuable to burn") but CAN be a fusion target, same as
+// anything else owned — ascending your one Yamimic or best Mythic is very much the point.
+
+// Only companions with a CompanionFusion.BASE_FUEL entry are sacrificeable — Common, Rare,
+// Legendary. `rarity in {}` is a real JS `in` check against the object's own keys, safe
+// here since CompanionRarity values are always plain strings, never inherited/prototype
+// properties.
+function canBeSacrificed(companion) {
+    return companion.rarity in CompanionFusion.BASE_FUEL;
+}
+
+// Fuel value of a sacrificed instance — flat per-rarity BASE_FUEL plus however much of its
+// own leveling progress it's already banked (breakpoint-based, not raw workCount — see
+// companionFactory.getBreakpointFuel's own comment for why a companion sitting between two
+// thresholds only counts the lower one).
+function getFusionFuelValue(sacrificeEntry, sacrificeCompanion) {
+    const baseFuel = CompanionFusion.BASE_FUEL[sacrificeCompanion.rarity] || 0;
+    return baseFuel + companionFactory.getBreakpointFuel(sacrificeEntry.workCount);
+}
+
+// instanceId-keyed the same way every other companion-manipulating validator in this
+// codebase is (validateListingRequest/validateNpcSaleRequest) — a companion id alone can't
+// identify a specific owned copy since duplicates are separate instances.
+function validateFusionRequest(userDetails, sacrificeInstanceId, targetInstanceId) {
+    if (!sacrificeInstanceId || !targetInstanceId) {
+        return { valid: false, error: "you need to pick both a companion to sacrifice and a target to fuse it into." };
+    }
+    if (sacrificeInstanceId === targetInstanceId) {
+        return { valid: false, error: "you can't fuse a companion into itself." };
+    }
+    const sacrificeEntry = companionFactory.getOwnedEntry(userDetails, sacrificeInstanceId);
+    if (!sacrificeEntry) {
+        return { valid: false, error: "you don't own that companion to sacrifice." };
+    }
+    const targetEntry = companionFactory.getOwnedEntry(userDetails, targetInstanceId);
+    if (!targetEntry) {
+        return { valid: false, error: "you don't own that target companion." };
+    }
+    const sacrificeCompanion = companionFactory.getCompanionById(sacrificeEntry.id);
+    if (!sacrificeCompanion) {
+        return { valid: false, error: "that's not a real companion." };
+    }
+    const targetCompanion = companionFactory.getCompanionById(targetEntry.id);
+    if (!targetCompanion) {
+        return { valid: false, error: "that's not a real target companion." };
+    }
+    if (!canBeSacrificed(sacrificeCompanion)) {
+        return { valid: false, error: "only Common, Rare, and Legendary companions can be sacrificed as fuel — Mythic and Heirloom companions are too valuable to burn." };
+    }
+    if (companionFactory.isScavenging(userDetails, sacrificeInstanceId)) {
+        return { valid: false, error: "that companion is out scavenging — it can't be fused until it returns (or you cancel the scavenge)." };
+    }
+    if (companionFactory.isScavenging(userDetails, targetInstanceId)) {
+        return { valid: false, error: "your target companion is out scavenging — it can't receive fuel until it returns (or you cancel the scavenge)." };
+    }
+
+    const targetAtMaxLevel = (targetEntry.workCount || 0) >= companionFactory.MAX_LEVEL_WORK_COUNT;
+    const targetFullyAscended = (targetEntry.ascensionStars || 0) >= CompanionFusion.ASCENSION_MAX_STARS;
+    if (targetAtMaxLevel && targetFullyAscended) {
+        return { valid: false, error: "your target companion is already max level and fully ascended (5 stars) — it has nothing left to gain from fusion." };
+    }
+
+    const fuelValue = getFusionFuelValue(sacrificeEntry, sacrificeCompanion);
+    return { valid: true, sacrificeEntry, sacrificeCompanion, targetEntry, targetCompanion, fuelValue };
+}
+
+// Pure computation of the post-fusion companions state — does not touch potatoes (fusion
+// costs nothing but the sacrificed companion itself). Takes the validation object
+// validateFusionRequest already produced (entries/fuelValue) rather than re-deriving it,
+// same "caller already validated, this just commits" division of labor
+// resolveScavengeReward's own callers already follow.
+//
+// workCountGained is fuelValue clamped the exact same way every other leveling path clamps
+// (companionFactory.clampWorkCountGain) — whatever the clamp couldn't absorb into workCount
+// (because the target was already at, or crossed into, max level during this very fusion)
+// rolls straight into ascensionFuel instead of being wasted, so a fusion that pushes a
+// companion from just-below-max to exactly max doesn't need a second, separate fusion to
+// start banking stars with the leftover.
+function resolveFusion(userDetails, validation) {
+    const { sacrificeEntry, targetEntry, fuelValue } = validation;
+    const companions = userDetails.companions;
+
+    const startingWorkCount = targetEntry.workCount || 0;
+    const newWorkCount = companionFactory.clampWorkCountGain(startingWorkCount, fuelValue);
+    const workCountGained = newWorkCount - startingWorkCount;
+    const overflowFuel = fuelValue - workCountGained;
+
+    let ascensionFuel = targetEntry.ascensionFuel || 0;
+    let ascensionStars = targetEntry.ascensionStars || 0;
+    let starsGained = 0;
+    if (overflowFuel > 0) {
+        ascensionFuel += overflowFuel;
+        while (ascensionStars < CompanionFusion.ASCENSION_MAX_STARS &&
+               ascensionFuel >= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars]) {
+            ascensionFuel -= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars];
+            ascensionStars += 1;
+            starsGained += 1;
+        }
+    }
+
+    const updatedOwned = companions.owned
+        .filter(c => c.instanceId !== sacrificeEntry.instanceId)
+        .map(c => c.instanceId === targetEntry.instanceId
+            ? { ...c, workCount: newWorkCount, ascensionFuel, ascensionStars }
+            : c
+        );
+    // A sacrificed companion that happened to be the equipped one leaves the equip slot
+    // empty, same auto-unequip precedent companionMarketFactory.removeFromOwned already
+    // sets for selling/listing away the active companion.
+    const newActive = companions.active === sacrificeEntry.instanceId ? null : companions.active;
+
+    const { owned, maxLevelCount, mythicMaxLevelCount } = companionFactory.applyMaxLevelTracking(
+        { ...companions, owned: updatedOwned, active: newActive },
+        targetEntry.instanceId
+    );
+
+    return {
+        owned,
+        active: newActive,
+        maxLevelCount: maxLevelCount ?? (companions.maxLevelCount || 0),
+        mythicMaxLevelCount: mythicMaxLevelCount ?? (companions.mythicMaxLevelCount || 0),
+        fuelValue,
+        workCountGained,
+        ascensionFuel,
+        ascensionStars,
+        starsGained
+    };
+}
+
+module.exports = {
+    canBeSacrificed,
+    getFusionFuelValue,
+    validateFusionRequest,
+    resolveFusion
+}

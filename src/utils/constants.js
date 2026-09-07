@@ -650,6 +650,47 @@ const CompanionMarket = {
     NPC_SELL_RATIO_MAX: 0.50
 }
 
+// Companion Fusion (2026-09-07, direct instruction — "a lot of people are using
+// prospector to find the mythic companions however they also end up with a lot of other
+// common/rare and even legendary companions... what would be an interesting way of
+// making sure those still have some use rather than just npc selling or selling on the
+// market? maybe it can be used to get companions past max level?"). Lets an owned
+// Common/Rare/Legendary instance be permanently sacrificed into another owned instance as
+// leveling fuel — see companionFusionFactory.js for the actual mechanic. Mythic/Heirloom
+// are deliberately absent from BASE_FUEL below (and so can never be sacrificed at all) —
+// those are exactly what Prospector farming is FOR, and allowing them as fuel would
+// undercut their own scarcity and the marketplace for them.
+const CompanionFusion = {
+    // Flat fuel per sacrifice, by its own rarity, BEFORE folding in its own leveling
+    // progress (see companionFactory.getBreakpointFuel) — a fresh Legendary pull alone is
+    // still worth roughly 3x a Rare, mirroring the rough rarity-value spread
+    // CompanionMarket.MINIMUM_PRICE already establishes (though not the exact ratio —
+    // fusion fuel is a much smaller, hand-tuned number, not derived from the market floor).
+    BASE_FUEL: {
+        [CompanionRarity.COMMON]: 50,
+        [CompanionRarity.RARE]: 150,
+        [CompanionRarity.LEGENDARY]: 400
+    },
+    // Ascension: once a fusion TARGET's own workCount is already at the max-level cap
+    // (CompanionLeveling.THRESHOLDS' own last entry, 3,725), further fuel accumulates
+    // toward a new post-max-level tier instead of being wasted outright — direct
+    // instruction ("maybe it can be used to get companions past max level?"). Each star
+    // costs its own flat fuel amount, geometrically growing at exactly 1.5x per star
+    // (direct instruction: "each star cost 2000, then multiply by 1.5x") — 2,000 -> 3,000
+    // -> 4,500 -> 6,750 -> 10,125, summing to 26,375 fuel for all 5 (roughly 6-7 maxed
+    // Legendaries, or a realistic mix of a large overflow collection — a genuine long-haul
+    // sink, not a quick button). Index i = the cost to go from i stars to i+1.
+    ASCENSION_STAR_COSTS: [2000, 3000, 4500, 6750, 10125],
+    ASCENSION_MAX_STARS: 5,
+    // Level-10 multiplier once ascended to star N (index 0 = 1 star) — REPLACES (not
+    // stacks additively with) the plain getLevelMultiplier(10) value of 1.45x, the same
+    // way MimicryCompanion's own scaling replaces rather than stacks. Direct instruction,
+    // hand-picked with accelerating deltas from the 1.45x base: +.10, +.15, +.20, +.25,
+    // +.25 — later stars are worth more, not less, same design principle
+    // MercenaryRank.THRESHOLDS' own 2026-09-07 rework already established.
+    ASCENSION_MULTIPLIER_BY_STAR: [1.55, 1.70, 1.90, 2.15, 2.40]
+}
+
 // Bad-luck protection for repeated Poison Potato hits within the same week (see
 // workFactory.js's getCurrentWeekTag/computePoisonMitigation) — both the loss and the
 // (already-cut) lockout get progressively less painful the more times poison lands on the
@@ -3096,6 +3137,7 @@ module.exports = {
     CompanionRarity,
     CompanionRarityOdds,
     CompanionMarket,
+    CompanionFusion,
     PoisonMitigation,
     MimicMitigation,
     CompanionLeveling,

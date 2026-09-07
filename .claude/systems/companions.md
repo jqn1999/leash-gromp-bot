@@ -1,10 +1,11 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `Companions`) +
+`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `CompanionFusion`, `Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
-[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel}.js](../../src/commands/user/).
+[src/utils/companionFusionFactory.js](../../src/utils/companionFusionFactory.js) +
+[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse}.js](../../src/commands/user/).
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
@@ -1209,6 +1210,85 @@ real, visible moment. The bounded Option B ideas (Scavenging duration cut, one-t
 graduation payout, market-tax discount) remain on the roadmap as a possible later
 follow-up, not rejected outright — just not built this round.
 
+## Companion Fusion / Ascension
+
+`/companion-fuse` (2026-09-07, direct instruction — "there's a lot of people using
+Prospector to find the mythic companions however they also end up with a lot of other
+common/rare and even legendary companions... maybe it can be used to get companions past
+max level?"). Gives duplicate/overflow Common, Rare, and Legendary companions a use beyond
+NPC-selling or market-listing: permanently sacrifice one owned instance as XP "fuel" into
+another owned instance.
+
+**Sacrifice-side rarity gate**: only Common/Rare/Legendary can ever be the sacrifice
+(`CompanionFusion.BASE_FUEL` only has entries for those three — Mythic/Heirloom have none,
+enforced by `companionFusionFactory.canBeSacrificed`, "too valuable to burn"). Any owned
+instance, of any rarity including Mythic/Heirloom, can be the **target** — ascending your
+one Yamimic or best Mythic is very much the intended endgame use.
+
+**Fuel value** (`companionFusionFactory.getFusionFuelValue`) = a flat per-rarity
+`CompanionFusion.BASE_FUEL` (Common 50 / Rare 150 / Legendary 400) plus however much of the
+sacrifice's own leveling progress it's already banked — but only counted at its
+**breakpoint**, not raw `workCount` (`companionFactory.getBreakpointFuel`): a companion
+sitting between two `CompanionLeveling.THRESHOLDS` entries (say, between level 7's 925 and
+level 8's 1525) only contributes the lower one (925), not its exact current count. Direct
+instruction: "only the level breakpoints provide fuel up to that breakpoint... a companion
+between level 7 and 8 would only give the level 7 worth of fuel" — this discourages
+sacrificing a companion machine-gunned right up to the edge of its next level for a
+marginally bigger number.
+
+**Below the target's max level**, fuel just accelerates ordinary leveling — added straight
+to `workCount` like any other XP grant, clamped the same way every other leveling path now
+is (see the XP cap below). **Once the target is already at (or gets pushed to) max level**,
+whatever fuel the clamp couldn't absorb into `workCount` instead rolls into `ascensionFuel`
+(`companionFusionFactory.resolveFusion`) — a single fusion that crosses a companion from
+just-below-max into Ascension range doesn't need a second, separate fusion to start banking
+stars with the leftover.
+
+**Ascension** is a 5-star track (`CompanionFusion.ASCENSION_MAX_STARS`) on top of max level.
+Each star costs its own flat fuel amount, geometrically growing at exactly 1.5x per star —
+`CompanionFusion.ASCENSION_STAR_COSTS`: `[2000, 3000, 4500, 6750, 10125]`, summing to 26,375
+for all 5 (roughly 6-7 maxed Legendaries, or a realistic mix of overflow — a genuine
+long-haul sink, not a quick button). Once ascended, a star's own multiplier
+(`CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR`: `[1.55, 1.70, 1.90, 2.15, 2.40]`) **REPLACES**
+— never stacks with — the ordinary max-level `getLevelMultiplier(10)` value of 1.45x, hand-
+picked with accelerating deltas from that 1.45x base (+.10, +.15, +.20, +.25, +.25) — later
+stars are worth more, not less, the same design principle `MercenaryRank.THRESHOLDS`' own
+2026-09-07 accelerating-curve rework already established.
+
+`companionFactory.getInstanceLevelMultiplier(instance)` is the new shared entry point every
+real level-scaled perk consumer routes through instead of calling `getLevelMultiplier(level)`
+directly: identical to the old behavior below max level or with 0 ascension stars, but
+returns the star's own multiplier once both conditions are met. Wired into
+`getGuineaPigRebate`, `getActivePerkValue`, `computeMimicryBestPerks`, and (Yamimic's own
+scale, not the mirrored companion's) `getMimicryPerkValue` — an ascended Yamimic scales its
+own mirrored output up too, same as any other ascended companion's perk.
+
+**Every non-Fusion leveling path now caps `workCount` at 3,725** (the level-10 threshold) —
+direct instruction, "make sure that xp from every non fusion is capped at 3725."
+`companionFactory.clampWorkCountGain(currentWorkCount, gain)` is the shared clamp, wired into
+`levelActiveCompanion` (the funnel for `/work`, `/rob`, `/sell-starch`, `/take-bounty`,
+`/rob-npc`, `/regrade`, `/confront-rival`), `applyPassiveCompanionTick`, and
+`resolveScavengeReward` — a companion sitting well past max level from years of accumulated
+`/work` no longer just grows its raw `workCount` number forever for no effect (level and
+every level-scaled perk were already clamped at max level regardless of how high `workCount`
+climbed). Only Fusion's own `ascensionFuel` field is allowed to keep growing past this point.
+
+**`/companion-fuse`** mirrors `companionSellNpc.js`'s confirm/cancel shape (preview embed →
+30s button collector → re-fetch and re-validate against fresh state before committing →
+result embed), but is the first command in this codebase needing two independent
+autocomplete fields on one command (`sacrifice`, filtered to Common/Rare/Legendary only via
+`getFocused(true).name`, and `target`, unfiltered) rather than one. Sacrificing the
+currently-equipped instance auto-unequips it, same precedent
+`companionMarketFactory.removeFromOwned` already sets for selling/listing the active
+companion away. A companion out scavenging can be neither the sacrifice nor the target
+(same `isScavenging` guard every other companion-mutating command already checks).
+
+**Ascension deliberately does not survive a market sale** — `companionMarket.js`'s
+`attemptBuy`/`companionMarketFactory.buildListing` only ever capture `workCount`, the same
+way `hasReachedMaxLevel`/`hasScavenged` already don't carry over through a resale today; this
+wasn't extended for Ascension so the two stay consistent (leveling investment transfers,
+meta-progress tags don't).
+
 ## Achievements
 
 New `Achievements` entries (see [achievements.md](achievements.md)) read the same
@@ -1227,10 +1307,14 @@ checker — no new checking code needed:
 
 ## Persistence
 
-`userDetails.companions: { owned: [{ instanceId, id, workCount, hasReachedMaxLevel? }], active:
-instanceId|null, ownedCount, mythicOwnedCount, scavenging: { instanceId, rarity, returnsAt } | null,
-maxLevelCount, mythicMaxLevelCount }`, backfilled onto existing accounts by `findUser`'s self-healing
-pattern like every other field. `maxLevelCount`/`mythicMaxLevelCount` (added 2026-08-26 by the
+`userDetails.companions: { owned: [{ instanceId, id, workCount, hasReachedMaxLevel?, ascensionStars?,
+ascensionFuel? }], active: instanceId|null, ownedCount, mythicOwnedCount, scavenging: { instanceId,
+rarity, returnsAt } | null, maxLevelCount, mythicMaxLevelCount }`, backfilled onto existing accounts
+by `findUser`'s self-healing pattern like every other field. `ascensionStars`/`ascensionFuel` (added
+2026-09-07 by Companion Fusion above) are absent until an instance's first fusion as a target — every
+read site treats a missing value as `0` (`instance.ascensionStars || 0`), so no backfill/migration
+step was needed, the same "write-once, default-zero-when-absent" shape `hasScavenged` already uses.
+`maxLevelCount`/`mythicMaxLevelCount` (added 2026-08-26 by the
 Max-Level capstone above) went through the same generic one-level-deep nested-object heal
 `scavenging` did — zero new healing code, same mechanism — while `hasReachedMaxLevel` on an owned
 entry is write-once by `companionFactory.applyMaxLevelTracking` itself (absent until an instance

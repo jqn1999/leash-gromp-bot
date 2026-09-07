@@ -45,7 +45,7 @@ function buildOwnedPages(userDetails) {
     const ownedCompanions = (userDetails.companions?.owned ?? [])
         .map(o => {
             const companion = companionFactory.getCompanionById(o.id);
-            return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false, lastUsedAt: o.lastUsedAt || 0 } : null;
+            return companion ? { ...companion, instanceId: o.instanceId, workCount: o.workCount || 0, hasScavenged: o.hasScavenged || false, lastUsedAt: o.lastUsedAt || 0, ascensionStars: o.ascensionStars || 0, ascensionFuel: o.ascensionFuel || 0 } : null;
         })
         .filter(Boolean);
     // Most-recently-used-for-work-or-scavenging first (2026-08-30, direct instruction) —

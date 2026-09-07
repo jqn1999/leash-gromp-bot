@@ -8802,3 +8802,73 @@ bonus" subsection with the full formula/reasoning, the STARCH_RANGE paragraph co
 previously claimed the starch payout was never scaled by `effectiveMultiplier` at all — now
 qualified as "the base roll," since the new bonus IS scaled by it for three rarities), and the
 Numbers table gained a "Multi-scaled bonus ceiling" column.
+
+## Companion Fusion / Ascension: new `/companion-fuse` command (2026-09-07, direct instruction)
+
+Player asked for a use for overflow Common/Rare/Legendary companions found while
+Prospector-hunting for Mythics, beyond NPC-selling/market-listing — floated "get companions past
+max level" and "combine into other companions" as ideas. Design refined over several follow-up
+messages, finalized with exact numbers: XP cap of 3,725 (the level-10 threshold) on every
+non-Fusion leveling path; Ascension star costs `2000 * 1.5^n` (2000/3000/4500/6750/10125);
+leveling-based fuel counted only at breakpoints, not raw workCount ("a companion between level 7
+and 8 would only give the level 7 worth of fuel"); and finally the 5 Ascension multipliers
+themselves: **"make it 1.55, 1.7, 1.9, 2.15, and 2.4."**
+
+**Mechanic**: `/companion-fuse` permanently sacrifices one owned Common/Rare/Legendary instance
+(Mythic/Heirloom can never be the sacrifice — `CompanionFusion.BASE_FUEL` has no entry for them,
+"too valuable to burn" — but CAN be the target) as fuel into another owned instance of the
+player's choice. Fuel value = a flat per-rarity `CompanionFusion.BASE_FUEL` (50/150/400) plus the
+sacrifice's own leveling progress at its last-crossed breakpoint
+(`companionFactory.getBreakpointFuel`, new). Below the target's max level, fuel just accelerates
+ordinary leveling; once the target is at (or crosses into) max level, whatever the leveling clamp
+couldn't absorb rolls into a new `ascensionFuel` counter instead, banking `ascensionStars` (0-5) as
+each `CompanionFusion.ASCENSION_STAR_COSTS` threshold is crossed. At 1+ ascension stars, the
+target's max-level perk multiplier switches from the ordinary 1.45x to
+`CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[stars - 1]` (`[1.55, 1.70, 1.90, 2.15, 2.40]`) —
+REPLACING, never stacking with, the base value, mirroring how `MimicryCompanion`'s own scaling
+already replaces rather than stacks.
+
+**New shared primitives** in `companionFactory.js`: `MAX_COMPANION_LEVEL`/`MAX_LEVEL_WORK_COUNT`
+(shared consts, previously duplicated privately in `embedFactory.js`),
+`getInstanceLevelMultiplier(instance)` (the new Ascension-aware entry point wired into
+`getGuineaPigRebate`/`getActivePerkValue`/`computeMimicryBestPerks`/`getMimicryPerkValue` in place
+of their old `getLevelMultiplier(getCompanionLevel(...))` calls), `clampWorkCountGain` (wired into
+`levelActiveCompanion`/`applyPassiveCompanionTick`/`resolveScavengeReward` so every non-Fusion
+leveling path now caps at 3,725 — direct instruction, "make sure that xp from every non fusion is
+capped at 3725"), and `getBreakpointFuel`. New `companionFusionFactory.js`
+(`canBeSacrificed`/`getFusionFuelValue`/`validateFusionRequest`/`resolveFusion`) holds the
+Fusion-specific logic, kept separate from `companionFactory.js` the same way
+`companionMarketFactory.js` already is. New `companionFuse.js` command mirrors
+`companionSellNpc.js`'s confirm/cancel/re-validate shape, but is the first command needing two
+independent autocomplete fields (`sacrifice`, rarity-filtered; `target`, unfiltered) rather than
+one — branches on `interaction.options.getFocused(true).name`.
+
+**Ascension does not survive a market sale** (`companionMarket.js`'s `attemptBuy`/
+`companionMarketFactory.buildListing` only ever capture `workCount`) — a deliberate scope decision
+to match existing precedent, since `hasReachedMaxLevel`/`hasScavenged` already don't carry over
+through a resale either; leveling investment transfers, meta-progress tags don't.
+
+**New embeds** (`embedFactory.js`): `createFusionPreviewEmbed`/`createFusionCancelledEmbed`/
+`createFusionCompleteEmbed`. `createCompanionListEmbed` and `/profile`'s active-companion line
+both gained a filled/empty 5-star readout (`🌟★★☆☆☆`) plus a fuel-to-next-star progress line for a
+max-level, not-fully-ascended instance — `formatCompanionPerks` gained an optional
+`ascensionStars` parameter (default 0, so every existing roster-reference/market-listing call site
+is unaffected) that replaces its internal level-multiplier lookup with the same
+replace-not-stack Ascension rule.
+
+**Tests**: `companionFactory.test.js` gained `getInstanceLevelMultiplier`/`clampWorkCountGain`/
+`getBreakpointFuel` describe blocks plus a "real perk consumers" block confirming the multiplier
+replace-not-stack behavior and the workCount-cap behavior across all three non-Fusion leveling
+funnels. New `companionFusionFactory.test.js` (20 tests) covers the full
+validate/resolve surface, including the star-crossing/leftover-carry-forward math and the
+Max-Level capstone firing correctly when a fusion itself crosses a target into max level. New
+`companionFuse.test.js` (9 tests) drives the real command callback/autocomplete end-to-end
+(confirm/cancel/timeout, re-validation against fresh state, scavenging-state preservation on
+write, sacrifice-only rarity filtering in autocomplete). Full suite green (1202/1202, up from
+1154 on `main`).
+
+**Docs**: `.claude/systems/companions.md` gained a new "Companion Fusion / Ascension" section
+with the full mechanic/formula writeup, its top file-list gained `CompanionFusion`/
+`companionFusionFactory.js`/`companionFuse.js`, and its Persistence section documented the new
+`ascensionStars`/`ascensionFuel` owned-entry fields (absent-defaults-to-0, no backfill needed —
+same shape `hasScavenged` already uses).

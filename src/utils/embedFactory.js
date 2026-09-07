@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -160,12 +160,28 @@ const MERCENARY_RANK_TITLES = {
     6: "The Iron Tuber"
 };
 
+// Companion Fusion / Ascension (2026-09-07) — the same replace-not-stack rule
+// companionFactory.getInstanceLevelMultiplier applies off a real owned instance, just off
+// a bare (level, ascensionStars) pair instead — several call sites below only ever have
+// level already computed (not the raw instance), so this mirrors that function's logic
+// without requiring a full instance object.
+function getEffectiveLevelMultiplier(level, ascensionStars = 0) {
+    if (level >= MAX_COMPANION_LEVEL && ascensionStars > 0) {
+        return CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[ascensionStars - 1];
+    }
+    return companionFactory.getLevelMultiplier(level);
+}
+
 // level defaults to 1 (unscaled) for roster-reference displays (createHelpCompanionsEmbed)
 // that aren't showing a specific owned instance. Callers that ARE showing one (the
 // companion list, market listings) pass the real level so the value shown matches what
 // the perk actually resolves to in play — companionFactory.getActivePerkValue applies
-// the exact same scaling at the real usage site, so this never overstates it.
-function formatCompanionPerks(companion, level = 1) {
+// the exact same scaling at the real usage site, so this never overstates it. ascensionStars
+// (new, optional, default 0) only ever matters for the two callers showing a live owned
+// instance (the companion list, /profile's active companion line) — market listings and
+// roster-reference displays never carry ascension state (see companionFusionFactory.js's
+// own comment on why ascension deliberately doesn't survive a market sale).
+function formatCompanionPerks(companion, level = 1, ascensionStars = 0) {
     // Yamimic, the Thousand-Faced (Heirloom) — every entry in its own perks array carries
     // `value: null` (a manifest of supported types, not real numbers — see the Companions
     // entry's own comment), so the generic `perk.value * multiplier` computation below
@@ -175,10 +191,10 @@ function formatCompanionPerks(companion, level = 1) {
     // arbitrary/no player's collection can compute, so this shows what it DOES rather
     // than a number.
     if (companion.id === MimicryCompanion.ID) {
-        const scalePercent = ((companionFactory.getLevelMultiplier(level) - MimicryCompanion.SCALE_OFFSET) * 100).toFixed(0);
+        const scalePercent = ((getEffectiveLevelMultiplier(level, ascensionStars) - MimicryCompanion.SCALE_OFFSET) * 100).toFixed(0);
         return `Mirrors your single best Passive Income, Rebirth Bonus, Work Multiplier, /work Cooldown Skip Chance, Regrade Success Boost, Rob Success Chance, Starch Sell Value, Bounty Reward, and Rival Confrontation Success Chance — whichever companion you already have the best of, for each — at ${scalePercent}% effectiveness (scales with its own level, excludes Prospector)`;
     }
-    const multiplier = companionFactory.getLevelMultiplier(level);
+    const multiplier = getEffectiveLevelMultiplier(level, ascensionStars);
     return companion.perks.map(perk => {
         // poisonImmunity doesn't fit the "one value multiplied up" shape every other perk
         // uses — see companionFactory.getGuineaPigRebate.
@@ -521,12 +537,13 @@ class EmbedFactory {
             // Multiplier/Passive Income/Bank Capacity numbers — without it this line would
             // show the base (level 1) perk text while the bonuses folded in above it are
             // already the real leveled amount, understating what's actually being applied.
+            const activeInstanceForDisplay = companionFactory.getActiveInstance(userDetails);
             const activeCompanionLevel = activeCompanion
-                ? companionFactory.getCompanionLevel(companionFactory.getActiveInstance(userDetails)?.workCount)
+                ? companionFactory.getCompanionLevel(activeInstanceForDisplay?.workCount)
                 : 1;
             fields.push({
                 name: "Active Companion:",
-                value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion, activeCompanionLevel)})` : "None equipped",
+                value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion, activeCompanionLevel, activeInstanceForDisplay?.ascensionStars || 0)})` : "None equipped",
                 inline: false,
             });
 
@@ -1881,6 +1898,111 @@ class EmbedFactory {
         return embed;
     }
 
+    // Companion Fusion / Ascension (2026-09-07) preview, shown before the confirm/cancel
+    // buttons on /companion-fuse — same "show the real numbers before a one-way action"
+    // framing companionSellNpc.js's own confirm text uses, just as an embed since there's
+    // more to show here (two companions, a fuel value, and what it does to the target).
+    createFusionPreviewEmbed(userDisplayName, sacrificeCompanion, sacrificeEntry, targetCompanion, targetEntry, fuelValue) {
+        const sacrificeLevel = companionFactory.getCompanionLevel(sacrificeEntry.workCount);
+        const targetLevel = companionFactory.getCompanionLevel(targetEntry.workCount);
+        const targetAscensionStars = targetEntry.ascensionStars || 0;
+        const targetAtMaxLevel = targetLevel === MAX_COMPANION_LEVEL;
+
+        const outcomeDescription = targetAtMaxLevel
+            ? `${targetCompanion.name} is already max level — this fuel goes entirely toward Ascension.`
+            : `${targetCompanion.name} isn't max level yet — this fuel levels it up like ordinary XP (capped at max level; any leftover rolls into Ascension automatically).`;
+
+        const fields = [
+            {
+                name: `Sacrificing:`,
+                value: `${sacrificeCompanion.name} (${COMPANION_RARITY_LABEL[sacrificeCompanion.rarity]}, Lv. ${sacrificeLevel}) — gone permanently, no refunds`,
+                inline: false,
+            },
+            {
+                name: `Fusing Into:`,
+                value: `${targetCompanion.name} (${COMPANION_RARITY_LABEL[targetCompanion.rarity]}, Lv. ${targetLevel}${targetAscensionStars > 0 ? `, ${'★'.repeat(targetAscensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - targetAscensionStars)}` : ''})`,
+                inline: false,
+            },
+            {
+                name: `Fuel Value:`,
+                value: `${fuelValue.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: `What This Does:`,
+                value: outcomeDescription,
+                inline: false,
+            }
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, fuse ${sacrificeCompanion.name} into ${targetCompanion.name}?`)
+            .setDescription(`This permanently sacrifices ${sacrificeCompanion.name} — there's no undo.`)
+            .setColor(COMPANION_RARITY_COLOR[targetCompanion.rarity])
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    createFusionCancelledEmbed(userDisplayName) {
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`Nothing was fused — both companions are untouched.`)
+            .setColor("Grey")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // result: companionFusionFactory.resolveFusion's return — workCountGained/starsGained/
+    // ascensionStars/ascensionFuel drive the two outcome branches (ordinary leveling vs.
+    // Ascension progress/star-ups), same before/after framing createScavengeReturnEmbed
+    // already uses for its own XP callout.
+    createFusionCompleteEmbed(userDisplayName, sacrificeCompanion, targetCompanion, targetEntryBefore, result) {
+        const levelBefore = companionFactory.getCompanionLevel(targetEntryBefore.workCount);
+        const workCountAfter = (targetEntryBefore.workCount || 0) + result.workCountGained;
+        const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
+
+        const fields = [
+            {
+                name: `Sacrificed:`,
+                value: `${sacrificeCompanion.name} — fuel value ${result.fuelValue.toLocaleString()}`,
+                inline: false,
+            }
+        ];
+
+        if (result.workCountGained > 0) {
+            fields.push({
+                name: `${targetCompanion.name}'s XP:`,
+                value: levelAfter > levelBefore
+                    ? `Lv. ${levelBefore} → Lv. ${levelAfter}! 🎉 (+${result.workCountGained.toLocaleString()} XP)`
+                    : `+${result.workCountGained.toLocaleString()} XP (Lv. ${levelAfter})`,
+                inline: false,
+            });
+        }
+
+        if (result.ascensionStars > 0) {
+            const nextStarCost = CompanionFusion.ASCENSION_STAR_COSTS[result.ascensionStars];
+            const ascensionProgress = result.ascensionStars < CompanionFusion.ASCENSION_MAX_STARS
+                ? `\n${result.ascensionFuel.toLocaleString()} / ${nextStarCost.toLocaleString()} fuel to ${'★'.repeat(result.ascensionStars + 1)}`
+                : `\nFully ascended!`;
+            fields.push({
+                name: result.starsGained > 0 ? `🌟 Ascension Star Gained!` : `🌟 Ascension Progress:`,
+                value: `${'★'.repeat(result.ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - result.ascensionStars)} — max-level multiplier now ${CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[result.ascensionStars - 1]}x${ascensionProgress}`,
+                inline: false,
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} fused ${sacrificeCompanion.name} into ${targetCompanion.name}!`)
+            .setColor(COMPANION_RARITY_COLOR[targetCompanion.rarity])
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Ancient Potato's outcome branches like Metal Potato's success/failure split, but
     // on regrade-vs-potato-reward instead — doesn't fit createWorkEmbed's single
     // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own
@@ -2505,9 +2627,24 @@ class EmbedFactory {
             // correctly even for an instance maxed before this feature existed.
             const bondedTag = isMaxLevel ? ' ⭐ Bonded' : '';
             const bondedFlavor = isMaxLevel ? '\nThis companion has reached its full potential and stands proudly by your side.' : '';
+            // Companion Fusion / Ascension (2026-09-07) — a filled/empty 5-star readout
+            // (🌟★★☆☆☆) distinct from the plain Bonded ⭐ tag above, plus a fuel-to-next-star
+            // progress line once this instance is max level and hasn't hit all 5 stars yet
+            // (getOwnedEntry's own workCount/ascensionFuel/ascensionStars fields, folded into
+            // this merged display object by companion.js's buildOwnedPages).
+            const ascensionStars = companion.ascensionStars || 0;
+            const ascensionTag = ascensionStars > 0
+                ? ` 🌟${'★'.repeat(ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - ascensionStars)}`
+                : '';
+            let ascensionProgress = '';
+            if (isMaxLevel && ascensionStars < CompanionFusion.ASCENSION_MAX_STARS) {
+                const ascensionFuel = companion.ascensionFuel || 0;
+                const nextStarCost = CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars];
+                ascensionProgress = `\n${ascensionFuel.toLocaleString()} / ${nextStarCost.toLocaleString()} Ascension fuel to ${'★'.repeat(ascensionStars + 1)} (use /companion-fuse)`;
+            }
             return {
-                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}${bondedTag}`,
-                value: `${formatCompanionPerks(companion, level)}\n${progress}${bondedFlavor}\n${status}`,
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}${scoutTag}${bondedTag}${ascensionTag}`,
+                value: `${formatCompanionPerks(companion, level, ascensionStars)}\n${progress}${ascensionProgress}${bondedFlavor}\n${status}`,
                 inline: false,
             };
         }) : [{ name: 'No companions yet', value: 'Keep working — Wandering Companion encounters can happen on any /work!', inline: false }];
