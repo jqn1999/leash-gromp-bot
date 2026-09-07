@@ -120,13 +120,36 @@ see that file's own comment.
 
 A third, mercenary-exclusive category (2026-08-29) rewarding **Safehouse capacity** instead of a
 stat bonus — see [systems/safehouses.md](safehouses.md#mercenary-quest-bonus) for how the reward
-is actually applied. Originally a two-tier Bounty-only ladder (win 3 / win 6 Bounties, 750K/1.5M),
-retuned the same day (direct instruction: "make merc contracts 12 bounties or 12 heists and grant 5
-million capacity") into a single-threshold Bounty-OR-Heist **pair** — `merc_bounty_wins_12`
-(`mercenaryBountyWinCount`) and `merc_heist_wins_12` (`mercenaryHeistWinCount`), both threshold 12,
-both granting a flat 5,000,000 — mirroring how Guild Contracts already offer several different
-weekly objectives with one active at a time rather than a difficulty ladder. Only one of the two
-ever rotates in per week (`MercenaryQuest.ACTIVE_COUNT` is 1).
+is actually applied. Went through three shapes: a two-tier Bounty-only ladder at launch (win 3 /
+win 6 Bounties, 750K/1.5M) → a single-threshold Bounty-OR-Heist pair the same day (direct
+instruction: "make merc contracts 12 bounties or 12 heists and grant 5 million capacity," 12 wins
+each, flat 5,000,000) → **the current scaling `tiers` ladder** (2026-09-07, direct instruction:
+"right now its 12 bounties for the weekly. Can you make it 15 for the weekly, 5 million per
+bounty up to 25 million a week safehouse increase? so at max it would be 75 bounties in the week
+to get 25 million safehouse bonus").
+
+**Current shape**: `merc_bounty_wins_12` (`mercenaryBountyWinCount`) and `merc_heist_wins_12`
+(`mercenaryHeistWinCount`) each carry a `tiers` array instead of a single `threshold`/`reward` —
+5 tiers, each granting its own +5,000,000 `additionalSafehouseStorage` as the player's win count
+for the week climbs past each threshold, all claimable in the SAME rotation (not a pick-one
+difficulty ladder like Guild Contracts' pool):
+
+```js
+// Bounty Sweep — Bounty.BOUNTY_TIMER_SECONDS cooldown (3600s)
+tiers: [15, 30, 45, 60, 75].map(threshold => ({ threshold, reward: { type: "additionalSafehouseStorage", amount: 5000000 } }))
+// Heist Sweep — RobNpc.NPC_ROB_TIMER_SECONDS cooldown (1800s), exactly half Bounty's
+tiers: [30, 60, 90, 120, 150].map(threshold => ({ threshold, reward: { type: "additionalSafehouseStorage", amount: 5000000 } }))
+```
+
+Heist's thresholds are exactly DOUBLE Bounty's at every tier — direct instruction ("make the heist
+one double the amounts, rob-npc is 30 minute cd and bounty is 1 hour"): since Heist's cooldown is
+half Bounty's, a mercenary can attempt twice as many Heists in the same real time, so doubling the
+win-count thresholds (not the reward amounts) keeps both ladders requiring the same real-time
+investment for the same total reward — the same parity principle
+[systems/companions.md](companions.md#leveling)'s `getCooldownScaledWorkCountGrant`/
+`REALISTIC_PLAY_DISCOUNT` already establish for companion leveling. Both ladders cap at the same
++25,000,000 total for the full 5 tiers. Only one of the two templates ever rotates in per week
+(`MercenaryQuest.ACTIVE_COUNT` is 1).
 
 Both conditions read durable lifetime win counters, deliberately not `mercenaryNotoriety` (a
 resettable resource, unsafe as a quest condition since it can go backwards mid-week — spent down by
@@ -139,10 +162,29 @@ win only fed `mercenaryNotoriety`. It does **not** affect Mercenary Rank, which 
   and `getProgress`) when `userDetails.isMercenary` is true. A non-mercenary never gets a baseline
   snapshotted for it, never sees it in `/quests`, and never has it counted toward
   `completedCount`/`totalCount` — same as it not existing for them at all, not just hidden.
-- **Reward shape**: flat, non-ramping (`reward: { type: 'additionalSafehouseStorage', amount }`) —
-  deliberately NOT scaled by regrade progress the way weekly `statType` rewards are, since a flat
-  Safehouse-capacity bump has no equivalent regrade track to ramp against. Multiple completions in
-  the same check sum into one write, same as daily.
+- **State**: a tiered template's per-user quest state is `{ startValue, rotationDate,
+  tiersCompleted }` — `tiersCompleted` (an INDEX into `template.tiers`, not a boolean) replaces
+  the flat shape's `completed: true/false`, since a tiered quest can complete multiple times
+  across the same rotation instead of exactly once. `questFactory.js`'s `checkAndClaimQuests`
+  branches on `template.tiers` right after baseline establishment: it walks forward from
+  `tiersCompleted`, granting every NEWLY-crossed tier this call (a loop, not a single check, in
+  case a big jump crosses several tiers at once — e.g. quest-state backfill), and only stops
+  checking once `tiersCompleted === template.tiers.length` (the whole ladder claimed for the
+  week). Each tier crossed pushes its own synthetic entry into `completedQuests` (reusing
+  `createQuestCompleteEmbed`'s existing `additionalSafehouseStorage` branch as-is, so crossing 2+
+  tiers in one call shows each as its own field in the same completion embed) and adds its own
+  amount to `additionalSafehouseStorageReward` — multiple tiers in one call still sum into one
+  write, same as every other multi-completion case here.
+- **Reward shape**: flat, non-ramping per tier (`reward: { type: 'additionalSafehouseStorage',
+  amount }`) — deliberately NOT scaled by regrade progress the way weekly `statType` rewards are,
+  since a flat Safehouse-capacity bump has no equivalent regrade track to ramp against.
+- **`getProgress`** returns `{ quest, isCompleted, progress, tiersCompleted, totalTiers,
+  nextTierThreshold }` for a tiered template instead of the flat shape's `{ quest, isCompleted,
+  progress }` — `isCompleted` only flips once every tier is claimed, `progress` is capped at the
+  LAST tier's threshold (not the next one), and `nextTierThreshold` is `null` once the ladder's
+  fully claimed. `createQuestsPageEmbed` branches on `quest.tiers` to show "Tier X/Y — (progress /
+  next tier's threshold)" while in progress, or "All N tiers complete!" once done, instead of
+  reading `quest.threshold` (which doesn't exist on a tiered template at all).
 - **Checked from `take-bounty.js` (Bounty option) and `rob-npc.js` (Heist option)** — each
   condition's counter only ever changes at its own call site, so those are the only two places that
   can ever advance or complete this track. Both use the same post-write `findUser` refetch already

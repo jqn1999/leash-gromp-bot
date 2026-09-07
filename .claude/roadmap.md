@@ -8585,3 +8585,65 @@ argument (mechanical fallout of the signature change, not new behavior). Full su
 **Docs**: `.claude/systems/economy-and-work.md`'s 2026-08-25 write-up corrected — it had claimed
 Guinea Pig's immune branch "stays skippable exactly as before," which is no longer true — and a new
 2026-09-07 follow-up paragraph added directly after it describing this fix.
+
+## Mercenary Quest reworked into a scaling 5-tier ladder (2026-09-07, direct instruction)
+
+Player asked: "right now its 12 bounties for the weekly. Can you make it 15 for the weekly, 5
+million per bounty up to 25 million a week safehouse increase? so at max it would be 75 bounties
+in the week to get 25 million safehouse bonus." This is the third shape the Mercenary Quest
+track has taken: a two-tier Bounty-only ladder at launch (3/6 wins, 750K/1.5M) → a
+single-threshold Bounty-OR-Heist pair (12 wins, flat 5M, 2026-08-29) → this scaling ladder, which
+brings back the "ladder" idea but as MULTIPLE claimable tiers within the same week rather than a
+pick-one difficulty choice.
+
+**New template shape**: `Quests` entries can now carry a `tiers` array (`{threshold, reward}[]`)
+instead of a single `threshold`/`reward` pair — a template has EITHER shape, never both.
+`merc_bounty_wins_12` (kept its stale id, same "avoids an active mid-rotation quest losing its
+templateId on deploy" precedent Guild Contracts' own retuned ids use) now has 5 tiers at
+15/30/45/60/75 `mercenaryBountyWinCount`, each granting +5,000,000 `additionalSafehouseStorage` —
+up to +25,000,000 for the full ladder in one week, exactly matching the requested numbers.
+
+**Heist Sweep asymmetry, follow-up direct instruction**: "make the heist one double the amounts,
+rob-npc is 30 minute cd and bounty is 1 hour." `merc_heist_wins_12`'s tiers are 30/60/90/120/150 —
+every threshold exactly DOUBLE Bounty's, same per-tier reward and same 25M cap. Reasoning: Heist's
+cooldown (`RobNpc.NPC_ROB_TIMER_SECONDS`, 1800s) is exactly half Bounty's
+(`Bounty.BOUNTY_TIMER_SECONDS`, 3600s), so a mercenary can attempt twice as many Heists in the same
+real time — doubling the win-count thresholds (not the reward amounts) keeps both ladders
+requiring the same real-time investment for the same total reward, the same parity principle
+`getCooldownScaledWorkCountGrant`/`REALISTIC_PLAY_DISCOUNT` already establish for companion
+leveling elsewhere in this codebase.
+
+**`questFactory.js` implementation**: per-user quest state for a tiered template is `{ startValue,
+rotationDate, tiersCompleted }` — `tiersCompleted` (an index into `template.tiers`) replaces the
+flat shape's `completed: true/false`, since a tiered quest can complete multiple times across one
+rotation instead of exactly once. `checkAndClaimQuests` branches on `template.tiers` right after
+baseline establishment: walks forward from `tiersCompleted`, granting every newly-crossed tier in
+a loop (handles a single big jump crossing several tiers at once, not just the common
+one-at-a-time case), pushing a synthetic per-tier entry into `completedQuests` for each — reusing
+`createQuestCompleteEmbed`'s existing `additionalSafehouseStorage` branch as-is, so crossing
+multiple tiers in one call shows each as its own field in the same completion embed. Stops
+checking once every tier is claimed for the week. `getProgress` returns `{ tiersCompleted,
+totalTiers, nextTierThreshold }` alongside the usual `{ quest, isCompleted, progress }` for a
+tiered template — `isCompleted` only flips once the whole ladder's claimed, `progress` caps at the
+LAST tier's threshold, `nextTierThreshold` goes `null` once done. `createQuestsPageEmbed` gained a
+branch for `quest.tiers` (no `quest.threshold` exists on these) showing "Tier X/Y — (progress /
+next tier)" in progress, or "All N tiers complete!" once done.
+
+**Tests**: `questFactory.test.js`'s Mercenary Quest describe block rewritten for the tiered shape
+(11 tests: first-tier crossing grants exactly one tier not the whole ladder, a later check
+crossing a second tier only grants the increment, a single big jump crossing 3 tiers grants all 3
+at once, reaching the final tier grants the full 25M and marks the ladder fully completed, no
+further grants once fully completed — with a write from unrelated quest baselining still
+correctly excluded from the assertion, accumulation on top of an existing balance, non-mercenary
+exclusion, Heist Sweep's own first-tier crossing, Heist's thresholds verified exactly double
+Bounty's at every tier with matching per-tier/total rewards, and 3 `getProgress` tests for the new
+tier fields). `embedFactory.test.js` — 3 new `createQuestsPageEmbed` tests (flat quest unaffected,
+tiered-in-progress shows the right tier/next-threshold text, fully-tiered-complete shows the
+"all tiers complete" text instead of crashing on a nonexistent `quest.threshold`). Full suite
+green (1131/1131).
+
+**Docs**: `.claude/systems/quests.md`'s Mercenary Quest section rewritten for the tiered shape and
+the Bounty/Heist parity reasoning; `.claude/systems/safehouses.md`'s "Mercenary Quest bonus"
+section corrected (it had stale "winning 3/6 Bounties" text from the very first shape, predating
+even the 12-win retune, and incorrectly claimed the bonus could only be earned via Bounty when
+Heist grants it too).

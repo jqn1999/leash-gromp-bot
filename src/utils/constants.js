@@ -348,8 +348,53 @@ const Quests = [
     // mercenaryBountyWinCount is in takeBounty.js's. Both templates share the same
     // threshold/reward since neither objective is meant to read as the "easy" or "hard"
     // option — just two different existing mercenary actions a player can lean on.
-    { id: "merc_bounty_wins_12", name: "Bounty Sweep", description: "Win 12 Bounties this week", category: "mercenary", statPath: "mercenaryBountyWinCount", threshold: 12, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
-    { id: "merc_heist_wins_12", name: "Heist Sweep", description: "Win 12 Heists this week", category: "mercenary", statPath: "mercenaryHeistWinCount", threshold: 12, reward: { type: "additionalSafehouseStorage", amount: 5000000 } }
+    // Reworked into a scaling 5-tier ladder, 2026-09-07 direct instruction ("right now
+    // its 12 bounties for the weekly. Can you make it 15 for the weekly, 5 million per
+    // bounty up to 25 million a week safehouse increase? so at max it would be 75
+    // bounties in the week to get 25 million safehouse bonus") — from the prior flat
+    // single-threshold shape (12 wins -> 5M, see the retune comment above) to a `tiers`
+    // array: every 15 additional Bounty wins in the SAME week unlocks another +5,000,000
+    // Safehouse Storage, up to 5 tiers (75 wins total) for the full +25,000,000. `tiers`
+    // (an array of `{threshold, reward}`, cumulative thresholds against the same
+    // statPath delta) is a new template shape alongside the existing flat
+    // `threshold`/`reward` one — see questFactory.js's checkAndClaimQuests/getProgress
+    // for the parallel code path this requires (a template has EITHER `tiers` OR
+    // `threshold`/`reward`, never both). ids kept unchanged despite no longer matching
+    // "12" at all — same "stale naming convention, avoids an active mid-rotation quest
+    // losing its templateId on deploy" precedent Guild Contracts' own retuned ids use.
+    {
+        id: "merc_bounty_wins_12", name: "Bounty Sweep",
+        description: "Win Bounties this week for scaling Safehouse Storage: +5,000,000 at 15/30/45/60/75 wins (up to +25,000,000 total)",
+        category: "mercenary", statPath: "mercenaryBountyWinCount",
+        tiers: [
+            { threshold: 15, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 30, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 45, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 60, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 75, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+        ]
+    },
+    // Heist Sweep mirrors Bounty Sweep's ladder exactly, but with every threshold DOUBLED
+    // (30/60/90/120/150 instead of 15/30/45/60/75) — direct instruction: "make the heist
+    // one double the amounts, rob-npc is 30 minute cd and bounty is 1 hour." Heist's
+    // cooldown (RobNpc.NPC_ROB_TIMER_SECONDS, 1800s) is exactly half Bounty's
+    // (Bounty.BOUNTY_TIMER_SECONDS, 3600s), so a mercenary can attempt twice as many
+    // Heists as Bounties in the same real time — doubling the win-count thresholds (not
+    // the reward amounts) keeps both ladders requiring the same real-time investment for
+    // the same reward, exactly the parity `getCooldownScaledWorkCountGrant`/
+    // `REALISTIC_PLAY_DISCOUNT` already establish elsewhere for companion leveling.
+    {
+        id: "merc_heist_wins_12", name: "Heist Sweep",
+        description: "Win Heists this week for scaling Safehouse Storage: +5,000,000 at 30/60/90/120/150 wins (up to +25,000,000 total)",
+        category: "mercenary", statPath: "mercenaryHeistWinCount",
+        tiers: [
+            { threshold: 30, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 60, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 90, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 120, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+            { threshold: 150, reward: { type: "additionalSafehouseStorage", amount: 5000000 } },
+        ]
+    }
 ]
 
 // Guild Contracts: a shared weekly objective tracked in aggregate across a guild's

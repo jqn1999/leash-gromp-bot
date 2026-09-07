@@ -987,3 +987,40 @@ describe('createHelpCompanionsEmbed Yamimic display', () => {
         expect(fieldNames.some(n => n.startsWith('Heirloom'))).toBe(true);
     });
 });
+
+// 2026-09-07 — Mercenary Quest's scaling `tiers` ladder (Bounty/Heist Sweep) needed a
+// display branch distinct from every other quest's flat threshold, since a tiered
+// template has no template.threshold at all. See questFactory.js's getProgress for the
+// tiersCompleted/totalTiers/nextTierThreshold shape this consumes.
+describe('createQuestsPageEmbed', () => {
+    const flatQuest = { quest: { name: 'Sprout Sprint', description: 'Complete 3 /work sessions today', category: 'daily', threshold: 3 }, isCompleted: false, progress: 1 };
+    const bountySweepTiers = [15, 30, 45, 60, 75].map(threshold => ({ threshold, reward: { type: 'additionalSafehouseStorage', amount: 5000000 } }));
+    const tieredInProgress = {
+        quest: { name: 'Bounty Sweep', description: 'Win Bounties this week for scaling Safehouse Storage', category: 'mercenary', tiers: bountySweepTiers },
+        isCompleted: false, progress: 32, tiersCompleted: 2, totalTiers: 5, nextTierThreshold: 45
+    };
+    const tieredComplete = {
+        quest: { name: 'Bounty Sweep', description: 'Win Bounties this week for scaling Safehouse Storage', category: 'mercenary', tiers: bountySweepTiers },
+        isCompleted: true, progress: 75, tiersCompleted: 5, totalTiers: 5, nextTierThreshold: null
+    };
+
+    test('a flat (non-tiered) quest still shows progress against its own threshold, unaffected by the tiered branch', () => {
+        const embed = embedFactory.createQuestsPageEmbed('User', [flatQuest], 0, 1, 0, 1);
+        expect(embed.data.fields[0].value).toContain('1 / 3');
+    });
+
+    test('a tiered quest in progress shows which tier it\'s on and the win count toward the NEXT tier, not the final threshold', () => {
+        const embed = embedFactory.createQuestsPageEmbed('User', [tieredInProgress], 0, 1, 0, 1);
+        const value = embed.data.fields[0].value;
+        expect(value).toContain('Tier 2/5');
+        expect(value).toContain('32 / 45');
+        expect(value).not.toContain('undefined');
+    });
+
+    test('a fully-completed tiered quest shows "All N tiers complete" instead of a threshold that no longer exists', () => {
+        const embed = embedFactory.createQuestsPageEmbed('User', [tieredComplete], 0, 1, 1, 1);
+        const value = embed.data.fields[0].value;
+        expect(value).toContain('All 5 tiers complete');
+        expect(embed.data.fields[0].name).toContain('✅');
+    });
+});

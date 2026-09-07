@@ -204,12 +204,15 @@ mercenary again.
 ## Mercenary Quest bonus
 
 Added 2026-08-29 alongside the new Mercenary Quest track (see
-[systems/quests.md](quests.md#mercenary-quest)) — winning 3/6 Bounties in a week grants a flat,
-lifetime-accumulating `userDetails.additionalSafehouseStorage` bonus (default `0`), split EVENLY
-across every currently-**owned NUMBERED** slot (1-6). Main Safehouse (slot 0) is deliberately
-excluded — the original instruction was "split among the 1-6 safehouses" specifically, and Main
-Safehouse's capacity is already its own live formula off the personal bank, not this static-table
-system.
+[systems/quests.md](quests.md#mercenary-quest)) — winning Bounties or Heists in a week grants a
+flat, lifetime-accumulating `userDetails.additionalSafehouseStorage` bonus (default `0`), split
+EVENLY across every currently-**owned NUMBERED** slot (1-6). Main Safehouse (slot 0) is
+deliberately excluded — the original instruction was "split among the 1-6 safehouses"
+specifically, and Main Safehouse's capacity is already its own live formula off the personal
+bank, not this static-table system. **Reworked into a scaling ladder 2026-09-07** — see
+quests.md's own Mercenary Quest section for the current 5-tier shape (+5,000,000 per tier, up to
++25,000,000 total); this section only covers how the accumulated total gets APPLIED, which is
+unaffected by how many separate tier-grants added up to it.
 
 - **`safehouseFactory.getSlotDefinition(slotNumber, userDetails)`** applies the bonus: for a
   numbered slot, `bonusShare = floor(additionalSafehouseStorage / ownedNumberedSlotCount)` is added
@@ -225,8 +228,10 @@ system.
 - Since `getTotalCapacity`/`getTotalRemainingSpace` (and everything built on `getSlotDefinition`)
   already read capacity through this function, the bonus flows through automatically everywhere
   capacity is displayed or checked — no separate wiring needed in `safehouse.js` itself.
-- This bonus can currently only be earned via `take-bounty.js` Bounty wins
-  (`mercenaryBountyWinCount`) — see quests.md for the full reward/gating rules.
+- This bonus can be earned via either `take-bounty.js` Bounty wins (`mercenaryBountyWinCount`) or
+  `rob-npc.js` Heist wins (`mercenaryHeistWinCount`) — only one of the two quest templates is ever
+  active per week, but whichever is active grants this same bonus type. See quests.md for the
+  full reward/gating rules.
 
 ## Explicitly out of scope (for now)
 

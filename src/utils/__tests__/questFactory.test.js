@@ -165,43 +165,113 @@ describe('checkAndClaimQuests', () => {
     });
 });
 
-describe('Mercenary Quest', () => {
+// Mercenary Quest — reworked 2026-09-07 (direct instruction: "right now its 12 bounties
+// for the weekly. Can you make it 15 for the weekly, 5 million per bounty up to 25
+// million a week safehouse increase? so at max it would be 75 bounties in the week to
+// get 25 million safehouse bonus") from a single flat threshold into a scaling `tiers`
+// ladder — see constants.js's own comment on Bounty/Heist Sweep for the exact numbers
+// (Bounty: 15/30/45/60/75 wins; Heist: 30/60/90/120/150, doubled since its cooldown is
+// half Bounty's — direct instruction: "make the heist one double the amounts, rob-npc is
+// 30 minute cd and bounty is 1 hour"). Both grant +5,000,000 additionalSafehouseStorage
+// PER TIER, up to +25,000,000 total once every tier's crossed in the same week.
+describe('Mercenary Quest (scaling tiers)', () => {
     const mercenaryActiveQuests = {
         ...activeQuests,
         mercenaryQuestIds: ['merc_bounty_wins_12'],
         mercenaryRotationDate: '2026-08-17',
     };
+    const bountyTemplate = Quests.find(q => q.id === 'merc_bounty_wins_12');
+    const heistTemplate = Quests.find(q => q.id === 'merc_heist_wins_12');
+    const TIER_AMOUNT = bountyTemplate.tiers[0].reward.amount;
 
-    test('a mercenary completing the Bounty-wins condition gets additionalSafehouseStorage, flat and unscaled', async () => {
+    test('crossing the first tier (15 wins) grants exactly one tier\'s reward, not the full ladder', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 12 });
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 15 });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
 
-        expect(result.completedQuests.map(q => q.id)).toContain('merc_bounty_wins_12');
-        const template = Quests.find(q => q.id === 'merc_bounty_wins_12');
-        expect(result.additionalSafehouseStorageReward).toBe(template.reward.amount);
+        expect(result.completedQuests.map(q => q.id)).toEqual(['merc_bounty_wins_12']);
+        expect(result.additionalSafehouseStorageReward).toBe(TIER_AMOUNT);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.additionalSafehouseStorage).toBe(template.reward.amount);
+        expect(setFields.additionalSafehouseStorage).toBe(TIER_AMOUNT);
+        expect(setFields.quests.merc_bounty_wins_12.tiersCompleted).toBe(1);
         // Flat reward — no statRewards/sweetPotatoBuffs entry, unlike the ramping
         // weekly statType rewards.
         expect(result.statRewards).toEqual({});
     });
 
+    test('a later check that crosses a SECOND tier in the same week only grants the incremental tier, not a re-grant of the first', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        // Already banked tier 1 (tiersCompleted: 1) earlier this week.
+        const userDetails = baseUser({
+            isMercenary: true, mercenaryBountyWinCount: 30,
+            quests: { merc_bounty_wins_12: { startValue: 0, rotationDate: '2026-08-17', tiersCompleted: 1 } }
+        });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails);
+
+        expect(result.additionalSafehouseStorageReward).toBe(TIER_AMOUNT); // just tier 2's own amount
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.merc_bounty_wins_12.tiersCompleted).toBe(2);
+    });
+
+    test('a single big jump that crosses MULTIPLE tiers at once grants every newly-crossed tier\'s reward', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        // Jumps straight from 0 to 45 wins (tiers 1-3) in one check.
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 45 });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
+
+        expect(result.completedQuests).toHaveLength(3);
+        expect(result.additionalSafehouseStorageReward).toBe(TIER_AMOUNT * 3);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.merc_bounty_wins_12.tiersCompleted).toBe(3);
+    });
+
+    test('reaching the final tier (75 wins) grants the full 25,000,000 across the whole ladder and marks it fully completed', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 75 });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
+
+        expect(result.additionalSafehouseStorageReward).toBe(TIER_AMOUNT * bountyTemplate.tiers.length);
+        expect(result.additionalSafehouseStorageReward).toBe(25000000);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.merc_bounty_wins_12.tiersCompleted).toBe(bountyTemplate.tiers.length);
+    });
+
+    test('once every tier is claimed, further wins the same week grant nothing more', async () => {
+        dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
+        const userDetails = baseUser({
+            isMercenary: true, mercenaryBountyWinCount: 90, // well past the last tier's 75
+            quests: { merc_bounty_wins_12: { startValue: 0, rotationDate: '2026-08-17', tiersCompleted: bountyTemplate.tiers.length } }
+        });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails);
+
+        expect(result.completedQuests).toEqual([]);
+        expect(result.additionalSafehouseStorageReward).toBe(0);
+        // A write can still happen here from baselining the OTHER active daily/weekly
+        // quests this same call (unrelated to the mercenary ladder) — the actual
+        // assertion is that the mercenary quest's own state is untouched, not that no
+        // write happens at all.
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.merc_bounty_wins_12.tiersCompleted).toBe(bountyTemplate.tiers.length);
+    });
+
     test('additionalSafehouseStorage accumulates on top of whatever the account already had', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 12, additionalSafehouseStorage: 500000 });
+        const userDetails = baseUser({ isMercenary: true, mercenaryBountyWinCount: 15, additionalSafehouseStorage: 500000 });
 
         await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryBountyWinCount: 0 }));
 
-        const template = Quests.find(q => q.id === 'merc_bounty_wins_12');
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.additionalSafehouseStorage).toBe(500000 + template.reward.amount);
+        expect(setFields.additionalSafehouseStorage).toBe(500000 + TIER_AMOUNT);
     });
 
     test('a non-mercenary never gets a baseline or reward for the mercenary quest, even with matching progress', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(mercenaryActiveQuests);
-        const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 12 });
+        const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 15 });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: false, mercenaryBountyWinCount: 0 }));
 
@@ -215,30 +285,37 @@ describe('Mercenary Quest', () => {
         }
     });
 
-    // The Heist-win alternative (merc_heist_wins_12) — added alongside the Bounty-win
-    // option 2026-08-29, keyed on the new durable mercenaryHeistWinCount lifetime counter
-    // (dynamoHandler.js) rather than the resettable mercenaryNotoriety. Only one of the
-    // two ever rotates in at a time (MercenaryQuest.ACTIVE_COUNT is 1), so this exercises
-    // it as its own active quest rather than alongside the Bounty one.
-    test('a mercenary completing the Heist-wins condition also gets additionalSafehouseStorage', async () => {
+    // The Heist-win ladder — same shape as Bounty's, but every threshold doubled (its
+    // cooldown is half Bounty's), keyed on the durable mercenaryHeistWinCount lifetime
+    // counter. Only one of the two ever rotates in at a time (MercenaryQuest.ACTIVE_COUNT
+    // is 1), so this exercises it as its own active quest rather than alongside Bounty's.
+    test('a mercenary crossing Heist Sweep\'s first tier (30 wins) also gets additionalSafehouseStorage', async () => {
         const heistActiveQuests = { ...activeQuests, mercenaryQuestIds: ['merc_heist_wins_12'], mercenaryRotationDate: '2026-08-17' };
         dynamoHandler.getActiveQuests.mockResolvedValue(heistActiveQuests);
-        const userDetails = baseUser({ isMercenary: true, mercenaryHeistWinCount: 12 });
+        const userDetails = baseUser({ isMercenary: true, mercenaryHeistWinCount: 30 });
 
         const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ isMercenary: true, mercenaryHeistWinCount: 0 }));
 
-        expect(result.completedQuests.map(q => q.id)).toContain('merc_heist_wins_12');
-        const template = Quests.find(q => q.id === 'merc_heist_wins_12');
-        expect(result.additionalSafehouseStorageReward).toBe(template.reward.amount);
+        expect(result.completedQuests.map(q => q.id)).toEqual(['merc_heist_wins_12']);
+        expect(result.additionalSafehouseStorageReward).toBe(heistTemplate.tiers[0].reward.amount);
     });
 
-    // Both templates share the same reward — neither objective is meant to read as
-    // easier/harder than the other, unlike the old 3-win/6-win ladder they replaced.
-    test('Bounty-win and Heist-win options grant the same reward amount', () => {
-        const bountyTemplate = Quests.find(q => q.id === 'merc_bounty_wins_12');
-        const heistTemplate = Quests.find(q => q.id === 'merc_heist_wins_12');
-        expect(bountyTemplate.reward.amount).toBe(heistTemplate.reward.amount);
-        expect(bountyTemplate.threshold).toBe(heistTemplate.threshold);
+    // Both ladders grant the same reward PER TIER and the same total at max, and Heist's
+    // thresholds are exactly double Bounty's at every tier — direct instruction, since
+    // Heist's cooldown (RobNpc.NPC_ROB_TIMER_SECONDS, 1800s) is exactly half Bounty's
+    // (Bounty.BOUNTY_TIMER_SECONDS, 3600s), so the same real-time investment needs twice
+    // the win count.
+    test('Heist Sweep\'s thresholds are exactly double Bounty Sweep\'s at every tier, same per-tier reward, same tier count', () => {
+        expect(heistTemplate.tiers).toHaveLength(bountyTemplate.tiers.length);
+        bountyTemplate.tiers.forEach((bountyTier, i) => {
+            const heistTier = heistTemplate.tiers[i];
+            expect(heistTier.threshold).toBe(bountyTier.threshold * 2);
+            expect(heistTier.reward.amount).toBe(bountyTier.reward.amount);
+        });
+        const bountyTotal = bountyTemplate.tiers.reduce((sum, t) => sum + t.reward.amount, 0);
+        const heistTotal = heistTemplate.tiers.reduce((sum, t) => sum + t.reward.amount, 0);
+        expect(bountyTotal).toBe(25000000);
+        expect(heistTotal).toBe(25000000);
     });
 
     describe('getProgress', () => {
@@ -252,6 +329,30 @@ describe('Mercenary Quest', () => {
             const userDetails = baseUser({ isMercenary: false, mercenaryBountyWinCount: 1 });
             const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests);
             expect(progress.map(p => p.quest.id)).not.toContain('merc_bounty_wins_12');
+        });
+
+        test('reports tiersCompleted/totalTiers/nextTierThreshold and is not "completed" until every tier is claimed', () => {
+            const userDetails = baseUser({
+                isMercenary: true, mercenaryBountyWinCount: 32,
+                quests: { merc_bounty_wins_12: { startValue: 0, rotationDate: '2026-08-17', tiersCompleted: 2 } }
+            });
+            const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests).find(p => p.quest.id === 'merc_bounty_wins_12');
+            expect(progress.tiersCompleted).toBe(2);
+            expect(progress.totalTiers).toBe(5);
+            expect(progress.nextTierThreshold).toBe(45);
+            expect(progress.progress).toBe(32);
+            expect(progress.isCompleted).toBe(false);
+        });
+
+        test('isCompleted is true once every tier has been claimed, with nextTierThreshold null', () => {
+            const userDetails = baseUser({
+                isMercenary: true, mercenaryBountyWinCount: 80,
+                quests: { merc_bounty_wins_12: { startValue: 0, rotationDate: '2026-08-17', tiersCompleted: 5 } }
+            });
+            const progress = questFactory.getProgress(userDetails, mercenaryActiveQuests).find(p => p.quest.id === 'merc_bounty_wins_12');
+            expect(progress.isCompleted).toBe(true);
+            expect(progress.nextTierThreshold).toBeNull();
+            expect(progress.progress).toBe(75); // capped at the max tier's own threshold
         });
     });
 });

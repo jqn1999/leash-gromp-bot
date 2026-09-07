@@ -3528,12 +3528,23 @@ class EmbedFactory {
     // createAchievementsPageEmbed's shape even though the active count (5) rarely needs
     // more than one page today.
     createQuestsPageEmbed(userDisplayName, pageItems, pageIndex, totalPages, completedCount, totalCount) {
-        const fields = pageItems.map(({ quest, isCompleted, progress }) => {
+        const fields = pageItems.map(({ quest, isCompleted, progress, tiersCompleted, totalTiers, nextTierThreshold }) => {
             const status = isCompleted ? '✅' : '📜';
             const categoryLabel = quest.category === 'daily' ? 'Daily' : quest.category === 'mercenary' ? 'Mercenary' : 'Weekly';
-            const value = isCompleted
-                ? `${quest.description} (${categoryLabel})`
-                : `${quest.description} (${categoryLabel})\n(${progress.toLocaleString()} / ${quest.threshold.toLocaleString()})`;
+            let value;
+            if (quest.tiers) {
+                // Scaling multi-tier quest (currently Bounty/Heist Sweep) — isCompleted
+                // means every tier's been claimed, so there's no "next tier" left to show
+                // progress toward; otherwise show the running win count against the NEXT
+                // uncrossed tier's own threshold, plus how many tiers are already banked.
+                value = isCompleted
+                    ? `${quest.description} (${categoryLabel})\nAll ${totalTiers} tiers complete!`
+                    : `${quest.description} (${categoryLabel})\nTier ${tiersCompleted}/${totalTiers} — (${progress.toLocaleString()} / ${nextTierThreshold.toLocaleString()} to next tier)`;
+            } else {
+                value = isCompleted
+                    ? `${quest.description} (${categoryLabel})`
+                    : `${quest.description} (${categoryLabel})\n(${progress.toLocaleString()} / ${quest.threshold.toLocaleString()})`;
+            }
             return {
                 name: `${status} ${quest.name}`,
                 value: value,
