@@ -2300,7 +2300,10 @@ class EmbedFactory {
     // needs (Rival always pays potatoes and always grants the guaranteed stat bump on a win,
     // so there's no conditional currency branch or rare-roll callout). `result` is
     // mercenaryFactory.resolveRivalConfrontation's own return shape.
-    createRivalConfrontationResultEmbed(userDisplayName, result, newNotoriety) {
+    // companionXpGained/companionName (new, optional, default 0/null) — see
+    // companionFactory.getRivalConfrontationWorkCountGrant's own comment for why
+    // /confront-rival only gained a leveling hook at all as of 2026-09-07.
+    createRivalConfrontationResultEmbed(userDisplayName, result, newNotoriety, companionXpGained = 0, companionName = null) {
         const { scenario, won, successChance, rankSuccessBonus, rival, rankInfo, rewardAmount, penaltyAmount, statBump } = result;
         const color = won ? 'Green' : 'Red';
         const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
@@ -2365,6 +2368,14 @@ class EmbedFactory {
             value: `Rank ${rankInfo.rank}`,
             inline: true,
         });
+
+        if (companionXpGained > 0) {
+            fields.push({
+                name: '🐾 Companion XP:',
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
+                inline: true,
+            });
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} confronts ${rival.name} — ${scenarioLabel} Scenario`)

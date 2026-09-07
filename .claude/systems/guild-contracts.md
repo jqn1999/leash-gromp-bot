@@ -15,39 +15,78 @@ independently and earns its own copy of the reward on completion.
 ## Pool, rotation, and the templates
 
 `rotateContract()` picks uniformly at random from the `GuildContracts` array each Monday. Four
-templates exist today (thresholds retuned 2026-08-29, direct instruction — a flat across-the-board
-raise from the original 500/20/10/8; ids left unchanged, still encoding the ORIGINAL threshold as a
-now-stale naming convention only, specifically so a contract already active mid-rotation at deploy
-time keeps resolving against the same `templateId` instead of finding it missing):
+templates exist today (thresholds retuned twice — 2026-08-29 direct instruction, a flat
+across-the-board raise from the original 500/20/10/8, and again 2026-09-07 direct instruction to
+the current numbers below; ids left unchanged both times, still encoding an ORIGINAL threshold as
+a now-stale naming convention only, specifically so a contract already active mid-rotation at
+deploy time keeps resolving against the same `templateId` instead of finding it missing):
 
 ```js
-{ id: "guild_weekly_work_500", name: "Combined Harvest", statPath: "workCount", threshold: 1000,
-  description: "Complete 1000 combined /work actions across the guild this week" }
-{ id: "guild_weekly_raids_20", name: "Guild Raid Rally", statPath: "guildRaidWinCount", threshold: 30,
-  description: "Win 30 combined guild raids across the guild this week (each win counts once per participating member)" }
-{ id: "guild_weekly_sweet_10", name: "Sweet Tooth", statPath: "workScenarioCounts.sweet", threshold: 20,
-  description: "Find 20 combined Sweet Potatoes across the guild this week" }
-{ id: "guild_weekly_poison_8", name: "Toxin Tally", statPath: "workScenarioCounts.poison", threshold: 16,
-  description: "Survive 16 combined Poison Potatoes across the guild this week" }
+{ id: "guild_weekly_work_500", name: "Combined Harvest", statPath: "workCount", threshold: 1500,
+  description: "Complete 1500 combined /work actions across the guild this week" }
+{ id: "guild_weekly_raids_20", name: "Guild Raid Rally", statPath: "raidCount", guildLevelStat: true, threshold: 50,
+  description: "Win 50 guild raids across the guild this week (tracked once per raid win, not per participating member)" }
+{ id: "guild_weekly_sweet_10", name: "Sweet Tooth", statPath: "workScenarioCounts.sweet", threshold: 40,
+  description: "Find 40 combined Sweet Potatoes across the guild this week" }
+{ id: "guild_weekly_poison_8", name: "Toxin Tally", statPath: "workScenarioCounts.poison", threshold: 30,
+  description: "Survive 30 combined Poison Potatoes across the guild this week" }
 ```
 
 `statPath` resolves against each tracked member's own user record via `getStatValue` (the same
-dot-notation helper Achievements/Quests use). **Count delta, not a potato-amount delta** — same
-reasoning Quests already landed on: a fixed potato threshold is wildly different difficulty for a
-guild of fresh accounts vs. a guild of developed ones, but "do this many `/work` actions" (or "find
-this many Sweet Potatoes," etc.) isn't.
+dot-notation helper Achievements/Quests use) for the first, third, and fourth templates. **Count
+delta, not a potato-amount delta** — same reasoning Quests already landed on: a fixed potato
+threshold is wildly different difficulty for a guild of fresh accounts vs. a guild of developed
+ones, but "do this many `/work` actions" (or "find this many Sweet Potatoes," etc.) isn't.
 
-`guildRaidWinCount` needs one extra bit of care versus the other three `statPath`s: `raidFactory.js`'s
-`incrementCounter` bumps it for **every** member in the raid's `raidList` on a single win, not once
-per raid — so `Guild Raid Rally`'s per-member-sum aggregation already scales with guild size the same
-way `workCount` does, without a separate per-raid formula. `Sweet Tooth`/`Toxin Tally`'s thresholds
-were originally sized against Sweet/Poison's real per-`/work` odds (~2%/~1%, see `eventFactory.js`'s
-`workChances`) relative to Combined Harvest's implied works/week for an active guild; the 2026-08-29
-retune was a direct, flat instruction on the four new numbers rather than a re-derivation off that
-same ratio (Combined Harvest and both roll-based templates doubled, Guild Raid Rally rose 1.5x), so
-the four thresholds' relative difficulty may have drifted slightly from the original sizing — worth
-revisiting with `balance-auditor` if guild feedback suggests one contract is now notably easier or
-harder than the others.
+**Guild Raid Rally is the one exception — `guildLevelStat: true`, `statPath: "raidCount"`, read
+straight off the `guild` object itself, not summed per-member.** FIXED 2026-09-07
+(player-reported: "raid count is too easy since it counts once per member"). It originally
+tracked `guildRaidWinCount` via the normal per-member-sum path like every other template — but
+`raidFactory.js`'s `incrementCounter` bumps that field for **every** member in a raid's `raidList`
+on a single win, not once per raid, so a guild running full-roster raids could clear the old `30`
+threshold in as few as 2 real raid wins, nowhere near a comparable stretch goal to Combined
+Harvest's real `/work` calls — the doc previously (incorrectly) described this as "naturally
+scaling with guild size," when it actually scaled with *raid participation count per win*, an
+even bigger shortcut for bigger guilds, not a proportional one. Switched to `guild.raidCount`
+instead — a genuine per-GUILD field (`startRaid.js`'s `raidCount += 1` inside each tier's win
+branch) that increments exactly once per raid win regardless of roster size, immune to the same
+exploit. See "Guild-level stats" below for how this routes through a parallel code path from
+every other template. `Sweet Tooth`/`Toxin Tally`'s thresholds were originally sized against
+Sweet/Poison's real per-`/work` odds (~2%/~1%, see `eventFactory.js`'s `workChances`) relative to
+Combined Harvest's implied works/week for an active guild; both retunes since (2026-08-29,
+2026-09-07) have been direct, flat instructions on the numbers rather than re-derivations off that
+same ratio, so the four thresholds' relative difficulty may have drifted slightly from the
+original sizing — worth revisiting with `balance-auditor` if guild feedback suggests one contract
+is now notably easier or harder than the others.
+
+## Guild-level stats: a parallel path for `guildLevelStat` templates
+
+Every function below (`computeLiveMemberSum`/`computeMemberDeltas`, the baseline-establishment
+block in `checkAndClaimContract`, `getProgress`, `getMemberBreakdown`) branches on
+`template.guildLevelStat` before doing its normal per-member work. For a `guildLevelStat`
+template:
+
+- **Baseline**: `contractState.guildStatBaseline = getStatValue(guild, template.statPath) || 0` —
+  a single number snapshotted once, the guild-level equivalent of `memberBaselines`' per-member
+  entries. `memberBaselines` itself is set to `{}` (never populated) for these templates — no
+  per-member `findUser` fan-out happens at all, since the guild document already has everything
+  needed.
+- **Live delta**: `computeGuildLevelDelta(guild, contractState, statPath) = max(0,
+  getStatValue(guild, statPath) - contractState.guildStatBaseline)` — reads the CURRENT `guild`
+  object passed into the call directly, no database round-trip.
+- **`getMemberBreakdown`** returns `{ template, breakdown: [] }` immediately for these templates —
+  there's no per-member attribution to rank when the tracked value lives on the guild itself, not
+  on any one member. `createGuildContractEmbed` already skips its "Top Contributors" field
+  entirely on an empty breakdown, so a guild-level template's `/guild-contract` view just omits
+  that field rather than showing something misleading.
+- **`freezeDepartureContribution`** is naturally a no-op for these templates too, with no special
+  branch needed — `contractState.memberBaselines[departingUserId]` is always `undefined` (the
+  object is always empty), which already hits the function's existing "no baseline entry" early
+  return.
+
+Adding a second `guildLevelStat` template in the future means picking any field that lives on the
+`guild` record itself (not a per-member user record) and setting `guildLevelStat: true` — no
+further code changes needed beyond the constants entry.
 
 Rotation only happens on Mondays (`isMondayEST`, a private copy in `guildContractFactory.js` —
 matches `dailyStreakFactory.js`'s own precedent of each factory keeping its own EST-boundary helpers

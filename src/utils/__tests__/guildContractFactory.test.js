@@ -60,6 +60,133 @@ describe('getMemberBreakdown', () => {
     });
 });
 
+// guildLevelStat (2026-09-07, player-reported fix — "raid count is too easy since it
+// counts once per member"): Guild Raid Rally now reads guild.raidCount directly instead
+// of summing a per-member stat, so it needs its own coverage distinct from every other
+// template above/below, which all go through the per-member baseline/delta path.
+describe('guildLevelStat (Guild Raid Rally)', () => {
+    const raidTemplate = GuildContracts.find(c => c.guildLevelStat);
+    const raidActiveContract = { templateId: raidTemplate.id, rotationDate: '2026-08-17' };
+
+    beforeEach(() => {
+        dynamoHandler.getActiveGuildContract.mockResolvedValue(raidActiveContract);
+    });
+
+    test('establishes guildStatBaseline from guild.raidCount, with no per-member findUser lookups at all', async () => {
+        const guild = baseGuild({ raidCount: 10, guildContract: null });
+
+        await guildContractFactory.checkAndClaimContract(guild);
+
+        expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+        const [, , persistedState] = dynamoHandler.updateGuildDatabase.mock.calls.find(call => call[1] === 'guildContract');
+        expect(persistedState.guildStatBaseline).toBe(10);
+        expect(persistedState.memberBaselines).toEqual({});
+    });
+
+    test('progress is the live delta between guild.raidCount and the snapshotted baseline, below threshold', async () => {
+        const guild = baseGuild({
+            raidCount: 35,
+            guildContract: {
+                templateId: raidTemplate.id,
+                rotationDate: raidActiveContract.rotationDate,
+                memberBaselines: {},
+                guildStatBaseline: 10,
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+
+        const result = await guildContractFactory.checkAndClaimContract(guild);
+
+        expect(result.completedNow).toBe(false);
+        expect(result.progress).toBe(25); // 35 - 10
+        expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+    });
+
+    test('completes once the delta reaches the threshold, same reward path as a per-member template', async () => {
+        const guild = baseGuild({
+            raidCount: 10 + raidTemplate.threshold,
+            bankCapacity: 5000000,
+            guildContract: {
+                templateId: raidTemplate.id,
+                rotationDate: raidActiveContract.rotationDate,
+                memberBaselines: {},
+                guildStatBaseline: 10,
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+        dynamoHandler.completeGuildContract.mockResolvedValue(true);
+
+        const result = await guildContractFactory.checkAndClaimContract(guild);
+
+        expect(result.completedNow).toBe(true);
+        expect(dynamoHandler.completeGuildContract).toHaveBeenCalledWith(
+            'g1',
+            5000000 + GuildContract.BANK_CAPACITY_REWARD,
+            expect.any(Number),
+            expect.objectContaining({ completed: true })
+        );
+    });
+
+    test('getProgress reports the same guild-level delta without any per-member findUser lookups', async () => {
+        const guild = baseGuild({
+            raidCount: 42,
+            guildContract: {
+                templateId: raidTemplate.id,
+                rotationDate: raidActiveContract.rotationDate,
+                memberBaselines: {},
+                guildStatBaseline: 12,
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+
+        const result = await guildContractFactory.getProgress(guild);
+
+        expect(result.progress).toBe(30); // 42 - 12
+        expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+    });
+
+    test('getMemberBreakdown returns an empty breakdown — no per-member attribution for a guild-level stat', async () => {
+        const guild = baseGuild({
+            raidCount: 42,
+            guildContract: {
+                templateId: raidTemplate.id,
+                rotationDate: raidActiveContract.rotationDate,
+                memberBaselines: {},
+                guildStatBaseline: 12,
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+
+        const result = await guildContractFactory.getMemberBreakdown(guild);
+
+        expect(result.breakdown).toEqual([]);
+        expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+    });
+
+    test('freezeDepartureContribution is a no-op — a guild-level stat has no per-member baseline to freeze', async () => {
+        const guild = baseGuild({
+            raidCount: 42,
+            guildContract: {
+                templateId: raidTemplate.id,
+                rotationDate: raidActiveContract.rotationDate,
+                memberBaselines: {},
+                guildStatBaseline: 12,
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+
+        const result = await guildContractFactory.freezeDepartureContribution(guild, 'u1', { userId: 'u1' });
+
+        expect(result).toBeNull();
+        expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalled();
+    });
+});
+
 describe('checkAndClaimContract — bankCapacityBonus reward', () => {
     // Regression: completing a contract used to add BANK_CAPACITY_REWARD straight onto
     // guild.bankCapacity with no separate bookkeeping, so the very next /guild-buy

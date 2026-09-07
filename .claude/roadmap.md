@@ -8585,3 +8585,102 @@ argument (mechanical fallout of the signature change, not new behavior). Full su
 **Docs**: `.claude/systems/economy-and-work.md`'s 2026-08-25 write-up corrected — it had claimed
 Guinea Pig's immune branch "stays skippable exactly as before," which is no longer true — and a new
 2026-09-07 follow-up paragraph added directly after it describing this fix.
+
+## Yamimic companion leveling: widen Bounty/Heist/Rival Confrontation from Yukon-only to perk-type (2026-09-07, direct instruction)
+
+Player asked: "can you make it so yamimic can level up with any of the mentioned increases it
+gives" — following up on the Heirloom tier shipped the day before. Yamimic mirrors 9 perk types,
+but auditing every leveling path against them found only 6 of 9 actually had a real hook Yamimic
+could train through: `/work` (unrestricted — passive/rebirth/work-multi/cooldown-skip), `/rob`
+(`robChanceFlat`), `/sell-starch` (`starchSellBonusPercent`), and `/regrade`
+(`regradeChanceBoostPercent`) were all already perk-type gated and worked correctly. The other 3
+did not:
+
+- **`/take-bounty`** and **`/rob-npc`** (Heist) granted companion XP for `bountyRewardPercent`/
+  `robChanceFlat` respectively, but were hardcoded to `restrictToCompanionId: 'yukon'` (a
+  same-day follow-up from the original 2026-08-26 Mercenary Companion Leveling feature) — any
+  OTHER companion carrying those perks, Yamimic included, was a no-op through these two commands
+  specifically.
+- **`/confront-rival`** had no companion-leveling call at all, for any companion, Yukon included
+  — a gap that predates Yamimic entirely, just never noticed since nothing else needed it.
+
+**Fix**: `takeBounty.js`/`robNpc.js` now pass `levelActiveCompanion`'s `restrictToPerkType`
+argument (`"bountyRewardPercent"`/`"robChanceFlat"`) instead of `restrictToCompanionId: 'yukon'`
+— the exact same gating mechanism `/rob`/`/sell-starch`/`/regrade` already used, generalizing an
+exception back to the established pattern rather than special-casing Yamimic on top of it. Yukon
+still trains through both exactly as before (it carries both perk types); this only widens who
+else can. `confrontRival.js` gained a full leveling call for the first time, gated by
+`rivalSuccessChanceFlat`, using a new `companionFactory.getRivalConfrontationWorkCountGrant() =
+max(1, round(Rival.CONFRONTATION_THRESHOLD / 2))` — pinned to that real game constant rather than
+an independently authored number, since `/confront-rival` has no per-call cooldown or resource
+amount to scale a grant against the way Bounty/Heist/`/regrade` do (it's gated by a resource
+THRESHOLD instead). `createRivalConfrontationResultEmbed` gained the same `companionXpGained`/
+`companionName` field every other action-result embed already shows.
+
+**Tests**: `mercenaryCompanionLeveling.test.js` — 2 new tests (a Yamimic-equipped user levels via
+both Bounty and Heist, proving the perk-type gate works for a companion other than Yukon); every
+pre-existing Yukon/Sprout test still passes unchanged (Sprout carries neither perk, so the
+"non-Yukon does not level" tests remain correct under the new gate for an unrelated reason —
+lacking the perk, not lacking the id). `confrontRival.test.js` — a new "companion leveling"
+describe block (5 tests: Yukon levels on a win, Yamimic levels on a win, a loss still levels
+unconditionally, a companion without the perk doesn't level, using the real
+`getRivalConfrontationWorkCountGrant` value rather than a hardcoded number). `companionFactory.test.js`
+— 2 new tests for `getRivalConfrontationWorkCountGrant` itself. Full suite green (1136/1136, up
+from 1122).
+
+**Docs**: `.claude/systems/companions.md`'s Leveling section and
+`.claude/systems/mercenary-bounties.md`'s Mercenary Companion Leveling section both corrected —
+the "Restricted to Yukon specifically" framing is now described as superseded, with the perk-type
+mechanism and `/confront-rival`'s new hook documented alongside `/rob`/`/sell-starch`/`/regrade`.
+
+## Fix: Guild Raid Rally counted once per raid PARTICIPANT instead of once per raid + threshold retune (2026-09-07, player-reported)
+
+Player observation, mid-conversation with the Yamimic leveling work above: "raid count is too
+easy since it counts once per member i believe." Investigation confirmed it: Guild Raid Rally (one
+of the four `GuildContracts` templates, rotated in roughly 1 week in 4) tracked
+`guildRaidWinCount`, which `raidFactory.js`'s `incrementCounter` credits to **every** member in a
+raid's `raidList` on a single win, not once per raid. Guild Contracts' per-member-sum aggregation
+(`computeLiveMemberSum`) then summed that straight across the roster — so a guild running
+full-roster raids could clear the old `30` threshold in as few as 2 real raid wins, while Combined
+Harvest (same pool, same "combined weekly stretch goal" framing) required 1000+ genuine individual
+`/work` calls. The design doc had actually described this as a feature ("naturally scaled by
+guild size") when it was really an exploit that scaled with *raid participation count per win* —
+rewarding bigger guilds with an even bigger shortcut, not a proportional one.
+
+Presented the finding with two fix options (raise the threshold to compensate for the roster-size
+multiplier, vs. switch to a genuine once-per-raid counter) — direct instruction: switch to the
+real counter. `guild.raidCount` already existed (`startRaid.js`'s `raidCount += 1` in each of the
+17 win-branch closures, driving Guild Level/raid-reward-multiplier elsewhere) as a genuine
+per-GUILD field, immune to the roster-size exploit by construction.
+
+**Fix**: Guild Raid Rally's `statPath` switched to `"raidCount"` with a new `guildLevelStat: true`
+flag. `guildContractFactory.js` gained a parallel code path for any template carrying that flag:
+`computeGuildLevelDelta(guild, contractState, statPath)` reads the stat straight off the `guild`
+object already in hand (no per-member `findUser` fan-out) and diffs it against a single
+`contractState.guildStatBaseline` snapshot, instead of `computeLiveMemberSum`'s per-member
+baseline/delta aggregation. Every one of `checkAndClaimContract`/`getProgress`/
+`getMemberBreakdown` branches on `template.guildLevelStat` to pick the right path;
+`freezeDepartureContribution` needed no branch at all — `memberBaselines` stays `{}` for a
+guild-level template, so its existing "no baseline entry, no-op" guard already does the right
+thing for a departing member.
+
+**Threshold retune, direct instruction, alongside this fix**: Combined Harvest 1000 → 1500, Guild
+Raid Rally 30 → 50 (now a REAL per-guild raid-win count, not one inflated by roster size — a much
+harder bar in real terms than the old number, despite reading larger), Sweet Tooth 20 → 40, Toxin
+Tally 16 → 30. Ids left unchanged on all four (same "stale naming convention, avoids an active
+mid-rotation contract losing its templateId" precedent the 2026-08-29 retune already established).
+
+**Tests**: `guildContractFactory.test.js` — a new "guildLevelStat (Guild Raid Rally)" describe
+block (7 tests: baseline established from `guild.raidCount` with zero `findUser` calls, live
+progress as a guild-level delta below threshold, completion at threshold with the same reward
+path as a per-member template, `getProgress` and `getMemberBreakdown` both correct for a
+guild-level template, `freezeDepartureContribution` a confirmed no-op). Every pre-existing test
+(all against Combined Harvest, a per-member template) still passes unchanged — the guild-level
+path is fully additive, never touched by the normal aggregation route. Full suite green
+(1128/1128 at this point in the session, before the Yamimic-leveling tests above landed).
+
+**Docs**: `.claude/systems/guild-contracts.md` — the templates table updated to the new numbers,
+the `guildRaidWinCount` paragraph rewritten from "this naturally scales with guild size" (wrong)
+to the actual exploit and fix, and a new "Guild-level stats" subsection documenting the
+`guildLevelStat` mechanism generically (so a future second guild-level template needs no further
+guildContractFactory.js changes, just the constants entry).

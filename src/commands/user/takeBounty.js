@@ -200,13 +200,15 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     // companionFactory.getCooldownScaledWorkCountGrant), then pulled back by
     // CompanionLeveling.REALISTIC_PLAY_DISCOUNT since the pure ratio (12x) assumes a
     // player hits /work back-to-back the instant its cooldown clears — 8x, direct
-    // instruction. Restricted to Yukon specifically (direct follow-up instruction) —
-    // any other equipped companion is a no-op here, since Yukon is the one companion
-    // actually tied to the Mercenary track.
+    // instruction. Gated by bountyRewardPercent (originally hardcoded to Yukon by id,
+    // reworked 2026-09-07 — direct instruction: "make it so yamimic can level up with any
+    // of the mentioned increases it gives" — to match every other non-work leveling path's
+    // perk-type gating) — any equipped companion WITHOUT that perk is still a no-op here.
     let leveledCompanions = companionFactory.levelActiveCompanion(
         userDetails.companions,
         companionFactory.getCooldownScaledWorkCountGrant(Bounty.BOUNTY_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
-        'yukon'
+        null,
+        "bountyRewardPercent"
     );
     // "did Yukon actually train" readout for the result embed — see
     // companionFactory.getAppliedCompanionXpGain's own comment. Computed right after the

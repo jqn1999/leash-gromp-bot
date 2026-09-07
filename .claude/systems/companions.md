@@ -152,30 +152,34 @@ equipped instance too, unconditionally on win/loss — scaled against `/work`'s 
 much longer that action's cooldown is (see
 [mercenary-bounties.md#mercenary-companion-leveling](mercenary-bounties.md#mercenary-companion-leveling)
 for the full formula), so a companion levels at the same real-time RATE regardless of whether a
-mercenary spends their time on `/work`, Bounty, or Heist. **Restricted to Yukon specifically**
-(same-day follow-up) — Bounty/Heist only level the equipped instance if it's Yukon, the one
-companion actually tied to the Mercenary track (a Bounty-exclusive drop); any other equipped
-companion is a no-op through those two commands, though it still levels normally through
-`/work` or Scavenging. `companionFactory.levelActiveCompanion` is the shared function all three
-(`/work` included, refactored onto it) now call, via its optional `restrictToCompanionId`
-argument — `/work`'s own call site omits it and stays unrestricted, so it's the one path that
-still levels whatever's equipped. Scavenging still has its own separate leveling path
+mercenary spends their time on `/work`, Bounty, or Heist. **Originally restricted to Yukon
+specifically** (same-day follow-up) — Bounty/Heist only leveled the equipped instance if it was
+Yukon, the one companion actually tied to the Mercenary track (a Bounty-exclusive drop); any
+other equipped companion was a no-op through those two commands. **Reworked 2026-09-07** (direct
+instruction: "make it so yamimic can level up with any of the mentioned increases it gives") —
+now gated by **perk type** instead (`bountyRewardPercent` for Bounty, `robChanceFlat` for
+Heist), the same mechanism the `/rob`/`/sell-starch`/`/regrade` paragraph below already used.
+Yukon still levels through both exactly as before (it carries both perk types); this only
+widens who else can — namely Yamimic, which mirrors both. `companionFactory.levelActiveCompanion`
+is the shared function all these call sites (`/work` included, refactored onto it) now call, via
+its optional `restrictToPerkType` argument — `/work`'s own call site omits both restriction
+arguments and stays fully unrestricted, so it's the one path that levels whatever's equipped
+regardless of perks. Scavenging still has its own separate leveling path
 (`resolveScavengeReward`, below) since it's the one action that levels a *benched*, not
 equipped, instance.
 
-**Non-work-focused companion leveling (`/rob`, `/sell-starch`, `/regrade`)** — direct
-instruction: companions whose perks aren't work-related (starch-sell boosters, rob-chance
-boosters) get their own thematic leveling path too, "similar to yukon having a specific
-leveling method." Product-confirmed design point that distinguishes this from Yukon's own
-mechanism above: the restriction is by **PERK TYPE**, not a hardcoded companion id — a command
-levels whichever equipped companion happens to carry the matching perk, not one specific
-companion. `levelActiveCompanion` gained a 4th parameter, `restrictToPerkType`, for this:
-checked against the ROSTER definition's own `perks` array (via `getCompanionById`), not the
-owned instance (which only carries `{ instanceId, id, workCount }`) — mirrors
-`getActivePerkValue`'s own lookup idiom. Takes a back seat to `restrictToCompanionId` if a
-caller somehow passed both (checked first); no real call site does, since the two mechanisms
-are mutually exclusive by design (Yukon's Bounty/Heist path uses one, these three commands use
-the other).
+**Non-work-focused companion leveling (`/rob`, `/sell-starch`, `/regrade`, `/take-bounty`,
+`/rob-npc`, `/confront-rival`)** — direct instruction: companions whose perks aren't
+work-related (starch-sell boosters, rob-chance boosters, bounty/rival boosters) get their own
+thematic leveling path too, "similar to yukon having a specific leveling method." Product-
+confirmed design point: the restriction is by **PERK TYPE**, not a hardcoded companion id — a
+command levels whichever equipped companion happens to carry the matching perk, not one
+specific companion (Bounty/Heist were the one exception to this for a while, hardcoded to Yukon
+by id — reworked to match on 2026-09-07, see above). `levelActiveCompanion` gained a 4th
+parameter, `restrictToPerkType`, for this: checked against the ROSTER definition's own `perks`
+array (via `getCompanionById`), not the owned instance (which only carries `{ instanceId, id,
+workCount }`) — mirrors `getActivePerkValue`'s own lookup idiom. Takes a back seat to
+`restrictToCompanionId` if a caller somehow passed both (checked first); no real call site does.
 
 - **`/rob`** — `robChanceFlat` (Barn Owl/Yukon/Elder Rootbeard). Reuses the existing
   `getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)`
@@ -225,6 +229,17 @@ the other).
   -currentTier.cost)` line (the cost is a guaranteed sunk cost regardless of outcome, same as
   `/rob`'s reasoning above), so it's unconditional on success/fail and fires once per attempt
   in all three tracks.
+- **`/confront-rival`** — `rivalSuccessChanceFlat` (Yukon's third perk, Yamimic's mirrored
+  9th). New 2026-09-07 — this command never had a leveling hook at all before, for ANY
+  companion (Yukon included). Like `/sell-starch`/`/regrade`, no cooldown to scale against —
+  `/confront-rival` is gated by a resource THRESHOLD instead
+  (`mercenaryNotoriety >= Rival.CONFRONTATION_THRESHOLD`), so
+  `companionFactory.getRivalConfrontationWorkCountGrant() = max(1,
+  round(Rival.CONFRONTATION_THRESHOLD / 2))` pins the grant to that same real game constant
+  (self-corrects if it's ever retuned) rather than an independently authored number — halved
+  since reaching one confrontation already took several Bounty/Heist wins' worth of
+  accumulated Notoriety (each of which already granted its own XP), so this reflects the
+  marginal, single-attempt investment of the confrontation itself. Unconditional on win/loss.
 
 **Display: "XP," not "Work Count" (2026-08-31, direct ask — "make companion works just
 called exp or something since it goes up through many different means now")** —

@@ -1,4 +1,4 @@
-const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work } = require("../utils/constants");
+const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Rival } = require("../utils/constants");
 
 // Cumulative — same shape as workScenarios' chance field and starchFactory's
 // PROBABILITY_MATRIX. CompanionRarityOdds is keyed by rarity *strings*
@@ -523,6 +523,22 @@ function getRegradeWorkCountGrant(currentTierCost, cheapestTierCost) {
     ));
 }
 
+// /confront-rival -> companion XP grant, for whichever equipped companion carries
+// rivalSuccessChanceFlat (2026-09-07, direct instruction — "make it so yamimic can level
+// up with any of the mentioned increases it gives," closing the last of the 9 mirrored
+// perk types with no leveling hook of its own). Like Regrade, there's no per-call cooldown
+// or resource amount to scale a grant against — /confront-rival is gated by a resource
+// THRESHOLD instead (mercenaryNotoriety >= Rival.CONFRONTATION_THRESHOLD), so the grant is
+// pinned to that same real game constant (self-corrects if it's ever retuned) rather than
+// an independently authored number. Halved rather than used outright, landing between
+// Heist's 4 and Bounty's 8 own per-attempt grants — reaching one confrontation already took
+// several Bounty/Heist wins' worth of accumulated Notoriety (each of which already granted
+// its own XP), so this reflects the marginal, single-attempt investment of the
+// confrontation itself, not the whole run-up to it. Floored at 1.
+function getRivalConfrontationWorkCountGrant() {
+    return Math.max(1, Math.round(Rival.CONFRONTATION_THRESHOLD / 2));
+}
+
 // Companion Scavenging (roadmap #17) — see systems/companions.md#scavenging. Introduces a
 // third owned-companion state (owned-and-idle / owned-and-equipped / owned-and-scavenging)
 // enforced by this guard check at each risk site (companion.js's equip branch,
@@ -742,6 +758,7 @@ module.exports = {
     applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
+    getRivalConfrontationWorkCountGrant,
     isScavenging,
     getScavengeSpeedBonus,
     buildScavengeDispatch,

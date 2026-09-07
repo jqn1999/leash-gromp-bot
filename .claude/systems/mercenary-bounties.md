@@ -672,18 +672,29 @@ Bounty/Heist gets the exact same [Max-Level capstone](companions.md#max-level--f
 treatment a `/work`- or Scavenging-leveled crossing gets. No-op (same object reference back)
 if nothing is currently equipped.
 
-**Restricted to Yukon only** — same-day follow-up, direct instruction: "Can we make it only
+**Was restricted to Yukon only** — same-day follow-up, direct instruction: "Can we make it only
 yukon specific" (after confirming the first version leveled whichever companion happened to be
-equipped). `takeBounty.js` and `robNpc.js` now pass `'yukon'` as the third argument,
-`restrictToCompanionId`: when set, the function first resolves the equipped instance's `id`
-and no-ops (same object reference back) unless it equals `restrictToCompanionId`, before doing
-any leveling work. Thematically, Yukon is the one companion actually tied to the Mercenary
-track at all — a Bounty-exclusive drop, never obtainable from `/work` — so only Yukon trains
-off a mercenary's own signature actions; any other equipped companion is a no-op through
-`/take-bounty`/`/rob-npc` specifically, and still levels normally through `/work` or
-Scavenging as always. `/work`'s own call site stays 2-arg/unrestricted
-(`restrictToCompanionId` defaults to `null`), so it's the one path that still levels whatever
-happens to be equipped.
+equipped). `takeBounty.js` and `robNpc.js` passed `'yukon'` as the third argument,
+`restrictToCompanionId`, for a while: when set, the function first resolves the equipped
+instance's `id` and no-ops (same object reference back) unless it equals `restrictToCompanionId`,
+before doing any leveling work.
+
+**Reworked 2026-09-07, direct instruction** ("make it so yamimic can level up with any of the
+mentioned increases it gives") — `takeBounty.js`/`robNpc.js` now pass the 4th argument,
+`restrictToPerkType`, instead (`bountyRewardPercent`/`robChanceFlat` respectively), the exact
+same perk-type gating [companions.md's Leveling section](companions.md#leveling) already used
+for `/rob`/`/sell-starch`/`/regrade`. Yukon still trains off both actions exactly as before — it
+carries both perk types — but this also opens the door to any OTHER companion carrying them,
+namely Yamimic, the Heirloom-tier companion that mirrors Yukon's `bountyRewardPercent` and
+`robChanceFlat` (along with 7 other perks) rather than any hardcoded id. `/work`'s own call site
+stays fully unrestricted (both optional arguments omitted), so it's the one path that levels
+whatever happens to be equipped regardless of perks.
+
+**`/confront-rival` gained a leveling hook for the first time in this same rework** — it had
+none before, for any companion, Yukon included. Gated by `rivalSuccessChanceFlat` (Yukon's
+third perk); see [companions.md's Leveling section](companions.md#leveling) for the grant
+formula (`companionFactory.getRivalConfrontationWorkCountGrant`, pinned to
+`Rival.CONFRONTATION_THRESHOLD` since this action has no cooldown to scale against).
 
 **Composition with Yukon's same-turn award** (`/take-bounty` only): a winning Bounty attempt
 can grant Yukon in the same resolution the companion-leveling bump applies to. Since

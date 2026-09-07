@@ -23,6 +23,7 @@ const {
     applyPassiveCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
+    getRivalConfrontationWorkCountGrant,
     isScavenging,
     getScavengeSpeedBonus,
     buildScavengeDispatch,
@@ -1120,6 +1121,21 @@ describe('getRegradeWorkCountGrant', () => {
 
     test('floors at 1 for the cheapest tier of its own track', () => {
         expect(getRegradeWorkCountGrant(500000000, 500000000)).toBe(2); // base grant, ratio 1 -> still 2, never below floor
+    });
+});
+
+// 2026-09-07, direct instruction ("make it so yamimic can level up with any of the
+// mentioned increases it gives") — /confront-rival's new leveling hook. Pinned directly to
+// Rival.CONFRONTATION_THRESHOLD (halved) rather than an independently authored number, so
+// this self-corrects if that constant is ever retuned.
+describe('getRivalConfrontationWorkCountGrant', () => {
+    test('is half of Rival.CONFRONTATION_THRESHOLD, rounded', () => {
+        const { Rival } = require('../constants');
+        expect(getRivalConfrontationWorkCountGrant()).toBe(Math.round(Rival.CONFRONTATION_THRESHOLD / 2));
+    });
+
+    test('is a real, non-zero, floored-at-1 grant', () => {
+        expect(getRivalConfrontationWorkCountGrant()).toBeGreaterThanOrEqual(1);
     });
 });
 
