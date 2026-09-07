@@ -366,21 +366,38 @@ const Quests = [
 // naming convention only) specifically so a guild contract already active mid-rotation at
 // deploy time keeps resolving against the same templateId instead of finding it missing.
 const GuildContracts = [
-    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 1000 combined /work actions across the guild this week", statPath: "workCount", threshold: 1000 },
-    // guildRaidWinCount increments for EVERY member in a raid's raidList on a single win
-    // (see raidFactory.js's incrementCounter), not once per raid — so, like workCount
-    // above, this threshold is naturally scaled by guild size already, without needing a
-    // separate per-raid formula.
-    { id: "guild_weekly_raids_20", name: "Guild Raid Rally", description: "Win 30 combined guild raids across the guild this week (each win counts once per participating member)", statPath: "guildRaidWinCount", threshold: 30 },
+    // Threshold raised 1000 -> 1500, 2026-09-07 direct instruction, alongside the other
+    // three thresholds below and the Guild Raid Rally fix — ids left unchanged (still
+    // encode the ORIGINAL threshold, now stale as a naming convention only, same precedent
+    // as the 2026-08-29 retune's own comment above) specifically so a guild contract
+    // already active mid-rotation at deploy time keeps resolving against the same
+    // templateId instead of finding it missing.
+    { id: "guild_weekly_work_500", name: "Combined Harvest", description: "Complete 1500 combined /work actions across the guild this week", statPath: "workCount", threshold: 1500 },
+    // FIXED 2026-09-07 (player-reported: "raid count is too easy since it counts once per
+    // member"). This originally tracked guildRaidWinCount, which raidFactory.incrementCounter
+    // credits to EVERY member in a raid's raidList on a single win, not once per raid — so a
+    // guild running full-roster raids could clear the old 30 threshold in as few as 2 real
+    // raid wins, nowhere near a comparable stretch goal to Combined Harvest's real /work
+    // calls. Switched to guild.raidCount instead — a genuine per-GUILD field (see
+    // startRaid.js's raidCount += 1 in each tier's win branch) that increments exactly once
+    // per raid win regardless of roster size, immune to the same exploit. guildLevelStat:
+    // true routes this template through guildContractFactory's guild-level baseline/delta
+    // path (a single guild.raidCount snapshot, not one per member) instead of the normal
+    // per-member aggregation every other template here uses. New threshold (50, direct
+    // instruction) is a real per-guild raid-win count now, not one inflated by roster size
+    // the way the old 30-via-member-multiplier number was.
+    { id: "guild_weekly_raids_20", name: "Guild Raid Rally", description: "Win 50 guild raids across the guild this week (tracked once per raid win, not per participating member)", statPath: "raidCount", guildLevelStat: true, threshold: 50 },
     // ~2% chance per /work call (see eventFactory.js's workChances) — sized against
-    // Combined Harvest's implied ~1000 works/week for an active guild, landing this in
-    // the same weekly-stretch-goal range instead of being trivial or unreachable.
-    { id: "guild_weekly_sweet_10", name: "Sweet Tooth", description: "Find 20 combined Sweet Potatoes across the guild this week", statPath: "workScenarioCounts.sweet", threshold: 20 },
+    // Combined Harvest's implied works/week for an active guild, landing this in the same
+    // weekly-stretch-goal range instead of being trivial or unreachable. Threshold raised
+    // 20 -> 40, 2026-09-07 direct instruction, alongside the other three above/below.
+    { id: "guild_weekly_sweet_10", name: "Sweet Tooth", description: "Find 40 combined Sweet Potatoes across the guild this week", statPath: "workScenarioCounts.sweet", threshold: 40 },
     // ~1% chance per /work call — same sizing logic as Sweet Tooth, just against
     // Poison's roughly half-as-common roll. Turns Poison Potato (a pure loss for
     // whoever hits it, see workFactory.js) into guild-wide progress too, so a rough week
-    // of poison RNG isn't a total wash for the guild.
-    { id: "guild_weekly_poison_8", name: "Toxin Tally", description: "Survive 16 combined Poison Potatoes across the guild this week", statPath: "workScenarioCounts.poison", threshold: 16 },
+    // of poison RNG isn't a total wash for the guild. Threshold raised 16 -> 30,
+    // 2026-09-07 direct instruction, alongside the other three above.
+    { id: "guild_weekly_poison_8", name: "Toxin Tally", description: "Survive 30 combined Poison Potatoes across the guild this week", statPath: "workScenarioCounts.poison", threshold: 30 },
 ]
 
 // Reward for completing the active Guild Contract: a flat, permanent, uncapped bump to
@@ -672,6 +689,16 @@ const CompanionLeveling = {
     // that specific call — starches sold, or regrade cost paid — see
     // companionFactory.getStarchSellWorkCountGrant/getRegradeWorkCountGrant for the full
     // derivations.
+    //
+    // Bounty/Heist/`/confront-rival` were ORIGINALLY hardcoded to Yukon by id (the one
+    // companion these actions were built around) rather than gated by perk type like every
+    // other path here — reworked to match on 2026-09-07 (direct instruction: "make it so
+    // yamimic can level up with any of the mentioned increases it gives") once Yamimic
+    // needed a real leveling hook for bountyRewardPercent/rivalSuccessChanceFlat, the same
+    // way it already had one for every other mirrored perk. Yukon keeps leveling through
+    // both exactly as before (it still carries these perk types) — this only widens who
+    // ELSE can. /confront-rival didn't have a leveling call at all before this — see
+    // companionFactory.getRivalConfrontationWorkCountGrant.
     //
     // STARCH_SELL_REFERENCE_YIELD: ~10 starches sold nets roughly one /work call's worth of
     // grant — 10 is workFactory.handleTaroTrader's own average yield (round(uniform(8,12))

@@ -44,6 +44,19 @@ async function computeLiveMemberSum(guild, memberBaselines, statPath) {
     return deltas.reduce((sum, member) => sum + member.delta, 0);
 }
 
+// guildLevelStat templates (currently just Guild Raid Rally — see constants.js's own
+// comment on why guildRaidWinCount, a per-MEMBER counter, couldn't be used here) read a
+// single field directly off the guild object itself instead of summing per-member deltas
+// — the guild document is already in hand from whichever caller has `guild`, no per-member
+// findUser fan-out needed. guildStatBaseline is that field's value at snapshot time, the
+// guild-level equivalent of memberBaselines' per-member entries.
+function computeGuildLevelDelta(guild, contractState, statPath) {
+    const currentValue = getStatValue(guild, statPath);
+    const numericCurrent = Number.isFinite(currentValue) ? currentValue : 0;
+    const baseline = Number.isFinite(contractState.guildStatBaseline) ? contractState.guildStatBaseline : 0;
+    return Math.max(0, numericCurrent - baseline);
+}
+
 class GuildContractFactory {
     // Refreshes the active Guild Contract, but only on Mondays — same weekly-only
     // cadence as Quests' own weekly set (isMondayEST), since this is a weekly guild
@@ -94,26 +107,37 @@ class GuildContractFactory {
         let stateChanged = false;
 
         if (!contractState || contractState.rotationDate !== activeContract.rotationDate) {
-            const memberDetails = await Promise.all(guild.memberList.map(member => dynamoHandler.findUser(member.id, member.username)));
-            const memberBaselines = {};
-            guild.memberList.forEach((member, index) => {
-                const details = memberDetails[index];
-                let startValue;
-                if (actingUserDetails && actingPreviousUserDetails && member.id === actingUserDetails.userId) {
-                    startValue = getStatValue(actingPreviousUserDetails, template.statPath) || 0;
-                } else {
-                    startValue = details ? (getStatValue(details, template.statPath) || 0) : 0;
-                }
-                memberBaselines[member.id] = startValue;
-            });
+            if (template.guildLevelStat) {
+                contractState = {
+                    templateId: template.id,
+                    rotationDate: activeContract.rotationDate,
+                    memberBaselines: {},
+                    guildStatBaseline: getStatValue(guild, template.statPath) || 0,
+                    frozenContribution: 0,
+                    completed: false
+                };
+            } else {
+                const memberDetails = await Promise.all(guild.memberList.map(member => dynamoHandler.findUser(member.id, member.username)));
+                const memberBaselines = {};
+                guild.memberList.forEach((member, index) => {
+                    const details = memberDetails[index];
+                    let startValue;
+                    if (actingUserDetails && actingPreviousUserDetails && member.id === actingUserDetails.userId) {
+                        startValue = getStatValue(actingPreviousUserDetails, template.statPath) || 0;
+                    } else {
+                        startValue = details ? (getStatValue(details, template.statPath) || 0) : 0;
+                    }
+                    memberBaselines[member.id] = startValue;
+                });
 
-            contractState = {
-                templateId: template.id,
-                rotationDate: activeContract.rotationDate,
-                memberBaselines,
-                frozenContribution: 0,
-                completed: false
-            };
+                contractState = {
+                    templateId: template.id,
+                    rotationDate: activeContract.rotationDate,
+                    memberBaselines,
+                    frozenContribution: 0,
+                    completed: false
+                };
+            }
             stateChanged = true;
         }
 
@@ -122,7 +146,9 @@ class GuildContractFactory {
             return { completedNow: false, template, progress: template.threshold, threshold: template.threshold };
         }
 
-        const liveSum = await computeLiveMemberSum(guild, contractState.memberBaselines, template.statPath);
+        const liveSum = template.guildLevelStat
+            ? computeGuildLevelDelta(guild, contractState, template.statPath)
+            : await computeLiveMemberSum(guild, contractState.memberBaselines, template.statPath);
         const frozenContribution = Number.isFinite(contractState.frozenContribution) ? contractState.frozenContribution : 0;
         const progress = frozenContribution + liveSum;
 
@@ -184,7 +210,9 @@ class GuildContractFactory {
             return { template, progress: 0, threshold: template.threshold, isCompleted: false, rotationDate: activeContract.rotationDate };
         }
 
-        const liveSum = await computeLiveMemberSum(guild, contractState.memberBaselines, template.statPath);
+        const liveSum = template.guildLevelStat
+            ? computeGuildLevelDelta(guild, contractState, template.statPath)
+            : await computeLiveMemberSum(guild, contractState.memberBaselines, template.statPath);
         const frozenContribution = Number.isFinite(contractState.frozenContribution) ? contractState.frozenContribution : 0;
         const progress = Math.min(frozenContribution + liveSum, template.threshold);
 
@@ -201,13 +229,18 @@ class GuildContractFactory {
     // a leaderboard in /guild-contract. Read-only, same as getProgress — never
     // establishes a baseline or persists anything. Returns an empty breakdown (not an
     // error) if this guild has no fresh baseline yet, mirroring getProgress's "show 0"
-    // behavior rather than computing a delta against nothing.
+    // behavior rather than computing a delta against nothing. Also empty for a
+    // guildLevelStat template (Guild Raid Rally) — there's no per-member attribution to
+    // rank when the tracked value lives on the guild itself, not on any one member;
+    // createGuildContractEmbed already skips the "Top Contributors" field entirely on an
+    // empty breakdown, so this reads the same as "nobody's contributed yet" there.
     async getMemberBreakdown(guild) {
         const activeContract = await dynamoHandler.getActiveGuildContract();
         if (!activeContract) return null;
 
         const template = GuildContracts.find(contract => contract.id === activeContract.templateId);
         if (!template) return null;
+        if (template.guildLevelStat) return { template, breakdown: [] };
 
         const contractState = guild.guildContract;
         const hasFreshBaseline = Boolean(contractState && contractState.rotationDate === activeContract.rotationDate);

@@ -178,13 +178,16 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     // assumes a player hits /work back-to-back the instant its cooldown clears — 4x,
     // direct instruction. Shared across all 4 heist tiers, same as the cooldown itself,
     // since every tier costs the same real time regardless of which one was picked.
-    // Restricted to Yukon specifically (direct follow-up instruction) — any other
-    // equipped companion is a no-op here, since Yukon is the one companion actually
-    // tied to the Mercenary track.
+    // Gated by robChanceFlat (originally hardcoded to Yukon by id, reworked 2026-09-07 —
+    // direct instruction: "make it so yamimic can level up with any of the mentioned
+    // increases it gives" — to match every other non-work leveling path's perk-type
+    // gating, and real /rob's own identical gate) — any equipped companion WITHOUT that
+    // perk is still a no-op here.
     setAttributes.companions = companionFactory.levelActiveCompanion(
         userDetails.companions,
         companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
-        'yukon'
+        null,
+        "robChanceFlat"
     );
     // "did Yukon actually train" readout for the result embed — see
     // companionFactory.getAppliedCompanionXpGain's own comment.

@@ -4,6 +4,7 @@ const { Rival } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
+const companionFactory = require("../../utils/companionFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -71,6 +72,22 @@ module.exports = {
             setAttributes.totalLosses = userDetails.totalLosses - result.penaltyAmount;
         }
 
+        // Companion leveling (2026-09-07, direct instruction — "make it so yamimic can
+        // level up with any of the mentioned increases it gives"). /confront-rival never
+        // had a leveling hook at all before this — gated by rivalSuccessChanceFlat (Yukon's
+        // own third perk, now also whichever else carries it, e.g. Yamimic) rather than a
+        // hardcoded companion id, matching every other non-work leveling path. Unconditional
+        // on win/loss, same as every other companion-leveling call site. See
+        // companionFactory.getRivalConfrontationWorkCountGrant for the grant derivation.
+        setAttributes.companions = companionFactory.levelActiveCompanion(
+            userDetails.companions,
+            companionFactory.getRivalConfrontationWorkCountGrant(),
+            null,
+            "rivalSuccessChanceFlat"
+        );
+        const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, setAttributes.companions);
+        const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
+
         await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
         if (result.won) {
@@ -79,7 +96,7 @@ module.exports = {
             }
         }
 
-        const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result, setAttributes.mercenaryNotoriety);
+        const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result, setAttributes.mercenaryNotoriety, companionXpGained, companionName);
         await interaction.editReply({ embeds: [embed] });
 
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);

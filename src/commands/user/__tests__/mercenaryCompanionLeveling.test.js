@@ -6,16 +6,25 @@
 //
 // Same-day follow-up, direct instruction: "Can we make it only yukon specific" (after
 // confirming the first version leveled whichever companion happened to be equipped) — so
-// these two commands now only level Yukon specifically; any other equipped companion is a
-// no-op through them (still levels normally through /work or Scavenging as always).
+// these two commands only leveled Yukon specifically for a while; any other equipped
+// companion was a no-op through them (still leveled normally through /work or Scavenging
+// as always).
+//
+// Reworked again 2026-09-07, direct instruction ("make it so yamimic can level up with any
+// of the mentioned increases it gives") — the hardcoded Yukon-by-id restriction is now a
+// restrictToPerkType gate instead (bountyRewardPercent for Bounty, robChanceFlat for
+// Heist), the same pattern /rob, /sell-starch, and /regrade already used. Yukon still
+// levels through both exactly as before (it carries both perk types) — this only widens
+// who ELSE can, namely Yamimic, which mirrors both.
 //
 // The actual grant math (companionFactory.getCooldownScaledWorkCountGrant/
-// levelActiveCompanion, including the restrictToCompanionId gate) is unit-tested directly
+// levelActiveCompanion, including the restrictToPerkType gate) is unit-tested directly
 // in companionFactory.test.js — this file drives each real command callback end-to-end
 // against a minimal mocked interaction/dynamoHandler (same "mock at the boundary this
 // command actually touches" approach rivalNotorietyAccrual.test.js already uses) to lock
-// in that both commands actually call it correctly, unconditionally on win/loss, restricted
-// to Yukon, and composing correctly with Yukon's own same-turn companion-award write.
+// in that both commands actually call it correctly, unconditionally on win/loss, gated by
+// the right perk type, and composing correctly with Yukon's own same-turn companion-award
+// write.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -66,6 +75,15 @@ function baseUser(overrides = {}) {
 function sproutUser(overrides = {}) {
     return baseUser({
         companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 },
+        ...overrides,
+    });
+}
+
+// Mirrors both bountyRewardPercent and robChanceFlat (see its Companions roster entry's
+// perks manifest in constants.js) — the actual point of the 2026-09-07 rework above.
+function yamimicUser(overrides = {}) {
+    return baseUser({
+        companions: { owned: [{ instanceId: 'yamimic-a', id: 'yamimic', workCount: 10 }], active: 'yamimic-a', ownedCount: 1, mythicOwnedCount: 0 },
         ...overrides,
     });
 }
@@ -142,6 +160,28 @@ describe('/take-bounty levels an equipped Yukon, cooldown-scaled against /work, 
 
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setAttributes.companions.owned[0].workCount).toBe(10);
+    });
+
+    // The actual point of the 2026-09-07 rework: Yamimic mirrors bountyRewardPercent, so
+    // it now trains through Bounty too, not just Yukon by id.
+    test('an equipped Yamimic also levels — it mirrors bountyRewardPercent, not just Yukon by id', async () => {
+        const user = yamimicUser();
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'baby' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10 + BOUNTY_GRANT);
     });
 
     test('does nothing to companions when nothing is equipped', async () => {
@@ -243,6 +283,23 @@ describe('/rob-npc levels an equipped Yukon, cooldown-scaled against /work, on a
 
         const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setAttributes.companions.owned[0].workCount).toBe(10);
+    });
+
+    // The actual point of the 2026-09-07 rework: Yamimic mirrors robChanceFlat, so it now
+    // trains through Heist too, not just Yukon by id.
+    test('an equipped Yamimic also levels — it mirrors robChanceFlat, not just Yukon by id', async () => {
+        const user = yamimicUser();
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10 + HEIST_GRANT);
     });
 
     // Every tier shares the same cooldown (RobNpc.NPC_ROB_TIMER_SECONDS) — the leveling

@@ -204,3 +204,91 @@ describe('/confront-rival write sequence', () => {
         expect(setAttributes.mercenaryNotoriety).toBe(10);
     });
 });
+
+// Companion leveling (2026-09-07, direct instruction — "make it so yamimic can level up
+// with any of the mentioned increases it gives"). /confront-rival never had a leveling
+// hook at all before this — see companionFactory.getRivalConfrontationWorkCountGrant and
+// levelActiveCompanion's restrictToPerkType gate on "rivalSuccessChanceFlat", the same
+// perk-type-gated pattern /rob, /sell-starch, and /regrade already used.
+describe('/confront-rival companion leveling', () => {
+    const { callback } = require('../confrontRival');
+    const companionFactory = require('../../../utils/companionFactory');
+    const GRANT = companionFactory.getRivalConfrontationWorkCountGrant();
+
+    function yukonUser(overrides = {}) {
+        return baseUser({
+            companions: { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 10 }], active: 'yukon-a', ownedCount: 1, mythicOwnedCount: 0 },
+            ...overrides,
+        });
+    }
+
+    function yamimicUser(overrides = {}) {
+        return baseUser({
+            companions: { owned: [{ instanceId: 'yamimic-a', id: 'yamimic', workCount: 10 }], active: 'yamimic-a', ownedCount: 1, mythicOwnedCount: 0 },
+            ...overrides,
+        });
+    }
+
+    test('a win bumps an equipped Yukon (rivalSuccessChanceFlat) by the grant', async () => {
+        dynamoHandler.findUser.mockResolvedValue(yukonUser());
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10 + GRANT);
+    });
+
+    // The actual point of this feature — Yamimic mirrors rivalSuccessChanceFlat (see its
+    // Companions roster entry's perks manifest in constants.js), so it now trains through
+    // this action too, exactly like the companion it's mirroring the value from.
+    test('a win also bumps an equipped Yamimic — it mirrors rivalSuccessChanceFlat, not just Yukon by id', async () => {
+        dynamoHandler.findUser.mockResolvedValue(yamimicUser());
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10 + GRANT);
+    });
+
+    test('a loss still bumps the equipped companion by the same grant — unconditional on outcome', async () => {
+        dynamoHandler.findUser.mockResolvedValue(yukonUser());
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10 + GRANT);
+    });
+
+    test('an equipped companion without rivalSuccessChanceFlat does not level at all', async () => {
+        const sproutUser = baseUser({
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 10 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 },
+        });
+        dynamoHandler.findUser.mockResolvedValue(sproutUser);
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.companions.owned[0].workCount).toBe(10);
+    });
+});
