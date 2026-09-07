@@ -138,9 +138,52 @@ class QuestFactory {
                 // value, so the action that just revealed this quest still counts as
                 // progress toward it rather than being spent establishing the baseline.
                 const startValue = getStatValue(previousUserDetails, template.statPath) || 0;
-                baseline = { startValue, rotationDate, completed: false };
+                baseline = template.tiers
+                    ? { startValue, rotationDate, tiersCompleted: 0 }
+                    : { startValue, rotationDate, completed: false };
                 updatedQuestState[template.id] = baseline;
                 stateChanged = true;
+            }
+
+            // Scaling multi-tier quests (currently just the two Mercenary Quest ladders —
+            // see constants.js's own comment on Bounty/Heist Sweep) can grant MULTIPLE
+            // rewards across the same rotation as progress climbs, unlike every other
+            // quest here which completes exactly once. `tiersCompleted` (an index into
+            // `template.tiers`, not a boolean) tracks how many tiers have already been
+            // granted; each check walks forward from there, granting every NEWLY-crossed
+            // tier this call (normally one, but a big single-call jump — e.g. quest-state
+            // backfill — could cross several at once, so this loops rather than assuming
+            // exactly one).
+            if (template.tiers) {
+                if (baseline.tiersCompleted >= template.tiers.length) continue; // fully completed already
+
+                const progress = currentValue - baseline.startValue;
+                let tiersCompleted = baseline.tiersCompleted;
+                while (tiersCompleted < template.tiers.length && progress >= template.tiers[tiersCompleted].threshold) {
+                    const tier = template.tiers[tiersCompleted];
+                    tiersCompleted += 1;
+                    // Synthetic per-tier "quest" pushed into completedQuests — reuses
+                    // createQuestCompleteEmbed's existing additionalSafehouseStorage
+                    // branch as-is (it only ever reads name/description/reward off
+                    // whatever's pushed here, never template.threshold), so one embed
+                    // shows every tier crossed this call as its own field.
+                    completedQuests.push({
+                        id: template.id,
+                        name: template.name,
+                        description: `Tier ${tiersCompleted}/${template.tiers.length} reached — ${tier.threshold.toLocaleString()} this week`,
+                        category: template.category,
+                        reward: tier.reward
+                    });
+                    if (tier.reward.type === 'additionalSafehouseStorage') {
+                        additionalSafehouseStorageReward += tier.reward.amount;
+                    }
+                }
+
+                if (tiersCompleted !== baseline.tiersCompleted) {
+                    updatedQuestState[template.id] = { ...baseline, tiersCompleted };
+                    stateChanged = true;
+                }
+                continue;
             }
 
             if (baseline.completed) continue;
@@ -218,6 +261,21 @@ class QuestFactory {
             const hasFreshBaseline = existing && existing.rotationDate === rotationDate;
             const currentValue = getStatValue(userDetails, template.statPath) || 0;
             const progress = hasFreshBaseline ? Math.max(0, currentValue - existing.startValue) : 0;
+
+            if (template.tiers) {
+                const tiersCompleted = hasFreshBaseline ? (existing.tiersCompleted || 0) : 0;
+                const maxThreshold = template.tiers[template.tiers.length - 1].threshold;
+                const nextTier = template.tiers[tiersCompleted]; // undefined once every tier's claimed
+                return {
+                    quest: template,
+                    isCompleted: tiersCompleted >= template.tiers.length,
+                    progress: Math.min(progress, maxThreshold),
+                    tiersCompleted,
+                    totalTiers: template.tiers.length,
+                    nextTierThreshold: nextTier ? nextTier.threshold : null
+                };
+            }
+
             const isCompleted = Boolean(hasFreshBaseline && existing.completed);
 
             return {
