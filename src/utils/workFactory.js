@@ -581,14 +581,25 @@ class WorkFactory {
             potatoesGained = Math.floor(rawLoss * guineaPig.rebatePercent * escalationMultiplier);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
-            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            // skippable: false (2026-09-06, direct instruction: "make poison and mimics
+            // stop chained works") — Guinea Pig's own immune branch always passes the
+            // STANDARD cooldown (no lockout to elevate), so the cooldownTime check alone
+            // could never tell it apart from an ordinary /work resolution; explicitly
+            // opting out here stops it from ever rolling a skip/auto-chaining, same as
+            // the non-immune branch below already got structurally for free.
+            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
             updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings, poisonMitigation: nextPoisonMitigation };
         } else {
             const mitigatedLoss = Math.floor(rawLoss * (1 - reduction));
             potatoesGained = -mitigatedLoss;
             userPotatoes += potatoesGained;
             userTotalLosses += potatoesGained;
-            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds);
+            // skippable: false — explicit now rather than relying solely on
+            // lockoutSeconds never numerically coinciding with WORK_TIMER_SECONDS (see
+            // calculateWorkTimerValue's own comment on why that coincidence, while never
+            // currently possible given today's discrete mitigation tiers, isn't something
+            // worth depending on for correctness).
+            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds, false);
             updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses, poisonMitigation: nextPoisonMitigation };
         }
 
@@ -638,7 +649,11 @@ class WorkFactory {
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.mimic += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        // skippable: false (2026-09-06, direct instruction: "make poison and mimics stop
+        // chained works") — Mimic always uses the standard cooldown (it has no lockout to
+        // elevate the way Poison does), so without this it could still roll a skip and
+        // auto-chain into another /work call despite always being a loss.
+        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
 
         // Surfaced on the embed (see embedFactory.createMimicPotatoEmbed) so the reduction
         // is actually visible to the player, not just felt indirectly.

@@ -233,7 +233,7 @@ describe('handlePoisonPotato', () => {
     test('uses the poison cooldown, not the normal one, on a fresh (no prior hits this week) user', async () => {
         const userDetails = baseUser();
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS, false);
     });
 
     test('persists poisonMitigation with weeklyHitCount 1 on a fresh user\'s first hit', async () => {
@@ -251,7 +251,8 @@ describe('handlePoisonPotato', () => {
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(2);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
             userDetails,
-            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.REDUCTION_PER_HIT))
+            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.REDUCTION_PER_HIT)),
+            false
         );
         expect(result.mitigationInfo.reduction).toBeCloseTo(PoisonMitigation.REDUCTION_PER_HIT);
         expect(result.mitigationInfo.hitNumberThisWeek).toBe(2);
@@ -270,7 +271,7 @@ describe('handlePoisonPotato', () => {
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
-        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS, false);
     });
 
     test('the 10th hit this week applies the milestone reduction and bumps totalPoisonMilestonesReached', async () => {
@@ -284,7 +285,8 @@ describe('handlePoisonPotato', () => {
         expect(setFields.totalPoisonMilestonesReached).toBe(1);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
             userDetails,
-            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MILESTONE_REDUCTION))
+            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MILESTONE_REDUCTION)),
+            false
         );
         expect(result.mitigationInfo.milestoneJustReached).toBe(true);
     });
@@ -343,7 +345,7 @@ describe('handlePoisonPotato', () => {
         test('uses the normal cooldown instead of the 1-hour poison lockout', async () => {
             const userDetails = guineaPigUser();
             await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS, false);
         });
 
         // Locks in that leveling Guinea Pig grows its rebate, same direction every other
@@ -968,6 +970,16 @@ describe('handleMimicPotato weekly mitigation', () => {
 
         expect(mitigationInfo.hitNumberThisWeek).toBe(1);
         expect(mitigationInfo.reduction).toBe(0);
+    });
+
+    // 2026-09-07, direct instruction ("make poison and mimics stop chained works") — Mimic
+    // always passes Work.WORK_TIMER_SECONDS (no elevated lockout of its own), so it needs
+    // dynamoHandler.calculateWorkTimerValue's skippable=false gate to keep a companion or
+    // World Boss cooldownSkip proc from chaining an immediate extra /work after a Mimic hit.
+    test('passes skippable=false so a cooldown-skip proc can never chain off a Mimic hit', async () => {
+        const userDetails = baseUser({ bankStored: 1000000 });
+        await workFactory.handleMimicPotato(userDetails);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS, false);
     });
 });
 
