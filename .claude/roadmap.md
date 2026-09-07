@@ -8802,3 +8802,47 @@ bonus" subsection with the full formula/reasoning, the STARCH_RANGE paragraph co
 previously claimed the starch payout was never scaled by `effectiveMultiplier` at all — now
 qualified as "the base roll," since the new bonus IS scaled by it for three rarities), and the
 Numbers table gained a "Multi-scaled bonus ceiling" column.
+
+## Confirmation embeds on /leave and /retire-mercenary (2026-09-07, direct instruction)
+
+Player asked: "add confirmation embeds on leaving guild/merc so users dont accidentally leave
+with just a command use." Both commands were previously deliberate single-command instant
+actions — the original design comment on `retireMercenary.js` explicitly argued "No confirm
+step, same reasoning as /leave: nothing forfeited, progress persists." That reasoning held for
+progress, but missed that both exits still trip a real, sticky 24h guild↔mercenary switch
+cooldown (`Bounty.GUILD_SWITCH_COOLDOWN_SECONDS`) with no way back — exactly the kind of
+one-command-no-warning consequence worth guarding against regardless of whether anything is
+technically "lost."
+
+**Implementation**: both commands now follow the exact `buildConfirmCancelRow`/
+`awaitMessageComponent` shape `/rebirth` already established (30s timeout, Danger-styled
+confirm button, a preview embed before committing, a cancelled embed on backing out/timeout,
+and a complete embed after). 6 new `embedFactory.js` functions:
+`createLeaveGuildConfirmEmbed`/`Cancelled`/`Complete` and `createRetireMercenaryConfirmEmbed`/
+`Cancelled`/`Complete` — the confirm embeds state the real consequence (switch cooldown
+length, Guild Contract progress freezing on leave, Mercenary Rank/win count being untouched on
+retire) rather than just a bare "are you sure?"
+
+**Re-fetch on confirm, not just a single guarded write** — both commands re-fetch `userDetails`
+(and, for `/leave`, the guild itself) right before committing, then re-run the exact same
+eligibility checks a second time against that fresh state, since up to 30 real seconds pass
+between the prompt and the click: `/leave` re-checks membership AND leadership (a leadership
+pass, a kick, or the guild disbanding could all happen mid-prompt — the leader-check
+specifically needed to move to the confirm branch too, not just the pre-confirm one), and
+`/retire-mercenary` re-checks `isMercenary` is still true. Both success embeds are sent via
+`interaction.followUp` rather than `editReply`, since the button click already consumed the
+original message — same pattern `/rebirth` already uses.
+
+**Tests**: `mercenaryMutualExclusivity.test.js` — a new `fakeConfirmInteraction` helper
+(mirrors `nonWorkCompanionLeveling.test.js`'s own confirm-flow mocking shape) alongside the
+existing plain `fakeInteraction`; the two pre-existing success-path tests (`/retire-mercenary`,
+`/leave`) updated to drive the confirm button and assert on `interaction.followUp` instead of
+`editReply`; 4 new tests (a cancel-button test and a timeout test for `/retire-mercenary`; a
+cancel-button test and a leadership-changed-during-the-prompt regression test for `/leave`,
+the exact scenario the re-fetch-on-confirm design is meant to catch). Full suite green
+(1158/1158, up from 1154).
+
+**Docs**: `.claude/systems/mercenary-bounties.md`'s "Guild ↔ Mercenary switch cooldown" section
+gained a new subsection on the confirm step, its own table row for `/retire-mercenary`
+corrected (was "No args, no confirm"); `.claude/systems/guilds.md`'s `leave.js` table row
+updated the same way.

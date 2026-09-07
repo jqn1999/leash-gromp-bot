@@ -2959,6 +2959,112 @@ class EmbedFactory {
         return embed;
     }
 
+    // /leave confirmation trio (2026-09-07, direct instruction — "add confirmation embeds
+    // on leaving guild/merc so users dont accidentally leave with just a command use").
+    // Mirrors createRebirthPreviewEmbed/Cancelled/Complete's own 3-embed shape — a preview
+    // warning before the guarded write, a plain "nothing happened" on cancel/timeout, and a
+    // confirmation embed once it's actually done. cooldownSeconds is passed in rather than
+    // imported here so this stays a pure display function, same as every other embed
+    // builder in this file — leave.js reads Bounty.GUILD_SWITCH_COOLDOWN_SECONDS itself.
+    createLeaveGuildConfirmEmbed(userDisplayName, userId, userAvatar, guildName, cooldownSeconds) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`Leave ${guildName}?`)
+            .setDescription(`You'll be removed from the guild immediately. Your own progress (workCount, achievements, personal stats) is untouched — this only ends your membership.`)
+            .addFields(
+                {
+                    name: "Guild Contract progress:",
+                    value: `Whatever you've already contributed this week is banked (not lost), but stops growing the moment you leave.`,
+                    inline: false,
+                },
+                {
+                    name: "Cooldown before rejoining/founding a guild or becoming a mercenary:",
+                    value: convertSecondstoMinutes(cooldownSeconds),
+                    inline: false,
+                }
+            )
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createLeaveGuildCancelledEmbed(userDisplayName, userId, userAvatar, guildName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`You're still a member of ${guildName} — nothing changed.`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createLeaveGuildCompleteEmbed(userDisplayName, userId, userAvatar, guildName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} left ${guildName}`)
+            .setDescription(`You're no longer a member — you can join or found a new guild once the switch cooldown clears.`)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // /retire-mercenary confirmation trio — same shape as the /leave trio above, same
+    // instruction. Reassures on the one thing players might worry they're losing
+    // (Mercenary Rank/win count) since retireMercenary.js never resets those.
+    createRetireMercenaryConfirmEmbed(userDisplayName, userId, userAvatar, cooldownSeconds) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`Retire from mercenary work?`)
+            .setDescription(`You'll immediately lose access to /take-bounty, /rob-npc, and /confront-rival.`)
+            .addFields(
+                {
+                    name: "Mercenary Rank & win count:",
+                    value: `Untouched — come back later and you'll pick up right where you left off.`,
+                    inline: false,
+                },
+                {
+                    name: "Cooldown before joining/founding a guild or becoming a mercenary again:",
+                    value: convertSecondstoMinutes(cooldownSeconds),
+                    inline: false,
+                }
+            )
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createRetireMercenaryCancelledEmbed(userDisplayName, userId, userAvatar) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`You're still a mercenary — nothing changed.`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createRetireMercenaryCompleteEmbed(userDisplayName, userId, userAvatar, cooldownSeconds) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} retired from mercenary work`)
+            .setDescription(`Your Mercenary Rank and win count are untouched, in case you come back later — but you'll need to wait ${convertSecondstoMinutes(cooldownSeconds)} before joining or founding a guild.`)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
     createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob, companionXpGained = 0, companionName = null) {
