@@ -28,6 +28,7 @@ const {
     getScavengeSpeedBonus,
     buildScavengeDispatch,
     resolveScavengeReward,
+    getScavengeMultiplierBonus,
     migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 } = require('../companionFactory');
@@ -772,6 +773,73 @@ describe('resolveScavengeReward', () => {
 
         expect(maxLevelCount).toBe(2);
         expect(mythicMaxLevelCount).toBe(1);
+    });
+
+    // 2026-09-07, direct instruction — "have companion scavenging scale with the player's
+    // multi... current numbers can be the floor amount with multi giving it a chance of
+    // going beyond... heirloom tier can be about 100% of what a golden yam would give a
+    // player, mythic can give 40%, legendary 10%, rare and common stay as they are."
+    describe('multi-scaled starch bonus (Legendary/Mythic/Heirloom only)', () => {
+        test('Common and Rare get zero bonus regardless of multiplier — the STARCH_RANGE floor is untouched', () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0); // base roll -> minimum, tier -> 'normal'
+            const commonUser = userWithScavenge('sprout-a', CompanionRarity.COMMON, [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
+            const rareUser = userWithScavenge('mole-a', CompanionRarity.RARE, [{ instanceId: 'mole-a', id: 'mole', workCount: 0 }]);
+            const { starchesGained: commonStarches } = resolveScavengeReward(commonUser, 1000); // huge multiplier, still no bonus
+            const { starchesGained: rareStarches } = resolveScavengeReward(rareUser, 1000);
+            Math.random.mockRestore();
+
+            expect(commonStarches).toBe(CompanionScavenging.STARCH_RANGE[CompanionRarity.COMMON].min);
+            expect(rareStarches).toBe(CompanionScavenging.STARCH_RANGE[CompanionRarity.RARE].min);
+        });
+
+        test('a zero (or omitted) effectiveMultiplier grants zero bonus even for Heirloom', () => {
+            expect(getScavengeMultiplierBonus(CompanionRarity.HEIRLOOM, 0)).toBe(0);
+        });
+
+        test('the bonus ceiling is exactly GOLDEN_YAM_VALUE_PERCENT times the average Golden Yam payout for that multiplier', () => {
+            const effectiveMultiplier = 10;
+            const goldenYamAverage = ((Work.GOLDEN_YAM_MULTIPLIER_MIN + Work.GOLDEN_YAM_MULTIPLIER_MAX) / 2) * effectiveMultiplier;
+            // Mirrors getScavengeMultiplierBonus's own uniform(0, ceiling) roll exactly
+            // (Math.floor(roll * (ceiling + 1))) rather than approximating with
+            // Math.floor(ceiling) — a forced-near-1 roll lands just above the raw ceiling
+            // once the +1 is folded in, so this avoids an off-by-one against the real formula.
+            const rollToCeiling = (ceiling) => Math.floor(0.999999 * (ceiling + 1));
+
+            jest.spyOn(Math, 'random').mockReturnValue(0.999999); // pushes the uniform(0, ceiling) roll to its max
+            const legendaryBonus = getScavengeMultiplierBonus(CompanionRarity.LEGENDARY, effectiveMultiplier);
+            const mythicBonus = getScavengeMultiplierBonus(CompanionRarity.MYTHIC, effectiveMultiplier);
+            const heirloomBonus = getScavengeMultiplierBonus(CompanionRarity.HEIRLOOM, effectiveMultiplier);
+            Math.random.mockRestore();
+
+            expect(legendaryBonus).toBe(rollToCeiling(goldenYamAverage * 0.10));
+            expect(mythicBonus).toBe(rollToCeiling(goldenYamAverage * 0.40));
+            expect(heirloomBonus).toBe(rollToCeiling(goldenYamAverage * 1.00));
+        });
+
+        test('a forced-zero roll grants zero bonus even with a huge multiplier — "a chance of going beyond," not a guaranteed floor raise', () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0);
+            expect(getScavengeMultiplierBonus(CompanionRarity.HEIRLOOM, 1000)).toBe(0);
+            Math.random.mockRestore();
+        });
+
+        test('resolveScavengeReward adds the bonus on top of the existing STARCH_RANGE floor for Heirloom', () => {
+            const effectiveMultiplier = 20;
+            const goldenYamAverage = ((Work.GOLDEN_YAM_MULTIPLIER_MIN + Work.GOLDEN_YAM_MULTIPLIER_MAX) / 2) * effectiveMultiplier;
+            const ceiling = goldenYamAverage * 1.00;
+            const expectedBonus = Math.floor(0.999999 * (ceiling + 1)); // forced to the roll below
+
+            jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0)         // work count base roll -> minimum
+                .mockReturnValueOnce(0)         // tier roll -> 'normal' (1x)
+                .mockReturnValueOnce(0)         // starch base roll -> minimum
+                .mockReturnValueOnce(0.999999); // multi-bonus roll -> ceiling
+            const user = userWithScavenge('yamimic-a', CompanionRarity.HEIRLOOM, [{ instanceId: 'yamimic-a', id: 'yamimic', workCount: 0 }]);
+            const { starchesGained } = resolveScavengeReward(user, effectiveMultiplier);
+            Math.random.mockRestore();
+
+            const floor = CompanionScavenging.STARCH_RANGE[CompanionRarity.HEIRLOOM].min;
+            expect(starchesGained).toBe(floor + expectedBonus);
+        });
     });
 });
 

@@ -634,7 +634,34 @@ function rollWorkCountMultiplierTier() {
 //
 // Does not touch `scavenging` itself or userDetails.starches — the caller clears/credits
 // those as part of its own write.
-function resolveScavengeReward(userDetails) {
+// Multi-scaled starch bonus on top of a scavenge's own STARCH_RANGE floor — see
+// CompanionScavenging.GOLDEN_YAM_VALUE_PERCENT's own comment in constants.js for the full
+// derivation. Reuses the EXACT average of Work.GOLDEN_YAM_MULTIPLIER_MIN/MAX (the same
+// live range workFactory.js's handleGoldenYam rolls its own payout from) so "100% of what
+// a Golden Yam would give this player" is literal, not just similarly-sized. A rarity
+// absent from GOLDEN_YAM_VALUE_PERCENT (Common/Rare) gets no bonus at all — 0, always,
+// regardless of multiplier — per direct instruction ("rare and common stay as they are").
+// The bonus itself is `uniform(0, ceiling)`, not a flat grant of the ceiling — "a CHANCE
+// of going beyond" the floor, not a guaranteed scale-up every time.
+function getScavengeMultiplierBonus(rarity, effectiveMultiplier) {
+    const percent = CompanionScavenging.GOLDEN_YAM_VALUE_PERCENT[rarity];
+    if (!percent) {
+        return 0;
+    }
+    const goldenYamAverageValue = ((Work.GOLDEN_YAM_MULTIPLIER_MIN + Work.GOLDEN_YAM_MULTIPLIER_MAX) / 2) * effectiveMultiplier;
+    const ceiling = goldenYamAverageValue * percent;
+    return Math.floor(Math.random() * (ceiling + 1));
+}
+
+// effectiveMultiplier (new, optional, default 0 — a safe no-bonus value, not just an
+// arbitrary placeholder) is the caller's precomputed Golden-Yam-equivalent effective work
+// multiplier (workMultiplierAmount + guild/companion/rebirth/world-buff bonuses + catch-up
+// — see companionScavengeCollect.js for where this is actually assembled). Computing it
+// requires workFactory.js's own async guild/world-buff helpers, which this file can't
+// import directly (workFactory.js already imports companionFactory.js, so the reverse
+// would be circular) — so the caller computes it and passes the single resulting number
+// in, keeping this function itself synchronous and pure.
+function resolveScavengeReward(userDetails, effectiveMultiplier = 0) {
     const { instanceId, rarity } = userDetails.companions.scavenging;
 
     const { min: workMin, max: workMax } = CompanionScavenging.WORK_COUNT_RANGE[rarity];
@@ -644,7 +671,10 @@ function resolveScavengeReward(userDetails) {
 
     const { min: starchMin, max: starchMax } = CompanionScavenging.STARCH_RANGE[rarity];
     const baseStarches = starchMin + Math.floor(Math.random() * (starchMax - starchMin + 1));
-    const starchesGained = Math.floor(baseStarches * multiplierTier.multiplier);
+    // The STARCH_RANGE roll above (scaled by the same multiplierTier every rarity already
+    // uses) is the FLOOR — guaranteed regardless of multiplier. getScavengeMultiplierBonus
+    // adds a separate, multi-scaled bonus on top for Legendary/Mythic/Heirloom only.
+    const starchesGained = Math.floor(baseStarches * multiplierTier.multiplier) + getScavengeMultiplierBonus(rarity, effectiveMultiplier);
 
     const leveledOwned = userDetails.companions.owned.map(c =>
         c.instanceId === instanceId
@@ -763,6 +793,7 @@ module.exports = {
     getScavengeSpeedBonus,
     buildScavengeDispatch,
     resolveScavengeReward,
+    getScavengeMultiplierBonus,
     migrateOwnedToInstances,
     rollWorkCountMultiplierTier
 }

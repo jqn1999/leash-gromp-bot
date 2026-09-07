@@ -978,13 +978,13 @@ override only `owned`/`active` — regression-tested in `companionMarketFactory.
 
 **Numbers** (`CompanionScavenging` in `constants.js`, rarity-keyed):
 
-| Rarity | Duration | `WORK_COUNT_RANGE` | `STARCH_RANGE` |
-|---|---|---|---|
-| Common | 3h (10,800s) | 6–10 | 3–7 |
-| Rare | 6h (21,600s) | 12–20 | 10–20 |
-| Legendary | 12h (43,200s) | 24–40 | 28–52 |
-| Mythic | 24h (86,400s) | 48–80 | 70–130 |
-| Heirloom | 48h (172,800s) | 96–160 | 140–260 |
+| Rarity | Duration | `WORK_COUNT_RANGE` | `STARCH_RANGE` (floor) | Multi-scaled bonus ceiling |
+|---|---|---|---|---|
+| Common | 3h (10,800s) | 6–10 | 3–7 | none |
+| Rare | 6h (21,600s) | 12–20 | 10–20 | none |
+| Legendary | 12h (43,200s) | 24–40 | 28–52 | 10% of a Golden Yam's value |
+| Mythic | 24h (86,400s) | 48–80 | 70–130 | 40% of a Golden Yam's value |
+| Heirloom | 48h (172,800s) | 96–160 | 140–260 | 100% of a Golden Yam's value |
 
 Duration is a clean doubling per tier — Common at 36x `/work`'s 300s cooldown / 3x the 1hr raid
 timer unambiguously reads as a between-sessions action, Mythic's 24h lands on the same once-a-day
@@ -1027,13 +1027,16 @@ consequence of giving the bench something to do.
 
 `STARCH_RANGE` is a `{ min, max }` pair per rarity, rolled inclusive the same way
 `companionMarketFactory.rollNpcSalePrice` already rolls its own range (`min + Math.floor(Math.random()
-* (max - min + 1))`), deliberately **not** scaled by the scavenging companion's own level or the
-player's `effectiveMultiplier`/server wealth — same "stays modest at every stage of the game"
-precedent `/companion-sell-npc`'s pricing already set. Grounded against a fresh player's own *Taro
-Trader*/*Golden Yam* `/work` hits rather than derived from `CompanionMarket.MINIMUM_PRICE` (those are
-potato-denominated; starches trade at a wildly different unit scale) — a multi-hour, zero-effort,
-unscaled payout reads as "a nice bonus for basically no active play" early on, and decays toward
-irrelevance for a developed player the same way `/companion-sell-npc`'s flat pricing already does.
+* (max - min + 1))`) — this base roll itself is still deliberately **not** scaled by the
+scavenging companion's own level or the player's `effectiveMultiplier`/server wealth, same "stays
+modest at every stage of the game" precedent `/companion-sell-npc`'s pricing already set.
+Grounded against a fresh player's own *Taro Trader*/*Golden Yam* `/work` hits rather than derived
+from `CompanionMarket.MINIMUM_PRICE` (those are potato-denominated; starches trade at a wildly
+different unit scale) — a multi-hour, zero-effort, unscaled payout reads as "a nice bonus for
+basically no active play" early on, and decays toward irrelevance for a developed player the same
+way `/companion-sell-npc`'s flat pricing already does. **This base roll is now the FLOOR, not the
+whole story** — see "Multi-scaled starch bonus" below for the 2026-09-07 addition that layers a
+SEPARATE, `effectiveMultiplier`-scaled bonus on top for three of the five rarities.
 
 Initially left untouched by the 2026-08-23 buff (that ask was specifically about companion XP), but
 **2026-08-24, direct instruction** ("make starches also go up based on the normal great incredible")
@@ -1042,6 +1045,50 @@ extended `WORK_COUNT_MULTIPLIER_TIERS` to scale `starchesGained` too —
 uses (not a second, independent roll — one outcome now describes the whole return). A "great"/
 "incredible" scavenge is a genuinely better payout across the board now, not just a faster
 companion-leveling tick.
+
+### Multi-scaled starch bonus (2026-09-07, direct instruction)
+
+Player asked: "have companion scavenging scale with the player's multi... current numbers can be
+the floor amount with multi giving it a chance of going beyond... heirloom tier can be about 100%
+of what a golden yam would give a player, mythic can give 40%, legendary 10%, rare and common stay
+as they are." Everything above (`STARCH_RANGE` roll × `WORK_COUNT_MULTIPLIER_TIERS`) is untouched
+and becomes the **floor** — guaranteed regardless of multiplier, for every rarity including
+Common/Rare, which get nothing further. Legendary/Mythic/Heirloom additionally roll a **separate**,
+additive bonus on top via `companionFactory.getScavengeMultiplierBonus(rarity, effectiveMultiplier)`:
+
+```
+goldenYamAverageValue = ((Work.GOLDEN_YAM_MULTIPLIER_MIN + Work.GOLDEN_YAM_MULTIPLIER_MAX) / 2) * effectiveMultiplier
+ceiling = goldenYamAverageValue * CompanionScavenging.GOLDEN_YAM_VALUE_PERCENT[rarity]
+bonus = floor(random() * (ceiling + 1))   // uniform(0, ceiling)
+```
+
+- `GOLDEN_YAM_VALUE_PERCENT` (`constants.js`, `CompanionScavenging`): `{ LEGENDARY: 0.10, MYTHIC:
+  0.40, HEIRLOOM: 1.00 }` — a rarity absent from this map (Common/Rare) resolves to a hard `0`
+  bonus, always, regardless of multiplier. The exact ratios direct instruction asked for.
+- **"100% of what a Golden Yam would give this player" is literal, not approximate** —
+  `goldenYamAverageValue` reuses `Work.GOLDEN_YAM_MULTIPLIER_MIN`/`MAX`, the identical live range
+  `workFactory.js`'s `handleGoldenYam` rolls its own payout from, averaged rather than re-rolled
+  (avoiding a second layer of compounding randomness on top of the bonus roll itself).
+- **`effectiveMultiplier`** is the same fully-developed figure Golden Yam itself uses —
+  `workMultiplierAmount` + guild `workMulti` buff + companion `workMultiplierPercent` perk +
+  rebirth bonus + World Boss `workMulti` buff, then `applyCatchUp`'d. Computing it needs
+  `workFactory.js`'s async guild/world-buff helpers, which `companionFactory.js` can't import
+  (the reverse dependency already exists — `workFactory.js` requires `companionFactory.js`), so
+  `resolveScavengeReward` takes it as a plain second parameter (default `0`, a safe no-bonus
+  value) and `companionScavengeCollect.js` (the one real caller) assembles it right before calling,
+  reusing `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti`/`applyCatchUp` —
+  already exported from `workFactory.js` specifically for reuse elsewhere (`mercenaryFactory.js`
+  does the same) — plus `rebirthFactory.getLiveRebirthPercent` and
+  `dynamoHandler.getCatchUpBonus`.
+- **"A chance of going beyond," not a guaranteed scale-up** — the bonus is `uniform(0, ceiling)`,
+  so a maxed-multiplier player's Heirloom scavenge averages roughly 50% of a Golden Yam's value on
+  top of the floor, occasionally rolling near the full 100%, occasionally rolling near 0. The floor
+  itself never changes regardless of multiplier — a brand-new player still gets the exact same
+  guaranteed STARCH_RANGE roll they always did.
+- Only ever added to `starchesGained` — the multi-scaled bonus does **not** touch
+  `workCountGained` (companion XP), a deliberate scope decision (product-confirmed): Golden Yam is
+  a pure-starch reward with nothing to compare XP against, so widening the bonus to XP too would
+  have been scaling something the comparison target itself doesn't touch.
 
 **Cosmetic layer** (Option A of the 2026-08-23 Scavenging brainstorm, shipped the same day):
 - **Per-companion flavor text.** The 8 non-Common companions (Barn Owl, Mole, Firefly, Prospector,

@@ -1,6 +1,8 @@
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
+const rebirthFactory = require("../../utils/rebirthFactory");
+const { getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, applyCatchUp } = require("../../utils/workFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -34,7 +36,22 @@ module.exports = {
         const companion = companionFactory.getCompanionById(ownedEntryBefore?.id);
         const workCountBefore = ownedEntryBefore?.workCount || 0;
 
-        const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount } = companionFactory.resolveScavengeReward(userDetails);
+        // Multi-scaled starch bonus (2026-09-07, direct instruction — see
+        // companionFactory.getScavengeMultiplierBonus's own comment) — computed the exact
+        // same way workFactory.js's handleGoldenYam computes its own effective multiplier,
+        // so "up to 100% of what a Golden Yam would give this player" is literal. Only
+        // Legendary/Mythic/Heirloom scavenges actually use this (Common/Rare have no
+        // GOLDEN_YAM_VALUE_PERCENT entry, so the bonus resolves to a flat 0 for them
+        // regardless), but it's cheap to always compute rather than branch on rarity here.
+        const userMultiplier = userDetails.workMultiplierAmount;
+        const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
+        const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
+        const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
+        const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+
+        const { owned, starchesGained, workCountGained, multiplierTier, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount } = companionFactory.resolveScavengeReward(userDetails, effectiveMultiplier);
 
         const written = await dynamoHandler.resolveScavenge(userId, scavenging.instanceId, {
             companions: { ...userDetails.companions, owned, scavenging: null, scavengeReturnsByRarity, maxLevelCount, mythicMaxLevelCount },

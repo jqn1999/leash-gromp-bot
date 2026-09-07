@@ -847,6 +847,29 @@ const CompanionScavenging = {
         [CompanionRarity.MYTHIC]: { min: 70, max: 130 },
         [CompanionRarity.HEIRLOOM]: { min: 140, max: 260 } // same doubling-with-duration pattern
     },
+    // Multi-scaled starch bonus (2026-09-07, direct instruction — "have companion
+    // scavenging scale with the player's multi... current numbers can be the floor amount
+    // with multi giving it a chance of going beyond... heirloom tier can be about 100% of
+    // what a golden yam would give a player, mythic can give 40%, legendary 10%, rare and
+    // common stay as they are"). STARCH_RANGE above (already multiplied by
+    // WORK_COUNT_MULTIPLIER_TIERS) is now the FLOOR for every rarity, completely
+    // unaffected by this — this is a SEPARATE, additive bonus roll layered on top, only
+    // for the three rarities listed here (Common/Rare deliberately absent — no bonus
+    // entry means no bonus at all, see companionFactory.getScavengeMultiplierBonus).
+    // "A chance of going beyond," not a guaranteed scale-up: the bonus is
+    // `uniform(0, ceiling)`, where `ceiling = GOLDEN_YAM_VALUE_PERCENT[rarity] * average
+    // Golden Yam payout for this player's own effective multiplier` (Work.
+    // GOLDEN_YAM_MULTIPLIER_MIN/MAX, the exact same live formula workFactory.js's
+    // handleGoldenYam uses for its own payout, so "100% of what a Golden Yam would give
+    // this player" is literal, not approximate). A low-multiplier player still gets the
+    // full floor; a high-multiplier player's floor is unchanged too, but their bonus
+    // ceiling — and so their AVERAGE outcome — climbs with their effective multiplier the
+    // same way every other reward in the game does.
+    GOLDEN_YAM_VALUE_PERCENT: {
+        [CompanionRarity.LEGENDARY]: 0.10,
+        [CompanionRarity.MYTHIC]: 0.40,
+        [CompanionRarity.HEIRLOOM]: 1.00
+    },
     // Scavenging duration scales DOWN with the dispatched companion's own level — direct
     // instruction: "scale companion scavenging time down with level, say up to 30% faster
     // scavenging with the max level providing a jump from 20% to 30%." Two-part curve,

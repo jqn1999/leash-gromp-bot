@@ -8746,3 +8746,59 @@ the Bounty/Heist parity reasoning; `.claude/systems/safehouses.md`'s "Mercenary 
 section corrected (it had stale "winning 3/6 Bounties" text from the very first shape, predating
 even the 12-win retune, and incorrectly claimed the bonus could only be earned via Bounty when
 Heist grants it too).
+
+## Companion Scavenging: multi-scaled starch bonus for Legendary/Mythic/Heirloom (2026-09-07, direct instruction)
+
+Player asked: "have companion scavenging scale with the player's multi... current numbers can be
+the floor amount with multi giving it a chance of going beyond... heirloom tier can be about 100%
+of what a golden yam would give a player, mythic can give 40%, legendary 10%, rare and common stay
+as they are." Two design questions resolved via AskUserQuestion before implementing: (1) the bonus
+applies to starches only, not companion XP — Golden Yam is a pure-starch reward, so XP had nothing
+to compare against; (2) the multiplier driving it is the player's full effective work multiplier
+(personal + guild + companion + rebirth + world buff, catch-up applied) — the exact same figure
+`workFactory.js`'s `handleGoldenYam` uses for its own payout, making "100% of what a Golden Yam
+would give this player" literal rather than approximate.
+
+**Design**: every rarity's existing `STARCH_RANGE` roll (already scaled by
+`WORK_COUNT_MULTIPLIER_TIERS`) becomes the FLOOR, completely unchanged — guaranteed regardless of
+multiplier, same as before this change, for every rarity including Common/Rare (which get nothing
+further at all). Legendary/Mythic/Heirloom additionally roll a separate, additive bonus:
+`ceiling = ((Work.GOLDEN_YAM_MULTIPLIER_MIN + Work.GOLDEN_YAM_MULTIPLIER_MAX) / 2) *
+effectiveMultiplier * GOLDEN_YAM_VALUE_PERCENT[rarity]`, then `bonus = uniform(0, ceiling)` — "a
+CHANCE of going beyond" the floor, not a guaranteed scale-up every time. New
+`CompanionScavenging.GOLDEN_YAM_VALUE_PERCENT` map holds the requested ratios exactly: `{
+LEGENDARY: 0.10, MYTHIC: 0.40, HEIRLOOM: 1.00 }` (Common/Rare deliberately absent from the map,
+resolving to a hard 0).
+
+**Implementation**: new `companionFactory.getScavengeMultiplierBonus(rarity, effectiveMultiplier)`,
+called from `resolveScavengeReward`'s (now `(userDetails, effectiveMultiplier = 0)`) starch
+calculation. `companionFactory.js` can't import `workFactory.js`'s async guild/world-buff helpers
+directly (the reverse dependency already exists — `workFactory.js` requires `companionFactory.js`),
+so `effectiveMultiplier` is computed by the one real caller, `companionScavengeCollect.js`,
+mirroring Golden Yam's exact formula by reusing `getGuildWorkMulti`/`getCompanionWorkMulti`/
+`getWorldBuffWorkMulti`/`applyCatchUp` — already exported from `workFactory.js` specifically for
+reuse elsewhere (`mercenaryFactory.js` does the same) — plus `rebirthFactory.getLiveRebirthPercent`
+and `dynamoHandler.getCatchUpBonus`. The default `effectiveMultiplier = 0` keeps every existing
+caller/test behavior-preserving (a 0 multiplier always resolves the bonus to 0, identical to the
+pre-existing behavior).
+
+**Tests**: `companionFactory.test.js` — a new "multi-scaled starch bonus" describe block (6 tests:
+Common/Rare get zero bonus regardless of multiplier even at a huge value, a zero/omitted
+multiplier grants zero bonus even for Heirloom, the bonus ceiling exactly matches
+`GOLDEN_YAM_VALUE_PERCENT` times the average Golden Yam payout for a given multiplier — mirroring
+the real uniform-roll formula rather than approximating it, to avoid a rounding-driven false
+failure — a forced-zero roll grants zero bonus even with a huge multiplier, and
+`resolveScavengeReward` correctly adds the bonus on top of the existing floor for Heirloom); every
+pre-existing `resolveScavengeReward` test (Common/Mythic fixtures, no `effectiveMultiplier`
+argument at all) still passes unchanged. New `companionScavengeMultiBonus.test.js` (4 tests) locks
+in that `companionScavengeCollect.js` itself assembles the right `effectiveMultiplier` end-to-end:
+matches `workMultiplierAmount` exactly with no guild/companion/rebirth/world-buff contributions,
+increases when a live guild `workMulti` buff and rebirth bonus are both present, gets multiplied
+correctly by a live catch-up bonus, and is still computed (though its OWN bonus resolves to 0) for
+a Common-rarity scavenge. Full suite green (1154/1154, up from 1145).
+
+**Docs**: `.claude/systems/companions.md`'s Scavenging section gained a new "Multi-scaled starch
+bonus" subsection with the full formula/reasoning, the STARCH_RANGE paragraph corrected (it
+previously claimed the starch payout was never scaled by `effectiveMultiplier` at all — now
+qualified as "the base roll," since the new bonus IS scaled by it for three rarities), and the
+Numbers table gained a "Multi-scaled bonus ceiling" column.
