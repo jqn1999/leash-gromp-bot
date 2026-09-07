@@ -8423,3 +8423,37 @@ so the formula swap was invisible to them). Full suite green (1096/1096, up from
 **Docs**: `.claude/systems/economy-and-work.md` gained a dated "Stacking formula switched to
 1-∏(1-pᵢ)" subsection; `guilds.md`/`raids-and-world-events.md` updated their own "summed"
 wording to match.
+## Fix: Poison Potato (Guinea Pig branch) and Mimic Potato could still chain (2026-09-07, direct instruction)
+
+Player asked: "can you make poison and mimics stop chained works." The 2026-08-25 fix (see the
+"Cooldown-reduction overhaul" and follow-up entries above) already stopped a companion/World Boss
+`cooldownSkip` proc from chaining off a **non-immune** Poison Potato hit, by gating
+`dynamoHandler.calculateWorkTimerValue`'s skip roll on `cooldownTime === Work.WORK_TIMER_SECONDS` —
+non-immune Poison passes its own elevated `lockoutSeconds`, so it never matched. But Guinea Pig's
+immune Poison branch and Mimic Potato (`handleMimicPotato`) both genuinely need the *standard*
+duration (neither carries a lockout of its own to elevate), so that gate alone could never tell
+them apart from an ordinary `/work` resolution — either could still roll a skip and auto-chain an
+immediate extra `/work` call despite being loss-flavored, the same class of bug the earlier fix
+was meant to close, just for a case it couldn't reach.
+
+**Fix**: `calculateWorkTimerValue(userDetails, cooldownTime, skippable = true)` gained a second,
+independent parameter — the skip-roll block now gates on `skippable && cooldownTime ===
+Work.WORK_TIMER_SECONDS`. `workFactory.js` now passes `skippable: false` explicitly at all three
+Poison/Mimic call sites: Guinea Pig's immune branch, the non-immune branch (already structurally
+blocked by `lockoutSeconds` never numerically equaling `WORK_TIMER_SECONDS` under today's discrete
+mitigation tiers — passed `false` anyway for explicitness rather than leaning on that coincidence
+holding forever), and `handleMimicPotato`. Every other `/work` scenario passes no third argument
+and keeps the `true` default, so ordinary companion/World-Boss skip-chaining is unaffected.
+
+**Tests**: `dynamoHandler.test.js` — 1 new test in the `calculateWorkTimerValue` describe block
+(`skippable=false` blocks the roll even on a standard cooldown with a companion proc guaranteed via
+a forced-low `Math.random`, asserting neither `_cooldownSkippedByCompanion` nor
+`_cooldownSkipChance` get set). `workFactory.test.js` — 1 new test confirming `handleMimicPotato`
+calls `calculateWorkTimerValue` with `skippable: false`; the 5 pre-existing Poison-branch tests
+that asserted `calculateWorkTimerValue`'s call shape were updated to expect the new trailing
+argument (mechanical fallout of the signature change, not new behavior). Full suite green
+(1117/1117, up from 1115).
+
+**Docs**: `.claude/systems/economy-and-work.md`'s 2026-08-25 write-up corrected — it had claimed
+Guinea Pig's immune branch "stays skippable exactly as before," which is no longer true — and a new
+2026-09-07 follow-up paragraph added directly after it describing this fix.

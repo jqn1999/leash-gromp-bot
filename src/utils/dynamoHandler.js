@@ -342,7 +342,19 @@ async function getWorkCooldownSkipSources(userDetails) {
 // without every /work scenario's handler needing its return shape changed to carry an extra
 // flag through. See cooldownFactory.js and .claude/systems/economy-and-work.md for the full
 // writeup of why this replaced the old flat-reduction mechanics.
-const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
+// skippable (new, optional, default true, 2026-09-06 direct instruction: "make poison and
+// mimics stop chained works") — a second, independent gate alongside the cooldownTime
+// check below. A non-immune Poison Potato hit's elevated lockoutSeconds already blocked
+// the skip roll structurally (never equal to WORK_TIMER_SECONDS), but Guinea Pig's immune
+// Poison branch and Mimic Potato both always pass the STANDARD WORK_TIMER_SECONDS
+// duration (neither carries an elevated lockout), so the cooldownTime check alone could
+// never distinguish them from an ordinary /work resolution — both could roll a skip and
+// auto-chain into another /work call despite being loss-flavored (or loss-shaped, for
+// Guinea Pig's own rebate-not-loss branch) scenarios. workFactory.js now passes
+// `skippable: false` explicitly for all three (both Poison branches, and Mimic) rather
+// than relying on the cooldownTime mismatch alone — explicit intent, not an incidental
+// numeric coincidence that a future mitigation retune could accidentally break.
+const calculateWorkTimerValue = async function (userDetails, cooldownTime, skippable = true) {
     // Only the STANDARD cooldown is skippable — gated on cooldownTime === WORK_TIMER_SECONDS
     // rather than rolling unconditionally. A non-immune Poison Potato hit passes its own
     // elevated lockoutSeconds here (workFactory.js:546, always < POISON_POTATO_
@@ -350,10 +362,7 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime) {
     // leaves that punishment alone instead of any of these sources erasing it — a skip proc
     // on a poisoned call would otherwise collapse the real lockout down to "ready now" and
     // chain an immediate extra /work call, replacing the punishment with a bare cooldown.
-    // Guinea Pig's immune poison branch (workFactory.js:539) still passes WORK_TIMER_SECONDS
-    // itself, so it stays skippable exactly as before — that hit was already designed to
-    // carry no lockout at all.
-    if (cooldownTime === Work.WORK_TIMER_SECONDS) {
+    if (skippable && cooldownTime === Work.WORK_TIMER_SECONDS) {
         const sources = await getWorkCooldownSkipSources(userDetails);
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         // Stamped unconditionally (hit or miss) — same transient, never-persisted pattern as

@@ -110,12 +110,34 @@ of the loss). Two changes, both in `workFactory.js`:
    silently vanished. Fixed by gating the skip roll on `cooldownTime === Work.WORK_TIMER_SECONDS`
    (dynamoHandler.js): only a genuinely standard-length cooldown is skippable now. Guinea Pig's
    immune poison branch still passes `WORK_TIMER_SECONDS` itself (see above — that hit was already
-   designed to carry no lockout), so it's unaffected and stays skippable exactly as before; every
-   other ordinary `/work` scenario is unaffected too, since they all already passed
-   `WORK_TIMER_SECONDS`. 2 new tests in `dynamoHandler.test.js`'s `calculateWorkTimerValue` describe
-   block (standard cooldown still skippable on a forced-low `Math.random` roll; an elevated
-   Poison-style cooldown is never skipped on the same forced-low roll, and never sets
-   `_cooldownSkippedByCompanion`). Full suite green (472/472, up from 470).
+   designed to carry no lockout), so at the time this landed it was unaffected and stayed skippable
+   exactly as before **(superseded 2026-09-07, see below — it no longer is)**; every other ordinary
+   `/work` scenario is unaffected too, since they all already passed `WORK_TIMER_SECONDS`. 2 new
+   tests in `dynamoHandler.test.js`'s `calculateWorkTimerValue` describe block (standard cooldown
+   still skippable on a forced-low `Math.random` roll; an elevated Poison-style cooldown is never
+   skipped on the same forced-low roll, and never sets `_cooldownSkippedByCompanion`). Full suite
+   green (472/472, up from 470).
+
+   **2026-09-07 follow-up, direct instruction ("make poison and mimics stop chained works")**: the
+   `cooldownTime === Work.WORK_TIMER_SECONDS` gate above only ever distinguished cooldown *duration*,
+   not whether the scenario should be chainable at all — and two loss/no-lockout scenarios genuinely
+   need the standard duration while still being ineligible to chain: Guinea Pig's immune Poison
+   branch (see directly above) and Mimic Potato (`handleMimicPotato` — always
+   `WORK_TIMER_SECONDS`, no lockout of its own to elevate). Both could still roll a companion or
+   World Boss `cooldownSkip` proc and auto-chain an extra `/work` call despite being loss-flavored,
+   the exact class of bug the 2026-08-25 fix above was meant to close. Fixed by adding a second,
+   independent `skippable` parameter: `calculateWorkTimerValue(userDetails, cooldownTime, skippable
+   = true)` (dynamoHandler.js) — the skip-roll block now gates on `skippable && cooldownTime ===
+   Work.WORK_TIMER_SECONDS`. `workFactory.js` now passes `skippable: false` explicitly at three
+   call sites: Guinea Pig's immune Poison branch, the non-immune Poison branch (already
+   structurally blocked by its elevated `lockoutSeconds` never numerically equaling
+   `WORK_TIMER_SECONDS` under today's discrete mitigation tiers — passed `false` anyway for
+   explicitness rather than relying on that coincidence), and `handleMimicPotato`. New tests: 1 in
+   `dynamoHandler.test.js` (`skippable=false` blocks the roll even on a standard cooldown with a
+   companion proc guaranteed via a forced-low `Math.random`) and 1 in `workFactory.test.js`
+   (`handleMimicPotato` calls `calculateWorkTimerValue` with `skippable: false`); the 5 pre-existing
+   `workFactory.test.js` assertions on Poison's call shape were updated to expect the new trailing
+   argument. Full suite green (1117/1117).
 
    Guinea Pig's full poison immunity is unaffected and unchanged — an immune hit doesn't touch
    `poisonMitigation` at all (there's no loss/lockout to mitigate), so it doesn't build weekly-hit

@@ -589,6 +589,25 @@ describe('calculateWorkTimerValue', () => {
         expect(userDetails._cooldownSkipChance).toBeUndefined();
     });
 
+    // 2026-09-07, direct instruction ("make poison and mimics stop chained works"). Guinea
+    // Pig's immune Poison branch and Mimic Potato both pass Work.WORK_TIMER_SECONDS (neither
+    // has an elevated lockout of its own), so the cooldownTime check above could never
+    // distinguish them from an ordinary /work resolution — a companion or World Boss proc
+    // could still roll a skip and auto-chain despite the scenario being loss-flavored. The
+    // new skippable=false parameter (workFactory.js's handlePoisonPotato Guinea Pig branch
+    // and handleMimicPotato) is an independent gate for exactly this case.
+    test('skippable=false blocks the roll even on a standard cooldown with a companion proc guaranteed', async () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0); // would have skipped if rolled at all
+        const userDetails = userWithFieldmouse();
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+        expect(userDetails._cooldownSkipChance).toBeUndefined();
+    });
+
     // Griseous's World Boss buff (systems/raids-and-world-events.md#server-wide-buff) — a
     // second, independent roll reached only once the companion roll (if any) has already
     // missed. Reuses _cooldownSkippedByCompanion (an object here, not a companion id
