@@ -92,14 +92,28 @@ curve shape (0/15/50/125/275/525) rather than `RaidLevel.THRESHOLDS` — that cu
 for a *guild's* aggregate win count across many members over a long lifetime (up to 12,000
 wins), not a solo player's own wins one at a time on an hourly-ish cooldown:
 
-| Rank | Wins required | Reward multiplier | Cooldown reduction on a win |
+**Reworked into an accelerating curve, 2026-09-07** (direct instruction: "scaling a bit
+too instead of a flat buff each time, i want 4-5-6 to feel better to hit... numbers
+slightly higher"). The original curve's `rewardMultiplier` deltas actually SHRANK near the
+top (+.15/+.20/+.15/+.15/+.10 — rank 5→6 was the smallest jump in the whole ladder) and
+`cooldownReductionPercent`/`rivalSuccessBonus` were both perfectly linear, so every
+promotion felt identical. Now mirrors the same accelerating shape `RaidLevel.THRESHOLDS`'
+own multiplier curve already uses for Guild Raid Level — deltas grow every rank instead of
+shrinking, so Rank 6 alone is a bigger single jump on `rewardMultiplier` than the entire
+rank 2→5 span combined:
+
+| Rank | Wins required | Reward multiplier | Cooldown skip chance on a win |
 |---|---|---|---|
 | 1 | 0 | 1.00x | — |
-| 2 | 15 | 1.15x | -6% |
-| 3 | 50 | 1.35x | -12% |
-| 4 | 125 | 1.50x | -18% |
-| 5 | 275 | 1.65x | -24% |
-| 6 (max) | 525 | 1.75x | -30% |
+| 2 | 15 | 1.15x | 6% |
+| 3 | 50 | 1.30x | 11% |
+| 4 | 125 | 1.55x | 18% |
+| 5 | 275 | 1.90x | 27% |
+| 6 (max) | 525 | 2.35x | 38% |
+
+`cooldownReductionPercent`'s max was deliberately NOT pushed as high proportionally as the
+other two — see its own dedicated section further down for why (it feeds a SHARED cap with
+Spud Keep's own cooldown buff).
 
 **Rank no longer gates Bounty tier access at all** — retired 2026-08-28 alongside the
 12-Tier Bounty Ladder rework below (`unlocksTier` removed from `MercenaryRank.THRESHOLDS`
@@ -894,12 +908,14 @@ reported ranking up didn't feel like it helped Rival fights at all, and the form
 confirms that was literally true before this: rank previously touched only `rewardMultiplier`,
 applied only on a win landing at the exact same rate regardless of rank). Lives directly on
 `MercenaryRank.THRESHOLDS` alongside `rewardMultiplier`, as a per-scenario object
-(`{ easy, medium, hard }`) ramping linearly from all-zero at Rank 1 to +20%/+15%/+10% at max
-Rank 6. Deliberately bigger in absolute points on Easy (the most common roll, 60% of
-confrontations) than Hard (the rarest, 10%) — but proportionally consistent: Easy's +20 fully
-spans its own 20-point range, Hard's +10 fully spans its own 10-point range, Medium's +15
-covers 75% of its 20-point range. A maxed mercenary's Hard floor doubles (10%→20%, 25-35% with
-Yukon stacked on top) without approaching a guaranteed win — Hard is still meant to be hard.
+(`{ easy, medium, hard }`). Originally ramped LINEARLY from all-zero at Rank 1 to +20%/+15%/+10%
+at max Rank 6; **reworked into the same accelerating curve as `rewardMultiplier`, 2026-09-07**
+(see this doc's own Mercenary Rank table above) — now +30%/+22%/+15% at max Rank 6, with each
+rank's delta bigger than the last from Rank 3 onward. Deliberately bigger in absolute points on
+Easy (the most common roll, 60% of confrontations) than Hard (the rarest, 10%), same
+proportional-to-range-width relationship the original curve established. A maxed mercenary's
+Hard floor still doesn't approach a guaranteed win (10%→25%, 30-35% with Yukon stacked on top)
+— Hard is still meant to be hard.
 Surfaced explicitly on both `/notoriety` (a live preview, before fighting) and
 `createRivalConfrontationResultEmbed` (a "Mercenary Rank Bonus: +X% (Rank N)" field, shown
 whenever it's actually nonzero) — the whole point was making rank's contribution *felt*, not
@@ -909,10 +925,12 @@ wasn't considered sufficient.
 **Mercenary Rank's `cooldownReductionPercent`** (added 2026-08-29, direct instruction —
 "with higher merc rank can we also lower the cooldown on successful bounty/heist attempts
 so they can be done again sooner"). Lives directly on `MercenaryRank.THRESHOLDS` alongside
-`rewardMultiplier`/`rivalSuccessBonus`, ramping linearly from 0 at Rank 1 to 30% at max Rank
-6 (confirmed via AskUserQuestion against 20%/40% alternatives — 30% stays meaningfully under
-`PoisonMitigation`'s existing 50% cooldown-cut precedent, since that one is punishment relief
-while this is a pure reward).
+`rewardMultiplier`/`rivalSuccessBonus`. Originally ramped linearly from 0 at Rank 1 to 30% at
+max Rank 6 (confirmed via AskUserQuestion against 20%/40% alternatives — 30% stays
+meaningfully under `PoisonMitigation`'s existing 50% cooldown-cut precedent, since that one is
+punishment relief while this is a pure reward). **Reworked into the same accelerating curve as
+`rewardMultiplier`/`rivalSuccessBonus`, 2026-09-07** — max raised to 38%, but deliberately NOT
+pushed as high proportionally as the other two (see below for why).
 
 **Reworked 2026-09-05 (cooldown-skip overhaul, direct instruction)** — this value, and Spud
 Keep's own holder-wide cooldown perk (`SpudKeep.COOLDOWN_BUFF_TYPE`, previously always-on
@@ -924,6 +942,16 @@ combined **chance to skip the cooldown entirely**, rolled once via `cooldownFact
 `bountyTimer`/`npcRobTimer` by the FULL cooldown (ready immediately) and auto-chains another
 attempt — `takeBounty.js`'s `runBountyAttempt`/`robNpc.js`'s `runNpcRobAttempt` recurse exactly
 like `/work`'s `performWork`, capped at the same `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH`.
+
+**Why `cooldownReductionPercent`'s 2026-09-07 max (38%) stayed more modest than
+`rewardMultiplier`/`rivalSuccessBonus`'s own jumps**: this value feeds `combineSkipChance`
+alongside Spud Keep's own cooldown buff (`SpudKeep.COOLDOWN_BUFF_MAX_VALUE`, up to 40% at a
+full hold-streak), and the combined result is hard-capped at `DEFAULT_SKIP_CHANCE_CAP` (60%)
+overall. Pushing Rank's own max much past ~40% would mean any mercenary with a decent Spud
+Keep streak auto-saturates that shared cap on Rank alone, making the Spud Keep stacking feel
+pointless instead of rewarding. 38% still leaves real headroom — a maxed Rank + maxed Spud Keep
+computes to `1-(1-.38)(1-.40) ≈ 63%`, clamped to 60% only once BOTH tracks are simultaneously
+maxed, not casually.
 
 Per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
 trigger"), **neither source is even rolled on a loss/whiff** — a loss always resets the full

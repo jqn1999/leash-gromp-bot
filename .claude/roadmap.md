@@ -8802,3 +8802,65 @@ bonus" subsection with the full formula/reasoning, the STARCH_RANGE paragraph co
 previously claimed the starch payout was never scaled by `effectiveMultiplier` at all — now
 qualified as "the base roll," since the new bonus IS scaled by it for three rarities), and the
 Numbers table gained a "Multi-scaled bonus ceiling" column.
+
+## Mercenary Rank reworked into an accelerating curve (2026-09-07, direct instruction)
+
+Player asked me to first list out what Mercenary Rank currently gives, then: "if you could plan
+out an idea on buffing the benefits of merc levels, i was thinking it could be scaling a bit too
+instead of a flat buff each time, i want 4-5-6 to feel better to hit, and also have the numbers
+slightly higher." I presented a diagnosis (the old `rewardMultiplier` curve's deltas actually
+SHRANK near the top — +.15/+.20/+.15/+.15/+.10, the smallest jump being the very last one — and
+`rivalSuccessBonus`/`cooldownReductionPercent` were both perfectly linear, so every rank felt
+identical) plus a concrete proposed table mirroring `RaidLevel.THRESHOLDS`' own accelerating
+multiplier curve (Guild Raid Level already uses growing, not shrinking, deltas). Confirmed
+as-is, no changes to the proposed numbers.
+
+**New curve** (`MercenaryRank.THRESHOLDS`, `constants.js`):
+
+| Rank | Wins | rewardMultiplier | rivalSuccessBonus (easy/med/hard) | cooldownReductionPercent |
+|---|---|---|---|---|
+| 1 | 0 | 1.00 | 0% / 0% / 0% | 0% |
+| 2 | 15 | 1.15 | 4% / 3% / 2% | 6% |
+| 3 | 50 | 1.30 | 8% / 6% / 4% | 11% |
+| 4 | 125 | 1.55 | 14% / 10% / 7% | 18% |
+| 5 | 275 | 1.90 | 21% / 16% / 10% | 27% |
+| 6 (max) | 525 | 2.35 | 30% / 22% / 15% | 38% |
+
+`rewardMultiplier` max rose 1.75x → 2.35x (+75% → +135% total) with deltas that now GROW every
+rank (.15, .15, .25, .35, .45) instead of shrinking — Rank 6 alone is a bigger single jump than
+the entire old rank 2→5 span combined. `rivalSuccessBonus` (easy) max rose 20% → 30%, same
+accelerating shape, medium/hard kept at roughly the same proportional share of easy's value the
+original curve used. `cooldownReductionPercent` max rose 30% → 38% — deliberately NOT pushed as
+high proportionally as the other two, since it feeds `cooldownFactory.combineSkipChance`
+alongside Spud Keep's own cooldown buff (`SpudKeep.COOLDOWN_BUFF_MAX_VALUE`, up to 40% at a full
+hold-streak), and the combined result is hard-capped at `DEFAULT_SKIP_CHANCE_CAP` (60%) overall
+— pushing Rank's own max much higher would let a decent Spud Keep streak alone auto-saturate
+that shared cap, making the stacking feel pointless. 38% still leaves headroom: a maxed Rank +
+maxed Spud Keep computes to `1-(1-.38)(1-.40) ≈ 63%`, clamped to 60% only once BOTH tracks are
+simultaneously maxed, not casually.
+
+No changes needed to any consumer (`mercenaryFactory.js`'s Bounty/Heist/Rival formulas, the
+`/profile`/`/notoriety`/result-embed display code) — every one of them already reads
+`rankInfo.rewardMultiplier`/`.rivalSuccessBonus`/`.cooldownReductionPercent` live off
+`getMercenaryRankInfo`'s lookup rather than hardcoding a number, so the curve swap was entirely
+contained to the one constants table.
+
+**Tests**: `mercenaryFactory.test.js` — 4 pre-existing tests updated from hardcoded old-curve
+values (max `rivalSuccessBonus`, max `cooldownReductionPercent`, and two `resolveRivalConfrontation`
+tests asserting the old max rank-success-bonus numbers) to the new ones; the generic
+"every threshold resolves to its own rank/multiplier exactly at the boundary" test needed no
+changes at all (reads `MercenaryRank.THRESHOLDS` directly, never a hardcoded number). 5 new
+tests: `rewardMultiplier`/`rivalSuccessBonus.easy`/`cooldownReductionPercent` deltas each
+verified to strictly increase from rank 3 onward (the actual accelerating-shape assertion, not
+just endpoint values), a sanity check that the last delta is real but still smaller than the
+sum of every earlier delta combined, and a check that a maxed Rank + maxed Spud Keep still
+clamps to the shared 60% cap via the real `combineSkipChance` rather than silently exceeding it.
+Full suite green (1158/1158, up from 1154).
+
+**Docs**: `.claude/systems/mercenary-bounties.md`'s Mercenary Rank table and its
+`rivalSuccessBonus`/`cooldownReductionPercent` dedicated sections all updated to the new
+numbers and accelerating-curve framing; the Rank table's "Cooldown reduction on a win" column
+(stale text describing a deterministic percent cut, predating the 2026-09-05 cooldown-skip
+overhaul) corrected to "Cooldown skip chance on a win" while already being touched for this
+change; a new paragraph explains why `cooldownReductionPercent`'s max was kept more modest than
+the other two.
