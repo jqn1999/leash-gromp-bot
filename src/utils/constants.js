@@ -1676,19 +1676,24 @@ const Raid = {
     // A deliberate alternate path to T3/T4-caliber effective power: pay a flat upfront
     // potato cost (win or lose) instead of grinding toward the shop/regrade currency
     // directly, in exchange for permanent stat gains at a real, capped success rate.
-    // Difficulty was originally sized to sit between T2 (85) and T3 (600) on purpose — the
-    // tradeoff was meant to help a guild bridge toward being ready for T3/T4 raids, not to
-    // trivialize reaching them, so it was deliberately never as easy as T2 nor as hard as
-    // T3. FLAGGED STALE by the 2026-08-27 Regular T1-T4 internal-ladder smoothing pass:
-    // Regular's own T2/T3 moved to 46/215, so this constant (350, left untouched — not
-    // part of that pass's scope, and not called out in its own "confirmed unaffected"
-    // list) is now numerically ABOVE T3 instead of between T2 and T3, quietly inverting the
-    // "never as hard as T3" half of the design intent above. Not fixed here — changing this
-    // number is a balance/product call, not a mechanical side effect to silently correct;
-    // surfaced for the product owner/architect to decide on a follow-up retune.
+    // Difficulty was originally sized to sit between T2 and T3 on purpose — the tradeoff
+    // was meant to help a guild bridge toward being ready for T3/T4 raids, not to trivialize
+    // reaching them, so it was deliberately never as easy as T2 nor as hard as T3.
+    //
+    // RETUNED 2026-09-08 (direct instruction — "lower the difficulty of guild stat raids to
+    // be between regular and elite difficulty"), fixing the exact staleness the prior
+    // comment here had flagged: the 2026-08-27 Regular T1-T4 internal-ladder-smoothing pass
+    // moved T2/T3 down to 46/215 but left this constant at its old value (350), quietly
+    // inverting the original intent — 350 sat ABOVE the new T3 instead of between T2 and T3.
+    // Restored to the exact geometric midpoint of the CURRENT T2(46)/T3(215) pair —
+    // sqrt(46*215) ≈ 99.45, rounded to 100 — the same T2/T3 crossover point
+    // raids-and-world-events.md's own dead-zone analysis already computed independently.
+    // At 100, a guild reaches the 50% success-rate cap (MAXIMUM_STAT_RAID_SUCCESS_RATE) once
+    // totalMultiplier >= 50 — comfortably inside Regular T2-caliber roster strength, not
+    // requiring anywhere near T3/T4 investment as the pre-fix 350 effectively did.
     REGULAR_STAT_RAID_REWARD: 0.2,
     REGULAR_STAT_RAID_COST: -300000,
-    REGULAR_STAT_RAID_DIFFICULTY: 350
+    REGULAR_STAT_RAID_DIFFICULTY: 100
 }
 
 // Spud Keep — daily server-wide contested-territory event (guilds + Merc Faction). See
