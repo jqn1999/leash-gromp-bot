@@ -1813,14 +1813,38 @@ const SpudKeep = {
 // changing Bounty.BOUNTY_TIMER_SECONDS/RobNpc.NPC_ROB_TIMER_SECONDS themselves — every other
 // reader of those constants (bountyBoard.js's remaining-time display, the companion-leveling
 // XP grant's cooldown-scaling ratio) keeps working unchanged off the real elapsed time.
+// Reworked into an ACCELERATING curve, 2026-09-07, direct instruction ("plan out an idea
+// on buffing the benefits of merc levels... scaling a bit too instead of a flat buff each
+// time, i want 4-5-6 to feel better to hit... and also have the numbers slightly higher").
+// The original curve above was roughly flat on rewardMultiplier (deltas +.15/+.20/+.15/
+// +.15/+.10 — the SMALLEST jump was the very last one, rank 5->6) and perfectly linear on
+// rivalSuccessBonus/cooldownReductionPercent (a fixed +constant every rank, so every
+// promotion felt identical). Mirrors the same accelerating shape RaidLevel.THRESHOLDS'
+// own multiplier curve already uses for Guild Raid Level (deltas that grow every level,
+// not shrink) rather than inventing a new curve philosophy.
+//
+// rewardMultiplier: max raised 1.75x -> 2.35x (+75% -> +135% total). Deltas now .15, .15,
+// .25, .35, .45 — rank 6 alone is a bigger single jump than the entire old rank 2->5 span
+// combined.
+// rivalSuccessBonus: max (easy) raised 20% -> 30%, same accelerating deltas, medium/hard
+// kept at roughly the same proportional share of easy's own value the original curve used.
+// cooldownReductionPercent: max raised 30% -> 38% — deliberately NOT pushed as high
+// proportionally as the other two. This feeds cooldownFactory.combineSkipChance alongside
+// Spud Keep's own cooldown buff (SpudKeep.COOLDOWN_BUFF_MAX_VALUE, up to 40% at a full
+// hold-streak), and the combined result is hard-capped at DEFAULT_SKIP_CHANCE_CAP (60%)
+// overall. Pushing rank's own max much past ~40% would mean any mercenary with a decent
+// Spud Keep streak auto-saturates that shared cap on Rank alone, making the Spud Keep
+// stacking feel pointless instead of rewarding — 38% still leaves real headroom (maxed
+// rank + maxed Spud Keep computes to 1-(1-.38)(1-.40) ≈ 63%, clamped to 60% only once BOTH
+// tracks are simultaneously maxed, not casually).
 const MercenaryRank = {
     THRESHOLDS: [
         { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0.00, medium: 0.00, hard: 0.00 }, cooldownReductionPercent: 0.00 },
         { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15, rivalSuccessBonus: { easy: 0.04, medium: 0.03, hard: 0.02 }, cooldownReductionPercent: 0.06 },
-        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.35, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 }, cooldownReductionPercent: 0.12 },
-        { rank: 4, winsRequired: 125, rewardMultiplier: 1.50, rivalSuccessBonus: { easy: 0.12, medium: 0.09, hard: 0.06 }, cooldownReductionPercent: 0.18 },
-        { rank: 5, winsRequired: 275, rewardMultiplier: 1.65, rivalSuccessBonus: { easy: 0.16, medium: 0.12, hard: 0.08 }, cooldownReductionPercent: 0.24 },
-        { rank: 6, winsRequired: 525, rewardMultiplier: 1.75, rivalSuccessBonus: { easy: 0.20, medium: 0.15, hard: 0.10 }, cooldownReductionPercent: 0.30 },  // max
+        { rank: 3, winsRequired: 50,  rewardMultiplier: 1.30, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 }, cooldownReductionPercent: 0.11 },
+        { rank: 4, winsRequired: 125, rewardMultiplier: 1.55, rivalSuccessBonus: { easy: 0.14, medium: 0.10, hard: 0.07 }, cooldownReductionPercent: 0.18 },
+        { rank: 5, winsRequired: 275, rewardMultiplier: 1.90, rivalSuccessBonus: { easy: 0.21, medium: 0.16, hard: 0.10 }, cooldownReductionPercent: 0.27 },
+        { rank: 6, winsRequired: 525, rewardMultiplier: 2.35, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },  // max
     ]
 }
 

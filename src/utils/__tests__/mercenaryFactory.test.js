@@ -41,9 +41,10 @@ describe('getMercenaryRankInfo', () => {
     });
 
     // rivalSuccessBonus added 2026-08-29 — direct instruction fixing the "ranking up does
-    // nothing for Rival odds" complaint. Verifies the exact per-scenario caps/progression
-    // requested: +20%/+15%/+10% (easy/medium/hard) at max Rank 6, 0 at Rank 1, linearly
-    // ramping in between.
+    // nothing for Rival odds" complaint. Reworked into an accelerating curve 2026-09-07
+    // (direct instruction — "i want 4-5-6 to feel better to hit... numbers slightly
+    // higher") — verifies the current per-scenario caps: +30%/+22%/+15% (easy/medium/hard)
+    // at max Rank 6, 0 at Rank 1, accelerating (not linear) in between.
     test('rivalSuccessBonus is 0 across all three scenarios at Rank 1', () => {
         const result = mercenaryFactory.getMercenaryRankInfo(0);
         expect(result.rivalSuccessBonus).toEqual({ easy: 0, medium: 0, hard: 0 });
@@ -52,7 +53,7 @@ describe('getMercenaryRankInfo', () => {
     test('rivalSuccessBonus hits the exact requested caps at max Rank 6', () => {
         const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
         const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
-        expect(result.rivalSuccessBonus).toEqual({ easy: 0.20, medium: 0.15, hard: 0.10 });
+        expect(result.rivalSuccessBonus).toEqual({ easy: 0.30, medium: 0.22, hard: 0.15 });
     });
 
     test('rivalSuccessBonus increases monotonically with rank for every scenario, and easy >= medium >= hard at every rank', () => {
@@ -70,16 +71,19 @@ describe('getMercenaryRankInfo', () => {
 
     // cooldownReductionPercent added 2026-08-29 — direct instruction: "with higher merc
     // rank can we also lower the cooldown on successful bounty/heist attempts so they can
-    // be done again sooner." Verifies the confirmed 0 -> 30% linear ramp, Rank 1 to Rank 6.
+    // be done again sooner." Reworked into an accelerating curve 2026-09-07 alongside
+    // rivalSuccessBonus/rewardMultiplier above — max raised 30% -> 38%, kept deliberately
+    // more modest than the other two since this feeds the SHARED combineSkipChance cap
+    // with Spud Keep (see constants.js's own comment on why).
     test('cooldownReductionPercent is 0 at Rank 1', () => {
         const result = mercenaryFactory.getMercenaryRankInfo(0);
         expect(result.cooldownReductionPercent).toBe(0);
     });
 
-    test('cooldownReductionPercent hits the confirmed 30% cap at max Rank 6', () => {
+    test('cooldownReductionPercent hits the confirmed 38% cap at max Rank 6', () => {
         const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
         const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
-        expect(result.cooldownReductionPercent).toBe(0.30);
+        expect(result.cooldownReductionPercent).toBe(0.38);
     });
 
     test('cooldownReductionPercent increases monotonically with rank', () => {
@@ -107,6 +111,63 @@ describe('getMercenaryRankInfo', () => {
     test('reports wins remaining to the next rank while not maxed', () => {
         const result = mercenaryFactory.getMercenaryRankInfo(5); // rank 1, next threshold at 15
         expect(result.winsToNextRank).toBe(10);
+    });
+
+    // 2026-09-07, direct instruction ("scaling a bit too instead of a flat buff each time,
+    // i want 4-5-6 to feel better to hit") — the whole point of this rework was replacing
+    // the old flat/decelerating curve (rewardMultiplier's own deltas used to SHRINK near
+    // the end: +.15/+.20/+.15/+.15/+.10, the smallest jump being the very last one) with
+    // one where later ranks are bigger jumps than earlier ones, mirroring
+    // RaidLevel.THRESHOLDS' own accelerating multiplier curve. Verifies the actual SHAPE,
+    // not just the endpoint values already covered above.
+    test('rewardMultiplier deltas strictly increase every rank from rank 3 onward — later ranks are bigger jumps, not smaller', () => {
+        const deltas = [];
+        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+            deltas.push(MercenaryRank.THRESHOLDS[i].rewardMultiplier - MercenaryRank.THRESHOLDS[i - 1].rewardMultiplier);
+        }
+        for (let i = 2; i < deltas.length; i++) {
+            expect(deltas[i]).toBeGreaterThan(deltas[i - 1]);
+        }
+        // The single rank 5->6 jump alone beats the combined rank 2->3->4->5 span, i.e.
+        // the top of the ladder is now unambiguously the most exciting rank to hit.
+        const lastDelta = deltas[deltas.length - 1];
+        const earlierDeltasSum = deltas.slice(0, deltas.length - 1).reduce((a, b) => a + b, 0);
+        expect(lastDelta).toBeGreaterThan(0);
+        expect(lastDelta).toBeLessThan(earlierDeltasSum); // still sane, not literally bigger than everything before it combined
+    });
+
+    test('rivalSuccessBonus.easy deltas strictly increase every rank from rank 3 onward, same accelerating shape as rewardMultiplier', () => {
+        const deltas = [];
+        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+            deltas.push(MercenaryRank.THRESHOLDS[i].rivalSuccessBonus.easy - MercenaryRank.THRESHOLDS[i - 1].rivalSuccessBonus.easy);
+        }
+        for (let i = 2; i < deltas.length; i++) {
+            expect(deltas[i]).toBeGreaterThan(deltas[i - 1]);
+        }
+    });
+
+    test('cooldownReductionPercent deltas strictly increase every rank from rank 3 onward, same accelerating shape', () => {
+        const deltas = [];
+        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+            deltas.push(MercenaryRank.THRESHOLDS[i].cooldownReductionPercent - MercenaryRank.THRESHOLDS[i - 1].cooldownReductionPercent);
+        }
+        for (let i = 2; i < deltas.length; i++) {
+            expect(deltas[i]).toBeGreaterThan(deltas[i - 1]);
+        }
+    });
+
+    // Combined with Spud Keep's own maxed cooldown buff, the shared cap must still hold —
+    // see constants.js's own comment on why cooldownReductionPercent's max was deliberately
+    // NOT pushed as high as the other two.
+    test('maxed cooldownReductionPercent + a maxed Spud Keep buff still clamps to the 60% shared cap, not silently exceeding it', () => {
+        const { combineSkipChance, DEFAULT_SKIP_CHANCE_CAP } = require('../cooldownFactory');
+        const { SpudKeep } = require('../constants');
+        const maxRank = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+        const combined = combineSkipChance([
+            { chance: maxRank.cooldownReductionPercent },
+            { chance: SpudKeep.COOLDOWN_BUFF_MAX_VALUE }
+        ]);
+        expect(combined).toBeLessThanOrEqual(DEFAULT_SKIP_CHANCE_CAP);
     });
 });
 
@@ -1086,8 +1147,8 @@ describe('resolveRivalConfrontation', () => {
             randomSpy.mockRestore();
         }
         expect(result.scenario).toBe('hard');
-        expect(result.rankSuccessBonus).toBe(0.10);
-        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.hard[0] + 0.10);
+        expect(result.rankSuccessBonus).toBe(0.15);
+        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.hard[0] + 0.15);
     });
 
     test('a Rank 1 mercenary gets no rank bonus at all — successChance is unaffected', async () => {
@@ -1127,7 +1188,7 @@ describe('resolveRivalConfrontation', () => {
         } finally {
             randomSpy.mockRestore();
         }
-        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0] + 0.05 + 0.20);
+        expect(result.successChance).toBeCloseTo(Rival.SUCCESS_CHANCE_RANGE.easy[0] + 0.05 + 0.30);
     });
 });
 
