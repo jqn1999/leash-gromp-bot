@@ -9257,3 +9257,45 @@ subsection under "Progress is a delta" explaining the `resolveTiersCompleted` fi
 intro line updated to note all 13 templates are now tiered, the Rewards section updated for the
 per-tier multiplier/ramp shapes, and the "On completion" UX bullet corrected for
 `grantedRewardAmount` display.
+
+## Fix: Spud Keep's 4am cron post crashing whenever a guild entrant was present (2026-09-08, player-reported)
+
+Player reported the 4am UTC Spud Keep resolution post had stopped going out, with a live stack
+trace: `TypeError: Cannot read properties of undefined (reading 'length')` in
+`formatSpudKeepEntrantValue` (`embedFactory.js`), called from `createSpudKeepResultEmbed`.
+
+**Root cause**: `spudKeepFactory.resolveCycle()`'s returned `entrants` array dropped `roster`
+entirely from every entrant, keeping only a mercenary-only summary
+(`mercFactionN`/`mercSignedUpCount`/`mercCountedCount`). `formatSpudKeepEntrantValue` — shared by
+both `createSpudKeepResultEmbed` (the 4am cron post) and `createSpudKeepStatusEmbed`
+(`/current-spud-keep`'s live view) specifically so the two never show conflicting numbers for the
+same entrant — reads `entrant.roster.length` for a guild-type entrant's "N live raiders" line.
+`buildEntrantPreview()`'s own entrants (what `/current-spud-keep` reads) always carried `roster`,
+so the bug only ever showed up on the 4am cron's separate, trimmed copy, and only on a cycle with
+at least one real GUILD entrant (a Merc-Faction-only cycle never touches `.roster` in the display
+code at all) — explaining why the crash was intermittent from the player's perspective (silent
+whenever that cycle happened to have no guild sign-ups) rather than every single night.
+
+**Fix**: `resolveCycle`'s returned entrant mapping now includes `roster: e.roster` alongside the
+existing summary fields, matching `buildEntrantPreview`'s own shape exactly — one line
+(`src/utils/spudKeepFactory.js`).
+
+**Drive-by cleanup while in the area**: `starchEvents.js`'s `shiftNextSellPrice()` had two
+unconditional `console.log(vals)` debug statements (printing the sell-price queue before/after
+`.shift()`) that the player had also flagged as suspicious in the same log dump — confirmed
+unrelated to any crash (this function only runs on its own 10am/10pm EST cron schedule, matching
+neither the Spud Keep crash's timing nor a separate 4:30pm EST crash the player asked about) and
+removed as unneeded debug noise. Also fixed `sell` being assigned without `let`/`const` (an
+accidental implicit global in non-strict mode — harmless today, but a latent footgun) while
+touching that line.
+
+**Tests**: `spudKeepFactory.test.js` gained a regression test asserting `resolveCycle()`'s returned
+entrants still carry their own `roster`, not just the mercenary-only summary. `embedFactory.test.js`
+gained two `createSpudKeepResultEmbed` regression tests — a guild entrant with a real roster no
+longer throws and shows the correct "N live raiders" count; a mercenary entrant (whose own display
+branch never reads `.roster`) still doesn't throw either way. Every prior
+`createSpudKeepResultEmbed` test used `entrants: []`, so this exact path had never been exercised.
+Full suite green (1259/1259, up from 1256 on `main`).
+
+**Docs**: `.claude/systems/spud-keep.md`'s resolution-flow section gained a fix note with the full
+root-cause/blast-radius writeup.

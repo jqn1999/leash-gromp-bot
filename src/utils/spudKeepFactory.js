@@ -387,9 +387,17 @@ async function resolveCycle() {
         passiveBuffValue,
         cooldownBuffValue,
         attackerBonusPercent: preview.attackerBonusPercent,
+        // `roster` is kept here (not just the summary fields below) because
+        // embedFactory.js's formatSpudKeepEntrantValue — shared by both this result embed
+        // and /current-spud-keep's live status embed, specifically so the two never show
+        // conflicting numbers for the same entrant shape — reads `entrant.roster.length`
+        // for a guild-type entrant's "N live raiders" line. Omitting it here (as this
+        // mapping used to) crashed every 4am resolution post that had at least one guild
+        // entrant with a TypeError reading `.length` of undefined, since only the
+        // mercenary-only summary fields were ever carried over.
         entrants: entrants.map(e => ({
             type: e.type, id: e.id, name: e.name, power: e.power, effectivePower: e.effectivePower,
-            chancePercent: e.chancePercent, isHolder: e.isHolder, breakdown: e.breakdown,
+            chancePercent: e.chancePercent, isHolder: e.isHolder, breakdown: e.breakdown, roster: e.roster,
             ...(e.type === 'mercenary' ? { mercFactionN: e.mercFactionN, mercSignedUpCount: e.mercSignedUpCount, mercCountedCount: e.mercCountedCount } : {})
         })),
         potPotatoesPaid,
