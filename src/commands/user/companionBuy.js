@@ -72,7 +72,7 @@ module.exports = {
         ]);
 
         const resultMessage = alreadyOwned
-            ? `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! You already owned one — its training combined with your existing companion's.`
+            ? `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! You already owned one — each copy is its own separate, independently-leveled companion now, not merged with your existing one.`
             : `${userDisplayName}, you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! Use \`/companion\` to equip it.`;
         interaction.editReply(resultMessage);
     }

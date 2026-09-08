@@ -85,7 +85,7 @@ async function attemptBuy(client, userId, username, listingId) {
     ]);
 
     const message = alreadyOwned
-        ? `you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! You already owned one — its training combined with your existing companion's.`
+        ? `you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! You already owned one — each copy is its own separate, independently-leveled companion now, not merged with your existing one.`
         : `you bought ${companion.name} for ${listing.price.toLocaleString()} potatoes! Use \`/companion\` to equip it.`;
     return { ok: true, message };
 }
