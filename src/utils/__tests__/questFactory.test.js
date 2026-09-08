@@ -378,11 +378,110 @@ describe('getProgress', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('does not mark complete until checkAndClaimQuests has actually flipped the flag', () => {
+    test('does not mark tier 1 complete until checkAndClaimQuests has actually flipped the flag', () => {
         const userDetails = baseUser({ workCount: 30, quests: { weekly_work_25: { startValue: 0, rotationDate: '2026-08-17', completed: false } } });
         const progress = questFactory.getProgress(userDetails, activeQuests);
         const entry = progress.find(p => p.quest.id === 'weekly_work_25');
         expect(entry.isCompleted).toBe(false);
-        expect(entry.progress).toBe(entry.quest.threshold); // at threshold, just not claimed yet
+        expect(entry.tiersCompleted).toBe(0); // legacy `completed: false` baseline resolves to 0 tiers banked
+        expect(entry.nextTierThreshold).toBe(25); // tier 1's threshold, unclaimed
+        expect(entry.progress).toBe(30);
+    });
+});
+
+// 2026-09-08 rework: all Daily/Weekly templates converted from a single flat
+// threshold/reward into a 3-tier `tiers` ladder (5x threshold per tier, 1x/2x/5x reward
+// per tier) — see constants.js's own comment on the Quests array for the full derivation
+// and the deliberate deviation for the 7 encounter-based templates.
+describe('legacy flat-baseline migration (resolveTiersCompleted)', () => {
+    test('a completed:true baseline snapshotted before this template had tiers resolves to tier 1 already granted, not stuck forever', async () => {
+        // Before this fix, baseline.tiersCompleted read undefined here, and
+        // `undefined < template.tiers.length` is false in JS — the tier-granting loop
+        // would never even run, silently freezing this user out of every remaining tier
+        // for the rest of the rotation.
+        const legacyBaseline = { daily_work_3: { startValue: 0, rotationDate: '2026-08-18', completed: true } };
+        const userDetails = baseUser({ workCount: 15, quests: legacyBaseline });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, userDetails);
+
+        // Tier 1 (3) is already implicitly covered by the legacy `completed: true` flag —
+        // only tier 2 (15) is newly crossed and granted by this check.
+        expect(result.completedQuests).toHaveLength(1);
+        expect(result.completedQuests[0].description).toContain('Tier 2/3');
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.daily_work_3.tiersCompleted).toBe(2);
+    });
+
+    test('a completed:false baseline snapshotted before this template had tiers resolves to 0 tiers granted', async () => {
+        const legacyBaseline = { daily_work_3: { startValue: 0, rotationDate: '2026-08-18', completed: false } };
+        const userDetails = baseUser({ workCount: 3, quests: legacyBaseline });
+
+        const result = await questFactory.checkAndClaimQuests(userDetails, userDetails);
+
+        expect(result.completedQuests).toHaveLength(1);
+        expect(result.completedQuests[0].description).toContain('Tier 1/3');
+    });
+
+    test('getProgress resolves a legacy completed:true baseline to tiersCompleted 1, not 0', () => {
+        const userDetails = baseUser({ workCount: 15, quests: { daily_work_3: { startValue: 0, rotationDate: '2026-08-18', completed: true } } });
+        const entry = questFactory.getProgress(userDetails, activeQuests).find(p => p.quest.id === 'daily_work_3');
+        expect(entry.tiersCompleted).toBe(1);
+        expect(entry.nextTierThreshold).toBe(15);
+        expect(entry.isCompleted).toBe(false);
+    });
+});
+
+describe('Daily Quest scaling tiers', () => {
+    test('crossing only tier 1 grants exactly the original flat reward amount, unchanged from before tiering', async () => {
+        const userDetails = baseUser({ workCount: 3, workMultiplierAmount: 2 });
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0, workMultiplierAmount: 2 }));
+        expect(result.totalPotatoReward).toBe(Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * 2));
+    });
+
+    test('a single jump straight to tier 3 (75) grants all three tiers at 1x/2x/5x the base reward', async () => {
+        // workCount also drives weekly_work_25 (active in this fixture's activeQuests
+        // too) — isolate assertions to daily_work_3's own completions.
+        const userDetails = baseUser({ workCount: 75, workMultiplierAmount: 2 });
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0, workMultiplierAmount: 2 }));
+
+        const base = DailyQuest.BASE_REWARD_PER_MULTIPLIER * 2;
+        const dailyCompletions = result.completedQuests.filter(q => q.id === 'daily_work_3');
+        expect(dailyCompletions).toHaveLength(3);
+        expect(result.totalPotatoReward).toBe(Math.floor(base * 1) + Math.floor(base * 2) + Math.floor(base * 5));
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.daily_work_3.tiersCompleted).toBe(3);
+    });
+});
+
+describe('Weekly Quest scaling tiers', () => {
+    test('tier 2/3 reward min/max are exactly 2x/5x tier 1\'s for every converted weekly template', () => {
+        const weeklyIds = ['weekly_work_25', 'weekly_work_50', 'weekly_sweet_5', 'weekly_taro_5', 'weekly_poison_5', 'weekly_companion_3'];
+        weeklyIds.forEach(id => {
+            const template = Quests.find(q => q.id === id);
+            expect(template.tiers[1].reward.min).toBeCloseTo(template.tiers[0].reward.min * 2);
+            expect(template.tiers[1].reward.max).toBeCloseTo(template.tiers[0].reward.max * 2);
+            expect(template.tiers[2].reward.min).toBeCloseTo(template.tiers[0].reward.min * 5);
+            expect(template.tiers[2].reward.max).toBeCloseTo(template.tiers[0].reward.max * 5);
+        });
+    });
+
+    test('reaching tier 3 (625) in one check grants all three tiers, each ramped independently by regrade progress', async () => {
+        const userDetails = baseUser({
+            workCount: 625,
+            regrades: { workMulti: { regradeAmount: 500, failStack: 0 }, passiveAmount: { regradeAmount: 0, failStack: 0 }, bankCapacity: { regradeAmount: 0, failStack: 0 } },
+        });
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0 }));
+
+        expect(result.completedQuests.filter(q => q.id === 'weekly_work_25')).toHaveLength(3);
+        // Fully regraded -> every tier ramps to its own max: 1.0 + 2.0 + 5.0
+        expect(result.statRewards.workMultiplierAmount).toBeCloseTo(8.0);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.quests.weekly_work_25.tiersCompleted).toBe(3);
+    });
+
+    test('crossing only tier 1 (25) still grants exactly the original flat min/max ramp, unchanged from before tiering', async () => {
+        const userDetails = baseUser({ workCount: 25 }); // no regrades -> reads reward.min
+        const result = await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0 }));
+        expect(result.statRewards.workMultiplierAmount).toBeCloseTo(0.2);
     });
 });

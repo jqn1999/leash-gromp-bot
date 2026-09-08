@@ -1024,3 +1024,30 @@ describe('createQuestsPageEmbed', () => {
         expect(embed.data.fields[0].name).toContain('✅');
     });
 });
+
+// 2026-09-08 — Daily/Weekly quests reworked into scaling `tiers` too (see
+// questFactory.js's checkAndClaimQuests), so a completed daily/weekly quest can now carry
+// a per-tier grantedRewardAmount just like Mercenary Quest's ramping weekly rewards
+// already did.
+describe('createQuestCompleteEmbed', () => {
+    const { DailyQuest } = require('../constants');
+
+    test('a tiered daily quest reads its own grantedRewardAmount instead of recomputing the flat 1x amount', () => {
+        const completed = { name: 'Sprout Sprint', description: 'Tier 2/3 reached', category: 'daily', grantedRewardAmount: 3000 };
+        const embed = embedFactory.createQuestCompleteEmbed('User', [completed], 2);
+        expect(embed.data.fields[0].value).toContain('+3,000 potatoes');
+    });
+
+    test('a daily quest with no grantedRewardAmount falls back to the flat 1x computation', () => {
+        const completed = { name: 'Sprout Sprint', description: 'Complete 3 /work sessions today', category: 'daily' };
+        const embed = embedFactory.createQuestCompleteEmbed('User', [completed], 2);
+        const expected = Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * 2);
+        expect(embed.data.fields[0].value).toContain(`+${expected.toLocaleString()} potatoes`);
+    });
+
+    test('a tiered weekly stat quest reads its ramped grantedRewardAmount, same as Mercenary Quest\'s ramping reward', () => {
+        const completed = { name: 'Weekly Grind', description: 'Tier 2/3 reached', category: 'weekly', reward: { statType: 'workMultiplierAmount' }, grantedRewardAmount: 0.4 };
+        const embed = embedFactory.createQuestCompleteEmbed('User', [completed], 2);
+        expect(embed.data.fields[0].value).toContain('+0.40x Work Multiplier');
+    });
+});
