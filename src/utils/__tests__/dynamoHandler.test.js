@@ -218,8 +218,32 @@ describe('findUser', () => {
         const writtenValue = Object.values(companionsWrite[0].ExpressionAttributeValues)[0];
         expect(writtenValue).toEqual({
             owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0,
-            scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 }, maxLevelCount: 0, mythicMaxLevelCount: 0
+            scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 }, maxLevelCount: 0, mythicMaxLevelCount: 0,
+            favorites: [null, null, null, null, null]
         });
+    });
+
+    // /companion-favorite — favorites is a plain array sub-key on companions, healed the
+    // same generic one-level-deep way scavenging/maxLevelCount etc. already are.
+    test('shallow-heals a pre-existing companions object missing the new favorites sub-key', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u7b', username: 'name7b',
+                companions: {
+                    owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0,
+                    scavenging: null, scavengeReturnsByRarity: { legendary: 0, mythic: 0 }, maxLevelCount: 0, mythicMaxLevelCount: 0
+                },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u7b', 'name7b');
+
+        expect(user.companions.favorites).toEqual([null, null, null, null, null]);
+        // Existing sub-fields must survive the heal untouched.
+        expect(user.companions.owned).toEqual([{ instanceId: 'sprout-a', id: 'sprout', workCount: 3 }]);
+        expect(user.companions.active).toBe('sprout-a');
     });
 
     test('does not touch a companions object that already has every sub-key', async () => {
@@ -230,7 +254,7 @@ describe('findUser', () => {
                 companions: {
                     owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0,
                     scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: 123 }, scavengeReturnsByRarity: { legendary: 2, mythic: 0 },
-                    maxLevelCount: 0, mythicMaxLevelCount: 0
+                    maxLevelCount: 0, mythicMaxLevelCount: 0, favorites: [null, null, null, null, null]
                 },
             }],
         }));
