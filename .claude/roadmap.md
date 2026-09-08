@@ -9143,3 +9143,43 @@ keep asserting the CURRENT full schema rather than a stale one. Full suite green
 **Docs**: `.claude/systems/companions.md` gained a new "Favorites" section, its top file-list
 gained `companionFavorite.js`, and its Persistence section documented the new `favorites`
 sub-key.
+
+## Mercenary Bounty/Heist penalty:reward ratio now escalates by tier, mirroring Guild Raid (2026-09-08, direct instruction)
+
+Player observation: "Guild raid penalties are much higher for higher reward but merc should
+have more similar penalties." Guild Raid's own penalty:reward ratio climbs for bigger-stakes
+content (1.0x Regular → 1.5x Elite → 2.0x Legendary, via `Raid.ELITE_PENALTY_INCREASE`/
+`LEGENDARY_PENALTY_INCREASE`), but Bounty's 12-tier penalty was a flat `-reward` (1.0x)
+throughout, and Heist's 3 real-stakes tiers all shared one flat `PENALTY_PERCENT_OF_CAP`
+(0.5) — neither track got riskier per-tier the way Guild Raid does.
+
+**Bounty**: rather than reuse Guild Raid's discrete 3-mode step (which would land an EV
+cliff right at the B4→B5/B8→B9 boundaries — Bounty's own reward/difficulty ladder is already
+a smooth, continuous geometric progression with no such seams), the ratio instead climbs
+CONTINUOUSLY from the same 1.0x floor at B1 to the same 2.0x ceiling at B12:
+`ratio(tier) = 1 + (tier-1)/11`. New penalties (reward unchanged throughout — only the loss
+side moved, so the existing "~30% of realistic guild total reward" calibration still holds):
+B1 -39,000 (1.00x, unchanged) → B2 -75,000 (1.09x) → B3 -145,000 (1.18x) → B4 -274,000
+(1.27x) → B5 -522,000 (1.36x) → B6 -960,000 (1.45x) → B7 -1,766,000 (1.55x) → B8 -3,219,000
+(1.64x) → B9 -5,828,000 (1.73x) → B10 -10,504,000 (1.82x) → B11 -19,093,000 (1.91x) → B12
+-46,800,000 (2.00x, double its own reward — the same relative stakes Legendary Guild Raid's
+own top bracket carries).
+
+**Heist (`/rob-npc`)**: only 3 tiers ever carry a penalty (Market Stall stays whiff-only), so
+unlike Bounty there's no discrete-step EV-cliff risk — each real-stakes tier now carries its
+own `penaltyPercentOfCap` (new, replacing the single shared `RobNpc.PENALTY_PERCENT_OF_CAP`
+constant), climbing by the exact same 1.0x/1.5x/2.0x factor layered on Heist's own 0.5 base:
+Merchant's Wagon 0.5 (x1.0, unchanged) → Noble's Vault 0.75 (x1.5) → The Royal Treasury 1.0
+(x2.0, now risks its FULL payout cap on a whiff). `mercenaryFactory.resolveNpcRob` reads
+`tier.penaltyPercentOfCap` instead of the old shared constant; win-side payouts untouched.
+
+**Tests**: `mercenaryFactory.test.js`'s old "penalty always matches reward's exact magnitude"
+invariant test (now intentionally false) replaced with two new ones — the ratio itself
+increases monotonically tier-over-tier, and hits the exact documented 1.0x/2.0x endpoints at
+B1/B12 — plus its 4 pre-existing RobNpc penalty assertions repointed from the removed shared
+constant to the real tier's own `penaltyPercentOfCap` (still `merchant_wagon`, numerically
+unchanged at 0.5, so only the reference moved). Full suite green (1204/1204, up from 1203).
+
+**Docs**: `mercenary-bounties.md`'s reward/penalty formula section gained the full ratio
+table and derivation for Bounty, and the Heist Ladder's own tier table/prose updated with
+the new per-tier `penaltyPercentOfCap` column and escalation rationale.
