@@ -3881,7 +3881,11 @@ class EmbedFactory {
         const fields = completedQuests.map(quest => {
             let rewardText;
             if (quest.category === 'daily') {
-                const perQuestReward = Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userMultiplier);
+                // grantedRewardAmount is set for tiered daily quests (already scaled by
+                // that tier's own multiplier — see questFactory.js's checkAndClaimQuests);
+                // falls back to the old flat 1x computation for a daily template with no
+                // tiers of its own.
+                const perQuestReward = quest.grantedRewardAmount ?? Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userMultiplier);
                 rewardText = `+${perQuestReward.toLocaleString()} potatoes`;
             } else if (quest.reward?.type === 'additionalSafehouseStorage') {
                 // Flat template amount, not grantedRewardAmount — this reward type isn't

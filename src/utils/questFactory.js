@@ -26,6 +26,18 @@ function pickRandomIds(pool, count) {
     return shuffled.slice(0, count).map(quest => quest.id);
 }
 
+// A same-rotation baseline snapshotted before a template converted from the flat
+// (threshold/completed) shape to `tiers` reads `baseline.tiersCompleted` as undefined —
+// and `undefined >= N`/`undefined < N` both evaluate false in JS, which would silently
+// skip the ENTIRE tier-granting loop below for that user for the rest of the rotation.
+// Derives it instead from the legacy `completed` boolean (valid because every migrated
+// template here keeps its original flat threshold as Tier 1's threshold, so a legacy
+// `completed: true` baseline is exactly equivalent to "Tier 1 already granted").
+function resolveTiersCompleted(baseline) {
+    if (baseline.tiersCompleted !== undefined) return baseline.tiersCompleted;
+    return baseline.completed ? 1 : 0;
+}
+
 // Maps each weekly reward's statType to that stat's own regrade track and absolute
 // completion cap (see regrade.js's workRegradeTiers/passiveRegradeTiers/bankRegradeTiers
 // — the cap is that ladder's final currentRegradeAmount + increase). Deliberately reads
@@ -145,41 +157,55 @@ class QuestFactory {
                 stateChanged = true;
             }
 
-            // Scaling multi-tier quests (currently just the two Mercenary Quest ladders —
-            // see constants.js's own comment on Bounty/Heist Sweep) can grant MULTIPLE
-            // rewards across the same rotation as progress climbs, unlike every other
-            // quest here which completes exactly once. `tiersCompleted` (an index into
-            // `template.tiers`, not a boolean) tracks how many tiers have already been
-            // granted; each check walks forward from there, granting every NEWLY-crossed
-            // tier this call (normally one, but a big single-call jump — e.g. quest-state
-            // backfill — could cross several at once, so this loops rather than assuming
-            // exactly one).
+            // Scaling multi-tier quests (every Daily/Weekly template plus the two
+            // Mercenary Quest ladders — see constants.js's own comments on Bounty/Heist
+            // Sweep and the 2026-09-08 Daily/Weekly rework) can grant MULTIPLE rewards
+            // across the same rotation as progress climbs, unlike a flat quest which
+            // completes exactly once. `tiersCompleted` (an index into `template.tiers`,
+            // not a boolean) tracks how many tiers have already been granted; each check
+            // walks forward from there via resolveTiersCompleted (handling a legacy flat
+            // baseline snapshotted before this template had tiers — see that function's
+            // own comment), granting every NEWLY-crossed tier this call (normally one,
+            // but a big single-call jump — e.g. quest-state backfill — could cross
+            // several at once, so this loops rather than assuming exactly one).
             if (template.tiers) {
-                if (baseline.tiersCompleted >= template.tiers.length) continue; // fully completed already
+                const baselineTiersCompleted = resolveTiersCompleted(baseline);
+                if (baselineTiersCompleted >= template.tiers.length) continue; // fully completed already
 
                 const progress = currentValue - baseline.startValue;
-                let tiersCompleted = baseline.tiersCompleted;
+                const period = template.category === 'daily' ? 'today' : 'this week';
+                let tiersCompleted = baselineTiersCompleted;
                 while (tiersCompleted < template.tiers.length && progress >= template.tiers[tiersCompleted].threshold) {
                     const tier = template.tiers[tiersCompleted];
                     tiersCompleted += 1;
-                    // Synthetic per-tier "quest" pushed into completedQuests — reuses
-                    // createQuestCompleteEmbed's existing additionalSafehouseStorage
-                    // branch as-is (it only ever reads name/description/reward off
-                    // whatever's pushed here, never template.threshold), so one embed
-                    // shows every tier crossed this call as its own field.
-                    completedQuests.push({
+
+                    // Synthetic per-tier "quest" pushed into completedQuests — reused by
+                    // createQuestCompleteEmbed the same way a flat quest's own template
+                    // object is, so one embed shows every tier crossed this call as its
+                    // own field.
+                    const synthetic = {
                         id: template.id,
                         name: template.name,
-                        description: `Tier ${tiersCompleted}/${template.tiers.length} reached — ${tier.threshold.toLocaleString()} this week`,
+                        description: `Tier ${tiersCompleted}/${template.tiers.length} reached — ${tier.threshold.toLocaleString()} ${period}`,
                         category: template.category,
                         reward: tier.reward
-                    });
-                    if (tier.reward.type === 'additionalSafehouseStorage') {
+                    };
+
+                    if (template.category === 'daily') {
+                        const grantedRewardAmount = Math.floor(DailyQuest.BASE_REWARD_PER_MULTIPLIER * userDetails.workMultiplierAmount * tier.reward.multiplier);
+                        totalPotatoReward += grantedRewardAmount;
+                        completedQuests.push({ ...synthetic, grantedRewardAmount });
+                    } else if (tier.reward.type === 'additionalSafehouseStorage') {
                         additionalSafehouseStorageReward += tier.reward.amount;
+                        completedQuests.push(synthetic);
+                    } else if (tier.reward.statType) {
+                        const grantedRewardAmount = calculateWeeklyStatReward(userDetails, tier.reward);
+                        statRewards[tier.reward.statType] = (statRewards[tier.reward.statType] || 0) + grantedRewardAmount;
+                        completedQuests.push({ ...synthetic, grantedRewardAmount });
                     }
                 }
 
-                if (tiersCompleted !== baseline.tiersCompleted) {
+                if (tiersCompleted !== baselineTiersCompleted) {
                     updatedQuestState[template.id] = { ...baseline, tiersCompleted };
                     stateChanged = true;
                 }
@@ -263,7 +289,7 @@ class QuestFactory {
             const progress = hasFreshBaseline ? Math.max(0, currentValue - existing.startValue) : 0;
 
             if (template.tiers) {
-                const tiersCompleted = hasFreshBaseline ? (existing.tiersCompleted || 0) : 0;
+                const tiersCompleted = hasFreshBaseline ? resolveTiersCompleted(existing) : 0;
                 const maxThreshold = template.tiers[template.tiers.length - 1].threshold;
                 const nextTier = template.tiers[tiersCompleted]; // undefined once every tier's claimed
                 return {

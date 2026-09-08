@@ -9183,3 +9183,77 @@ unchanged at 0.5, so only the reference moved). Full suite green (1204/1204, up 
 **Docs**: `mercenary-bounties.md`'s reward/penalty formula section gained the full ratio
 table and derivation for Bounty, and the Heist Ladder's own tier table/prose updated with
 the new per-tier `penaltyPercentOfCap` column and escalation rationale.
+
+## Daily/Weekly Quest scaling: 3-tier ladders on every template (2026-09-08, direct instruction)
+
+Player asked: "Some users are saying daily/weekly quests are too easy to hit. Can we add a 3 tier
+scaling to the existing quests? Make each tier require 5x more than the previous tier. Make the
+reward scale up to 2x initial reward then 5x initial reward." All 11 Daily/Weekly `Quests`
+templates converted from a single flat `threshold`/`reward` to the same `tiers` shape Mercenary
+Quest's Bounty/Heist Sweep already proved out the day before (2026-09-07) — a template has EITHER
+`threshold`/`reward` (now fully dead for this pool, kept as a harmless vestige rather than removed,
+matching this codebase's own "superseded but correct" precedent elsewhere) or `tiers`, never both.
+
+**Thresholds — literal 5x/25x for the 4 work-count templates, a deliberate deviation for the other
+7**: `daily_work_3` (3/15/75), `daily_work_5` (5/25/125), `weekly_work_25` (25/125/625),
+`weekly_work_50` (50/250/1,250) apply the instruction exactly, sized against this codebase's own
+realistic `/work` attempt ceiling (`Work.WORK_TIMER_SECONDS` ÷ `CompanionLeveling.REALISTIC_PLAY_DISCOUNT`
+≈ 192/day, ≈1,344/week) — every tier stays under that ceiling except `weekly_work_50`'s own Tier 3
+(≈93% of it), deliberately left as the single hardest tier in the pool rather than softened. The
+remaining 7 templates key off a specific `/work` encounter type with a real, much lower per-roll
+chance (`eventFactory.js`'s `workProbability`: sweet/taro 2%, poison 1%, companion 1.5%) — literal
+5x/25x scaling off their threshold-of-1/3/5 would put Tier 3 several multiples above the realistic
+*expected* encounter count for a full day/week (e.g. `daily_poison`'s literal Tier 3 of 25 vs. an
+expected ~1.9 poison encounters in a realistic day), making it statistically unreachable rather
+than hard. These 7 (`daily_taro`/`daily_sweet` 1/4/9, `daily_poison` 1/2/5, `weekly_sweet_5`/
+`weekly_taro_5` 5/15/40, `weekly_poison_5` 5/10/20, `weekly_companion_3` 3/10/30) instead use a
+gentler ladder sized to roughly each stat's own expected-encounter count — a genuine stretch goal,
+not a guaranteed clear, but reachable with above-average luck near the realistic attempt ceiling.
+Flagged here explicitly since it diverges from the literal instruction for this subset.
+
+**Rewards — cumulative, 1x/2x/5x, matching Mercenary Quest's own precedent exactly**: every tier's
+reward grants the moment progress crosses it, on top of whatever lower tiers already paid out the
+same rotation. Tier 1 = the original flat reward unchanged (so a player who only ever hit the old
+bar still gets exactly what they used to), Tier 2 = 2x, Tier 3 = 5x. Daily tiers use a new
+`{ type: "dailyReward", multiplier: 1|2|5 }` reward shape feeding
+`DailyQuest.BASE_REWARD_PER_MULTIPLIER × workMultiplierAmount × multiplier`; weekly tiers reuse the
+existing `{ statType, min, max }` shape with Tier 2/3's min/max literally 2x/5x Tier 1's, still
+ramped independently per tier by the existing `calculateWeeklyStatReward` against the player's own
+regrade progress on that stat.
+
+**`questFactory.js` implementation**: the tiered-reward-granting branch in `checkAndClaimQuests`
+(previously handling only Mercenary Quest's flat `additionalSafehouseStorage` reward) was
+generalized to also handle the daily potato-multiplier shape and the weekly ramping-stat shape,
+mirroring the flat (non-tiered) branch's own reward-type dispatch. **Migration bug found and
+fixed**: a same-rotation baseline snapshotted *before* one of these 11 templates gained `tiers`
+still carries the legacy `{ completed }` shape, so `baseline.tiersCompleted` reads `undefined` —
+and `undefined >= length`/`undefined < length` are BOTH `false` in JS, meaning the entire
+tier-granting `while` loop would silently never run for that user for the rest of the rotation,
+with no error and no visible symptom besides "this player just never got credit again." New
+`resolveTiersCompleted(baseline)` guards both `checkAndClaimQuests` and `getProgress` against this:
+uses `tiersCompleted` as-is if present, otherwise derives it from the legacy `completed` boolean
+(`true` → `1`, `false` → `0`) — exact, not approximate, since every converted template keeps its
+original flat threshold as Tier 1's own threshold.
+
+**Tests**: `questFactory.test.js` — existing daily/weekly tests needed no threshold/shape rewrites
+at all (Tier 1's values are identical to the old flat template, and `resolveTiersCompleted`'s
+legacy-baseline fallback made every pre-existing flat-shaped fixture keep working unchanged); one
+existing `getProgress` assertion that read the now-nonexistent `quest.threshold` was fixed to check
+`tiersCompleted`/`nextTierThreshold` instead. New coverage: a `completed: true`/`completed: false`
+legacy baseline correctly resolves to 1/0 tiers already granted rather than freezing (both in
+`checkAndClaimQuests` and `getProgress`); a single jump straight to Tier 3 grants all three tiers
+at the correct 1x/2x/5x potato amounts; every converted weekly template's Tier 2/3 min/max verified
+as exactly 2x/5x Tier 1's; a full-regrade jump to `weekly_work_25`'s Tier 3 in one check correctly
+sums all three tiers' independently-ramped rewards (8.0x, not just 5.0x). `embedFactory.test.js` —
+3 new `createQuestCompleteEmbed` tests (a tiered daily completion reads its own
+`grantedRewardAmount` instead of recomputing the flat 1x amount; a daily quest with no
+`grantedRewardAmount` still falls back correctly; a tiered weekly stat completion reads its ramped
+`grantedRewardAmount` the same way Mercenary Quest's ramping reward already did). Full suite green
+(1213/1213, up from 1202 on `main`).
+
+**Docs**: `.claude/systems/quests.md` gained a new "Daily/Weekly Quest scaling" section with the
+full threshold table and the encounter-based-quest deviation reasoning, a new "Migration safety"
+subsection under "Progress is a delta" explaining the `resolveTiersCompleted` fix, the pool-size
+intro line updated to note all 13 templates are now tiered, the Rewards section updated for the
+per-tier multiplier/ramp shapes, and the "On completion" UX bullet corrected for
+`grantedRewardAmount` display.

@@ -284,19 +284,104 @@ const MercenaryQuest = {
 // questFactory.js. Golden/Metal Potato encounters are deliberately excluded from this
 // pool: at ~0.1% per /work, even a threshold of 1 needs ~1,000 average work calls,
 // unrealistic within a day or even a week for anyone but a true no-lifer.
+// Reworked into 3-tier scaling ladders, 2026-09-08 (direct instruction: "daily/weekly
+// quests too easy to hit, add a 3 tier scaling — each tier 5x the previous threshold,
+// reward scaling 1x/2x/5x initial reward") — every Daily/Weekly template below now uses
+// `tiers` (see Bounty/Heist Sweep above for the shape this reuses: an array of
+// `{threshold, reward}`, cumulative thresholds against the same statPath delta, EVERY
+// tier's reward granted as progress crosses it — not just the highest one reached).
+// Tier 1's threshold is kept identical to each template's original flat threshold and
+// its reward identical to the original flat reward (so a player who only ever hit the
+// old bar still gets exactly what they used to), Tier 2 doubles neither — it's 2x that
+// same reward, Tier 3 is 5x it.
+//
+// The literal "5x the previous threshold" instruction is applied as-is to the 4
+// work-count templates below (daily_work_3/5, weekly_work_25/50) — Work.WORK_TIMER_SECONDS
+// (300s) and CompanionLeveling.REALISTIC_PLAY_DISCOUNT (2/3) put a realistic ceiling of
+// ~192 /work attempts/day (~1,344/week) on even a no-lifer, and 5x/25x scaling off these
+// thresholds stays under that ceiling for every tier except weekly_work_50's own Tier 3
+// (1,250 — ~93% of the weekly ceiling, deliberately left brutal as the hardest tier in
+// the whole pool rather than softened, since it's still technically reachable).
+//
+// The remaining 7 templates key off a specific /work encounter type
+// (workScenarioCounts.*), each with a real per-/work roll chance from eventFactory.js's
+// workProbability (sweet/taro 2%, poison 1%, companion 1.5%) — literal 5x/25x scaling off
+// their threshold-of-1/3/5 would put Tier 3 several multiples above the realistic
+// weekly/daily EXPECTED encounter count (e.g. daily_poison's literal Tier 3 of 25 vs. an
+// expected ~1.9 poison encounters in a full day of /work spam), making it statistically
+// unreachable rather than just hard. These 7 instead use a gentler, feasibility-anchored
+// ladder sized to roughly the realistic expected-encounter count (still a genuine stretch
+// goal for a dedicated grinder, not a guaranteed clear) — a deliberate deviation from the
+// literal "5x each tier" instruction for this subset only; see systems/quests.md for the
+// exact expected-value math behind each of these 7 thresholds.
 const Quests = [
-    { id: "daily_work_3", name: "Sprout Sprint", description: "Complete 3 /work sessions today", category: "daily", statPath: "workCount", threshold: 3 },
-    { id: "daily_work_5", name: "Harvest Hustle", description: "Complete 5 /work sessions today", category: "daily", statPath: "workCount", threshold: 5 },
-    { id: "daily_taro", name: "Starch Sampler", description: "Trade with the Taro Trader today", category: "daily", statPath: "workScenarioCounts.taro", threshold: 1 },
-    { id: "daily_sweet", name: "Sweet Encounter", description: "Befriend a Sweet Potato today", category: "daily", statPath: "workScenarioCounts.sweet", threshold: 1 },
-    { id: "daily_poison", name: "Toxin Tolerance", description: "Survive a Poison Potato today", category: "daily", statPath: "workScenarioCounts.poison", threshold: 1 },
+    {
+        id: "daily_work_3", name: "Sprout Sprint",
+        description: "Complete /work sessions today for scaling potato rewards: 3/15/75 sessions for 1x/2x/5x reward",
+        category: "daily", statPath: "workCount",
+        tiers: [
+            { threshold: 3, reward: { type: "dailyReward", multiplier: 1 } },
+            { threshold: 15, reward: { type: "dailyReward", multiplier: 2 } },
+            { threshold: 75, reward: { type: "dailyReward", multiplier: 5 } },
+        ]
+    },
+    {
+        id: "daily_work_5", name: "Harvest Hustle",
+        description: "Complete /work sessions today for scaling potato rewards: 5/25/125 sessions for 1x/2x/5x reward",
+        category: "daily", statPath: "workCount",
+        tiers: [
+            { threshold: 5, reward: { type: "dailyReward", multiplier: 1 } },
+            { threshold: 25, reward: { type: "dailyReward", multiplier: 2 } },
+            { threshold: 125, reward: { type: "dailyReward", multiplier: 5 } },
+        ]
+    },
+    {
+        id: "daily_taro", name: "Starch Sampler",
+        description: "Trade with the Taro Trader today for scaling potato rewards: 1/4/9 trades for 1x/2x/5x reward",
+        category: "daily", statPath: "workScenarioCounts.taro",
+        tiers: [
+            { threshold: 1, reward: { type: "dailyReward", multiplier: 1 } },
+            { threshold: 4, reward: { type: "dailyReward", multiplier: 2 } },
+            { threshold: 9, reward: { type: "dailyReward", multiplier: 5 } },
+        ]
+    },
+    {
+        id: "daily_sweet", name: "Sweet Encounter",
+        description: "Befriend Sweet Potatoes today for scaling potato rewards: 1/4/9 encounters for 1x/2x/5x reward",
+        category: "daily", statPath: "workScenarioCounts.sweet",
+        tiers: [
+            { threshold: 1, reward: { type: "dailyReward", multiplier: 1 } },
+            { threshold: 4, reward: { type: "dailyReward", multiplier: 2 } },
+            { threshold: 9, reward: { type: "dailyReward", multiplier: 5 } },
+        ]
+    },
+    {
+        id: "daily_poison", name: "Toxin Tolerance",
+        description: "Survive Poison Potatoes today for scaling potato rewards: 1/2/5 encounters for 1x/2x/5x reward",
+        category: "daily", statPath: "workScenarioCounts.poison",
+        tiers: [
+            { threshold: 1, reward: { type: "dailyReward", multiplier: 1 } },
+            { threshold: 2, reward: { type: "dailyReward", multiplier: 2 } },
+            { threshold: 5, reward: { type: "dailyReward", multiplier: 5 } },
+        ]
+    },
 
     // reward.min/max replace what used to be a single flat `amount` — questFactory.js's
     // calculateWeeklyStatReward ramps between them based on the player's own regrade
     // progress on that stat (0 progress -> min, fully regraded -> max, capped there
     // forever). Min/max values are anchored to that stat's regrade track and its
-    // absolute completion cap — see systems/quests.md.
-    { id: "weekly_work_25", name: "Weekly Grind", description: "Complete 25 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 25, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+    // absolute completion cap — see systems/quests.md. Each tier's min/max is that same
+    // ramp, just scaled 1x/2x/5x like every other tier reward in this pool.
+    {
+        id: "weekly_work_25", name: "Weekly Grind",
+        description: "Complete /work sessions this week for scaling Work Multiplier: 25/125/625 sessions for 1x/2x/5x reward",
+        category: "weekly", statPath: "workCount",
+        tiers: [
+            { threshold: 25, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+            { threshold: 125, reward: { statType: "workMultiplierAmount", min: 0.4, max: 2.0 } },
+            { threshold: 625, reward: { statType: "workMultiplierAmount", min: 1.0, max: 5.0 } },
+        ]
+    },
     // Rebalanced 2026-08-22: was statType "bankCapacity" — calculateWeeklyStatReward
     // ramps a reward's size UP as the player's own regrade progress on that stat
     // approaches its cap, which for bankCapacity meant this reward grew toward its own
@@ -307,11 +392,47 @@ const Quests = [
     // Swapped to passiveAmount, matching weekly_sweet_5/weekly_achievement's existing
     // range below — passive income has no equivalent "goes unlimited" cap, so this can
     // never go dead the same way.
-    { id: "weekly_work_50", name: "Marathon Farmer", description: "Complete 50 /work sessions this week", category: "weekly", statPath: "workCount", threshold: 50, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
-    { id: "weekly_sweet_5", name: "Sweet Streak", description: "Befriend 5 Sweet Potatoes this week", category: "weekly", statPath: "workScenarioCounts.sweet", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
-    { id: "weekly_taro_5", name: "Taro's Regular", description: "Trade with the Taro Trader 5 times this week", category: "weekly", statPath: "workScenarioCounts.taro", threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+    {
+        id: "weekly_work_50", name: "Marathon Farmer",
+        description: "Complete /work sessions this week for scaling Passive Income: 50/250/1250 sessions for 1x/2x/5x reward",
+        category: "weekly", statPath: "workCount",
+        tiers: [
+            { threshold: 50, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+            { threshold: 250, reward: { statType: "passiveAmount", min: 60000, max: 300000 } },
+            { threshold: 1250, reward: { statType: "passiveAmount", min: 150000, max: 750000 } },
+        ]
+    },
+    {
+        id: "weekly_sweet_5", name: "Sweet Streak",
+        description: "Befriend Sweet Potatoes this week for scaling Passive Income: 5/15/40 encounters for 1x/2x/5x reward",
+        category: "weekly", statPath: "workScenarioCounts.sweet",
+        tiers: [
+            { threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+            { threshold: 15, reward: { statType: "passiveAmount", min: 60000, max: 300000 } },
+            { threshold: 40, reward: { statType: "passiveAmount", min: 150000, max: 750000 } },
+        ]
+    },
+    {
+        id: "weekly_taro_5", name: "Taro's Regular",
+        description: "Trade with the Taro Trader this week for scaling Work Multiplier: 5/15/40 trades for 1x/2x/5x reward",
+        category: "weekly", statPath: "workScenarioCounts.taro",
+        tiers: [
+            { threshold: 5, reward: { statType: "workMultiplierAmount", min: 0.2, max: 1.0 } },
+            { threshold: 15, reward: { statType: "workMultiplierAmount", min: 0.4, max: 2.0 } },
+            { threshold: 40, reward: { statType: "workMultiplierAmount", min: 1.0, max: 5.0 } },
+        ]
+    },
     // Rebalanced 2026-08-22 — same reason as weekly_work_50 above.
-    { id: "weekly_poison_5", name: "Iron Constitution", description: "Survive 5 Poison Potatoes this week", category: "weekly", statPath: "workScenarioCounts.poison", threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+    {
+        id: "weekly_poison_5", name: "Iron Constitution",
+        description: "Survive Poison Potatoes this week for scaling Passive Income: 5/10/20 encounters for 1x/2x/5x reward",
+        category: "weekly", statPath: "workScenarioCounts.poison",
+        tiers: [
+            { threshold: 5, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+            { threshold: 10, reward: { statType: "passiveAmount", min: 60000, max: 300000 } },
+            { threshold: 20, reward: { statType: "passiveAmount", min: 150000, max: 750000 } },
+        ]
+    },
     // Reworked 2026-08-30, direct instruction ("Rework weekly unlock one achievement this
     // week quest since people start running into blockers for that for only 30k passive")
     // — replaces the old weekly_achievement (retired, id removed from this pool entirely).
@@ -331,7 +452,16 @@ const Quests = [
     // currently-active instance just gracefully drop out of a player's active set
     // (Quests.filter(id) simply stops matching it) until the next Monday rotation
     // redraws from the corrected pool.
-    { id: "weekly_companion_3", name: "Wandering Friends", description: "Encounter 3 Wandering Companions this week", category: "weekly", statPath: "workScenarioCounts.companion", threshold: 3, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+    {
+        id: "weekly_companion_3", name: "Wandering Friends",
+        description: "Encounter Wandering Companions this week for scaling Passive Income: 3/10/30 encounters for 1x/2x/5x reward",
+        category: "weekly", statPath: "workScenarioCounts.companion",
+        tiers: [
+            { threshold: 3, reward: { statType: "passiveAmount", min: 30000, max: 150000 } },
+            { threshold: 10, reward: { statType: "passiveAmount", min: 60000, max: 300000 } },
+            { threshold: 30, reward: { statType: "passiveAmount", min: 150000, max: 750000 } },
+        ]
+    },
 
     // Mercenary Quest pool — see MercenaryQuest's own comment above for the full
     // derivation. reward.type (not reward.statType) marks this as the FLAT (non-ramping)

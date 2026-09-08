@@ -10,7 +10,9 @@ cron that already resets `canEnterTower` and pays out the Tower leaderboard, vie
 ## Pool and rotation
 
 13 quest templates total: 5 daily (3 rotate in), 6 weekly (2 rotate in), 2 mercenary (1 rotates
-in). The **daily** set refreshes every day; the **weekly** and **mercenary** sets share the same
+in) — **every one of the 13 now uses a 3-tier `tiers` ladder** (see "Daily/Weekly Quest scaling"
+below; Mercenary Quest's own 5-tier ladder predates this and is documented separately further
+down). The **daily** set refreshes every day; the **weekly** and **mercenary** sets share the same
 Monday-only cadence (`isMondayEST`) but rotate independently of each other — any other day of the
 week, `rotateQuests()` leaves both untouched. All three categories are shared server-wide (the
 same quests for everyone who's eligible), not personalized per user — stored in the stats table's
@@ -29,9 +31,13 @@ threshold of 1 needs ~1,000 average work calls, unrealistic within a day or even
 Achievements check lifetime totals (`workCount >= 1000`) because they never reset. Quests need
 "have you worked 5 times *since this quest went active*" — checking a lifetime total directly would
 be permanently true for any established player. Each user's `quests` field stores a baseline
-snapshot per quest: `{ [questId]: { startValue, rotationDate, completed } }`, taken the first time
-`checkAndClaimQuests` sees that user against that quest's *current* rotation. Completion is
-`currentValue - startValue >= threshold`.
+snapshot per quest, taken the first time `checkAndClaimQuests` sees that user against that quest's
+*current* rotation. For a `tiers` template (every template in the pool today) that's
+`{ [questId]: { startValue, rotationDate, tiersCompleted } }` — `tiersCompleted` is an INDEX into
+`template.tiers`, not a boolean, since a tiered quest can complete multiple times across the same
+rotation (see "Daily/Weekly Quest scaling" and "Mercenary Quest" below). The legacy flat shape
+(`{ startValue, rotationDate, completed }`) still appears in this same field for any baseline
+snapshotted before a template was converted to `tiers` — see the migration-safety note below.
 
 **Stale-snapshot safety**: quest IDs get reused across rotations (the same "Sprout Sprint" template
 can come back next week). Before trusting a stored snapshot, `checkAndClaimQuests` compares its
@@ -41,6 +47,23 @@ stale progress (or worse, a stale `completed: true` that would silently skip the
 entirely). Verified directly: a user with an old `completed: true` snapshot from a prior week
 correctly gets a fresh, uncompleted baseline when the same quest ID reappears in a new week's
 rotation.
+
+**Migration safety — a flat template converted to `tiers` mid-rotation**: a same-rotation baseline
+snapshotted *before* a template gained `tiers` (i.e. still carrying the legacy `{ completed }`
+shape) reads `baseline.tiersCompleted` as `undefined`. Naively comparing that against
+`template.tiers.length` is silently wrong both ways — `undefined >= length` is `false` (so the
+"already fully completed" early-exit doesn't fire, which is fine) but `undefined < length` is
+*also* `false` (so the tier-granting `while` loop's condition never even starts), which would
+freeze that user out of every tier, forever, for the rest of that rotation, with no error and no
+symptom besides "this player just never got credit." `questFactory.js`'s `resolveTiersCompleted(baseline)`
+guards both `checkAndClaimQuests` and `getProgress` against this: if `tiersCompleted` is present it's
+used as-is, otherwise it's derived from the legacy `completed` boolean (`completed: true` → `1`,
+`completed: false` → `0`). This is exact, not an approximation, because every template converted to
+`tiers` this way keeps its original flat threshold as Tier 1's own threshold — a legacy
+`completed: true` really is equivalent to "Tier 1 already granted." Verified directly (see
+`questFactory.test.js`'s "legacy flat-baseline migration" tests): a `completed: true` baseline from
+before the 2026-09-08 Daily/Weekly rework correctly resolves to Tier 1 already banked, with only
+Tier 2+ still grantable, rather than silently granting nothing for the rest of the week.
 
 **A fresh baseline uses the *pre-action* value, not the post-action one.**
 `checkAndClaimQuests(userDetails, previousUserDetails)` takes both — `userDetails` is the current,
@@ -63,12 +86,15 @@ pre-action value.
 ## Rewards
 
 - **Daily**: potatoes, scaled by the player's own `workMultiplierAmount`
-  (`DailyQuest.BASE_REWARD_PER_MULTIPLIER(750) × workMultiplierAmount` per quest) — same reasoning
-  as the daily login streak, so the reward stays meaningful as the economy matures. If multiple
-  daily quests complete in the same check (e.g. two conditions cross their threshold in the same
-  `/work` call), rewards are summed into one combined write.
+  (`DailyQuest.BASE_REWARD_PER_MULTIPLIER(750) × workMultiplierAmount × tier.reward.multiplier` per
+  tier) — same reasoning as the daily login streak, so the reward stays meaningful as the economy
+  matures. Tier 1's `multiplier` is always `1` (so it grants exactly what the old, pre-tiering flat
+  reward did), Tier 2 is `2`, Tier 3 is `5` — see "Daily/Weekly Quest scaling" below. If multiple
+  daily quests (or multiple tiers of the same one) complete in the same check, rewards are summed
+  into one combined write.
 - **Weekly**: a permanent stat bonus (Work Multiplier or Passive Income), baked into each weekly
-  template's `reward: { statType, min, max }`. Unlike every other permanent stat source in the game
+  tier's own `reward: { statType, min, max }` (Tier 2's min/max are exactly 2x Tier 1's, Tier 3's
+  are exactly 5x — see below). Unlike every other permanent stat source in the game
   (Metal Potato +0.6, Sweet Potato +0.2, Tower rewards, Metal King — all flat, all uncapped), the
   weekly amount **ramps** with the player's own regrade progress *on that specific stat* —
   `questFactory.js`'s `calculateWeeklyStatReward` reads
@@ -115,6 +141,65 @@ active set (the id no longer matches anything in `Quests`) until the next Monday
 from the corrected pool. `work.js`'s achievements-array in-memory merge (originally added so this
 quest saw a same-call unlock immediately) is kept regardless, as ordinary in-memory correctness —
 see that file's own comment.
+
+## Daily/Weekly Quest scaling (2026-09-08)
+
+Direct instruction: "Some users are saying daily/weekly quests are too easy to hit. Can we add a 3
+tier scaling to the existing quests? Make each tier require 5x more than the previous tier. Make the
+reward scale up to 2x initial reward then 5x initial reward." All 11 Daily/Weekly templates (the 2
+Mercenary Quest templates were already tiered, untouched by this change) went from a single flat
+`threshold`/`reward` to a 3-tier `tiers` array, reusing the exact shape Mercenary Quest's Bounty/Heist
+Sweep already proved out (see below) — Tier 1's threshold/reward are kept identical to the template's
+original flat values, so a player who only ever hit the old bar still gets exactly what they used to.
+
+**Work-count templates — literal 5x/25x scaling, as instructed exactly:**
+
+| id | Tier 1 | Tier 2 (5x) | Tier 3 (25x) |
+|---|---|---|---|
+| `daily_work_3` | 3 | 15 | 75 |
+| `daily_work_5` | 5 | 25 | 125 |
+| `weekly_work_25` | 25 | 125 | 625 |
+| `weekly_work_50` | 50 | 250 | 1,250 |
+
+Sized against a realistic `/work` attempt ceiling (`Work.WORK_TIMER_SECONDS` 300s ÷
+`CompanionLeveling.REALISTIC_PLAY_DISCOUNT` 2/3 ≈ 192/day, ×7 ≈ 1,344/week — the same "roughly one
+`/work` call's worth of realistic cooldown-respecting play" model this codebase already uses
+elsewhere). Every tier here stays under that ceiling except `weekly_work_50`'s own Tier 3
+(1,250 ≈ 93% of the weekly ceiling) — deliberately left as the single hardest tier in the whole
+pool rather than softened, since it's the literal 25x the instruction asked for and is still
+technically reachable by a player who hits nearly every cooldown for a full week.
+
+**Encounter-based templates — a gentler, feasibility-anchored ladder (a deliberate deviation from
+the literal instruction for this subset only):** these 7 key off a specific `/work` encounter's
+real per-roll chance (`eventFactory.js`'s `workProbability`: sweet/taro 2%, poison 1%, companion
+1.5%). Literal 5x/25x scaling off a threshold of 1/3/5 would put Tier 3 several multiples above the
+realistic *expected* encounter count for a full day/week of maximal play — e.g. `daily_poison`'s
+literal Tier 3 (25) against an expected ~1.9 poison encounters in a realistic full day, making it
+statistically unreachable rather than just hard. Instead, each of these 7 ladders is sized to
+roughly the realistic expected-encounter count (still a genuine stretch goal for a dedicated
+grinder, not a guaranteed clear — each Tier 3 sits around the Poisson mean, achievable only with
+above-average luck at close to the realistic attempt ceiling):
+
+| id | rate/roll | Tier 1 | Tier 2 | Tier 3 | daily/weekly expected (μ) |
+|---|---|---|---|---|---|
+| `daily_taro` | 2% | 1 | 4 | 9 | ~3.84/day |
+| `daily_sweet` | 2% | 1 | 4 | 9 | ~3.84/day |
+| `daily_poison` | 1% | 1 | 2 | 5 | ~1.92/day |
+| `weekly_sweet_5` | 2% | 5 | 15 | 40 | ~26.9/week |
+| `weekly_taro_5` | 2% | 5 | 15 | 40 | ~26.9/week |
+| `weekly_poison_5` | 1% | 5 | 10 | 20 | ~13.4/week |
+| `weekly_companion_3` | 1.5% | 3 | 10 | 30 | ~20.2/week |
+
+**Reward scaling — cumulative, matching Mercenary Quest's own precedent exactly**: every tier's
+reward is granted the moment progress crosses it, on top of whatever lower tiers already paid out
+in the same rotation (not "replace with the higher tier's reward instead") — Tier 1 = 1x the
+original flat reward, Tier 2 = 2x, Tier 3 = 5x, per the instruction. For daily templates that's
+`tier.reward.multiplier` (`{ type: "dailyReward", multiplier: 1|2|5 }`) feeding
+`DailyQuest.BASE_REWARD_PER_MULTIPLIER × workMultiplierAmount × multiplier`; for weekly templates
+it's each tier's own `{ statType, min, max }` (Tier 2/3's min/max are literally Tier 1's ×2/×5),
+still ramped independently per tier by `calculateWeeklyStatReward` against the player's own regrade
+progress on that stat — a player fully regraded on Work Multiplier who jumps straight to
+`weekly_work_25`'s Tier 3 in one check gets `1.0 + 2.0 + 5.0 = 8.0x`, not just `5.0x`.
 
 ## Mercenary Quest
 
@@ -213,10 +298,12 @@ bug).
 ## UX
 
 - **On completion**: `work.js`/`take-bounty.js` send a follow-up
-  (`embedFactory.createQuestCompleteEmbed`, 📜) listing whatever quests completed that call, with
-  each one's reward shown individually (the daily potato amount is recomputed per-quest for display
-  even though the underlying write sums them; the mercenary reward shows the flat template amount
-  since there's nothing per-player to compute).
+  (`embedFactory.createQuestCompleteEmbed`, 📜) listing whatever quests (or quest tiers) completed
+  that call, with each one's reward shown individually — a tiered daily/weekly completion reads its
+  own `grantedRewardAmount` (that tier's actual computed amount) rather than recomputing a flat 1x
+  value, falling back to the old flat computation only for a hypothetical daily template with no
+  tiers of its own; the mercenary Safehouse reward shows the flat per-tier template amount since
+  there's nothing per-player to compute for that reward type.
 - **`/quests`**: button-paginated exactly like `/achievements` (5 per page, Previous/Next,
   `editReply` → `awaitMessageComponent` → `.update()`, 60s timeout) — in practice the active count
   (5-6) rarely needs more than one page, but the infrastructure is there if `DailyQuest.ACTIVE_COUNT`/
