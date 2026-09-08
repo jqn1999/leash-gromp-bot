@@ -1782,6 +1782,42 @@ class EmbedFactory {
         return embed;
     }
 
+    // Companion Hunt (2026-09-08) result — the player themselves went looking, not a /work
+    // roll, so there's no Work Count/companion-XP framing to fold in here at all (unlike
+    // createCompanionEncounterEmbed below). tier: a CompanionHunt.TIERS entry (label used
+    // for the "you're back from" framing). result: companionHuntFactory.resolveHuntOutcome's
+    // return — { found: false } on a miss, { found: true, isNew, companion } on a hit.
+    createCompanionHuntResultEmbed(userDisplayName, tier, result) {
+        if (!result.found) {
+            const embed = new EmbedBuilder()
+                .setTitle(`${userDisplayName}, you're back from your ${tier.label}`)
+                .setDescription(`No luck this time — no companion turned up. /work is open again, or head back out with /companion-hunt.`)
+                .setColor("Grey")
+                .setFooter({ text: "Made by Beggar" })
+                .setTimestamp(Date.now())
+            return embed;
+        }
+
+        const { isNew, companion } = result;
+        const description = isNew
+            ? `${companion.description}\n\nRun \`/companion\` and use its equip button to make ${companion.name} your active companion!`
+            : `${companion.description}\n\nYou already have a ${companion.name} — this is a separate copy, starting fresh at level 1. Run \`/companion\` to see and equip it individually, or sell it with /companion-sell or /companion-sell-npc.`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, you're back from your ${tier.label} with ${companion.name}!`)
+            .setDescription(description)
+            .setColor(COMPANION_RARITY_COLOR[companion.rarity])
+            .setThumbnail(companion.thumbnailUrl)
+            .setFields([{
+                name: `Perk:`,
+                value: formatCompanionPerks(companion),
+                inline: false,
+            }])
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     // result: { isNew, companion } from workFactory.handleCompanionEncounter. A brand-new
     // companion shows its perk and a reminder to equip it via /companion (won, not
     // auto-equipped — equipping stays a deliberate choice). Since 2026-08-25's instance

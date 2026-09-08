@@ -1,11 +1,13 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `CompanionFusion`, `Companions`) +
+`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `CompanionFusion`, `CompanionHunt`,
+`Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
 [src/utils/companionFusionFactory.js](../../src/utils/companionFusionFactory.js) +
-[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse}.js](../../src/commands/user/).
+[src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
+[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse,companionHunt,companionHuntCollect,companionHuntCancel}.js](../../src/commands/user/).
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
@@ -51,6 +53,77 @@ that one slice's destination changes. `userDetails` is an optional trailing para
   returns the same `{ isNew, companion }` shape for a duplicate as for a brand-new pull — the only
   difference the embed shows is the framing text ("you found another one, starting fresh at level
   1" vs. "here's a new companion").
+
+## Companion Hunt
+
+`/companion-hunt` (start) + `/companion-hunt-collect` (resolve) + `/companion-hunt-cancel`
+(early bailout) — [src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
+[src/commands/user/companionHunt{,Collect,Cancel}.js](../../src/commands/user/). 2026-09-08,
+direct instruction: "a command a user can use to scavenge for companions themselves... stop
+them from working... 2-4 hours... a chance of a companion so users that don't want to spam
+work have a viable way of getting companions." A second acquisition path alongside `/work`'s
+own ~1.5% per-roll Wandering Companion encounter — genuinely distinct from Companion
+Scavenging below, which sends an **owned companion** away for workCount/starches and never
+touches `/work` at all. Companion Hunt sends the **player themselves** away and blocks their
+own `/work` for the duration; the two can run simultaneously with zero conflict since neither
+touches the other's state.
+
+**Three tiers** (`CompanionHunt.TIERS`), the player picks one via a required `duration`
+option (all three always listed, no rank/level gate — available to everyone from day one,
+same "the whole point is to serve players who don't want to grind" reasoning that keeps it
+ungated):
+
+| Tier | Duration | Success chance |
+|---|---|---|
+| Short Expedition | 2h | 15% |
+| Medium Expedition | 4h | 30% |
+| Long Expedition | 8h | 50% |
+
+**`successChance` derivation** — grounded against what ACTIVE `/work` grinding already
+yields over the same stretch, so this reads as a genuine alternative rather than a
+strictly-better replacement. `CompanionLeveling.REALISTIC_PLAY_DISCOUNT` (2/3) already models
+how often a real player actually hits `/work`'s 300s cooldown the instant it clears; over
+duration `D`, realistic attempts ≈ `(D / 300) * 2/3`, and `P(at least one encounter)` at
+`/work`'s own 1.5% per-roll chance = `1 - 0.985^attempts`: 2h ≈ 21.5% active-grinding
+equivalent, 4h ≈ 38.3%, 8h ≈ 62.0%. Each tier's `successChance` is set noticeably UNDER its
+own active-grinding equivalent — the AFK convenience (zero clicking required) is worth
+something, but this must never strictly outclass actually playing, the same "passive
+alternatives are pitched at/under active engagement" precedent Guild Treasury interest and
+Companion Scavenging's own unscaled payouts already set.
+
+**Rarity odds intentionally reuse `companionFactory.rollCompanion` unchanged** — the exact
+same roll `/work`'s own Wandering Companion encounter uses — rather than a bespoke table. A
+custom, possibly-better-than-`/work` rarity skew here would quietly undercut Prospector's own
+"better companion-encounter luck" niche (see its 2026-08-30 redesign); a miss carries no
+penalty beyond the `/work` time already spent away, mirroring `/work`'s own companion-roll
+miss (just "no companion this time," no further loss).
+
+**Blocking `/work`**: a new top-level `userDetails.companionHunt: { tierKey, returnsAt } |
+null` field, deliberately kept separate from `workTimer` itself (not folded into it) so the
+block can never tangle with `workTimer`'s other machinery (Poison Potato lockout extensions,
+the cooldown-skip chain). `work.js`'s `performWork` checks it right after its existing
+`workTimer` gate, rejecting with time remaining. **`/work` reopens automatically once
+`returnsAt` passes, even before `/companion-hunt-collect` is run** — the block is scoped to
+the committed duration only, not to "until collected," so a player who forgets to collect is
+never permanently locked out of `/work`.
+
+**Commands**: `/companion-hunt` rejects if a hunt is already active (or already returned and
+awaiting collection) and dispatches a plain, unconditional write — same low/no-stakes race
+precedent Companion Scavenging's own dispatch write already relies on (a player can only ever
+race against their own other calls). `/companion-hunt-collect` rejects if not out or not yet
+returned, rolls the outcome, and writes through `dynamoHandler.resolveCompanionHunt` — a
+guarded update conditioned on `companionHunt.returnsAt` matching (mirrors `resolveScavenge`'s
+own instanceId-guard shape) so a raced double-collect can't double-grant. On a hit, the
+achievement check runs the same way `companionScavengeCollect.js`'s own does (a new companion
+can unlock `first_companion`/`companion_collector`/`full_roster`/`mythic_bond`).
+`/companion-hunt-cancel` mirrors `companion-scavenge-cancel.js`'s confirm/cancel shape exactly
+(30s button collector, re-fetch and re-validate against fresh state before the guarded write)
+since it forfeits a real chance, unlike dispatch which risks nothing.
+
+**No additional cooldown after collecting or cancelling** — a player can immediately queue
+another expedition. The block itself (zero `/work` income for the committed duration) is
+already the full cost/pacing mechanism; a player who wants to live entirely inside the hunt
+loop instead of `/work` is exactly the audience this was built for.
 
 ## Duplicate Companions Are Real, Separate Instances
 
@@ -1310,7 +1383,16 @@ checker — no new checking code needed:
 `userDetails.companions: { owned: [{ instanceId, id, workCount, hasReachedMaxLevel?, ascensionStars?,
 ascensionFuel? }], active: instanceId|null, ownedCount, mythicOwnedCount, scavenging: { instanceId,
 rarity, returnsAt } | null, maxLevelCount, mythicMaxLevelCount }`, backfilled onto existing accounts
-by `findUser`'s self-healing pattern like every other field. `ascensionStars`/`ascensionFuel` (added
+by `findUser`'s self-healing pattern like every other field.
+
+Companion Hunt's own state lives OUTSIDE `companions` entirely — a top-level
+`userDetails.companionHunt: { tierKey, returnsAt } | null` (default `null`, healed like any
+other top-level field), since it's about the player themselves, not an owned companion
+instance. Deliberately not folded into `workTimer` either, so blocking `/work` here can never
+interact with `workTimer`'s own cooldown-skip/Poison-Potato-lockout machinery — see the
+Companion Hunt section above.
+
+`ascensionStars`/`ascensionFuel` (added
 2026-09-07 by Companion Fusion above) are absent until an instance's first fusion as a target — every
 read site treats a missing value as `0` (`instance.ascensionStars || 0`), so no backfill/migration
 step was needed, the same "write-once, default-zero-when-absent" shape `hasScavenged` already uses.

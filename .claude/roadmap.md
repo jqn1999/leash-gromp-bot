@@ -8872,3 +8872,60 @@ with the full mechanic/formula writeup, its top file-list gained `CompanionFusio
 `companionFusionFactory.js`/`companionFuse.js`, and its Persistence section documented the new
 `ascensionStars`/`ascensionFuel` owned-entry fields (absent-defaults-to-0, no backfill needed —
 same shape `hasScavenged` already uses).
+
+## Companion Hunt: a second acquisition path for players who don't want to spam /work (2026-09-08, direct instruction)
+
+Player asked for "a command a user can use to scavenge for companions themselves... stop them
+from working... 2-4 hours... a chance of a companion so users that don't want to spam work have
+a viable way of getting companions" — plan requested first, with a few different implementation
+options. Presented three shapes (flat single duration, a short/long tiered choice, or a
+stat-scaling variant); player asked for a 3-tier version instead: "build a 2, 4, 8 hour."
+
+**Mechanic**: `/companion-hunt` sends the PLAYER THEMSELVES out (no owned companion involved at
+all — genuinely distinct from Companion Scavenging, which sends an owned companion away and
+never touches `/work`), blocking their own `/work` for the picked tier's duration. `/companion-
+hunt-collect` resolves the outcome once they're back; `/companion-hunt-cancel` lets them bail
+early, forfeiting the chance.
+
+**Tiers** (`CompanionHunt.TIERS`): Short (2h, 15%), Medium (4h, 30%), Long (8h, 50%) — all
+always available, no rank/level gate, since the whole point is serving players who don't want to
+grind in the first place. `successChance` derivation grounded against what ACTIVE `/work`
+grinding already yields over the same stretch (using `CompanionLeveling.REALISTIC_PLAY_DISCOUNT`
+to model realistic attempt cadence, then `1 - 0.985^attempts` against `/work`'s own 1.5%
+per-roll chance): 2h/4h/8h active-grinding equivalents land at ~21.5%/38.3%/62.0%, and each
+tier's actual chance is set noticeably under its own equivalent — the AFK convenience is worth
+something, but this must never strictly outclass actually playing. Rarity odds intentionally
+reuse `companionFactory.rollCompanion` unchanged (not a bespoke table), so this can't quietly
+outclass Prospector's own "better companion-encounter luck" niche.
+
+**Implementation**: new top-level `userDetails.companionHunt: { tierKey, returnsAt } | null`
+field, kept separate from `workTimer` itself so the block can't tangle with `workTimer`'s other
+machinery (Poison Potato lockouts, the cooldown-skip chain) — `work.js`'s `performWork` checks
+it as an additional gate right after its existing `workTimer` check, and `/work` reopens
+automatically once `returnsAt` passes even before collection (never a permanent lockout for a
+forgetful player). New `companionHuntFactory.js` (`getTierByKey`/`buildHuntDispatch`/
+`resolveHuntOutcome`) — a new system, its own file, same "one factory per system" precedent
+`guildCompanionFactory.js` already established. New guarded `dynamoHandler.resolveCompanionHunt`
+(conditioned on `companionHunt.returnsAt` matching, mirroring `resolveScavenge`'s own
+instanceId-guard shape) backs the collect/cancel writes; dispatch itself is a plain unconditional
+write, same low-stakes-race precedent `companionScavenge.js`'s own dispatch already relies on.
+New `createCompanionHuntResultEmbed` (found/not-found branches) rather than reusing `/work`'s own
+`createCompanionEncounterEmbed`, which is too tightly coupled to `/work`'s "Work Count" framing
+to fit a context where the player was away, not working. No extra cooldown after
+collecting/cancelling — the block itself is the full pacing mechanism, and living entirely
+inside the hunt loop instead of `/work` is exactly the audience this serves.
+
+**Tests**: new `companionHuntFactory.test.js` (8 tests: tier lookup, dispatch timing, miss/hit/
+duplicate outcomes, increasing successChance across tiers), `companionHunt.test.js` (dispatch +
+already-active/already-returned rejections), `companionHuntCollect.test.js` (not-active/not-yet-
+returned rejections, miss vs. hit writes, database-race handling), `companionHuntCancel.test.js`
+(confirm/cancel/re-validation, mirroring `companionFuse.test.js`'s own confirm-flow shape), and
+`companionHuntBlocksWork.test.js` (the actual `/work` gate: blocks mid-hunt, reopens once
+returned, never blocks a player who's never hunted). Full suite green (1225/1225, up from 1203
+before this feature).
+
+**Docs**: `.claude/systems/companions.md` gained a new "Companion Hunt" section with the full
+mechanic/derivation writeup, its top file-list gained `CompanionHunt`/`companionHuntFactory.js`/
+the three new command files, and its Persistence section documented the new top-level
+`companionHunt` field (explicitly called out as living outside the `companions` object, unlike
+every other companion-related field).

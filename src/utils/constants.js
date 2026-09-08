@@ -822,6 +822,41 @@ const CompanionLeveling = {
     PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT: 450
 }
 
+// Companion Hunt (2026-09-08, direct instruction — "a command a user can use to scavenge
+// for companions themselves... stop them from working... 2-4 hours... a chance of a
+// companion so users that don't want to spam work have a viable way of getting companions").
+// Distinct from Companion Scavenging below: this sends the PLAYER THEMSELVES out (no owned
+// companion required or touched at all), blocking their own /work for the chosen tier's
+// duration, then rolls a chance at a brand-new companion on collection — an AFK-friendly
+// alternative to grinding /work's own ~1.5% per-roll Wandering Companion encounter chance,
+// not a replacement for it.
+//
+// successChance derivation: grounded against what ACTIVE /work grinding already yields over
+// the same stretch, so this reads as a genuine alternative rather than a strictly-better
+// replacement. CompanionLeveling.REALISTIC_PLAY_DISCOUNT (2/3) already models how often a
+// real player actually hits /work's 300s cooldown the instant it clears; over duration D,
+// realistic attempts ≈ (D / 300) * 2/3, and P(at least one encounter) at /work's own 1.5%
+// per-roll chance = 1 - 0.985^attempts:
+//   2h (7200s): ~16 realistic attempts -> ~21.5% active-grinding equivalent
+//   4h (14400s): ~32 realistic attempts -> ~38.3% active-grinding equivalent
+//   8h (28800s): ~64 realistic attempts -> ~62.0% active-grinding equivalent
+// Each tier's successChance below is set noticeably UNDER its own active-grinding
+// equivalent — the AFK convenience (zero clicking required) is worth something, but this
+// must never strictly outclass actually playing, the same "passive alternatives are pitched
+// at/under active engagement" precedent Guild Treasury interest and Companion Scavenging's
+// own unscaled payouts already set.
+//
+// Rarity odds intentionally reuse companionFactory.rollCompanion unchanged (not a bespoke
+// table) — a custom, possibly-better-than-/work rarity skew here would quietly undercut
+// Prospector's own "better companion-encounter luck" niche (see its 2026-08-30 redesign).
+const CompanionHunt = {
+    TIERS: [
+        { key: 'short', label: 'Short Expedition (2h)', durationSeconds: 7200, successChance: 0.15 },
+        { key: 'medium', label: 'Medium Expedition (4h)', durationSeconds: 14400, successChance: 0.30 },
+        { key: 'long', label: 'Long Expedition (8h)', durationSeconds: 28800, successChance: 0.50 }
+    ]
+}
+
 // Companion Scavenging (roadmap #17): a benched (owned, unequipped, not already
 // scavenging) companion can be dispatched for a rarity-scaled duration and, on return,
 // grants a chunk of its own workCount (the same counter Leveling tracks) plus a small,
@@ -3138,6 +3173,7 @@ module.exports = {
     CompanionRarityOdds,
     CompanionMarket,
     CompanionFusion,
+    CompanionHunt,
     PoisonMitigation,
     MimicMitigation,
     CompanionLeveling,
