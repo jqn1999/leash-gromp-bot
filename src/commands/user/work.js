@@ -267,6 +267,19 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         return;
     };
 
+    // Companion Hunt (systems/companions.md#companion-hunt) — a separate field from
+    // workTimer entirely (see dynamoHandler.getDefaultUserFields' own comment on why), so
+    // it can never tangle with workTimer's cooldown-skip/Poison-Potato-lockout machinery.
+    const timeUntilHuntReturnsInMS = (userDetails.companionHunt?.returnsAt ?? 0) - Date.now();
+    if (timeUntilHuntReturnsInMS > 0) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName}, you're out on a companion expedition and can't work until you're back — ${convertSecondstoMinutes(Math.ceil(timeUntilHuntReturnsInMS/1000))} remaining. Run /companion-hunt-cancel to come back early instead.`);
+        } else {
+            console.log(`work.js chain link ${chainDepth} aborted: companion hunt unexpectedly still active for ${userId}`);
+        }
+        return;
+    };
+
     const work = await dynamoHandler.getStatDatabase('work');
     const newWorkCount = work.workCount + 1;
     const workScenarioRoll = Math.random();

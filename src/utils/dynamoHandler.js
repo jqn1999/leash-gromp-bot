@@ -249,6 +249,36 @@ const resolveScavenge = async function (userId, instanceId, setAttributes = {}) 
         });
 }
 
+// Companion Hunt's own guarded collect/cancel write — same "only let this land if the exact
+// dispatch is still the live one" shape resolveScavenge uses, just keyed on the top-level
+// companionHunt field's own returnsAt instead of a scavenging instanceId (a player has only
+// ever one hunt in flight at a time, no instance identity needed).
+const resolveCompanionHunt = async function (userId, returnsAt, setAttributes = {}) {
+    const { expression, names, values } = buildUpdateExpression(setAttributes);
+    if (!expression) return false;
+
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: {
+            userId: userId,
+        },
+        UpdateExpression: expression,
+        ConditionExpression: "companionHunt.returnsAt = :returnsAt",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: { ...values, ":returnsAt": returnsAt },
+        ReturnValues: "ALL_NEW",
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`resolveCompanionHunt error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 // Spud Keep pot payout collection (systems/spud-keep.md) — the accruing pot no longer
 // credits potatoes directly at resolution (2026-08-30, direct instruction: a lump sum
 // landing straight in every winner's liquid balance the instant the cycle resolves would
@@ -408,6 +438,11 @@ function getDefaultUserFields(userId, username) {
         totalEarnings: 0,
         totalLosses: 0,
         workTimer: 0,
+        // Companion Hunt (systems/companions.md#companion-hunt) — { tierKey, returnsAt } |
+        // null. Kept as its own field rather than folded into workTimer itself so blocking
+        // /work here can never tangle with workTimer's OTHER machinery (Poison Potato
+        // lockout extensions, the cooldown-skip chain) — work.js just checks both fields.
+        companionHunt: null,
         robTimer: 0,
         bankStored: 0,
         bankCapacity: Bank.STARTING_CAPACITY, // see Bank.STARTING_CAPACITY's comment — closes the early-game "zero rob protection" gap
@@ -1761,6 +1796,7 @@ module.exports = {
     claimDailyStreak,
     updateIfNewRecord,
     resolveScavenge,
+    resolveCompanionHunt,
     collectSpudKeepReward,
     addUser,
     findUser,
