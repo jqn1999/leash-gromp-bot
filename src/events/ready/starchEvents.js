@@ -108,9 +108,7 @@ async function shiftNextSellPrice() {
         return null;
     }
 
-    console.log(vals)
-    sell = Math.floor(vals.shift())
-    console.log(vals)
+    const sell = Math.floor(vals.shift())
     await dynamoHandler.updateStatDatabase("starch", "starch_sell", sell)
     await dynamoHandler.updateStatDatabase("starch", "starch_values", vals)
     return sell;

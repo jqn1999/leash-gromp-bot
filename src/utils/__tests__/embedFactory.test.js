@@ -573,6 +573,51 @@ describe('createSpudKeepResultEmbed payout breakdown', () => {
         expect(embedFactory.getSpudKeepPayoutPageCount({ payoutShares: [] })).toBe(1);
         expect(embedFactory.getSpudKeepPayoutPageCount({ payoutShares: undefined })).toBe(1);
     });
+
+    // Regression (live production crash, reported from the 4am cron): resolveCycle's own
+    // returned `entrants` shape used to drop `roster` entirely, keeping only a
+    // mercenary-only summary (mercFactionN/mercSignedUpCount/mercCountedCount). This never
+    // crashed /current-spud-keep (which reads buildEntrantPreview's entrants — always
+    // includes `roster`), only the 4am resolution announcement, which reads
+    // resolveCycle's trimmed copy — and only once at least one GUILD entrant was actually
+    // present, since formatSpudKeepEntrantValue's mercenary branch never touches `.roster`
+    // at all. Every prior test above used `entrants: []`, so this path went completely
+    // unexercised.
+    test('a guild entrant with a roster does not crash formatSpudKeepEntrantValue\'s "N live raiders" line', () => {
+        const result = baseResult({
+            entrants: [{
+                type: 'guild', id: 'g1', name: 'Guild A', power: 100, effectivePower: 100,
+                chancePercent: 1, isHolder: true,
+                breakdown: { teamPower: 90, headcountBonus: 0.1, effectivePower: 100 },
+                roster: [{ id: 'u1', username: 'Alice' }, { id: 'u2', username: 'Bob' }],
+            }],
+        });
+
+        let embed;
+        expect(() => { embed = embedFactory.createSpudKeepResultEmbed(result); }).not.toThrow();
+
+        const field = embed.data.fields.find(f => f.name.includes('Guild A'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('2 live raiders');
+    });
+
+    test('a mercenary entrant (no roster needed by its own display branch) still does not crash', () => {
+        const result = baseResult({
+            entrants: [{
+                type: 'mercenary', id: null, name: 'The Merc Faction', power: 50, effectivePower: 50,
+                chancePercent: 1, isHolder: false,
+                breakdown: { teamPower: 50, headcountBonus: 0, effectivePower: 50 },
+                roster: [{ id: 'u3', username: 'Carol' }],
+                mercFactionN: 5, mercSignedUpCount: 3, mercCountedCount: 1,
+            }],
+        });
+
+        let embed;
+        expect(() => { embed = embedFactory.createSpudKeepResultEmbed(result); }).not.toThrow();
+
+        const field = embed.data.fields.find(f => f.name.includes('Merc Faction'));
+        expect(field.value).toContain('N=5');
+    });
 });
 
 describe('createSpudKeepCollectEmbed', () => {

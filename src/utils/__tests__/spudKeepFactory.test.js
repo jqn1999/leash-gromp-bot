@@ -509,6 +509,29 @@ describe('resolveCycle', () => {
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('mc1', {}, { spudKeepAttemptCount: 1 });
     });
 
+    // Regression (live production crash reported from the 4am cron): the returned
+    // `entrants` array used to drop `roster` entirely for every entrant, keeping only a
+    // mercenary-only summary — embedFactory.js's formatSpudKeepEntrantValue reads
+    // `entrant.roster.length` for a guild-type entrant's "N live raiders" line, so building
+    // the 4am result embed off this shape threw a TypeError the moment any guild entrant
+    // was present. buildEntrantPreview's own entrants (used by /current-spud-keep) never
+    // dropped `roster` — only this trimmed resolveCycle copy did, which is why the crash
+    // was specific to the 4am announcement and never showed up in the live status command.
+    test('each returned entrant still carries its own roster, not just the mercenary-only summary fields', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }, { id: 'm2', username: 'm2' }]));
+        jest.spyOn(Math, 'random').mockReturnValue(0);
+
+        const result = await spudKeepFactory.resolveCycle();
+
+        const guildEntrant = result.entrants.find(e => e.type === 'guild');
+        expect(guildEntrant.roster).toHaveLength(2);
+        const mercEntrant = result.entrants.find(e => e.type === 'mercenary');
+        expect(mercEntrant.roster).toEqual([]);
+    });
+
     test('a Merc Faction win sets holderType mercenary with a null holderId', async () => {
         // With no floor on getMercFactionN, the Merc Faction only counts any mercenaries at
         // all if some guild has also signed up (N is derived purely from the largest

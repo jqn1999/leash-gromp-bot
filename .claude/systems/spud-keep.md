@@ -259,6 +259,25 @@ resolution and required a fresh `/spud-keep-signup` every single cycle just to k
    posted to the same events channel every other daily-cron announcement uses (including an explicit
    "cycle skipped" embed rather than silence).
 
+**Fix (2026-09-08, player-reported — the 4am cron's Spud Keep post had been silently failing):**
+step 8's returned `entrants` array used to drop `roster` from every entrant, keeping only a
+mercenary-only summary (`mercFactionN`/`mercSignedUpCount`/`mercCountedCount`). `embedFactory.js`'s
+`formatSpudKeepEntrantValue` — shared by both this result embed and `/current-spud-keep`'s live
+status embed specifically so the two never show conflicting numbers for the same entrant shape —
+reads `entrant.roster.length` for a guild-type entrant's "N live raiders" line, so building the 4am
+result embed off this trimmed shape threw `TypeError: Cannot read properties of undefined (reading
+'length')` the moment ANY guild entrant was present that cycle. `buildEntrantPreview()`'s own
+entrants (what `/current-spud-keep` reads) always carried `roster`, so this never showed up there —
+only the 4am announcement's separate, trimmed copy was missing it, and only on a cycle with a real
+guild entrant (a Merc-Faction-only cycle never touches `.roster` in the display code at all).
+`resolveCycle`'s returned entrant mapping now includes `roster: e.roster` alongside the summary
+fields, matching `buildEntrantPreview`'s own shape exactly. `spudKeepFactory.test.js` gained a
+regression test asserting each returned entrant still carries its own roster;
+`embedFactory.test.js` gained two (a guild entrant with a real roster no longer crashes and shows
+the correct "N live raiders" count; a mercenary entrant, whose own display branch never reads
+`.roster`, still doesn't crash either way) — every prior `createSpudKeepResultEmbed` test used
+`entrants: []`, so this path had never actually been exercised.
+
 ## Attacker's Bonus — pushes toward eventual turnover
 
 Direct instruction, reversing the original "no defender's bonus" recommendation — toward challengers
