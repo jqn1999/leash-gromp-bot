@@ -79,6 +79,34 @@ running `/leave` — the command's own main success path. Fixed to `guild.guildI
 `leave.js` row in [guilds.md](guilds.md) and `mercenaryMutualExclusivity.test.js`'s
 `/leave` describe block for the regression test.
 
+**Both exit actions gained a confirm/cancel step, 2026-09-07** (direct instruction: "add
+confirmation embeds on leaving guild/merc so users dont accidentally leave with just a
+command use") — previously both were single-command instant actions with no confirm at
+all (explicitly by earlier design: "No confirm step, same reasoning as /leave: nothing
+forfeited, progress persists"), reversed once it became clear that "nothing forfeited"
+still means a real, sticky consequence (the 24h switch cooldown above) that a single
+mis-typed or fat-fingered command invocation could trigger with no way back. Both now
+follow the exact `buildConfirmCancelRow`/`awaitMessageComponent` shape `/rebirth` already
+uses (30s timeout, Danger-styled confirm button, embed shown before AND after):
+
+- **`/leave`**: `createLeaveGuildConfirmEmbed` warns about the switch cooldown and that
+  Guild Contract progress freezes (not lost) on leaving. On confirm, `leave.js` **re-fetches
+  both `userDetails` and the guild** before committing — membership or leadership could have
+  changed during the 30s prompt (e.g. someone else's leadership pass, a kick, the guild
+  disbanding) — and re-runs the exact same member-lookup/leader-check guards a second time
+  against that fresh state, not just the pre-confirm snapshot. `createLeaveGuildCancelledEmbed`/
+  `createLeaveGuildCompleteEmbed` cover the other two outcomes.
+- **`/retire-mercenary`**: `createRetireMercenaryConfirmEmbed` warns about losing `/take-bounty`/
+  `/rob-npc`/`/confront-rival` access and the same switch cooldown, while reassuring that
+  Mercenary Rank/win count are untouched (the one thing players might worry they're losing).
+  Re-fetches `userDetails` before committing and re-checks `isMercenary` is still `true`.
+  `createRetireMercenaryCancelledEmbed`/`createRetireMercenaryCompleteEmbed` cover the other
+  two outcomes.
+
+Both commands' success embed is now sent via `interaction.followUp` (the confirm
+button click already consumed the original `editReply`/`update` message), matching
+`/rebirth`'s own `followUp`-for-the-real-result pattern.
+
 ## Mercenary Rank
 
 Computed **live** off `mercenaryBountyWinCount` (wins only, never attempts) — same
@@ -740,7 +768,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | Command | Flow |
 |---|---|
 | `/become-mercenary` | No args, no confirm. Rejects if guilded or already a mercenary. |
-| `/retire-mercenary` | No args, no confirm. Rejects if not currently a mercenary. Progress persists. |
+| `/retire-mercenary` | No args. Rejects if not currently a mercenary. Confirm/cancel step (2026-09-07 — see "Guild ↔ Mercenary switch cooldown" above), 30s timeout. Progress persists. |
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
 | `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |

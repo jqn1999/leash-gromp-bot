@@ -23,6 +23,23 @@ function fakeInteraction(optionValues = {}) {
     };
 }
 
+// /leave and /retire-mercenary both gained a confirm/cancel button step 2026-09-07 (direct
+// instruction — "add confirmation embeds on leaving guild/merc so users dont accidentally
+// leave with just a command use"). This mirrors nonWorkCompanionLeveling.test.js's own
+// confirm-flow mocking shape: editReply resolves a `reply` whose awaitMessageComponent
+// resolves a `confirmation` with the given customId (defaults to auto-confirming).
+function fakeConfirmInteraction(customId = 'confirm') {
+    const confirmation = { customId, deferUpdate: jest.fn().mockResolvedValue(), update: jest.fn().mockResolvedValue() };
+    const reply = { awaitMessageComponent: jest.fn().mockResolvedValue(confirmation), edit: jest.fn().mockResolvedValue() };
+    return {
+        deferReply: jest.fn().mockResolvedValue(),
+        editReply: jest.fn().mockResolvedValue(reply),
+        followUp: jest.fn().mockResolvedValue(),
+        user: { id: 'user-1', username: 'User', displayName: 'User' },
+        options: { get: () => undefined },
+    };
+}
+
 function baseUser(overrides = {}) {
     return {
         userId: 'user-1',
@@ -108,7 +125,7 @@ describe('/retire-mercenary', () => {
 
     test('succeeds for a current mercenary, without touching mercenaryBountyWinCount, and starts the switch cooldown', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ isMercenary: true, mercenaryBountyWinCount: 40 }));
-        const interaction = fakeInteraction();
+        const interaction = fakeConfirmInteraction();
 
         const before = Date.now();
         await callback({}, interaction);
@@ -122,6 +139,31 @@ describe('/retire-mercenary', () => {
         expect(calledFields).not.toHaveProperty('mercenaryBountyWinCount');
         expect(calledFields.guildMercenarySwitchTimer).toBeGreaterThanOrEqual(before);
         expect(calledFields.guildMercenarySwitchTimer).toBeLessThanOrEqual(after);
+        expect(interaction.followUp).toHaveBeenCalledTimes(1);
+    });
+
+    // 2026-09-07, direct instruction — "add confirmation embeds on leaving guild/merc so
+    // users dont accidentally leave with just a command use."
+    test('backing out (cancel button) writes nothing at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ isMercenary: true }));
+        const interaction = fakeConfirmInteraction('retire_mercenary_cancel');
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('a timed-out confirmation (no button clicked) writes nothing at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ isMercenary: true }));
+        const interaction = fakeConfirmInteraction();
+        interaction.editReply.mockResolvedValue({
+            awaitMessageComponent: jest.fn().mockResolvedValue(null),
+            edit: jest.fn().mockResolvedValue(),
+        });
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 });
 
@@ -216,7 +258,7 @@ describe('/leave', () => {
         dynamoHandler.findUser.mockResolvedValue({ userId: 'user-1', username: 'User', guildId: 7 });
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
         dynamoHandler.updateGuildFieldsWithLock.mockResolvedValue(true);
-        const interaction = fakeInteraction();
+        const interaction = fakeConfirmInteraction();
 
         const before = Date.now();
         await expect(callback({}, interaction)).resolves.not.toThrow();
@@ -230,5 +272,34 @@ describe('/leave', () => {
         expect(calledFields.guildId).toBe(0);
         expect(calledFields.guildMercenarySwitchTimer).toBeGreaterThanOrEqual(before);
         expect(calledFields.guildMercenarySwitchTimer).toBeLessThanOrEqual(after);
+        expect(interaction.followUp).toHaveBeenCalledTimes(1);
+    });
+
+    // 2026-09-07, direct instruction — "add confirmation embeds on leaving guild/merc so
+    // users dont accidentally leave with just a command use."
+    test('backing out (cancel button) leaves guild membership untouched', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'user-1', username: 'User', guildId: 7 });
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
+        const interaction = fakeConfirmInteraction('leave_guild_cancel');
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('the guild leader is re-checked after confirming — a leadership pass during the prompt blocks the leave', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'user-1', username: 'User', guildId: 7 });
+        // Was a plain member when the confirm prompt was shown, but became leader by the
+        // time the button was clicked (e.g. the old leader just left).
+        dynamoHandler.findGuildById
+            .mockResolvedValueOnce(guildFixture())
+            .mockResolvedValueOnce(guildFixture({ memberList: [{ id: 'user-1', username: 'User', role: 'Leader' }] }));
+        const interaction = fakeConfirmInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 });
