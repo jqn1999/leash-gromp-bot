@@ -362,6 +362,43 @@ denominates in potatoes, representing the physical risk of the attempt itself):
 penalty = round(Math.abs(tierEntry.penalty) * getRandomFromInterval(.8, 1.2))   // independent roll from the reward-side one
 ```
 
+**Penalty:reward ratio now escalates by tier (2026-09-08, direct instruction — "Guild raid
+penalties are much higher for higher reward but merc should have more similar penalties").**
+`tierEntry.penalty` was previously a flat `-reward` (a 1.0x ratio) at every one of the 12
+tiers — unlike Guild Raid, where the penalty:reward ratio itself climbs for bigger-stakes
+content (1.0x Regular → 1.5x Elite → 2.0x Legendary, via `Raid.ELITE_PENALTY_INCREASE`/
+`LEGENDARY_PENALTY_INCREASE`). Rather than reuse Guild Raid's discrete 3-mode step (which
+would land a real EV cliff right at the B4→B5/B8→B9 boundaries — Bounty's own reward/
+difficulty ladder is already a smooth, continuous geometric progression with no such seams),
+the ratio instead climbs **continuously** from the same 1.0x floor at B1 to the same 2.0x
+ceiling at B12:
+
+```
+ratio(tier) = 1 + (tier - 1) / 11
+penalty(tier) = round(reward(tier) * ratio(tier) / 1000) * 1000
+```
+
+| Tier | Reward | Penalty | Ratio |
+|---|---|---|---|
+| B1 | 39,000 | -39,000 | 1.00x |
+| B2 | 69,000 | -75,000 | 1.09x |
+| B3 | 123,000 | -145,000 | 1.18x |
+| B4 | 215,000 | -274,000 | 1.27x |
+| B5 | 383,000 | -522,000 | 1.36x |
+| B6 | 660,000 | -960,000 | 1.45x |
+| B7 | 1,143,000 | -1,766,000 | 1.55x |
+| B8 | 1,967,000 | -3,219,000 | 1.64x |
+| B9 | 3,374,000 | -5,828,000 | 1.73x |
+| B10 | 5,777,000 | -10,504,000 | 1.82x |
+| B11 | 10,001,000 | -19,093,000 | 1.91x |
+| B12 | 23,400,000 | -46,800,000 | 2.00x |
+
+**Reward is completely untouched** — only the loss side moved, so the earlier "~30% of a
+realistic guild's total reward" reward calibration (see the third-pass table above) still
+holds exactly as it did. A player only feels this on a LOSS, and only more so at higher
+tiers — B12 now risks double its own reward back, the same relative stakes Legendary Guild
+Raid's own top bracket carries, while B1 is completely unchanged.
+
 Deliberately NOT reduced further by `rankInfo.rewardMultiplier` or Yukon's
 `bountyRewardPercent` — those stay reward-side-only perks — so as a mercenary ranks up,
 wins keep growing while losses stay flat: the risk/reward ratio genuinely improves with
@@ -484,12 +521,12 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
 
 **The 4 tiers** (`RobNpc.TIERS`):
 
-| Tier | Rank | Base / +per-rank / cap | Payout cap | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
-|---|---|---|---|---|---|---|
-| Market Stall | 1+ | 30% / +10% / 80% | 5,000 | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Merchant's Wagon | 2+ | 20% / +8% / 60% | 10,000 | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
-| Noble's Vault | 4+ | 12% / +6% / 42% | 20,000 | 8,000-12,000 baseline | +3 | — |
-| The Royal Treasury | 6 only | 6% / +4% / 26% | 40,000 | 16,000-24,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Tier | Rank | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
+|---|---|---|---|---|---|---|---|
+| Market Stall | 1+ | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
+| Merchant's Wagon | 2+ | 20% / +8% / 60% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
+| Noble's Vault | 4+ | 12% / +6% / 42% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
+| The Royal Treasury | 6 only | 6% / +4% / 26% | 40,000 | 1.0 (x2.0) | 32,000-48,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
 defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
@@ -498,13 +535,26 @@ directly, with no second counter to track. **Tier I ("Market Stall") is unchange
 before this ladder existed** — same base/rank chance curve, same payout cap, still
 whiff-only — it stays the safe, always-available intro action with zero regression for
 anyone who only ever ran the single flat `/rob-npc` this replaced. Real stakes only start
-at Tier II: a whiff there (and on every tier above it) costs `RobNpc.PENALTY_PERCENT_OF_CAP`
-(half) of that tier's own `payoutCap`, scaled by the same `getRandomFromInterval(.8, 1.2)`
-variance roll every other reward/penalty pair in this game uses, further scaled by
-`lossScale` (see below) — subtracted straight from potatoes unclamped, same precedent
-`takeBounty.js`/`confrontRival.js` already set (a loss CAN put a player negative — a known,
-already-flagged gap shared with Guild Raid's own T2/T3 entry on the roadmap, not a new one
-introduced here).
+at Tier II: a whiff there (and on every tier above it) costs that tier's own
+`penaltyPercentOfCap` fraction of its own `payoutCap`, scaled by the same
+`getRandomFromInterval(.8, 1.2)` variance roll every other reward/penalty pair in this game
+uses, further scaled by `lossScale` (see below) — subtracted straight from potatoes
+unclamped, same precedent `takeBounty.js`/`confrontRival.js` already set (a loss CAN put a
+player negative — a known, already-flagged gap shared with Guild Raid's own T2/T3 entry on
+the roadmap, not a new one introduced here).
+
+**`penaltyPercentOfCap` escalates by tier (2026-09-08, direct instruction — see Bounty's own
+matching penalty-escalation entry above for the full rationale).** Was a single flat 0.5
+shared across every real-penalty tier; only 3 tiers ever carry a penalty at all (Market
+Stall stays whiff-only), so unlike Bounty's 12-tier ladder there was no risk of a mid-ladder
+EV cliff from stepping discretely. Each of the 3 real-stakes tiers now carries its own
+`penaltyPercentOfCap`, climbing by the exact same 1.0x/1.5x/2.0x factor Guild Raid's own
+Regular/Elite/Legendary penalty ratio uses, layered on top of this track's own 0.5 base
+(rather than Bounty's 1.0 base): Merchant's Wagon stays 0.5 (x1.0, unchanged), Noble's Vault
+rises to 0.75 (x1.5), The Royal Treasury rises to 1.0 (x2.0) — the top Heist tier now risks
+its full payout cap on a whiff, the same "top bracket risks back its own full stakes"
+relative shape Legendary Guild Raid's own 2.0x ratio carries. Win-side payouts are
+completely untouched.
 
 **Loss scaling (`RobNpc.LOSS_MULTIPLIER_SCALING`)**, added as a direct-instruction
 follow-up right after the ladder shipped: "heists are affected in reward by multi right?
@@ -519,7 +569,7 @@ balloon to rival their own win — a `lossScale` factor applies only a fraction 
 ```
 developedMultiplier = workMultiplierAmount + guildMultiplier(always 0) + companionMultiplier + rebirthMultiplier
 lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1)
-penaltyAmount = round(payoutCap * PENALTY_PERCENT_OF_CAP * [.8-1.2] * lossScale)
+penaltyAmount = round(payoutCap * tier.penaltyPercentOfCap * [.8-1.2] * lossScale)
 ```
 At **15%**, a brand-new player (1x) sees zero change from the flat baseline table above; a
 5.4x player's loss grows ~1.66x; a heavily-invested 90x player's loss grows ~14.4x — but

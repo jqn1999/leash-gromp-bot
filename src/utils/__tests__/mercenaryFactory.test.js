@@ -442,11 +442,30 @@ describe('Bounty.TIERS ladder shape', () => {
         rest.forEach(r => expect(r).toBeCloseTo(first, 1));
     });
 
-    test('reward and |penalty| both increase monotonically with tier, and penalty always matches reward\'s exact magnitude', () => {
+    test('reward and |penalty| both increase monotonically with tier', () => {
         for (let i = 1; i < Bounty.TIERS.length; i++) {
             expect(Bounty.TIERS[i].reward).toBeGreaterThan(Bounty.TIERS[i - 1].reward);
+            expect(Math.abs(Bounty.TIERS[i].penalty)).toBeGreaterThan(Math.abs(Bounty.TIERS[i - 1].penalty));
         }
-        Bounty.TIERS.forEach(t => expect(t.penalty).toBe(-t.reward));
+    });
+
+    // Penalty escalation (2026-09-08, direct instruction — "guild raid penalties are much
+    // higher for higher reward but merc should have more similar penalties"): the
+    // penalty:reward ratio itself now climbs continuously from 1.0x at B1 to 2.0x at B12
+    // (ratio(tier) = 1 + (tier-1)/11), rather than staying flat at 1.0x throughout — the
+    // exact same 1.0x-2.0x endpoints Guild Raid's own Regular->Legendary penalty ratio uses.
+    test('B1 keeps the original 1:1 penalty:reward ratio; B12 reaches exactly 2.0x', () => {
+        expect(Bounty.TIERS[0].penalty).toBe(-Bounty.TIERS[0].reward);
+        expect(Math.abs(Bounty.TIERS[11].penalty)).toBe(Bounty.TIERS[11].reward * 2);
+    });
+
+    test('penalty:reward ratio increases monotonically with tier', () => {
+        const ratios = Bounty.TIERS.map(t => Math.abs(t.penalty) / t.reward);
+        for (let i = 1; i < ratios.length; i++) {
+            expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
+        }
+        expect(ratios[0]).toBeCloseTo(1.0, 5);
+        expect(ratios[ratios.length - 1]).toBeCloseTo(2.0, 5);
     });
 
     test('B1 (Baby Bounty\'s fixed tier) keeps the pre-rework Tier I difficulty (10) — continuity for the universal newbie landmark', () => {
@@ -625,7 +644,7 @@ describe('resolveNpcRob', () => {
         expect(result.amount).toBe(0);
         // 1x developedMultiplier means the loss-scaling factor's own (developedMultiplier - 1)
         // term is 0, so this is the pure unscaled baseline every higher multiplier scales up from.
-        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8));
+        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * PAYROLL_TRUCK.penaltyPercentOfCap * 0.8));
     });
 
     // Direct instruction, added after the ladder shipped: "heists are affected in reward by
@@ -647,8 +666,8 @@ describe('resolveNpcRob', () => {
             randomSpy.mockRestore();
         }
         const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (5.4 - 1);
-        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8 * lossScale));
-        expect(result.penaltyAmount).toBeGreaterThan(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8));
+        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * PAYROLL_TRUCK.penaltyPercentOfCap * 0.8 * lossScale));
+        expect(result.penaltyAmount).toBeGreaterThan(Math.round(PAYROLL_TRUCK.payoutCap * PAYROLL_TRUCK.penaltyPercentOfCap * 0.8));
     });
 
     // Catch-up is meant to help an underperforming player keep pace, not double as a reason
@@ -670,7 +689,7 @@ describe('resolveNpcRob', () => {
             randomSpy.mockRestore();
         }
         const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (5.4 - 1);
-        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * 0.8 * lossScale));
+        expect(result.penaltyAmount).toBe(Math.round(PAYROLL_TRUCK.payoutCap * PAYROLL_TRUCK.penaltyPercentOfCap * 0.8 * lossScale));
     });
 
     test('a hit pays a positive amount, capped by the picked tier\'s own payoutCap before the player\'s own multiplier scales it', async () => {

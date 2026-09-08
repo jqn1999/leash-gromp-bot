@@ -244,8 +244,10 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     if (!won) {
         // Tier I stays whiff-only (hasPenalty: false) — the safe, always-available intro
         // action with zero regression from before this tier system existed. Tiers II-IV
-        // carry a real loss on a whiff instead, half that tier's own payoutCap with the
-        // same +/-20% variance every other reward/penalty pair in this game rolls.
+        // carry a real loss on a whiff instead, that tier's own penaltyPercentOfCap
+        // fraction of its own payoutCap (escalating 0.5/0.75/1.0 across the three —
+        // 2026-09-08, direct instruction — see RobNpc's own comment) with the same
+        // +/-20% variance every other reward/penalty pair in this game rolls.
         //
         // Direct instruction: since the win side scales FULLY with the player's own
         // developed power (calculateGainAmount below multiplies straight through by
@@ -256,7 +258,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
         // change from the flat pre-scaling baseline at all.
         if (tier.hasPenalty) {
             const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1);
-            result.penaltyAmount = Math.round(tier.payoutCap * RobNpc.PENALTY_PERCENT_OF_CAP * getRandomFromInterval(.8, 1.2) * lossScale);
+            result.penaltyAmount = Math.round(tier.payoutCap * tier.penaltyPercentOfCap * getRandomFromInterval(.8, 1.2) * lossScale);
         }
         return result;
     }

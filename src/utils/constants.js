@@ -1909,20 +1909,35 @@ const Bounty = {
     // every tier's reward raised 1.5x (rounded to the nearest 1,000) from the #70 second
     // pass' ~20%-of-realistic-guild-total target to ~30% — still comfortably inside the
     // EV-dead-zone-free ladder shape #70 verified, still well short of guild income parity.
-    // Penalty stays `-reward` throughout, unchanged in relative shape.
+    //
+    // Penalty escalation (2026-09-08, direct instruction: "Guild raid penalties are much
+    // higher for higher reward but merc should have more similar penalties") — penalty was
+    // previously a flat `-reward` (1.0x ratio) across all 12 tiers, unlike Guild Raid's own
+    // shape where the penalty:reward RATIO itself climbs for bigger-stakes content (1.0x
+    // Regular -> 1.5x Elite -> 2.0x Legendary, see Raid.ELITE_PENALTY_INCREASE/
+    // LEGENDARY_PENALTY_INCREASE). Rather than reuse Guild Raid's discrete 3-step bands
+    // (which would land a cliff in EV right at the B4->B5 and B8->B9 boundaries — this
+    // ladder's own reward/difficulty are already a smooth, continuous geometric progression
+    // with no such cliffs, so a discrete step would be the one discontinuity left), the
+    // ratio instead climbs CONTINUOUSLY from the exact same 1.0x floor at B1 to the exact
+    // same 2.0x ceiling at B12: ratio(tier) = 1 + (tier-1)/11. Reward itself is completely
+    // unchanged — only the loss side moved, so the ~30%-of-guild-total reward calibration
+    // above is untouched; a player only feels this on a LOSS, and only more so at higher
+    // tiers, exactly mirroring how Legendary Guild Raid risks double its own reward while
+    // Regular risks only its own reward back.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 39000,    penalty: -39000 },
-        { tier: 2,  difficulty: 16,   reward: 69000,    penalty: -69000 },
-        { tier: 3,  difficulty: 26,   reward: 123000,   penalty: -123000 },
-        { tier: 4,  difficulty: 42,   reward: 215000,   penalty: -215000 },
-        { tier: 5,  difficulty: 69,   reward: 383000,   penalty: -383000 },
-        { tier: 6,  difficulty: 111,  reward: 660000,   penalty: -660000 },
-        { tier: 7,  difficulty: 180,  reward: 1143000,  penalty: -1143000 },
-        { tier: 8,  difficulty: 291,  reward: 1967000,  penalty: -1967000 },
-        { tier: 9,  difficulty: 471,  reward: 3374000,  penalty: -3374000 },
-        { tier: 10, difficulty: 763,  reward: 5777000,  penalty: -5777000 },
-        { tier: 11, difficulty: 1236, reward: 10001000, penalty: -10001000 },
-        { tier: 12, difficulty: 2000, reward: 23400000, penalty: -23400000 },
+        { tier: 1,  difficulty: 10,   reward: 39000,    penalty: -39000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 69000,    penalty: -75000 },       // 1.09x
+        { tier: 3,  difficulty: 26,   reward: 123000,   penalty: -145000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 215000,   penalty: -274000 },      // 1.27x
+        { tier: 5,  difficulty: 69,   reward: 383000,   penalty: -522000 },      // 1.36x
+        { tier: 6,  difficulty: 111,  reward: 660000,   penalty: -960000 },      // 1.45x
+        { tier: 7,  difficulty: 180,  reward: 1143000,  penalty: -1766000 },     // 1.55x
+        { tier: 8,  difficulty: 291,  reward: 1967000,  penalty: -3219000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 3374000,  penalty: -5828000 },     // 1.73x
+        { tier: 10, difficulty: 763,  reward: 5777000,  penalty: -10504000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 10001000, penalty: -19093000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 23400000, penalty: -46800000 },    // 2.00x
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
@@ -2131,11 +2146,21 @@ const BountyStatReward = {
 const RobNpc = {
     NPC_ROB_TIMER_SECONDS: 1800,   // 30 min — shared across every tier
     PAYOUT_MULTIPLIER: 4.5,        // shared across every tier — see this block's own comment above
-    // Failure penalty for any tier with hasPenalty: true — half that tier's own payoutCap,
-    // scaled by the same +/-20% variance roll every other reward/penalty pair in this game
-    // uses (getRandomFromInterval(.8, 1.2)), same shape resolveRivalConfrontation's own
-    // loss formula and Bounty's scaled-down loss already use.
-    PENALTY_PERCENT_OF_CAP: 0.5,
+    // Failure penalty for any tier with hasPenalty: true — a per-tier fraction of that
+    // tier's own payoutCap (see each TIERS entry's own penaltyPercentOfCap below), scaled by
+    // the same +/-20% variance roll every other reward/penalty pair in this game uses
+    // (getRandomFromInterval(.8, 1.2)), same shape resolveRivalConfrontation's own loss
+    // formula and Bounty's scaled-down loss already use.
+    //
+    // Escalating by tier (2026-09-08, direct instruction — see Bounty.TIERS' own comment
+    // for the full rationale): was a single flat 0.5 shared across every real-penalty tier.
+    // Only 3 tiers ever carry a penalty at all (Market Stall stays whiff-only), so unlike
+    // Bounty's 12-tier ladder there's no risk of a mid-ladder EV cliff from stepping
+    // discretely — each of the 3 real-stakes tiers now carries its own
+    // `penaltyPercentOfCap`, climbing by the exact same 1.0x/1.5x/2.0x factor Guild Raid's
+    // own Regular/Elite/Legendary penalty ratio already uses, layered on top of this
+    // track's own 0.5 base rather than Bounty's 1.0 base: Merchant's Wagon 0.5 (x1.0,
+    // unchanged), Noble's Vault 0.75 (x1.5), The Royal Treasury 1.0 (x2.0).
     // Direct instruction, added after the ladder above shipped: "heists are affected in
     // reward by multi right? losses should scale up slightly to reflect that." The WIN
     // side already scales fully with the player's own developed power (workMultiplierAmount
@@ -2175,6 +2200,7 @@ const RobNpc = {
             maxChance: 0.60,
             payoutCap: 10000,         // matches Work.MAX_LARGE_POTATO exactly
             hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
+            penaltyPercentOfCap: 0.5, // x1.0 — unchanged base rate
             notorietyPerWin: 2,
             statGrantChanceOnWin: 0
         },
@@ -2187,6 +2213,7 @@ const RobNpc = {
             maxChance: 0.42,
             payoutCap: 20000,
             hasPenalty: true,
+            penaltyPercentOfCap: 0.75, // x1.5, same factor Guild Raid's own Elite penalty uses
             notorietyPerWin: 3,
             statGrantChanceOnWin: 0
         },
@@ -2200,6 +2227,7 @@ const RobNpc = {
             maxChance: 0.26,
             payoutCap: 40000,
             hasPenalty: true,
+            penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses
             notorietyPerWin: 4,
             // The one thing Tiers I-III never offer — a 5% roll on a WIN into
             // mercenaryFactory.pickStatGrant('I', userDetails), reusing BountyStatReward's
