@@ -80,7 +80,7 @@ describe('validateFusionRequest', () => {
     test('allows a Mythic/Heirloom as the TARGET (only the sacrifice side is restricted)', () => {
         const user = freshUser([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mochi-a', id: 'mochi', workCount: 0 }
+            { instanceId: 'mochi-a', id: 'mochi', workCount: MAX_LEVEL_WORK_COUNT }
         ]);
         const result = validateFusionRequest(user, 'sprout-a', 'mochi-a');
         expect(result.valid).toBe(true);
@@ -114,6 +114,18 @@ describe('validateFusionRequest', () => {
         expect(result.error).toMatch(/scavenging/i);
     });
 
+    // 2026-09-08, direct instruction: "make it so that fusion cannot be done on a companion
+    // prior to max so its not a waste" — fusion is exclusively an Ascension mechanic now.
+    test('rejects fusing into a target that is not max level yet', () => {
+        const user = freshUser([
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+            { instanceId: 'mole-a', id: 'mole', workCount: 100 }
+        ]);
+        const result = validateFusionRequest(user, 'sprout-a', 'mole-a');
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/max level/i);
+    });
+
     test('rejects fusing into an already max-level, fully-ascended (5-star) target', () => {
         const user = freshUser([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
@@ -137,29 +149,12 @@ describe('validateFusionRequest', () => {
 });
 
 describe('resolveFusion', () => {
-    function ownedFrom(user) {
-        return user.companions.owned;
-    }
+    // Every scenario here has a target already at max level — validateFusionRequest no
+    // longer lets a below-max-level target reach resolveFusion at all (see the rejection
+    // test above), so there's only the one outcome shape left to cover: fuel always rolls
+    // into ascensionFuel.
 
-    test('below max level: fuel levels the target up like ordinary XP', () => {
-        const user = freshUser([
-            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
-        ]);
-        const validation = validateFusionRequest(user, 'sprout-a', 'mole-a');
-        const result = resolveFusion(user, validation);
-
-        const target = result.owned.find(o => o.instanceId === 'mole-a');
-        expect(target.workCount).toBe(validation.fuelValue);
-        expect(result.workCountGained).toBe(validation.fuelValue);
-        expect(result.ascensionStars).toBe(0);
-        expect(result.ascensionFuel).toBe(0);
-        // sacrifice is gone
-        expect(result.owned.find(o => o.instanceId === 'sprout-a')).toBeUndefined();
-        expect(result.owned).toHaveLength(1);
-    });
-
-    test('at max level: all fuel rolls into ascensionFuel, banking stars as thresholds are crossed', () => {
+    test('all fuel rolls into ascensionFuel, banking stars as thresholds are crossed', () => {
         const user = freshUser([
             { instanceId: 'yukon-a', id: 'yukon', workCount: 1200 }, // legendary, breakpoint fuel 925 + 400 base = 1325
             { instanceId: 'mole-b', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: 0, ascensionFuel: 0 }
@@ -171,11 +166,14 @@ describe('resolveFusion', () => {
         const target = result.owned.find(o => o.instanceId === 'mole-b');
 
         // 1325 fuel vs. star 1 cost 2000 -> not enough for a star yet, banked as fuel
-        expect(target.workCount).toBe(MAX_LEVEL_WORK_COUNT);
-        expect(result.workCountGained).toBe(0);
+        expect(target.ascensionFuel).toBe(1325);
+        expect(target.ascensionStars).toBe(0);
         expect(result.ascensionStars).toBe(0);
         expect(result.ascensionFuel).toBe(1325);
         expect(result.starsGained).toBe(0);
+        // sacrifice is gone
+        expect(result.owned.find(o => o.instanceId === 'yukon-a')).toBeUndefined();
+        expect(result.owned).toHaveLength(1);
     });
 
     test('crossing a star threshold advances ascensionStars and carries the remainder forward', () => {
@@ -196,25 +194,11 @@ describe('resolveFusion', () => {
         expect(target.ascensionFuel).toBe(925);
     });
 
-    test('a fusion that pushes the target from just-below-max to exactly max rolls the leftover into ascension fuel', () => {
-        const user = freshUser([
-            { instanceId: 'yukon-a', id: 'yukon', workCount: 3725 }, // 4125 fuel
-            { instanceId: 'mole-b', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT - 100, ascensionStars: 0, ascensionFuel: 0 }
-        ]);
-        const validation = validateFusionRequest(user, 'yukon-a', 'mole-b');
-        const result = resolveFusion(user, validation);
-        const target = result.owned.find(o => o.instanceId === 'mole-b');
-
-        expect(target.workCount).toBe(MAX_LEVEL_WORK_COUNT);
-        expect(result.workCountGained).toBe(100);
-        expect(result.ascensionFuel + CompanionFusion.ASCENSION_STAR_COSTS.slice(0, result.starsGained).reduce((a, b) => a + b, 0)).toBe(4125 - 100);
-    });
-
     test('sacrificing the currently-equipped instance auto-unequips it', () => {
         const user = freshUser(
             [
                 { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-                { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+                { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: 0, ascensionFuel: 0 }
             ],
             'sprout-a'
         );
@@ -223,15 +207,18 @@ describe('resolveFusion', () => {
         expect(result.active).toBeNull();
     });
 
-    test('applies the Max-Level capstone tracking when the target crosses max level via fusion', () => {
+    // Defensive backstop, not a reachable state through ordinary play: an instance that hit
+    // max level before the Max-Level capstone feature existed (or through some other gap)
+    // and was never retroactively flagged. Confirms resolveFusion's own applyMaxLevelTracking
+    // call still catches it rather than assuming the flag is always already set.
+    test('flags an already-max-level target that was never retroactively marked hasReachedMaxLevel', () => {
         const user = freshUser([
-            { instanceId: 'yukon-a', id: 'yukon', workCount: 3725 },
-            { instanceId: 'mole-b', id: 'mole', workCount: 0, hasReachedMaxLevel: false }
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+            { instanceId: 'mole-b', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT, hasReachedMaxLevel: false }
         ]);
-        const validation = validateFusionRequest(user, 'yukon-a', 'mole-b');
+        const validation = validateFusionRequest(user, 'sprout-a', 'mole-b');
         const result = resolveFusion(user, validation);
         const target = result.owned.find(o => o.instanceId === 'mole-b');
-        expect(target.workCount).toBe(MAX_LEVEL_WORK_COUNT);
         expect(target.hasReachedMaxLevel).toBe(true);
         expect(result.maxLevelCount).toBe(1);
     });

@@ -1906,11 +1906,6 @@ class EmbedFactory {
         const sacrificeLevel = companionFactory.getCompanionLevel(sacrificeEntry.workCount);
         const targetLevel = companionFactory.getCompanionLevel(targetEntry.workCount);
         const targetAscensionStars = targetEntry.ascensionStars || 0;
-        const targetAtMaxLevel = targetLevel === MAX_COMPANION_LEVEL;
-
-        const outcomeDescription = targetAtMaxLevel
-            ? `${targetCompanion.name} is already max level — this fuel goes entirely toward Ascension.`
-            : `${targetCompanion.name} isn't max level yet — this fuel levels it up like ordinary XP (capped at max level; any leftover rolls into Ascension automatically).`;
 
         const fields = [
             {
@@ -1929,8 +1924,11 @@ class EmbedFactory {
                 inline: true,
             },
             {
+                // Always this text now — validateFusionRequest guarantees the target is
+                // already max level before this preview can ever be shown (2026-09-08,
+                // direct instruction — fusion no longer touches a not-yet-maxed target).
                 name: `What This Does:`,
-                value: outcomeDescription,
+                value: `${targetCompanion.name} is already max level — this fuel goes entirely toward Ascension.`,
                 inline: false,
             }
         ];
@@ -1955,15 +1953,11 @@ class EmbedFactory {
         return embed;
     }
 
-    // result: companionFusionFactory.resolveFusion's return — workCountGained/starsGained/
-    // ascensionStars/ascensionFuel drive the two outcome branches (ordinary leveling vs.
-    // Ascension progress/star-ups), same before/after framing createScavengeReturnEmbed
-    // already uses for its own XP callout.
-    createFusionCompleteEmbed(userDisplayName, sacrificeCompanion, targetCompanion, targetEntryBefore, result) {
-        const levelBefore = companionFactory.getCompanionLevel(targetEntryBefore.workCount);
-        const workCountAfter = (targetEntryBefore.workCount || 0) + result.workCountGained;
-        const levelAfter = companionFactory.getCompanionLevel(workCountAfter);
-
+    // result: companionFusionFactory.resolveFusion's return. Every successful fusion now
+    // contributes to Ascension unconditionally (2026-09-08 — the target is always already
+    // max level by the time this runs), so there's only the one outcome branch to show —
+    // no more "leveled up like ordinary XP" case, that path no longer exists.
+    createFusionCompleteEmbed(userDisplayName, sacrificeCompanion, targetCompanion, result) {
         const fields = [
             {
                 name: `Sacrificed:`,
@@ -1972,27 +1966,19 @@ class EmbedFactory {
             }
         ];
 
-        if (result.workCountGained > 0) {
-            fields.push({
-                name: `${targetCompanion.name}'s XP:`,
-                value: levelAfter > levelBefore
-                    ? `Lv. ${levelBefore} → Lv. ${levelAfter}! 🎉 (+${result.workCountGained.toLocaleString()} XP)`
-                    : `+${result.workCountGained.toLocaleString()} XP (Lv. ${levelAfter})`,
-                inline: false,
-            });
-        }
-
-        if (result.ascensionStars > 0) {
-            const nextStarCost = CompanionFusion.ASCENSION_STAR_COSTS[result.ascensionStars];
-            const ascensionProgress = result.ascensionStars < CompanionFusion.ASCENSION_MAX_STARS
-                ? `\n${result.ascensionFuel.toLocaleString()} / ${nextStarCost.toLocaleString()} fuel to ${'★'.repeat(result.ascensionStars + 1)}`
-                : `\nFully ascended!`;
-            fields.push({
-                name: result.starsGained > 0 ? `🌟 Ascension Star Gained!` : `🌟 Ascension Progress:`,
-                value: `${'★'.repeat(result.ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - result.ascensionStars)} — max-level multiplier now ${CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[result.ascensionStars - 1]}x${ascensionProgress}`,
-                inline: false,
-            });
-        }
+        // 0 stars still uses the ordinary max-level multiplier (1.45x) — ASCENSION_MULTIPLIER_
+        // BY_STAR is only indexed once at least 1 star has been reached.
+        const currentMultiplier = result.ascensionStars > 0
+            ? CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[result.ascensionStars - 1]
+            : companionFactory.getLevelMultiplier(MAX_COMPANION_LEVEL);
+        const ascensionProgress = result.ascensionStars < CompanionFusion.ASCENSION_MAX_STARS
+            ? `\n${result.ascensionFuel.toLocaleString()} / ${CompanionFusion.ASCENSION_STAR_COSTS[result.ascensionStars].toLocaleString()} fuel to ${'★'.repeat(result.ascensionStars + 1)}`
+            : `\nFully ascended!`;
+        fields.push({
+            name: result.starsGained > 0 ? `🌟 Ascension Star Gained!` : `🌟 Ascension Progress:`,
+            value: `${'★'.repeat(result.ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - result.ascensionStars)} — max-level multiplier now ${currentMultiplier}x${ascensionProgress}`,
+            inline: false,
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} fused ${sacrificeCompanion.name} into ${targetCompanion.name}!`)
