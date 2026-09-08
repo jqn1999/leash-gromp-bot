@@ -7,13 +7,17 @@ const companionFactory = require("./companionFactory");
 // dead overflow companions (duplicates found while Prospector-hunting for Mythics) a use
 // beyond NPC-selling/market-listing.
 //
-// Below the target's max level, fuel just accelerates ordinary leveling like any other
-// workCount grant — through the exact same MAX_LEVEL_WORK_COUNT clamp every other leveling
-// path already respects (companionFactory.clampWorkCountGain). Once the target is already
-// at (or gets pushed to) max level, whatever fuel the clamp couldn't absorb into workCount
-// instead accumulates toward Ascension — a 5-star track that raises the target's own
-// level-10 perk multiplier from the ordinary 1.45x up to as much as 2.40x (see
-// CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR).
+// Target must already be MAX LEVEL (2026-09-08, direct instruction — "make it so that fusion
+// cannot be done on a companion prior to max so its not a waste") — fusion is exclusively an
+// Ascension mechanic now, not a generic instant-XP shortcut for a companion that hasn't hit
+// max level yet. Below max level, a companion levels exactly as fast either way (fuel is
+// still just workCount, 1:1, same as any other grant) — the "waste" the instruction is
+// naming is spending a scarce sacrifice on ordinary leveling a player could've reached for
+// free through normal play, instead of saving it for the one thing fusion is actually FOR:
+// pushing an already-maxed companion's fuel into Ascension. See validateFusionRequest's own
+// gate below. Every unit of fuel a valid fusion produces goes straight to ascensionFuel — a
+// 5-star track that raises the target's level-10 perk multiplier from the ordinary 1.45x up
+// to as much as 2.40x (see CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR).
 //
 // Mythic/Heirloom companions can never be the sacrifice (see CompanionFusion.BASE_FUEL —
 // they simply have no entry, "too valuable to burn") but CAN be a fusion target, same as
@@ -73,8 +77,11 @@ function validateFusionRequest(userDetails, sacrificeInstanceId, targetInstanceI
     }
 
     const targetAtMaxLevel = (targetEntry.workCount || 0) >= companionFactory.MAX_LEVEL_WORK_COUNT;
+    if (!targetAtMaxLevel) {
+        return { valid: false, error: "your target needs to be max level first — fusion only pushes a maxed companion into Ascension, it won't level up one that hasn't hit max yet (that'd just waste the sacrifice)." };
+    }
     const targetFullyAscended = (targetEntry.ascensionStars || 0) >= CompanionFusion.ASCENSION_MAX_STARS;
-    if (targetAtMaxLevel && targetFullyAscended) {
+    if (targetFullyAscended) {
         return { valid: false, error: "your target companion is already max level and fully ascended (5 stars) — it has nothing left to gain from fusion." };
     }
 
@@ -88,38 +95,30 @@ function validateFusionRequest(userDetails, sacrificeInstanceId, targetInstanceI
 // same "caller already validated, this just commits" division of labor
 // resolveScavengeReward's own callers already follow.
 //
-// workCountGained is fuelValue clamped the exact same way every other leveling path clamps
-// (companionFactory.clampWorkCountGain) — whatever the clamp couldn't absorb into workCount
-// (because the target was already at, or crossed into, max level during this very fusion)
-// rolls straight into ascensionFuel instead of being wasted, so a fusion that pushes a
-// companion from just-below-max to exactly max doesn't need a second, separate fusion to
-// start banking stars with the leftover.
+// Every unit of fuelValue goes straight to ascensionFuel — no workCount branch needed here
+// at all, since validateFusionRequest's own max-level gate guarantees the target is already
+// there by the time this runs. applyMaxLevelTracking is still called (cheap, idempotent —
+// see its own comment) purely as a defensive backstop for an instance that reached max level
+// before the Max-Level capstone feature existed and was never retroactively flagged; it's a
+// no-op for the overwhelmingly common case where the flag is already set.
 function resolveFusion(userDetails, validation) {
     const { sacrificeEntry, targetEntry, fuelValue } = validation;
     const companions = userDetails.companions;
 
-    const startingWorkCount = targetEntry.workCount || 0;
-    const newWorkCount = companionFactory.clampWorkCountGain(startingWorkCount, fuelValue);
-    const workCountGained = newWorkCount - startingWorkCount;
-    const overflowFuel = fuelValue - workCountGained;
-
-    let ascensionFuel = targetEntry.ascensionFuel || 0;
+    let ascensionFuel = (targetEntry.ascensionFuel || 0) + fuelValue;
     let ascensionStars = targetEntry.ascensionStars || 0;
     let starsGained = 0;
-    if (overflowFuel > 0) {
-        ascensionFuel += overflowFuel;
-        while (ascensionStars < CompanionFusion.ASCENSION_MAX_STARS &&
-               ascensionFuel >= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars]) {
-            ascensionFuel -= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars];
-            ascensionStars += 1;
-            starsGained += 1;
-        }
+    while (ascensionStars < CompanionFusion.ASCENSION_MAX_STARS &&
+           ascensionFuel >= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars]) {
+        ascensionFuel -= CompanionFusion.ASCENSION_STAR_COSTS[ascensionStars];
+        ascensionStars += 1;
+        starsGained += 1;
     }
 
     const updatedOwned = companions.owned
         .filter(c => c.instanceId !== sacrificeEntry.instanceId)
         .map(c => c.instanceId === targetEntry.instanceId
-            ? { ...c, workCount: newWorkCount, ascensionFuel, ascensionStars }
+            ? { ...c, ascensionFuel, ascensionStars }
             : c
         );
     // A sacrificed companion that happened to be the equipped one leaves the equip slot
@@ -138,7 +137,6 @@ function resolveFusion(userDetails, validation) {
         maxLevelCount: maxLevelCount ?? (companions.maxLevelCount || 0),
         mythicMaxLevelCount: mythicMaxLevelCount ?? (companions.mythicMaxLevelCount || 0),
         fuelValue,
-        workCountGained,
         ascensionFuel,
         ascensionStars,
         starsGained

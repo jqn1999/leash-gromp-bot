@@ -9011,3 +9011,39 @@ No test file hardcoded the old 350 value, so no test updates were needed. Full s
 (1202/1202, unchanged count — a pure constant retune). Docs: `raids-and-world-events.md`'s Stat
 raid section rewritten to record the fix and the Rival comparison, replacing its own prior
 "flagged but not fixed" note.
+
+## Companion Fusion restricted to max-level targets only (2026-09-08, direct instruction)
+
+Direct instruction, immediately after Fusion/Ascension shipped: "make it so that fusion cannot
+be done on a companion prior to max so its not a waste." Fusion previously allowed a target below
+max level (fuel just accelerated ordinary leveling, 1:1, same as any other XP grant) — but since a
+below-max companion levels at that exact same rate through free play anyway, spending a scarce
+sacrifice on one was a real way to waste it instead of saving it for what Fusion is actually for:
+pushing an already-maxed companion into Ascension.
+
+**Fix**: `companionFusionFactory.validateFusionRequest` now rejects a target whose `workCount`
+hasn't reached `MAX_LEVEL_WORK_COUNT`, checked before the existing fully-ascended gate. `resolveFusion`
+simplified accordingly — every unit of a valid fusion's fuel now goes straight to `ascensionFuel`;
+the old `workCount`-leveling branch (and its `workCountGained` return field) is gone entirely, since
+it's now unreachable. `/companion-fuse`'s own `target` autocomplete filters to max-level,
+not-fully-ascended owned instances only, so a player never even sees an option the backend would
+reject — `sacrifice` autocomplete is unaffected (still Common/Rare/Legendary only, any level).
+
+`embedFactory.js`'s `createFusionPreviewEmbed`/`createFusionCompleteEmbed` both simplified to drop
+their now-dead "target isn't max level yet" branches — the preview's "What This Does" field and the
+completion embed's Ascension-progress field are unconditional now, and `createFusionCompleteEmbed`
+dropped its now-unused `targetEntryBefore` parameter. Fixed a latent indexing bug surfaced by this
+simplification: the completion embed read `ASCENSION_MULTIPLIER_BY_STAR[ascensionStars - 1]`
+unconditionally, which would have read index `-1` (`undefined`) the moment a fusion landed with 0
+stars gained — now falls back to the ordinary `getLevelMultiplier(MAX_COMPANION_LEVEL)` (1.45x)
+when `ascensionStars` is 0.
+
+**Tests**: `companionFusionFactory.test.js` gained a rejection test for a below-max-level target;
+its `resolveFusion` block dropped the now-impossible below-max-level scenarios and kept only the
+always-max-level shape, plus a defensive-backstop test for an instance that reached max level
+before the Max-Level capstone existed and was never retroactively flagged (confirms
+`applyMaxLevelTracking`'s own idempotent check still fires from inside `resolveFusion`).
+`companionFuse.test.js`'s fixtures bumped every target entry to max level throughout, and gained
+two new autocomplete tests (excludes a not-yet-maxed target even when it'd be a valid sacrifice;
+excludes an already fully-ascended target). Full suite green (1203/1203, net +1 over the Fusion
+launch's own 1202 — one test removed, two added).

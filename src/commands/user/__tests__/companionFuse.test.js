@@ -59,7 +59,7 @@ describe('/companion-fuse callback', () => {
     test('cancelling the confirm prompt writes nothing', async () => {
         dynamoHandler.findUser.mockResolvedValue(userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
         ]));
         const { interaction, reply } = fakeInteraction({ sacrifice: 'sprout-a', target: 'mole-a' });
         const confirmation = fakeConfirmation('companion_fuse_cancel');
@@ -74,7 +74,7 @@ describe('/companion-fuse callback', () => {
     test('timing out (no confirmation) writes nothing', async () => {
         dynamoHandler.findUser.mockResolvedValue(userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
         ]));
         const { interaction, reply } = fakeInteraction({ sacrifice: 'sprout-a', target: 'mole-a' });
         reply.awaitMessageComponent.mockResolvedValue(null);
@@ -87,7 +87,7 @@ describe('/companion-fuse callback', () => {
     test('confirming fuses the sacrifice into the target and persists the result', async () => {
         const freshUser = userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
         ]);
         dynamoHandler.findUser.mockResolvedValue(freshUser);
         const { interaction, reply } = fakeInteraction({ sacrifice: 'sprout-a', target: 'mole-a' });
@@ -100,16 +100,16 @@ describe('/companion-fuse callback', () => {
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const [calledUserId, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(calledUserId).toBe('user-1');
-        // sacrifice gone, target leveled by the sacrifice's fuel value
+        // sacrifice gone, target's fuel value banked toward Ascension
         expect(calledFields.companions.owned.find(o => o.instanceId === 'sprout-a')).toBeUndefined();
         const target = calledFields.companions.owned.find(o => o.instanceId === 'mole-a');
-        expect(target.workCount).toBe(CompanionFusion.BASE_FUEL['common']);
+        expect(target.ascensionFuel).toBe(CompanionFusion.BASE_FUEL['common']);
     });
 
     test('preserves scavenging state untouched on a successful fusion write (spread-first, not a hand-picked field list)', async () => {
         const freshUser = userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 },
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT },
             { instanceId: 'spudsprite-a', id: 'spudsprite', workCount: 0 }
         ]);
         freshUser.companions.scavenging = { instanceId: 'spudsprite-a', rarity: 'legendary', returnsAt: Date.now() + 60000 };
@@ -127,9 +127,9 @@ describe('/companion-fuse callback', () => {
     test('re-validates against fresh state before committing, in case the sacrifice was sold mid-confirm', async () => {
         const initialUser = userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
         ]);
-        const staleUser = userWith([{ instanceId: 'mole-a', id: 'mole', workCount: 0 }]); // sprout-a no longer owned
+        const staleUser = userWith([{ instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }]); // sprout-a no longer owned
         dynamoHandler.findUser
             .mockResolvedValueOnce(initialUser)
             .mockResolvedValueOnce(staleUser);
@@ -162,10 +162,10 @@ describe('/companion-fuse autocomplete', () => {
         expect(choiceNames.some(n => n.includes('Mochi'))).toBe(false);
     });
 
-    test('the target field offers every owned companion regardless of rarity', async () => {
+    test('the target field offers every owned MAX-LEVEL companion regardless of rarity', async () => {
         dynamoHandler.findUser.mockResolvedValue(userWith([
-            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mochi-a', id: 'mochi', workCount: 0 }
+            { instanceId: 'sprout-a', id: 'sprout', workCount: MAX_LEVEL_WORK_COUNT },
+            { instanceId: 'mochi-a', id: 'mochi', workCount: MAX_LEVEL_WORK_COUNT }
         ]));
         const { interaction } = fakeInteraction();
         interaction.options.getFocused.mockReturnValue({ name: 'target', value: '' });
@@ -177,10 +177,39 @@ describe('/companion-fuse autocomplete', () => {
         expect(choiceNames.some(n => n.includes('Mochi'))).toBe(true);
     });
 
+    test('the target field excludes a companion that is not max level yet, even though it would be a valid sacrifice', async () => {
+        dynamoHandler.findUser.mockResolvedValue(userWith([
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
+        ]));
+        const { interaction } = fakeInteraction();
+        interaction.options.getFocused.mockReturnValue({ name: 'target', value: '' });
+
+        await autocomplete({}, interaction);
+
+        const choiceNames = interaction.respond.mock.calls[0][0].map(c => c.name);
+        expect(choiceNames.some(n => n.includes('Sprout'))).toBe(false);
+        expect(choiceNames.some(n => n.includes('Mole'))).toBe(true);
+    });
+
+    test('the target field excludes an already fully-ascended (5-star) companion', async () => {
+        dynamoHandler.findUser.mockResolvedValue(userWith([
+            { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT, ascensionStars: CompanionFusion.ASCENSION_MAX_STARS }
+        ]));
+        const { interaction } = fakeInteraction();
+        interaction.options.getFocused.mockReturnValue({ name: 'target', value: '' });
+
+        await autocomplete({}, interaction);
+
+        const choiceNames = interaction.respond.mock.calls[0][0].map(c => c.name);
+        expect(choiceNames.some(n => n.includes('Mole'))).toBe(false);
+    });
+
     test('excludes a companion that is currently out scavenging from both fields', async () => {
         const user = userWith([
             { instanceId: 'sprout-a', id: 'sprout', workCount: 0 },
-            { instanceId: 'mole-a', id: 'mole', workCount: 0 }
+            { instanceId: 'mole-a', id: 'mole', workCount: MAX_LEVEL_WORK_COUNT }
         ]);
         user.companions.scavenging = { instanceId: 'mole-a', rarity: 'rare', returnsAt: Date.now() + 60000 };
         dynamoHandler.findUser.mockResolvedValue(user);

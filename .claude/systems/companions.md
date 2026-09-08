@@ -1236,13 +1236,19 @@ between level 7 and 8 would only give the level 7 worth of fuel" — this discou
 sacrificing a companion machine-gunned right up to the edge of its next level for a
 marginally bigger number.
 
-**Below the target's max level**, fuel just accelerates ordinary leveling — added straight
-to `workCount` like any other XP grant, clamped the same way every other leveling path now
-is (see the XP cap below). **Once the target is already at (or gets pushed to) max level**,
-whatever fuel the clamp couldn't absorb into `workCount` instead rolls into `ascensionFuel`
-(`companionFusionFactory.resolveFusion`) — a single fusion that crosses a companion from
-just-below-max into Ascension range doesn't need a second, separate fusion to start banking
-stars with the leftover.
+**Target must already be max level** (2026-09-08, direct instruction — "make it so that
+fusion cannot be done on a companion prior to max so its not a waste") —
+`companionFusionFactory.validateFusionRequest` rejects a target whose `workCount` hasn't
+reached `MAX_LEVEL_WORK_COUNT` yet, before even checking Ascension state. Fusion is
+exclusively an Ascension mechanic now, not a generic instant-XP shortcut: a companion below
+max level levels at the exact same rate through fusion as through ordinary play (fuel is
+still just `workCount`, 1:1), so spending a scarce sacrifice on a not-yet-maxed companion
+would only "waste" it on something free `/work`/Scavenging/Bounty already provide, instead of
+saving it for the one thing fusion actually does — Ascension. Every unit of a valid fusion's
+fuel goes straight to `ascensionFuel` (`companionFusionFactory.resolveFusion`); there's no
+`workCount`-leveling branch left in `resolveFusion` at all. `/companion-fuse`'s own `target`
+autocomplete filters to max-level, not-fully-ascended owned instances only, so a player never
+sees an option the backend would reject anyway.
 
 **Ascension** is a 5-star track (`CompanionFusion.ASCENSION_MAX_STARS`) on top of max level.
 Each star costs its own flat fuel amount, geometrically growing at exactly 1.5x per star —
