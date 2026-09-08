@@ -7,7 +7,7 @@
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
 [src/utils/companionFusionFactory.js](../../src/utils/companionFusionFactory.js) +
 [src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
-[src/commands/user/{companion,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse,companionHunt,companionHuntCollect,companionHuntCancel}.js](../../src/commands/user/).
+[src/commands/user/{companion,companionFavorite,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse,companionHunt,companionHuntCollect,companionHuntCancel}.js](../../src/commands/user/).
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
@@ -868,6 +868,36 @@ been used (no `lastUsedAt`, or a brand-new one from `applyCompanionAward`) sorts
 since `Array.prototype.sort` is stable — new pulls don't visually jump around relative to each
 other before anything's actually used them.
 
+## Favorites
+
+`/companion-favorite` (2026-09-08, direct instruction) —
+[src/commands/user/companionFavorite.js](../../src/commands/user/companionFavorite.js). 5 fixed
+slots (1-5) a player can save owned instances into for quick recall, without needing to
+autocomplete-search by name every time. One command handles both actions, picked by whether the
+optional `companion` option is given:
+
+- **With `companion`**: saves that owned instance into the given slot. Pure bookkeeping, no
+  equip — a player filling in all 5 slots shouldn't have their currently-active companion
+  swapped out on every single slot they save, only when they explicitly ask to equip one.
+  Scavenging state is deliberately NOT checked at save time (a transient state shouldn't block
+  bookmarking something you plan to equip later, once it's back).
+- **Without `companion`**: quick-equips whatever's already saved in that slot — delegates
+  straight to `companion.js`'s own exported `attemptEquip` (already-active-toggles-off,
+  ownership/scavenging checks, Max-Level flavor) rather than reimplementing any of that here, so
+  favorites behave identically to clicking an equip button on `/companion`'s own list.
+
+No embed (direct instruction) — plain text replies only, matching `companionScavenge.js`'s own
+"utility command, not a moment" precedent.
+
+Stored as `userDetails.companions.favorites: [instanceId|null, instanceId|null, instanceId|null,
+instanceId|null, instanceId|null]` (index 0 = slot 1) — a plain array sub-key on `companions`,
+healed onto existing accounts the same generic one-level-deep way `scavenging`/`maxLevelCount`
+etc. already are. **A favorited instance that's later sold or market-listed is not proactively
+scrubbed from its slot** — quick-equipping a dangling slot surfaces `attemptEquip`'s own
+"you don't own that companion" rejection rather than silently failing, an accepted minor rough
+edge rather than added complexity to keep every sell/market path in sync with a 5-slot bookmark
+list.
+
 ## Marketplace
 
 The first player-to-player trading this bot has ever had. Listings live in a shared stats-table doc
@@ -1388,8 +1418,10 @@ checker — no new checking code needed:
 
 `userDetails.companions: { owned: [{ instanceId, id, workCount, hasReachedMaxLevel?, ascensionStars?,
 ascensionFuel? }], active: instanceId|null, ownedCount, mythicOwnedCount, scavenging: { instanceId,
-rarity, returnsAt } | null, maxLevelCount, mythicMaxLevelCount }`, backfilled onto existing accounts
-by `findUser`'s self-healing pattern like every other field.
+rarity, returnsAt } | null, maxLevelCount, mythicMaxLevelCount, favorites: [instanceId|null x5] }`,
+backfilled onto existing accounts by `findUser`'s self-healing pattern like every other field.
+`favorites` (added 2026-09-08 by `/companion-favorite` above) is a fixed 5-element array, index 0 =
+slot 1 — healed the same generic one-level-deep way `scavenging`/`maxLevelCount` etc. already are.
 
 Companion Hunt's own state lives OUTSIDE `companions` entirely — a top-level
 `userDetails.companionHunt: { tierKey, returnsAt } | null` (default `null`, healed like any

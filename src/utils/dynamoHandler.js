@@ -579,7 +579,8 @@ function getDefaultUserFields(userId, username) {
             scavenging: null,        // { instanceId, rarity, returnsAt } | null — see Scavenging in systems/companions.md
             scavengeReturnsByRarity: { legendary: 0, mythic: 0 }, // backs the Legendary Legwork/Mythic Milestones achievements — see companionScavengeCollect.js
             maxLevelCount: 0,        // lifetime count of owned INSTANCES that have ever crossed max level — backs first_max_level_companion
-            mythicMaxLevelCount: 0   // same, Mythic-rarity instances only — backs mythic_max_level_companion. See companionFactory.applyMaxLevelTracking.
+            mythicMaxLevelCount: 0,  // same, Mythic-rarity instances only — backs mythic_max_level_companion. See companionFactory.applyMaxLevelTracking.
+            favorites: [null, null, null, null, null]  // 5 fixed slots, index 0 = slot 1 — instanceId | null per slot. See /companion-favorite.
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
         // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh

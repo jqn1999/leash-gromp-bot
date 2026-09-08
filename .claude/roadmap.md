@@ -9104,3 +9104,42 @@ mechanic/derivation writeup, its top file-list gained `CompanionHunt`/`companion
 the three new command files, and its Persistence section documented the new top-level
 `companionHunt` field (explicitly called out as living outside the `companions` object, unlike
 every other companion-related field).
+
+## `/companion-favorite`: 5 quick-equip slots (2026-09-08, direct instruction)
+
+Player asked for "a companion favorite command for up to 5 companions 1-5 a user can set as
+their favorites for quick equipping," no embed needed. One command, two actions picked by
+whether the optional `companion` option is given: WITH it, saves that owned instance into the
+given slot (pure bookkeeping, no equip — filling in all 5 slots shouldn't swap out whatever's
+currently active); WITHOUT it, quick-equips whatever's already saved in that slot.
+
+**Implementation**: new `userDetails.companions.favorites: [instanceId|null x5]` array
+(index 0 = slot 1), healed onto existing accounts the same generic one-level-deep way
+`scavenging`/`maxLevelCount` etc. already are — zero new healing code needed. New
+`companionFavorite.js` command deliberately does NOT reimplement equip logic: the quick-equip
+path delegates straight to `companion.js`'s own exported `attemptEquip` (already used by
+`/companion`'s own equip buttons), so a favorited slot behaves identically to clicking an equip
+button — same already-active-toggles-off behavior, same ownership/scavenging rejections, same
+Max-Level flavor text. Scavenging state is NOT checked at save time (only at quick-equip time,
+via `attemptEquip`) — a transient state shouldn't block bookmarking something for later. A
+favorited instance later sold or listed is not proactively scrubbed from its slot; quick-
+equipping a dangling slot just surfaces `attemptEquip`'s own "you don't own that companion"
+rejection — an accepted minor rough edge rather than touching every sell/market code path to
+keep a 5-slot bookmark list in sync. Plain text replies throughout, no embeds (direct
+instruction).
+
+**Tests**: new `companionFavorite.test.js` (8 tests: save without equipping, overwriting a
+slot, rejecting an unowned save target, quick-equip, empty-slot rejection, a dangling
+sold-away favorite, the already-active toggle-off, and autocomplete including scavenging
+instances) run against the REAL `companion.js` `attemptEquip` (only `dynamoHandler` mocked),
+same "lock in the actual wiring" rationale `workCompanionXpDisplay.test.js` already uses.
+Also added two `dynamoHandler.test.js` cases locking in `favorites`' own healing behavior
+(backfills `[null,null,null,null,null]` onto a pre-existing companions object; a companions
+object that already has every sub-key including `favorites` triggers no heal write at all)
+and updated the two pre-existing companions-healing fixtures to include `favorites` so they
+keep asserting the CURRENT full schema rather than a stale one. Full suite green
+(1211/1211, up from 1203 before this feature).
+
+**Docs**: `.claude/systems/companions.md` gained a new "Favorites" section, its top file-list
+gained `companionFavorite.js`, and its Persistence section documented the new `favorites`
+sub-key.
