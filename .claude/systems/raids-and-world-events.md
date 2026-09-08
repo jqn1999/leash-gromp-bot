@@ -673,19 +673,44 @@ increments on success (drives both the guild leaderboard sort and the level curv
 next raid automatically (see `join-raid`/`getLiveRaidRoster` above).
 
 **Stat raid** (`raid-select: stat`): costs `Raid.REGULAR_STAT_RAID_COST(-300,000)` potatoes per
-member upfront, difficulty `350`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for
+member upfront, difficulty `100`, capped at `MAXIMUM_STAT_RAID_SUCCESS_RATE(.5)` chance for
 `+0.2` work multiplier for all participants, or a 1% chance to roll Metal King instead for double
-stat rewards. Difficulty was originally positioned deliberately between T2 (85) and T3 (600) — a
+stat rewards. Difficulty is deliberately positioned between Regular's own T2 (46) and T3 (215) — a
 real alternate path to T3/T4-caliber `effectiveRaidPower` (pay a flat potato cost instead of
 grinding shop/regrade directly), kept harder than T2 and easier than T3 on purpose rather than left
 at whatever difficulty happened to be convenient.
 
-**Stale as of the 2026-08-27 Regular T1-T4 internal-ladder smoothing pass**: Regular's own T2/T3
-moved to 46/215 (see above), but `REGULAR_STAT_RAID_DIFFICULTY` (350) was left untouched — it was
-not part of that pass's scope and wasn't called out in its own "confirmed unaffected" list. 350 now
-sits ABOVE T3 (215) rather than between T2 and T3, quietly inverting half the original design
-intent ("never as hard as T3"). Not fixed as part of that pass — flagged here as an open,
-unresolved balance question for the product owner/architect, not silently corrected.
+**Retuned 2026-09-08, direct instruction ("lower the difficulty of guild stat raids to be between
+regular and elite difficulty"), fixing the staleness flagged below.** The 2026-08-27 Regular
+T1-T4 internal-ladder-smoothing pass moved T2/T3 down to 46/215 but left `REGULAR_STAT_RAID_DIFFICULTY`
+at its old value (350) — not part of that pass's own scope, and not called out in its "confirmed
+unaffected" list — which quietly inverted half the original design intent: 350 sat ABOVE the new
+T3 (215) instead of between T2 and T3, meaning a guild needed near-T3/T4-caliber power just to
+approach the 50% cap, defeating the bracket's own stated purpose as a cheaper alternate path
+*toward* T3/T4 readiness. Restored to **100** — the exact geometric midpoint of the current
+T2(46)/T3(215) pair (`sqrt(46*215) ≈ 99.45`), the same T2/T3 crossover point the dead-zone analysis
+above already computed independently. At 100, the 50% cap is reached once `totalMultiplier >= 50`
+— comfortably inside Regular T2-caliber roster strength, restoring the intended
+"a genuine step up from T2, a genuine discount versus T3" positioning.
+
+**Reward/cost checked against Mercenary Rival Bounty Hunters (2026-09-08), the closest comparable
+solo mechanic** (see [mercenary-bounties.md](mercenary-bounties.md#rival-bounty-hunters) — both are
+"free-form risk, permanent stat reward" mechanics, unlike Bounty/Heist's potato-only payouts).
+Rival's own guaranteed permanent stat bump on an Easy win (`BountyStatReward.TIER_I_GRANT`,
+identical `+0.2` `workMultiplierAmount` magnitude) is reached with **zero upfront potato cost** —
+gated only by a free-to-accumulate Notoriety threshold, with a real but *capped and self-scaling*
+potato loss on a miss (`rawBase * 0.5 * variance`, ceiling ~100,000 at Rival's own reward-saturation
+point). Stat Raid's flat `-300,000` per raider, charged **win or lose**, is a materially bigger
+guaranteed cost for the same-sized permanent reward — but it's justified by the shape being
+genuinely different, not out of line: the reward pays out to **every raider on the roster
+simultaneously** (a 5-member guild raid banks five `+0.2x` grants for one shared cost pool), while
+Rival's stat bump only ever benefits the one confronting player. Per-person cost at the pre-fix 50%
+cap (`300,000 / 0.5 = 600,000` expected potatoes per realized `+0.2x`) is still higher than Rival's
+Easy-scenario expected cost, but sits in the same order of magnitude rather than the multiple-times-
+worse deal the pre-fix 350 difficulty produced (a guild rarely near the 50% cap at all, paying the
+same 300,000/raider for a much worse than 50% real shot). **Conclusion: the difficulty fix alone
+brings Stat Raid back in line — the cost/reward figures themselves (`REGULAR_STAT_RAID_COST`/
+`REGULAR_STAT_RAID_REWARD`) were not the source of the imbalance and were left untouched.**
 
 ### Guild Raid cooldown skip
 

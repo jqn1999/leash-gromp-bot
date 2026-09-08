@@ -8872,3 +8872,38 @@ with the full mechanic/formula writeup, its top file-list gained `CompanionFusio
 `companionFusionFactory.js`/`companionFuse.js`, and its Persistence section documented the new
 `ascensionStars`/`ascensionFuel` owned-entry fields (absent-defaults-to-0, no backfill needed —
 same shape `hasScavenged` already uses).
+
+## Fix: Guild Stat Raid difficulty restored to sit between Regular T2/T3 (2026-09-08, direct instruction)
+
+Player asked: "lower the difficulty of guild stat raids to be between regular and elite difficulty
+and see if the reward/cost is in line with other mechanics like merc rivals." Investigation found
+this was already a documented, flagged-but-unfixed bug: `Raid.REGULAR_STAT_RAID_DIFFICULTY` was
+originally sized (350) to sit deliberately between Regular's own T2 (then 85) and T3 (then 600) —
+a real alternate path toward T3/T4-caliber power, meant to be harder than T2 but easier than T3.
+The 2026-08-27 Regular T1-T4 internal-ladder-smoothing pass moved T2/T3 down to 46/215 but never
+touched this constant (out of that pass's own scope), silently inverting the intent: 350 sat ABOVE
+the new T3 instead of between T2 and T3, meaning a guild needed near-T3/T4 power just to approach
+the bracket's own 50% success cap — defeating its purpose as a *cheaper* stepping stone.
+
+**Fix**: `REGULAR_STAT_RAID_DIFFICULTY` 350 → **100**, the exact geometric midpoint of the current
+T2(46)/T3(215) pair (`sqrt(46*215) ≈ 99.45`) — the same T2/T3 crossover point
+`raids-and-world-events.md`'s own EV dead-zone analysis had already computed independently. At 100,
+the 50% success-rate cap is reached once `totalMultiplier >= 50`, comfortably inside Regular
+T2-caliber roster strength.
+
+**Reward/cost checked against Rival Bounty Hunters** (the closest comparable "permanent stat
+reward, not potatoes" solo mechanic): Rival's own guaranteed Easy-win stat bump grants the
+identical `+0.2x` `workMultiplierAmount` magnitude with zero upfront cost (gated by a free
+Notoriety threshold, only a capped potato loss on a miss). Stat Raid's flat `-300,000`/raider,
+charged win-or-lose, is a bigger guaranteed cost for the same-sized reward — justified by paying
+out to every raider on the roster at once (a 5-person raid banks five `+0.2x` grants per shared
+cost pool) rather than one player. With difficulty fixed to 100, per-successful-grant expected
+cost lands in the same order of magnitude as Rival's own, rather than the multiple-times-worse
+deal the stale 350 produced. **Conclusion: `REGULAR_STAT_RAID_COST`/`REGULAR_STAT_RAID_REWARD`
+were not the source of the imbalance and were left untouched — the difficulty fix alone restores
+parity.**
+
+No test file hardcoded the old 350 value, so no test updates were needed. Full suite green
+(1202/1202, unchanged count — a pure constant retune). Docs: `raids-and-world-events.md`'s Stat
+raid section rewritten to record the fix and the Rival comparison, replacing its own prior
+"flagged but not fixed" note.
