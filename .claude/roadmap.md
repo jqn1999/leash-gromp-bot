@@ -9480,3 +9480,206 @@ directly off `RobNpc.TIERS` so it stays correct through any future retune. Full 
 **Docs**: `.claude/systems/mercenary-bounties.md`'s `/rob-npc` section — tier table (all 3
 real-stakes tiers' odds columns), Power-gate/retune narrative rewritten to cover all three
 passes, Loss-scaling section's cross-reference updated to mention the third pass.
+
+## Mercenary Buff: a solo, weaker parallel to Guild Buff (2026-09-09, direct instruction)
+
+Direct ask: a mercenary should be able to pick a single personal buff, similar in spirit to
+`/set-buff`, but weaker (no coordination cost behind a solo pick, unlike a guild buff which needs a
+Leader/Co-Leader to act on behalf of the whole roster) and switch-cooldown-gated (so a player can't
+re-optimize their pick before every single action the way a zero-cost, zero-social-friction toggle
+would invite). Verified directly against `src/commands/guilds/setBuff.js`,
+`src/utils/guildBuffFactory.js`, `constants.js`'s `GuildBuffScaling`/`GuildBuffDescriptions`, the
+"Mutual exclusivity with guild membership" section of
+[systems/mercenary-bounties.md](systems/mercenary-bounties.md#mutual-exclusivity-with-guild-membership),
+`MercenaryRank.THRESHOLDS`, and `RobNpc.TIERS`/`RobNpc.LOSS_MULTIPLIER_SCALING` (today's three-pass
+Heist Ladder retune, immediately above this entry) — not just the systems docs' own summaries.
+
+**What**: a new `/set-mercenary-buff` command, mirroring `/set-buff`'s exact shape, letting an active
+mercenary pick one of a small set of personal buffs, scaled by Mercenary Rank (1-6, the exact same
+`mercenaryBountyWinCount`-driven ladder Bounty/Heist already gate on) instead of Guild Level, at
+roughly half of Guild Buff's own per-tier magnitude. A new switch-cooldown field prevents flipping
+the pick more than once per cooldown window.
+
+**Why**: solo players (mercenaries) today have zero equivalent of Guild Buff — every other
+Mercenary-track mechanic (Bounty, Heist, Notoriety, Yukon, Safehouses) already has its own solo
+progression track, but the one guild mechanic that's purely a "pick a lane, get a standing bonus"
+choice has no mercenary counterpart at all. This closes that specific gap without inventing a new
+resource or counter — it reads entirely off state that already exists (`isMercenary`,
+`mercenaryBountyWinCount` via Mercenary Rank).
+
+**What this explicitly does NOT do**: it does not touch `/rob-npc` (Heist) in any way — not its
+success chance, not its payout, not even its cooldown — see section 1 and the balance-risk note
+below for why. It does not give a mercenary anything a guild member doesn't already have access to
+in kind (every category below is a weaker mercenary-flavored mirror of an existing guild buff
+category, not a new mechanic). It is not a second Yukon-style rare drop — this is a deterministic,
+player-chosen pick like `/set-buff`, not a luck roll.
+
+**1. Buff categories — reuse the concept, but explicitly wall off Heist.** Recommend four
+categories, three reusing Guild Buff's own keys/mechanics unchanged in scope, one reshaped for the
+Mercenary track's own equivalent of a raid cooldown:
+
+- `workMulti` — flat `%` addition to effective work multiplier, applied **only inside `/work`'s own
+  gain formula** (a new `getMercenaryWorkMulti` mirroring `getGuildWorkMulti` exactly), never folded
+  into Bounty/Heist's reward formulas. This mirrors Guild Buff's own real scope precisely: a guild's
+  `workMulti` buff already never touches raid rewards either (Bounty/Heist's reward formulas
+  hardcode `guildMultiplier` to `0` for a mercenary specifically because a mercenary can never have
+  a guild buff today) — keeping this category `/work`-only preserves that same clean separation
+  rather than opening Bounty/Heist's reward math up to a new modifier.
+- `workTimer` — a `/work` cooldown-skip-chance source, fed into the same
+  `cooldownFactory.combineSkipChance`/`rollCooldownSkip` multiplicative combiner every other skip
+  source already uses (companion perks, Spud Keep, guild buff) — not a new additive mechanic.
+- `robChance` — applies to **real `/rob` only**, mirroring exactly what the guild `robChance` buff
+  already does (`rob.js`'s flat add). Mercenaries can already run real `/rob` today
+  (`mercenary-bounties.md`: "mercenaries can still run it — never guild-gated") but have zero access
+  to any buff-style boost to it, since they can never have a guild buff — this closes a real, already
+  visible gap rather than adding a new lever. **Deliberately does NOT touch `/rob-npc`'s own
+  `RobNpc.TIERS` success-chance formula** — see the balance-risk note below.
+- `bountyTimer` (new key, no guild equivalent by that name) — the Mercenary-flavored counterpart to
+  Guild Buff's `raidTimer`: a cooldown-skip-chance source on `bountyTimer` specifically (Bounty's own
+  1hr cooldown), fed into the same combiner Mercenary Rank's own `cooldownReductionPercent` already
+  feeds for Bounty (see mercenary-bounties.md's Rank table) — a clean fourth source alongside that
+  existing one, the same way Guild Buff's `raidTimer` is one of four skip sources for guild raids
+  (RaidLevel curve + guild buff + Spud Keep + Cinderroot). **Deliberately does NOT touch
+  `npcRobTimer`/Heist's own cooldown** — again, see the balance-risk note.
+
+**Balance-risk flag, explicit**: `RobNpc.TIERS`' odds/payout/loss math was retuned THREE separate
+times earlier today (see the three entries immediately above this one), each pass re-deriving a
+binary-search-verified EV ordering across every rank/power/Yukon combination. Even a
+cooldown-only change (more attempts/hour, not a per-attempt EV change) would mean re-running that
+entire verification against a new attempt-frequency assumption on math that's had zero time to prove
+out live. Recommend Heist stay completely untouched by this feature for now, full stop — revisit
+folding it in only after the current tuning has had real playtime, as its own small follow-up rather
+than bundled into this feature's first pass.
+
+**2. Scaling axis: Mercenary Rank, not Notoriety, not a new counter.** Guild Buff scales off Guild
+Level, itself a live readout of `guild.raidCount` (a monotonic, never-reset win counter) — the
+closest solo equivalent is Mercenary Rank, itself a live readout of `mercenaryBountyWinCount` (also
+monotonic, never reset even across `/retire-mercenary`). `mercenaryNotoriety` was considered and
+rejected as the scaling axis — it's an explicitly **resettable resource-threshold gate**
+(mercenary-bounties.md: "a resettable resource-threshold gate, not a cooldown"), the wrong shape for
+a standing bonus that should only ever climb, mirroring exactly why Guild Level itself is computed
+off `raidCount` rather than some resettable value.
+
+**Magnitude — noticeably weaker than a maxed Guild Buff, illustrative ballpark only (architect to
+finalize exact per-rank arrays):** roughly half of `GuildBuffScaling`'s own per-tier value, mapped
+onto Mercenary Rank's 6 tiers instead of Guild Level's 10, with the same "flatter early, steeper
+late" acceleration `GuildBuffScaling`'s existing arrays already use:
+
+| Rank | wins needed | `workMulti` | `workTimer`/`bountyTimer` skip chance | `robChance` (real `/rob`) |
+|---|---|---|---|---|
+| 1 | 0 | ~+2% | ~3% | ~3% |
+| 2 | 15 | ~+3% | ~4% | ~4% |
+| 3 | 50 | ~+4% | ~6% | ~6% |
+| 4 | 125 | ~+5% | ~8% | ~8% |
+| 5 | 275 | ~+6% | ~10% | ~9% |
+| 6 (max) | 525 | ~+7% | ~12% | ~10% |
+
+Every column tops out well under Guild Buff's own max (`workMulti` 15%, `workTimer`/`raidTimer` 25%,
+`robChance` 20%) — not just "weaker at the top" but weaker at every rank, since a solo pick never
+carries a guild's coordination cost at any point on the curve. These are a starting anchor for the
+architect's own derivation, not a number to ship as-is.
+
+**3. Gate on `isMercenary`: yes, unconditionally.** Every existing Mercenary-track command
+(`/bounty-board`, `/take-bounty`, `/rob-npc`) already rejects a non-mercenary outright before any
+other check — `/set-mercenary-buff` should do the same, for the same reason: this is Mercenary-track
+state, meaningless (and potentially exploitable as a free do-nothing buff slot) for a guild member
+or an account that's neither.
+
+**4. Switch cooldown: yes, needed — new dedicated field, not a reuse of an existing timer.**
+Recommend a new `mercenaryBuff: null` field (mirrors `guild.guildBuff`'s shape as a plain string) and
+a new `mercenaryBuffSwitchTimer: 0` field (ms epoch, same "0 default = never blocked on a fresh
+account" shape `guildMercenarySwitchTimer` already establishes — no special-casing needed for "is
+this the first pick," since a fresh account's timer already reads as decades in the past). **Do not
+reuse `guildMercenarySwitchTimer`** — that field gates the structural guild↔mercenary track switch
+(a 24h cooldown on a much bigger decision) and is set/checked by a completely different set of
+commands (`/leave`, `/retire-mercenary`, `/become-mercenary`, `/create-new-guild`, `/join-guild`);
+conflating the two would mean picking a buff category could accidentally block or be blocked by
+track-switching, or vice versa.
+
+Recommend a cooldown noticeably shorter than `guildMercenarySwitchTimer`'s 24h (that's gating a
+structural life-of-the-account decision, not a buff category) but comfortably longer than every
+mercenary action cooldown it's meant to outlast (`Work.WORK_TIMER_SECONDS` 300s,
+`Rob.ROB_TIMER_SECONDS`/`Bounty.BOUNTY_TIMER_SECONDS` 3600s, `RobNpc.NPC_ROB_TIMER_SECONDS` 1800s) —
+**illustrative ballpark: 6 hours (21,600s)**, long enough that a player can't simply wait out one
+action's own cooldown and flip the buff for the next, short enough that it doesn't read as a
+`/rebirth`-style near-permanent commitment. Applies to **every** switch after the very first pick,
+including re-selecting a different category from whatever's currently active — a same-category
+re-pick (already-active buff selected again) should be rejected as a no-op without consuming or
+resetting the cooldown, mirroring `/become-mercenary`'s own "reject if already true" idempotency
+rather than silently succeeding or silently costing nothing.
+
+**5. Command shape: a new dedicated command, `/set-mercenary-buff`, in `src/commands/user/`
+(alongside every other Mercenary-track command).** Recommend against folding this into
+`/bounty-board` — that command is deliberately read-only (mirrors `/current-raid`'s preview role;
+see commands.md), and mixing a mutating action into it would break that established split. A
+dedicated command also mirrors this codebase's existing convention for guild-wide settings
+(`/set-buff`, `/set-raid-split`, `/set-raid-payout` are each their own file) rather than overloading
+an existing multi-purpose command.
+
+**6. Interaction with Guild Buff: the "both at once" case cannot happen — flagging this so the
+architect doesn't build dead code for it.** Mercenary and guild membership are already mutually
+exclusive in this codebase (`isMercenary` and `guildId != 0` can never both hold —
+mercenary-bounties.md's "Mutual exclusivity with guild membership" section, enforced by
+`/become-mercenary` rejecting an active guild member and `/create-new-guild`/`/join-guild` rejecting
+an active mercenary). A player can therefore never simultaneously hold an active Guild Buff and an
+active Mercenary Buff — there is no stacking question to resolve and no restriction to design (e.g.
+"can't pick the same category as your guild's buff") because the two states are already structurally
+disjoint. Recommend explicitly noting this in the technical design rather than adding an unreachable
+guard clause for it.
+
+One real (and much smaller) interaction worth flagging instead: `mercenaryBuff` should presumably
+persist untouched across a `/retire-mercenary` → later `/become-mercenary` round trip, the same way
+`mercenaryBountyWinCount`/Mercenary Rank already do — the buff is cosmetic-scoped to the Mercenary
+track's own commands anyway (none of which a retired mercenary can call), so leaving it stored and
+inert while `isMercenary` is `false` costs nothing and avoids a player losing their pick over a
+temporary retirement.
+
+**7. Other flags:**
+- **Display surface**: `/profile` page 1, next to Mercenary Rank (same page/precedent Bounty's own
+  Rank readout already set) — `Mercenary Buff: <category> (<value>)`, shown only when `isMercenary`
+  is true, same conditional Mercenary Rank's own field already uses. `/set-mercenary-buff`'s own
+  reply should state the new value and the next-switch-available timestamp (a Discord relative
+  timestamp, `<t:UNIX:R>`, matching the convention Spud Keep/raid-cooldown displays already use)
+  rather than leaving the cooldown undiscoverable until the next attempt fails.
+- **Flavor/theming**: `/set-buff`'s own choices are internal keys shown close to raw
+  (`workMulti`/`robChance`/etc.) with a separate `GuildBuffDescriptions` label doing the actual
+  reader-facing phrasing. Recommend the same split here, with Mercenary-flavored label text (not
+  reusing `GuildBuffDescriptions` verbatim) that reads as a lone bounty hunter's own edge rather than
+  an institutional guild policy — e.g. "a sharper blade" (robChance), "quicker feet" (workTimer),
+  "a harder bargain" (workMulti), "a nose for easy marks" (bountyTimer) — exact copy is the
+  architect/developer's call, but must clear lore.md's medieval-mercenary voice test (no modern
+  phrasing) the same as every other player-facing string in this system.
+- **Command naming**: `/set-mercenary-buff` was chosen over `/mercenary-buff` specifically to mirror
+  `/set-buff`'s own verb-first naming exactly, so the parallel between the two commands is
+  immediately legible from the command name alone, not just the underlying mechanic.
+
+**Open questions, with a recommendation on each:**
+- Should `workTimer`/`bountyTimer`'s skip-chance sources share `Raid`'s `DEFAULT_SKIP_CHANCE_CAP`
+  (60%) as their combined ceiling, or does each command need its own cap? **Recommend reuse the
+  existing shared 60% cap** (`cooldownFactory.js`'s `DEFAULT_SKIP_CHANCE_CAP`) rather than authoring
+  a new one — `/work`'s and Bounty's own skip-chance combiners already use it, and there's no stated
+  reason for Mercenary Buff to need a different ceiling than the sources it's stacking alongside.
+- Does a same-category re-pick reset the cooldown or get rejected as a no-op? **Recommend reject as
+  a no-op, cooldown untouched** — see section 4.
+- Exact per-rank magnitude numbers and the exact switch-cooldown length? **Left to the architect**
+  (see sections 2 and 4's illustrative ballparks) — these are tuning parameters, not open design
+  questions, and this system's own history (Bounty's three reward-scale passes, Heist's three
+  same-day retunes) suggests starting conservative and adjusting from real play data rather than
+  trying to hit a perfect number on the first pass.
+
+**Touches:** `src/utils/dynamoHandler.js` (`getDefaultUserFields`: `mercenaryBuff: null`,
+`mercenaryBuffSwitchTimer: 0`); `src/utils/constants.js` (new `MercenaryBuffScaling` mirroring
+`GuildBuffScaling`'s shape but keyed 1-6, new `MercenaryBuffDescriptions` mirroring
+`GuildBuffDescriptions`, a new `Mercenary.BUFF_SWITCH_COOLDOWN_SECONDS` constant); a new
+`src/utils/mercenaryBuffFactory.js` (or additions to `mercenaryFactory.js` — architect's call,
+matching whichever factory-per-system convention this codebase already leans on) for the
+Rank-scaled lookup, mirroring `guildBuffFactory.js`'s three-function shape
+(`getMercenaryBuffValue`/`getMercenaryBuffLabel`, reusing `mercenaryFactory.getMercenaryRankInfo`
+for the rank lookup rather than re-deriving it); a new `src/commands/user/setMercenaryBuff.js`
+(`/set-mercenary-buff`); `workFactory.js` (new `getMercenaryWorkMulti`, mirroring
+`getGuildWorkMulti`); `rob.js` (real `/rob`'s flat-add check, mirroring the existing guild
+`robChance` check); `dynamoHandler.calculateWorkTimerValue`/`takeBounty.js`'s own cooldown-skip
+combiner call (new skip-chance source threaded in for `workTimer`/`bountyTimer` respectively);
+`embedFactory.js` (`/profile`'s new field, `/set-mercenary-buff`'s own reply/confirmation).
+**Not touched**: `robNpc.js`/`mercenaryFactory.resolveNpcRob`/`RobNpc.TIERS` — see the balance-risk
+flag in section 1.
