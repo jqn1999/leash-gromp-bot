@@ -9299,3 +9299,39 @@ Full suite green (1259/1259, up from 1256 on `main`).
 
 **Docs**: `.claude/systems/spud-keep.md`'s resolution-flow section gained a fix note with the full
 root-cause/blast-radius writeup.
+
+## Tower: Elite success cap raised to 95% + TRANSACTION affordability filter (2026-09-09, direct instruction)
+
+Player asked: "can we set the new max of tower floors to 95% success instead of 90%, and can we
+make scenarios that cost potatoes not appear if users cant afford it anyway such as buying work
+multi early on since they wont have enough taters? getting sent to an elite or not by paying
+potatoes? etc."
+
+**Elite success cap**: `ELITE_SUCCESS_CAP` used to directly alias
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (0.9) — but that same constant is also read by every
+Guild Raid tier and Mercenary Bounty's own success-chance calc, neither of which the player asked
+to change. Made it a Tower-only independent constant instead and raised it to 0.95, leaving
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` at 0.9 for everything else. Removed the now-unused
+`Raid` import from `towerConstants.js`.
+
+**TRANSACTION affordability filter**: every `TRANSACTIONS` entry costs real potatoes (300K-1M)
+with no free option — `execNormalFloor` used to pick one uniformly at random regardless of the
+player's own in-run potato balance, so a broke player (most commonly a fresh Tower entrant early
+in a run — exactly the "buying work multi early on" case named) could be shown an offer that was
+a guaranteed dead end: the paid choice always failing into the existing `poor`/`poor_outcome`
+fallback (sometimes forcing an unwanted Elite fight, e.g. The Wizard Lime), or the free choice
+granting nothing. `execNormalFloor` now filters `TRANSACTIONS` down to entries the player can
+currently afford before picking one; if nothing in the pool is affordable, it falls back to a
+real COMBAT floor instead of a Transaction with nothing real to transact. Applies identically in
+both interactive and Fast-Forward/silent play, since both share this same function.
+
+**Tests**: `towerFactory.test.js` — the `ELITE_SUCCESS_CAP` test rewritten for 0.95 and its new
+independence from `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`; the success-chance-capped embed test
+updated 90.00% -> 95.00%; new "TRANSACTION affordability filter" describe block (falls back to
+COMBAT when nothing is affordable, only ever picks an affordable entry across an exhaustive
+`Math.random()` sweep, full pool still reachable when everything's affordable). Full suite green
+(1262/1262, up from 1259 on `main`).
+
+**Docs**: `.claude/systems/tower.md` gained a new dated section with the full derivation, its
+TRANSACTION/ELITE "Floor types" bullets updated to describe the current (not stale) cap/filter
+behavior.

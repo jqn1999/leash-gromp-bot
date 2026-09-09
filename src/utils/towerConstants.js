@@ -1,5 +1,4 @@
 const { ButtonBuilder, ButtonStyle } = require("discord.js")
-const { Raid } = require("./constants")
 
 const PAYOUT = {
     POTATOES: 0,
@@ -30,10 +29,15 @@ const POLICY = {
     GREEDY: 'greedy'
 }
 
-// Elite success-chance cap. Reused, not duplicated: imports Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
-// directly (0.9), the same constant mercenaryFactory.js's Bounty success-chance calc already
-// reuses, rather than a second independent 90% magic number drifting out of sync with it later.
-const ELITE_SUCCESS_CAP = Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
+// Elite success-chance cap (2026-09-09, direct instruction: "set the new max of tower floors
+// to 95% success instead of 90%"). Used to alias Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE
+// directly (0.9) — the same constant mercenaryFactory.js's own Bounty success-chance calc and
+// every Guild Raid tier still use — but Tower needed its own, higher cap without touching
+// either of those, so this is now an independent Tower-only constant instead. Doesn't
+// interact with the fresh-entrant floor-10 Elite coinflip (TOWER_ELITE_DIFFICULTY_INITIAL's
+// own paired 50% invariant below) — that calibration sits well under either cap value, this
+// only ever matters once a player's power has outgrown Elite difficulty's own geometric climb.
+const ELITE_SUCCESS_CAP = 0.95
 
 // Replaces this.difficulty's old starting value of 1 and its old flat `+= 4.5` per forced Elite
 // with a constant-ratio geometric climb — see systems/tower.md's "Difficulty curve rework" for the

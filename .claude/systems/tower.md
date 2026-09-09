@@ -64,7 +64,11 @@ floor — see "King Kiwi" below).
   potato outcome.
 - **TRANSACTION** — pay-for-buff events from `tC.TRANSACTIONS` (e.g. pay 300,000 potatoes for a
   5× work modifier for the rest of the run). If the player can't afford it, a `poor`/`poor_outcome`
-  fallback triggers — sometimes this fallback forces an Elite fight instead.
+  fallback triggers — sometimes this fallback forces an Elite fight instead. **Affordability
+  filter (2026-09-09)** — `execNormalFloor` now only ever offers a `TRANSACTIONS` entry the
+  player can currently afford (their `run`'s in-run potato balance, the same figure the `poor`
+  check itself reads); if nothing in the pool is affordable it falls back to a real COMBAT floor
+  instead. See "TRANSACTION Affordability Filter" below.
 - **REWARD** — choose-one buff from `tC.REWARDS`. Most are immediate; "King Kiwi" is conditional —
   it promises a stat reward that's pushed onto the `PAYOUT.ELITE_KILL` queue as `[floor, type, amount]`
   and only actually pays out if the player survives the *next* elite floor
@@ -74,10 +78,65 @@ floor — see "King Kiwi" below).
   every entry has appeared once.
 - **ELITE** — fight from `tC.ELITES` (currently one: "Celerity, the Swift Stalk", difficulty `10.0`,
   reward `150,000` potatoes). Success chance:
-  `(multi + run's WORK_MULTIPLIER modifier) / (this.difficulty * elite.difficulty)`, capped at 100%.
+  `(multi + run's WORK_MULTIPLIER modifier) / (this.difficulty * elite.difficulty)`, capped at
+  `ELITE_SUCCESS_CAP` — **95% (raised from 90%, 2026-09-09, direct instruction)**, a Tower-only
+  constant (previously aliased `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` directly; now independent
+  so Guild Raid/Mercenary Bounty's own 90% caps are untouched). See "Elite Success Cap Raised"
+  below.
   **Losing an elite wipes the run's accumulated `WORK_MULTIPLIER`, `PASSIVE_INCOME`, and
   `BANK_CAPACITY` payouts to 0** (potatoes already earned are kept) and ends the run
   (`createDeathEmbed`).
+
+## Elite Success Cap Raised + TRANSACTION Affordability Filter (2026-09-09, direct instruction)
+
+Player asked: "can we set the new max of tower floors to 95% success instead of 90%, and can we
+make scenarios that cost potatoes not appear if users cant afford it anyway such as buying work
+multi early on since they wont have enough taters ? getting sent to an elite or not by paying
+potatoes? etc" — two independent fixes, both in `towerFactory.js`/`towerConstants.js`.
+
+**Elite success cap 90% -> 95%, decoupled from Guild Raid/Mercenary Bounty.**
+`ELITE_SUCCESS_CAP` used to be a direct alias of `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`
+(deliberately, per its original 2026-08-31 comment, "reused not duplicated" to avoid a second
+90% magic number drifting out of sync) — but that constant is also read directly by every Guild
+Raid tier (`startRaid.js`) and Mercenary Bounty's own success-chance calc
+(`mercenaryFactory.js`), neither of which the player asked to change. Raising the shared constant
+would have silently also bumped those to 95%. `ELITE_SUCCESS_CAP` is now Tower's own independent
+constant (`0.95`), and `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` stays at `0.9` untouched — the
+`Raid` import in `towerConstants.js` was removed as now-unused. Doesn't interact with the
+fresh-entrant floor-10 Elite coinflip invariant (`TOWER_ELITE_DIFFICULTY_INITIAL`'s own paired
+50% calibration) — that sits well under either cap value; this only ever matters once a player's
+own power has outgrown Elite difficulty's geometric climb (`TOWER_ELITE_DIFFICULTY_RATIO`),
+i.e. once a player is effectively "maxed out" against that floor's difficulty and would otherwise
+plateau at 90% forever.
+
+**TRANSACTION pool now filtered by affordability before it's offered.** Every current
+`TRANSACTIONS` entry costs real potatoes (300K-1M) with no free-to-view option — before this,
+`execNormalFloor`'s TRANSACTION case picked uniformly across all 4 regardless of the player's own
+in-run potato balance (`this.run[PAYOUT.POTATOES]`, the same figure `updateTransaction`'s existing
+`poor` check already reads). A broke player — most commonly a fresh Tower entrant early in a run,
+exactly the "buying work multi early on since they won't have enough taters" case flagged —
+could be shown an offer that was a guaranteed dead end either way: pick the paid choice and
+immediately eat the `poor` flavor text (sometimes forced into an unwanted Elite fight via
+`poor_outcome: CHOICES.ELITE`, e.g. The Wizard Lime), or pick the free choice and get nothing.
+`execNormalFloor` now filters `TRANSACTIONS` down to entries where at least one choice's `price`
+is `<= this.run[PAYOUT.POTATOES]` before picking; if NOTHING in the pool is currently affordable,
+the floor falls back to a real COMBAT floor (re-picked from `tC.COMBATS`, `floor_type` itself
+reassigned to `"COMBAT"` so the rest of `execNormalFloor` — and its `updateValue`-vs-
+`updateTransaction` dispatch further down — treats it exactly like a floor that was always
+COMBAT) rather than showing a Transaction with nothing real to transact. Applies identically in
+both interactive and Fast-Forward/silent mode, since both paths run through this same function;
+`pickChoiceIndex`'s own auto-pick logic (used only by Fast Forward) is unchanged and still doesn't
+know about affordability — it never needed to, since a shown Transaction is now always
+affordable by construction.
+
+**Tests**: `towerFactory.test.js`'s existing `ELITE_SUCCESS_CAP is 0.9...` test rewritten to assert
+`0.95` and independence from `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (still `0.9`); the
+`execElite`'s success-chance-capped test's expected embed text updated `90.00% -> 95.00%`. New
+"TRANSACTION affordability filter" describe block (3 tests): falls back to a real COMBAT floor
+when nothing is affordable; with a balance affording only some entries, only ever picks an
+affordable one across an exhaustive `Math.random()` sweep, never an unaffordable one; with enough
+potatoes for every entry, the full pool stays reachable (unchanged pre-existing behavior). Full
+suite green (1262/1262, up from 1259 on `main`).
 
 ## Continue / Leave
 

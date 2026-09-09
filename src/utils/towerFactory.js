@@ -111,11 +111,31 @@ class towerFactory{
                 type = "ENCOUNTER"
                 color = "Yellow"
                 break
-            case "TRANSACTION":
-                fl = tC.TRANSACTIONS[Math.floor(Math.random() * tC.TRANSACTIONS.length)]
-                type = `TRANSACTION (${this.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes)`
-                color = "Blue"
+            case "TRANSACTION": {
+                // Only offer a Transaction whose paid choice the player can actually afford
+                // right now (this.run's in-run potato balance, the same figure
+                // updateTransaction's own "poor" check reads) — otherwise every entry in
+                // TRANSACTIONS costs real potatoes (300K-1M), so a broke player (most
+                // commonly a fresh Tower entrant early in a run) would always get shown an
+                // offer that's a guaranteed dead end: click the paid choice and immediately
+                // eat the "poor" flavor text, or the free choice and get nothing either way.
+                // Falls back to a real Combat floor instead when nothing in the pool is
+                // affordable, rather than showing a Transaction with no real transaction to
+                // make.
+                const affordable = tC.TRANSACTIONS.filter(t =>
+                    t.choices.some(c => c.price !== undefined && c.price <= this.run[tC.PAYOUT.POTATOES]));
+                if (affordable.length === 0) {
+                    fl = tC.COMBATS[Math.floor(Math.random() * tC.COMBATS.length)]
+                    floor_type = "COMBAT"
+                    type = "COMBAT"
+                    color = "Orange"
+                } else {
+                    fl = affordable[Math.floor(Math.random() * affordable.length)]
+                    type = `TRANSACTION (${this.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes)`
+                    color = "Blue"
+                }
                 break
+            }
             case "REWARD": {
                 let pool = tC.REWARDS.filter(r => !this.usedRewards.has(r.name))
                 if(pool.length === 0){
