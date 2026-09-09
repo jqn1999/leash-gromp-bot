@@ -887,7 +887,9 @@ optional `companion` option is given:
   favorites behave identically to clicking an equip button on `/companion`'s own list.
 
 No embed (direct instruction) — plain text replies only, matching `companionScavenge.js`'s own
-"utility command, not a moment" precedent.
+"utility command, not a moment" precedent. **Ephemeral (2026-09-09, direct instruction)** — was
+public, now visible only to the invoker (`deferReply({ ephemeral: true })`), same visibility
+`companion.js`/`/profile`/`/quests` already use for personal-bookkeeping commands.
 
 Stored as `userDetails.companions.favorites: [instanceId|null, instanceId|null, instanceId|null,
 instanceId|null, instanceId|null]` (index 0 = slot 1) — a plain array sub-key on `companions`,

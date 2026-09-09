@@ -32,6 +32,17 @@ beforeEach(() => {
     jest.clearAllMocks();
 });
 
+// 2026-09-09, direct instruction — was public, now ephemeral (visible only to the invoker).
+test('/companion-favorite replies ephemerally', async () => {
+    const user = userWith([{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);
+    dynamoHandler.findUser.mockResolvedValue(user);
+    const interaction = fakeInteraction({ slot: 3, companion: 'sprout-a' });
+
+    await callback({}, interaction);
+
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+});
+
 describe('/companion-favorite — saving', () => {
     test('saves an owned companion into the given slot without equipping it', async () => {
         const user = userWith([{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }]);

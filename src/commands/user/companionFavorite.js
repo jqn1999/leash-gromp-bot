@@ -63,7 +63,7 @@ module.exports = {
         await interaction.respond(choices);
     },
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const slot = interaction.options.get('slot')?.value;
         const instanceId = interaction.options.get('companion')?.value;

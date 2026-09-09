@@ -9335,3 +9335,10 @@ COMBAT when nothing is affordable, only ever picks an affordable entry across an
 **Docs**: `.claude/systems/tower.md` gained a new dated section with the full derivation, its
 TRANSACTION/ELITE "Floor types" bullets updated to describe the current (not stale) cap/filter
 behavior.
+
+## Fix: /companion-favorite made ephemeral (2026-09-09, direct instruction)
+
+Was a public reply — switched to `deferReply({ ephemeral: true })`, matching the visibility
+`/companion`, `/profile`, and `/quests` already use for personal-bookkeeping commands. New test
+asserts the ephemeral flag; `.claude/systems/companions.md`'s Favorites section updated. Full
+suite green (1263/1263, up from 1262 on `main`).
