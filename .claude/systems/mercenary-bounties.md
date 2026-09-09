@@ -161,6 +161,86 @@ Rank tier, each a separately-purchased, separately-balanced stash of extra bank 
 (`safehouseFactory.js` reads `rankInfo.rank` directly, never touched `unlocksTier`, so this
 is completely unaffected by its retirement above).
 
+## Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction)
+
+A solo, weaker parallel to [Guild Buff](guilds.md) — the one "pick a lane, get a standing bonus"
+mechanic guild members had that solo mercenaries didn't. Full scope narrative + the architect's
+build-ready design (this section is the shipped-mechanic summary of it) lives in
+[roadmap.md](../roadmap.md#mercenary-buff-a-solo-weaker-parallel-to-guild-buff-2026-09-09-direct-instruction).
+
+**Gate**: `userDetails.isMercenary` only, same as every other Mercenary-track command. Since
+`isMercenary` and guild membership (`guildId != 0`) are already mutually exclusive in this
+codebase, a player can never hold both an active Guild Buff and an active Mercenary Buff at once —
+there's no stacking case to worry about.
+
+**Scaling axis**: Mercenary Rank (`mercenaryFactory.getMercenaryRankInfo`, off the same
+never-reset `mercenaryBountyWinCount` Rank itself already reads) — NOT `mercenaryNotoriety`, which
+is an explicitly resettable resource-threshold gate, the wrong shape for a standing bonus that
+should only ever climb.
+
+**4 categories** (`userDetails.mercenaryBuff`, one active at a time):
+
+| Category | Effect | Consuming code path |
+|---|---|---|
+| `workMulti` | Flat `%` add to effective work multiplier, `/work`-only (never Bounty/Heist reward math) | `workFactory.getMercenaryWorkMulti`, summed alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti` in every `handle*Potato` scenario's `effectiveMultiplier` |
+| `workTimer` | `/work` cooldown-skip-chance source | `dynamoHandler.getWorkCooldownSkipSources` — a 5th source alongside companion/world-buff/guild-buff/Spud Keep, feeding the same `cooldownFactory.combineSkipChance` roll `calculateWorkTimerValue` already makes |
+| `robChance` | Flat add to real `/rob`'s success chance only (never `/rob-npc`) | `rob.js`, both computation sites (preview + re-rolled resolution), same shape as the existing guild `robChance` check |
+| `bountyTimer` | Bounty's own (`/take-bounty`, 3600s) cooldown-skip-chance source — the Mercenary-track counterpart to Guild Buff's `raidTimer` | `mercenaryFactory.getMercenaryCooldownSkipSources` — a 3rd source alongside `mercenaryRank`/`spudKeep`, feeding the same combined roll `takeBounty.js` already makes |
+
+Deliberately does **not** touch `/rob-npc` (Heist) in any way — its `RobNpc.TIERS` odds/payout/loss
+math was retuned three times the same day this feature was scoped (see the Heist section above),
+and folding a new cooldown-frequency-changing source into still-unproven math was judged too risky
+to bundle into this feature's first pass.
+
+**`MercenaryBuffScaling`** (`constants.js`, rank-indexed, index 0 = Rank 1) — roughly half of
+`GuildBuffScaling`'s own per-tier value, topping out well under it at every rank (not just at the
+cap), mapped onto Rank's 6 tiers instead of Guild Level's 10:
+
+| Rank | Wins required | `workMulti` | `workTimer` / `bountyTimer` | `robChance` |
+|---|---|---|---|---|
+| 1 | 0 | +2% | 3% | 3% |
+| 2 | 15 | +3% | 4% | 4% |
+| 3 | 50 | +4% | 6% | 6% |
+| 4 | 125 | +5% | 8% | 8% |
+| 5 | 275 | +6% | 10% | 9% |
+| 6 (max) | 525 | +7% | 12% | 10% |
+
+`workTimer` and `bountyTimer` share identical values — mirrors `GuildBuffScaling.workTimer`/
+`raidTimer`'s own existing precedent of being two separate keys with the same array, kept separate
+so a future divergence needs no restructuring. `mercenaryBuffFactory.js` (new, dependency-free
+leaf, same "avoid a circular require with `dynamoHandler.js`" reasoning `guildBuffFactory.js`
+documents for itself) exposes `getMercenaryBuffValue(buffType, rank)`/`getMercenaryBuffLabel(
+buffType, rank)`, taking `rank` as a plain number rather than resolving it itself — every caller
+gets `rank` from `mercenaryFactory.getMercenaryRankInfo(winCount).rank` first.
+
+**Switch cooldown**: `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` (21,600s / 6h) — long enough that a
+player can't just wait out one action's own cooldown and flip the buff for the next (`/work`'s
+300s, `/rob`/`/take-bounty`'s 3600s, `/rob-npc`'s 1800s), short enough not to read as a
+`/rebirth`-style near-permanent commitment. Backed by two new top-level `userDetails` fields,
+`getDefaultUserFields`-defaulted like every other cooldown field in this system:
+
+```js
+mercenaryBuff: null,            // "workMulti" | "workTimer" | "robChance" | "bountyTimer" | null
+mercenaryBuffSwitchTimer: 0,    // ms epoch (Date.now()-based) — same shape as bountyTimer/npcRobTimer/
+                                 // guildMercenarySwitchTimer; 0 default means a fresh account's
+                                 // first pick is always free, no special-casing needed
+```
+
+Neither field is touched by `/retire-mercenary` or `/become-mercenary` — a picked buff persists
+inert across a retire → later re-become round trip, same "lifetime state, never lost to a
+temporary retirement" precedent `mercenaryBountyWinCount` already sets.
+
+`/set-mercenary-buff buff:<rob-chance|work-timer|work-multi|bounty-timer>` (`src/commands/user/`,
+mirrors `/set-buff`'s exact options shape) gate order: (1) not-a-mercenary rejection, (2)
+same-category re-pick rejected as a no-op — no DB write, cooldown untouched — checked BEFORE (3)
+the cooldown check, so a same-pick rejection never wrongly implies a cooldown block. On success,
+writes `mercenaryBuff`/`mercenaryBuffSwitchTimer` and replies with the new value plus a
+`<t:UNIX:R>` next-switch-available timestamp.
+
+**Display**: `/profile` page 1, directly below the Mercenary Rank field, shown only when
+`isMercenary` is true — `Mercenary Buff: <label> — next switch available <t:UNIX:R>`, or
+"None yet — run /set-mercenary-buff to pick one" if never picked.
+
 ## The 12-Tier Bounty Ladder (`Bounty.TIERS`, 2026-08-28 rework)
 
 Replaces the old 3-tier, rank-gated design entirely. Direct instruction: *"there are
@@ -918,6 +998,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
 | `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
+| `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the 6h switch cooldown hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 
 **Mercenary Leaderboard** (2026-08-31) lives on the existing `/leaderboard` command, not
 here — a fourth `mercenary-leaderboard` option alongside `user-leaderboard`/
@@ -943,6 +1024,9 @@ isMercenary: false,
 mercenaryBountyWinCount: 0,
 bountyTimer: 0,           // same shape as workTimer/robTimer — a plain ms-epoch timestamp
 npcRobTimer: 0,           // SEPARATE from robTimer (real /rob, 3600s) and bountyTimer (also 3600s)
+mercenaryBuff: null,      // Mercenary Buff — see its own section above
+mercenaryBuffSwitchTimer: 0, // ms epoch, same shape as bountyTimer/npcRobTimer — 0 default means
+                              // a fresh account's first Mercenary Buff pick is always free
 records: {
     // ...existing fields...
     largestBountyReward: 0   // potato-flavored wins only — same exclusion biggestWorkPayout

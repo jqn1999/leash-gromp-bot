@@ -9683,3 +9683,336 @@ combiner call (new skip-chance source threaded in for `workTimer`/`bountyTimer` 
 `embedFactory.js` (`/profile`'s new field, `/set-mercenary-buff`'s own reply/confirmation).
 **Not touched**: `robNpc.js`/`mercenaryFactory.resolveNpcRob`/`RobNpc.TIERS` — see the balance-risk
 flag in section 1.
+
+---
+
+## Architect's technical design (2026-09-09, same day, following the scope above)
+
+Verified against `src/utils/constants.js` (`GuildBuffScaling`/`GuildBuffDescriptions`,
+`MercenaryRank.THRESHOLDS`), `src/utils/guildBuffFactory.js`, `src/commands/guilds/setBuff.js`,
+`src/utils/cooldownFactory.js`, `src/utils/workFactory.js` (`getGuildWorkMulti`, every
+`calculateWorkTimerValue` call site), `src/utils/dynamoHandler.js` (`getWorkCooldownSkipSources`,
+`calculateWorkTimerValue`, `getDefaultUserFields`), `src/commands/user/rob.js`,
+`src/commands/user/takeBounty.js`, `src/utils/mercenaryFactory.js` (`getMercenaryRankInfo`,
+`getMercenaryCooldownSkipSources`), `src/commands/user/becomeMercenary.js`, and
+`src/utils/embedFactory.js` (`/profile`'s Mercenary Rank field, `buildCooldownSkipField`).
+
+### 1. `MercenaryBuffScaling` — exact final arrays (rank 1-6, index 0 = Rank 1)
+
+```js
+const MercenaryBuffScaling = {
+    workMulti:   [0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
+    workTimer:   [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
+    bountyTimer: [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
+    robChance:   [0.03, 0.04, 0.06, 0.08, 0.09, 0.10],
+};
+```
+
+Derivation: `GuildBuffScaling.workMulti` maxes at 0.15 (half = 0.075); `workTimer`/`raidTimer` max
+at 0.25 (half = 0.125); `robChance` maxes at 0.20 (half = 0.10). Rank 6's max in each column
+(0.07 / 0.12 / 0.10) lands at or just under that half-mark — never over it — so the "roughly half,
+never more" requirement holds at the CAP. To also hold at every rank in between (not just the
+cap), Rank 1 (0 wins, the instant a player becomes a mercenary) is deliberately set far below
+Guild Level 1's own floor (0.06/0.06/0.06) — 0.02/0.03/0.03 — since a solo pick costs nothing and
+should never open at guild-parity. `workTimer`/`bountyTimer` share IDENTICAL values, mirroring
+`GuildBuffScaling.workTimer`/`raidTimer`'s own existing precedent of being two separate keys with
+literally the same array (verified at `constants.js:2751`/`2753`) — kept as two keys (not one
+shared array) so a future divergence needs no restructuring. `robChance` steps 0.01 slower than
+`workTimer` at the top two ranks (Rank 5-6: +0.01/+0.01 vs. +0.02/+0.02) to mirror
+`GuildBuffScaling.robChance`'s own flatter finish relative to `workTimer`/`raidTimer` (0.20 cap vs.
+0.25 — a visibly smaller acceleration, not just a smaller cap). `MercenaryRank.THRESHOLDS`' own
+win requirements (0/15/50/125/275/525) are reused unchanged as the rank gate — no new curve to
+tune there.
+
+`MercenaryBuffDescriptions` mirrors `GuildBuffDescriptions`' `{ sign, text }` shape but with
+lone-mercenary flavor (lore.md-checked, no modern phrasing) rather than reusing the guild copy
+verbatim:
+
+```js
+const MercenaryBuffDescriptions = {
+    workMulti:   { sign: "+", text: "effective work multiplier — a harder bargain" },
+    workTimer:   { sign: "", text: "chance to skip /work cooldown — quicker feet" },
+    robChance:   { sign: "+", text: "/rob success chance — a sharper blade" },
+    bountyTimer: { sign: "", text: "chance to skip Bounty cooldown — a nose for easy marks" },
+};
+```
+
+New cooldown constant — its own small group, since no generic `Mercenary` constants object exists
+today (only `MercenaryRank`/`MercenaryQuest`/`MercenaryCompanionDrop`) and `Bounty` is scoped to
+the Bounty ladder itself, not buff-switching:
+
+```js
+const MercenaryBuff = {
+    SWITCH_COOLDOWN_SECONDS: 21600, // 6h — see section 4 of the scope above for the reasoning
+};
+```
+
+Place all three (`MercenaryBuffScaling`, `MercenaryBuffDescriptions`, `MercenaryBuff`) directly
+after `GuildBuffDescriptions` (`constants.js:2769`) and add all three to `module.exports`.
+
+### 2. Data model — exact field names, exact epoch convention
+
+Two new top-level `userDetails` fields, added to `getDefaultUserFields` in
+`src/utils/dynamoHandler.js` right next to the existing Mercenary-track block (after
+`guildMercenarySwitchTimer: 0` at line 545, before the Rival Bounty Hunter fields at line 548):
+
+```js
+mercenaryBuff: null,            // one of "workMulti"/"workTimer"/"robChance"/"bountyTimer", or null if never picked
+mercenaryBuffSwitchTimer: 0,    // ms epoch (Date.now()-based) — same shape as workTimer/bountyTimer/
+                                 // npcRobTimer/guildMercenarySwitchTimer, ALL of which are plain
+                                 // Date.now()-derived ms timestamps, confirmed at dynamoHandler.js:440-547
+```
+
+No `addUserDatabase` change needed — both `addUser` (brand-new accounts) and `findUser`'s
+self-healing diff loop already source every default purely from `getDefaultUserFields`, so adding
+the two keys there is the single required touch point (same pattern every other top-level default
+field in this file already follows, e.g. `isMercenary`/`guildMercenarySwitchTimer` themselves).
+`mercenaryBuff`/`mercenaryBuffSwitchTimer` are untouched by `/retire-mercenary` and
+`/become-mercenary` (neither writes them) — confirmed against `becomeMercenary.js`'s own
+`updateUserFields(userId, { isMercenary: true })` call, which sets nothing else — satisfying
+section 6's "persists inert across a retire/re-become round trip" requirement for free, no extra
+code needed.
+
+### 3. New factory: `src/utils/mercenaryBuffFactory.js`
+
+A dependency-free leaf, deliberately NOT requiring `mercenaryFactory.js` — mirrors
+`guildBuffFactory.js`'s own documented reason for staying leaf (`mercenaryFactory.js` requires
+`dynamoHandler.js`, and `dynamoHandler.js` needs this file for `getWorkCooldownSkipSources` below;
+a top-level `mercenaryBuffFactory -> mercenaryFactory -> dynamoHandler -> mercenaryBuffFactory`
+loop would hand something a half-built module). Takes `rank` (a plain number, already resolved by
+the caller via `mercenaryFactory.getMercenaryRankInfo(winCount).rank`) rather than resolving rank
+itself — exactly how `guildBuffFactory.getGuildBuffValue(buffType, level)` takes `level`, not
+`raidCount`.
+
+```js
+function getMercenaryBuffValue(buffType, rank) {
+    const scale = MercenaryBuffScaling[buffType];
+    if (!scale) return 0;
+    const clamped = Math.min(Math.max(rank, 1), scale.length);
+    return scale[clamped - 1];
+}
+
+function getMercenaryBuffLabel(buffType, rank) {
+    const desc = MercenaryBuffDescriptions[buffType];
+    if (!desc) return null;
+    const value = getMercenaryBuffValue(buffType, rank);
+    return `${desc.sign}${Math.round(value * 100)}% ${desc.text} (Rank ${rank})`;
+}
+
+module.exports = { getMercenaryBuffValue, getMercenaryBuffLabel };
+```
+
+**Call sites that need `mercenaryFactory.getMercenaryRankInfo` require a lazy, in-function
+require, not a top-level one** — this applies specifically to `dynamoHandler.js`'s
+`getWorkCooldownSkipSources` (section 5 below), since `mercenaryFactory.js` itself requires
+`dynamoHandler.js` at its own top level; a top-level `dynamoHandler -> mercenaryFactory` require
+would loop back into the module currently being built. Mirror the EXACT existing precedent already
+in that same function (`dynamoHandler.js:347`, `const spudKeepFactory =
+require("../utils/spudKeepFactory");` inside the function body) rather than inventing a new
+workaround. `rob.js`, `workFactory.js`, `takeBounty.js`, and `setMercenaryBuff.js` have no such
+cycle and can require both factories normally at the top of the file.
+
+### 4. Exact seam wiring — all four buffs plug into EXISTING combiners/sums, none is a new roll
+
+**`workMulti`** — new `getMercenaryWorkMulti(userDetails, userMultiplier)` in
+`src/utils/workFactory.js`, placed directly after `getGuildWorkMulti` (line 788), identical shape:
+
+```js
+function getMercenaryWorkMulti(userDetails, userMultiplier) {
+    if (userDetails.isMercenary && userDetails.mercenaryBuff === "workMulti") {
+        const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+        return userMultiplier * mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rank);
+    }
+    return 0;
+}
+```
+
+(`workFactory.js` already requires `mercenaryFactory` indirectly-free of the cycle concern above —
+confirm at implementation time; if a cycle exists, lazy-require inside this function too, same
+pattern.) Wire into the SAME sum `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti`
+already feed — every one of the 8 `effectiveMultiplier = applyCatchUp(userMultiplier +
+guildMultiplier + companionMultiplier + ..., catchUpBonus)` call sites in `workFactory.js` (lines
+190, 220(companion path uses this pattern too), 327, 358, 490, 535, 678, 708, 738 — every
+`handle*Potato` scenario handler) gets a new `mercenaryMultiplier = getMercenaryWorkMulti(userDetails,
+userMultiplier)` term added into that same sum, additively, alongside the existing four terms.
+Since `isMercenary` and `guildId != 0` are mutually exclusive, `guildMultiplier` and
+`mercenaryMultiplier` can never both be nonzero for the same player — this is a same-slot
+replacement in practice, not genuine double-stacking, but written as an unconditional additive
+term (like the other three) rather than an `if/else` against `guildMultiplier`, so the code doesn't
+need to know about that exclusivity to be correct.
+
+Example: Rank 4 mercenary (`workMulti` selected, `MercenaryBuffScaling.workMulti[3] = 0.05`) with a
+`workMultiplierAmount` of 20 gets `+1.0` added to their effective multiplier pre-catch-up — a
+~5% bump on that 20, same shape as a guild's own workMulti buff at, e.g., Guild Level 5 giving
+`20 * 0.10 = +2.0` (twice as strong, as designed).
+
+**`workTimer`** — new 5th source in `dynamoHandler.js`'s `getWorkCooldownSkipSources` (line 328),
+alongside the existing `companion`/`worldBuff`/`guildBuff`/`spudKeep` sources, feeding the exact
+same `cooldownFactory.combineSkipChance` call at `calculateWorkTimerValue` (line 397) — NOT a new
+roll:
+
+```js
+const mercenaryFactory = require("../utils/mercenaryFactory"); // lazy, in-function — see section 3
+const mercenaryBuffSkipChance = (userDetails.isMercenary && userDetails.mercenaryBuff === "workTimer")
+    ? mercenaryBuffFactory.getMercenaryBuffValue("workTimer", mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank)
+    : 0;
+// ...added as a 5th entry: { key: "mercenaryBuff", chance: mercenaryBuffSkipChance, label: "Mercenary Buff" }
+```
+
+Also needs a new attribution branch in `calculateWorkTimerValue`'s winning-source if-chain
+(`dynamoHandler.js:408-416`) — `else if (winningSource === "mercenaryBuff") { userDetails.
+_cooldownSkippedByCompanion = { source: "mercenaryBuff" }; }` — and a matching branch in
+`embedFactory.buildCooldownSkipField` (after the existing `mercenaryRank`/`guildLevel` branches
+around line 267-280), e.g. `{ name: "🗡️ Mercenary Buff:", value: "Your own hard-won edge shaves
+the cooldown to nothing — go again right away!", inline: false }`. Still governed by the SAME
+`DEFAULT_SKIP_CHANCE_CAP` (60%) — confirmed reused, per the open-questions answer below.
+
+**`robChance`** — real `/rob` only, `src/commands/user/rob.js`, at BOTH existing computation sites
+(the preview at line ~118-133 and the re-rolled resolution at line ~186-194), mirroring the
+existing guild `robChance` block exactly, as an independent `if` (not an `else` against the guild
+check — they're mutually exclusive by construction, so no branching logic is needed to keep them
+from double-firing):
+
+```js
+if (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance") {
+    const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+    robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
+}
+```
+
+(second site uses `freshUserDetails` in place of `userDetails`, matching the existing
+re-fetch-before-roll pattern at line 194). Example: Rank 6 mercenary with `robChance` selected adds
+a flat `+0.10` (10 percentage points) to `calculateRobChance`'s base result — identical mechanism,
+lower ceiling, to a Level 6 guild's own `+0.12`.
+
+**`bountyTimer`** — new 3rd source in `mercenaryFactory.js`'s `getMercenaryCooldownSkipSources`
+(line 425), alongside the existing `mercenaryRank`/`spudKeep` sources, feeding the SAME
+`cooldownFactory.combineSkipChance` call `takeBounty.js` already makes (line 130) — again, not a
+new roll:
+
+```js
+const mercenaryBuffSkipChance = (userDetails.mercenaryBuff === "bountyTimer")
+    ? mercenaryBuffFactory.getMercenaryBuffValue("bountyTimer", rankInfo.rank)
+    : 0; // userDetails.isMercenary is implied true here — this function is only ever called
+         // from takeBounty.js's own already-gated path
+return [
+    { key: "mercenaryRank", chance: rankInfo.cooldownReductionPercent, label: `Rank ${rankInfo.rank}` },
+    { key: "spudKeep", chance: spudKeepSkipChance, label: "Spud Keep" },
+    { key: "mercenaryBuff", chance: mercenaryBuffSkipChance, label: "Mercenary Buff" },
+];
+```
+
+`takeBounty.js`'s own `cooldownSkipSource` ternary (lines 133-135) needs a 3rd branch:
+`winningSource === 'mercenaryBuff' ? { source: 'mercenaryBuff' } : ...`, and
+`buildCooldownSkipField` reuses the SAME new `mercenaryBuff` branch added for `workTimer` above
+(one shared branch covers both call sites — the flavor text is generic enough to fit either).
+
+### 5. `/set-mercenary-buff` — exact behavior spec
+
+New file `src/commands/user/setMercenaryBuff.js`, same 4-choice `ApplicationCommandOptionType.String`
+options shape as `setBuff.js` (`rob-chance`/`workChance`→`robChance`/`workTimer`/`workMulti`, plus
+the new `bounty-timer`→`bountyTimer` choice).
+
+**Gate order** (mercenary check first, then cooldown, then same-category no-op — cheapest/most
+fundamental rejection first, matching every other Mercenary-track command's own check ordering):
+
+1. `!userDetails.isMercenary` → reject: `"${userDisplayName}, you're not a mercenary — run
+   /become-mercenary first (you can't be in a guild)."` (verbatim reuse of `robNpc.js`/
+   `takeBounty.js`'s own exact wording, for consistency).
+2. Same-category re-pick → reject as a no-op, BEFORE the cooldown check specifically, so a
+   same-category re-pick is rejected identically whether or not the cooldown happens to still be
+   running (a player picking their own already-active buff again should never see a "wait N hours"
+   message — that implies switching would otherwise be blocked, which is misleading when the real
+   reason for rejection is "nothing would change"): `userDetails.mercenaryBuff === buffSelect` →
+   `"${userDisplayName}, your Mercenary Buff is already set to **${buffSelect}** — pick a different
+   category to switch."` No DB write, cooldown untouched.
+3. Cooldown check (skipped entirely on a first-ever pick, since `mercenaryBuffSwitchTimer` defaults
+   to `0` — `Date.now() - 0` is always far past `MercenaryBuff.SWITCH_COOLDOWN_SECONDS * 1000`, no
+   special-casing needed, same as `guildMercenarySwitchTimer`'s own "0 = never blocked" precedent):
+   `timeSinceSwitchInSeconds < MercenaryBuff.SWITCH_COOLDOWN_SECONDS` → reject: `"${userDisplayName},
+   you switched your Mercenary Buff recently — wait ${convertSecondstoMinutes(remaining)} before
+   switching again."`
+
+**On success**: `dynamoHandler.updateUserFields(userId, { mercenaryBuff: buffSelect,
+mercenaryBuffSwitchTimer: Date.now() })`, then reply with the new value AND the next-switch
+timestamp (mirrors `setBuff.js`'s own single-line confirmation, extended with the Discord relative
+timestamp convention confirmed at `embedFactory.js:1440`/`4222`):
+
+```
+`${userDisplayName}, your Mercenary Buff is now set to **${buffSelect}**:
+${mercenaryBuffFactory.getMercenaryBuffLabel(buffSelect, rank)}. Next switch available
+<t:${Math.floor((Date.now() + MercenaryBuff.SWITCH_COOLDOWN_SECONDS * 1000) / 1000)}:R>.`
+```
+
+### 6. Display — `/profile` page 1
+
+In `embedFactory.js`, directly after the existing `isMercenary` → Mercenary Rank field block
+(lines 556-564), gated on the same `if (userDetails.isMercenary)`:
+
+```js
+if (userDetails.mercenaryBuff) {
+    const buffLabel = mercenaryBuffFactory.getMercenaryBuffLabel(userDetails.mercenaryBuff, rankInfo.rank);
+    fields.push({
+        name: "Mercenary Buff:",
+        value: `${buffLabel} — next switch available <t:${Math.floor((userDetails.mercenaryBuffSwitchTimer + MercenaryBuff.SWITCH_COOLDOWN_SECONDS * 1000) / 1000)}:R>`,
+        inline: false,
+    });
+} else {
+    fields.push({
+        name: "Mercenary Buff:",
+        value: "None yet — run /set-mercenary-buff to pick one.",
+        inline: false,
+    });
+}
+```
+
+(reuses the `rankInfo` already computed for the Mercenary Rank field two lines above — no second
+rank lookup). The relative timestamp renders as "in the past"/already-elapsed gracefully via
+Discord's own `<t:...:R>` formatting once the cooldown has cleared, same as every other
+already-elapsed cooldown display in this codebase (no separate "ready now" branch needed).
+
+### 7. Open questions — answered
+
+- **Skip-chance cap**: reuse `cooldownFactory.DEFAULT_SKIP_CHANCE_CAP` (60%) unchanged for both
+  `workTimer` and `bountyTimer` — confirmed no separate cap is threaded through either combiner
+  call today, and no stated reason to diverge.
+- **Same-category re-pick**: reject as a no-op, cooldown untouched (section 5, gate 2) — checked
+  BEFORE the cooldown gate specifically, so the rejection message never implies a cooldown block
+  that isn't the actual reason.
+- **Exact numbers**: section 1's arrays and 21,600s (6h) switch cooldown are final, not
+  illustrative — ship as-is, retune later off real play data per this system's own established
+  precedent (Bounty/Heist's multiple same-day retunes).
+
+### 8. Test-surface note (for the developer agent — not written here)
+
+- **`constants` sanity test**: a new assertion block (new file or appended to an existing
+  constants-shape test) verifying `MercenaryBuffScaling`'s 4 arrays are each length-6,
+  monotonically non-decreasing, and every value strictly less than `GuildBuffScaling`'s
+  corresponding array at the same index+4 offset (rank N ↔ guild level N+4, the closest
+  apples-to-apples check available given the 6-vs-10 tier mismatch) — or more simply, each
+  `MercenaryBuffScaling[key][5]` (Rank 6 max) `<= GuildBuffScaling[key][9] / 2` (Guild Level 10 max
+  / 2), the literal "half of guild's max" invariant this design is built on.
+- **`setMercenaryBuff.test.js`** (new, `src/commands/user/__tests__/`), mock-based like
+  `robNpcPowerGate.test.js` — cover: non-mercenary rejection, first-pick-free (timer 0 → succeeds
+  and writes both fields), same-category no-op (no DB write, exact message), cooldown-blocked
+  re-pick (with remaining time in the message), successful switch after cooldown clears.
+- **`src/utils/__tests__/workFactory.test.js`**: extend with a case asserting
+  `getMercenaryWorkMulti` returns `0` for a non-`workMulti`-buffed/non-mercenary user (regression
+  guard) and the correct `userMultiplier * scale` value for a `workMulti`-buffed mercenary at a
+  given rank — verify existing `effectiveMultiplier`-sum assertions in this file still pass
+  unmodified for non-mercenary fixtures (the new term should be strictly additive/zero-by-default).
+- **`src/commands/user/__tests__/robNpcCooldownSkip.test.js`-style new test for real `/rob`**: no
+  existing `rob.test.js` was found in this codebase (verified via glob) — the developer agent
+  should decide whether to add one net-new (`rob.test.js` or `robMercenaryBuff.test.js`) covering
+  the new additive `robChance` term at both computation sites, since there's no existing `/rob`
+  test to extend.
+- **`src/commands/user/__tests__/takeBountyCooldownSkip.test.js`**: extend with a case for the new
+  3rd `mercenaryBuff` skip source — verify it participates in `combineSkipChance` alongside
+  `mercenaryRank`/`spudKeep` and that `takeBounty.js`'s attribution branch tags a mercenary-buff-won
+  skip correctly.
+- **`src/utils/__tests__/cooldownFactory.test.js`**: no change expected (the combiner itself is
+  untouched, only its input source lists grow) — flagged only so the developer agent confirms this
+  rather than assuming.
+- **`src/utils/__tests__/embedFactory.test.js`**: extend for the new `/profile` Mercenary Buff
+  field (both the "none yet" and active-buff-with-timestamp branches) and the new
+  `buildCooldownSkipField` `mercenaryBuff` source branch.
