@@ -898,18 +898,16 @@ describe('resolveNpcRob', () => {
         expect(ratio).toBeLessThan(0.50);
     });
 
-    // The Royal Treasury retune (2026-09-09, second pass, same day as the loss-scaling jump
-    // above) — the first pass's fix (odds 0.26 -> 0.33, cap 40K -> 50K) was calibrated against
-    // the OLD 0.15 loss scaling and got completely undone the moment that jumped to 0.50 (a
-    // 0.75-vs-1.0 penaltyPercentOfCap tier is hit much harder by a steeper shared scaling
-    // factor). Locks in that Royal Treasury genuinely overtakes Noble's Vault's own best case
-    // (its max Rank-6 chance) at high power, not just at its own gate.
-    test('Royal Treasury (0.42 chance, 50K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the second retune pass', () => {
+    // The Royal Treasury retune (2026-09-09, THIRD pass — see the constant's own comment for
+    // the full three-pass history). Pass 1's fix (odds 0.26 -> 0.33, cap 40K -> 50K) was
+    // calibrated against the OLD 0.15 loss scaling and got undone when that jumped to 0.50.
+    // Pass 2's fix (odds -> 0.42) got undone in turn when balance-auditor found Noble's Vault
+    // itself needed a re-buff (its own maxChance rose 0.42 -> 0.62 after being found dominated
+    // by lower tiers). Pass 3 (odds -> 0.50) restores the lead against Noble's Vault's NEW best
+    // case (its max Rank-6 chance) at high power, not just at Royal Treasury's own gate.
+    test('Royal Treasury (0.50 chance, 50K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the third retune pass', () => {
         const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
         const royalTreasury = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
-        // Both cap out at Rank 6 — Royal Treasury's own maxChance now matches Noble's Vault's
-        // exactly (a deliberate coincidence, not a bug — see the constant's own comment).
-        expect(royalTreasury.maxChance).toBe(nobleVault.maxChance);
 
         function evAtPower(tier, power) {
             const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
@@ -918,7 +916,7 @@ describe('resolveNpcRob', () => {
             return tier.maxChance * rewardMid - (1 - tier.maxChance) * lossMid;
         }
 
-        // The crossover itself sits around power ~5.5-6x, well below Royal Treasury's own
+        // The crossover itself sits around power ~4.5x, well below Royal Treasury's own
         // gate (25x) — so by the time this tier is even attemptable, it's already the
         // clearly better pick over Noble's Vault's own best case, with a comfortable margin
         // (not a razor's-edge parity right at unlock).
@@ -926,6 +924,35 @@ describe('resolveNpcRob', () => {
             .toBeGreaterThan(evAtPower(nobleVault, royalTreasury.minPowerRequired));
         // The lead keeps growing well past the gate too.
         expect(evAtPower(royalTreasury, 50)).toBeGreaterThan(evAtPower(nobleVault, 50));
+    });
+
+    // Third pass companion test — locks in the reason the third retune was needed: without it,
+    // Noble's Vault was EV-dominated by BOTH lower tiers at every power (not just Merchant's
+    // Wagon was dominated by Market Stall at low power, but Noble's Vault itself was strictly
+    // worse than either alternative everywhere). Confirms the fix restores a clean ascending
+    // EV order Market Stall < Merchant's Wagon < Noble's Vault < Royal Treasury at each tier's
+    // own worst case (its unlock rank + its own power gate).
+    test('third retune pass restores a clean ascending EV order across all four tiers at each one\'s own worst case', () => {
+        const tiers = RobNpc.TIERS;
+        function chanceAtRank(tier, rank) {
+            return Math.min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance);
+        }
+        function evAtPowerAndRank(tier, power, rank) {
+            const chance = chanceAtRank(tier, rank);
+            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
+            const rewardMid = tier.payoutCap * power * 0.95;
+            const lossMid = tier.hasPenalty ? tier.payoutCap * tier.penaltyPercentOfCap * lossScale : 0;
+            return chance * rewardMid - (1 - chance) * lossMid;
+        }
+
+        const evs = tiers.map(tier => {
+            const power = Math.max(tier.minPowerRequired, 1);
+            return evAtPowerAndRank(tier, power, tier.rankRequired);
+        });
+
+        for (let i = 1; i < evs.length; i++) {
+            expect(evs[i]).toBeGreaterThan(evs[i - 1]);
+        }
     });
 });
 

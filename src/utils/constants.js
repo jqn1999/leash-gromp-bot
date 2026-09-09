@@ -2436,9 +2436,17 @@ const RobNpc = {
             // penaltyPercentOfCap of 0.5 is the smallest of the three real-stakes tiers), so
             // 3x (an exact shop checkpoint, up from 2x) still leaves a comfortable margin.
             minPowerRequired: 3,
-            baseChance: 0.20,
+            // Third pass, same day (2026-09-09, direct instruction: "tweak the success rate %s
+            // higher if needed"). balance-auditor's re-verification after LOSS_MULTIPLIER_SCALING's
+            // 0.15 -> 0.50 jump found this tier EV-dominated by Market Stall through Rank 4
+            // without Yukon (Market Stall's own buffed odds + zero penalty outran this tier's
+            // real-stakes EV). baseChance buffed 0.20 -> 0.36 (chancePerRank and payoutCap
+            // unchanged, per instruction to use only the success-rate lever) so maxChance rises
+            // in lockstep to 0.76 — restores a clean ascending EV order against Market Stall at
+            // every rank/power combination, including this tier's own worst case (Rank 2, 3x gate).
+            baseChance: 0.36,
             chancePerRank: 0.08,
-            maxChance: 0.60,
+            maxChance: 0.76,
             payoutCap: 10000,         // matches Work.MAX_LARGE_POTATO exactly
             hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
             penaltyPercentOfCap: 0.5, // x1.0 — unchanged base rate
@@ -2456,9 +2464,17 @@ const RobNpc = {
             // than 0.5 does. 15x (an exact shop checkpoint, up from 3x) leaves a comfortable
             // margin over that new breakeven rather than sitting right on top of it.
             minPowerRequired: 15,
-            baseChance: 0.12,
+            // Third pass, same day (2026-09-09, direct instruction: "tweak the success rate %s
+            // higher if needed"). balance-auditor's re-verification after LOSS_MULTIPLIER_SCALING's
+            // 0.15 -> 0.50 jump found this tier EV-dominated by BOTH Market Stall AND Merchant's
+            // Wagon at EVERY power level tested — a severe, permanent trap, not just a low-power
+            // one. baseChance buffed 0.12 -> 0.32 (chancePerRank and payoutCap unchanged, per
+            // instruction to use only the success-rate lever) so maxChance rises in lockstep to
+            // 0.62 — restores a clean ascending EV order against both lower tiers at every
+            // rank/power combination, including this tier's own worst case (Rank 4, 15x gate).
+            baseChance: 0.32,
             chancePerRank: 0.06,
-            maxChance: 0.42,
+            maxChance: 0.62,
             payoutCap: 20000,
             hasPenalty: true,
             penaltyPercentOfCap: 0.75, // x1.5, same factor Guild Raid's own Elite penalty uses
@@ -2469,7 +2485,8 @@ const RobNpc = {
             key: 'royal_treasury',
             label: 'The Royal Treasury',
             rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
-            // Retuned TWICE the same day (2026-09-09, both direct instruction: "fix it").
+            // Retuned THREE times the same day (2026-09-09, all direct instruction: "fix it" /
+            // "tweak the success rate %s higher if needed").
             // First pass: was baseChance 0.06/chancePerRank 0.04/maxChance 0.26, payoutCap
             // 40000 — balance-audit.md's 2026-09-09 entry found this tier strictly
             // EV-dominated by Noble's Vault at EVERY power level, so odds were buffed to
@@ -2480,26 +2497,23 @@ const RobNpc = {
             // bit low for a failed rob"), which hits this tier's own 1.0 penaltyPercentOfCap
             // far harder than Noble's Vault's 0.75 — the first pass's fix was completely
             // undone by that (this tier went back to being dominated at every power level,
-            // now even worse than before). Re-solved from scratch: max chance raised again to
-            // 0.42 (the SAME ceiling Noble's Vault itself caps at — a coincidence worth
-            // flagging so a future reader doesn't mistake it for a copy-paste bug; cap stays
-            // 50,000, unchanged from the first pass) — this produces a real EV crossover
-            // against Noble's Vault's own best case (its max Rank-6 chance) around power
-            // ~5.5-6x. `minPowerRequired` (25x, an exact shop checkpoint) sits well PAST that
-            // crossover rather than right on top of it — by the time this tier is even
-            // attemptable, it's already the clearly better pick over Noble's Vault, with a
-            // comfortable margin against the usual +/-20% variance swings on top. The much
-            // larger gap between this tier's own EV-positive floor (~2.76x) and its gate
-            // (25x) versus the other two tiers' own tighter margins is deliberate — the
-            // rarest, most consequential tier gets the most conservative buffer.
-            // penaltyPercentOfCap stays 1.0 throughout both passes (the x2.0
-            // Guild-Raid-Legendary-matching ratio from 2026-09-08 was never walked back) —
-            // every fix here has been a WIN-side buff only.
+            // now even worse than before). Re-solved from scratch: max chance raised to 0.42
+            // (cap stays 50,000, unchanged from the first pass). Third pass, same day:
+            // balance-auditor's re-verification found Noble's Vault ITSELF got re-buffed (see
+            // that tier's own comment — its maxChance rose 0.42 -> 0.62 after being found
+            // dominated by both lower tiers), which pulled the rug out from under this tier's
+            // second-pass crossover again. Re-solved once more: baseChance 0.02 -> 0.10, so
+            // maxChance (only reachable at Rank 6, this tier's sole unlock rank) rises in
+            // lockstep to 0.50 — restores a clean, comfortable EV lead over Noble's Vault's own
+            // new best case at this tier's own worst case (Rank 6, its 25x gate). cap and
+            // penaltyPercentOfCap (1.0, the x2.0 Guild-Raid-Legendary-matching ratio from
+            // 2026-09-08) stay unchanged throughout all three passes — every fix here has been
+            // a WIN-side, success-rate-only buff, per instruction.
             minPowerRequired: 25,
-            baseChance: 0.02,
+            baseChance: 0.10,
             chancePerRank: 0.08,      // still technically "+/rank" for shape consistency with the other 3 tiers,
-                                       // but only reachable at Rank 6 itself (0.02 + 0.08*5 = 0.42 flat once unlocked)
-            maxChance: 0.42,
+                                       // but only reachable at Rank 6 itself (0.10 + 0.08*5 = 0.50 flat once unlocked)
+            maxChance: 0.50,
             payoutCap: 50000,
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged

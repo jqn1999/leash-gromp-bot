@@ -9432,3 +9432,51 @@ gate and well past it. Full suite green (1270/1270, up from 1268 on `main`).
 (all 3 gates updated, Royal Treasury's odds row), Power gate / Royal Treasury retune /
 Loss scaling subsections rewritten to describe both retune passes and why the second one was
 forced by the first.
+
+## Fix: Heist Ladder retuned a THIRD time — Noble's Vault and Merchant's Wagon were EV-traps, not just Royal Treasury (2026-09-09, direct instruction, same day)
+
+Player asked for an audit of the previous fix: "Check EV with the new 40-45% loss factor with
+things like various combinations of merc level and Yukon vs no Yukon and let me know if it's
+good." A `balance-auditor` re-verification across Rank 1-6 x all qualifying tiers x Yukon
+on/off x a spread of power levels (including each tier's own gate as worst case) found the
+second pass's gate-only strategy hadn't been enough:
+
+- **Noble's Vault was EV-dominated by BOTH Market Stall and Merchant's Wagon at every power
+  level tested**, up to 10,000,000x — a permanent trap, not just a low-power one.
+- **Merchant's Wagon was still dominated by Market Stall through Rank 4 without Yukon**
+  equipped.
+
+Player's follow-up instruction: "If you need to bring things balance back, tweak the success
+rate %s higher if needed" — explicit pre-authorization to use the success-rate lever only, not
+`payoutCap`, `penaltyPercentOfCap`, or `LOSS_MULTIPLIER_SCALING`.
+
+**Fix — "same-shape shift"**: for each of the three real-stakes tiers, `chancePerRank` and
+`payoutCap`/`penaltyPercentOfCap` left untouched (preserves each tier's own per-rank shape and
+stakes), only `baseChance` raised, which lifts `maxChance` by the same delta since
+`maxChance = baseChance + chancePerRank*5`:
+
+- **Merchant's Wagon**: `baseChance 20% -> 36%` (max `60% -> 76%`).
+- **Noble's Vault**: `baseChance 12% -> 32%` (max `42% -> 62%`).
+- **Royal Treasury**: `baseChance 2% -> 10%` (max `42% -> 50%`).
+
+Derived by binary search against the EV formula (integrated over the reward-roll's uniform
+[0.8, 1.2] distribution, confirmed exactly affine in power at every live rank/tier combo — no
+clamp ever binds, so every crossover found is a real, permanent one, not a sampling artifact),
+targeting a ~20% EV margin over the best lower-tier alternative at each tier's own worst case
+(its unlock rank + its own `minPowerRequired` gate). Verified via a comprehensive table across
+ranks 1-6 x power {1, 3, 15, 25, 100, 1272} x with/without Yukon: a clean ascending EV order —
+Market Stall < Merchant's Wagon < Noble's Vault < Royal Treasury — holds at every worst case
+tested, with no inversions anywhere; the chance ceiling (tier max + easy reward-roll bonus +
+Yukon's flat `+12pp`) never approaches the 1.0 clamp (highest observed: Market Stall at 0.98).
+Royal Treasury's own crossover against Noble's Vault's new best case moved from ~5.5-6x (second
+pass) to ~4.5x — still comfortably below its 25x gate.
+
+**Tests**: `mercenaryFactory.test.js` — the one test hardcoding the (now-stale) coincidence
+that Royal Treasury's `maxChance` equaled Noble's Vault's was updated (that equality no longer
+holds; renamed to describe the third pass and its own new numbers). Added a new test locking in
+the full ascending EV order across all four tiers at each tier's own worst case, computed
+directly off `RobNpc.TIERS` so it stays correct through any future retune. Full suite green.
+
+**Docs**: `.claude/systems/mercenary-bounties.md`'s `/rob-npc` section — tier table (all 3
+real-stakes tiers' odds columns), Power-gate/retune narrative rewritten to cover all three
+passes, Loss-scaling section's cross-reference updated to mention the third pass.

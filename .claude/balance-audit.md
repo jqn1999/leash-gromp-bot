@@ -1837,3 +1837,192 @@ its own T1 (2,378) produces the byte-identical percentage split (same relative s
   array reference (`tierConfig.scenarios` IS `regularRaidScenarios`/`eliteRaidScenarios`/
   `legendaryRaidScenarios`, not a copy) — no second, independently-drifting odds table introduced,
   the exact bug class the 2026-08-26 rework (item 61) already had to fix once.
+
+---
+
+## 2026-09-09 — `/rob-npc` Heist Ladder re-verification (follow-up to two same-day retune passes)
+
+**Housekeeping note first:** this task's brief referenced "`balance-audit.md`'s 2026-09-09 entry"
+from an earlier full-audit pass this same day (both shipped commits — `478e125`, `88b917c` — and
+`systems/mercenary-bounties.md`'s own inline comments cite it directly, e.g. `constants.js`'s
+`minPowerRequired` comment: *"see balance-audit.md's 2026-09-09 entry"*). **No such entry actually
+exists in this file** — the log jumps from 2026-08-27 straight to this entry; grepped every `## `
+heading and every occurrence of "Heist"/"RobNpc"/"Royal Treasury"/"Noble's Vault"/"Merchant's
+Wagon" to confirm. Whatever audit pass originally found the Royal-Treasury-dominated-by-Noble's-
+Vault bug that the two commits reference was either never logged here or the log entry was lost —
+flagging this as a process gap for whoever runs the next audit, not re-litigating it, since the
+commits' own commit messages and `mercenary-bounties.md`'s inline history provide enough of the
+"what was found and why" trail to re-verify against. This entry is the first `RobNpc`-specific
+record actually present in this file.
+
+**Scope**: focused re-check of `RobNpc` (`constants.js:2340-2513`) and `mercenaryFactory.resolveNpcRob`
+(`mercenaryFactory.js:211-300`) after `LOSS_MULTIPLIER_SCALING` jumped `0.15 -> 0.50` and every
+tier's `minPowerRequired`/Royal Treasury's odds were re-solved against it, per direct user request:
+"check EV with the new 40-45% loss factor with things like various combinations of merc level and
+Yukon vs no Yukon." Not a full-scope pass — Shops/Regrades/Rebirth/Guilds/Raids untouched this
+entry, still current as of their own last checks above.
+
+### Method
+
+Reimplemented the live formulas exactly (not estimated) in `node`: `tierChance =
+min(base+perRank*(rank-1), maxChance)`; the 2026-09-09 reward-roll coupling `riskAdjustedChance =
+clamp(tierChance - 0.12*(rewardRollT-0.5), 0, 1) + yukonBonus` (uncapped after the Yukon add,
+matching `mercenaryFactory.js:237-238` exactly); reward `= payoutCap * rewardRoll * developedMultiplier
+* 0.95` (confirmed the `workGainAmount*4.5` term is never the binding min at any real server wealth
+per `mercenaryFactory.js:291`/the constant's own comment, so `payoutCap` is always what
+`calculateGainAmount` returns against); loss `= payoutCap * penaltyPercentOfCap * lossRoll *
+lossScale`, `lossScale = 1 + 0.50*(developedMultiplier-1)`. Reward-roll and success chance are
+**coupled** (same roll), so EV per attempt was computed as an exact numerical integral over the
+`rewardRoll ~ U(.8,1.2)` distribution (2,000-4,000 step quadrature, cross-checked by hand against
+the closed-form quadratic for two cases — Market Stall and Noble's Vault at rank 6/D=1272 — matched
+to the integer). Confirmed this integral is **exactly affine in `developedMultiplier`** (no clamp
+ever binds in any live rank/tier combination checked — see Finding 4 below), so every EV crossover
+reported below is a real, single, permanent crossing point, not an artifact of the specific
+power levels sampled.
+
+Power levels: each tier's own `minPowerRequired` (worst-case entry, no rebirth/companion on top —
+`W=D`), plus `systems/mercenary-bounties.md`'s own "Solo power reference points" table
+(shop maxed alone=100, shop+regrade maxed=600, +Mochi 12%=672, +rebirth 3=816, +rebirth 11 cap=1,272
+— all read directly off that doc, not invented). `developedMultiplier` uses the exact
+`userMultiplier + companionMultiplier + rebirthMultiplier` shape `resolveNpcRob` computes (guild
+multiplier always 0 for a mercenary); `catchUpBonus` set to 0 throughout (a conservative floor —
+real catch-up only ever raises reward-side EV further for an underpowered player, never lowers it).
+Yukon modeled as `robChanceFlat: 0.12` (confirmed live at `constants.js:1400`, matching the 12%
+figure carried into this task's own framing) added post-clamp with no change to `developedMultiplier`
+(isolating the flat-odds effect cleanly, not modeling the opportunity cost of the companion slot
+Yukon occupies instead of a `workMultiplierPercent` pick — noted as a simplification, not hidden).
+
+### Findings
+
+**1. [HIGH, live — the two 2026-09-09 passes fixed Royal Treasury but left a worse, structurally
+permanent trap directly below it] Noble's Vault is EV-dominated by BOTH Merchant's Wagon and the
+risk-free Market Stall at every rank (4/5/6) and every power level tested, without Yukon — and this
+is not a temporary until-power-catches-up gap, it is mathematically permanent.**
+
+Because reward and loss both scale exactly linearly in `developedMultiplier` (no constant-offset
+asymmetry that early power could ever grow past), the EV-difference between Noble's Vault and
+Market Stall is an affine function of power with a fixed-sign slope — confirmed by evaluating at
+`D=10,000,000`: still `-2,270,004,314` (Market Stall wins) at Rank 6, Noble's Vault's own best
+rank. There is no power level, however large, at which an un-Yukon'd player should ever pick Noble's
+Vault over Market Stall:
+
+| Rank | D (power) | Market Stall EV | Merchant's Wagon EV | Noble's Vault EV |
+|---|---|---|---|---|
+| 4 (own unlock) | 15 (own gate) | 42,465 | 39,730 | **360** |
+| 4 | 100 | 283,100 | 272,800 | **32,150** |
+| 4 | 600 | 1,698,600 | 1,643,800 | **219,150** |
+| 4 | 1,272 | 3,601,032 | 3,486,424 | **470,478** |
+| 5 | 600 | 1,983,600 | 2,220,000 | **1,173,600** |
+| 6 (max rank) | 25 | 94,525 | 115,550 | **84,500** |
+| 6 | 100 | 378,100 | 465,200 | **351,050** |
+| 6 | 600 | 2,268,600 | 2,796,200 | **2,128,050** |
+| 6 | 1,272 | 4,809,432 | 5,929,064 | **4,516,338** |
+
+At Rank 6/`D`=1,272 (deep late game — shop+regrade maxed, Rebirth 11, the live-percent cap) Noble's
+Vault still trails Market Stall by ~6% and Merchant's Wagon by ~24%, having never once been the
+correct pick at any point in between. Root cause: its `penaltyPercentOfCap` (0.75) combined with
+`LOSS_MULTIPLIER_SCALING`'s new 0.50 value produces an expected loss (`payoutCap * 0.75 *
+lossScale`) that grows faster in absolute terms than its comparatively modest `baseChance`/
+`maxChance` (12%→42%, the lowest ceiling of the three real-stakes tiers) can offset — the exact
+same mechanism the two 2026-09-09 passes already diagnosed and fixed for Royal Treasury (`0.02`→`0.42`
+max chance buff), just never re-checked for Noble's Vault itself once `LOSS_MULTIPLIER_SCALING`
+jumped. **This reads as the same bug class the two shipped passes were built to fix, just still
+present one tier down** — the passes re-solved Royal Treasury's odds and every tier's
+`minPowerRequired` gate, but never re-verified that each real-stakes tier individually clears the
+tier(s) below it once the new loss scaling was locked in.
+
+**With Yukon equipped, this substantially improves but is not fully fixed at low rank**: Noble's
+Vault beats Market Stall from `D≥28.4` at Rank 4 (i.e. still not at its own 15x gate — a Rank-4
+player who just hit the gate power is still better off on Market Stall even with Yukon equipped),
+`D≥3.1` at Rank 5, and `D≥1.4` at Rank 6 (comfortably below its own gate). Severity: **live now**,
+not contingent on any future change — any current Rank 4/5 mercenary without a `robChanceFlat`
+companion who picks Noble's Vault over Merchant's Wagon or Market Stall is making a strictly worse
+choice at every power level reachable today.
+
+**2. [MEDIUM, live, narrower] Merchant's Wagon is similarly EV-dominated by Market Stall at Ranks
+2-4 without Yukon — permanently, not just near its own gate — only becoming the better pick from
+Rank 5 onward.**
+
+| Rank | Crosses Market Stall at (no Yukon) | Crosses Market Stall at (Yukon) |
+|---|---|---|
+| 2 | **never** (confirmed to `D`=1,000,000) | **never** (confirmed to `D`=1,000,000) |
+| 3 | **never** | `D≥4.4` |
+| 4 | **never** | `D≥1.4` |
+| 5 | `D≥3.0` | `D≥0.7` |
+| 6 | `D≥1.1` | `D≥0.4` |
+
+Lower severity than Finding 1 because the absolute stakes are small at this tier (`payoutCap`
+10,000 vs Market Stall's 5,000 — the EV gap in raw potatoes is in the hundreds to low thousands at
+early power, not the tens-of-thousands-plus gap Noble's Vault opens up) and because Rank 2-4 is
+exactly the game's earliest mercenary window where the absolute numbers barely matter yet — but
+it's the same failure shape one tier further down the ladder, and it means the FIRST real-stakes
+tier a new mercenary unlocks (Rank 2) is never worth touching over the safe intro tier until Rank 5,
+three full rank-ups later, without Yukon.
+
+**3. [Confirms design intent, not a new bug] Royal Treasury's own brief post-unlock dip against
+Noble's Vault is real but small and well clear of its own gate — matches what the two 2026-09-09
+passes intended.** Royal Treasury beats Noble's Vault from `D≥5.95` (no Yukon) — its own gate is
+25x, a ~4.2x safety margin, exactly what `constants.js`'s own inline comment claims ("crossover
+around power ~5.5-6x... well below Royal Treasury's 25x gate"). **However, the margin against
+Merchant's Wagon specifically is much tighter and wasn't called out in that comment**: Royal
+Treasury only overtakes Merchant's Wagon at `D≥22.58` — just a ~10% buffer below the 25x gate,
+not the "comfortable margin" language used for the Noble's Vault comparison. At exactly `D`=25
+(a player who just cleared the gate with zero buffer), Royal Treasury's EV (117,000) beats
+Merchant's Wagon's (115,550) by only ~1.2% — real, but thin enough that it's worth explicitly
+re-checking if `LOSS_MULTIPLIER_SCALING` or any tier's numbers move again. Royal Treasury's
+EV-positive floor in isolation (`D≥2.76`) is also confirmed to match the inline comment's own
+"~2.76x" figure exactly.
+
+**4. [Checked, no issue found] Yukon's flat `robChanceFlat` bonus never interacts badly with the
+reward-roll spread's clamping, and never hurts EV.** `successChance = clamp(riskAdjusted, 0, 1) +
+yukonBonus` — the clamp is applied to the pre-Yukon term only, and none of the four tiers'
+`baseChance`/`maxChance`/`±0.06` spread ever actually reaches the `[0,1]` boundary at any live
+rank (closest approach: Merchant's Wagon Rank 2's `22%` floor, Market Stall Rank 6's `86%`
+ceiling — both comfortably inside bounds), so the clamp is a dead branch in every reachable state
+today, not a live edge case. Since `min(1, x)` is non-decreasing in `x`, adding Yukon's bonus
+post-clamp can only weakly raise win probability (and therefore weakly raise EV) at every tier/rank/
+power combination — confirmed algebraically and spot-checked numerically; no combination found
+where equipping Yukon lowers EV.
+
+**5. [Checked, no issue found] The reward-roll-coupled spread's worst-case chance is real (a ±6pp
+swing around baseline) but not currently punishing enough to flag on its own.** Worst live floor is
+Merchant's Wagon Rank 2's `22%` (baseline `28%` minus the full `6pp`) at exactly the tier's own gate
+power — a real, felt swing (the "safest" version of the same attempt gets `34%`, a 12pp/~43%
+relative band around the mean) but not pushed to an uncomfortable extreme by itself; it's Finding 2
+above (this tier being EV-negative-vs-Market-Stall at Rank 2 regardless of which end of that spread
+you land on) that's the actual live problem at this rank, not the spread's width in isolation.
+
+### Answering the five specific questions asked
+
+1. **Is EV positive at every tier's own gate power, with and without Yukon?** Yes in the narrow
+   "EV > 0" sense — Merchant's Wagon (666 no-Yukon/5,286 Yukon at `D`=3), Noble's Vault (360
+   no-Yukon/48,960 Yukon at `D`=15), Royal Treasury (117,000 no-Yukon/337,500 Yukon at `D`=25) are
+   all technically positive at their own gates. **But "positive" is the wrong bar** — Noble's
+   Vault's `360` EV at its own gate is a razor-thin 1.8% of its own `payoutCap`, and (Finding 1)
+   it's dominated by two *safer* options at that exact same power, so "technically EV-positive"
+   doesn't mean "worth attempting." No interaction with clamping found (Finding 4).
+2. **Does Yukon meaningfully change which tier is optimal, or is its effect marginal?** Far from
+   marginal — it's the difference between Noble's Vault being a permanent trap (Findings 1-2) and a
+   genuinely useful tier from Rank 5-6 onward. It shifts Noble's Vault's Market-Stall-breakeven from
+   "never" to `D≥1.4` at Rank 6, and Merchant's Wagon's from "never" (Ranks 2-4) to `D≥1.4` at Rank 4.
+3. **Does EV/hour increase monotonically with rank at fixed power?** For the *optimal available
+   choice* (a player free to keep using whichever tier is actually best), yes — nothing forces a
+   downgrade. For the *newest-unlocked tier specifically*, no, and this is broader than the
+   documented Royal Treasury case: Merchant's Wagon (Ranks 2-4) and Noble's Vault (Ranks 4-6, at
+   every power tested) are BOTH temporarily-or-permanently worse than an already-available tier
+   right after unlock, without Yukon — Royal Treasury's own dip is real but the smallest and most
+   comfortably-margined of the three.
+4. **Does the reward-roll spread's worst case ever look unfairly punishing?** Not on its own
+   (Finding 5) — the tier-selection EV problem (Findings 1-2) is the real issue, not the spread's
+   width.
+5. **Overall verdict — is this tuning pass "good"?** **Not yet — needs a third pass, scoped
+   narrower than the first two.** The two 2026-09-09 passes correctly fixed what they were aimed
+   at (Royal Treasury vs. Noble's Vault, and the negative-EV-at-1x entry gate problem), but the
+   second pass's `LOSS_MULTIPLIER_SCALING` jump (0.15→0.50) was re-solved against Royal Treasury and
+   the minPowerRequired gates without re-checking Noble's Vault and Merchant's Wagon's EV *against
+   each other and against Market Stall* — leaving Noble's Vault a live, permanent, Yukon-dependent
+   trap (Finding 1) and Merchant's Wagon a smaller, Rank-2-4-only version of the same problem
+   (Finding 2). Recommend `product-owner`/`architect` treat this as a follow-up, not a full redo:
+   the fix surface is narrow (Noble's Vault's `baseChance`/`maxChance`/`penaltyPercentOfCap`, or
+   `LOSS_MULTIPLIER_SCALING` itself if a flatter, less penalty-tier-sensitive scaling is preferred)
+   and Royal Treasury/the `minPowerRequired` gates don't need to move again.
