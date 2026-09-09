@@ -160,7 +160,7 @@ class towerFactory{
         if(silent){
             index = pickChoiceIndex(fl, policy)
         }else{
-            index = await this.createFloorEmbed(fl, type, color, description)
+            index = await this.createFloorEmbed(fl, type, color, description, floor_type)
             if(index === 'leave'){
                 // The player left before choosing this floor's own outcome at all — same
                 // ending createNextEmbed's LEAVE branch produces today.
@@ -183,10 +183,12 @@ class towerFactory{
     // fast-forward chain end to end and returns the same plain continue/leave boolean
     // execNormalFloor always returns, so startRun's own loop needs zero special-casing.
     //
-    // The summary embed is ONLY ever shown in the one case where nothing has displayed a
-    // terminal screen yet — reaching the pending forced Elite with no mid-chain detour. Both
-    // "triggeredElite" cases (immediate or mid-chain) mean execElite has ALREADY run for real
-    // and shown its own final embed (win/death/decline) via a real Discord round-trip; calling
+    // The summary embed is shown in exactly two cases: reaching the pending forced Elite with
+    // no mid-chain detour, and pausing on a mid-batch TRANSACTION floor — both hand off to a
+    // SEPARATE real screen right after (the Elite fight, or the Transaction's own choice
+    // buttons) rather than being the final thing the player sees. Both "triggeredElite" cases
+    // (immediate or mid-chain) instead mean execElite has ALREADY run for real and shown its
+    // own final embed (win/death/decline) via a real Discord round-trip; calling
     // createFastForwardSummaryEmbed afterward would silently overwrite that screen with the
     // aggregate summary before the player ever sees it — most importantly hiding a death.
     async runFastForward(floor_type, fl, color){
@@ -211,6 +213,18 @@ class towerFactory{
             return ffResult.cont
         }
 
+        if(ffResult.pausedForTransaction){
+            // A TRANSACTION floor was reached mid-batch and deliberately NOT auto-resolved
+            // (see fastForwardToNextElite's own comment) — recap what the batch gained up to
+            // this point, then hand off to the real interactive floor. this.floor is already
+            // set to the paused floor; execNormalFloor re-picks (and re-filters by
+            // affordability) which specific TRANSACTIONS entry to show, exactly like any other
+            // interactive floor. Whatever it resolves to (including another Fast Forward click
+            // from there) becomes this call's own return value.
+            await this.createFastForwardSummaryEmbed(summary)
+            return await this.execNormalFloor(ffResult.floor_type, false, null)
+        }
+
         // Reached the pending forced Elite with nothing else in the way — show what the
         // batch gained, THEN run the real fight, whose own embed becomes the true final screen.
         await this.createFastForwardSummaryEmbed(summary)
@@ -219,15 +233,22 @@ class towerFactory{
         return cont
     }
 
-    // The actual batch loop — auto-resolves every COMBAT/ENCOUNTER/TRANSACTION/REWARD floor
-    // between here and the next forced Elite (or an earlier mid-chain Elite triggered by a
-    // greedy Wandering Woods/Wizard Lime pick), making zero Discord round-trips along the way.
+    // The actual batch loop — auto-resolves every COMBAT/ENCOUNTER/REWARD floor between here
+    // and the next forced Elite (or an earlier mid-chain Elite triggered by a greedy Wandering
+    // Woods pick), making zero Discord round-trips along the way. TRANSACTION floors are the
+    // one exception (2026-09-09, direct instruction — see createFloorEmbed's own comment):
+    // every one of them is a concrete "spend potatoes on a stat, or risk an Elite to avoid
+    // spending" decision, so the batch stops BEFORE resolving one rather than letting the
+    // policy auto-pick it, no matter how deep into a Fast Forward chain it's reached.
     async fastForwardToNextElite() {
         const summary = emptyFastForwardSummary()
         let floor_type = getFloor()
         while (this.floor % 10 !== 0) {
             this.floor++
             if (this.floor % 10 === 0) break   // reached the next forced Elite floor — stop, caller runs it for real
+            if (floor_type === "TRANSACTION") {
+                return { summary, cont: null, stoppedMidChain: false, pausedForTransaction: true, floor_type }
+            }
             const outcome = await this.execNormalFloor(floor_type, true, this.policy)
             applyOutcomeToSummary(summary, outcome)
             if (outcome && outcome.triggeredElite) {
@@ -457,7 +478,7 @@ class towerFactory{
         }
     }
 
-    async createFloorEmbed(fl, type, color, description){
+    async createFloorEmbed(fl, type, color, description, floor_type = null){
         let fullDescription = description
         if(this.lastResultText){
             fullDescription = `${this.lastResultText}\n\n---\n\n${description}`
@@ -479,11 +500,15 @@ class towerFactory{
                 .setStyle(ButtonStyle.Primary)
         });
 
-        // FAST_FORWARD is unconditionally present from floor 1 onward (this.policy is always
-        // set by chooseRiskPolicy() before this is ever called); LEAVE only shows up when the
-        // player has opted into auto-continue. Worst case (King Kiwi's 3 choices + both extras)
-        // is 5 buttons, exactly Discord's per-row cap.
-        const rowComponents = [...buttons, tC.FAST_FORWARD, ...(this.autoContinue ? [tC.LEAVE] : [])]
+        // FAST_FORWARD is present on every floor from floor 1 onward EXCEPT TRANSACTION
+        // (2026-09-09, direct instruction: "make the auto runs pause on decisions like buying
+        // stats... concrete decisions on stat buying for potatoes should pause there") — every
+        // TRANSACTIONS entry is exactly that kind of decision (pay potatoes for a permanent/
+        // temp stat, or pay to avoid an Elite), so it's shown with ONLY its own real choice
+        // buttons, no shortcut past them. LEAVE only shows up when the player has opted into
+        // auto-continue. Worst case (King Kiwi's 3 choices + both extras) is 5 buttons, exactly
+        // Discord's per-row cap.
+        const rowComponents = [...buttons, ...(floor_type === "TRANSACTION" ? [] : [tC.FAST_FORWARD]), ...(this.autoContinue ? [tC.LEAVE] : [])]
         const row = new ActionRowBuilder().addComponents(rowComponents)
         const reply = await this.interaction.editReply({
             embeds: [embed],
@@ -726,21 +751,22 @@ function pickElite(N) {
 }
 
 // Per-entry-type auto-pick table for fast-forward's silent resolution — every current
-// ENCOUNTERS/TRANSACTIONS/REWARDS entry is a pure, deterministic-by-index lookup (no
-// Math.random() inside the outcome itself), so a policy never needs to "gamble" on an
-// in-choice coinflip that doesn't exist; it only ever picks between two already-known
-// values. See tower.md's fast-forward table for the full per-entry rationale. Keyed by
-// `fl.name` rather than inferred structurally, since a couple of entries (King Kiwi, The
-// Wizard Lime) have outcomes that a generic "highest value" comparison would get wrong
-// (comparing raw numbers across different outcome types, e.g. potatoes vs. a multiplier
-// point, isn't meaningful) — the table is the source of truth for current content, the
-// generic fallback below is a best-effort for anything authored later that isn't added here.
+// ENCOUNTERS/REWARDS entry is a pure, deterministic-by-index lookup (no Math.random() inside
+// the outcome itself), so a policy never needs to "gamble" on an in-choice coinflip that
+// doesn't exist; it only ever picks between two already-known values. See tower.md's
+// fast-forward table for the full per-entry rationale. Keyed by `fl.name` rather than inferred
+// structurally, since a couple of entries (King Kiwi) have outcomes that a generic "highest
+// value" comparison would get wrong (comparing raw numbers across different outcome types,
+// e.g. potatoes vs. a multiplier point, isn't meaningful) — the table is the source of truth
+// for current content, the generic fallback below is a best-effort for anything authored later
+// that isn't added here.
+//
+// No TRANSACTIONS entries here at all (2026-09-09, direct instruction — see createFloorEmbed's
+// own comment): every Transaction is a concrete potato-spending decision, so it's never routed
+// through this table or `pickChoiceIndexDefault` any more — Fast Forward always pauses on one
+// instead, meaning it's simply never handed a Transaction to auto-pick for.
 const AUTO_PICK_TABLE = {
     "Wandering Woods": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.CHOICES.ELITE : tC.CHOICES.EXIT)),
-    "Sales Spinach": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.MODIFIER.WORK_MULTIPLIER : tC.CHOICES.EXIT)),
-    "The Wizard Lime": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.CHOICES.ELITE : tC.PAYOUT.POTATOES)),
-    "The Traveling Turnip": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.PAYOUT.WORK_MULTIPLIER : tC.CHOICES.EXIT)),
-    "The Baron's Beet": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.PAYOUT.BANK_CAPACITY : tC.CHOICES.EXIT)),
     "Fairy Fig": (fl, policy) => fl.choices.findIndex(c => c.outcome === (policy === tC.POLICY.GREEDY ? tC.MODIFIER.WORK_MULTIPLIER : tC.PAYOUT.POTATOES)),
     "King Kiwi": () => 0,   // all three choices carry identical risk — no axis to diverge on.
     "Golden Ginger": () => 0,   // both choices are risk-free permanent grants (200,000 passive

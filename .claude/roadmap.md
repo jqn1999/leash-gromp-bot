@@ -9335,3 +9335,39 @@ COMBAT when nothing is affordable, only ever picks an affordable entry across an
 **Docs**: `.claude/systems/tower.md` gained a new dated section with the full derivation, its
 TRANSACTION/ELITE "Floor types" bullets updated to describe the current (not stale) cap/filter
 behavior.
+
+## Tower: Fast Forward pauses on TRANSACTION decisions (2026-09-09, direct instruction)
+
+Same-day follow-up. Player asked: "Make the auto runs pause on decisions like buying stats. It
+should still auto select things like left/right or 50/50 options some scenarios give but concrete
+decisions on stat buying for potatoes should pause there."
+
+Before this, Fast Forward auto-picked every TRANSACTION exactly like any other floor type
+(SAFE always declined, GREEDY always bought whatever was affordable) — a real potato-spending
+decision (300K-1M, or "pay up or get sent to an Elite" for The Wizard Lime) could get made on the
+player's behalf without them ever seeing it, buried anywhere inside a long batch.
+COMBAT/ENCOUNTER/REWARD floors (the "left/right or 50/50" scenarios named in the request) are
+untouched — those keep auto-resolving exactly as before.
+
+**Two changes in `towerFactory.js`**: `createFloorEmbed` now takes the floor's own `floor_type`
+and omits the Fast Forward button entirely when it's `"TRANSACTION"` — the player only ever sees
+that floor's own real choice buttons, no shortcut past the decision. `fastForwardToNextElite`'s
+silent batch loop now stops BEFORE resolving a TRANSACTION floor reached mid-chain (rather than
+auto-picking it), showing a recap of everything skipped so far and then handing off to the real
+interactive floor — whatever that resolves to (including another Fast Forward click, which can
+itself pause again later) becomes the batch's own final result. The 4 TRANSACTIONS entries in
+`AUTO_PICK_TABLE` (Sales Spinach, The Wizard Lime, The Traveling Turnip, The Baron's Beet) were
+removed, since `pickChoiceIndex` is never invoked for a Transaction any more via any real code
+path.
+
+**Tests**: `towerFactory.test.js` — 3 old `pickChoiceIndex` tests for the removed table entries
+replaced by a new "Fast Forward pauses on TRANSACTION decisions" describe block (a TRANSACTION
+floor's embed omits the Fast Forward button while COMBAT's still has it; `fastForwardToNextElite`
+leaves `this.run` completely untouched and reports `pausedForTransaction` rather than resolving
+one; a full `runFastForward` run that hits a TRANSACTION mid-batch shows it for real with no
+shortcut, then correctly resumes and returns the right final boolean). Full suite green
+(1262/1262, net-unchanged test count).
+
+**Docs**: `.claude/systems/tower.md` — the TRANSACTION "Floor types" bullet updated, a new dated
+section added, and the original 2026-08-31 per-entry auto-pick design table annotated as
+superseded for the 4 removed entries rather than silently left wrong.

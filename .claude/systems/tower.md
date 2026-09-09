@@ -68,7 +68,11 @@ floor — see "King Kiwi" below).
   filter (2026-09-09)** — `execNormalFloor` now only ever offers a `TRANSACTIONS` entry the
   player can currently afford (their `run`'s in-run potato balance, the same figure the `poor`
   check itself reads); if nothing in the pool is affordable it falls back to a real COMBAT floor
-  instead. See "TRANSACTION Affordability Filter" below.
+  instead. See "TRANSACTION Affordability Filter" below. **Never auto-resolved by Fast Forward
+  (2026-09-09)** — every TRANSACTIONS entry is a concrete potato-spending decision, so its own
+  floor embed never shows a Fast Forward button, and a Fast Forward batch stops (rather than
+  auto-picking one) the moment it would reach one mid-chain. See "Fast Forward Pauses on
+  TRANSACTION Decisions" below.
 - **REWARD** — choose-one buff from `tC.REWARDS`. Most are immediate; "King Kiwi" is conditional —
   it promises a stat reward that's pushed onto the `PAYOUT.ELITE_KILL` queue as `[floor, type, amount]`
   and only actually pays out if the player survives the *next* elite floor
@@ -123,11 +127,11 @@ is `<= this.run[PAYOUT.POTATOES]` before picking; if NOTHING in the pool is curr
 the floor falls back to a real COMBAT floor (re-picked from `tC.COMBATS`, `floor_type` itself
 reassigned to `"COMBAT"` so the rest of `execNormalFloor` — and its `updateValue`-vs-
 `updateTransaction` dispatch further down — treats it exactly like a floor that was always
-COMBAT) rather than showing a Transaction with nothing real to transact. Applies identically in
-both interactive and Fast-Forward/silent mode, since both paths run through this same function;
-`pickChoiceIndex`'s own auto-pick logic (used only by Fast Forward) is unchanged and still doesn't
-know about affordability — it never needed to, since a shown Transaction is now always
-affordable by construction.
+COMBAT) rather than showing a Transaction with nothing real to transact. The filter logic itself
+is silent-mode-agnostic (it lives in `execNormalFloor`, ahead of the interactive/silent branch);
+in practice, though, a same-day follow-up (below) means Fast Forward never actually calls this in
+silent mode for a Transaction any more — a paused Transaction is always shown for real instead,
+so this filter's affordability guarantee applies to what the player sees either way.
 
 **Tests**: `towerFactory.test.js`'s existing `ELITE_SUCCESS_CAP is 0.9...` test rewritten to assert
 `0.95` and independence from `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (still `0.9`); the
@@ -137,6 +141,63 @@ when nothing is affordable; with a balance affording only some entries, only eve
 affordable one across an exhaustive `Math.random()` sweep, never an unaffordable one; with enough
 potatoes for every entry, the full pool stays reachable (unchanged pre-existing behavior). Full
 suite green (1262/1262, up from 1259 on `main`).
+
+## Fast Forward Pauses on TRANSACTION Decisions (2026-09-09, direct instruction)
+
+Same-day follow-up, player asked: "Make the auto runs pause on decisions like buying stats. It
+should still auto select things like left/right or 50/50 options some scenarios give but concrete
+decisions on stat buying for potatoes should pause there." Before this, `pickChoiceIndex`
+auto-picked a TRANSACTION exactly like any other floor type during Fast Forward — SAFE always
+declined, GREEDY always bought whatever was affordable (see `AUTO_PICK_TABLE`'s old
+Spinach/Lime/Turnip/Beet entries) — meaning a real-money decision (300K-1M potatoes, or "pay up or
+get sent to an Elite" for The Wizard Lime) could get made on the player's behalf without them ever
+seeing it, buried anywhere inside a long Fast Forward batch. COMBAT/ENCOUNTER/REWARD floors (the
+"left/right or 50/50" scenarios named in the request) are deliberately untouched — those keep
+auto-resolving via `pickChoiceIndex` exactly as before.
+
+**Two changes, both in `towerFactory.js`:**
+
+1. **`createFloorEmbed` no longer includes the Fast Forward button on a TRANSACTION floor at
+   all** — it now takes an explicit `floor_type` parameter (threaded through from
+   `execNormalFloor`, which already has it in scope) and omits `tC.FAST_FORWARD` from the button
+   row specifically when `floor_type === "TRANSACTION"`. The player only ever sees that floor's
+   own real choice buttons (plus `LEAVE` if `autoContinue` is on) — no shortcut past the decision,
+   ever, even on the very floor where Fast Forward would otherwise have been clickable.
+2. **`fastForwardToNextElite`'s silent batch loop stops BEFORE resolving a TRANSACTION floor
+   mid-chain**, rather than silently auto-picking it and continuing. The check sits right after
+   `this.floor` is incremented for that iteration but before `execNormalFloor` is ever called for
+   it, so nothing about that floor is touched (no potato spend, no baseline state change) — the
+   loop returns a new `{ pausedForTransaction: true, floor_type: "TRANSACTION", summary, ... }`
+   result instead of the usual `{ stoppedMidChain, cont }` shape. `runFastForward` (the only
+   caller) handles this by showing a `createFastForwardSummaryEmbed` recap of everything the
+   batch resolved up to that point (same interstitial screen already used before a forced Elite),
+   then calling `execNormalFloor(floor_type, false, null)` for real — which re-picks (and
+   re-filters by affordability, per the section above) which specific `TRANSACTIONS` entry to
+   show, exactly like any other interactive floor. Whatever that resolves to (including another
+   Fast Forward click from there, which can itself pause again on a LATER Transaction) becomes
+   `runFastForward`'s own return value, preserving its existing "always returns the same plain
+   continue/leave boolean `execNormalFloor` returns" contract.
+
+Since the very floor a Fast Forward click originates from can no longer BE a Transaction (the
+button simply isn't there to click), `runFastForward`'s own "resolve the first clicked floor via
+policy" step never needs special-casing for this — it was already structurally impossible to
+reach with `floor_type === "TRANSACTION"` once the button was hidden.
+
+**`AUTO_PICK_TABLE` cleanup**: the 4 TRANSACTIONS entries (Sales Spinach, The Wizard Lime, The
+Traveling Turnip, The Baron's Beet) were removed from the table entirely — `pickChoiceIndex` is
+never invoked for a Transaction any more via any real code path, so keeping stale entries there
+would have been actively misleading to a future reader.
+
+**Tests**: `towerFactory.test.js`'s 3 old `pickChoiceIndex` tests for the removed table entries
+(Sales Spinach/Wizard Lime/Traveling Turnip auto-pick under SAFE/GREEDY) removed, replaced by a
+new "Fast Forward pauses on TRANSACTION decisions" describe block (3 tests): a TRANSACTION floor's
+embed omits the Fast Forward button while a COMBAT floor's still has it; `fastForwardToNextElite`
+returns `pausedForTransaction` and leaves `this.run` completely untouched when it would land on a
+TRANSACTION; and a full `runFastForward` run that hits a TRANSACTION mid-batch shows it for real
+with no Fast Forward button, then correctly resumes and returns the right final `cont` boolean.
+Full suite green (1262/1262, net-unchanged test count — 3 removed, 3 added).
+
+**Docs**: this file's TRANSACTION "Floor types" bullet updated; this section added.
 
 ## Continue / Leave
 
@@ -296,6 +357,12 @@ Elite-seeking) of two already-known values. Concretely, per entry:
 | The Traveling Turnip | `No` (`CHOICES.EXIT`) | `Yes` (buy) | No Elite risk on either path (`poor_outcome: CHOICES.EXIT`); SAFE treats "spending the run's potatoes site-unseen" itself as the thing to avoid, GREEDY takes the permanent 0.2 multiplier if affordable (if not, `updateTransaction`'s existing poor fallback already resolves to `EXIT` — no new handling needed). |
 | Fairy Fig | `500,000 potatoes` | `5 work modifier` | Different outcome types, both deterministic. SAFE takes the persistent, already-banked-if-you-leave-now potato reward. GREEDY takes the bigger-feeling temp power boost to push through whatever's next. |
 | King Kiwi | index 0 (`0.2 work multiplier`) | index 0 (same) | All three choices route through `PAYOUT.ELITE_KILL` and carry **identical** risk (all contingent on surviving the same future Elite) — there's no risk axis for SAFE/GREEDY to diverge on. Pick index 0 under both policies, arbitrarily but consistently (work multiplier is this game's single most load-bearing stat), so a developer doesn't have to guess why no branch exists here. |
+
+> **Superseded (2026-09-09)**: the Sales Spinach/The Wizard Lime/The Traveling Turnip rows above
+> describe this table's ORIGINAL 2026-08-31 design — all 3 (plus The Baron's Beet, added later)
+> were removed from `AUTO_PICK_TABLE` on 2026-09-09; every `TRANSACTIONS` entry now pauses Fast
+> Forward instead of being auto-picked at all. See "Fast Forward Pauses on TRANSACTION Decisions"
+> further down for the current behavior. Left here unedited as a record of the original design.
 
 **General default rule**, for any entry added later that doesn't fit the table above cleanly:
 SAFE picks whichever choice is `CHOICES.EXIT` or otherwise non-negative, and never a choice whose

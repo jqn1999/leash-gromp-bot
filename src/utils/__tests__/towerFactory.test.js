@@ -121,9 +121,6 @@ describe('pickChoiceIndex', () => {
     function findEncounter(name, mirrorIndex = 0) {
         return tC.ENCOUNTERS.filter(e => e.name === name)[mirrorIndex];
     }
-    function findTransaction(name) {
-        return tC.TRANSACTIONS.find(t => t.name === name);
-    }
     function findReward(name) {
         return tC.REWARDS.find(r => r.name === name);
     }
@@ -172,29 +169,12 @@ describe('pickChoiceIndex', () => {
         }
     });
 
-    test('Sales Spinach: SAFE leaves (never spends unseen), GREEDY buys the work modifier', () => {
-        const fl = findTransaction('Sales Spinach');
-        const leaveIndex = fl.choices.findIndex(c => c.outcome === tC.CHOICES.EXIT);
-        const buyIndex = fl.choices.findIndex(c => c.outcome === tC.MODIFIER.WORK_MULTIPLIER);
-        expect(pickChoiceIndex(fl, tC.POLICY.SAFE)).toBe(leaveIndex);
-        expect(pickChoiceIndex(fl, tC.POLICY.GREEDY)).toBe(buyIndex);
-    });
-
-    test('The Wizard Lime: SAFE pays up to avoid the Elite, GREEDY deliberately keeps potatoes and routes to it', () => {
-        const fl = findTransaction('The Wizard Lime');
-        const payIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.POTATOES);
-        const eliteIndex = fl.choices.findIndex(c => c.outcome === tC.CHOICES.ELITE);
-        expect(pickChoiceIndex(fl, tC.POLICY.SAFE)).toBe(payIndex);
-        expect(pickChoiceIndex(fl, tC.POLICY.GREEDY)).toBe(eliteIndex);
-    });
-
-    test('The Traveling Turnip: SAFE declines, GREEDY buys the permanent multiplier', () => {
-        const fl = findTransaction('The Traveling Turnip');
-        const noIndex = fl.choices.findIndex(c => c.outcome === tC.CHOICES.EXIT);
-        const yesIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.WORK_MULTIPLIER);
-        expect(pickChoiceIndex(fl, tC.POLICY.SAFE)).toBe(noIndex);
-        expect(pickChoiceIndex(fl, tC.POLICY.GREEDY)).toBe(yesIndex);
-    });
+    // TRANSACTIONS entries removed from AUTO_PICK_TABLE entirely (2026-09-09, direct
+    // instruction) — every one of them is a concrete potato-spending decision, so Fast Forward
+    // now always pauses on one instead of ever handing it to pickChoiceIndex to auto-pick. See
+    // the "TRANSACTION decisions always pause Fast Forward" describe block below for the
+    // behavior that replaces what used to be tested here (Sales Spinach/Wizard Lime/Traveling
+    // Turnip auto-pick).
 
     test('Fairy Fig: SAFE takes the persistent potato reward, GREEDY takes the temp power boost', () => {
         const fl = findReward('Fairy Fig');
@@ -792,6 +772,94 @@ describe('TRANSACTION affordability filter (execNormalFloor)', () => {
             randomSpy.mockRestore();
         }
         expect(seenNames.size).toBe(tC.TRANSACTIONS.length); // every entry reachable, none filtered out
+    });
+});
+
+// Fast Forward pauses on TRANSACTION decisions (2026-09-09, direct instruction: "Make the
+// auto runs pause on decisions like buying stats. It should still auto select things like
+// left/right or 50/50 options some scenarios give but concrete decisions on stat buying for
+// potatoes should pause there"). Every TRANSACTIONS entry is exactly that kind of decision
+// (pay potatoes for a permanent/temp stat, or pay to avoid an Elite) — COMBAT/ENCOUNTER/
+// REWARD floors (the "left/right or 50/50" scenarios) are unaffected and keep auto-resolving,
+// covered by the existing pickChoiceIndex/fastForwardToNextElite tests above.
+describe('Fast Forward pauses on TRANSACTION decisions', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+    function buttonCustomIds(editReplyCall) {
+        return editReplyCall[0].components[0].components.map(b => b.data.custom_id);
+    }
+
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    test('a TRANSACTION floor is shown with no Fast Forward button, unlike a COMBAT floor', async () => {
+        const combatInteraction = fakeInteraction([choice(tC.COMBATS[0].choices[0].name)]);
+        const combatTF = new towerFactory(combatInteraction, 'tester', tC.ENTRY_GATE_MULTI);
+        await combatTF.execNormalFloor('COMBAT', false, null);
+        expect(buttonCustomIds(combatInteraction.editReply.mock.calls[0])).toContain('fast_forward');
+
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // deterministically picks TRANSACTIONS[0] (Sales Spinach)
+        const declineChoice = tC.TRANSACTIONS[0].choices.find(c => c.outcome === tC.CHOICES.EXIT);
+        const transactionInteraction = fakeInteraction([choice(declineChoice.name)]);
+        const transactionTF = new towerFactory(transactionInteraction, 'tester', tC.ENTRY_GATE_MULTI);
+        transactionTF.run[tC.PAYOUT.POTATOES] = 10000000;
+        await transactionTF.execNormalFloor('TRANSACTION', false, null);
+        expect(buttonCustomIds(transactionInteraction.editReply.mock.calls[0])).not.toContain('fast_forward');
+    });
+
+    test('fastForwardToNextElite stops BEFORE resolving a TRANSACTION floor — nothing is bought, nothing is skipped silently', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.policy = tC.POLICY.SAFE;
+        tF.floor = 1;
+        tF.run[tC.PAYOUT.POTATOES] = 10000000;
+
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(12.5 / 18); // getFloor() -> TRANSACTION band (12-14 of 18)
+
+        const result = await tF.fastForwardToNextElite();
+
+        expect(result.pausedForTransaction).toBe(true);
+        expect(result.floor_type).toBe('TRANSACTION');
+        expect(tF.floor).toBe(2); // advanced to the paused floor, same as any other floor
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(10000000); // untouched — nothing was resolved
+    });
+
+    test('runFastForward: a TRANSACTION reached mid-batch pauses, shows its real choices with no shortcut, then the run continues normally afterward', async () => {
+        randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(12.5 / 18) // fastForwardToNextElite's getFloor() for floor 2 -> TRANSACTION
+            .mockReturnValueOnce(0);        // the paused floor's own affordable-entry pick -> TRANSACTIONS[0] (Sales Spinach)
+
+        const salesSpinach = tC.TRANSACTIONS[0];
+        const declineChoice = salesSpinach.choices.find(c => c.outcome === tC.CHOICES.EXIT);
+        const interaction = fakeInteraction([
+            choice(declineChoice.name), // the real Sales Spinach floor, shown for real
+            choice('leave'),            // the Continue/Leave screen afterward
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.policy = tC.POLICY.SAFE;
+        tF.floor = 1;
+        tF.run[tC.PAYOUT.POTATOES] = 10000000; // affords every TRANSACTIONS entry
+
+        const cont = await tF.runFastForward('COMBAT', tC.COMBATS[0], 'Orange');
+
+        // The Transaction floor's own embed (not the Fast Forward Summary) is the one with a
+        // real awaitMessageComponent call — assert it never offered a Fast Forward shortcut.
+        const transactionCallIndex = interaction.editReply.mock.calls.findIndex(call =>
+            call[0].embeds?.[0]?.data?.title?.includes('Sales Spinach'));
+        expect(transactionCallIndex).toBeGreaterThan(-1);
+        expect(buttonCustomIds(interaction.editReply.mock.calls[transactionCallIndex])).not.toContain('fast_forward');
+
+        expect(tF.floor).toBe(2); // stayed on the paused Transaction floor, never silently advanced past it
+        expect(cont).toBe(false); // the player left afterward — same plain boolean execNormalFloor always returns
     });
 });
 
