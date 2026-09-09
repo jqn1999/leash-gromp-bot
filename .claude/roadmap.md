@@ -9385,3 +9385,50 @@ first (a low-rank/high-power mercenary is rejected for rank, not power). Full su
 **Docs**: `.claude/systems/mercenary-bounties.md`'s `/rob-npc` section — the odds
 formula, tier table (new power-gate column, retuned Royal Treasury row), and two new
 subsections (reward-roll-coupled risk, power gate) covering the full derivation.
+
+## Fix: Heist loss scaling raised 0.15 -> 0.50, forcing a second Heist Ladder retune (2026-09-09, direct instruction, same day)
+
+Player follow-up to the tuning fix above, after checking a real result against it: "I just
+meant the loss factor seems a bit low for a failed rob" (74K loss vs. a 441K-potential win on
+Noble's Vault at 27.2x multi, only ~14% of the win). Asked how far to push it, picked
+"~40-45% of win (a real gut-punch)".
+
+**`RobNpc.LOSS_MULTIPLIER_SCALING`: `0.15 -> 0.50`.** A fresh player (1x) still sees zero
+change — the formula's `(developedMultiplier - 1)` term is exactly 0 there. A developed
+player's loss now lands near the requested band relative to their own win at the same tier:
+Noble's Vault at 27.2x moves from ~14% to ~41%. Since the ratio scales with each tier's own
+`penaltyPercentOfCap` (0.5/0.75/1.0), the three real-stakes tiers land at different points
+along that band by design — Merchant's Wagon ~27%, Noble's Vault ~41%, Royal Treasury ~55% —
+matching the existing 2026-09-08 penalty-escalation intent rather than flattening it.
+
+**This completely undid the SAME DAY's earlier Heist Ladder EV fix** — LOSS_MULTIPLIER_SCALING
+is a shared multiplier on top of each tier's own `penaltyPercentOfCap`, so a steeper shared
+factor hits the higher-ratio tiers proportionally harder. Noble's Vault's own breakeven power
+moved from ~2.5x to ~14x; Royal Treasury's earlier win-side buff (26%->33% chance, 40K->50K
+cap) was completely swamped — back to being EV-dominated by Noble's Vault at every power
+level, worse than before that morning's fix. Everything had to be re-solved from scratch:
+
+- **Merchant's Wagon**: gate `2x -> 3x` (its 0.5 ratio is the lightest of the three, barely
+  moved) — odds/cap untouched.
+- **Noble's Vault**: gate `3x -> 15x` (an exact shop checkpoint, well past its new ~14x
+  breakeven) — odds/cap untouched.
+- **Royal Treasury**: max chance `33% -> 42%` (now matching Noble's Vault's own ceiling — a
+  deliberate coincidence, not a copy-paste bug), cap stays 50,000, gate `5x -> 25x`.
+  `penaltyPercentOfCap` stays 1.0 throughout — every fix across both passes has been a
+  WIN-side buff and gate adjustment, never a penalty walk-back. The resulting EV crossover
+  against Noble's Vault's own best case sits around power ~5.5-6x, well below the new 25x
+  gate — Royal Treasury is already the clearly better pick the moment it's attemptable, not a
+  razor's-edge parity right at unlock.
+
+**Tests**: `mercenaryFactory.test.js` — all existing `resolveNpcRob`/gate tests reference
+`RobNpc.LOSS_MULTIPLIER_SCALING`/`tier.minPowerRequired`/`tier.penaltyPercentOfCap` live off
+the constants rather than hardcoded values, so they needed zero changes despite the retune.
+Two new tests added: locks in `LOSS_MULTIPLIER_SCALING === 0.50` and that Noble's Vault's
+loss:win ratio at a real reported power level (27.2x) lands in the requested 35-50% band;
+locks in that Royal Treasury genuinely beats Noble's Vault's own best case both at its own
+gate and well past it. Full suite green (1270/1270, up from 1268 on `main`).
+
+**Docs**: `.claude/systems/mercenary-bounties.md`'s `/rob-npc` section — tier table
+(all 3 gates updated, Royal Treasury's odds row), Power gate / Royal Treasury retune /
+Loss scaling subsections rewritten to describe both retune passes and why the second one was
+forced by the first.

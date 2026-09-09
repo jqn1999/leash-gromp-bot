@@ -591,9 +591,14 @@ roll to size a matching penalty off of.
 | Tier | Rank | Power gate | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|---|---|
 | Market Stall | 1+ | — (none) | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Merchant's Wagon | 2+ | 2x | 20% / +8% / 60% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
-| Noble's Vault | 4+ | 3x | 12% / +6% / 42% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
-| The Royal Treasury | 6 only | 5x | 8% / +5% / 33% | 50,000 | 1.0 (x2.0) | 40,000-60,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Merchant's Wagon | 2+ | 3x | 20% / +8% / 60% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
+| Noble's Vault | 4+ | 15x | 12% / +6% / 42% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
+| The Royal Treasury | 6 only | 25x | 2% / +8% / 42% | 50,000 | 1.0 (x2.0) | 40,000-60,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+
+Power gates land on real shop checkpoints from `SCALING_ANCHOR_TABLE` (3x/15x/25x). "On a
+whiff" figures above are the pre-`lossScale` baseline at exactly 1x developed multiplier —
+see **Loss scaling** below for what a real, developed mercenary's loss actually looks like
+(considerably more, by design).
 
 Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
 defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
@@ -620,25 +625,38 @@ actually negative (a whiff's flat penalty outweighing a still-undeveloped win). 
 now checks `userDetails.workMultiplierAmount >= tier.minPowerRequired` right after the rank
 check, rejecting with a plain message (`"needs at least a Nx work multiplier..."`) rather
 than silently letting the player walk into a losing proposition. Gates land on real shop
-checkpoints (`SCALING_ANCHOR_TABLE`'s own 2/3/5x entries — Tower's `enter-tower.js` uses the
-same table) rather than arbitrary numbers, and each was sized with a comfortable margin
-above the power level where that tier's own EV first turns positive (checked directly
-against the live formulas: Merchant's Wagon breaks even ~1.5x, Noble's Vault ~2.5x, The
-Royal Treasury ~3x). Purely a `robNpc.js`-level UX guard — `resolveNpcRob` itself doesn't
-read or enforce `minPowerRequired` at all, the same separation of concerns `rankRequired`
-already has (also only checked in `robNpc.js`, never inside `resolveNpcRob`).
+checkpoints (`SCALING_ANCHOR_TABLE`'s own 3/15/25x entries — Tower's `enter-tower.js` uses
+the same table) rather than arbitrary numbers, each sized with a margin above the power level
+where that tier's own EV first turns positive. Purely a `robNpc.js`-level UX guard —
+`resolveNpcRob` itself doesn't read or enforce `minPowerRequired` at all, the same separation
+of concerns `rankRequired` already has (also only checked in `robNpc.js`, never inside
+`resolveNpcRob`).
 
-**The Royal Treasury retuned alongside the power gate (2026-09-09, direct instruction: "fix
-it").** `balance-audit.md`'s 2026-09-09 entry found this tier strictly EV-dominated by
-Noble's Vault at EVERY power level (`EV(NoblesVault) - EV(RoyalTreasury) = 1235*power +
-17765`, always positive — there was no power level at which the "hardest, capstone" tier was
-ever the correct pick). `penaltyPercentOfCap` deliberately left at `1.0` (the x2.0
-Guild-Raid-Legendary-matching ratio from the 2026-09-08 penalty-escalation work is
-preserved, not walked back); instead the WIN side was buffed — max chance `26% -> 33%`,
-payout cap `40,000 -> 50,000` — which flips the two tiers' EV-vs-power slope: Noble's Vault
-stays the better pick from unlock through ~power 5.5x, The Royal Treasury overtakes it from
-there on and the gap keeps growing, a genuine "grow into the capstone tier" curve instead of
-a trap that was never worth entering at all.
+**These gates (and Royal Treasury's own odds) were retuned TWICE the same day** — the second
+pass was forced by the loss-scaling jump described below, and the numbers currently in the
+table above already reflect it. **First pass** (alongside the power gate's initial rollout):
+`balance-audit.md`'s 2026-09-09 entry found Royal Treasury strictly EV-dominated by Noble's
+Vault at EVERY power level (`EV(NoblesVault) - EV(RoyalTreasury) = 1235*power + 17765`,
+always positive), so its odds were buffed (max chance `26% -> 33%`, cap `40,000 -> 50,000`)
+and gates were set at Merchant's Wagon 2x / Noble's Vault 3x / Royal Treasury 5x — all sized
+against `LOSS_MULTIPLIER_SCALING`'s value AT THE TIME, 0.15. **Second pass**, same day,
+immediately after: `LOSS_MULTIPLIER_SCALING` jumped `0.15 -> 0.50` (see **Loss scaling**
+below — a separate, unrelated player report about the loss amount itself feeling too small)
+— which hits `penaltyPercentOfCap`-heavier tiers far harder than lighter ones, since it's a
+multiplicative factor on top of that ratio. Noble's Vault's own breakeven power moved from
+~2.5x to ~14x; Royal Treasury's first-pass fix was completely undone (back to being
+dominated at every power level, worse than before the first pass). Everything was re-solved
+from scratch against the new 0.50 value: Merchant's Wagon needed only a small gate bump (2x
+-> 3x, its 0.5 `penaltyPercentOfCap` is the lightest of the three and barely felt the change);
+Noble's Vault's gate rose sharply (3x -> 15x) with its own odds left untouched; Royal
+Treasury's max chance rose again (33% -> 42% — the SAME ceiling Noble's Vault itself caps at,
+a coincidence worth flagging so a future reader doesn't mistake it for a copy-paste bug; cap
+stays 50,000) and its gate rose to 25x. `penaltyPercentOfCap` was never touched in either
+pass (the x2.0 Guild-Raid-Legendary-matching ratio from 2026-09-08 stays intact) — every fix
+here has been a WIN-side buff plus gate adjustments, never a penalty walk-back. The resulting
+EV crossover against Noble's Vault's own best case (its max Rank-6 chance) sits around power
+~5.5-6x — well below Royal Treasury's 25x gate, so by the time it's even attemptable it's
+already the clearly better pick, not a razor's-edge parity right at unlock.
 
 **`penaltyPercentOfCap` escalates by tier (2026-09-08, direct instruction — see Bounty's own
 matching penalty-escalation entry above for the full rationale).** Was a single flat 0.5
@@ -668,11 +686,18 @@ developedMultiplier = workMultiplierAmount + guildMultiplier(always 0) + compani
 lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1)
 penaltyAmount = round(payoutCap * tier.penaltyPercentOfCap * [.8-1.2] * lossScale)
 ```
-At **15%**, a brand-new player (1x) sees zero change from the flat baseline table above; a
-5.4x player's loss grows ~1.66x; a heavily-invested 90x player's loss grows ~14.4x — but
-checked against a live reported server total (~19.7M potatoes), that scaled-up loss still
-lands at only ~7-10% of that same player's own win at the same tier, so losses stay
-proportionate to wins without ever threatening to match them. Deliberately reads off
+**Raised `0.15 -> 0.50` (2026-09-09, direct instruction).** Player reported a real result — a
+74K loss against a 441K-potential Noble's Vault win at 27.2x multi, only ~14% of the win —
+"the loss factor seems a bit low for a failed rob," and picked "~40-45% of win, a real
+gut-punch" when asked how far to push it. At the new 0.50, a brand-new player (1x) still sees
+zero change from the flat baseline (the formula's own `(developedMultiplier - 1)` term is
+exactly 0 there); a developed player's loss now lands in roughly that target band relative to
+their OWN win at the SAME tier — e.g. Noble's Vault at 27.2x: ~41% (up from ~14% at the old
+0.15). The ratio still climbs by tier exactly as `penaltyPercentOfCap`'s own 0.5/0.75/1.0
+escalation intends (Merchant's Wagon ~27%, Royal Treasury ~55%, at the same 27.2x reference
+power) — just off a much steeper shared scaling factor now. **This jump is what forced the
+second retune pass on every tier's `minPowerRequired` and Royal Treasury's own odds** — see
+those entries above for the full knock-on accounting. Deliberately still reads off
 `developedMultiplier`, NOT the catch-up-boosted `effectiveMultiplier` the reward side
 uses — catch-up exists to help an underperforming player keep pace with a maturing economy,
 so a catch-up-boosted player shouldn't also take a bigger loss because of the same boost

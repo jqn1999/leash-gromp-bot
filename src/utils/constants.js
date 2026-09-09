@@ -2366,12 +2366,24 @@ const RobNpc = {
     // make a heavily-developed player's loss balloon to rival their own win, undermining
     // "risk/reward genuinely improves with progression"), this applies only a fraction of
     // that scaling: lossScale = 1 + LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1).
-    // At 15%, a fresh player (1x) sees zero change from the pre-scaling flat baseline; a
-    // 5.4x player's loss grows ~1.66x; a heavily-invested 90x player's loss grows ~14.4x —
-    // still only ~7-10% of that same player's own win at the same tier (checked against a
-    // live reported server total, ~19.7M potatoes), so losses stay proportionate to wins
-    // without ever threatening to match them.
-    LOSS_MULTIPLIER_SCALING: 0.15,
+    //
+    // Raised 0.15 -> 0.50 (2026-09-09, direct instruction: player reported a 74K loss on a
+    // 441K-potential Noble's Vault attempt at 27.2x multi felt too small — "the loss factor
+    // seems a bit low for a failed rob" — and picked "~40-45% of win, a real gut-punch" when
+    // asked how far to push it). At 50%, a fresh player (1x) still sees zero change from the
+    // pre-scaling flat baseline (the formula's own (developedMultiplier - 1) term is exactly
+    // 0 there), but a developed player's loss now lands close to that target band relative to
+    // their own win at the SAME tier — e.g. Noble's Vault at 27.2x: ~41% (up from ~14% at the
+    // old 0.15 scaling); Merchant's Wagon (lower penaltyPercentOfCap) sits lower at ~27%,
+    // Royal Treasury (higher penaltyPercentOfCap) sits higher at ~55% — the ratio still climbs
+    // by tier exactly as `penaltyPercentOfCap`'s own 0.5/0.75/1.0 escalation intends, just off
+    // a much steeper shared scaling factor now. This large a jump required re-deriving every
+    // tier's own minPowerRequired AND retuning Royal Treasury's odds again — see each TIERS
+    // entry's own comment below; the 2026-09-09 Royal-Treasury-vs-Noble's-Vault EV fix that
+    // shipped earlier the same day used the OLD 0.15 scaling and needed re-verifying from
+    // scratch against this new value (it no longer held once losses got this much heavier —
+    // see that entry's own comment for the corrected numbers).
+    LOSS_MULTIPLIER_SCALING: 0.50,
 
     // Per-attempt success-chance/reward coupling (2026-09-09, direct instruction: "make the
     // success rates jump a bit depending on what the reward roll would be? So for lower
@@ -2418,12 +2430,12 @@ const RobNpc = {
             // mercenary could reach any rank via Baby Bounty grinding alone without ever
             // raising their own economic power above the literal default of 1x, at which
             // point every real-stakes Heist tier's EV was actually negative (a whiff's flat
-            // penalty outweighing a still-undeveloped win). 2x is an easy, early bar (below
-            // even the shop's own first real checkpoint at 3x) — checked against live
-            // formulas: EV turns positive right around power 1.5x, this leaves a safety
-            // margin. See RobNpc's own minPowerRequired comment pattern repeated below for
-            // Tiers III/IV.
-            minPowerRequired: 2,
+            // penalty outweighing a still-undeveloped win). Re-derived same day (2026-09-09)
+            // after LOSS_MULTIPLIER_SCALING's own 0.15 -> 0.50 jump (see that constant's own
+            // comment) — this tier's breakeven power barely moved (~1.5x -> ~2.2x, since its
+            // penaltyPercentOfCap of 0.5 is the smallest of the three real-stakes tiers), so
+            // 3x (an exact shop checkpoint, up from 2x) still leaves a comfortable margin.
+            minPowerRequired: 3,
             baseChance: 0.20,
             chancePerRank: 0.08,
             maxChance: 0.60,
@@ -2437,10 +2449,13 @@ const RobNpc = {
             key: 'noble_vault',
             label: 'Noble\'s Vault',
             rankRequired: 4,          // Rank 4 = MercenaryRank.THRESHOLDS' own 125-win threshold
-            minPowerRequired: 3,      // EV turns positive right around 2.5x at this tier's own
-                                       // unlock rank (Rank 4, 30% chance) — 3x (an exact shop
-                                       // checkpoint) leaves a safety margin, same reasoning as
-                                       // Merchant's Wagon above.
+            // Re-derived same day (2026-09-09) after LOSS_MULTIPLIER_SCALING's own 0.15 ->
+            // 0.50 jump — this tier's own breakeven power (at its unlock rank's 30% chance)
+            // moved much further than Merchant's Wagon's did (~2.5x -> ~14x), since a 0.75
+            // penaltyPercentOfCap gets hit much harder by a steeper shared loss-scaling factor
+            // than 0.5 does. 15x (an exact shop checkpoint, up from 3x) leaves a comfortable
+            // margin over that new breakeven rather than sitting right on top of it.
+            minPowerRequired: 15,
             baseChance: 0.12,
             chancePerRank: 0.06,
             maxChance: 0.42,
@@ -2454,28 +2469,37 @@ const RobNpc = {
             key: 'royal_treasury',
             label: 'The Royal Treasury',
             rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
-            minPowerRequired: 5,      // EV turns positive right around 3x at this tier's own
-                                       // fixed Rank-6 odds — 5x (an exact shop checkpoint,
-                                       // matching Merchant's Wagon/Noble's Vault's own
-                                       // "gate lands on a real progression milestone"
-                                       // pattern) leaves a comfortable margin.
-            // Retuned alongside the power gate above (2026-09-09, direct instruction: "fix
-            // it") — was baseChance 0.06/chancePerRank 0.04/maxChance 0.26, payoutCap 40000.
-            // balance-audit.md's 2026-09-09 entry found this tier strictly EV-dominated by
-            // Noble's Vault at EVERY power level (EV3-EV4 = 1235*power + 17765, always
-            // positive — there was no power level at which the "hardest, capstone" tier was
-            // ever the right pick). penaltyPercentOfCap deliberately left at 1.0 (the x2.0
-            // Guild-Raid-Legendary-matching ratio from the 2026-09-08 penalty-escalation
-            // work is preserved, not walked back) — instead the WIN side was buffed (odds
-            // 0.26 -> 0.33 max chance, cap 40,000 -> 50,000), which flips the two tiers'
-            // EV-vs-power slope: Noble's Vault stays the better pick from unlock through
-            // ~power 5.5x, Royal Treasury overtakes it from there on and the gap keeps
-            // growing — a genuine "grow into the capstone tier" curve instead of a trap that
-            // was never worth entering.
-            baseChance: 0.08,
-            chancePerRank: 0.05,      // still technically "+/rank" for shape consistency with the other 3 tiers,
-                                       // but only reachable at Rank 6 itself (0.08 + 0.05*5 = 0.33 flat once unlocked)
-            maxChance: 0.33,
+            // Retuned TWICE the same day (2026-09-09, both direct instruction: "fix it").
+            // First pass: was baseChance 0.06/chancePerRank 0.04/maxChance 0.26, payoutCap
+            // 40000 — balance-audit.md's 2026-09-09 entry found this tier strictly
+            // EV-dominated by Noble's Vault at EVERY power level, so odds were buffed to
+            // 0.33 max chance / 50,000 cap, flipping the slope so this tier overtook Noble's
+            // Vault from ~power 5.5x onward. That fix used LOSS_MULTIPLIER_SCALING's OLD
+            // value (0.15). Second pass, same day: LOSS_MULTIPLIER_SCALING jumped 0.15 -> 0.50
+            // (see that constant's own comment — player-reported, "the loss factor seems a
+            // bit low for a failed rob"), which hits this tier's own 1.0 penaltyPercentOfCap
+            // far harder than Noble's Vault's 0.75 — the first pass's fix was completely
+            // undone by that (this tier went back to being dominated at every power level,
+            // now even worse than before). Re-solved from scratch: max chance raised again to
+            // 0.42 (the SAME ceiling Noble's Vault itself caps at — a coincidence worth
+            // flagging so a future reader doesn't mistake it for a copy-paste bug; cap stays
+            // 50,000, unchanged from the first pass) — this produces a real EV crossover
+            // against Noble's Vault's own best case (its max Rank-6 chance) around power
+            // ~5.5-6x. `minPowerRequired` (25x, an exact shop checkpoint) sits well PAST that
+            // crossover rather than right on top of it — by the time this tier is even
+            // attemptable, it's already the clearly better pick over Noble's Vault, with a
+            // comfortable margin against the usual +/-20% variance swings on top. The much
+            // larger gap between this tier's own EV-positive floor (~2.76x) and its gate
+            // (25x) versus the other two tiers' own tighter margins is deliberate — the
+            // rarest, most consequential tier gets the most conservative buffer.
+            // penaltyPercentOfCap stays 1.0 throughout both passes (the x2.0
+            // Guild-Raid-Legendary-matching ratio from 2026-09-08 was never walked back) —
+            // every fix here has been a WIN-side buff only.
+            minPowerRequired: 25,
+            baseChance: 0.02,
+            chancePerRank: 0.08,      // still technically "+/rank" for shape consistency with the other 3 tiers,
+                                       // but only reachable at Rank 6 itself (0.02 + 0.08*5 = 0.42 flat once unlocked)
+            maxChance: 0.42,
             payoutCap: 50000,
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged

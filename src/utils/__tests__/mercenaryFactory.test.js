@@ -874,6 +874,59 @@ describe('resolveNpcRob', () => {
         }
         expect(armoredVaultHit.statReward).toBeNull();
     });
+
+    // 2026-09-09, direct instruction — player-reported "the loss factor seems a bit low for
+    // a failed rob" (a 74K loss against a 441K-potential win on Noble's Vault at 27.2x multi,
+    // only ~14% of the win). Raised LOSS_MULTIPLIER_SCALING 0.15 -> 0.50 after the player
+    // picked "~40-45% of win, a real gut-punch." Locks in both the constant itself and the
+    // resulting ratio band on Noble's Vault at a real reported power level, using the exact
+    // formula resolveNpcRob's own loss branch computes (payoutCap * penaltyPercentOfCap *
+    // lossScale, midpoint variance) against calculateGainAmount's own reward formula
+    // (payoutCap * power * 0.95, midpoint variance) — not a re-derivation, the same two
+    // formulas the live code runs.
+    test('LOSS_MULTIPLIER_SCALING (0.50) puts Noble\'s Vault\'s loss in the requested ~40-45% of win band at a real reported power level', () => {
+        expect(RobNpc.LOSS_MULTIPLIER_SCALING).toBe(0.50);
+
+        const power = 27.2;
+        const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+        const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
+        const lossMid = nobleVault.payoutCap * nobleVault.penaltyPercentOfCap * lossScale;
+        const rewardMid = nobleVault.payoutCap * power * 0.95;
+        const ratio = lossMid / rewardMid;
+
+        expect(ratio).toBeGreaterThan(0.35);
+        expect(ratio).toBeLessThan(0.50);
+    });
+
+    // The Royal Treasury retune (2026-09-09, second pass, same day as the loss-scaling jump
+    // above) — the first pass's fix (odds 0.26 -> 0.33, cap 40K -> 50K) was calibrated against
+    // the OLD 0.15 loss scaling and got completely undone the moment that jumped to 0.50 (a
+    // 0.75-vs-1.0 penaltyPercentOfCap tier is hit much harder by a steeper shared scaling
+    // factor). Locks in that Royal Treasury genuinely overtakes Noble's Vault's own best case
+    // (its max Rank-6 chance) at high power, not just at its own gate.
+    test('Royal Treasury (0.42 chance, 50K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the second retune pass', () => {
+        const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+        const royalTreasury = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
+        // Both cap out at Rank 6 — Royal Treasury's own maxChance now matches Noble's Vault's
+        // exactly (a deliberate coincidence, not a bug — see the constant's own comment).
+        expect(royalTreasury.maxChance).toBe(nobleVault.maxChance);
+
+        function evAtPower(tier, power) {
+            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
+            const rewardMid = tier.payoutCap * power * 0.95;
+            const lossMid = tier.payoutCap * tier.penaltyPercentOfCap * lossScale;
+            return tier.maxChance * rewardMid - (1 - tier.maxChance) * lossMid;
+        }
+
+        // The crossover itself sits around power ~5.5-6x, well below Royal Treasury's own
+        // gate (25x) — so by the time this tier is even attemptable, it's already the
+        // clearly better pick over Noble's Vault's own best case, with a comfortable margin
+        // (not a razor's-edge parity right at unlock).
+        expect(evAtPower(royalTreasury, royalTreasury.minPowerRequired))
+            .toBeGreaterThan(evAtPower(nobleVault, royalTreasury.minPowerRequired));
+        // The lead keeps growing well past the gate too.
+        expect(evAtPower(royalTreasury, 50)).toBeGreaterThan(evAtPower(nobleVault, 50));
+    });
 });
 
 describe('resolveYukonAward', () => {
