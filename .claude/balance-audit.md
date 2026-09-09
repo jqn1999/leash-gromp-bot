@@ -1837,3 +1837,133 @@ its own T1 (2,378) produces the byte-identical percentage split (same relative s
   array reference (`tierConfig.scenarios` IS `regularRaidScenarios`/`eliteRaidScenarios`/
   `legendaryRaidScenarios`, not a copy) — no second, independently-drifting odds table introduced,
   the exact bug class the 2026-08-26 rework (item 61) already had to fix once.
+
+---
+
+## 2026-09-09 — Focused re-check: `/rob-npc` Heist Ladder vs. Mercenary Bounty (post 2026-09-08
+penalty-escalation rework)
+
+Focused re-check, prompted by a user question: is `/rob-npc`'s Heist Ladder (`RobNpc`,
+`mercenaryFactory.resolveNpcRob`) reward/loss tuning internally coherent, and coherent next to
+Bounty's very different flat-and-Rank-scaled reward philosophy (`Bounty`,
+`resolveBountyAttempt`)? Both got their loss-scaling reworked the same day (2026-09-08,
+`RobNpc.LOSS_MULTIPLIER_SCALING` / `Bounty.TIERS`' penalty-ratio escalation). Computed real EV
+per attempt and EV/hour for all 4 Heist tiers and all 12 Bounty tiers, at power levels spanning
+fresh/lightly-developed/heavily-developed/beyond-Bounty's-own-ceiling, via `node -e` (not
+eyeballed) — grounded against live formulas in `mercenaryFactory.js`, `workFactory.js`
+(`calculateGainAmount`, `applyCatchUp`, `getCatchUpBonus`), and `raidFactory.js`
+(`getEffectiveRaidPower`, `rollWeightedTier`, `getDynamicTierWeights`). Full findings reported to
+the user in-session; summarized here for the log.
+
+### Findings
+
+**1. [HIGH, live] Royal Treasury (Tier IV) is EV-dominated by Noble's Vault (Tier III) at every
+positive power level, not just at low power — the top tier of the Heist Ladder is never the
+rational choice, purely on EV.** Stage: mid/late game (Tier IV only unlocks at Rank 6). At Rank
+6 (Tier IV's only reachable rank, `successChance` fixed at its `maxChance` of 0.26 —
+`constants.js:2414-2431`), solved `evAttempt(T3, power) - evAttempt(T4, power) = 1235*power +
+17765` algebraically from the two tiers' own `baseChance`/`payoutCap`/`penaltyPercentOfCap`
+constants (`constants.js:2401-2431`) — strictly positive for every `power >= 0`, so T3 beats T4
+at every power level with no crossover. Confirmed numerically: at power 5.4x, evHr(T3)=57,300 vs.
+evHr(T4)=8,432; at power 90x, evHr(T3)=1,186,710 vs. evHr(T4)=928,880. T4's only non-EV
+compensation is its unique 5% per-win `pickStatGrant('I', ...)` roll (`constants.js:2426-2430`) —
+real, but doesn't change the underlying EV-dominance, and the tier's own doc comment
+(`constants.js:2426-2429`, `mercenary-bounties.md`'s matching section) frames T4 as "same payout
+as every other Rank 6 win" when it's actually reliably worse in expectation than T3. Also solved
+the full rank-6 tier-preference crossover analytically: T1 optimal only below power≈1.06x, T2
+optimal 1.06x–4.47x, T3 optimal at every power ≥4.47x forever — Tier IV is never optimal at any
+power. Recommend `product-owner`/`architect` decide whether Tier IV's payout cap/penalty ratio
+needs retuning to actually beat T3, or whether its role is meant to be "flavor/rare-grant tier,
+not the EV-optimal pick" (in which case the player-facing framing as the top/hardest/best-paying
+tier is misleading and worth a docs or in-game copy fix at minimum).
+
+**2. [HIGH, live] "High rank, low power" trap is real and reachable via an intended, low-risk
+grinding path — not a hypothetical edge case.** `mercenaryBountyWinCount` (which alone drives
+Mercenary Rank, `mercenaryFactory.getMercenaryRankInfo`) is incremented only by `/take-bounty`
+wins (`takeBounty.js:155`); `/rob-npc` wins bump a separate, Rank-inert
+`mercenaryHeistWinCount` (`robNpc.js:171`). Baby Bounty always resolves the fixed, low-risk B1
+tier unconditionally (`Bounty.TIERS[0]`, `mercenaryFactory.js:125-126`), whose own breakeven
+power is only ~5x (solved from B1's exact 1.00x penalty:reward ratio) — trivially clearable
+without ever touching the work shop. A player who reaches Rank 6 (525 wins) primarily via Baby
+Bounty spam can be sitting at close to `workMultiplierAmount=1` (the literal default,
+`dynamoHandler.js:449`) while fully unlocked for Royal Treasury. Computed at power=1x, Rank 6:
+Royal Treasury `evAttempt=-19,720`, `evHour=-39,440` — a real, repeatable expected loss for
+exactly this reachable player state. The same shape (real EV-negative at own-tier's minimum
+unlock rank + power≈1x) also holds for Tier II (`evAttempt=-940` at Rank 2/power 1x) and Tier III
+(`evAttempt=-4,800` at Rank 4/power 1x) — i.e. every real-stakes Heist tier is a live trap for a
+rank-gated-but-power-undeveloped mercenary, not just the top one. Recommend flagging this gap
+between Rank (win-count-gated, Bounty-only) and Heist tier access (Rank-gated but power-blind) to
+`product-owner` — either gate Heist tiers on some power signal too, or add an explicit in-command
+warning when a player's own multiplier is under a tier's breakeven point.
+
+**3. [MEDIUM, live but narrower than the initial framing suggested] RobNpc's reward does
+eventually out-scale Bounty's by an unbounded, ever-growing margin — but only once a player's
+power exceeds Bounty's own structural ceiling (~2,000x, B12's difficulty), not steadily
+throughout early/mid/late game as the initial framing assumed.** Built a full EV/hour comparison
+(RobNpc's own locally-best tier by power vs. Bounty's own dynamically-weighted "sweet spot" tier
+at the same power, both accounting for their real cooldowns — 1800s vs. 3600s) across power
+10x/100x/600x/1,272x (the game's own documented realistic shop/regrade/rebirth-11 solo-power
+ceiling, `mercenary-bounties.md`'s "Solo power reference points" table) and found the ratio
+**oscillates near parity, not a steadily growing gap**: 0.91x, 1.47x, 1.20x, 0.88x respectively —
+Bounty is still ahead at both the very-early and the realistic-late-game (1,272x) reference
+points, because Bounty's own 12-tier ladder scales its realized reward with power too (via
+`rollWeightedTier`'s dynamic tier-weighting picking higher tiers as power grows), not because
+Bounty's reward formula scales with power directly. The premise that "Bounty is capped by Rank
+alone, ~2x max" is technically true of the reward *formula* in isolation but doesn't capture that
+Bounty's realized EV also scales with power through tier promotion, up to B12. Only **past**
+power≈2,000x (B12's own difficulty, i.e. beyond the documented realistic solo ceiling, reachable
+only via further uncapped Sweet/Metal Potato stacking per `mercenary-bounties.md`'s own framing)
+does the asymmetry the user described actually bite: Bounty's EV/hour hard-caps at B12's fixed
+reward × Rank 6's 2.35x (~44.8M/hr), while RobNpc's best tier keeps growing linearly forever
+(unbounded `payoutCap * power`) — computed ratio 1.49x at power 5,000, 2.98x at power 10,000,
+5.96x at power 20,000. Recommend `product-owner` treat this as a real but currently-dormant risk:
+not an immediate live problem for players within the documented realistic power range, but one
+that will make Heist strictly and increasingly dominant for the most hardcore players once
+uncapped permanent-stat stacking pushes them past Bounty's own ceiling — worth deciding now
+whether Bounty's ladder should ever grow a 13th+ tier, or whether RobNpc's payout should gain its
+own soft ceiling to match.
+
+**4. [LOW-MEDIUM, live] Tier I (Market Stall) stays the mathematically-correct choice for a real,
+non-trivial power window even after Tier II unlocks — not just a risk-averse fallback, an
+actual EV-optimal one.** Solved the T1-vs-T2 crossover at Tier II's own minimum unlock rank
+(Rank 2): T1 beats T2 until power≈13.9x, only flipping past that. The crossover point shrinks as
+Rank climbs (power≈1.06x at Rank 6, since T2's `successChance` grows faster with Rank than T1's
+does) but never disappears. So Tier I is not "dead content the moment Tier II unlocks" — it
+remains genuinely EV-superior, with zero downside risk the whole time, for a real window right
+after each tier unlocks. No finding needed here beyond noting it's working as intended; recorded
+so a future pass doesn't need to re-derive it.
+
+**5. [Design note, not a bug] The 1800s Heist cooldown (half Bounty's 3600s) roughly doubles
+RobNpc's attempt cadence, which is already folded into all EV/hour figures above** — this alone
+does not explain findings 1-3, which hold or don't hold independent of the cooldown ratio (the
+ratio is a constant multiplier applied equally to every RobNpc tier, so it can't flip an
+EV-dominance relationship between two RobNpc tiers, and it's already accounted for in the
+RobNpc-vs-Bounty comparison in finding 3). Both actions also share the same Mercenary-Rank-driven
+cooldown-skip-chance table (6-38%, `MercenaryRank.THRESHOLDS`), which compounds RobNpc's
+already-higher cadence advantage slightly further at high Rank — not separately modeled here
+(secondary effect, same percentage applies to both actions), flagged for a future pass if a more
+precise session-throughput model is ever needed.
+
+### Checked, no issues found (this pass)
+
+- **RobNpc's win-side reward formula mechanics** (`calculateGainAmount`'s cap-before-multiplier
+  order, `workFactory.js:866-876`) — confirmed the payout cap is already fully saturated at
+  present server wealth (`workGainAmount*4.5 ≈ 177,300` vs. the largest `payoutCap` of 40,000,
+  per `constants.js:2334-2336`'s own live-server citation), so the reward genuinely scales
+  linearly and unboundedly with `effectiveMultiplier` as designed, with no hidden secondary cap.
+- **RobNpc's loss-scaling formula** (`LOSS_MULTIPLIER_SCALING=0.15`, `constants.js:2374`) —
+  confirmed it reads `developedMultiplier` (no catch-up), not `effectiveMultiplier` (catch-up
+  included), matching the documented intent that a catch-up-boosted player shouldn't also take a
+  bigger loss from the same boost meant to help them. No bug.
+- **Bounty's dynamic tier-weighting formula** (`raidFactory.getDynamicTierWeights`,
+  `RAID_TIER_WEIGHT_SHARPNESS=3`) — reused correctly by `rollWeightedTier` for Bounty's 12-tier
+  roll, no divergence from Guild Raid's own weighting math found.
+- **Bounty's starch-flavored reward branch** — noted as a real caveat on finding 3's EV
+  comparison, not separately quantified: `resolveBountyAttempt`'s starch payout (`base =
+  totalMultiplier`-scaled, `mercenaryFactory.js:160-181`) *does* scale with the player's own
+  `workMultiplierAmount`/companion/world-buff total, unbounded — contradicting the "Bounty
+  reward never scales with power" framing for roughly 20-40% of scenarios (the starch-flavored
+  ones, `BountyScenarios`' per-tier potato/starch split). Not folded into the potato-denominated
+  EV figures above since converting starch to a potato-equivalent value requires starch-market
+  price data (`systems/starch-trading.md`) not modeled in this pass — flagged as a real limitation
+  of the comparison, not resolved.
