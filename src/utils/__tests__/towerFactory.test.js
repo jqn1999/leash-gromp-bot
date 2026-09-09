@@ -341,10 +341,14 @@ describe('difficulty curve', () => {
         expect(success).toBeCloseTo(0.5, 10);
     });
 
-    test('ELITE_SUCCESS_CAP is 0.9, reused directly from Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE', () => {
+    // Raised 0.9 -> 0.95 (2026-09-09, direct instruction) — now a Tower-only constant,
+    // deliberately decoupled from Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (still 0.9), since
+    // Guild Raid and Mercenary Bounty's own success caps weren't part of the request.
+    test('ELITE_SUCCESS_CAP is 0.95, independent of Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE', () => {
         const { Raid } = require('../constants');
-        expect(tC.ELITE_SUCCESS_CAP).toBe(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
-        expect(tC.ELITE_SUCCESS_CAP).toBe(0.9);
+        expect(tC.ELITE_SUCCESS_CAP).toBe(0.95);
+        expect(tC.ELITE_SUCCESS_CAP).not.toBe(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
+        expect(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE).toBe(0.9);
     });
 });
 
@@ -724,14 +728,70 @@ describe('towerFactory Discord-interaction flows', () => {
         expect(lastCall.components).toEqual([]);
     });
 
-    test("execElite's success chance is capped at ELITE_SUCCESS_CAP (0.9), not 100%, even for a very high multi", async () => {
+    test("execElite's success chance is capped at ELITE_SUCCESS_CAP (0.95), not 100%, even for a very high multi", async () => {
         const interaction = fakeInteraction([choice('leave')]);
         const tF = new towerFactory(interaction, 'tester', 1_000_000);
         tF.floor = 10;
         await tF.execElite(tF.difficulty);
 
         const embedArg = interaction.editReply.mock.calls[0][0];
-        expect(embedArg.embeds[0].data.description).toContain('Success Chance: 90.00%');
+        expect(embedArg.embeds[0].data.description).toContain('Success Chance: 95.00%');
+    });
+});
+
+// TRANSACTION affordability filter (2026-09-09, direct instruction: "make scenarios that
+// cost potatoes not appear if users cant afford it anyway ... buying work multi early on
+// since they wont have enough taters"). Every current TRANSACTIONS entry costs real potatoes
+// (300K-1M) — before this, execNormalFloor picked uniformly across all of them regardless of
+// the player's own in-run balance, so a broke player (most commonly a fresh Tower entrant
+// early in a run) could be shown an offer that was a guaranteed dead end either way (the
+// paid choice always failing into `fl.poor`, or the free choice granting nothing).
+describe('TRANSACTION affordability filter (execNormalFloor)', () => {
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    test('falls back to a real COMBAT floor when nothing in TRANSACTIONS is affordable', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 0; // below every TRANSACTIONS entry's cheapest price
+
+        const outcome = await tF.execNormalFloor('TRANSACTION', true, tC.POLICY.SAFE);
+
+        expect(tC.COMBATS.map(c => c.name)).toContain(outcome.name);
+        expect(tC.TRANSACTIONS.map(t => t.name)).not.toContain(outcome.name);
+    });
+
+    test('only ever picks a TRANSACTIONS entry the player can currently afford, never one they cannot', async () => {
+        // 500,000 affords Sales Spinach (300K) and The Baron's Beet (450K), but not The
+        // Wizard Lime (1M) or The Traveling Turnip (600K).
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 500000;
+        const affordableNames = ['Sales Spinach', "The Baron's Beet"];
+        const unaffordableNames = ['The Wizard Lime', 'The Traveling Turnip'];
+
+        for (let i = 0; i < 20; i++) {
+            randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(i / 20);
+            const outcome = await tF.execNormalFloor('TRANSACTION', true, tC.POLICY.SAFE);
+            expect(unaffordableNames).not.toContain(outcome.name);
+            expect([...affordableNames, ...tC.COMBATS.map(c => c.name)]).toContain(outcome.name);
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('with enough potatoes for every TRANSACTIONS entry, the full pool is still in play (unchanged pre-existing behavior)', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 10000000; // affords every current TRANSACTIONS entry
+
+        const seenNames = new Set();
+        for (let i = 0; i < tC.TRANSACTIONS.length; i++) {
+            randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(i / tC.TRANSACTIONS.length);
+            const outcome = await tF.execNormalFloor('TRANSACTION', true, tC.POLICY.SAFE);
+            seenNames.add(outcome.name);
+            randomSpy.mockRestore();
+        }
+        expect(seenNames.size).toBe(tC.TRANSACTIONS.length); // every entry reachable, none filtered out
     });
 });
 
