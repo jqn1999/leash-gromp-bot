@@ -2,6 +2,7 @@ const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep } = require("..
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const cooldownFactory = require("../utils/cooldownFactory");
 const AWS = require('aws-sdk');
 // const config = require('../config.js');
@@ -350,11 +351,23 @@ async function getWorkCooldownSkipSources(userDetails) {
         ? spudKeepCooldownBuff.value
         : 0;
 
+    // Mercenary Buff's workTimer category (systems/mercenary-bounties.md#mercenary-buff) —
+    // a 5th skip-chance source alongside companion/worldBuff/guildBuff/spudKeep above,
+    // feeding the SAME combined roll below. Lazily required (not a top-level import) for
+    // the same reason spudKeepFactory is above — mercenaryFactory.js itself requires this
+    // file at its own top level, so a top-level require here would hand it a half-built
+    // dynamoHandler.
+    const mercenaryFactory = require("../utils/mercenaryFactory");
+    const mercenaryBuffSkipChance = (userDetails.isMercenary && userDetails.mercenaryBuff === "workTimer")
+        ? mercenaryBuffFactory.getMercenaryBuffValue("workTimer", mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank)
+        : 0;
+
     return [
         { key: "companion", chance: companionSkipChance, label: companionName },
         { key: "worldBuff", chance: worldBuffSkipChance, label: worldBuff ? worldBuff.bossName : null },
         { key: "guildBuff", chance: guildBuffSkipChance, label: guild ? guild.guildName : null },
-        { key: "spudKeep", chance: spudKeepSkipChance, label: "Spud Keep" }
+        { key: "spudKeep", chance: spudKeepSkipChance, label: "Spud Keep" },
+        { key: "mercenaryBuff", chance: mercenaryBuffSkipChance, label: "Mercenary Buff" }
     ];
 }
 
@@ -413,6 +426,8 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime, skipp
                 userDetails._cooldownSkippedByCompanion = { source: "guildBuff", label: winningLabel };
             } else if (winningSource === "spudKeep") {
                 userDetails._cooldownSkippedByCompanion = { source: "spudKeep" };
+            } else if (winningSource === "mercenaryBuff") {
+                userDetails._cooldownSkippedByCompanion = { source: "mercenaryBuff" };
             }
             return Date.now();
         }
@@ -545,6 +560,17 @@ function getDefaultUserFields(userId, username) {
         guildMercenarySwitchTimer: 0,   // set on /retire-mercenary and /leave (guild),
                                          // checked on /become-mercenary, /create-new-guild,
                                          // and /join-guild — see Bounty.GUILD_SWITCH_COOLDOWN_SECONDS
+        // Mercenary Buff (systems/mercenary-bounties.md#mercenary-buff) — a solo, weaker
+        // parallel to Guild Buff, gated on isMercenary. mercenaryBuffSwitchTimer is a plain
+        // ms-epoch timestamp (0 default means a fresh account's first pick is always free,
+        // same "0 = never blocked" precedent guildMercenarySwitchTimer already sets).
+        // Deliberately its OWN dedicated timer, not a reuse of guildMercenarySwitchTimer —
+        // that field gates the structural guild<->mercenary track switch, a completely
+        // different decision on a completely different cooldown. Untouched by
+        // /retire-mercenary and /become-mercenary — a picked buff persists inert across a
+        // retire -> re-become round trip.
+        mercenaryBuff: null,            // "workMulti" | "workTimer" | "robChance" | "bountyTimer" | null
+        mercenaryBuffSwitchTimer: 0,
         // Rival Bounty Hunters (systems/mercenary-bounties.md#rival-bounty-hunters) — a
         // resettable resource-threshold gate, not a cooldown timer. mercenaryNotoriety is
         // the CYCLING progress meter (built up by /take-bounty and /rob-npc wins; every
@@ -1493,6 +1519,13 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         // stored array needed leave.js/kick.js to explicitly prune a departing member
         // and neither did, so a departed member could linger in a raid indefinitely.
         guildBuff: "workMulti",
+        // /set-buff's own switch cooldown (2026-09-09, direct instruction — /set-buff had
+        // ZERO cooldown before this, so a leader/co-leader could flip the guild's buff any
+        // time). Same ms-epoch convention as mercenaryBuffSwitchTimer (0 default = never
+        // blocked on a fresh guild) and the same BuffSwitchCooldown.GUILD_SWITCH_COOLDOWN_
+        // SECONDS (6h) value the Mercenary Buff feature defines. Healed in for pre-existing
+        // guilds by findGuildById's own generic missing-field backfill above.
+        guildBuffSwitchTimer: 0,
         // Which of raidFactory.js's two reward-splitting helpers a guild's raid rewards
         // route through when a reward/penalty doesn't fully fit in the guild bank —
         // 'even' (handlePotatoSplit, today's behavior) or 'share' (handlePotatoSplitByShare,

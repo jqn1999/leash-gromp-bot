@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti } = require('../workFactory');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
@@ -451,6 +451,32 @@ describe('getGuildWorkMulti (via handleRegularWork)', () => {
         const guildGain = await workFactory.handleRegularWork(inGuild, 1000, 1, 0);
         const soloGain = await workFactory.handleRegularWork(notInGuild, 1000, 1, 0);
         expect(guildGain).toBeGreaterThan(soloGain);
+    });
+});
+
+describe('getMercenaryWorkMulti', () => {
+    test('returns 0 for a non-mercenary (regression guard — the new term is strictly additive/zero-by-default)', () => {
+        expect(getMercenaryWorkMulti(baseUser({ isMercenary: false, mercenaryBuff: 'workMulti' }), 20)).toBe(0);
+    });
+
+    test('returns 0 for a mercenary who picked a different buff category', () => {
+        expect(getMercenaryWorkMulti(baseUser({ isMercenary: true, mercenaryBuff: 'robChance', mercenaryBountyWinCount: 0 }), 20)).toBe(0);
+    });
+
+    test('returns userMultiplier * scale for a workMulti-buffed mercenary at a given rank', () => {
+        const { MercenaryRank } = require('../constants');
+        const winsForRank3 = MercenaryRank.THRESHOLDS.find(t => t.rank === 3).winsRequired;
+        const value = getMercenaryWorkMulti(baseUser({ isMercenary: true, mercenaryBuff: 'workMulti', mercenaryBountyWinCount: winsForRank3 }), 20);
+        const { MercenaryBuffScaling } = require('../constants');
+        expect(value).toBeCloseTo(20 * MercenaryBuffScaling.workMulti[2]); // Rank 3, index 2
+    });
+
+    test('a workMulti mercenary buff adds to handleRegularWork\'s gain the same way getGuildWorkMulti does (existing effectiveMultiplier-sum assertions elsewhere in this file stay unaffected — non-mercenary fixtures never set mercenaryBuff)', async () => {
+        const buffed = baseUser({ userId: 'a', isMercenary: true, mercenaryBuff: 'workMulti', mercenaryBountyWinCount: 0, workMultiplierAmount: 10 });
+        const unbuffed = baseUser({ userId: 'b', isMercenary: true, mercenaryBuff: null, mercenaryBountyWinCount: 0, workMultiplierAmount: 10 });
+        const buffedGain = await workFactory.handleRegularWork(buffed, 1000, 1, 0);
+        const unbuffedGain = await workFactory.handleRegularWork(unbuffed, 1000, 1, 0);
+        expect(buffedGain).toBeGreaterThan(unbuffedGain);
     });
 });
 

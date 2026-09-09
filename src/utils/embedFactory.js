@@ -1,10 +1,11 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const guildCompanionFactory = require("../utils/guildCompanionFactory");
 const { EventFactory } = require("../utils/eventFactory");
 const { getRaidLevelInfo } = require("../utils/raidFactory");
@@ -285,6 +286,13 @@ function buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0) {
                 inline: false,
             };
         }
+        if (cooldownSkipSource.source === 'mercenaryBuff') {
+            return {
+                name: `🗡️ Mercenary Buff:`,
+                value: `Your own hard-won edge shaves the cooldown to nothing — go again right away!`,
+                inline: false,
+            };
+        }
         return {
             name: `🌍 ${cooldownSkipSource.worldBuffBossName}'s Blessing:`,
             value: `The Kingdom's gratitude shaves your cooldown to nothing — go again right away!`,
@@ -561,6 +569,25 @@ class EmbedFactory {
                     value: `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward, ${(userDetails.mercenaryBountyWinCount || 0).toLocaleString()} wins)`,
                     inline: false,
                 });
+
+                // Mercenary Buff (systems/mercenary-bounties.md#mercenary-buff) — a solo,
+                // weaker parallel to Guild Buff, shown directly below Mercenary Rank
+                // (reuses the rankInfo already computed two lines above — no second rank
+                // lookup needed).
+                if (userDetails.mercenaryBuff) {
+                    const buffLabel = mercenaryBuffFactory.getMercenaryBuffLabel(userDetails.mercenaryBuff, rankInfo.rank);
+                    fields.push({
+                        name: "Mercenary Buff:",
+                        value: `${buffLabel} — next switch available <t:${Math.floor((userDetails.mercenaryBuffSwitchTimer + MercenaryBuff.SWITCH_COOLDOWN_SECONDS * 1000) / 1000)}:R>`,
+                        inline: false,
+                    });
+                } else {
+                    fields.push({
+                        name: "Mercenary Buff:",
+                        value: "None yet — run /set-mercenary-buff to pick one.",
+                        inline: false,
+                    });
+                }
             }
 
             // World Boss's server-wide buff status line (2026-09-04, direct instruction) —

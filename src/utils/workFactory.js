@@ -4,6 +4,7 @@ const { Work, PoisonMitigation, MimicMitigation, REGRADE_CAPS, workRegradeTiers,
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
+const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
@@ -188,10 +189,11 @@ class WorkFactory {
         let rawPassiveRewardAmount, actualPassiveRewardAmount;
         let rawBankRewardAmount, actualBankRewardAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const workMultiplierGrant = metalPotatoRewards.workMultiplierReward;
 
@@ -325,10 +327,11 @@ class WorkFactory {
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -356,10 +359,11 @@ class WorkFactory {
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(Work.GOLDEN_YAM_MULTIPLIER_MIN * effectiveMultiplier, Work.GOLDEN_YAM_MULTIPLIER_MAX * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -488,10 +492,11 @@ class WorkFactory {
             // stat-bump) or because rollsPotatoInstead pre-empted an eligible stat-bump
             // branch above — same payout formula either way.
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);
             const worldBuffMultiplier = await getWorldBuffWorkMulti(userDetails.workMultiplierAmount);
-            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
             potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
@@ -533,9 +538,10 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
-        const effectiveMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier;
+        const effectiveMultiplier = userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier;
 
         // Guinea Pig — everyone (Guinea Pig included) goes through the exact same weekly
         // bad-luck mitigation first now; previously the immune branch skipped
@@ -676,10 +682,11 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -706,10 +713,11 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -736,10 +744,11 @@ class WorkFactory {
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
+        const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -797,6 +806,24 @@ async function getGuildWorkMulti(userDetails, userMultiplier) {
         }
     }
     return 0
+}
+
+// Mercenary Buff's workMulti category (systems/mercenary-bounties.md#mercenary-buff) — the
+// solo, weaker parallel to getGuildWorkMulti above, same "percentage of current
+// userMultiplier" shape. isMercenary and guildId != 0 are mutually exclusive in this
+// codebase, so guildMultiplier and this can never both be nonzero for the same player —
+// written unconditionally additive (like every other term here) rather than an if/else
+// against guildMultiplier, so this code doesn't need to know about that exclusivity to be
+// correct. Requires mercenaryFactory lazily (in-function) rather than at module top level —
+// mercenaryFactory.js itself requires this file (workFactory.js) at ITS top level, so a
+// top-level require here would form a workFactory -> mercenaryFactory -> workFactory loop.
+function getMercenaryWorkMulti(userDetails, userMultiplier) {
+    if (userDetails.isMercenary && userDetails.mercenaryBuff === "workMulti") {
+        const mercenaryFactory = require("../utils/mercenaryFactory");
+        const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+        return userMultiplier * mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rank);
+    }
+    return 0;
 }
 
 // Sprout's perk — same "percentage of current userMultiplier, added alongside the
@@ -888,6 +915,7 @@ module.exports = {
     calculateGainAmount,
     applyCatchUp,
     getGuildWorkMulti,
+    getMercenaryWorkMulti,
     getCompanionWorkMulti,
     getWorldBuffWorkMulti,
     getWorldBuffWorkMultiPercent

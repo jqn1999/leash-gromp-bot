@@ -4,6 +4,8 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { Rob, CompanionLeveling } = require("../../utils/constants");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
+const mercenaryBuffFactory = require("../../utils/mercenaryBuffFactory");
+const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -132,6 +134,17 @@ module.exports = {
         // Barn Owl — stacks with the guild robChance buff, if it has one.
         robChance += companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
 
+        // Mercenary Buff's robChance category — real /rob only (never /rob-npc's own
+        // formula), mirroring the guild robChance check above exactly. isMercenary and
+        // guildId != 0 are mutually exclusive, so this and the guild block above can never
+        // both fire for the same player — written as an independent `if` rather than an
+        // `else` against the guild check for the same reason that block doesn't guard
+        // against Barn Owl's own perk above.
+        if (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance") {
+            const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+            robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
+        }
+
         let robChanceDisplay = (robChance*100).toFixed(2);
 
         // Show the odds and stakes before rolling, so the player commits knowingly
@@ -192,6 +205,10 @@ module.exports = {
             }
         }
         robChance += companionFactory.getActivePerkValue(freshUserDetails, "robChanceFlat");
+        if (freshUserDetails.isMercenary && freshUserDetails.mercenaryBuff === "robChance") {
+            const rank = mercenaryFactory.getMercenaryRankInfo(freshUserDetails.mercenaryBountyWinCount).rank;
+            robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
+        }
         // Recomputed for the RESULT embed too — it should reflect the odds actually rolled
         // against, not the estimate shown in the (by now possibly stale) preview.
         robChanceDisplay = (robChance*100).toFixed(2);

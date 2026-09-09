@@ -140,4 +140,40 @@ describe('/take-bounty cooldown skip', () => {
         // Chained (loss) resolution: full cooldown again, no further chaining.
         expect(bountyWrites[1][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
     });
+
+    // Mercenary Buff's bountyTimer category (systems/mercenary-bounties.md#mercenary-buff) —
+    // a 3rd skip-chance source alongside mercenaryRank/spudKeep. Rank 1 has a 0%
+    // cooldownReductionPercent and Spud Keep is mocked un-held, so this isolates the new
+    // source cleanly: only mercenaryBuff (3% at Rank 1) can possibly win the roll or the
+    // attribution here.
+    test('the new mercenaryBuff source participates in the combined roll and gets correctly attributed on a win', async () => {
+        const user = baseUser({ mercenaryBountyWinCount: 0, mercenaryBuff: 'bountyTimer' }); // Rank 1, cooldownReductionPercent 0
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'baby' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)    // win check
+            .mockReturnValueOnce(0)    // scenario index
+            .mockReturnValueOnce(0)    // reward rangeRoll
+            .mockReturnValueOnce(0.99) // stat-reward miss
+            .mockReturnValueOnce(0.99) // yukon miss
+            .mockReturnValueOnce(0)    // skip roll HIT (< 0.03, only mercenaryBuff is active)
+            .mockReturnValueOnce(0.5)  // pickSkipSource attribution — only mercenaryBuff active, so any value picks it
+            // Chained attempt (isChainedReply=true) resolves as a LOSS, ending the chain there:
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0);
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
+        expect(bountyWrites).toHaveLength(2); // hit + one chained attempt
+        expect(bountyWrites[0][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
+
+        const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
+        const skipField = resultEmbed.data.fields.find(f => f.name.includes('Mercenary Buff'));
+        expect(skipField).toBeDefined();
+    });
 });

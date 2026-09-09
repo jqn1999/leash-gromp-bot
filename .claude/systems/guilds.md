@@ -126,6 +126,22 @@ gracefully rather than crashing anything that reads it.
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
 
+**Switch cooldown (2026-09-09, direct instruction)** — `/set-buff` previously had NO cooldown at
+all, letting a Leader/Co-Leader flip the guild's buff any time with zero gate. It now carries the
+same 6h (21,600s) cooldown [Mercenary Buff](mercenary-bounties.md#mercenary-buff) introduced the
+same day, backed by a new `guild.guildBuffSwitchTimer` field (ms epoch, `Date.now()`-based, `0`
+default so a guild's very first switch is always free — same "0 = never blocked" shape
+`mercenaryBuffSwitchTimer`/`guildMercenarySwitchTimer` already use). The cooldown constant itself
+is `BuffSwitchCooldown.GUILD_SWITCH_COOLDOWN_SECONDS` (`constants.js`), which just points at the
+same value as `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` rather than a second hardcoded `21600`
+literal. Gate order in `setBuff.js`: (1) the existing Leader/Co-Leader role check (unchanged), (2)
+a same-category re-pick rejected as a no-op — no DB write, cooldown untouched — checked BEFORE (3)
+the cooldown check, mirroring `/set-mercenary-buff`'s own idempotency pattern exactly. On success,
+the reply states the new value AND the next-switch-available timestamp via a Discord relative
+timestamp (`<t:UNIX:R>`), same convention `/set-mercenary-buff` uses. Pre-existing guilds are
+healed to `guildBuffSwitchTimer: 0` lazily by `findGuildById`'s generic missing-field backfill (see
+`getDefaultGuildFields` in `dynamoHandler.js`) — no migration script needed.
+
 ## Raid reward split mode
 
 [setRaidSplit.js](../../src/commands/guilds/setRaidSplit.js) — Co-Leader/Leader picks how a raid

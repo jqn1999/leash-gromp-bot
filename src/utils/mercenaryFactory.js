@@ -6,6 +6,7 @@ const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const dynamoHandler = require("../utils/dynamoHandler");
 const spudKeepFactory = require("../utils/spudKeepFactory");
+const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 
 // Maps Bounty.TIERS' own numeric 1-12 tier down to the 3-band I/II/III shape
 // BountyScenarios/BountyStatReward/STARCH_TIER_MULTIPLIER/MercenaryCompanionDrop.
@@ -218,7 +219,16 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // real /rob's calculateRobChance, only the bonus source is now shared. Since the Heist
     // Ladder rework, the base/perRank/cap numbers themselves come from the picked tier
     // rather than a single shared RobNpc.BASE_CHANCE/CHANCE_PER_RANK/MAX_CHANCE.
-    const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
+    // Mercenary Buff's robChance category (2026-09-09, direct instruction — additively
+    // extended to Heist alongside real /rob, unlike the rest of this feature which
+    // deliberately stayed off RobNpc.TIERS entirely; see systems/mercenary-bounties.md's
+    // Mercenary Buff section). Same rank lookup already computed above, same bucket as
+    // Yukon/Barn Owl/Elder Rootbeard's robChanceFlat perk — purely additive, no other term
+    // in this function changes.
+    const mercenaryBuffRobChanceBonus = (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance")
+        ? mercenaryBuffFactory.getMercenaryBuffValue("robChance", rankInfo.rank)
+        : 0;
+    const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "robChanceFlat") + mercenaryBuffRobChanceBonus;
     const tierChance = Math.min(
         tier.baseChance + tier.chancePerRank * (rankInfo.rank - 1),
         tier.maxChance
@@ -428,9 +438,17 @@ async function getMercenaryCooldownSkipSources(userDetails) {
     const spudKeepSkipChance = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepCooldownBuff, userDetails, SpudKeep.COOLDOWN_BUFF_TYPE)
         ? spudKeepCooldownBuff.value
         : 0;
+    // Mercenary Buff's bountyTimer category — a 3rd skip-chance source alongside
+    // mercenaryRank/spudKeep, feeding the same combined roll takeBounty.js already makes.
+    // userDetails.isMercenary is implied true here — this function is only ever called from
+    // takeBounty.js's own already-gated path.
+    const mercenaryBuffSkipChance = (userDetails.mercenaryBuff === 'bountyTimer')
+        ? mercenaryBuffFactory.getMercenaryBuffValue('bountyTimer', rankInfo.rank)
+        : 0;
     return [
         { key: 'mercenaryRank', chance: rankInfo.cooldownReductionPercent, label: `Rank ${rankInfo.rank}` },
-        { key: 'spudKeep', chance: spudKeepSkipChance, label: 'Spud Keep' }
+        { key: 'spudKeep', chance: spudKeepSkipChance, label: 'Spud Keep' },
+        { key: 'mercenaryBuff', chance: mercenaryBuffSkipChance, label: 'Mercenary Buff' }
     ];
 }
 

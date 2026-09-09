@@ -132,7 +132,9 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
             const winningSource = cooldownFactory.pickSkipSource(sources);
             cooldownSkipSource = winningSource === 'mercenaryRank'
                 ? { source: 'mercenaryRank', label: `Rank ${result.rankInfo.rank}` }
-                : { source: 'spudKeep' };
+                : winningSource === 'mercenaryBuff'
+                    ? { source: 'mercenaryBuff' }
+                    : { source: 'spudKeep' };
             setAttributes.bountyTimer = Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000;
             shouldChain = true;
         } else {

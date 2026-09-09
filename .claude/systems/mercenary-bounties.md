@@ -161,12 +161,16 @@ Rank tier, each a separately-purchased, separately-balanced stash of extra bank 
 (`safehouseFactory.js` reads `rankInfo.rank` directly, never touched `unlocksTier`, so this
 is completely unaffected by its retirement above).
 
-## Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction)
+## Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction) — Implemented
 
 A solo, weaker parallel to [Guild Buff](guilds.md) — the one "pick a lane, get a standing bonus"
 mechanic guild members had that solo mercenaries didn't. Full scope narrative + the architect's
 build-ready design (this section is the shipped-mechanic summary of it) lives in
 [roadmap.md](../roadmap.md#mercenary-buff-a-solo-weaker-parallel-to-guild-buff-2026-09-09-direct-instruction).
+Shipped with two direct-instruction amendments the architect's own design didn't originally
+scope: (1) `robChance` was additively extended to `/rob-npc`/Heist as well as real `/rob` (see the
+category table below); (2) `/set-buff` (guild) picked up the SAME 6h switch cooldown this feature
+introduced — see [guilds.md](guilds.md#guild-buffs).
 
 **Gate**: `userDetails.isMercenary` only, same as every other Mercenary-track command. Since
 `isMercenary` and guild membership (`guildId != 0`) are already mutually exclusive in this
@@ -184,13 +188,19 @@ should only ever climb.
 |---|---|---|
 | `workMulti` | Flat `%` add to effective work multiplier, `/work`-only (never Bounty/Heist reward math) | `workFactory.getMercenaryWorkMulti`, summed alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti` in every `handle*Potato` scenario's `effectiveMultiplier` |
 | `workTimer` | `/work` cooldown-skip-chance source | `dynamoHandler.getWorkCooldownSkipSources` — a 5th source alongside companion/world-buff/guild-buff/Spud Keep, feeding the same `cooldownFactory.combineSkipChance` roll `calculateWorkTimerValue` already makes |
-| `robChance` | Flat add to real `/rob`'s success chance only (never `/rob-npc`) | `rob.js`, both computation sites (preview + re-rolled resolution), same shape as the existing guild `robChance` check |
+| `robChance` | Flat add to real `/rob`'s success chance, **and** (2026-09-09, direct user instruction overriding the design below) additively to `/rob-npc`'s (Heist) success chance too | `rob.js`, both computation sites (preview + re-rolled resolution), same shape as the existing guild `robChance` check; **also** `mercenaryFactory.resolveNpcRob`'s `npcRobChanceBonus`, the same additive bucket Yukon's `robChanceFlat` perk already uses |
 | `bountyTimer` | Bounty's own (`/take-bounty`, 3600s) cooldown-skip-chance source — the Mercenary-track counterpart to Guild Buff's `raidTimer` | `mercenaryFactory.getMercenaryCooldownSkipSources` — a 3rd source alongside `mercenaryRank`/`spudKeep`, feeding the same combined roll `takeBounty.js` already makes |
 
-Deliberately does **not** touch `/rob-npc` (Heist) in any way — its `RobNpc.TIERS` odds/payout/loss
-math was retuned three times the same day this feature was scoped (see the Heist section above),
-and folding a new cooldown-frequency-changing source into still-unproven math was judged too risky
-to bundle into this feature's first pass.
+The design below was originally scoped to deliberately NOT touch `/rob-npc` (Heist) in any way —
+its `RobNpc.TIERS` odds/payout/loss math was retuned three times the same day this feature was
+scoped (see the Heist section above), and folding a new cooldown-frequency-changing source into
+still-unproven math was judged too risky to bundle into this feature's first pass. **A direct user
+instruction the same day overrode this for `robChance` specifically**: the buff's flat add was
+wired additively into `resolveNpcRob`'s `npcRobChanceBonus` (the same bucket Yukon's
+`robChanceFlat` perk already contributes to), with an explicit instruction to skip a fresh EV
+recheck — this is a pure additive change, no other `RobNpc.TIERS` formula (odds/payout/loss) was
+touched or re-derived. `workMulti`/`workTimer`/`bountyTimer` remain untouched by Heist, and
+`RobNpc.TIERS`' own cooldown (`npcRobTimer`) still has no Mercenary Buff skip-chance source.
 
 **`MercenaryBuffScaling`** (`constants.js`, rank-indexed, index 0 = Rank 1) — roughly half of
 `GuildBuffScaling`'s own per-tier value, topping out well under it at every rank (not just at the

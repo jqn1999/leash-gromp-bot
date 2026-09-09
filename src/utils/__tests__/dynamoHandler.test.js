@@ -881,13 +881,46 @@ describe('calculateWorkTimerValue guild workTimer buff', () => {
     });
 });
 
+// Mercenary Buff's own selected workTimer category (systems/mercenary-bounties.md#mercenary-
+// buff) — same conversion, same combined roll, same attribution shape as the guild workTimer
+// buff above.
+describe('calculateWorkTimerValue mercenary workTimer buff', () => {
+    let randomSpy;
+    afterEach(() => { if (randomSpy) randomSpy.mockRestore(); });
+
+    test('a mercenary with the workTimer buff selected can skip their own cooldown on a hit', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff, not guilded
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = { guildId: 0, isMercenary: true, mercenaryBuff: 'workTimer', mercenaryBountyWinCount: 0 };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toEqual({ source: 'mercenaryBuff' });
+    });
+
+    test('a mercenary with a DIFFERENT buff selected never rolls a workTimer skip from this source', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = { guildId: 0, isMercenary: true, mercenaryBuff: 'robChance', mercenaryBountyWinCount: 0 };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(result).toBeGreaterThanOrEqual(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeUndefined();
+    });
+});
+
 // getWorkCooldownSkipSources (2026-09-05, direct instruction — "can we get all the user's
 // skip chances for all the various mechanics somewhere... a dedicated embed") — the exact
 // same source-gathering calculateWorkTimerValue rolls against, extracted so /skip-chances
 // can preview it without performing a roll. No Math.random mocking needed here since this
 // function never rolls anything itself.
 describe('getWorkCooldownSkipSources', () => {
-    test('returns all four sources at 0 chance and null labels when nothing is active', async () => {
+    test('returns all five sources at 0 chance and null labels when nothing is active', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff
         const userDetails = {};
 
@@ -898,7 +931,34 @@ describe('getWorkCooldownSkipSources', () => {
             { key: 'worldBuff', chance: 0, label: null },
             { key: 'guildBuff', chance: 0, label: null },
             { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+            { key: 'mercenaryBuff', chance: 0, label: 'Mercenary Buff' },
         ]);
+    });
+
+    // Mercenary Buff's workTimer category (systems/mercenary-bounties.md#mercenary-buff) —
+    // a 5th skip-chance source alongside companion/worldBuff/guildBuff/spudKeep above.
+    test('a mercenary with the workTimer buff selected shows its own rank-scaled chance', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff
+        const { MercenaryBuffScaling } = require('../constants');
+        const userDetails = { isMercenary: true, mercenaryBuff: 'workTimer', mercenaryBountyWinCount: 0 }; // Rank 1
+
+        const sources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'mercenaryBuff')).toEqual({
+            key: 'mercenaryBuff',
+            chance: MercenaryBuffScaling.workTimer[0], // Rank 1, index 0
+            label: 'Mercenary Buff',
+        });
+    });
+
+    test('a non-mercenary, or a mercenary with a different buff selected, shows a 0 mercenaryBuff chance', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+
+        const sourcesNonMercenary = await dynamoHandler.getWorkCooldownSkipSources({ isMercenary: false, mercenaryBuff: 'workTimer' });
+        expect(sourcesNonMercenary.find(s => s.key === 'mercenaryBuff').chance).toBe(0);
+
+        const sourcesWrongBuff = await dynamoHandler.getWorkCooldownSkipSources({ isMercenary: true, mercenaryBuff: 'robChance' });
+        expect(sourcesWrongBuff.find(s => s.key === 'mercenaryBuff').chance).toBe(0);
     });
 
     test('a live World Boss cooldownSkip buff shows its own chance and boss name', async () => {

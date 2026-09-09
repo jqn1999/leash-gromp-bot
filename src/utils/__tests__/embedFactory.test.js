@@ -173,6 +173,89 @@ describe('buildCooldownSkipField (via createWorkEmbed)', () => {
         const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, null, 0, null, 0);
         expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
     });
+
+    // Mercenary Buff's own source branch (systems/mercenary-bounties.md#mercenary-buff) —
+    // shared by both /work's workTimer category and Bounty's bountyTimer category.
+    test('a Mercenary Buff-triggered skip shows its own dedicated flavor line', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, { source: 'mercenaryBuff' });
+        const field = embed.data.fields.find(f => f.name.includes('Mercenary Buff'));
+        expect(field).toBeDefined();
+    });
+});
+
+// Mercenary Buff (systems/mercenary-bounties.md#mercenary-buff) — createUserEmbed's new
+// field directly below the existing Mercenary Rank field, shown only when isMercenary.
+describe('createUserEmbed Mercenary Buff field', () => {
+    function mercUserDetails(overrides = {}) {
+        return {
+            rebirthCount: 0,
+            companions: { ownedCount: 0, owned: [], active: null },
+            guildId: 0,
+            isMercenary: true,
+            mercenaryBuff: null,
+            mercenaryBuffSwitchTimer: 0,
+            mercenaryBountyWinCount: 0,
+            potatoes: 0,
+            bankStored: 0,
+            starches: 0,
+            workMultiplierAmount: 1,
+            passiveAmount: 0,
+            bankCapacity: 50000,
+            maxStarches: 250,
+            workCount: 0,
+            loginStreak: 0,
+            records: {},
+            totalEarnings: 0,
+            totalLosses: 0,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides
+        };
+    }
+
+    beforeEach(() => {
+        const dynamoHandler = require('../dynamoHandler');
+        const rebirthFactory = require('../rebirthFactory');
+        const companionFactory = require('../companionFactory');
+        const mercenaryFactory = require('../mercenaryFactory');
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        rebirthFactory.getLiveRebirthPercent.mockReturnValue(0);
+        companionFactory.getActivePerkValue.mockReturnValue(0);
+        companionFactory.getActiveCompanion.mockReturnValue(null);
+        mercenaryFactory.getMercenaryRankInfo.mockImplementation((wins) => ({
+            rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0, winsToNextRank: 15
+        }));
+    });
+
+    test('shows "None yet" when no buff has been picked', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails(), 0);
+        const field = embed.data.fields.find(f => f.name === 'Mercenary Buff:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('None yet');
+        expect(field.value).toContain('/set-mercenary-buff');
+    });
+
+    test('shows the active buff\'s label and the next-switch-available timestamp when one is picked', async () => {
+        const switchTimer = 1000000;
+        const { MercenaryBuff } = require('../constants');
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            mercenaryBuff: 'workMulti', mercenaryBuffSwitchTimer: switchTimer,
+        }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Mercenary Buff:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('effective work multiplier');
+        const expectedTimestamp = Math.floor((switchTimer + MercenaryBuff.SWITCH_COOLDOWN_SECONDS * 1000) / 1000);
+        expect(field.value).toContain(`<t:${expectedTimestamp}:R>`);
+    });
+
+    test('omits the field entirely for a non-mercenary', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({ isMercenary: false }), 0);
+        expect(embed.data.fields.find(f => f.name === 'Mercenary Buff:')).toBeUndefined();
+    });
 });
 
 // createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).
@@ -293,6 +376,21 @@ describe('createBountyResultEmbed cooldown skip display', () => {
         const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
         expect(field).toBeDefined();
         expect(field.value).toContain('30%');
+    });
+
+    // Mercenary Buff's bountyTimer category — a 3rd skip source alongside mercenaryRank/
+    // spudKeep, reusing the SAME buildCooldownSkipField branch /work's workTimer category
+    // added (systems/mercenary-bounties.md#mercenary-buff).
+    test('shows the Mercenary Buff field when THAT source won the skip', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const cooldownSkipSource = { source: 'mercenaryBuff' };
+        const embed = embedFactory.createBountyResultEmbed('User', result, null, undefined, 0, 0, null, cooldownSkipSource);
+        const field = embed.data.fields.find(f => f.name.includes('Mercenary Buff'));
+        expect(field).toBeDefined();
     });
 });
 

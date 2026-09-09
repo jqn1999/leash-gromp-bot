@@ -692,6 +692,49 @@ describe('resolveNpcRob', () => {
         }
     });
 
+    // Amendment (2026-09-09, direct instruction) — the Mercenary Buff's robChance category
+    // (systems/mercenary-bounties.md#mercenary-buff) was extended additively to /rob-npc
+    // (Heist) as well as real /rob, wired into the SAME npcRobChanceBonus bucket Yukon's
+    // robChanceFlat perk already uses above — purely additive, no other RobNpc.TIERS formula
+    // touched (no EV recheck was done or needed for this, per direct instruction).
+    test('the Mercenary Buff robChance category adds on top of the base rank-scaled chance, same bucket as Yukon\'s robChanceFlat', async () => {
+        const { MercenaryBuffScaling } = require('../constants');
+        const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999);            // win check -> whiff
+        try {
+            const buffedUser = baseUser({
+                mercenaryBountyWinCount: maxRankWins,
+                isMercenary: true,
+                mercenaryBuff: 'robChance',
+            });
+            const result = await mercenaryFactory.resolveNpcRob(buffedUser, 1000, 0, 'market_stall');
+            const expectedBuff = MercenaryBuffScaling.robChance[MercenaryBuffScaling.robChance.length - 1]; // Rank 6 max
+            expect(result.successChance).toBeCloseTo(CORNER_STORE.maxChance + expectedBuff);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('a mercenary who picked a DIFFERENT buff category (or isn\'t a mercenary at all) gets no Heist bonus', async () => {
+        const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999);
+        try {
+            const wrongBuffUser = baseUser({ mercenaryBountyWinCount: maxRankWins, isMercenary: true, mercenaryBuff: 'workMulti' });
+            const wrongBuffResult = await mercenaryFactory.resolveNpcRob(wrongBuffUser, 1000, 0, 'market_stall');
+            expect(wrongBuffResult.successChance).toBeCloseTo(CORNER_STORE.maxChance);
+
+            const notMercenaryUser = baseUser({ mercenaryBountyWinCount: maxRankWins, isMercenary: false, mercenaryBuff: 'robChance' });
+            const notMercenaryResult = await mercenaryFactory.resolveNpcRob(notMercenaryUser, 1000, 0, 'market_stall');
+            expect(notMercenaryResult.successChance).toBeCloseTo(CORNER_STORE.maxChance);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
     // New (2026-09-09, direct instruction: "make the success rates jump a bit depending on
     // what the reward roll would be... for lower rewards in a tier the chance of success is
     // higher but for the max amount of reward for that tier it's also the highest
@@ -1431,7 +1474,34 @@ describe('getMercenaryCooldownSkipSources', () => {
         expect(sources).toEqual([
             { key: 'mercenaryRank', chance: rankInfo.cooldownReductionPercent, label: `Rank ${rankInfo.rank}` },
             { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+            { key: 'mercenaryBuff', chance: 0, label: 'Mercenary Buff' },
         ]);
+    });
+
+    // Mercenary Buff's bountyTimer category — a 3rd skip-chance source alongside
+    // mercenaryRank/spudKeep above.
+    test('a mercenary with the bountyTimer buff selected shows its own rank-scaled chance', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        const { MercenaryBuffScaling } = require('../constants');
+        const winsForRank3 = MercenaryRank.THRESHOLDS.find(t => t.rank === 3).winsRequired;
+        const userDetails = baseUser({ mercenaryBountyWinCount: winsForRank3, mercenaryBuff: 'bountyTimer' });
+
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'mercenaryBuff')).toEqual({
+            key: 'mercenaryBuff',
+            chance: MercenaryBuffScaling.bountyTimer[2], // Rank 3, index 2
+            label: 'Mercenary Buff',
+        });
+    });
+
+    test('a mercenary with a DIFFERENT buff category selected shows a 0 chance for mercenaryBuff', async () => {
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        const userDetails = baseUser({ mercenaryBountyWinCount: 0, mercenaryBuff: 'robChance' });
+
+        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'mercenaryBuff')).toEqual({ key: 'mercenaryBuff', chance: 0, label: 'Mercenary Buff' });
     });
 
     test('a live Spud Keep cooldown buff held by this exact mercenary shows its own chance', async () => {

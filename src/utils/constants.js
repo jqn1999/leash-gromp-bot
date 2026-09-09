@@ -2768,6 +2768,58 @@ const GuildBuffDescriptions = {
     workMulti: { sign: "+", text: "effective work multiplier" },
 }
 
+// Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction) — a solo, weaker
+// parallel to Guild Buff above, scaled by Mercenary Rank (1-6, MercenaryRank.THRESHOLDS)
+// instead of Guild Level (1-10). Roughly half of GuildBuffScaling's own per-tier value,
+// topping out well under it at EVERY rank (not just the cap): GuildBuffScaling.workMulti
+// maxes at 0.15 (half = 0.075), workTimer/raidTimer at 0.25 (half = 0.125), robChance at
+// 0.20 (half = 0.10) — Rank 6's max in each column here (0.07/0.12/0.10) lands at or just
+// under that half-mark. Rank 1 (0 wins, the instant a player becomes a mercenary) is
+// deliberately set far below Guild Level 1's own floor (0.06/0.06/0.06) since a solo pick
+// costs nothing and should never open at guild-parity. workTimer/bountyTimer share
+// IDENTICAL values, mirroring GuildBuffScaling.workTimer/raidTimer's own existing
+// precedent of being two separate keys with the same array — kept as two keys (not one
+// shared array) so a future divergence needs no restructuring. robChance steps 0.01
+// slower than workTimer at the top two ranks to mirror GuildBuffScaling.robChance's own
+// flatter finish relative to workTimer/raidTimer (0.20 cap vs. 0.25).
+const MercenaryBuffScaling = {
+    workMulti:   [0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
+    workTimer:   [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
+    bountyTimer: [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
+    robChance:   [0.03, 0.04, 0.06, 0.08, 0.09, 0.10],
+}
+
+// The descriptive half of each Mercenary Buff category — paired with MercenaryBuffScaling's
+// rank-looked-up value by mercenaryBuffFactory.getMercenaryBuffLabel. Lone-mercenary flavor
+// (lore.md-checked), not a reuse of GuildBuffDescriptions' institutional-guild phrasing.
+const MercenaryBuffDescriptions = {
+    workMulti:   { sign: "+", text: "effective work multiplier — a harder bargain" },
+    workTimer:   { sign: "", text: "chance to skip /work cooldown — quicker feet" },
+    robChance:   { sign: "+", text: "/rob success chance — a sharper blade" },
+    bountyTimer: { sign: "", text: "chance to skip Bounty cooldown — a nose for easy marks" },
+}
+
+// Mercenary Buff's own small constants group — no generic `Mercenary` constants object
+// exists today (only MercenaryRank/MercenaryQuest/MercenaryCompanionDrop), and `Bounty` is
+// scoped to the Bounty ladder itself, not buff-switching.
+const MercenaryBuff = {
+    SWITCH_COOLDOWN_SECONDS: 21600, // 6h — long enough a player can't just wait out one
+                                     // action's own cooldown and flip the buff for the next
+                                     // (/work 300s, /rob & /take-bounty 3600s, /rob-npc
+                                     // 1800s), short enough not to read as a /rebirth-style
+                                     // near-permanent commitment.
+}
+
+// Guild's own /set-buff switch cooldown (2026-09-09, direct instruction — /set-buff had
+// ZERO cooldown before this, letting a leader/co-leader flip the guild's buff any time with
+// no gate at all). Reuses MercenaryBuff.SWITCH_COOLDOWN_SECONDS's exact 6h value rather than
+// a second hardcoded 21600 literal, kept as its own separately-named constant (not folded
+// into MercenaryBuff itself, which is scoped to the Mercenary track) so a future divergence
+// between the two switch cooldowns needs no restructuring.
+const BuffSwitchCooldown = {
+    GUILD_SWITCH_COOLDOWN_SECONDS: MercenaryBuff.SWITCH_COOLDOWN_SECONDS,
+}
+
 // Cinderroot, the Hoardwarden — a single, singleton, permanently-guild-bound companion a guild
 // can win off a rare drop roll on a winning raid resolution (see
 // systems/guilds.md's "Guild Raid Companion" design). Deliberately its own small array, NOT
@@ -3445,6 +3497,10 @@ module.exports = {
     GuildHistory,
     GuildBuffScaling,
     GuildBuffDescriptions,
+    MercenaryBuffScaling,
+    MercenaryBuffDescriptions,
+    MercenaryBuff,
+    BuffSwitchCooldown,
     GuildCompanions,
     GuildCompanionDrop,
     GuildCompanionScaling,

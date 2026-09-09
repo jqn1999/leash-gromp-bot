@@ -10016,3 +10016,45 @@ already-elapsed cooldown display in this codebase (no separate "ready now" branc
 - **`src/utils/__tests__/embedFactory.test.js`**: extend for the new `/profile` Mercenary Buff
   field (both the "none yet" and active-buff-with-timestamp branches) and the new
   `buildCooldownSkipField` `mercenaryBuff` source branch.
+
+### Implemented (2026-09-09, same day)
+
+Built exactly as specced above, PLUS two direct-instruction amendments the user gave on top of
+the architect's design (both override/extend it, not optional follow-ups):
+
+1. **`robChance` also applies to `/rob-npc` (Heist), not just real `/rob`** — the architect's
+   design deliberately walled Heist off entirely (see the balance-risk flag in section 1 and "Not
+   touched" at the end of the scope section above) because `RobNpc.TIERS`' odds/payout/loss math
+   had just been retuned three times the same day. The user explicitly overrode this for
+   `robChance` specifically, with an explicit "don't bother with an EV recheck" — wired in
+   additively, no re-derivation of any `RobNpc.TIERS` formula. `mercenaryFactory.resolveNpcRob`'s
+   `npcRobChanceBonus` now reads `companionFactory.getActivePerkValue(userDetails, "robChanceFlat")
+   + (mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank) if isMercenary && mercenaryBuff
+   === "robChance", else 0)` — same additive bucket Yukon's `robChanceFlat` perk already occupies,
+   using the same `getMercenaryRankInfo` rank lookup already computed in that function. No other
+   `RobNpc.TIERS` field (base/perRank/cap/payout/penalty) changed. `workMulti`/`workTimer`/
+   `bountyTimer` remain untouched by Heist, exactly as designed.
+2. **`/set-buff` (guild) gets the same 6h switch cooldown** — previously zero cooldown at all. New
+   `guild.guildBuffSwitchTimer` field (ms epoch, `0` default, healed into pre-existing guilds via
+   `findGuildById`'s generic missing-field backfill off `getDefaultGuildFields`), gated by a new
+   `BuffSwitchCooldown.GUILD_SWITCH_COOLDOWN_SECONDS` constant that just points at the same value as
+   `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` rather than a second hardcoded `21600` literal. Same gate
+   order as `/set-mercenary-buff`: role check (unchanged) -> same-category re-pick rejected as a
+   no-op (cooldown untouched) -> cooldown check -> write. Reply states the new value plus a
+   `<t:UNIX:R>` next-switch-available timestamp, same convention as `/set-mercenary-buff`.
+
+Everything else shipped exactly per the architect's design: `MercenaryBuffScaling`/
+`MercenaryBuffDescriptions`/`MercenaryBuff` in `constants.js`; `mercenaryBuff: null`/
+`mercenaryBuffSwitchTimer: 0` on `getDefaultUserFields`; new leaf `mercenaryBuffFactory.js`; new
+`setMercenaryBuff.js`; `workFactory.getMercenaryWorkMulti` wired into all 8 `effectiveMultiplier`
+sums; `dynamoHandler.getWorkCooldownSkipSources`'s 5th source (lazy-required `mercenaryFactory`,
+mirroring the existing `spudKeepFactory` lazy-require pattern); `rob.js`'s real `/rob` `robChance`
+add at both computation sites; `mercenaryFactory.getMercenaryCooldownSkipSources`'s 3rd
+`bountyTimer` source; `/profile`'s new Mercenary Buff field and `buildCooldownSkipField`'s new
+`mercenaryBuff` branch (shared by both `/work` and Bounty's result embeds).
+
+Full suite: 1312/1312 passing (up from 1271 before this feature — 41 new/updated tests), including
+new coverage for both amendments: a `resolveNpcRob` test locking in that the mercenary `robChance`
+buff additively raises Heist success chance the same way Yukon's `robChanceFlat` does, and a new
+`setBuff.js` (guild) test file covering first-switch-free, cooldown-blocked, cooldown-cleared, and
+same-category-no-op cases.
