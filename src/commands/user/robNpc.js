@@ -94,6 +94,21 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         return;
     }
 
+    // Power gate (2026-09-09, direct instruction: "fix it" — see RobNpc.TIERS' own comment
+    // in constants.js and balance-audit.md's 2026-09-09 entry). Mercenary Rank is driven
+    // entirely by Bounty wins, independent of workMultiplierAmount, so a mercenary could
+    // otherwise reach any rank via Baby Bounty grinding alone and unlock a real-stakes Heist
+    // tier while still at the literal default 1x multiplier — a tier whose EV is actually
+    // negative for them at that power. Separate from the rank check above, checked against
+    // the player's own real earned power (never catch-up-boosted, same figure the loss-side
+    // scaling in resolveNpcRob itself reads).
+    if (userDetails.workMultiplierAmount < tier.minPowerRequired) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName}, ${tier.label} needs at least a ${tier.minPowerRequired}x work multiplier to attempt safely — you're currently at ${userDetails.workMultiplierAmount.toFixed(2)}x. Build up your economy a bit more first (check /shop).`);
+        }
+        return;
+    }
+
     const timeSinceLastNpcRobInSeconds = Math.floor((Date.now() - userDetails.npcRobTimer) / 1000);
     const timeUntilNpcRobAvailableInSeconds = RobNpc.NPC_ROB_TIMER_SECONDS - timeSinceLastNpcRobInSeconds;
     if (timeSinceLastNpcRobInSeconds < RobNpc.NPC_ROB_TIMER_SECONDS) {

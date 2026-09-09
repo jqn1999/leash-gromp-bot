@@ -60,7 +60,12 @@ describe('/rob-npc cooldown skip', () => {
     test('a whiff never rolls a skip at all — full cooldown, no chain, Spud Keep not even queried', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 })); // Rank 2
         const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0.999999); // win check fails (Tier I is whiff-only, no penalty roll)
+        // Reward-roll-coupled risk (2026-09-09) — the reward roll is now Math.random()'s
+        // FIRST call (it nudges this attempt's own odds before the win check runs), so both
+        // need mocking now to force a deterministic whiff (Tier I is whiff-only, no penalty roll).
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)        // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999);  // win check fails
         try {
             await callback({}, interaction);
         } finally {
@@ -77,8 +82,8 @@ describe('/rob-npc cooldown skip', () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 })); // Rank 2, cooldownReductionPercent 0.06
         const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)    // win check
-            .mockReturnValueOnce(0)    // reward multiplier rangeRoll
+            .mockReturnValueOnce(0)    // reward roll -> .8x (also doubles as the reward variance roll)
+            .mockReturnValueOnce(0)    // win check -> hit
             .mockReturnValueOnce(0.99); // skip roll miss (>= 0.06)
         try {
             await callback({}, interaction);
@@ -102,12 +107,14 @@ describe('/rob-npc cooldown skip', () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 })); // Rank 2, cooldownReductionPercent 0.06
         const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)    // win check
-            .mockReturnValueOnce(0)    // reward multiplier rangeRoll
+            .mockReturnValueOnce(0)    // reward roll -> .8x (also doubles as the reward variance roll)
+            .mockReturnValueOnce(0)    // win check -> hit
             .mockReturnValueOnce(0)    // skip roll HIT (< 0.06)
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution (only mercenaryRank active)
-            // Chained attempt (isChainedReply=true) resolves as a whiff, ending the chain there:
-            .mockReturnValueOnce(0.999999); // win check fails
+            // Chained attempt (isChainedReply=true) resolves as a whiff, ending the chain there —
+            // needs its OWN reward roll (first call again) before its own win check now.
+            .mockReturnValueOnce(0.5)       // chained attempt's reward roll -> midpoint
+            .mockReturnValueOnce(0.999999); // chained attempt's win check fails
         try {
             await callback({}, interaction);
         } finally {

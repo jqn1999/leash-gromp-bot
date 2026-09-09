@@ -219,10 +219,23 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // Ladder rework, the base/perRank/cap numbers themselves come from the picked tier
     // rather than a single shared RobNpc.BASE_CHANCE/CHANCE_PER_RANK/MAX_CHANCE.
     const npcRobChanceBonus = companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
-    const successChance = Math.min(
+    const tierChance = Math.min(
         tier.baseChance + tier.chancePerRank * (rankInfo.rank - 1),
         tier.maxChance
-    ) + npcRobChanceBonus;
+    );
+
+    // Reward-roll-coupled risk (2026-09-09, direct instruction — see RobNpc.
+    // REWARD_ROLL_SUCCESS_SPREAD's own comment in constants.js). Rolled BEFORE the win/loss
+    // check now (previously this exact roll only ever happened after a win, purely to size
+    // the payout) — the same roll both sizes the reward AND nudges THIS attempt's own odds:
+    // rewardRollT=0 (bottom of the .8-1.2x range, smallest possible payout) is the safest
+    // attempt this tier can offer, rewardRollT=1 (top of the range, biggest possible payout)
+    // is the riskiest. Symmetric around tierChance, so the average odds across the whole
+    // roll distribution still equal the tier's own flat formula.
+    const rewardRoll = getRandomFromInterval(.8, 1.2);
+    const rewardRollT = (rewardRoll - .8) / .4; // 0 (smallest reward) .. 1 (largest reward)
+    const riskAdjustedChance = tierChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD * (rewardRollT - 0.5);
+    const successChance = Math.max(0, Math.min(1, riskAdjustedChance)) + npcRobChanceBonus;
     const won = Math.random() < successChance;
 
     // Computed either way now (win or loss) — the loss side scales gently off the same
@@ -272,9 +285,10 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // varies — see RobNpc's own comment in constants.js for why that's still enough
     // differentiation between tiers at real server wealth.
     const effectiveMultiplier = applyCatchUp(developedMultiplier, catchUpBonus);
-    const multiplier = getRandomFromInterval(.8, 1.2);
-
-    result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, multiplier, effectiveMultiplier, userDetails);
+    // rewardRoll was already rolled above (it's what this attempt's own odds were weighed
+    // against) — reused here rather than a fresh roll, so the payout actually matches the
+    // risk the player just took.
+    result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, rewardRoll, effectiveMultiplier, userDetails);
 
     // The Royal Treasury's one distinguishing extra — see RobNpc.TIERS' own comment in
     // constants.js. 0 for every other tier, so this is a no-op everywhere else.

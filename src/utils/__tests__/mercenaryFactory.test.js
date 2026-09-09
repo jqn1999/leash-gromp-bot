@@ -610,9 +610,21 @@ describe('resolveNpcRob', () => {
     const ARMORED_VAULT = RobNpc.TIERS.find(t => t.key === 'noble_vault');
     const BIG_SCORE = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
 
+    // Reward-roll-coupled risk (2026-09-09) means Math.random()'s FIRST call now rolls the
+    // .8-1.2x reward-size roll (which nudges this attempt's own success chance), and the
+    // win/loss check is the SECOND call — a real reordering from before, when win/loss was
+    // always the first roll. Math.random()=0.5 -> getRandomFromInterval(.8,1.2)=1.0 exactly
+    // the roll's own midpoint, so RobNpc.REWARD_ROLL_SUCCESS_SPREAD's adjustment is exactly
+    // 0 and successChance collapses back to the tier's own flat baseChance/chancePerRank/
+    // maxChance formula — used throughout below wherever a test wants to check that flat
+    // formula in isolation, unaffected by the new spread.
+    const MIDPOINT_REWARD_ROLL = 0.5;
+
     test('defaults to Tier I (market_stall) when no heist tier is passed — pre-ladder call sites unaffected', () => {
         return (async () => {
-            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+                .mockReturnValueOnce(0.999999);            // win check -> whiff
             try {
                 const result = await mercenaryFactory.resolveNpcRob(baseUser({ mercenaryBountyWinCount: 0 }), 1000, 0);
                 expect(result.tier).toBe('market_stall');
@@ -627,7 +639,13 @@ describe('resolveNpcRob', () => {
         // resolveNpcRob is async but the chance math itself is synchronous — check it via
         // the returned result's successChance for a few ranks without needing randomness.
         return (async () => {
-            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // force a whiff so we don't need to mock server totals
+            // Reward roll at the midpoint (zero spread adjustment) + a forced whiff, every
+            // call — so we don't need to mock server totals for a win.
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999)
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999)
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999)
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL).mockReturnValueOnce(0.999999);
             try {
                 const rank1User = baseUser({ mercenaryBountyWinCount: 0 });
                 const rank1 = await mercenaryFactory.resolveNpcRob(rank1User, 1000, 0, 'market_stall');
@@ -659,7 +677,9 @@ describe('resolveNpcRob', () => {
     // perk now boosts /rob-npc's success chance too (on top of, not instead of, the base
     // flat/rank-based formula above — /rob-npc stays non-wealth-based).
     test('robChanceFlat (Yukon) adds on top of the base rank-scaled chance', async () => {
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999);            // win check -> whiff
         try {
             const userWithYukon = baseUser({
                 mercenaryBountyWinCount: 0,
@@ -670,6 +690,35 @@ describe('resolveNpcRob', () => {
         } finally {
             randomSpy.mockRestore();
         }
+    });
+
+    // New (2026-09-09, direct instruction: "make the success rates jump a bit depending on
+    // what the reward roll would be... for lower rewards in a tier the chance of success is
+    // higher but for the max amount of reward for that tier it's also the highest
+    // difficulty"). The reward roll is symmetric around the tier's own flat chance — the
+    // bottom of the .8-1.2x range gets easier odds, the top gets harder odds.
+    test('the reward roll nudges success chance around the tier baseline — smallest roll is easiest, largest roll is hardest', async () => {
+        const easySpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // reward roll -> .8x, the smallest possible reward
+            .mockReturnValueOnce(0.999999); // win check -> whiff (chance is still < 1, just easier)
+        let easyResult;
+        try {
+            easyResult = await mercenaryFactory.resolveNpcRob(baseUser({ mercenaryBountyWinCount: 0 }), 1000, 0, 'market_stall');
+        } finally {
+            easySpy.mockRestore();
+        }
+        expect(easyResult.successChance).toBeCloseTo(CORNER_STORE.baseChance + RobNpc.REWARD_ROLL_SUCCESS_SPREAD / 2);
+
+        const hardSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.999999) // reward roll -> 1.2x, the largest possible reward
+            .mockReturnValueOnce(0.999999); // win check -> whiff
+        let hardResult;
+        try {
+            hardResult = await mercenaryFactory.resolveNpcRob(baseUser({ mercenaryBountyWinCount: 0 }), 1000, 0, 'market_stall');
+        } finally {
+            hardSpy.mockRestore();
+        }
+        expect(hardResult.successChance).toBeCloseTo(CORNER_STORE.baseChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD / 2);
     });
 
     test('a Tier I (Market Stall) whiff costs nothing — amount and penaltyAmount both stay 0', async () => {
@@ -690,8 +739,9 @@ describe('resolveNpcRob', () => {
     // single flat /rob-npc.
     test('a Tier II+ whiff at 1x multiplier costs exactly half that tier\'s own payoutCap, scaled by the usual +/-20% roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.999999) // win check -> whiff
-            .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999)             // win check -> whiff
+            .mockReturnValueOnce(0);                   // penalty variance roll -> low end (.8x)
         let result;
         try {
             result = await mercenaryFactory.resolveNpcRob(
@@ -715,8 +765,9 @@ describe('resolveNpcRob', () => {
     // the full 1:1 the reward side gets.
     test('a Tier II+ whiff at a higher multiplier costs proportionally more, scaled by LOSS_MULTIPLIER_SCALING', async () => {
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.999999) // win check -> whiff
-            .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999)             // win check -> whiff
+            .mockReturnValueOnce(0);                   // penalty variance roll -> low end (.8x)
         let result;
         try {
             result = await mercenaryFactory.resolveNpcRob(
@@ -737,8 +788,9 @@ describe('resolveNpcRob', () => {
     // the catch-up-boosted effectiveMultiplier the reward side uses.
     test('catchUpBonus does not affect the loss-scaling factor', async () => {
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.999999) // win check -> whiff
-            .mockReturnValueOnce(0);       // penalty variance roll -> low end (.8x)
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint, zero spread adjustment
+            .mockReturnValueOnce(0.999999)             // win check -> whiff
+            .mockReturnValueOnce(0);                   // penalty variance roll -> low end (.8x)
         let result;
         try {
             result = await mercenaryFactory.resolveNpcRob(
@@ -789,9 +841,9 @@ describe('resolveNpcRob', () => {
         const rank6User = baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired });
 
         const hitSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)  // win check -> hit
-            .mockReturnValueOnce(0.5) // payout variance roll
-            .mockReturnValueOnce(0);  // stat grant roll -> hit (< 0.05)
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint (also the payout variance roll, reused)
+            .mockReturnValueOnce(0)                    // win check -> hit
+            .mockReturnValueOnce(0);                   // stat grant roll -> hit (< 0.05)
         let bigScoreHit;
         try {
             bigScoreHit = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'royal_treasury');
@@ -802,9 +854,9 @@ describe('resolveNpcRob', () => {
         expect(bigScoreHit.statReward.length).toBe(1);
 
         const missSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0)   // win check -> hit
-            .mockReturnValueOnce(0.5) // payout variance roll
-            .mockReturnValueOnce(0.999999); // stat grant roll -> miss
+            .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint
+            .mockReturnValueOnce(0)                    // win check -> hit
+            .mockReturnValueOnce(0.999999);            // stat grant roll -> miss
         let bigScoreMiss;
         try {
             bigScoreMiss = await mercenaryFactory.resolveNpcRob(rank6User, 50000, 0, 'royal_treasury');

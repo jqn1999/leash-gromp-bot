@@ -2372,11 +2372,34 @@ const RobNpc = {
     // live reported server total, ~19.7M potatoes), so losses stay proportionate to wins
     // without ever threatening to match them.
     LOSS_MULTIPLIER_SCALING: 0.15,
+
+    // Per-attempt success-chance/reward coupling (2026-09-09, direct instruction: "make the
+    // success rates jump a bit depending on what the reward roll would be? So for lower
+    // rewards in a tier the chance of success is higher but for the max amount of reward for
+    // that tier it's also the highest difficulty"). mercenaryFactory.resolveNpcRob now rolls
+    // the SAME .8-1.2x reward-size variance BEFORE deciding win/loss, and nudges that
+    // attempt's own success chance around the tier's own flat baseline by this fraction —
+    // the bottom of the roll (.8x, smallest possible payout) gets +SPREAD/2 easier odds, the
+    // top of the roll (1.2x, biggest possible payout) gets -SPREAD/2 harder odds, linearly in
+    // between. Deliberately symmetric around 0 so the AVERAGE success chance across the full
+    // roll distribution still equals the tier's own flat baseChance/chancePerRank/maxChance
+    // formula — this adds attempt-to-attempt tension (and a small, visible reason the %
+    // shown on the result embed moves around beyond just Mercenary Rank), it isn't a hidden
+    // nerf or buff to the tier's own baseline odds. Applied uniformly across all 4 tiers,
+    // including Tier I (which has no penalty, but still has variable reward and success —
+    // "lower reward = safer" is a real, felt tradeoff there too, not just on the real-stakes
+    // tiers). Only the WIN/LOSS roll and the reward SIZE are coupled this way — the penalty
+    // side (a whiff's own loss amount) is a completely separate, uncoupled roll, same as
+    // before: you didn't get the reward you were risking for, so there's nothing to size a
+    // matching penalty off of.
+    REWARD_ROLL_SUCCESS_SPREAD: 0.12,
+
     TIERS: [
         {
             key: 'market_stall',
             label: 'Market Stall',
             rankRequired: 1,
+            minPowerRequired: 0,      // no power gate — the safe, always-available intro tier
             baseChance: 0.30,
             chancePerRank: 0.10,
             maxChance: 0.80,          // reached at Rank 6 (0.30 + 0.10*5 = 0.80)
@@ -2389,6 +2412,18 @@ const RobNpc = {
             key: 'merchant_wagon',
             label: 'Merchant\'s Wagon',
             rankRequired: 2,          // Rank 2 = MercenaryRank.THRESHOLDS' own 15-win threshold
+            // Power gate (2026-09-09, direct instruction: "fix it" — see balance-audit.md's
+            // 2026-09-09 entry). Mercenary Rank is driven ENTIRELY by Bounty wins
+            // (mercenaryBountyWinCount), completely independent of workMultiplierAmount — a
+            // mercenary could reach any rank via Baby Bounty grinding alone without ever
+            // raising their own economic power above the literal default of 1x, at which
+            // point every real-stakes Heist tier's EV was actually negative (a whiff's flat
+            // penalty outweighing a still-undeveloped win). 2x is an easy, early bar (below
+            // even the shop's own first real checkpoint at 3x) — checked against live
+            // formulas: EV turns positive right around power 1.5x, this leaves a safety
+            // margin. See RobNpc's own minPowerRequired comment pattern repeated below for
+            // Tiers III/IV.
+            minPowerRequired: 2,
             baseChance: 0.20,
             chancePerRank: 0.08,
             maxChance: 0.60,
@@ -2402,6 +2437,10 @@ const RobNpc = {
             key: 'noble_vault',
             label: 'Noble\'s Vault',
             rankRequired: 4,          // Rank 4 = MercenaryRank.THRESHOLDS' own 125-win threshold
+            minPowerRequired: 3,      // EV turns positive right around 2.5x at this tier's own
+                                       // unlock rank (Rank 4, 30% chance) — 3x (an exact shop
+                                       // checkpoint) leaves a safety margin, same reasoning as
+                                       // Merchant's Wagon above.
             baseChance: 0.12,
             chancePerRank: 0.06,
             maxChance: 0.42,
@@ -2415,13 +2454,31 @@ const RobNpc = {
             key: 'royal_treasury',
             label: 'The Royal Treasury',
             rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
-            baseChance: 0.06,
-            chancePerRank: 0.04,      // still technically "+/rank" for shape consistency with the other 3 tiers,
-                                       // but only reachable at Rank 6 itself (0.06 + 0.04*5 = 0.26 flat once unlocked)
-            maxChance: 0.26,
-            payoutCap: 40000,
+            minPowerRequired: 5,      // EV turns positive right around 3x at this tier's own
+                                       // fixed Rank-6 odds — 5x (an exact shop checkpoint,
+                                       // matching Merchant's Wagon/Noble's Vault's own
+                                       // "gate lands on a real progression milestone"
+                                       // pattern) leaves a comfortable margin.
+            // Retuned alongside the power gate above (2026-09-09, direct instruction: "fix
+            // it") — was baseChance 0.06/chancePerRank 0.04/maxChance 0.26, payoutCap 40000.
+            // balance-audit.md's 2026-09-09 entry found this tier strictly EV-dominated by
+            // Noble's Vault at EVERY power level (EV3-EV4 = 1235*power + 17765, always
+            // positive — there was no power level at which the "hardest, capstone" tier was
+            // ever the right pick). penaltyPercentOfCap deliberately left at 1.0 (the x2.0
+            // Guild-Raid-Legendary-matching ratio from the 2026-09-08 penalty-escalation
+            // work is preserved, not walked back) — instead the WIN side was buffed (odds
+            // 0.26 -> 0.33 max chance, cap 40,000 -> 50,000), which flips the two tiers'
+            // EV-vs-power slope: Noble's Vault stays the better pick from unlock through
+            // ~power 5.5x, Royal Treasury overtakes it from there on and the gap keeps
+            // growing — a genuine "grow into the capstone tier" curve instead of a trap that
+            // was never worth entering.
+            baseChance: 0.08,
+            chancePerRank: 0.05,      // still technically "+/rank" for shape consistency with the other 3 tiers,
+                                       // but only reachable at Rank 6 itself (0.08 + 0.05*5 = 0.33 flat once unlocked)
+            maxChance: 0.33,
+            payoutCap: 50000,
             hasPenalty: true,
-            penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses
+            penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged
             notorietyPerWin: 4,
             // The one thing Tiers I-III never offer — a 5% roll on a WIN into
             // mercenaryFactory.pickStatGrant('I', userDetails), reusing BountyStatReward's

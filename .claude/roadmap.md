@@ -9335,3 +9335,53 @@ COMBAT when nothing is affordable, only ever picks an affordable entry across an
 **Docs**: `.claude/systems/tower.md` gained a new dated section with the full derivation, its
 TRANSACTION/ELITE "Floor types" bullets updated to describe the current (not stale) cap/filter
 behavior.
+
+## Fix: Heist Ladder tuning (Royal Treasury dominance + low-power trap) + reward-roll-coupled risk (2026-09-09, direct instruction)
+
+Follow-up to the 2026-09-09 balance audit (`balance-audit.md`'s own entry) — player asked
+"Fix it. Also can we make the success rates jump a bit depending on what the reward roll
+would be? So for lower rewards in a tier the chance of success is higher but for the max
+amount of reward for that tier it's also the highest difficulty?"
+
+**Fix 1 — Royal Treasury was strictly EV-dominated by Noble's Vault at every power level**
+(`EV(NoblesVault) - EV(RoyalTreasury) = 1235*power + 17765`, always positive, per the audit).
+Retuned the WIN side only (`penaltyPercentOfCap` left at 1.0 — the 2026-09-08
+penalty-escalation work isn't walked back): max success chance `26% -> 33%`, payout cap
+`40,000 -> 50,000`. Flips the slope so Noble's Vault stays the better pick through ~power
+5.5x, and Royal Treasury overtakes it from there on with a growing lead — a real
+"grow into the capstone tier" curve instead of a tier that was never worth picking.
+
+**Fix 2 — a Rank-6-but-low-power mercenary was walking into negative-EV Heist tiers.**
+Mercenary Rank is driven entirely by Bounty wins, independent of `workMultiplierAmount`, so
+a mercenary could reach any rank via Baby Bounty grinding alone while still at the literal
+default 1x multiplier. Added `minPowerRequired` per tier (Merchant's Wagon 2x, Noble's Vault
+3x, Royal Treasury 5x — landing on real shop checkpoints, each with a safety margin above
+where that tier's own EV first turns positive), checked in `robNpc.js` right after the rank
+check with a plain rejection message. `resolveNpcRob` itself is unaware of this gate — pure
+UX guard, same separation `rankRequired` already has.
+
+**New mechanic — reward-roll-coupled risk.** `resolveNpcRob` now rolls the `.8-1.2x`
+reward-size variance BEFORE deciding win/loss (previously only rolled after a win, purely to
+size the payout), and reuses it to nudge that attempt's own success chance:
+`rewardRollT=0` (smallest possible reward) gets easier odds, `rewardRollT=1` (largest
+possible reward) gets harder odds, symmetric around the tier's own flat chance by
+`RobNpc.REWARD_ROLL_SUCCESS_SPREAD` (0.12, ±6 percentage points) — so the average odds
+across the full roll distribution are unchanged, this adds attempt-to-attempt tension rather
+than a hidden buff/nerf. Applies to all 4 tiers. On a win, the same roll sizes the payout
+(no second roll); a loss's penalty stays a completely separate, uncoupled roll.
+
+**Tests**: `mercenaryFactory.test.js`'s `resolveNpcRob` describe block — every existing test
+updated for the reordered `Math.random()` call sequence (reward roll now first, win check
+second), plus a new test locking in the reward-roll/chance coupling itself (smallest roll ->
+`+SPREAD/2` easier, largest roll -> `-SPREAD/2` harder). `robNpcCooldownSkip.test.js` — two
+tests that relied on a single mocked random value fixed (the reordering left them one call
+short, silently falling through to real `Math.random()` — a real ~20-70%-chance flakiness
+bug this surfaced and fixed, not just a relabeling). New `robNpcPowerGate.test.js` (5 tests):
+Market Stall unaffected (no gate), Merchant's Wagon rejects below its gate and allows at/above
+it, Royal Treasury rejects below its gate even at max rank, and the rank check still runs
+first (a low-rank/high-power mercenary is rejected for rank, not power). Full suite green
+(1268/1268, up from 1262 on `main`).
+
+**Docs**: `.claude/systems/mercenary-bounties.md`'s `/rob-npc` section — the odds
+formula, tier table (new power-gate column, retuned Royal Treasury row), and two new
+subsections (reward-roll-coupled risk, power gate) covering the full derivation.

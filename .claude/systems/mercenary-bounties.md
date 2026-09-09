@@ -542,9 +542,11 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
   across all 4 tiers** — picking a bigger score doesn't buy a longer wait, just bigger
   stakes on the same clock.
 - **Odds**: flat base chance per tier (no target to compare relative wealth against),
-  scaling with rank:
+  scaling with rank, THEN nudged per-attempt by the reward roll (2026-09-09, see below):
   ```
-  successChance = min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance)
+  tierChance = min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance)
+  riskAdjustedChance = tierChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD * (rewardRollT - 0.5)
+  successChance = clamp(riskAdjustedChance, 0, 1)
                   + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Elder Rootbeard/Yukon — shared with real /rob
   ```
   Simplified 2026-08-23, direct instruction: Yukon's own bonus used to be a separate
@@ -561,14 +563,37 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
   to `/rob-npc` is entirely on the odds side; Bounty's Rank/Yukon benefit is entirely on the
   reward-size side, keeping each lever on one axis only.
 
+**Reward-roll-coupled risk (`RobNpc.REWARD_ROLL_SUCCESS_SPREAD`, 2026-09-09, direct
+instruction: "make the success rates jump a bit depending on what the reward roll would
+be? So for lower rewards in a tier the chance of success is higher but for the max amount
+of reward for that tier it's also the highest difficulty").** `resolveNpcRob` now rolls the
+same `.8-1.2x` reward-size variance BEFORE deciding win/loss (previously this roll only ever
+happened after a win, purely to size the payout), and reuses it to nudge THAT attempt's own
+success chance around the tier's own flat baseline:
+```
+rewardRoll = getRandomFromInterval(.8, 1.2)
+rewardRollT = (rewardRoll - .8) / .4   // 0 = smallest possible reward, 1 = largest
+```
+`rewardRollT = 0` (bottom of the range) gets `+SPREAD/2` easier odds; `rewardRollT = 1` (top
+of the range) gets `-SPREAD/2` harder odds; symmetric in between, at `0.12` currently
+(±6 percentage points). Deliberately symmetric around the tier's own flat chance, so the
+AVERAGE success chance across the full roll distribution is unchanged from before this —
+this adds attempt-to-attempt tension (and a small, visible reason the `Chance:` field on the
+result embed moves around beyond just Mercenary Rank), not a hidden buff or nerf to a tier's
+baseline odds. Applies uniformly across all 4 tiers, including Tier I (no penalty, but still
+variable reward/chance). On a WIN, the same `rewardRoll` sizes the payout (no second roll) —
+the reward you actually got is exactly the one your odds were weighed against. On a LOSS,
+the penalty amount is a completely separate, uncoupled roll (see below) — there's no reward
+roll to size a matching penalty off of.
+
 **The 4 tiers** (`RobNpc.TIERS`):
 
-| Tier | Rank | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
-|---|---|---|---|---|---|---|---|
-| Market Stall | 1+ | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Merchant's Wagon | 2+ | 20% / +8% / 60% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
-| Noble's Vault | 4+ | 12% / +6% / 42% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
-| The Royal Treasury | 6 only | 6% / +4% / 26% | 40,000 | 1.0 (x2.0) | 32,000-48,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Tier | Rank | Power gate | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
+|---|---|---|---|---|---|---|---|---|
+| Market Stall | 1+ | — (none) | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
+| Merchant's Wagon | 2+ | 2x | 20% / +8% / 60% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
+| Noble's Vault | 4+ | 3x | 12% / +6% / 42% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
+| The Royal Treasury | 6 only | 5x | 8% / +5% / 33% | 50,000 | 1.0 (x2.0) | 40,000-60,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 Rank gates (`rankRequired`) are just that rank NUMBER — `MercenaryRank.THRESHOLDS` already
 defines what win-total each rank needs (15/125/525 for Ranks 2/4/6), so gating on live rank
@@ -580,10 +605,40 @@ anyone who only ever ran the single flat `/rob-npc` this replaced. Real stakes o
 at Tier II: a whiff there (and on every tier above it) costs that tier's own
 `penaltyPercentOfCap` fraction of its own `payoutCap`, scaled by the same
 `getRandomFromInterval(.8, 1.2)` variance roll every other reward/penalty pair in this game
-uses, further scaled by `lossScale` (see below) — subtracted straight from potatoes
-unclamped, same precedent `takeBounty.js`/`confrontRival.js` already set (a loss CAN put a
-player negative — a known, already-flagged gap shared with Guild Raid's own T2/T3 entry on
-the roadmap, not a new one introduced here).
+uses (a completely separate roll from the reward-roll-coupled risk above — see that
+section's own note), further scaled by `lossScale` (see below) — subtracted straight from
+potatoes unclamped, same precedent `takeBounty.js`/`confrontRival.js` already set (a loss
+CAN put a player negative — a known, already-flagged gap shared with Guild Raid's own
+T2/T3 entry on the roadmap, not a new one introduced here).
+
+**Power gate (`minPowerRequired`, 2026-09-09, direct instruction: "fix it" — see
+`balance-audit.md`'s 2026-09-09 entry).** Mercenary Rank is driven ENTIRELY by Bounty wins
+(`mercenaryBountyWinCount`), completely independent of `workMultiplierAmount` — a mercenary
+could reach any rank via Baby Bounty grinding alone without ever raising their own economic
+power above the literal default of 1x, at which point every real-stakes tier's EV was
+actually negative (a whiff's flat penalty outweighing a still-undeveloped win). `robNpc.js`
+now checks `userDetails.workMultiplierAmount >= tier.minPowerRequired` right after the rank
+check, rejecting with a plain message (`"needs at least a Nx work multiplier..."`) rather
+than silently letting the player walk into a losing proposition. Gates land on real shop
+checkpoints (`SCALING_ANCHOR_TABLE`'s own 2/3/5x entries — Tower's `enter-tower.js` uses the
+same table) rather than arbitrary numbers, and each was sized with a comfortable margin
+above the power level where that tier's own EV first turns positive (checked directly
+against the live formulas: Merchant's Wagon breaks even ~1.5x, Noble's Vault ~2.5x, The
+Royal Treasury ~3x). Purely a `robNpc.js`-level UX guard — `resolveNpcRob` itself doesn't
+read or enforce `minPowerRequired` at all, the same separation of concerns `rankRequired`
+already has (also only checked in `robNpc.js`, never inside `resolveNpcRob`).
+
+**The Royal Treasury retuned alongside the power gate (2026-09-09, direct instruction: "fix
+it").** `balance-audit.md`'s 2026-09-09 entry found this tier strictly EV-dominated by
+Noble's Vault at EVERY power level (`EV(NoblesVault) - EV(RoyalTreasury) = 1235*power +
+17765`, always positive — there was no power level at which the "hardest, capstone" tier was
+ever the correct pick). `penaltyPercentOfCap` deliberately left at `1.0` (the x2.0
+Guild-Raid-Legendary-matching ratio from the 2026-09-08 penalty-escalation work is
+preserved, not walked back); instead the WIN side was buffed — max chance `26% -> 33%`,
+payout cap `40,000 -> 50,000` — which flips the two tiers' EV-vs-power slope: Noble's Vault
+stays the better pick from unlock through ~power 5.5x, The Royal Treasury overtakes it from
+there on and the gap keeps growing, a genuine "grow into the capstone tier" curve instead of
+a trap that was never worth entering at all.
 
 **`penaltyPercentOfCap` escalates by tier (2026-09-08, direct instruction — see Bounty's own
 matching penalty-escalation entry above for the full rationale).** Was a single flat 0.5
