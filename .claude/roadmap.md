@@ -10984,3 +10984,198 @@ line, already had `scenario` destructured from `result`), `guildRivalFactory.js`
 the constant), and `repelWarband.test.js` (the assertion, using `.hard` since that test's `Math.random`
 mock guarantees a hard-scenario win). Full suite: 1425/1425, no new tests needed since existing
 coverage already exercised this call path — only the constant's shape and values changed.
+
+## Guild Companion (Cinderroot) Rework: personal find, guild equip/unequip (2026-09-10, direct instruction) — planning pass only, not implemented yet
+
+Today Cinderroot is a pure guild-owned singleton (`guild.guildCompanion = { id, acquiredAt,
+acquiredRaidTier }`, see systems/guilds.md's "Guild Rival Warbands" section's neighbor, the
+original "Guild Raid Companion" design at line ~365 of this file) — a winning raid rolls it
+directly onto the GUILD record, no player ever "owns" it. Direct instruction: rework this so
+Cinderroot is found the same way Yukon is (a real personal companion instance, landing in
+`userDetails.companions.owned`, awarded to **whoever started the raid**), Legendary rarity, **no
+changes to its 3 existing perk values/formulas** — but it must then be explicitly **equipped onto
+a guild** to actually do anything, with equip/unequip run through the guild (not tradeable while
+equipped), and unequip restricted to Leader/Co-Leader.
+
+Three product questions this entry's own first draft left genuinely open were resolved by direct
+instruction (via AskUserQuestion) before any of the design below was finalized:
+
+1. **Migration for guilds that already own Cinderroot today** (e.g. "Honest Workers," a live guild
+   with `guildCompanion: {id: cinderroot, acquiredRaidTier: regular}` as of this same session) —
+   **mint a real personal instance for the guild's current Leader**, then immediately equip it on
+   the guild on their behalf, preserving their existing benefit uninterrupted. Every
+   `guild.guildCompanion` record, old or new, ends up having gone through the identical
+   acquisition→equip pipeline — no permanent "ownerless legacy" code branch needed.
+2. **What happens on departure** (if a member who at some point owned/found the guild's Cinderroot
+   leaves or is kicked) — **doesn't matter, stays equipped regardless.** Direct instruction:
+   "equipping and unequipping... is through the guild and not necessarily owned by any user when
+   its set on the guild. Only 1 cinderroot needed/able to be equipped on a guild." Once equipped,
+   Cinderroot is guild property, full stop — there is no ongoing personal-ownership tie to unwind
+   on anyone's departure, and no departure hook is needed at all (unlike Guild Contract's
+   `freezeDepartureContribution` — a structurally different problem since that one tracks an
+   ongoing per-member delta, not a one-time ownership transfer).
+3. **Market/Fusion exposure while equipped** — **structurally impossible, not a validation rule to
+   add.** Direct instruction: "Cinderroot equipped on a guild leaves a player's inventory, it
+   should not be able to be sold." Equipping REMOVES the instance from
+   `userDetails.companions.owned` entirely (see below) — there is no instance left in any player's
+   inventory for `companionMarketFactory.js`/`companionFusionFactory.js` to ever act on while it's
+   equipped, so neither file needs a single line of new guard logic. The only window where
+   Cinderroot is a normal, fully-tradeable/fusable Legendary companion is between being FOUND and
+   being EQUIPPED — exactly like Yukon has zero restrictions post-acquisition.
+
+### Data model
+
+`guild.guildCompanion` keeps its exact current field name and mostly its current shape, gaining
+exactly one new field:
+```js
+guild.guildCompanion = {
+    id: "cinderroot",
+    acquiredAt: <unchanged>,
+    acquiredRaidTier: <unchanged>,
+    equipped: true | false   // NEW — the only thing every perk/sacrifice consumer gates on now
+}
+```
+No `instanceId`/`ownerId` is stored here — per decision #2, once transferred onto the guild it is
+genuinely ownerless, not a reference back to whoever found it. `equipped: false` is the "benched"
+state: still possessed by the guild (so it doesn't need a fresh drop to reactivate), but inert
+(no perks, not sacrificeable) until a Leader/Co-Leader re-equips it. This is the mechanism that
+gives real, distinct meaning to "equip" vs. "unequip" as reversible toggles, separate from
+`sacrifice` (still the only PERMANENT, destructive path — see below).
+
+Cinderroot's own roster entry moves from the guild-only `GuildCompanions` array
+(constants.js:3120, to be deleted once migrated) into the real `Companions` array everyone else's
+companions live in, gaining:
+```js
+{
+    id: "cinderroot",
+    name: "Cinderroot, the Hoardwarden",
+    rarity: CompanionRarity.LEGENDARY,
+    dropSource: "guildRaid",   // NEW value, mirrors Yukon's dropSource: "bounty"
+    thumbnailUrl: <unchanged>, description: <unchanged>,
+    dropFlavor: <unchanged>, sacrificeFlavor: <unchanged>
+    // no `perks` array — see "What does NOT change" below for why
+}
+```
+`companionFactory.getCompanionsByRarity` (companionFactory.js:34-36) currently excludes only
+`dropSource === "bounty"` from the normal `/work`/Hunt roll pool — this needs generalizing to
+exclude ANY non-null `dropSource` (`c.dropSource == null`), so both Yukon and Cinderroot stay
+excluded from ordinary rolls without hardcoding a second literal string. Confirmed safe: no
+companion other than Yukon currently sets `dropSource` at all, so this is a pure widening, not a
+behavior change for anything existing.
+
+### Acquisition: drop → personal instance (mirrors Yukon exactly)
+
+`guildCompanionFactory.rollGuildCompanionDrop(guild, raidSelection, wonThisRaid)`
+(guildCompanionFactory.js:35-41) keeps its exact trigger point, odds table
+(`GuildCompanionDrop.CHANCE`, unchanged), and gate (`guild.guildCompanion != null` — a guild that
+already POSSESSES one, equipped or benched, doesn't roll for a second, per decision #2's "only 1
+... able to be equipped on a guild"). The only change: instead of writing directly to
+`guild.guildCompanion`, it awards a real instance to **`sacrificeOffer`'s existing
+`starterUserId`** — `startRaid.js` already threads exactly this identity through today for the
+sacrifice prompt (`startRaid.js:1128,1370`: `sacrificeOffer = { interaction, starterUserId: userId,
+guildCompanion: guild.guildCompanion }`), so the raid-starting member's userId is already in scope
+at both call sites (`runStartRaidFlow`/`resolveRaid`) with zero new plumbing needed to identify
+who "started" the raid.
+
+New function, mirroring `mercenaryFactory.resolveYukonAward` (mercenaryFactory.js:342-347) exactly:
+```js
+function resolveCinderrootAward(userDetails) {
+    const cinderroot = companionFactory.getCompanionById('cinderroot');
+    const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, cinderroot);
+    return { isNew, companion: cinderroot, companions };
+}
+```
+`startRaid.js`'s post-raid drop handling (currently just posting `createGuildCompanionDropEmbed`
+off `rollGuildCompanionDrop`'s `{ awarded, companion }`) needs to additionally: fetch the starting
+member's `userDetails` (already fetched elsewhere in this flow for other purposes — reuse, don't
+re-fetch), call `resolveCinderrootAward`, persist their updated `companions` field, and the drop
+announcement embed should say it landed in that member's inventory (with a nudge toward the new
+equip command) rather than "your guild's hoard now guards Cinderroot" framing.
+
+### Equip / Unequip / re-equip
+
+Two distinct authority levels, split by whether a personal owner is still in the loop:
+
+1. **Initial donate-and-equip** (personal instance → guild, `equipped: true`) — available to
+   **the owning player themselves**, no guild-role gate needed (it's their own found companion;
+   requiring Leader/Co-Leader here would let a Leader block a member from ever contributing what
+   they found, feels wrong). Preconditions: player is in a guild, and that guild's
+   `guild.guildCompanion` is currently `null` (not already possessing one — reject with "your
+   guild already has a Cinderroot" otherwise, since this is a strict per-guild singleton). Effect:
+   remove the matching instance from `userDetails.companions.owned` (and clear it from
+   `companions.active`/`favorites` if set there — same cleanup `companionMarketFactory.js`'s own
+   listing-removal path already does when an instance stops being ownable), write
+   `guild.guildCompanion = { id: 'cinderroot', acquiredAt: Date.now(), acquiredRaidTier: null,
+   equipped: true }` (`acquiredRaidTier` no longer meaningful once ownership is severed from a
+   specific raid resolution moment — keep the field only for the display string's existing
+   "found on a `<tier>` raid" flavor if a value is available, `null` otherwise).
+2. **Re-equip an already-guild-possessed, currently benched (`equipped: false`) Cinderroot**, and
+   **unequip** (bench, `equipped: false`, NOT destroy) — **both Leader/Co-Leader only**, per
+   direct instruction ("coleader and leader only for unequiping it from guild"; re-equip gets the
+   same gate for a consistent authority story once nobody personally owns it anymore). Both are
+   pure boolean toggles on the existing `guild.guildCompanion` record — no player inventory
+   touched, no new drop needed to reactivate a benched one.
+
+Command surface (naming TBD at implementation, matching the direct instruction's own suggested
+reframe toward "putting a guild companion in use" rather than literal equip/unequip verbs) —
+likely a `/guild-companion` command with subcommands (`donate`/`equip`, `unequip`), or three
+separate commands mirroring `/set-buff`'s existing single-purpose-command style. `/guild-companion`
+(read-only status, mirrors `/guild-infamy`) should also exist or be folded into the existing
+guild-info embed, so "benched, not equipped" is visibly distinguishable from "no Cinderroot at
+all."
+
+### Perks, display, and sacrifice — gate added, nothing else changes
+
+Every current consumer of `guild.guildCompanion` changes its truthiness check from `!= null` to
+`!= null && guild.guildCompanion.equipped === true` — the formulas themselves
+(`GuildCompanionScaling.raidCooldownReductionPercent`/`raidRewardBonusPercent`,
+`CinderrootTreasuryBonusPercent`, all still scaled by GUILD level via `raidCount`, not by any
+per-instance companion level) are completely untouched:
+- `guildCompanionFactory.getRaidCooldownReduction`/`getRaidRewardBonus` (guildCompanionFactory.js:21-29)
+- `dynamoHandler.applyGuildTreasuryInterest`'s `if (guild.guildCompanion != null)` multiplier gate (dynamoHandler.js:~981)
+- `startRaid.js`'s sacrifice-offer check (`sacrificeOffer.guildCompanion != null && totalRaidCost < 0`, startRaid.js:226) — an unequipped/benched Cinderroot isn't "in use" and shouldn't be offered to protect a loss it isn't actively guarding
+- `embedFactory.js`'s guild-info display (embedFactory.js:1138-1157) — should show a distinct "benched" line (with a nudge toward re-equipping) instead of the full perk breakdown when `equipped === false`
+
+Sacrifice itself stays exactly as destructive as today — accepting it still sets
+`guild.guildCompanion = null` OUTRIGHT (not `equipped: false`), a full, permanent loss requiring an
+entirely fresh drop-and-donate cycle to ever get another one. Unequip and sacrifice are
+deliberately different verbs with different reversibility, per the direct instruction's own
+"equip AND unequip" framing (implicitly reversible) versus the pre-existing, unchanged one-way
+sacrifice mechanic.
+
+### What does NOT change (explicit, so a developer doesn't scope-creep this)
+
+- `GuildCompanionDrop.CHANCE`, `GuildCompanionScaling.*`, `CinderrootTreasuryBonusPercent` — every
+  numeric value stays byte-identical. This is an ownership/equip-model rework, not a balance pass.
+- Cinderroot's perks are NOT wired through the generic personal-companion pipeline
+  (`companionFactory.getActivePerkValue`) at all, despite now living in the `Companions` array —
+  they remain guild-level effects scaled by GUILD level (raidCount), consumed exclusively through
+  the existing dedicated `guildCompanionFactory` functions. Its `Companions` roster entry should
+  carry no `perks` array (or, if one is added purely so `/help topic:companions`/market
+  minimum-price-by-rarity lookups have something to key off, it must be clearly commented as
+  DISPLAY-ONLY/non-functional) — do not let a future pass double-wire it through
+  `getActivePerkValue`, and do not let it accumulate personal companion levels via `/work` in any
+  way that could be mistaken for affecting its guild-side output (its own instance `workCount`,
+  if it's ever set as someone's personal `active` companion pre-donation, is cosmetic only).
+- No changes to `/repel-warband`, Guild Contracts, or any other guild system that merely READS
+  `guild.guildCompanion`'s existence — they all pick up the `equipped` gate for free via the same
+  shared `guildCompanionFactory` functions once those are updated.
+
+### Integration/file touch-map for implementation
+
+`constants.js` (move Cinderroot into `Companions`, delete `GuildCompanions`, add `dropSource:
+"guildRaid"`), `companionFactory.js` (generalize the `dropSource !== "bounty"` filter),
+`guildCompanionFactory.js` (equipped-gate on the two perk getters, rework
+`rollGuildCompanionDrop`'s award target, new equip/unequip/donate functions),
+`mercenaryFactory.js`-style new `resolveCinderrootAward` (new file or added to
+`guildCompanionFactory.js` — architect/developer's call on which factory owns it, given it touches
+BOTH `userDetails.companions` and `guild.guildCompanion`), `startRaid.js` (drop-handling call site,
+sacrifice-offer gate), `dynamoHandler.js` (treasury interest gate, a one-time migration pass for
+existing non-null `guild.guildCompanion` records per decision #1, `getDefaultGuildFields`'s
+`guildCompanion: null` default is unaffected), `embedFactory.js` (guild-info display, drop
+announcement embed), new command(s) under `src/commands/guilds/`, `systems/guilds.md`'s existing
+Cinderroot section (full rewrite of the acquisition/equip section), `/help topic:cinderroot`
+(mention personal find + guild equip instead of "auto-granted to the guild").
+
+Not yet implemented — this entry is the design only, pending confirmation before a developer
+picks it up.
