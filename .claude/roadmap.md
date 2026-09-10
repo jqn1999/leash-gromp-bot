@@ -10157,3 +10157,41 @@ Two tests (`setMercenaryBuff.test.js`, `setBuff.test.js`) hardcoded a 1000s-ago 
 would no longer occur) rather than failing loudly, except both do assert on the rejection message,
 so they failed immediately and correctly. Fixed to 100s ago. Full suite: 1342/1342 passing
 (no count change — existing tests, not new ones).
+
+## Buff: Cinderroot's guild-companion scaling raised and front-loaded (2026-09-10, direct instruction)
+
+Follow-up to the same-day `balance-audit.md` entry "Cinderroot vs. Yukon" (user-requested: "look
+at guild companion and see if we can buff it... compared to how Yukon is for mercs it feels
+undertuned"). The audit's finding: Cinderroot's old ceiling (8% cooldown-skip / 10% reward bonus
+at guild level 10) wasn't itself the problem — it was an intentional, smaller-than-Yukon number —
+but level 10 needs 12,000 cumulative guild raid WINS via `RaidLevel.THRESHOLDS`, capped at 1
+raid/hour for the whole guild (~500 days even with zero downtime). In practice almost every guild
+that ever owns Cinderroot sits at level 2-5 for most of its lifetime, realizing only a sliver of
+that ceiling, while a comparably-invested mercenary's Yukon is already near its own full kit —
+the mismatch was in the CURVE's shape, not the endpoint.
+
+User's explicit instruction: raise the ceiling to 30% reward bonus / 20% cooldown-skip, AND
+front-load the curve. `GuildCompanionScaling` (`constants.js`):
+```
+raidCooldownReductionPercent: [0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08]
+                            -> [0.10, 0.13, 0.15, 0.17, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20]
+raidRewardBonusPercent:      [0.03, 0.035, 0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+                            -> [0.15, 0.19, 0.22, 0.25, 0.28, 0.30, 0.30, 0.30, 0.30, 0.30]
+```
+Both curves now plateau at their new ceiling by level 6 instead of needing level 10 — a
+realistically-active guild's own typical level (2-5) now delivers most of the value instead of a
+fraction of it. Level 1 itself starts at half the new ceiling (10%/15%), so even a freshly-owned
+Cinderroot is immediately meaningful, not a rounding error. Still a fixed, level-indexed lookup
+with a hard ceiling — never grows past 20%/30% no matter how much raid history accumulates past
+the plateau point — same structural safety `systems/guilds.md`'s existing "Balance sanity check"
+already established for this perk, just a larger and much more realistically-reachable one. No
+new EV audit was needed beyond the one that prompted this change — these are direct, explicit
+target numbers from the user, not derived values.
+
+One test hardcoded the old level-1 cooldown-skip value in its expected embed text
+(`startRaidCooldownSkip.test.js`, "a win with the skip roll missing gets the FULL cooldown, no
+chain" — expected `'2%'`, now `'10%'`; the mock's own 0.99 miss-roll threshold comment updated to
+reference the new value but the roll itself didn't need to change, since 0.99 still misses either
+threshold). Docs updated: `systems/guilds.md`'s Cinderroot section (new retune note, the array
+itself, and the "Balance sanity check" worked example's own numbers — +10% became +30% on the
+same Legendary T2 max-level-guild example). Full suite: 1342/1342 passing (no count change).

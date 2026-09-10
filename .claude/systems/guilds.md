@@ -406,12 +406,27 @@ level 1, looked up live from `guild.raidCount` via the existing `RaidLevel.THRES
 
 ```js
 const GuildCompanionScaling = {
-    raidCooldownReductionPercent: [0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08],
-    raidRewardBonusPercent:      [0.03, 0.035, 0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+    raidCooldownReductionPercent: [0.10, 0.13, 0.15, 0.17, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20],
+    raidRewardBonusPercent:      [0.15, 0.19, 0.22, 0.25, 0.28, 0.30, 0.30, 0.30, 0.30, 0.30]
 };
 ```
 
-**Pinned numbers and why** (see "Balance sanity check" below for the arithmetic):
+**Retuned 2026-09-10, direct instruction, following the same-day `balance-audit.md` entry
+"Cinderroot vs. Yukon."** The original curve below (2%→8% cooldown, 3%→10% reward) had its
+ceiling gated behind guild level 10, which needs 12,000 cumulative guild raid WINS via
+`RaidLevel.THRESHOLDS` — capped at 1 raid/hour for the whole guild, ~500 days even with zero
+downtime. In practice almost every guild that ever owns Cinderroot sits at level 2-5 (reachable
+in weeks to months) for most of its lifetime, realizing only a fraction of that ceiling, while a
+comparably-invested mercenary's Yukon is already near its own full kit. Two changes:
+1. **Ceiling raised**: cooldown-skip 8% → 20%, reward bonus 10% → 30%.
+2. **Front-loaded**: both curves now reach their new ceiling by level 6 instead of needing the
+   practically-unreachable level 10 — a realistically-active guild's own typical level now
+   delivers most of the value, not a sliver of it. Level 10 no longer gates any additional value
+   on this perk; it plateaus well before, the same way a maxed `GuildBuffScaling` entry never
+   gets better past its own ceiling either.
+
+**Historical numbers, kept for context** (the original 2026-09-XX pinned rationale, superseded
+by the above):
 - **3a, cooldown reduction: 2% (level 1) → 8% (level 10).** Exactly the roadmap's own illustrative
   array — verified safe: the other three additive cooldown-reduction sources
   (`RaidLevel.THRESHOLDS`' own `raidCooldownReductionPercent` max 30%, `GuildBuffScaling.raidTimer`
@@ -431,17 +446,19 @@ const GuildCompanionScaling = {
 The specific failure mode this codebase has hit before (Metal/Ancient Potato's history, Prospector's
 original Metal-only kit) is a bonus whose *effective* size grows unboundedly because it's pegged to
 an external stat that itself has no ceiling. Perk 3b does **not** have that shape: it's a fixed,
-level-indexed lookup capped at 10% forever once a guild hits level 10 — structurally identical to how
-`workMulti`'s own guild buff is deliberately "the tamest curve... so it doesn't outscale the other
-three." It cannot compound further no matter how much raid history a guild accumulates past level 10.
+level-indexed lookup capped at 30% forever once a guild reaches level 6 (see the 2026-09-10 retune
+above) — structurally identical to how `workMulti`'s own guild buff is deliberately "the tamest
+curve... so it doesn't outscale the other three." It cannot compound further no matter how much raid
+history a guild accumulates past the point it plateaus.
 
 Concrete numbers, Legendary T2 raid (`Raid.LEGENDARY_T2_REWARD = 103,693,000`), max-level guild
 (`raidRewardMultiplier = 10.00x`), average `randomMultiplier` roll (1.0):
 - Without companion: `103,693,000 × 1.0 × 10.00 = 1,036,930,000` potatoes to the winning side.
-- With companion at level 10 (+10%): `1,036,930,000 × 1.10 = 1,140,623,000` — **+103,693,000**, i.e.
-  exactly +10% by construction, on top of guild leveling's own 10x (900%) contribution. The
-  companion's ceiling is small relative to what leveling itself already contributes, and — unlike the
-  flagged failure mode — can never grow past that fixed 10% ceiling.
+- With companion at its ceiling (+30%): `1,036,930,000 × 1.30 = 1,347,609,000` — **+310,167,900**,
+  i.e. exactly +30% by construction, on top of guild leveling's own 10x (900%) contribution. The
+  companion's ceiling is still small relative to what leveling itself already contributes, and —
+  unlike the flagged failure mode — can never grow past that fixed 30% ceiling no matter how much
+  raid history accumulates beyond it.
 
 ### 3. Where the level-scaled lookups live: new `src/utils/guildCompanionFactory.js` (not `guildBuffFactory.js`)
 

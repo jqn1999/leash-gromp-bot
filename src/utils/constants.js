@@ -2909,9 +2909,28 @@ const GuildCompanionDrop = {
 // exact shape (index 0 = level 1, looked up live from guild.raidCount via RaidLevel.THRESHOLDS'
 // 10-level curve). Perk 3c (treasury interest) is flat, not level-scaled — see
 // Bank.GUILD_COMPANION_TREASURY_RATE_BUMP above.
+//
+// Retuned 2026-09-10, direct instruction, following a balance-audit.md entry the same day
+// ("Cinderroot vs. Yukon"). The original curve's ceiling (8%/10% at level 10) was fine on its
+// own, but level 10 itself needs 12,000 CUMULATIVE GUILD RAID WINS via RaidLevel.THRESHOLDS —
+// capped at 1 raid/hour for the whole guild, that's ~500 days even with zero downtime, so in
+// practice almost every guild that ever owns Cinderroot sits at level 2-5 (reachable in weeks
+// to months) for most of its practical lifetime, realizing only a sliver of the old ceiling —
+// while a comparably-invested mercenary's Yukon is already near its own full kit. Two changes,
+// both direct instruction:
+// 1. Ceiling raised: cooldown-skip 8% -> 20%, reward bonus 10% -> 30%.
+// 2. Front-loaded: most of the new ceiling is now reached by level 5-6 instead of needing the
+//    practically-unreachable level 10, so a realistically-active guild's OWN typical level
+//    delivers most of the value rather than a fraction of it. Level 10 is no longer a real
+//    gate on this perk's value — it plateaus well before, same as level 6+ never mattering for
+//    a maxed guild buff (GuildBuffScaling) once its own ceiling is hit.
+// Still a fixed, level-indexed lookup with a hard ceiling (never grows past 20%/30% no matter
+// how much raid history accumulates past the point it plateaus) — same structural safety this
+// perk's own "Balance sanity check" (systems/guilds.md) already established, just a larger and
+// much more realistically-reachable one.
 const GuildCompanionScaling = {
-    raidCooldownReductionPercent: [0.02, 0.03, 0.03, 0.04, 0.04, 0.05, 0.06, 0.06, 0.07, 0.08],
-    raidRewardBonusPercent:      [0.03, 0.035, 0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
+    raidCooldownReductionPercent: [0.10, 0.13, 0.15, 0.17, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20],
+    raidRewardBonusPercent:      [0.15, 0.19, 0.22, 0.25, 0.28, 0.30, 0.30, 0.30, 0.30, 0.30]
 };
 
 const metalKingRaidBoss = {

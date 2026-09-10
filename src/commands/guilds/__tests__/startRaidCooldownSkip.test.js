@@ -155,8 +155,9 @@ describe('/start-raid cooldown skip', () => {
             .mockReturnValueOnce(0.5)   // randomMultiplier
             .mockReturnValueOnce(0.5)   // mob pick
             .mockReturnValueOnce(0.1)   // success check -> WIN (strong roster, cap ~.9)
-            .mockReturnValue(0.99);     // skip roll MISS (>= Cinderroot's 2%), and a guaranteed
-                                        // loss/miss for anything further (there's no chain here anyway)
+            .mockReturnValue(0.99);     // skip roll MISS (>= Cinderroot's level-1 10%), and a
+                                        // guaranteed loss/miss for anything further (there's no
+                                        // chain here anyway)
 
         const interaction = fakeInteraction();
         await runStartRaidFlow(interaction, 'baby');
@@ -174,7 +175,7 @@ describe('/start-raid cooldown skip', () => {
         const resultEmbed = lastEditReplyCall[0].embeds[0];
         const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
         expect(cooldownField).toBeDefined();
-        expect(cooldownField.value).toContain('2%');
+        expect(cooldownField.value).toContain('10%');
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and fires exactly one chained resolveRaid attempt', async () => {
