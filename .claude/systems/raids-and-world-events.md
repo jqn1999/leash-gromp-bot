@@ -122,7 +122,8 @@ effectiveRaidPower = teamPower * (1 + headcountBonus)
   evenly regardless of contribution (see "Reward split mode" below), every additional member who
   joined also diluted the strong raider's own payout, compounding the incentive to solo.
   `RAID_HEADCOUNT_BONUS_PER_MEMBER`/`RAID_HEADCOUNT_BONUS_CAP` (3%/member, capped 50% around a
-  17-person roster — same shape `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` uses) are **unchanged**,
+  17-person roster — same flat-per-member shape guild treasury interest's base rate used before
+  its own 2026-09-10 level-scaling rework, see `systems/guilds.md`) are **unchanged**,
   now applied on top of `teamPower` instead of the old average.
 
 **Correctness guarantee, not just a usually-true heuristic**: for geometric weights `w_i = r^i`

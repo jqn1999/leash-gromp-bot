@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
