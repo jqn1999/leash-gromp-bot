@@ -2026,3 +2026,104 @@ you land on) that's the actual live problem at this rank, not the spread's width
    the fix surface is narrow (Noble's Vault's `baseChance`/`maxChance`/`penaltyPercentOfCap`, or
    `LOSS_MULTIPLIER_SCALING` itself if a flatter, less penalty-tier-sensitive scaling is preferred)
    and Royal Treasury/the `minPowerRequired` gates don't need to move again.
+
+---
+
+## 2026-09-10 — Cinderroot vs. Yukon (prompted by user's subjective "Cinderroot feels undertuned")
+
+Focused re-check, not a full-scope pass. Compared `GuildCompanions[0]` ("Cinderroot, the
+Hoardwarden," `constants.js:2883-2892`, singleton per GUILD, drops off a winning raid
+resolution, `GuildCompanionDrop.CHANCE`/`GuildCompanionScaling` at `:2901-2912`) against Yukon
+(`Companions`, `constants.js:1418-1455`, singleton per PLAYER, drops off a winning Bounty,
+`MercenaryCompanionDrop.YUKON_CHANCE` at `:2589-2593`) via direct arithmetic, not face-value
+reading.
+
+### Findings
+
+**1. [Confirmed intentional, not a bug] Face-value gap on the shared axis (reward bonus) is a
+documented direct decision, not an oversight.** `constants.js:2905-2922`'s own comment: "3b, raid
+reward bonus... deliberately smaller than Yukon's flat 13.5% per the roadmap's own instruction."
+Cinderroot's `raidRewardBonusPercent` tops out at 10% (guild level 10); Yukon's
+`bountyRewardPercent` is 13.5% base. Not re-flagged as a problem on its own.
+
+**2. [MEDIUM, live, not previously checked] That intentional gap widens further, uncounted, once
+each companion's OWN leveling headroom is factored in — Yukon has a second multiplier layered on
+top of its base value that Cinderroot structurally cannot get.** Yukon levels via the normal
+`CompanionLeveling` curve (max 1.45x at companion level 10, workCount-equivalent 3725, reached via
+`getCooldownScaledWorkCountGrant`'s 8x/4x Bounty/Heist scaling — `constants.js:921-951`): maxed,
+`bountyRewardPercent` = `0.135*1.45 = 19.575%`, `robChanceFlat` = `0.12*1.45 = 17.4pp`,
+`rivalSuccessChanceFlat` = `0.05*1.45 = 7.25pp`. Cinderroot's scaling IS its guild-level curve
+(`GuildCompanionScaling`, indexed 1-10 off `guild.raidCount`) — there is no second, independent
+leveling multiplier stacked on top of it the way `CompanionLeveling` stacks on top of every
+player-owned companion's base perks. So "maxed vs. maxed" is 10% (Cinderroot ceiling, hard cap) vs.
+19.575% (Yukon ceiling) — a ~1.96x gap, not the ~1.35x (13.5% vs 10%) gap the original design
+comment reasoned against.
+
+**3. [HIGH, live — the strongest finding] The two ceilings are reachable on wildly different
+timescales, so realized value is far more lopsided than even Finding 2 shows for nearly all of a
+guild's lifetime.** Yukon's max level needs `workCount`-equivalent 3725, achievable via ~466 Bounty
+wins (`3725/8`, the `REALISTIC_PLAY_DISCOUNT`-adjusted grant, `constants.js:941-951`) at Bounty's
+3600s cooldown — order of a few months of a dedicated mercenary's normal play, consistent with this
+log's own existing "long-term dedicated player" framing for the identical 3725 threshold on regular
+companions. Cinderroot's scaling is indexed off **guild level**, which requires `RaidLevel.THRESHOLDS`'
+full curve — level 10 needs **12,000 cumulative raid WINS** (`guilds.md`'s own table), at
+`Raid.RAID_TIMER_SECONDS = 3600` (1 raid/hour cap, PER GUILD regardless of roster size,
+`constants.js:1668`). Even at a hypothetical 100%-win-rate, zero-downtime guild, that's 12,000 hours
+(500 days) of continuous raiding just to reach the level where Cinderroot's already-smaller ceiling
+applies — realistically a multi-year, likely never-reached milestone for the vast majority of guilds.
+Since the acquisition roll itself only needs 40-200 expected wins (`1/chance` at Cinderroot's own
+elite/legendary/regular rates — computed via `node -e`, matches `MercenaryCompanionDrop.YUKON_CHANCE`
+exactly since the two schedules were deliberately mirrored), most guilds that ever OWN Cinderroot will
+sit at guild level 2-5 for a long time afterward (`raidRewardBonusPercent` 3.5%-5%,
+`raidCooldownReductionPercent` 3%-4% contribution) — well under half its own already-discounted
+ceiling — while a comparably-invested mercenary's Yukon is realistically already near its full
+19.575%/17.4%/7.25% kit. This compounding (smaller ceiling `×` far-harder-to-reach ceiling) does not
+appear to have been checked against Yukon side-by-side anywhere in the design history.
+
+**4. [Context, argues the other way] Two structural factors make Cinderroot's face value NOT
+directly comparable to Yukon's 1:1, and both cut in Cinderroot's favor rather than confirming the
+"feels weak" read.** (a) The reward-bonus percentage is NOT diluted by guild roster size — since
+`raidRewardMultiplier` is a straight multiplicative factor applied before any split, a raid
+participant's own payout share scales by the same +X% regardless of how many others also raided that
+day (verified: `raidRewardMultiplier = rawMultiplier * (1 + companionRewardBonus)`, applied once,
+upstream of `handlePotatoSplit`/`handlePotatoSplitByShare`). (b) Cinderroot occupies no companion
+equip slot — every raider keeps their own personally-equipped companion's full perks AND gets
+Cinderroot's bonus for free, whereas Yukon requires forgoing whatever else `getActiveCompanion` could
+have been. Acquisition-effort-per-beneficiary is also structurally cheaper for Cinderroot: one
+guild-wide roll benefits every current/future member simultaneously and forever, vs. each mercenary
+needing their own independent lucky Bounty win — at guild size 20, that's a 20x efficiency advantage
+per beneficiary despite the identical raw drop-chance schedule.
+
+### Verdict
+
+Undertuned relative to Yukon on a realistic per-player basis — but the two contributing causes are
+NOT of equal standing. The intentional face-value gap (Finding 1/2) is a reasoned product decision
+and, on its own, a modest ~1.35x-1.96x difference that the "no equip slot cost, cheaper to acquire
+per beneficiary" advantages (Finding 4) could plausibly justify as-is. **Finding 3 is the one that
+actually breaks the comparison**: nobody appears to have checked that Cinderroot's scaling curve
+borrows `RaidLevel.THRESHOLDS`' full 10-level/12,000-win shape wholesale, producing a *realized*
+value for nearly the entire practical lifetime of nearly every guild that ever owns one far below
+even its own already-discounted design target — not a deliberate "guild content should be a longer
+grind" choice (nothing in the design history argues for that), just an unexamined side effect of
+reusing an existing scaling table built for a different, much slower-moving stat (guild level itself).
+
+**Recommendation (flagged for `product-owner`/`architect`, not applied)**: leave the level-10
+ceiling (10% reward / 8% cooldown-skip) untouched — that number was a direct, deliberate instruction
+to sit below Yukon and shouldn't move without a fresh explicit call. Instead, re-shape
+`GuildCompanionScaling`'s curve to front-load growth so a realistically-reachable guild level (2-5,
+i.e., 25-400 wins — weeks-to-months of normal guild play, the same order of magnitude as Yukon's own
+maxing timeline) delivers most of the ceiling instead of a small fraction of it. Concretely:
+`raidRewardBonusPercent: [0.06, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.10, 0.10, 0.10]` (80% of
+max reached by level 3/75 wins, not level 9/6,000 wins) and
+`raidCooldownReductionPercent: [0.05, 0.06, 0.065, 0.07, 0.075, 0.08, 0.08, 0.08, 0.08, 0.08]`
+(max reached by level 6/800 wins). Both are illustrative starting points, not a final answer — the
+actual choice of how front-loaded to make it is a product call, but the underlying data point (current
+curve's realized value is far below its own ceiling for the overwhelming majority of a guild's
+lifetime) is the part worth acting on.
+
+### Checked, no issues found (this pass)
+
+- Drop-chance schedules (`GuildCompanionDrop.CHANCE` vs. `MercenaryCompanionDrop.YUKON_CHANCE`) are
+  numerically identical by design (0.5%/1%/2.5%) — confirmed via direct comparison, not a divergence.
+- Reward-bonus dilution-by-roster-size theory (an intuitive but incorrect explanation for "feels
+  weak") — checked and ruled out; see Finding 4a.
