@@ -218,7 +218,7 @@ describe('/repel-warband win: flat stat grant to every live-roster member, potat
                 expect.objectContaining({ id: 'm2' }),
             ]));
             expect(raidListArg).toHaveLength(2); // both live-roster members, every call — never divided
-            expect(amount).toBe(GuildRival.STAT_GRANT[track]); // the flat constant, not a per-member computed share
+            expect(amount).toBe(GuildRival.STAT_GRANT.hard[track]); // the flat constant for this scenario, not a per-member computed share
         }
     });
 

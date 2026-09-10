@@ -10962,3 +10962,25 @@ above:
   Infamy underflow) has direct test coverage exercising the real code path, not just a read-through,
   and the reward/penalty math is a straightforward reuse of already-reviewed `startRaid.js`
   infrastructure rather than new financial logic of its own.
+
+### Follow-up: stat-grant magnitude sourced from the real merc numbers (2026-09-10, direct instruction "Read the merc side rewards and make them the same per raider")
+
+The flagged gap above — `STAT_GRANT`'s magnitude being self-derived rather than pulled from the merc
+side — was resolved by reading `BountyStatReward.TIER_I_GRANT`/`TIER_II_GRANT`/`TIER_III_GRANT`
+directly and re-deriving `GuildRival.STAT_GRANT` from it, restructured to be scenario-keyed
+(easy=Tier I, medium=Tier II, hard=Tier III) rather than a single flat object:
+
+- `workMultiplierAmount`: 0.2 / 0.4 / 0.6 — a straight 1:1 copy of Rival's own flat per-tier delta
+  (this term was already merc-sourced and unchanged in value, just re-homed under a scenario key).
+- `passiveAmount`: 100,000 / 300,000 / 500,000 — Rival's own `maxGainSweetPotato` CAP for this track
+  (the merc side itself grants this as a 1.15x/1.325x/1.5x percentage-of-current-stat delta up to this
+  cap; that formula shape doesn't fit `handleStatSplit`'s flat-broadcast signature, so the cap value —
+  a genuine merc-sourced number — is used as the flat per-raider grant instead).
+- `bankCapacity`: 1,000,000 / 3,000,000 / 5,000,000 — same approach, Rival's own cap for this track.
+
+All 4 reference sites updated to the new `GuildRival.STAT_GRANT[scenario][track]` shape:
+`repelWarband.js` (the `handleStatSplit` call site), `embedFactory.js` (the result embed's stat-reward
+line, already had `scenario` destructured from `result`), `guildRivalFactory.js` (a comment describing
+the constant), and `repelWarband.test.js` (the assertion, using `.hard` since that test's `Math.random`
+mock guarantees a hard-scenario win). Full suite: 1425/1425, no new tests needed since existing
+coverage already exercised this call path — only the constant's shape and values changed.

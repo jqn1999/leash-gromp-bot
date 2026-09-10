@@ -21,8 +21,9 @@ const STAT_TRACKS = ['workMultiplierAmount', 'passiveAmount', 'bankCapacity'];
 // DISTINCT tracks (the pool always has exactly 3 entries, so "pick 2" is just "exclude 1 at
 // random" — unbiased, simpler than a shuffle, same technique mercenaryFactory's own
 // pickTwoDistinctStatGrants uses), hard grants all 3 at once. Magnitude is looked up
-// separately (GuildRival.STAT_GRANT) since it's a single flat amount, not a per-user
-// percentage delta the way Rival's own pickStatGrant computes it.
+// separately (GuildRival.STAT_GRANT[scenario]) as a flat per-raider amount, since
+// handleStatSplit only supports flat adds — unlike Rival's own pickStatGrant, which computes
+// a percentage-of-current-stat delta on the merc side.
 function pickStatTracks(scenario) {
     if (scenario === 'hard') {
         return [...STAT_TRACKS];

@@ -86,9 +86,10 @@ module.exports = {
         if (result.won) {
             // Flat, non-divided grant to every live-roster member — mirrors Metal King's own
             // handleStatSplit calls in startRaid.js exactly (that function only ever takes
-            // ONE flat rewardAmount applied identically to every entry in raidList).
+            // ONE flat rewardAmount applied identically to every entry in raidList). Magnitude
+            // is scenario-keyed, sourced from the merc side's BountyStatReward tiers.
             for (const track of result.statTracks) {
-                await raidFactory.handleStatSplit(raidList, track, GuildRival.STAT_GRANT[track]);
+                await raidFactory.handleStatSplit(raidList, track, GuildRival.STAT_GRANT[result.scenario][track]);
             }
 
             // Routed through the guild's own existing addToBankOrPurse (bank-first, then

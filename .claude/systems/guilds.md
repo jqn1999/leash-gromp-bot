@@ -1096,18 +1096,21 @@ of the ambush itself, not a scaled-down raid roll. Proven directly by a dedicate
 `guild.memberList`), per direct instruction resolving the roadmap's own "Open questions."
 
 - **Stat bump**, scope keyed by scenario (easy: 1 random track, medium: 2 DISTINCT tracks, hard: all
-  3 — mirrors Rival's own `TIER_I/II/III` scope shape) — but a FLAT amount per track
-  (`GuildRival.STAT_GRANT`), applied via `raidFactory.handleStatSplit(raidList, track, amount)` once
-  per selected track, identically to every live-roster member (that function only ever takes ONE flat
-  `rewardAmount` broadcast to the whole `raidList` — mirrors Metal King's own `handleStatSplit` calls
-  in `startRaid.js` exactly, "given to every raider" in the same flat/non-divided sense Metal King's
-  jackpot already is). This is a genuinely different shape from Rival's own `pickStatGrant`, which
-  computes a PER-USER percentage-of-current-stat delta — that formula has no analog that fits
-  `handleStatSplit`'s flat-broadcast signature, so the magnitude is a new, dedicated constant instead
-  (`GuildRival.STAT_GRANT = { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 }`
-  — anchored to `Raid.REGULAR_STAT_RAID_REWARD`'s own existing flat per-raider Stat Raid grant for the
-  `workMultiplierAmount` term, scaled to the other two tracks via Metal King's own cross-track ratio;
-  flagged for the same balance-pass confirmation as the potato numbers below, not shipped as gospel).
+  3 — mirrors Rival's own `TIER_I/II/III` scope shape) — a FLAT amount per track, now also keyed by
+  scenario (`GuildRival.STAT_GRANT[scenario][track]`), applied via
+  `raidFactory.handleStatSplit(raidList, track, amount)` once per selected track, identically to every
+  live-roster member (that function only ever takes ONE flat `rewardAmount` broadcast to the whole
+  `raidList` — mirrors Metal King's own `handleStatSplit` calls in `startRaid.js` exactly, "given to
+  every raider" in the same flat/non-divided sense Metal King's jackpot already is). This is a
+  genuinely different shape from Rival's own `pickStatGrant`, which computes a PER-USER
+  percentage-of-current-stat delta capped at a `maxGainSweetPotato` — that percentage formula has no
+  analog that fits `handleStatSplit`'s flat-broadcast signature, so magnitude is instead sourced
+  directly from the merc side's `BountyStatReward` Tier I/II/III (easy=I, medium=II, hard=III):
+  `workMultiplierAmount` is a straight 1:1 copy of Rival's own flat per-tier delta (0.2/0.4/0.6), and
+  `passiveAmount`/`bankCapacity` use Rival's own `maxGainSweetPotato` CAP values as the flat per-raider
+  grant instead (100000/300000/500000 for passive; 1000000/3000000/5000000 for bank) — genuine
+  merc-sourced numbers that keep the existing flat-grant shape rather than requiring a percentage-based
+  rework of `handleStatSplit` guild-wide.
 - **Potato reward**, pegged to `Raid.T2_RAID_REWARD` (Regular T2's own live reward, confirmed still
   613,000 at ship time) as the "typical mid-raid win" anchor, escalated 1x/2x/3x by scenario
   (`GuildRival.TIER_REWARD_FACTOR`, mirrors `Rival.TIER_REWARD_FACTOR`'s own 1/2/3 shape), ±20%

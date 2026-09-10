@@ -2740,7 +2740,7 @@ class EmbedFactory {
 
         if (won && statTracks) {
             const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
-            const statText = statTracks.map(track => `+${GuildRival.STAT_GRANT[track].toLocaleString()} ${statLabels[track]} (every raider)`).join('\n');
+            const statText = statTracks.map(track => `+${GuildRival.STAT_GRANT[scenario][track].toLocaleString()} ${statLabels[track]} (every raider)`).join('\n');
             fields.push({
                 name: '🏅 Permanent Stat Reward',
                 value: statText,

@@ -2899,7 +2899,18 @@ const GuildRival = {
     // 500,000x / 5,000,000x the workMulti term) so the three tracks stay proportionate to
     // each other. Flagged for the same balance-pass confirmation as the potato reward/penalty
     // numbers above — a grounded starting anchor, not a number to treat as final.
-    STAT_GRANT: { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 }
+    // Sourced directly from the mercenary side's BountyStatReward (Tier I/II/III).
+    // workMultiplierAmount is a 1:1 copy of Rival's own flat per-tier delta. passiveAmount/
+    // bankCapacity on the merc side are percentage-of-current-stat grants capped at a
+    // maxGainSweetPotato — not flat amounts, and incompatible with handleStatSplit's flat-add
+    // shape — so those two tracks instead use the merc side's own cap values as the flat
+    // per-raider grant, which keeps the numbers merc-sourced without requiring a percentage-
+    // based rework of the shared multi-raider grant helper.
+    STAT_GRANT: {
+        easy: { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 },
+        medium: { workMultiplierAmount: 0.4, passiveAmount: 300000, bankCapacity: 3000000 },
+        hard: { workMultiplierAmount: 0.6, passiveAmount: 500000, bankCapacity: 5000000 }
+    }
 }
 
 // The Ashclove Company — poacher-raiders who track which guild banners keep coming home
