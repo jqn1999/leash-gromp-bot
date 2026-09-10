@@ -484,6 +484,7 @@ function getDefaultUserFields(userId, username) {
             companion: 0,
             ancient: 0,
             mimic: 0,
+            mimicKilled: 0,
             goldenYam: 0
         },
         regrades: {

@@ -128,6 +128,11 @@ const Achievements = [
     { id: "mimics_favorite_mark", name: "The Mimic's Favorite Mark", description: "Get hit by Mimic Potato 10 times in a single week", statPath: "totalMimicMilestonesReached", threshold: 1 },
     { id: "immune_to_venom", name: "Immune to Venom", description: "Get hit by Poison Potato 20 times in a single week", statPath: "totalPoisonMilestones20Reached", threshold: 1 },
     { id: "mimics_best_customer", name: "The Mimic's Best Customer", description: "Get hit by Mimic Potato 20 times in a single week", statPath: "totalMimicMilestones20Reached", threshold: 1 },
+    // Mimic Slaying's own "first blood" achievement (2026-09-10, direct instruction,
+    // same day as Mimic Slaying itself) — statPath is workScenarioCounts.mimicKilled,
+    // a lifetime kill counter distinct from workScenarioCounts.mimic (which counts every
+    // encounter regardless of outcome) — see workFactory.js's handleMimicPotato.
+    { id: "mimic_slayer", name: "Mimic Slayer", description: "Kill a Mimic Potato for the first time", statPath: "workScenarioCounts.mimicKilled", threshold: 1 },
 
     { id: "first_million", name: "Spud Millionaire", description: "Earn 1,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 1000000 },
     { id: "potato_mogul", name: "Potato Mogul", description: "Earn 100,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 100000000 },
@@ -886,7 +891,9 @@ const MimicMitigation = {
 // percentage-based mechanics already are (PoisonMitigation/MimicMitigation's own escalation
 // shape), so no dedicated EV audit was done for this addition (explicitly waived).
 const MimicSlaying = {
-    KILL_CHANCE: 0.10,          // ~1 in 10 Mimic encounters becomes a kill instead of a loss
+    KILL_CHANCE: 0.05,          // ~1 in 20 Mimic encounters becomes a kill instead of a loss
+                                 // (lowered from 0.10, 2026-09-10, direct instruction — same
+                                 // day as the original pick, before any live playtesting)
     HOARD_PAYOUT_PERCENT: 0.20, // cut of the CURRENT hoard paid out on a kill — geometric
                                  // decay on payout, same shape philosophy as this system's
                                  // other percentage-based mechanics, so a kill never fully

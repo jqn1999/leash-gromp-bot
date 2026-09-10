@@ -703,6 +703,12 @@ class WorkFactory {
         const killedMimic = Math.random() < MimicSlaying.KILL_CHANCE;
 
         if (killedMimic) {
+            // Tracks lifetime kills (distinct from workScenarioCounts.mimic above, which
+            // counts every encounter regardless of outcome) — feeds the new "first kill"
+            // achievement below. Mutates the same object already referenced by
+            // updateFields.workScenarioCounts above, so no separate write is needed.
+            workScenarioCounts.mimicKilled += 1;
+
             const hoard = await dynamoHandler.getStatDatabase('mimic_hoard') || { hoardPotatoes: 0 };
             const currentHoard = hoard.hoardPotatoes || 0;
             const hoardPayout = Math.floor(currentHoard * MimicSlaying.HOARD_PAYOUT_PERCENT);

@@ -14,10 +14,11 @@ Each achievement is a plain data record, not a function:
 
 `statPath` is dot-notation into the user record (e.g. `"workScenarioCounts.golden"`,
 `"regrades.workMulti.regradeAmount"`), resolved by `getStatValue` in `achievementFactory.js`. An
-achievement unlocks the first time that value reaches `threshold`. 60 achievements ship as of this
-writing (updated 2026-09-10 — added `mimics_favorite_mark`/`immune_to_venom`/`mimics_best_customer`,
-see below; the 17/15/7 category breakdown just below hasn't been re-audited against the live list
-since 2026-08-26, only the total is kept current). **Names are potato-punned to match
+achievement unlocks the first time that value reaches `threshold`. 61 achievements ship as of this
+writing (updated 2026-09-10 — added `mimics_favorite_mark`/`immune_to_venom`/`mimics_best_customer`
+and, same day, `mimic_slayer`; see below; the 17/15/7 category breakdown just below hasn't been
+re-audited against the live list since 2026-08-26, only the total is kept current). **Names are
+potato-punned to match
 the game's tone** (Spud of Steel, Root Cellar
 Architect, Fort Spudnox, Tater Tower Titan, etc. — see the full list live via `Achievements` in
 `constants.js`); `id` is the only field that's ever persisted per-user (in `userDetails.achievements`),
@@ -70,6 +71,12 @@ The 20-hit tier is purely a second counter+achievement layered on top — it doe
 `PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD`/`MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD`
 in `constants.js` and `computePoisonMitigation`/`computeMimicMitigation`'s new
 `milestone20JustReached` return flag in `workFactory.js`.
+
+**2026-09-10, same day — `mimic_slayer`.** A direct follow-up once Mimic Slaying itself shipped
+(see [economy-and-work.md](economy-and-work.md#mimic-slaying--a-chance-to-kill-the-mimic-instead-of-losing-to-it-2026-09-10-direct-instruction)):
+"Kill a Mimic Potato for the first time," `statPath: "workScenarioCounts.mimicKilled"`, threshold 1.
+`mimicKilled` is a new lifetime counter distinct from `workScenarioCounts.mimic` (which counts
+every encounter regardless of outcome) — incremented only on `handleMimicPotato`'s kill branch.
 
 Unlocked IDs are stored per-user as a flat array: `userDetails.achievements = ["first_steps", ...]`.
 New users get `achievements: []` from `addUser`. Existing users predating this feature simply don't

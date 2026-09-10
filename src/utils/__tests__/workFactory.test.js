@@ -1145,6 +1145,18 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
         expect(setFields.totalMimicMilestonesReached).toBe(1);
         expect(result.mitigationInfo.milestoneJustReached).toBe(true);
     });
+
+    // Feeds the "Mimic Slayer" first-kill achievement (constants.js) — a lifetime counter
+    // distinct from workScenarioCounts.mimic, which increments on every encounter
+    // regardless of outcome (see the test above).
+    test('a kill increments workScenarioCounts.mimicKilled, a loss does not', async () => {
+        const userDetails = baseUser({ bankStored: 1000000, workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, mimic: 0, mimicKilled: 0 } });
+
+        await workFactory.handleMimicPotato(userDetails);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workScenarioCounts.mimicKilled).toBe(1);
+    });
 });
 
 // Regression coverage for Mimic Potato's weekly bad-luck mitigation (2026-09-05, direct

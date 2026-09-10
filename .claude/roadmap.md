@@ -10067,23 +10067,27 @@ balance additions).
 
 **1. Mimic Slaying** — Mimic Potato's `handleMimicPotato` (`workFactory.js`) previously ALWAYS took
 its computed bank loss with no counterplay at all (unlike Poison Potato's Guinea Pig immunity).
-Every Mimic encounter, for every player, now rolls `Math.random() < MimicSlaying.KILL_CHANCE` (10%,
-a new `constants.js` block) *after* the usual loss is computed but before either outcome is
+Every Mimic encounter, for every player, now rolls `Math.random() < MimicSlaying.KILL_CHANCE` (5%,
+lowered same-day from an initial 10% pick — direct instruction, before any live playtesting — a
+new `constants.js` block) *after* the usual loss is computed but before either outcome is
 committed:
-- **Kill (10%)**: the loss is discarded entirely (`bankStored`/`totalLosses` untouched) and the
+- **Kill (5%)**: the loss is discarded entirely (`bankStored`/`totalLosses` untouched) and the
   player instead claims `MimicSlaying.HOARD_PAYOUT_PERCENT` (20%) of a brand-new **global,
   server-wide hoard** — `dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: ... })` /
   `getStatDatabase('mimic_hoard')`, a direct naming/mechanism mirror of Spud Keep's own
   `potPotatoes` atomic pot (`spudKeepFactory.js`) — credited to liquid `potatoes`/`totalEarnings`
   (a reward, not a bank event). The hoard shrinks by the exact payout (skipped if 0 — no point
-  writing a no-op ADD).
-- **Loss (90%, the pre-existing behavior)**: unchanged, plus the hoard now GROWS by exactly what
+  writing a no-op ADD). A kill also increments a new lifetime `workScenarioCounts.mimicKilled`
+  counter (distinct from `workScenarioCounts.mimic`, which counts every encounter regardless of
+  outcome) — feeds the **`mimic_slayer`** achievement ("Kill a Mimic Potato for the first time",
+  threshold 1), added the same day as a direct follow-up right after Mimic Slaying itself shipped.
+- **Loss (95%, the pre-existing behavior)**: unchanged, plus the hoard now GROWS by exactly what
   was actually taken from that player's bank (the mitigated loss, not the raw pre-mitigation
   roll) — also skipped if 0.
 
-10%/20% were hand-picked, ballpark numbers with no dedicated EV audit (explicitly waived by direct
-instruction, matching this session's other quick balance passes) — reasoning: 10% keeps a kill
-genuinely rare (a Mimic hit is itself only ~1% of `/work` rolls, so this is roughly a 1-in-1000
+5%/20% were hand-picked, ballpark numbers with no dedicated EV audit (explicitly waived by direct
+instruction, matching this session's other quick balance passes) — reasoning: 5% keeps a kill
+genuinely rare (a Mimic hit is itself only ~1% of `/work` rolls, so this is roughly a 1-in-2000
 `/work` call), and a 20% *percentage-of-current-hoard* payout (rather than a flat amount) means the
 hoard geometrically decays on withdrawal — a single kill can never fully drain it, so there's always
 something left for the next lucky adventurer, the same self-balancing shape
@@ -10107,6 +10111,8 @@ onward, stays there) — it's purely a second lifetime counter (`totalPoisonMile
 `totalMimicMilestones20Reached`) and achievement layered on top:
 - `immune_to_venom` — Poison's 20-hit tier.
 - `mimics_best_customer` ("The Mimic's Best Customer") — Mimic's 20-hit tier.
+- `mimic_slayer` — same-day follow-up (see Mimic Slaying above) — "Kill a Mimic Potato for the
+  first time," off the new `workScenarioCounts.mimicKilled` lifetime counter.
 
 `computePoisonMitigation`/`computeMimicMitigation` each gained a `milestone20JustReached` return
 flag (same one-shot-crossing check as the existing `milestoneJustReached`, just at 20). A Mimic
@@ -10122,10 +10128,11 @@ kill still advances/can still cross either Mimic milestone, same reasoning as ab
 - All three new achievements follow this codebase's existing "customer"-style playful naming
   precedent (`taro_regular`: "Taro's Favorite Customer") rather than inventing a new voice.
 
-Full suite: 1341/1341 passing (up from 1312 — 29 new/updated tests), including new coverage in
+Full suite: 1342/1342 passing (up from 1312 — 30 new/updated tests), including new coverage in
 `workFactory.test.js` (kill-branch and loss-branch hoard grow/shrink via mocked
-`addStatFields`/`getStatDatabase`, the 0-value-skips-the-write cases, and both weekly-milestone
-counters for Poison and Mimic), `achievementFactory.test.js` (all 3 new achievements unlock off
-their statPaths), `dynamoHandler.test.js` (the 4 new default counter fields), and
+`addStatFields`/`getStatDatabase`, the 0-value-skips-the-write cases, both weekly-milestone
+counters for Poison and Mimic, and `workScenarioCounts.mimicKilled` incrementing on a kill only),
+`achievementFactory.test.js` (all 4 new achievements unlock off their statPaths),
+`dynamoHandler.test.js` (the new default counter fields, including `mimicKilled`), and
 `embedFactory.test.js` (new `createMimicPotatoEmbed` coverage from scratch — it had none before
 this pass — plus the new milestone-20 callout fields on both Poison and Mimic embeds).
