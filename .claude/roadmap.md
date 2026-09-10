@@ -10461,5 +10461,48 @@ embed) all updated to describe the level-scaled mechanic, with the old flat-rate
 place as clearly-marked historical context (not deleted) since the original design rationale is
 still useful background.
 
-**Not pushed**: this touches a live economy formula affecting every guild's income — committed
-locally only, held for a `release-reviewer` pass before merging to `main`.
+**Pushed after a `release-reviewer` pass** (this touches a live economy formula affecting every
+guild's income, so it was held for review before merging to `main` rather than pushed straight
+through like most of this session's smaller tuning passes) — approved after the reviewer
+independently re-derived the formula by hand and actually executed both require orders to
+confirm the circular-require fix genuinely works, not just eyeballed the diff. A same-day
+follow-up commit dropped a since-dead `Bank` import in `embedFactory.js` and fixed one stale
+doc reference the review flagged as non-blocking.
+
+## New: `/rob skip-confirm` option (2026-09-10, direct instruction)
+
+Direct instruction: "add an optional field to the normal rob for users to skip the embed
+confirmation and just directly rob." `/rob` (`src/commands/user/rob.js`) previously always
+showed a preview embed (odds + stakes) with confirm/cancel buttons and waited up to 30s for a
+click before resolving — useful the first time, but repetitive friction for a player who already
+knows the odds and just wants to roll immediately.
+
+Added a new optional boolean option, `skip-confirm` — when `true`, the preview embed and
+button-wait are skipped entirely and the rob resolves off the single initial fetch, the same way
+any non-confirm command would. Omitting it (or passing `false`) is byte-for-byte the existing
+behavior — no change for anyone who doesn't use the new option.
+
+**Refactor**: the callback's original 200+ line body computed `robChance` (guild buff + Barn Owl
++ Mercenary Buff, additively) and resolved the win/loss twice — once inline before the preview,
+once again inline after a fresh re-fetch post-confirmation, kept manually in sync. Extracted both
+into two shared functions (`computeRobChance`, `resolveRobAttempt`) so all three call sites (the
+preview, the confirm-button path, and the new skip-confirm path) share one implementation instead
+of three that could silently drift. The confirm-button path's own "re-fetch both parties fresh
+right before rolling, since up to 30s could have passed" behavior is unchanged and still uses
+`resolveRobAttempt` the same way; the skip-confirm path has no such window to go stale over, so
+it passes its one and only fetch straight through instead of re-fetching a second time for no
+reason.
+
+**Tests**: new `src/commands/user/__tests__/robSkipConfirm.test.js` (4 tests, mirrors
+`robMercenaryBuff.test.js`'s own mock/fixture style) — `skip-confirm:true` never shows the
+preview or awaits a button (exactly one `editReply` call, empty `components`) and still resolves
+a real win/loss with real DB writes; `skip-confirm:false` and omitting the option entirely both
+still show the preview and make two `editReply` calls (preview + final), proving the new option
+is additive, not a behavior change to the existing path. The pre-existing
+`robMercenaryBuff.test.js` suite (4 tests) needed zero changes — its fixture's `options.get`
+already returns `undefined` for any option name it doesn't explicitly handle, which resolves
+through `?? false` to the same default as before this option existed. Full suite: 1376/1376
+passing (up from 1372).
+
+**Docs**: `.claude/reference/commands.md`'s `/rob` row and `/help topic:rob-betting`'s `/rob`
+paragraph (`HelpTopics` in `constants.js`) both updated to mention the new option.

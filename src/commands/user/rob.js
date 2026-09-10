@@ -60,6 +60,123 @@ function determineRobOutcome(robChance) {
     return false
 }
 
+// Shared by the preview embed AND the actual roll (both the confirm-button path, off
+// freshly re-fetched state, and the skip-confirm path, off the single fetch it already
+// has) so all three call sites compute robChance the exact same way — no drift between
+// what a player is shown and what they're actually rolled against.
+async function computeRobChance(userDetails, targetUserDetails) {
+    let robChance = calculateRobChance(userDetails.potatoes, targetUserDetails.potatoes);
+
+    const userGuildId = userDetails.guildId;
+    if (userGuildId) {
+        const guild = await dynamoHandler.findGuildById(userGuildId);
+        if (guild && guild.guildBuff == "robChance") {
+            const level = guildBuffFactory.getGuildLevel(guild.raidCount);
+            robChance += guildBuffFactory.getGuildBuffValue("robChance", level);
+        }
+    }
+
+    // Barn Owl — stacks with the guild robChance buff, if it has one.
+    robChance += companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
+
+    // Mercenary Buff's robChance category — real /rob only (never /rob-npc's own
+    // formula). isMercenary and guildId != 0 are mutually exclusive, so this and the
+    // guild block above can never both fire for the same player.
+    if (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance") {
+        const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+        robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
+    }
+
+    return robChance;
+}
+
+// The actual roll + resolution, shared by the confirm-button path and the skip-confirm
+// path — takes whatever userDetails/targetUserDetails it's handed as the true, final
+// state to roll against (the confirm-button path re-fetches fresh right before calling
+// this, per this file's own "don't trust a stale preview snapshot" precedent; the
+// skip-confirm path has nothing to go stale, so it just passes its one and only fetch
+// straight through).
+async function resolveRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails) {
+    let userPotatoes = userDetails.potatoes;
+    let userTotalEarnings = userDetails.totalEarnings;
+    let userTotalLosses = userDetails.totalLosses;
+    let targetUserPotatoes = targetUserDetails.potatoes;
+    let targetUserTotalLosses = targetUserDetails.totalLosses;
+
+    const robChance = await computeRobChance(userDetails, targetUserDetails);
+    const robChanceDisplay = (robChance * 100).toFixed(2);
+
+    const userSuccessfulRob = determineRobOutcome(robChance);
+
+    // Non-work-focused companion leveling (Barn Owl/Yukon/Elder Rootbeard's robChanceFlat)
+    // — computed once here, unconditional on win/loss, since a FAILED rob costs the player
+    // MORE than a win (a 25-50% liquid-potato fine plus an extra cooldown penalty on top of
+    // the normal robTimer reset — see calculateFailedRobPenalty/Rob.WORK_TIMER_INCREASE_MS
+    // below), so gating the grant on success would perversely under-reward the worse
+    // outcome. Restricted by PERK TYPE, not a specific companion id — any equipped
+    // companion carrying robChanceFlat trains here, not just one hardcoded companion.
+    const leveledCompanions = companionFactory.levelActiveCompanion(
+        userDetails.companions,
+        companionFactory.getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
+        null,
+        "robChanceFlat"
+    );
+    // "did the equipped companion actually train" readout for the result embed — see
+    // companionFactory.getAppliedCompanionXpGain's own comment. Shared by both the win
+    // and fail branches below, since the grant itself is computed once, unconditionally,
+    // above.
+    const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
+    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
+
+    if (userSuccessfulRob) {
+        const robAmount = calculateRobAmount(targetUserPotatoes);
+        userPotatoes += robAmount;
+        userTotalEarnings += robAmount;
+        targetUserPotatoes -= robAmount;
+        targetUserTotalLosses -= robAmount;
+
+        await Promise.all([
+            dynamoHandler.updateUserFields(userId, {
+                potatoes: userPotatoes,
+                totalEarnings: userTotalEarnings,
+                // robTimer stores the LAST-ACTION timestamp (Date.now()), not a future
+                // "ready-at" one — this file's own cooldown check reads it as
+                // `Date.now() - robTimer`, the same "past timestamp" convention
+                // bountyTimer/npcRobTimer already use.
+                robTimer: Date.now(),
+                companions: leveledCompanions
+            }),
+            dynamoHandler.updateUserFields(targetUserId, {
+                potatoes: targetUserPotatoes,
+                totalLosses: targetUserTotalLosses
+            })
+        ]);
+
+        const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
+        await interaction.editReply({ embeds: [embed], components: [] });
+    } else {
+        const fineAmount = calculateFailedRobPenalty(userPotatoes);
+        userPotatoes -= fineAmount;
+        userTotalLosses -= fineAmount;
+
+        // The 10% admin cut of a failed rob's fine was removed 2026-08-30, direct
+        // instruction — the fine is now a pure loss with no house skim, unlike the
+        // taxes on /bank/give/etc. which stay untouched.
+        await dynamoHandler.updateUserFields(userId, {
+            potatoes: userPotatoes,
+            totalLosses: userTotalLosses,
+            // workTimer DOES use a future "ready-at" timestamp (work.js reads it as
+            // `workTimer - Date.now()`) — this one was already correct. robTimer is
+            // the opposite convention (see the win branch's own comment above).
+            workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
+            robTimer: Date.now(),
+            companions: leveledCompanions
+        });
+
+        const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
+        await interaction.editReply({ embeds: [embed], components: [] });
+    }
+}
 
 module.exports = {
     name: "rob",
@@ -73,6 +190,12 @@ module.exports = {
             description: 'Person you want to commit a crime against',
             required: true,
             type: ApplicationCommandOptionType.Mentionable,
+        },
+        {
+            name: 'skip-confirm',
+            description: 'Skip the confirmation prompt and rob immediately',
+            required: false,
+            type: ApplicationCommandOptionType.Boolean,
         }
     ],
     callback: async (client, interaction) => {
@@ -82,9 +205,6 @@ module.exports = {
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
-        let userPotatoes = userDetails.potatoes;
-        let userTotalEarnings = userDetails.totalEarnings;
-        let userTotalLosses = userDetails.totalLosses;
 
         const timeSinceLastRobbedInSeconds = Math.floor((Date.now() - userDetails.robTimer)/1000);
         const timeUntilRobAvailableInSeconds = Rob.ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
@@ -96,6 +216,7 @@ module.exports = {
 
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;
+        const skipConfirm = interaction.options.get('skip-confirm')?.value ?? false;
 
         if (targetUserId == userId) {
             interaction.editReply(`${userDisplayName}, you cannot rob yourself.`);
@@ -114,43 +235,24 @@ module.exports = {
         }
         const targetUserDetails = await requireUserDetails(interaction, targetUserId, targetUsername, targetUserDisplayName);
         if (!targetUserDetails) return;
-        let targetUserPotatoes = targetUserDetails.potatoes;
-        let targetUserTotalLosses = targetUserDetails.totalLosses;
 
-        let robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
-
-        // CHECK GUILD BUFF, ADD ITS LEVEL-SCALED ROB CHANCE BONUS
-        const userGuildId = userDetails.guildId;
-        if (userGuildId){
-            let guild = await dynamoHandler.findGuildById(userDetails.guildId);
-            if(guild){
-                if(guild.guildBuff == "robChance"){
-                    const level = guildBuffFactory.getGuildLevel(guild.raidCount);
-                    robChance += guildBuffFactory.getGuildBuffValue("robChance", level);
-                }
-            }
+        // skip-confirm (direct instruction, 2026-09-10): resolves immediately off this
+        // single fetch, same as any non-confirm command — there's no waiting-on-a-button
+        // window here for either party's balance to have moved in, so there's nothing to
+        // re-fetch fresh before rolling (unlike the confirm-button path below, which
+        // re-fetches specifically because up to 30s can pass first).
+        if (skipConfirm) {
+            await resolveRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails);
+            return;
         }
 
-        // Barn Owl — stacks with the guild robChance buff, if it has one.
-        robChance += companionFactory.getActivePerkValue(userDetails, "robChanceFlat");
-
-        // Mercenary Buff's robChance category — real /rob only (never /rob-npc's own
-        // formula), mirroring the guild robChance check above exactly. isMercenary and
-        // guildId != 0 are mutually exclusive, so this and the guild block above can never
-        // both fire for the same player — written as an independent `if` rather than an
-        // `else` against the guild check for the same reason that block doesn't guard
-        // against Barn Owl's own perk above.
-        if (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance") {
-            const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
-            robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
-        }
-
-        let robChanceDisplay = (robChance*100).toFixed(2);
+        const robChance = await computeRobChance(userDetails, targetUserDetails);
+        const robChanceDisplay = (robChance * 100).toFixed(2);
 
         // Show the odds and stakes before rolling, so the player commits knowingly
         // instead of finding out both at once in the result embed.
-        const [minGain, maxGain] = calculateRobAmountRange(targetUserPotatoes);
-        const [minFine, maxFine] = calculateFailedRobPenaltyRange(userPotatoes);
+        const [minGain, maxGain] = calculateRobAmountRange(targetUserDetails.potatoes);
+        const [minFine, maxFine] = calculateFailedRobPenaltyRange(userDetails.potatoes);
         const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine);
         const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('rob', 'Rob them')] });
 
@@ -190,104 +292,7 @@ module.exports = {
             await interaction.editReply({ content: `${userDisplayName}, something went wrong re-checking balances — please try again.`, embeds: [], components: [] });
             return;
         }
-        userPotatoes = freshUserDetails.potatoes;
-        userTotalEarnings = freshUserDetails.totalEarnings;
-        userTotalLosses = freshUserDetails.totalLosses;
-        targetUserPotatoes = freshTargetUserDetails.potatoes;
-        targetUserTotalLosses = freshTargetUserDetails.totalLosses;
 
-        robChance = calculateRobChance(userPotatoes, targetUserPotatoes);
-        if (userGuildId) {
-            const guild = await dynamoHandler.findGuildById(userGuildId);
-            if (guild && guild.guildBuff == "robChance") {
-                const level = guildBuffFactory.getGuildLevel(guild.raidCount);
-                robChance += guildBuffFactory.getGuildBuffValue("robChance", level);
-            }
-        }
-        robChance += companionFactory.getActivePerkValue(freshUserDetails, "robChanceFlat");
-        if (freshUserDetails.isMercenary && freshUserDetails.mercenaryBuff === "robChance") {
-            const rank = mercenaryFactory.getMercenaryRankInfo(freshUserDetails.mercenaryBountyWinCount).rank;
-            robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
-        }
-        // Recomputed for the RESULT embed too — it should reflect the odds actually rolled
-        // against, not the estimate shown in the (by now possibly stale) preview.
-        robChanceDisplay = (robChance*100).toFixed(2);
-
-        const userSuccessfulRob = determineRobOutcome(robChance);
-
-        // Non-work-focused companion leveling (Barn Owl/Yukon/Elder Rootbeard's robChanceFlat)
-        // — computed once here, unconditional on win/loss, since a FAILED rob costs the player
-        // MORE than a win (a 25-50% liquid-potato fine plus an extra cooldown penalty on top of
-        // the normal robTimer reset — see calculateFailedRobPenalty/Rob.WORK_TIMER_INCREASE_MS
-        // below), so gating the grant on success would perversely under-reward the worse
-        // outcome. Restricted by PERK TYPE, not a specific companion id — any equipped
-        // companion carrying robChanceFlat trains here, not just one hardcoded companion.
-        const leveledCompanions = companionFactory.levelActiveCompanion(
-            freshUserDetails.companions,
-            companionFactory.getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
-            null,
-            "robChanceFlat"
-        );
-        // "did the equipped companion actually train" readout for the result embed — see
-        // companionFactory.getAppliedCompanionXpGain's own comment. Shared by both the win
-        // and fail branches below, since the grant itself is computed once, unconditionally,
-        // above.
-        const companionXpGained = companionFactory.getAppliedCompanionXpGain(freshUserDetails.companions, leveledCompanions);
-        const companionName = companionFactory.getActiveCompanion(freshUserDetails)?.name || null;
-
-        // TODO: Move each of these into flows functions in future
-        if (userSuccessfulRob) {
-            const robAmount = calculateRobAmount(targetUserPotatoes);
-            userPotatoes += robAmount;
-            userTotalEarnings += robAmount;
-            targetUserPotatoes -= robAmount;
-            targetUserTotalLosses -= robAmount;
-
-            await Promise.all([
-                dynamoHandler.updateUserFields(userId, {
-                    potatoes: userPotatoes,
-                    totalEarnings: userTotalEarnings,
-                    // robTimer stores the LAST-ACTION timestamp (Date.now()), not a future
-                    // "ready-at" one — this file's own cooldown check above (line 87) reads
-                    // it as `Date.now() - robTimer`, the same "past timestamp" convention
-                    // bountyTimer/npcRobTimer already use. Writing `Date.now() + ROB_TIMER_
-                    // SECONDS*1000` here (a prior fix's leftover, copied from workTimer's own
-                    // *different*, future-ready-at convention) silently doubled the real
-                    // cooldown to ~2 hours — confirmed via a direct player report of the
-                    // remaining-time display reading a near-full hour despite having waited
-                    // out the real 1-hour window already.
-                    robTimer: Date.now(),
-                    companions: leveledCompanions
-                }),
-                dynamoHandler.updateUserFields(targetUserId, {
-                    potatoes: targetUserPotatoes,
-                    totalLosses: targetUserTotalLosses
-                })
-            ]);
-
-            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, robAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
-            await interaction.editReply({ embeds: [embed], components: [] });
-        } else {
-            const fineAmount = calculateFailedRobPenalty(userPotatoes);
-            userPotatoes -= fineAmount;
-            userTotalLosses -= fineAmount;
-
-            // The 10% admin cut of a failed rob's fine was removed 2026-08-30, direct
-            // instruction — the fine is now a pure loss with no house skim, unlike the
-            // taxes on /bank/give/etc. which stay untouched.
-            await dynamoHandler.updateUserFields(userId, {
-                potatoes: userPotatoes,
-                totalLosses: userTotalLosses,
-                // workTimer DOES use a future "ready-at" timestamp (work.js reads it as
-                // `workTimer - Date.now()`) — this one was already correct. robTimer is
-                // the opposite convention (see the win branch's own comment above).
-                workTimer: Date.now() + Rob.WORK_TIMER_INCREASE_MS,
-                robTimer: Date.now(),
-                companions: leveledCompanions
-            });
-
-            const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
-            await interaction.editReply({ embeds: [embed], components: [] });
-        }
+        await resolveRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, freshUserDetails, freshTargetUserDetails);
     }
 }

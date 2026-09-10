@@ -10,7 +10,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `work.js` | `/work` | Core encounter loop — earn potatoes/starches/stat buffs, 5 min cooldown |
 | `bank.js` | `/bank` | Deposit (taxed) or withdraw potatoes to/from protected storage |
 | `give.js` | `/give` | Transfer potatoes (30% tax) or starches (10% tax) to another user, supports `all`/`half`/exact |
-| `rob.js` | `/rob` | Attempt to steal potatoes from another user, 1hr cooldown, risk of penalty |
+| `rob.js` | `/rob recipient [skip-confirm]` | Attempt to steal potatoes from another user, 1hr cooldown, risk of penalty — shows a confirm/cancel preview embed by default; `skip-confirm:true` (2026-09-10, direct instruction) bypasses it and resolves immediately off the same odds/logic |
 | `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch / mercenary bounty-win leaderboard, highlights requester's rank (mercenary option shows a fallback line instead when the requester has 0 wins) |
 | `profile.js` | `/profile` | Full profile embed (stats, buffs, guild) for self or a mentioned user |
 | `stats.js` | `/user-stats` | Base+buff+regrade breakdown plus live effective totals (guild buff/companion/rebirth folded in, same modifiers `/profile` uses) for self or a target user |
