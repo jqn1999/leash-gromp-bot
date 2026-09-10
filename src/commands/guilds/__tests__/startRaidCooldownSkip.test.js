@@ -144,7 +144,7 @@ describe('/start-raid cooldown skip', () => {
 
     test('a win with the skip roll missing gets the FULL cooldown, no chain', async () => {
         strongRosterSetup();
-        const guild = guildFixture({ guildCompanion: cinderroot }); // only source: Cinderroot's own level-1 term (2%)
+        const guild = guildFixture({ guildCompanion: cinderroot }); // only source: Cinderroot's own level-1 term (5%)
         dynamoHandler.findGuildById.mockResolvedValue(guild);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
 
@@ -155,7 +155,7 @@ describe('/start-raid cooldown skip', () => {
             .mockReturnValueOnce(0.5)   // randomMultiplier
             .mockReturnValueOnce(0.5)   // mob pick
             .mockReturnValueOnce(0.1)   // success check -> WIN (strong roster, cap ~.9)
-            .mockReturnValue(0.99);     // skip roll MISS (>= Cinderroot's level-1 10%), and a
+            .mockReturnValue(0.99);     // skip roll MISS (>= Cinderroot's level-1 5%), and a
                                         // guaranteed loss/miss for anything further (there's no
                                         // chain here anyway)
 
@@ -175,12 +175,12 @@ describe('/start-raid cooldown skip', () => {
         const resultEmbed = lastEditReplyCall[0].embeds[0];
         const cooldownField = resultEmbed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
         expect(cooldownField).toBeDefined();
-        expect(cooldownField.value).toContain('10%');
+        expect(cooldownField.value).toContain('5%');
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and fires exactly one chained resolveRaid attempt', async () => {
         strongRosterSetup();
-        const guild = guildFixture({ guildCompanion: cinderroot }); // only source: Cinderroot's own level-1 term (2%)
+        const guild = guildFixture({ guildCompanion: cinderroot }); // only source: Cinderroot's own level-1 term (5%)
         dynamoHandler.findGuildById.mockResolvedValue(guild);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
 

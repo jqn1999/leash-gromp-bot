@@ -10257,3 +10257,34 @@ passing (no count change — existing tests rewritten, not new ones).
 front-loading reasoning there predates and is independent of this rescale); `systems/mercenary-bounties.md`
 and `systems/raids-and-world-events.md`'s own stray "12,000" cross-references to `RaidLevel.THRESHOLDS`'
 old max.
+
+## Re-retune: Cinderroot's curve reverted from front-loaded to back-loaded (2026-09-10, direct instruction, same day)
+
+Direct follow-up to the guild-level rescale above: "update cinderroot again, we just changed
+guild leveling so make it so that it is back loaded instead." The front-load from earlier the
+same day was explicitly designed to route around level 10 being a ~500-day, practically-
+unreachable target — the very next change that day (the 4x guild-level rescale) cut that down to
+~125 days, undercutting the front-load's own rationale.
+
+Rather than reinvent a curve shape, reused `GuildCompanionScaling`'s own PRE-front-load shape
+(its original "flatter early, steeper late" acceleration, matching `GuildBuffScaling`'s own
+arrays) scaled proportionally up to the SAME ceiling the earlier pass set (30% reward / 20%
+cooldown-skip — NOT reverted, only the climb direction reversed): `oldValue × (newCeiling /
+oldCeiling)` at every level.
+```
+raidCooldownReductionPercent: [0.10, 0.13, 0.15, 0.17, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20]  (front-loaded)
+                            -> [0.05, 0.075, 0.075, 0.10, 0.10, 0.125, 0.15, 0.15, 0.175, 0.20]  (back-loaded)
+raidRewardBonusPercent:      [0.15, 0.19, 0.22, 0.25, 0.28, 0.30, 0.30, 0.30, 0.30, 0.30]  (front-loaded)
+                            -> [0.09, 0.105, 0.12, 0.135, 0.15, 0.18, 0.21, 0.24, 0.27, 0.30]  (back-loaded)
+```
+Level 1 now delivers noticeably less (5%/9% vs. the front-loaded 10%/15%), and the full 20%/30%
+ceiling is only reached at level 10 again — but level 10 itself is a much shorter climb now than
+it was when the ORIGINAL (pre-any-2026-09-10-changes) back-loaded curve first shipped, since the
+same-day guild-level rescale already cut that climb 4x.
+
+**Tests**: one test (`startRaidCooldownSkip.test.js`, "a win with the skip roll missing gets the
+FULL cooldown, no chain") hardcoded Cinderroot's level-1 cooldown-skip value in its mock-comment
+and expected embed text — was `'10%'` (front-loaded level 1), now `'5%'` (back-loaded level 1).
+Full suite: 1342/1342 passing (no count change). Docs: `systems/guilds.md`'s Cinderroot section
+rewritten to describe both same-day passes (front-load, then back-load) and why the second one
+was needed so soon after the first.

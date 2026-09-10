@@ -418,31 +418,34 @@ level 1, looked up live from `guild.raidCount` via the existing `RaidLevel.THRES
 
 ```js
 const GuildCompanionScaling = {
-    raidCooldownReductionPercent: [0.10, 0.13, 0.15, 0.17, 0.19, 0.20, 0.20, 0.20, 0.20, 0.20],
-    raidRewardBonusPercent:      [0.15, 0.19, 0.22, 0.25, 0.28, 0.30, 0.30, 0.30, 0.30, 0.30]
+    raidCooldownReductionPercent: [0.05, 0.075, 0.075, 0.10, 0.10, 0.125, 0.15, 0.15, 0.175, 0.20],
+    raidRewardBonusPercent:      [0.09, 0.105, 0.12, 0.135, 0.15, 0.18, 0.21, 0.24, 0.27, 0.30]
 };
 ```
 
-**Retuned 2026-09-10, direct instruction, following the same-day `balance-audit.md` entry
-"Cinderroot vs. Yukon."** The original curve below (2%→8% cooldown, 3%→10% reward) had its
-ceiling gated behind guild level 10, which at the time needed 12,000 cumulative guild raid WINS
-via `RaidLevel.THRESHOLDS` — capped at 1 raid/hour for the whole guild, ~500 days even with zero
-downtime. (`RaidLevel.THRESHOLDS`' own win counts were separately rescaled 4x later the same
-day — level 10 needs 3,000 wins now, ~125 days at that same zero-downtime pace — see the "Guild
-level" section above; this front-loading decision and its reasoning both predate that rescale
-and still stand on their own regardless.) In practice almost every guild that ever owns
-Cinderroot sat at level 2-5 (reachable in weeks to months) for most of its lifetime, realizing
-only a fraction of that ceiling, while a comparably-invested mercenary's Yukon is already near
-its own full kit. Two changes:
-1. **Ceiling raised**: cooldown-skip 8% → 20%, reward bonus 10% → 30%.
-2. **Front-loaded**: both curves now reach their new ceiling by level 6 instead of needing the
-   practically-unreachable level 10 — a realistically-active guild's own typical level now
-   delivers most of the value, not a sliver of it. Level 10 no longer gates any additional value
-   on this perk; it plateaus well before, the same way a maxed `GuildBuffScaling` entry never
-   gets better past its own ceiling either.
+**Retuned TWICE, both 2026-09-10, both direct instruction.** First pass, following the same-day
+`balance-audit.md` entry "Cinderroot vs. Yukon": the original curve below (2%→8% cooldown,
+3%→10% reward) had its ceiling gated behind guild level 10, which at the time needed 12,000
+cumulative guild raid WINS via `RaidLevel.THRESHOLDS` — capped at 1 raid/hour for the whole
+guild, ~500 days even with zero downtime. In practice almost every guild that ever owned
+Cinderroot sat at level 2-5 for most of its lifetime, realizing only a fraction of that ceiling,
+while a comparably-invested mercenary's Yukon was already near its own full kit. Fixed by (a)
+raising the ceiling (cooldown-skip 8% → 20%, reward bonus 10% → 30%) and (b) FRONT-loading the
+curve so most of that new ceiling landed by level 5-6.
 
-**Historical numbers, kept for context** (the original 2026-09-XX pinned rationale, superseded
-by the above):
+**Second pass, same day, immediately after**: `RaidLevel.THRESHOLDS`' own win counts were
+separately rescaled 4x (level 10 now needs 3,000 wins, ~125 days at that same zero-downtime
+pace, instead of 12,000/~500 days — see the "Guild level" section above), which undercut the
+first pass's own front-loading rationale — level 10 was no longer the practically-unreachable
+target the front-load was designed to route around. Direct instruction: revert the front-load,
+BACK-load instead. Rather than reinvent a shape, this reused the curve's own PRE-first-pass
+shape (its "flatter early, steeper late" acceleration, matching `GuildBuffScaling`'s own arrays)
+scaled proportionally up to the SAME new ceiling the first pass set (30%/20%, not reverted) —
+`oldValue × (newCeiling / oldCeiling)` at every level. The ceiling itself is untouched from the
+first pass; only the CLIMB direction reversed.
+
+**Historical numbers, kept for context** (the ORIGINAL, pre-first-pass pinned rationale — this is
+also the shape the second pass's back-load reused, just scaled to a higher ceiling):
 - **3a, cooldown reduction: 2% (level 1) → 8% (level 10).** Exactly the roadmap's own illustrative
   array — verified safe: the other three additive cooldown-reduction sources
   (`RaidLevel.THRESHOLDS`' own `raidCooldownReductionPercent` max 30%, `GuildBuffScaling.raidTimer`
