@@ -113,12 +113,20 @@ function doesGuildHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, intera
     return true
 }
 
+// Threshold-based, not an exact match against currentAmount — a guild's actual base
+// value can land BETWEEN two tier boundaries (see bankCapacityBonus's own history:
+// Guild Contract completions granted before that field existed bumped raw bankCapacity
+// with no bonus tracking at all, and the missing-field healing that backfilled a
+// default bankCapacityBonus for those pre-existing guilds can't reconstruct their exact
+// historical drift). An exact-match lookup permanently reports "already maxed out!" for
+// any guild whose base capacity doesn't land precisely on a tier boundary; this instead
+// finds the next tier not yet fully purchased (the first item whose amount exceeds the
+// current base), so any drift — from this cause or any other — self-heals to the
+// correct next purchase instead of hard-locking the shop.
 function getNextItemFromShop(shop, currentAmount) {
-    let chosenItem;
-    for (const [index, element] of shop.items.entries()) {
-        if (element.currentAmount == currentAmount) {
-            chosenItem = shop.items[index];
-            return chosenItem
+    for (const element of shop.items) {
+        if (element.amount > currentAmount) {
+            return element;
         }
     }
     return -1;

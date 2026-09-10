@@ -168,4 +168,33 @@ describe('/guild-upgrade', () => {
         expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'bankStored', 5000000);
         expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'memberCap', 8);
     });
+
+    // Regression: a guild whose bankCapacity/bankCapacityBonus history predates the
+    // bankCapacityBonus field (any Guild Contract completion applied before that fix
+    // shipped bumped raw bankCapacity with zero bonus bookkeeping) lands with a BASE
+    // value that doesn't sit exactly on a guildShops tier boundary. The old exact-match
+    // getNextItemFromShop permanently reported "already maxed out!" for any such guild,
+    // player-reported as bank-capacity upgrades locking out entirely after only one real
+    // purchase. getNextItemFromShop is now threshold-based (first tier whose amount
+    // exceeds the current base) so drifted guilds self-heal to the correct next tier
+    // instead of hard-locking.
+    test('bank-capacity purchase still finds the next tier when base capacity has drifted off a tier boundary', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'user-1', username: 'User', guildId: 7 });
+        // base = bankCapacity(19,000,000) - bankCapacityBonus(9,000,000) = 10,000,000 exactly
+        // would be a clean match — instead simulate drift: base lands at 9,000,000, between
+        // tier0 (0 -> 10,000,000) and nothing below it, so the next tier is still 10,000,000.
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({
+            bankStored: 2000000,
+            bankCapacity: 18000000,
+            bankCapacityBonus: 9000000, // base = 9,000,000 — off every tier's exact currentAmount
+        }));
+        const interaction = fakeInteraction({ 'shop-select': 'bank-capacity' });
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringContaining('already maxed out'));
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'bankStored', 1000000);
+        // next tier's amount (10,000,000) + the untouched bonus (9,000,000)
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'bankCapacity', 19000000);
+    });
 });
