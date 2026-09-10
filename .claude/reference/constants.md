@@ -9,6 +9,8 @@ changes without this knowledge base being updated alongside it.
 | Group | Governs | Detailed in |
 |---|---|---|
 | `Work` | `/work` cooldown, base gain formula, per-encounter caps | [systems/economy-and-work.md](../systems/economy-and-work.md) |
+| `PoisonMitigation`, `MimicMitigation` | Weekly bad-luck-reduction escalation for Poison/Mimic Potato (per-hit reduction, cap, the 10-hit milestone reduction, and the achievement-only 20-hit `SECOND_MILESTONE_HIT_THRESHOLD`) | [systems/economy-and-work.md](../systems/economy-and-work.md#mimic-potato) |
+| `MimicSlaying` | Mimic Potato's flat, ungated chance to be killed instead of stealing from the bank, and the shared `mimic_hoard` payout percentage on a kill | [systems/economy-and-work.md](../systems/economy-and-work.md#mimic-slaying--a-chance-to-kill-the-mimic-instead-of-losing-to-it-2026-09-10-direct-instruction) |
 | `CatchUp` | `/work` catch-up bonus strength, maturity reference, minimum population gate | [systems/economy-and-work.md](../systems/economy-and-work.md#catch-up-bonus) |
 | `Achievements` | Achievement definitions (id, name, description, statPath, threshold) | [systems/achievements.md](../systems/achievements.md) |
 | `DailyStreak` | Login streak reward scaling (per-multiplier base, day-ramp, max scaling days) | [systems/daily-streak.md](../systems/daily-streak.md) |

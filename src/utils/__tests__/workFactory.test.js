@@ -1,8 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti } = require('../workFactory');
-const { Work, REGRADE_CAPS, Bank, PoisonMitigation, awsConfigurations } = require('../constants');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, computeMimicMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti } = require('../workFactory');
+const { Work, REGRADE_CAPS, Bank, PoisonMitigation, MimicMitigation, MimicSlaying, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
 const workFactory = new WorkFactory();
@@ -30,6 +30,11 @@ beforeEach(() => {
     dynamoHandler.findGuildById.mockResolvedValue(null);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     dynamoHandler.addUserDatabase.mockResolvedValue({});
+    // Mimic Slaying's shared hoard (mimic_hoard/hoardPotatoes) — see handleMimicPotato.
+    // Defaulted to an empty hoard here so pre-existing tests that never touch this
+    // mechanic don't have to set it up themselves; individual hoard tests override these.
+    dynamoHandler.addStatFields.mockResolvedValue({});
+    dynamoHandler.getStatDatabase.mockResolvedValue({ hoardPotatoes: 0 });
 });
 
 // Prospector's metalEncounterChanceFlat perk (see constants.js) — widens Metal Potato's own
@@ -125,11 +130,12 @@ describe('computePoisonMitigation', () => {
     const now = new Date('2026-01-07T12:00:00-05:00'); // some Wednesday
 
     test('a fresh (null) poisonMitigation is treated as the first hit of the week, no reduction', () => {
-        const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(null, now);
+        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(null, now);
         expect(reduction).toBe(0);
         expect(nextPoisonMitigation.weeklyHitCount).toBe(1);
         expect(nextPoisonMitigation.weekTag).toBe(getCurrentWeekTag(now));
         expect(milestoneJustReached).toBe(false);
+        expect(milestone20JustReached).toBe(false);
     });
 
     test('reduction climbs by REDUCTION_PER_HIT for each prior hit, capped at MAX_REDUCTION', () => {
@@ -157,12 +163,77 @@ describe('computePoisonMitigation', () => {
         expect(milestoneJustReached).toBe(false);
     });
 
+    // Second, achievement-only tier (2026-09-10) — doesn't change `reduction` at all, it's
+    // already capped at MILESTONE_REDUCTION from hit 10 onward and stays there through 20.
+    test('the 20th hit this week flags milestone20JustReached without changing reduction', () => {
+        const { reduction, milestoneJustReached, milestone20JustReached, nextPoisonMitigation } = computePoisonMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
+        );
+        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(false);
+        expect(milestone20JustReached).toBe(true);
+        expect(nextPoisonMitigation.weeklyHitCount).toBe(20);
+    });
+
+    test('hits past the 20th stay at the milestone reduction without re-flagging milestone20JustReached', () => {
+        const { reduction, milestone20JustReached } = computePoisonMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now
+        );
+        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(milestone20JustReached).toBe(false);
+    });
+
     test('a weekTag from a different week resets the count to 0 regardless of its stored weeklyHitCount', () => {
         const { reduction, nextPoisonMitigation } = computePoisonMitigation(
             { weekTag: 'some-other-week', weeklyHitCount: 9 }, now
         );
         expect(reduction).toBe(0);
         expect(nextPoisonMitigation.weeklyHitCount).toBe(1);
+    });
+});
+
+// Mirrors computePoisonMitigation's own describe block above — computeMimicMitigation is a
+// standalone mirror (not a shared helper, see this file's own "mirrored, not shared"
+// convention), so its milestone20 behavior is covered directly too rather than assumed
+// identical just because the source mirrors Poison's.
+describe('computeMimicMitigation', () => {
+    const now = new Date('2026-01-07T12:00:00-05:00'); // some Wednesday
+
+    test('a fresh (null) mimicMitigation is treated as the first hit of the week, no reduction', () => {
+        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(null, now);
+        expect(reduction).toBe(0);
+        expect(nextMimicMitigation.weeklyHitCount).toBe(1);
+        expect(milestoneJustReached).toBe(false);
+        expect(milestone20JustReached).toBe(false);
+    });
+
+    test('the 10th hit this week jumps to MILESTONE_REDUCTION and flags milestoneJustReached', () => {
+        const { reduction, milestoneJustReached, milestone20JustReached, nextMimicMitigation } = computeMimicMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now
+        );
+        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(true);
+        expect(milestone20JustReached).toBe(false);
+        expect(nextMimicMitigation.weeklyHitCount).toBe(10);
+    });
+
+    test('the 20th hit this week flags milestone20JustReached without changing reduction', () => {
+        const { reduction, milestoneJustReached, milestone20JustReached, nextMimicMitigation } = computeMimicMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
+        );
+        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(false);
+        expect(milestone20JustReached).toBe(true);
+        expect(nextMimicMitigation.weeklyHitCount).toBe(20);
+    });
+
+    test('hits past the 20th stay at the milestone reduction without re-flagging either milestone', () => {
+        const { reduction, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now
+        );
+        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(milestoneJustReached).toBe(false);
+        expect(milestone20JustReached).toBe(false);
     });
 });
 
@@ -300,6 +371,22 @@ describe('handlePoisonPotato', () => {
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(11);
         expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
+    });
+
+    // Second, achievement-only tier (2026-09-10) — layered on top of the existing 10-hit
+    // milestone above, doesn't change the reduction math at all.
+    test('the 20th hit this week bumps totalPoisonMilestones20Reached without re-bumping the 10-hit counter', async () => {
+        const userDetails = baseUser({
+            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 19 },
+            totalPoisonMilestonesReached: 1,
+            totalPoisonMilestones20Reached: 0
+        });
+        const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(20);
+        expect(setFields.totalPoisonMilestones20Reached).toBe(1);
+        expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
+        expect(result.mitigationInfo.milestone20JustReached).toBe(true);
     });
 
     describe('with Guinea Pig equipped', () => {
@@ -899,7 +986,22 @@ describe('handleAncientPotato', () => {
 
 // Regression coverage for Mimic Potato — a second flavor of loss alongside Poison, but
 // it raids bankStored instead of liquid potatoes (the bank protects from /rob, not this).
+//
+// Mimic Slaying (2026-09-10) rolls Math.random() < MimicSlaying.KILL_CHANCE on every single
+// call, so every pre-existing test below (all written against the always-a-loss behavior
+// that predates this mechanic) forces the roll to miss via a Math.random spy — same
+// spy-then-restore-in-finally pattern handleAncientPotato's own regrade test already
+// established (see its comment for why: this file doesn't mock Math.random globally).
+// KILL_CHANCE-branch behavior gets its own dedicated describe block further below instead.
 describe('handleMimicPotato', () => {
+    let randomSpy;
+    beforeEach(() => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // forces killedMimic=false
+    });
+    afterEach(() => {
+        randomSpy.mockRestore();
+    });
+
     test('deducts a percentage of bankStored, not potatoes', async () => {
         const userDetails = baseUser({ potatoes: 5000, bankStored: 1000000 });
 
@@ -939,6 +1041,110 @@ describe('handleMimicPotato', () => {
         expect(setFields.totalLosses).toBe(lost);
         expect(setFields.workScenarioCounts.mimic).toBe(3);
     });
+
+    test('killedMimic is false on a loss', async () => {
+        const userDetails = baseUser({ bankStored: 1000000 });
+        const result = await workFactory.handleMimicPotato(userDetails);
+        expect(result.killedMimic).toBe(false);
+    });
+
+    // Grows the shared mimic_hoard by exactly what was actually taken from this player's
+    // bank (the mitigated loss, not the raw pre-mitigation roll) — see
+    // MimicSlaying/dynamoHandler.addStatFields.
+    test('a loss grows the shared mimic_hoard by the exact amount taken', async () => {
+        const userDetails = baseUser({ bankStored: 1000000 });
+        const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
+        expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('mimic_hoard', { hoardPotatoes: Math.abs(lost) });
+    });
+
+    // A player with nothing banked loses nothing — no point writing a 0 ADD to the hoard
+    // either, same "skip the no-op write" precedent the rest of this codebase's atomic-ADD
+    // call sites already follow (see spudKeepFactory.creditSpudKeepPot).
+    test('a player who loses nothing does not touch the shared mimic_hoard at all', async () => {
+        const userDetails = baseUser({ bankStored: 0 });
+        await workFactory.handleMimicPotato(userDetails);
+        expect(dynamoHandler.addStatFields).not.toHaveBeenCalled();
+    });
+});
+
+// Mimic Slaying (2026-09-10, direct instruction: "add ability for mimics to die") — a flat,
+// ungated % chance rolled on every encounter. On a kill, the bank loss is avoided entirely
+// and the player claims a cut of the GLOBAL, shared mimic_hoard instead, mirroring Spud
+// Keep's own atomic potPotatoes pot exactly (spudKeepFactory.js).
+describe('handleMimicPotato — Mimic Slaying kill branch', () => {
+    let randomSpy;
+    beforeEach(() => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // forces killedMimic=true
+    });
+    afterEach(() => {
+        randomSpy.mockRestore();
+    });
+
+    test('a kill avoids the bank loss entirely', async () => {
+        const userDetails = baseUser({ bankStored: 1000000 });
+
+        const { potatoesLost, killedMimic } = await workFactory.handleMimicPotato(userDetails);
+
+        expect(killedMimic).toBe(true);
+        expect(potatoesLost).toBe(0);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields).not.toHaveProperty('bankStored');
+        expect(setFields).not.toHaveProperty('totalLosses');
+    });
+
+    test('a kill credits HOARD_PAYOUT_PERCENT of the current hoard to liquid potatoes/totalEarnings, not the bank', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ hoardPotatoes: 100000 });
+        const userDetails = baseUser({ potatoes: 5000, totalEarnings: 5000, bankStored: 1000000 });
+
+        const expectedPayout = Math.floor(100000 * MimicSlaying.HOARD_PAYOUT_PERCENT);
+        const result = await workFactory.handleMimicPotato(userDetails);
+
+        expect(result.hoardPayout).toBe(expectedPayout);
+        expect(result.hoardRemaining).toBe(100000 - expectedPayout);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.potatoes).toBe(5000 + expectedPayout);
+        expect(setFields.totalEarnings).toBe(5000 + expectedPayout);
+        expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('mimic_hoard', { hoardPotatoes: -expectedPayout });
+    });
+
+    test('a kill against an empty (or nonexistent) hoard pays out 0 and skips the addStatFields ADD entirely', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue(undefined); // fresh server — no row yet
+        const userDetails = baseUser({ bankStored: 1000000 });
+
+        const result = await workFactory.handleMimicPotato(userDetails);
+
+        expect(result.hoardPayout).toBe(0);
+        expect(result.hoardRemaining).toBe(0);
+        expect(dynamoHandler.addStatFields).not.toHaveBeenCalled();
+    });
+
+    test('still increments workScenarioCounts.mimic and uses the standard non-skippable cooldown, same as a loss', async () => {
+        const userDetails = baseUser({ bankStored: 1000000, workScenarioCounts: { regular: 0, large: 0, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, mimic: 2 } });
+
+        await workFactory.handleMimicPotato(userDetails);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workScenarioCounts.mimic).toBe(3);
+        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS, false);
+    });
+
+    // A kill still "counts" as an encounter toward the weekly bad-luck mitigation milestone
+    // — mirrors handlePoisonPotato's own Guinea Pig branch precedent (see that function's
+    // comment): everyone goes through the exact same weekly tracking regardless of outcome.
+    test('a kill still advances weeklyHitCount and can still cross the 10-hit milestone', async () => {
+        const userDetails = baseUser({
+            bankStored: 1000000,
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
+            totalMimicMilestonesReached: 0
+        });
+
+        const result = await workFactory.handleMimicPotato(userDetails);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.mimicMitigation.weeklyHitCount).toBe(10);
+        expect(setFields.totalMimicMilestonesReached).toBe(1);
+        expect(result.mitigationInfo.milestoneJustReached).toBe(true);
+    });
 });
 
 // Regression coverage for Mimic Potato's weekly bad-luck mitigation (2026-09-05, direct
@@ -946,6 +1152,13 @@ describe('handleMimicPotato', () => {
 // computeMimicMitigation/MimicMitigation).
 describe('handleMimicPotato weekly mitigation', () => {
     const { MimicMitigation } = require('../constants');
+    let randomSpy;
+    beforeEach(() => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // forces killedMimic=false
+    });
+    afterEach(() => {
+        randomSpy.mockRestore();
+    });
 
     test('the 1st hit this week applies no reduction', async () => {
         const userDetails = baseUser({ bankStored: 1000000, mimicMitigation: undefined });
@@ -973,10 +1186,11 @@ describe('handleMimicPotato weekly mitigation', () => {
         expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - expectedReduction)));
     });
 
-    test('the 10th hit this week applies the milestone reduction and flags milestoneJustReached', async () => {
+    test('the 10th hit this week applies the milestone reduction, flags milestoneJustReached, and bumps totalMimicMilestonesReached', async () => {
         const userDetails = baseUser({
             bankStored: 100000000000,
-            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 }
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
+            totalMimicMilestonesReached: 0
         });
 
         const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
@@ -984,6 +1198,40 @@ describe('handleMimicPotato weekly mitigation', () => {
         expect(mitigationInfo.reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
         expect(mitigationInfo.milestoneJustReached).toBe(true);
         expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - MimicMitigation.MILESTONE_REDUCTION)));
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.totalMimicMilestonesReached).toBe(1);
+    });
+
+    test('an 11th hit the same week stays at the milestone reduction but does not bump the counter again', async () => {
+        const userDetails = baseUser({
+            bankStored: 100000000000,
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 10 },
+            totalMimicMilestonesReached: 1
+        });
+
+        await workFactory.handleMimicPotato(userDetails);
+
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.mimicMitigation.weeklyHitCount).toBe(11);
+        expect(setFields).not.toHaveProperty('totalMimicMilestonesReached');
+    });
+
+    // Second, achievement-only tier (2026-09-10) — layered on top of the existing 10-hit
+    // milestone, doesn't change the reduction math at all.
+    test('the 20th hit this week bumps totalMimicMilestones20Reached without re-bumping the 10-hit counter', async () => {
+        const userDetails = baseUser({
+            bankStored: 100000000000,
+            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 19 },
+            totalMimicMilestonesReached: 1,
+            totalMimicMilestones20Reached: 0
+        });
+
+        const { mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
+
+        expect(mitigationInfo.milestone20JustReached).toBe(true);
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.totalMimicMilestones20Reached).toBe(1);
+        expect(setFields).not.toHaveProperty('totalMimicMilestonesReached');
     });
 
     test('a stale weekTag from a prior week resets the count back to a fresh hit #1', async () => {

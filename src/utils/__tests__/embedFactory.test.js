@@ -124,6 +124,104 @@ describe('createPoisonPotatoEmbed', () => {
         const embed = embedFactory.createPoisonPotatoEmbed('User', 42, result, mobWithImmuneText);
         expect(embed.data.description).toBe(mobWithImmuneText.description);
     });
+
+    // Second, achievement-only tier (2026-09-10) — layered on top of the pre-existing
+    // 10-hit milestone callout, doesn't replace it.
+    test('the 20-hit second-tier milestone shows its own callout field', () => {
+        const result = {
+            potatoesGained: -500,
+            immune: false,
+            mitigationInfo: {
+                reduction: 0.90,
+                lockoutSeconds: 360,
+                hitNumberThisWeek: 20,
+                milestoneJustReached: false,
+                milestone20JustReached: true,
+                rebatePercent: null,
+                escalationMultiplier: null,
+            },
+        };
+
+        const embed = embedFactory.createPoisonPotatoEmbed('User', 42, result, poisonMob);
+        expect(embed.data.fields.find(f => f.name.includes('Immune to Venom'))).toBeDefined();
+    });
+});
+
+// Mimic Slaying (2026-09-10, direct instruction: "add ability for mimics to die") adds a
+// genuinely distinct kill outcome alongside the pre-existing always-a-loss embed — no prior
+// test coverage existed for createMimicPotatoEmbed at all before this pass.
+const mimicMob = { name: 'Mimic Potato', description: 'A very suspicious potato.', descriptionKilled: 'You got it first!', thumbnailUrl: 'https://example.com/mimic.png' };
+
+describe('createMimicPotatoEmbed', () => {
+    test('a loss shows Potatoes Lost and Bank Loss fields, and the normal description', () => {
+        const result = {
+            potatoesLost: -500,
+            killedMimic: false,
+            mitigationInfo: { reduction: 0.15, hitNumberThisWeek: 2, milestoneJustReached: false, milestone20JustReached: false },
+        };
+
+        const embed = embedFactory.createMimicPotatoEmbed('User', 42, result, mimicMob);
+
+        expect(embed.data.description).toBe(mimicMob.description);
+        const lostField = embed.data.fields.find(f => f.name === 'Potatoes Lost:');
+        expect(lostField.value).toContain('500');
+        const bankLossField = embed.data.fields.find(f => f.name === 'Bank Loss:');
+        expect(bankLossField.value).toContain('hit #2 this week');
+        expect(embed.data.fields.find(f => f.name.includes('Mimic Slain'))).toBeUndefined();
+    });
+
+    test('a kill shows Potatoes Gained (not Lost), no Bank Loss field, and the killed-flavor description', () => {
+        const result = {
+            potatoesLost: 0,
+            killedMimic: true,
+            hoardPayout: 4000,
+            hoardRemaining: 16000,
+            mitigationInfo: { reduction: 0, hitNumberThisWeek: 1, milestoneJustReached: false, milestone20JustReached: false },
+        };
+
+        const embed = embedFactory.createMimicPotatoEmbed('User', 42, result, mimicMob);
+
+        expect(embed.data.description).toBe(mimicMob.descriptionKilled);
+        expect(embed.data.fields.find(f => f.name === 'Potatoes Lost:')).toBeUndefined();
+        expect(embed.data.fields.find(f => f.name === 'Bank Loss:')).toBeUndefined();
+        const gainedField = embed.data.fields.find(f => f.name === 'Potatoes Gained:');
+        expect(gainedField.value).toContain('4,000');
+        const slainField = embed.data.fields.find(f => f.name.includes('Mimic Slain'));
+        expect(slainField.value).toContain('16,000');
+    });
+
+    test('a kill falls back to the normal description if the mob has no descriptionKilled', () => {
+        const mobWithoutKilledText = { name: 'Mimic Potato', description: 'A very suspicious potato.', thumbnailUrl: 'https://example.com/mimic.png' };
+        const result = { potatoesLost: 0, killedMimic: true, hoardPayout: 0, hoardRemaining: 0, mitigationInfo: null };
+
+        const embed = embedFactory.createMimicPotatoEmbed('User', 42, result, mobWithoutKilledText);
+
+        expect(embed.data.description).toBe(mobWithoutKilledText.description);
+    });
+
+    test('the 10-hit milestone callout still shows on a kill (a kill still counts as an encounter)', () => {
+        const result = {
+            potatoesLost: 0,
+            killedMimic: true,
+            hoardPayout: 100,
+            hoardRemaining: 900,
+            mitigationInfo: { reduction: 0.90, hitNumberThisWeek: 10, milestoneJustReached: true, milestone20JustReached: false },
+        };
+
+        const embed = embedFactory.createMimicPotatoEmbed('User', 42, result, mimicMob);
+        expect(embed.data.fields.find(f => f.name.includes('Mimic-Proofed'))).toBeDefined();
+    });
+
+    test('the 20-hit second-tier milestone callout shows on a loss', () => {
+        const result = {
+            potatoesLost: -100,
+            killedMimic: false,
+            mitigationInfo: { reduction: 0.90, hitNumberThisWeek: 20, milestoneJustReached: false, milestone20JustReached: true },
+        };
+
+        const embed = embedFactory.createMimicPotatoEmbed('User', 42, result, mimicMob);
+        expect(embed.data.fields.find(f => f.name.includes("Mimic's Best Customer"))).toBeDefined();
+    });
 });
 
 // buildCooldownSkipField (private, exercised via createWorkEmbed) now handles two sources

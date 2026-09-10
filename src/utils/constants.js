@@ -118,6 +118,16 @@ const Achievements = [
     { id: "taro_regular", name: "Taro's Favorite Customer", description: "Trade with the Taro Trader 10 times", statPath: "workScenarioCounts.taro", threshold: 10 },
     { id: "iron_stomach", name: "Spud-Proof Stomach", description: "Survive 10 Poison Potato encounters", statPath: "workScenarioCounts.poison", threshold: 10 },
     { id: "toxic_tolerance", name: "Toxic Tolerance", description: "Get hit by Poison Potato 10 times in a single week", statPath: "totalPoisonMilestonesReached", threshold: 1 },
+    // 2026-09-10, Poison/Mimic weekly-milestone achievement pass — a Mimic parallel to
+    // toxic_tolerance above (Mimic previously had the same 10-hits-in-a-week weekly
+    // mitigation milestone with no achievement behind it), plus a second, harder tier for
+    // each of the two — 20 hits in one week, one step past the existing 10-hit milestone.
+    // Neither new tier changes PoisonMitigation/MimicMitigation's actual reduction math
+    // (still capped at MILESTONE_REDUCTION from hit 10 onward) — see
+    // PoisonMitigation/MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD.
+    { id: "mimics_favorite_mark", name: "The Mimic's Favorite Mark", description: "Get hit by Mimic Potato 10 times in a single week", statPath: "totalMimicMilestonesReached", threshold: 1 },
+    { id: "immune_to_venom", name: "Immune to Venom", description: "Get hit by Poison Potato 20 times in a single week", statPath: "totalPoisonMilestones20Reached", threshold: 1 },
+    { id: "mimics_best_customer", name: "The Mimic's Best Customer", description: "Get hit by Mimic Potato 20 times in a single week", statPath: "totalMimicMilestones20Reached", threshold: 1 },
 
     { id: "first_million", name: "Spud Millionaire", description: "Earn 1,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 1000000 },
     { id: "potato_mogul", name: "Potato Mogul", description: "Earn 100,000,000 lifetime potatoes", statPath: "totalEarnings", threshold: 100000000 },
@@ -832,7 +842,14 @@ const PoisonMitigation = {
     // A player unlucky enough to get hit 10 times in one week gets a much bigger break
     // for the rest of that week, plus a one-time achievement — see totalPoisonMilestonesReached.
     MILESTONE_HIT_THRESHOLD: 10,
-    MILESTONE_REDUCTION: 0.90
+    MILESTONE_REDUCTION: 0.90,
+    // Second, achievement-only tier (2026-09-10, Poison/Mimic weekly-milestone achievement
+    // pass) — does NOT change `reduction`'s value at all (it's already capped at
+    // MILESTONE_REDUCTION from hit 10 onward and stays there); this just gives a second
+    // lifetime counter/achievement (totalPoisonMilestones20Reached) one step up from the
+    // existing 10-hit milestone, for a player unlucky enough to get hit 20 times in one
+    // week. See workFactory.js's computePoisonMitigation.
+    SECOND_MILESTONE_HIT_THRESHOLD: 20
 }
 
 // Same weekly bad-luck mitigation as Poison Potato, mirrored (not shared — see
@@ -841,13 +858,40 @@ const PoisonMitigation = {
 // 2026-09-05 ("implement the metal potato weekly penalty decay up to a max of -90%
 // penalty similar to poison", corrected to Mimic Potato). Values kept identical to
 // PoisonMitigation since Mimic shares Poison's same 1% encounter rarity tier and the
-// request explicitly asked for parity ("up to a max of -90%"). No achievement wired up
-// for this one (none was requested) — see workFactory.js's computeMimicMitigation.
+// request explicitly asked for parity ("up to a max of -90%"). Originally shipped with no
+// achievement wired up (none had been requested yet) — that's since changed, see
+// totalMimicMilestonesReached/the toxic_tolerance-style Mimic achievements in
+// `Achievements` below and workFactory.js's computeMimicMitigation.
 const MimicMitigation = {
     REDUCTION_PER_HIT: 0.15,
     MAX_REDUCTION: 0.60,
     MILESTONE_HIT_THRESHOLD: 10,
-    MILESTONE_REDUCTION: 0.90
+    MILESTONE_REDUCTION: 0.90,
+    // Second, achievement-only tier — same shape/purpose as PoisonMitigation's own
+    // SECOND_MILESTONE_HIT_THRESHOLD above, mirrored rather than shared per this file's
+    // usual "mirrored, not shared" convention for these two mitigation tracks.
+    SECOND_MILESTONE_HIT_THRESHOLD: 20
+}
+
+// Mimics can now be fought off instead of always stealing from the bank (2026-09-10,
+// direct instruction: "add ability for mimics to die"). A flat, ungated chance rolled on
+// EVERY Mimic Potato encounter for EVERY player — no companion or rank gate, per direct
+// instruction ("just a normal % chance for everyone on works"). On a kill, the loss is
+// avoided entirely and the player instead claims a cut of a GLOBAL, server-wide hoard —
+// see dynamoHandler.addStatFields('mimic_hoard', {...}), mirroring Spud Keep's own
+// potPotatoes atomic-pot pattern exactly (spudKeepFactory.js). The hoard grows by the
+// exact amount every OTHER mimic encounter steals (the mitigated loss actually taken from
+// a player's bank, not the raw pre-mitigation roll), and shrinks by the payout percentage
+// below every time someone lands a kill — self-balancing the same way this system's other
+// percentage-based mechanics already are (PoisonMitigation/MimicMitigation's own escalation
+// shape), so no dedicated EV audit was done for this addition (explicitly waived).
+const MimicSlaying = {
+    KILL_CHANCE: 0.10,          // ~1 in 10 Mimic encounters becomes a kill instead of a loss
+    HOARD_PAYOUT_PERCENT: 0.20, // cut of the CURRENT hoard paid out on a kill — geometric
+                                 // decay on payout, same shape philosophy as this system's
+                                 // other percentage-based mechanics, so a kill never fully
+                                 // empties the hoard and there's always something left for
+                                 // the next one
 }
 
 // Rolling a companion you already own used to pay out a flat potato consolation off
@@ -3006,7 +3050,13 @@ const ancientPotato = {
 const mimicPotato = {
     name: "Mimic Potato",
     thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
-    description: `You spot what looks like an enormous, glistening potato just off the road — clearly the find of a lifetime. The moment you reach for it, rows of jagged teeth snap open where the eyes should be. The Mimic Potato doesn't chase; it doesn't need to. By the time you scramble away, it's already pried open your bank and helped itself.`
+    description: `You spot what looks like an enormous, glistening potato just off the road — clearly the find of a lifetime. The moment you reach for it, rows of jagged teeth snap open where the eyes should be. The Mimic Potato doesn't chase; it doesn't need to. By the time you scramble away, it's already pried open your bank and helped itself.`,
+    // Shown instead of the description above when embedFactory.createMimicPotatoEmbed's
+    // `killedMimic` flag is set (Mimic Slaying, 2026-09-10 — see MimicSlaying in
+    // constants.js and workFactory.handleMimicPotato). Same "paying off a hit that didn't
+    // land" voice as poisonPotato.descriptionImmune above, just for a genuine kill instead
+    // of a companion snatching the hit away.
+    descriptionKilled: `You spot what looks like an enormous, glistening potato just off the road. The moment you reach for it, rows of jagged teeth snap open where the eyes should be — but this time you're faster. One good swing of your spade and the Mimic Potato splits clean in two, spilling out a pile of everything it's ever stolen from other unlucky travelers. You help yourself to a share before moving on.`
 }
 
 // See workFactory.js's handleGoldenYam — Taro Trader's rare jackpot counterpart, same
@@ -3514,6 +3564,7 @@ module.exports = {
     CompanionHunt,
     PoisonMitigation,
     MimicMitigation,
+    MimicSlaying,
     CompanionLeveling,
     CompanionScavenging,
     Companions,

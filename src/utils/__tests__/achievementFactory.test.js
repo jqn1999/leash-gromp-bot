@@ -58,6 +58,49 @@ describe('checkAndUnlock', () => {
     });
 });
 
+// Poison/Mimic weekly-milestone achievement pass (2026-09-10) — the Mimic parallel to the
+// pre-existing toxic_tolerance, plus a second, harder (20-hits-in-a-week) tier for both
+// tracks. Each is a plain threshold:1 check off its own new lifetime counter field, same
+// shape as toxic_tolerance itself.
+describe('new Poison/Mimic weekly-milestone achievements', () => {
+    test('mimics_favorite_mark unlocks off totalMimicMilestonesReached', async () => {
+        const userDetails = { userId: 'u1', achievements: [], totalMimicMilestonesReached: 1 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).toContain('mimics_favorite_mark');
+    });
+
+    test('mimics_favorite_mark does not unlock at 0', async () => {
+        const userDetails = { userId: 'u1', achievements: [], totalMimicMilestonesReached: 0 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).not.toContain('mimics_favorite_mark');
+    });
+
+    test('immune_to_venom unlocks off totalPoisonMilestones20Reached', async () => {
+        const userDetails = { userId: 'u1', achievements: [], totalPoisonMilestones20Reached: 1 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).toContain('immune_to_venom');
+    });
+
+    test('mimics_best_customer unlocks off totalMimicMilestones20Reached', async () => {
+        const userDetails = { userId: 'u1', achievements: [], totalMimicMilestones20Reached: 1 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).toContain('mimics_best_customer');
+    });
+
+    test('reaching the 10-hit tier alone does not also unlock the 20-hit tier for either track', async () => {
+        const userDetails = {
+            userId: 'u1', achievements: [],
+            totalPoisonMilestonesReached: 1, totalPoisonMilestones20Reached: 0,
+            totalMimicMilestonesReached: 1, totalMimicMilestones20Reached: 0
+        };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        const ids = newlyUnlocked.map(a => a.id);
+        expect(ids).toEqual(expect.arrayContaining(['toxic_tolerance', 'mimics_favorite_mark']));
+        expect(ids).not.toContain('immune_to_venom');
+        expect(ids).not.toContain('mimics_best_customer');
+    });
+});
+
 describe('getProgress', () => {
     test('reports isUnlocked and currentValue for every achievement without persisting anything', () => {
         const userDetails = { achievements: ['first_steps'], workCount: 5 };

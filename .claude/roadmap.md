@@ -10058,3 +10058,74 @@ new coverage for both amendments: a `resolveNpcRob` test locking in that the mer
 buff additively raises Heist success chance the same way Yukon's `robChanceFlat` does, and a new
 `setBuff.js` (guild) test file covering first-switch-free, cooldown-blocked, cooldown-cleared, and
 same-category-no-op cases.
+
+### Mimic Slaying + Poison/Mimic weekly-milestone achievements (2026-09-10, direct instruction: "add ability for mimics to die")
+
+Two related features, both confirmed by the user before implementation, no architect/product-owner
+handoff needed (small enough to scope and build in one pass, same as this session's other quick
+balance additions).
+
+**1. Mimic Slaying** — Mimic Potato's `handleMimicPotato` (`workFactory.js`) previously ALWAYS took
+its computed bank loss with no counterplay at all (unlike Poison Potato's Guinea Pig immunity).
+Every Mimic encounter, for every player, now rolls `Math.random() < MimicSlaying.KILL_CHANCE` (10%,
+a new `constants.js` block) *after* the usual loss is computed but before either outcome is
+committed:
+- **Kill (10%)**: the loss is discarded entirely (`bankStored`/`totalLosses` untouched) and the
+  player instead claims `MimicSlaying.HOARD_PAYOUT_PERCENT` (20%) of a brand-new **global,
+  server-wide hoard** — `dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: ... })` /
+  `getStatDatabase('mimic_hoard')`, a direct naming/mechanism mirror of Spud Keep's own
+  `potPotatoes` atomic pot (`spudKeepFactory.js`) — credited to liquid `potatoes`/`totalEarnings`
+  (a reward, not a bank event). The hoard shrinks by the exact payout (skipped if 0 — no point
+  writing a no-op ADD).
+- **Loss (90%, the pre-existing behavior)**: unchanged, plus the hoard now GROWS by exactly what
+  was actually taken from that player's bank (the mitigated loss, not the raw pre-mitigation
+  roll) — also skipped if 0.
+
+10%/20% were hand-picked, ballpark numbers with no dedicated EV audit (explicitly waived by direct
+instruction, matching this session's other quick balance passes) — reasoning: 10% keeps a kill
+genuinely rare (a Mimic hit is itself only ~1% of `/work` rolls, so this is roughly a 1-in-1000
+`/work` call), and a 20% *percentage-of-current-hoard* payout (rather than a flat amount) means the
+hoard geometrically decays on withdrawal — a single kill can never fully drain it, so there's always
+something left for the next lucky adventurer, the same self-balancing shape
+`PoisonMitigation`/`MimicMitigation`'s own escalating-reduction curve already uses. A kill still
+counts as an encounter (`workScenarioCounts.mimic` increments, `mimicMitigation`'s weekly counter
+still advances, still uses the standard non-elevated cooldown) — mirrors the precedent Guinea Pig's
+immune Poison branch already set. `handleMimicPotato` returns `{ potatoesLost, mitigationInfo,
+killedMimic, hoardPayout, hoardRemaining }`; `embedFactory.createMimicPotatoEmbed` shows a distinct
+green "⚔️ Mimic Slain!" outcome (new `mimicPotato.descriptionKilled` flavor text) instead of the
+loss framing.
+
+**2. Poison/Mimic weekly-milestone achievements.** Mimic's existing 10-hits-in-a-week weekly
+bad-luck-mitigation milestone (`MimicMitigation.MILESTONE_HIT_THRESHOLD`, added 2026-09-05) had
+shipped with no achievement behind it ("none was requested" at the time) — now wired up as
+`mimics_favorite_mark` ("The Mimic's Favorite Mark"), off a new lifetime `totalMimicMilestonesReached`
+counter, mirroring the pre-existing Poison equivalent (`toxic_tolerance`/
+`totalPoisonMilestonesReached`) exactly. Additionally, both `PoisonMitigation` and `MimicMitigation`
+gained a second, achievement-only tier: `SECOND_MILESTONE_HIT_THRESHOLD: 20`. Crossing 20 weekly
+hits does **not** change `reduction` at all (already capped at `MILESTONE_REDUCTION` from hit 10
+onward, stays there) — it's purely a second lifetime counter (`totalPoisonMilestones20Reached`/
+`totalMimicMilestones20Reached`) and achievement layered on top:
+- `immune_to_venom` — Poison's 20-hit tier.
+- `mimics_best_customer` ("The Mimic's Best Customer") — Mimic's 20-hit tier.
+
+`computePoisonMitigation`/`computeMimicMitigation` each gained a `milestone20JustReached` return
+flag (same one-shot-crossing check as the existing `milestoneJustReached`, just at 20). A Mimic
+kill still advances/can still cross either Mimic milestone, same reasoning as above.
+
+**Notable design points**:
+- The kill mechanic is intentionally NOT gated by any companion or Mercenary Rank — direct
+  instruction ("just a normal % chance for everyone on works") — unlike Poison's Guinea Pig
+  immunity, which requires owning/equipping that specific companion.
+- The hoard is genuinely global/shared across the whole server, not per-user — confirmed directly
+  by the user as the core mechanic (a player's kill payout depends on how much every OTHER player
+  has recently lost to Mimics, not their own history).
+- All three new achievements follow this codebase's existing "customer"-style playful naming
+  precedent (`taro_regular`: "Taro's Favorite Customer") rather than inventing a new voice.
+
+Full suite: 1341/1341 passing (up from 1312 — 29 new/updated tests), including new coverage in
+`workFactory.test.js` (kill-branch and loss-branch hoard grow/shrink via mocked
+`addStatFields`/`getStatDatabase`, the 0-value-skips-the-write cases, and both weekly-milestone
+counters for Poison and Mimic), `achievementFactory.test.js` (all 3 new achievements unlock off
+their statPaths), `dynamoHandler.test.js` (the 4 new default counter fields), and
+`embedFactory.test.js` (new `createMimicPotatoEmbed` coverage from scratch — it had none before
+this pass — plus the new milestone-20 callout fields on both Poison and Mimic embeds).

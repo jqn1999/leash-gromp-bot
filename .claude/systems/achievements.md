@@ -14,10 +14,10 @@ Each achievement is a plain data record, not a function:
 
 `statPath` is dot-notation into the user record (e.g. `"workScenarioCounts.golden"`,
 `"regrades.workMulti.regradeAmount"`), resolved by `getStatValue` in `achievementFactory.js`. An
-achievement unlocks the first time that value reaches `threshold`. 57 achievements ship as of this
-writing (updated 2026-08-26 — the "39" this line previously read, and the 17/15/7 category
-breakdown just below, were both already stale by the time this was noticed; the category counts
-haven't been re-audited against the live list, only the total). **Names are potato-punned to match
+achievement unlocks the first time that value reaches `threshold`. 60 achievements ship as of this
+writing (updated 2026-09-10 — added `mimics_favorite_mark`/`immune_to_venom`/`mimics_best_customer`,
+see below; the 17/15/7 category breakdown just below hasn't been re-audited against the live list
+since 2026-08-26, only the total is kept current). **Names are potato-punned to match
 the game's tone** (Spud of Steel, Root Cellar
 Architect, Fort Spudnox, Tater Tower Titan, etc. — see the full list live via `Achievements` in
 `constants.js`); `id` is the only field that's ever persisted per-user (in `userDetails.achievements`),
@@ -50,6 +50,26 @@ so renaming `name`/`description` later is always safe and never needs a migratio
   `startRaid.js`'s scenario tables and `worldFactory.js`'s `startWorldBoss` respectively — but since
   neither of those call sites re-runs `checkAndUnlock`, the achievement itself still only unlocks on
   that player's next `/work`.
+
+**2026-09-10 addition — Poison/Mimic weekly-milestone achievements.** Mimic Potato's weekly
+bad-luck mitigation (`workFactory.computeMimicMitigation`, see
+[economy-and-work.md](economy-and-work.md#mimic-potato)) has carried the same 10-hits-in-a-week
+milestone as Poison Potato since 2026-09-05, but originally shipped with no achievement behind it
+("none was requested" at the time). This pass added the missing Mimic parallel to Poison's own
+`toxic_tolerance`, plus a second, harder tier (20 hits in one week) for BOTH tracks — three new
+threshold-1 entries, same shape as every other lifetime-counter achievement:
+- `mimics_favorite_mark` ("The Mimic's Favorite Mark") — `totalMimicMilestonesReached` — Mimic's
+  parallel to `toxic_tolerance`.
+- `immune_to_venom` — `totalPoisonMilestones20Reached` — Poison's 20-hit tier.
+- `mimics_best_customer` ("The Mimic's Best Customer") — `totalMimicMilestones20Reached` — Mimic's
+  20-hit tier.
+
+The 20-hit tier is purely a second counter+achievement layered on top — it does **not** change
+`PoisonMitigation`/`MimicMitigation`'s actual `reduction` value, which is already capped at
+`MILESTONE_REDUCTION` from hit 10 onward and stays there through 20 and beyond. See
+`PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD`/`MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD`
+in `constants.js` and `computePoisonMitigation`/`computeMimicMitigation`'s new
+`milestone20JustReached` return flag in `workFactory.js`.
 
 Unlocked IDs are stored per-user as a flat array: `userDetails.achievements = ["first_steps", ...]`.
 New users get `achievements: []` from `addUser`. Existing users predating this feature simply don't

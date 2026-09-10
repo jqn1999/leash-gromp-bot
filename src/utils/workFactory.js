@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, PoisonMitigation, MimicMitigation, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
+const { Work, PoisonMitigation, MimicMitigation, MimicSlaying, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -141,7 +141,12 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
     return {
         reduction,
         nextPoisonMitigation: { weekTag, weeklyHitCount: hitNumberThisWeek },
-        milestoneJustReached: hitNumberThisWeek === PoisonMitigation.MILESTONE_HIT_THRESHOLD
+        milestoneJustReached: hitNumberThisWeek === PoisonMitigation.MILESTONE_HIT_THRESHOLD,
+        // Second, achievement-only tier (2026-09-10) — same exact one-shot-crossing shape
+        // as milestoneJustReached above, just at PoisonMitigation.SECOND_MILESTONE_HIT_
+        // THRESHOLD (20) instead of 10. Doesn't affect `reduction` at all — that's already
+        // capped at MILESTONE_REDUCTION from hit 10 onward and stays there.
+        milestone20JustReached: hitNumberThisWeek === PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD
     };
 }
 
@@ -163,7 +168,12 @@ function computeMimicMitigation(mimicMitigation, now = new Date()) {
     return {
         reduction,
         nextMimicMitigation: { weekTag, weeklyHitCount: hitNumberThisWeek },
-        milestoneJustReached: hitNumberThisWeek === MimicMitigation.MILESTONE_HIT_THRESHOLD
+        milestoneJustReached: hitNumberThisWeek === MimicMitigation.MILESTONE_HIT_THRESHOLD,
+        // Second, achievement-only tier (2026-09-10) — same exact one-shot-crossing shape
+        // as computePoisonMitigation's own milestone20JustReached, mirrored here per this
+        // file's usual "mirrored, not shared" convention for these two tracks. Doesn't
+        // affect `reduction` at all — see that comment for why.
+        milestone20JustReached: hitNumberThisWeek === MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD
     };
 }
 
@@ -563,7 +573,7 @@ class WorkFactory {
         // written) even for Guinea Pig — see the comment above on why that matters — but
         // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see
         // that branch's own comment for why).
-        const { reduction, nextPoisonMitigation, milestoneJustReached } = computePoisonMitigation(userDetails.poisonMitigation);
+        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation);
         const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
         const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
 
@@ -612,9 +622,12 @@ class WorkFactory {
         // Surfaced on the embed (see embedFactory.createPoisonPotatoEmbed) so the
         // reduction — and, for Guinea Pig, the rebate and escalation — are actually
         // visible to the player, not just felt indirectly.
-        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, rebatePercent: immune ? guineaPig.rebatePercent : null, escalationMultiplier };
+        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, milestone20JustReached, rebatePercent: immune ? guineaPig.rebatePercent : null, escalationMultiplier };
         if (milestoneJustReached) {
             updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
+        }
+        if (milestone20JustReached) {
+            updateFields.totalPoisonMilestones20Reached = (userDetails.totalPoisonMilestones20Reached || 0) + 1;
         }
 
         let workScenarioCounts = userDetails.workScenarioCounts;
@@ -647,33 +660,89 @@ class WorkFactory {
 
         const rawLoss = Math.round(userBankStored * Work.MIMIC_POTATO_BANK_PERCENT);
         const cappedLoss = Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
-        const { reduction, nextMimicMitigation, milestoneJustReached } = computeMimicMitigation(userDetails.mimicMitigation);
+        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(userDetails.mimicMitigation);
         const potatoesLost = -Math.floor(cappedLoss * (1 - reduction));
-        userBankStored += potatoesLost;
-        userTotalLosses += potatoesLost;
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.mimic += 1;
 
         // skippable: false (2026-09-06, direct instruction: "make poison and mimics stop
         // chained works") — Mimic always uses the standard cooldown (it has no lockout to
-        // elevate the way Poison does), so without this it could still roll a skip and
-        // auto-chain into another /work call despite always being a loss.
+        // elevate the way Poison does) on BOTH branches below (a kill has no lockout of its
+        // own either), so without this it could still roll a skip and auto-chain into
+        // another /work call.
         const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
 
         // Surfaced on the embed (see embedFactory.createMimicPotatoEmbed) so the reduction
         // is actually visible to the player, not just felt indirectly.
-        const mitigationInfo = { reduction, hitNumberThisWeek: nextMimicMitigation.weeklyHitCount, milestoneJustReached };
+        const mitigationInfo = { reduction, hitNumberThisWeek: nextMimicMitigation.weeklyHitCount, milestoneJustReached, milestone20JustReached };
 
-        await dynamoHandler.updateUserFields(userId, {
-            bankStored: userBankStored,
-            totalLosses: userTotalLosses,
+        // Everyone goes through the exact same weekly bad-luck mitigation tracking above
+        // regardless of outcome — mirrors handlePoisonPotato's own Guinea Pig branch (see
+        // its comment): a kill still "counts" as an encounter toward the weekly milestone,
+        // it just also happens to avoid the loss and pay out a reward on top.
+        let updateFields = {
             workScenarioCounts: workScenarioCounts,
             workTimer: workTimer,
             mimicMitigation: nextMimicMitigation
-        }, { workCount: 1 });
+        };
+        if (milestoneJustReached) {
+            updateFields.totalMimicMilestonesReached = (userDetails.totalMimicMilestonesReached || 0) + 1;
+        }
+        if (milestone20JustReached) {
+            updateFields.totalMimicMilestones20Reached = (userDetails.totalMimicMilestones20Reached || 0) + 1;
+        }
 
-        return { potatoesLost, mitigationInfo };
+        // Mimic Slaying (2026-09-10, direct instruction: "add ability for mimics to die")
+        // — a flat, ungated % chance rolled on EVERY encounter for EVERY player, no
+        // companion or rank gate (see MimicSlaying's own comment in constants.js). A kill
+        // avoids the bank loss entirely and instead pays out a cut of a GLOBAL, server-wide
+        // hoard that every OTHER player's mimic loss has been feeding — mirrors Spud Keep's
+        // own atomic potPotatoes pot exactly (dynamoHandler.addStatFields/getStatDatabase,
+        // spudKeepFactory.js).
+        const killedMimic = Math.random() < MimicSlaying.KILL_CHANCE;
+
+        if (killedMimic) {
+            const hoard = await dynamoHandler.getStatDatabase('mimic_hoard') || { hoardPotatoes: 0 };
+            const currentHoard = hoard.hoardPotatoes || 0;
+            const hoardPayout = Math.floor(currentHoard * MimicSlaying.HOARD_PAYOUT_PERCENT);
+            const hoardRemaining = currentHoard - hoardPayout;
+
+            let userPotatoes = userDetails.potatoes;
+            let userTotalEarnings = userDetails.totalEarnings;
+            userPotatoes += hoardPayout;
+            userTotalEarnings += hoardPayout;
+            updateFields.potatoes = userPotatoes;
+            updateFields.totalEarnings = userTotalEarnings;
+
+            // Skip the no-op ADD entirely on a freshly-emptied (or never-yet-fed) hoard —
+            // same "no point writing a 0 ADD" precedent the loss branch below already
+            // follows.
+            if (hoardPayout > 0) {
+                await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: -hoardPayout });
+            }
+
+            await dynamoHandler.updateUserFields(userId, updateFields, { workCount: 1 });
+
+            return { potatoesLost: 0, mitigationInfo, killedMimic: true, hoardPayout, hoardRemaining };
+        }
+
+        userBankStored += potatoesLost;
+        userTotalLosses += potatoesLost;
+        updateFields.bankStored = userBankStored;
+        updateFields.totalLosses = userTotalLosses;
+
+        // Grows the shared hoard by exactly what THIS player actually lost (the mitigated
+        // loss really taken from their bank, not the raw pre-mitigation roll) — a player
+        // with nothing banked loses nothing (see this function's own long-standing comment
+        // above), so there's no point writing a 0 ADD for them either.
+        if (potatoesLost !== 0) {
+            await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: Math.abs(potatoesLost) });
+        }
+
+        await dynamoHandler.updateUserFields(userId, updateFields, { workCount: 1 });
+
+        return { potatoesLost, mitigationInfo, killedMimic: false };
     }
 
     async handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {

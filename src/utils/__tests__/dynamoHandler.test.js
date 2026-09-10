@@ -77,6 +77,21 @@ describe('addUser', () => {
         const user = await dynamoHandler.addUser('u1', 'name');
         expect(user.autoJoinRaids).toBe(false);
     });
+
+    // Poison/Mimic weekly-milestone achievement pass (2026-09-10) — totalMimicMilestones
+    // Reached is the Mimic parallel to the pre-existing totalPoisonMilestonesReached
+    // (previously untracked), and both totalPoisonMilestones20Reached/
+    // totalMimicMilestones20Reached back the new second-tier (20 weekly hits)
+    // achievements layered on top. All four are lifetime, never-reset counters, same shape
+    // as totalPoisonMilestonesReached.
+    test('defaults the Poison/Mimic weekly-milestone lifetime counters to 0', async () => {
+        docClient.put.mockReturnValue(resolved({}));
+        const user = await dynamoHandler.addUser('u1', 'name');
+        expect(user.totalPoisonMilestonesReached).toBe(0);
+        expect(user.totalMimicMilestonesReached).toBe(0);
+        expect(user.totalPoisonMilestones20Reached).toBe(0);
+        expect(user.totalMimicMilestones20Reached).toBe(0);
+    });
 });
 
 describe('findUser', () => {

@@ -1689,7 +1689,7 @@ class EmbedFactory {
         });
 
         if (mitigationInfo) {
-            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
+            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, milestone20JustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
 
             if (immune) {
                 // Guinea Pig's own rebate is deliberately NOT built off the mitigated
@@ -1722,6 +1722,14 @@ class EmbedFactory {
                     inline: false,
                 });
             }
+
+            if (milestone20JustReached) {
+                fields.push({
+                    name: `🏅 Immune to Venom:`,
+                    value: `20 Poison hits in one week — you've truly built up a tolerance now.`,
+                    inline: false,
+                });
+            }
         }
 
         const cooldownSkipField = buildCooldownSkipField(cooldownSkippedByCompanion, missedCooldownSkipChance);
@@ -1750,38 +1758,67 @@ class EmbedFactory {
     // metal potato weekly penalty decay... similar to poison", corrected to Mimic Potato)
     // — same escalating-reduction idea as createPoisonPotatoEmbed, but simpler: Mimic has
     // no cooldown lockout and no companion counterplay to branch on, it only ever softens
-    // the bank loss itself. result: { potatoesLost, mitigationInfo } from
-    // workFactory.handleMimicPotato — mitigationInfo: { reduction, hitNumberThisWeek,
-    // milestoneJustReached }.
+    // the bank loss itself. result: { potatoesLost, mitigationInfo, killedMimic,
+    // hoardPayout, hoardRemaining } from workFactory.handleMimicPotato — mitigationInfo:
+    // { reduction, hitNumberThisWeek, milestoneJustReached, milestone20JustReached }.
+    //
+    // Mimic Slaying (2026-09-10, direct instruction: "add ability for mimics to die") adds
+    // a genuinely distinct outcome alongside the existing loss message — killedMimic true
+    // means the bank loss never happened at all and the player instead claims a share of
+    // the shared, server-wide hoard (see MimicSlaying/workFactory.handleMimicPotato).
     createMimicPotatoEmbed(userDisplayName, newWorkCount, result, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
-        const { potatoesLost, mitigationInfo } = result;
+        const { potatoesLost, mitigationInfo, killedMimic, hoardPayout, hoardRemaining } = result;
         let fields = [{
             name: `Work Count:`,
             value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
             inline: true,
         }];
 
-        fields.push({
-            name: `Potatoes Lost:`,
-            value: `${potatoesLost.toLocaleString()} potatoes`,
-            inline: true,
-        });
-
-        if (mitigationInfo) {
-            const { reduction, hitNumberThisWeek, milestoneJustReached } = mitigationInfo;
-            const hitContext = reduction > 0
-                ? `hit #${hitNumberThisWeek} this week — ${(reduction * 100).toFixed(0)}% softer`
-                : `hit #${hitNumberThisWeek} this week`;
+        if (killedMimic) {
             fields.push({
-                name: `Bank Loss:`,
-                value: hitContext,
+                name: `Potatoes Gained:`,
+                value: `${hoardPayout.toLocaleString()} potatoes (from the shared Mimic Hoard)`,
                 inline: true,
             });
+            fields.push({
+                name: `⚔️ Mimic Slain!`,
+                value: `No bank loss this time — you fought it off and claimed a share of the hoard. ${hoardRemaining.toLocaleString()} potatoes remain in it for the next adventurer.`,
+                inline: false,
+            });
+        } else {
+            fields.push({
+                name: `Potatoes Lost:`,
+                value: `${potatoesLost.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        }
+
+        if (mitigationInfo) {
+            const { reduction, hitNumberThisWeek, milestoneJustReached, milestone20JustReached } = mitigationInfo;
+
+            if (!killedMimic) {
+                const hitContext = reduction > 0
+                    ? `hit #${hitNumberThisWeek} this week — ${(reduction * 100).toFixed(0)}% softer`
+                    : `hit #${hitNumberThisWeek} this week`;
+                fields.push({
+                    name: `Bank Loss:`,
+                    value: hitContext,
+                    inline: true,
+                });
+            }
 
             if (milestoneJustReached) {
                 fields.push({
                     name: `🏅 Mimic-Proofed:`,
                     value: `10 Mimic hits in one week — the bank loss is cut way down for the rest of this week!`,
+                    inline: false,
+                });
+            }
+
+            if (milestone20JustReached) {
+                fields.push({
+                    name: `🏅 The Mimic's Best Customer:`,
+                    value: `20 Mimic hits in one week — it practically knows your bank by name at this point.`,
                     inline: false,
                 });
             }
@@ -1800,8 +1837,8 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
-            .setDescription(mob.description)
-            .setColor('Red')
+            .setDescription(killedMimic && mob.descriptionKilled ? mob.descriptionKilled : mob.description)
+            .setColor(killedMimic ? 'Green' : 'Red')
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
             .setTimestamp(Date.now())

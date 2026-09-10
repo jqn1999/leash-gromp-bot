@@ -352,15 +352,79 @@ a new `mimicMitigation: { weekTag, weeklyHitCount }` user field (defaulted in
 Unlike Poison, Mimic has no cooldown lockout to mitigate — the reduction only ever softens the bank
 loss itself, applied *after* the `MAX_MIMIC_POTATO_LOSS` cap (the cap is "the worst a single hit can
 be," mitigation then softens that same worst case further). No companion counterplay exists for
-Mimic (no Guinea-Pig-equivalent), and no new achievement was added for the 10-hit milestone (none was
-requested) — the milestone still surfaces as a one-time embed callout, just without a
-`totalMimicMilestonesReached`-style lifetime counter or achievement unlock behind it.
+Mimic in the sense of a Guinea-Pig-equivalent immunity — see **Mimic Slaying** below for the
+2026-09-10 mechanic that finally gives every player a way to avoid the loss outright.
 
-`handleMimicPotato` now returns `{ potatoesLost, mitigationInfo }` instead of a plain number (same
+`handleMimicPotato` now returns `{ potatoesLost, mitigationInfo, killedMimic, hoardPayout,
+hoardRemaining }` (the last three added by Mimic Slaying below) instead of a plain number (same
 shape change `handlePoisonPotato` went through for the same reason — see above). A new
 `embedFactory.createMimicPotatoEmbed` (separate from the generic `createWorkEmbed`) shows a **Bank
-Loss:** field with the hit number this week and the %-softer figure, plus the one-time 🏅 callout on
-the exact hit that crosses the 10-hit milestone.
+Loss:** field with the hit number this week and the %-softer figure on a loss, plus the one-time 🏅
+callout on the exact hit that crosses the 10-hit milestone.
+
+**Achievement added, weekly milestone doubled up (2026-09-10, direct instruction: "add ability for
+mimics to die").** The 10-hits-in-a-week milestone above originally shipped with no achievement
+("none was requested" at the time) — that's since changed alongside the kill mechanic below, and a
+second, harder tier (20 hits/week) was added for BOTH Poison and Mimic at the same time:
+- `MimicMitigation`/`PoisonMitigation` each gained `SECOND_MILESTONE_HIT_THRESHOLD: 20`.
+  `computeMimicMitigation`/`computePoisonMitigation` now also return `milestone20JustReached` — the
+  exact same one-shot-crossing check `milestoneJustReached` already used, just at 20 instead of 10.
+  This does **not** change `reduction`'s value at all — it's already capped at
+  `MILESTONE_REDUCTION` from hit 10 onward and stays there through 20 and beyond; it's purely a
+  second lifetime counter + achievement layered on top.
+- New lifetime user fields (defaulted to 0 in `getDefaultUserFields`, healed lazily like every
+  other field): `totalMimicMilestonesReached` (the Mimic parallel to the pre-existing
+  `totalPoisonMilestonesReached`), `totalPoisonMilestones20Reached`, `totalMimicMilestones20Reached`.
+  `handlePoisonPotato`/`handleMimicPotato` bump whichever counter(s) just crossed, mirroring the
+  existing `totalPoisonMilestonesReached` write exactly. A Mimic kill (see below) still bumps these
+  the same as a loss would — a kill still "counts" as an encounter toward the weekly milestone,
+  matching the precedent Guinea Pig's immune Poison branch already set (everyone goes through the
+  exact same weekly tracking regardless of outcome).
+- Three new `Achievements` entries (all threshold 1): `mimics_favorite_mark`
+  (`totalMimicMilestonesReached`), `immune_to_venom` (`totalPoisonMilestones20Reached`),
+  `mimics_best_customer` (`totalMimicMilestones20Reached`) — see
+  [achievements.md](achievements.md) for the full writeup.
+
+### Mimic Slaying — a chance to kill the Mimic instead of losing to it (2026-09-10, direct instruction)
+
+Every Mimic Potato encounter, for every player, unconditionally (no companion or rank gate — direct
+instruction: "just a normal % chance for everyone on works"), rolls
+`Math.random() < MimicSlaying.KILL_CHANCE` (10%) *after* the loss above is fully computed
+(`cappedLoss`/`reduction`/`potatoesLost`), but before either outcome is committed:
+
+- **Kill (10% of encounters)**: the bank loss computed above is discarded entirely —
+  `bankStored`/`totalLosses` are untouched. Instead the player claims
+  `MimicSlaying.HOARD_PAYOUT_PERCENT` (20%) of a brand-new **global, server-wide hoard**
+  (`dynamoHandler.getStatDatabase('mimic_hoard')`, field `hoardPotatoes`), credited to their
+  **liquid** `potatoes`/`totalEarnings` (a reward, like Golden Potato — explicitly not `bankStored`,
+  since this isn't a bank event). The hoard then shrinks by that exact payout via an atomic
+  `dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: -hoardPayout })` — skipped entirely
+  if the payout would be 0 (an empty or not-yet-existing hoard), same "no point writing a 0 ADD"
+  precedent the loss branch below already follows. `workScenarioCounts.mimic` still increments (a
+  kill is still an encounter) and the weekly mitigation counter (`mimicMitigation`) and its
+  milestone(s) are still tracked exactly as on a loss — see above. Uses the same standard,
+  non-elevated cooldown as a loss (`Work.WORK_TIMER_SECONDS`, `skippable: false` — Mimic has no
+  lockout of its own to elevate on either branch).
+- **Loss (90% of encounters, the pre-existing behavior)**: unchanged, *plus* the shared hoard grows
+  by exactly what this player actually lost (`Math.abs(potatoesLost)` — the mitigated amount really
+  taken from their bank, not the raw pre-mitigation roll) via
+  `dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: potatoesLost })`. Skipped if
+  `potatoesLost` is 0 (a player with nothing banked), same no-op-write precedent as the kill branch.
+
+This is the exact same atomic-ADD pot pattern Spud Keep's own `potPotatoes` already established
+(`spudKeepFactory.js` — `dynamoHandler.addStatFields`/`getStatDatabase`, many concurrent writers,
+one shared accruing pot, no read-then-write race) — `mimic_hoard`/`hoardPotatoes` is a direct
+naming mirror of `spud_keep`/`potPotatoes`. `getStatDatabase('mimic_hoard')` returns `undefined` on
+a fresh server (no row exists yet until the first loss ever writes one), defensively guarded the
+same way `spudKeepFactory.js` guards its own read: `... || { hoardPotatoes: 0 }`.
+
+`MimicSlaying.KILL_CHANCE` (10%) and `HOARD_PAYOUT_PERCENT` (20%, geometric decay on withdrawal so
+a single kill can never fully drain the hoard) are hand-picked, ballpark numbers — no dedicated EV
+audit was requested or done for this addition (explicitly waived, same effort level as this
+session's other quick balance additions). `embedFactory.createMimicPotatoEmbed` shows a distinct
+"you fought it off!" outcome on a kill (green embed, `mob.descriptionKilled` flavor text, a
+**Potatoes Gained:** field instead of **Potatoes Lost:**, and a **⚔️ Mimic Slain!** callout showing
+the payout and the hoard's remaining balance) instead of the existing loss framing.
 
 ### Golden Yam (0.1% roll — `workFactory.js`'s `handleGoldenYam`)
 

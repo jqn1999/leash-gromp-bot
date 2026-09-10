@@ -627,6 +627,18 @@ function getDefaultUserFields(userId, username) {
         // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,
         // which resets every Monday and can't be used for a lifetime achievement threshold.
         totalPoisonMilestonesReached: 0,
+        // Mimic parallel to totalPoisonMilestonesReached above (2026-09-10 — Mimic had the
+        // same weekly milestone with no lifetime counter/achievement behind it until now),
+        // powering the mimics_favorite_mark achievement. See workFactory.js's
+        // computeMimicMitigation.
+        totalMimicMilestonesReached: 0,
+        // Second, achievement-only tier for both tracks above (2026-09-10) — increments the
+        // one time per qualifying week weeklyHitCount first reaches
+        // PoisonMitigation/MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD (20). Purely a
+        // second counter/achievement layered on top — neither changes the underlying
+        // reduction math, which stays capped at MILESTONE_REDUCTION from hit 10 onward.
+        totalPoisonMilestones20Reached: 0,
+        totalMimicMilestones20Reached: 0,
         // Persistent opt-in toggled by /spud-keep-signup (2026-09-03, direct instruction:
         // "mercs can either sign up or not as a toggle similar to guilds just being in or
         // out") — replaces the old per-cycle spud_keep.mercenaryEntrants list (push on

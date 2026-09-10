@@ -283,6 +283,12 @@ whatever fields that subsystem needs. Known docs in use:
   record itself (`guild.guildContract`), not here. See
   [systems/guild-contracts.md](../systems/guild-contracts.md).
 - coinflip doc — `heads`/`tails` global counters.
+- `mimic_hoard` — `hoardPotatoes`, a single atomically-accruing counter (2026-09-10, Mimic
+  Slaying) grown via `addStatFields('mimic_hoard', { hoardPotatoes: amount })` every time a
+  Mimic Potato encounter steals from a player's bank, and shrunk the same way when another
+  player kills the Mimic and claims a percentage share. Same atomic-`ADD` pattern (and field
+  naming convention) as `spud_keep`'s own `potPotatoes` — see
+  [systems/economy-and-work.md](../systems/economy-and-work.md#mimic-slaying--a-chance-to-kill-the-mimic-instead-of-losing-to-it-2026-09-10-direct-instruction).
 
 There's no schema registry for this table; if you add a new background/global counter, follow this
 same `trackingId` + flat-fields pattern via `updateStatDatabase`/`getStatDatabase`.
