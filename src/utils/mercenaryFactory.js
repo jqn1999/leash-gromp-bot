@@ -1,4 +1,4 @@
-const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries, SpudKeep } = require("../utils/constants");
+const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, StatBountyFlavor, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries, SpudKeep } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
 const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
@@ -197,6 +197,30 @@ async function resolveBountyAttempt(userDetails, mode) {
     }
 
     return result;
+}
+
+// Stat Bounty (2026-09-10, direct instruction — "Add a stat bounty for mercs... very
+// similar to guild stat raids with 50% chance for .2 multi and costing 300k") — a third
+// /take-bounty mode, computation only (no DB writes, same division of labor
+// resolveBountyAttempt/resolveNpcRob already use; takeBounty.js's own new stat-mode branch
+// owns the affordability check AND all persistence — deliberately NOT this function's job,
+// keeping the responsibility split clean: this function only ever rolls the flat 50% and
+// picks flavor text, never touches userDetails.potatoes). See constants.js's
+// Bounty.STAT_BOUNTY_SUCCESS_CHANCE comment for why this is a flat roll rather than a
+// power-scaled formula like Guild Stat Raid's calculateRaidSuccessChance.
+function resolveStatBounty(userDetails) {
+    const successChance = Bounty.STAT_BOUNTY_SUCCESS_CHANCE;
+    const won = Math.random() < successChance;
+    const flavor = StatBountyFlavor[Math.floor(Math.random() * StatBountyFlavor.length)];
+
+    return {
+        mode: 'stat',
+        won,
+        successChance,
+        cost: Bounty.STAT_BOUNTY_COST,
+        statGrantAmount: won ? Bounty.STAT_BOUNTY_REWARD : 0,
+        flavor
+    };
 }
 
 // /rob-npc's own single resolve function — solo-only heist against a fictional target,
@@ -458,6 +482,7 @@ module.exports = {
     getMercenaryCooldownSkipSources,
     rollBountyStatReward,
     resolveBountyAttempt,
+    resolveStatBounty,
     resolveNpcRob,
     resolveYukonAward,
     resolveGuaranteedStatBump,

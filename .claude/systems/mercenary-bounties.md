@@ -565,6 +565,92 @@ the result embed as a "Kingdom Tax" field (`embedFactory.createBountyResultEmbed
 `netRewardAmount`/`taxAmount` params, both defaulting to the untaxed shape —
 `result.rewardAmount`/`0` — so a call site that hasn't been updated doesn't crash).
 
+## Stat Bounty (`/take-bounty mode:stat`, 2026-09-10)
+
+A third `/take-bounty` mode, direct instruction: *"Add a stat bounty for mercs as an option
+in take bounty. It should be very similar to guild stat raids with 50% chance for .2 multi
+and costing 300k."* Mirrors Guild Stat Raid's own shape (`Raid.REGULAR_STAT_RAID_REWARD`/
+`_COST`/`_DIFFICULTY`, `statRaidScenarios` in `startRaid.js`): trades the usual 12-tier
+potato/starch ladder for a flat upfront potato cost and a chance at a permanent
+work-multiplier grant instead. Routed **entirely separately** from `regular`/`baby` in
+`takeBounty.js`'s `runBountyAttempt` — it branches out before ever calling
+`mercenaryFactory.resolveBountyAttempt`, since that function (and its result shape) is
+tightly coupled to the 12-tier weighted-roll/currency-reward/Rival-notoriety/Yukon-drop
+machinery, none of which applies here. The mercenary-gate and cooldown-ready checks at the
+top of `runBountyAttempt` stay shared across all 3 modes; only past that point does Stat
+Bounty run its own dedicated `runStatBountyAttempt`.
+
+**Flat 50% chance, not a power-scaled formula.** Guild Stat Raid's own success chance
+(`calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY,
+Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)`) scales against a roster's summed `totalMultiplier` and
+caps at 50%. A solo mercenary has no roster/headcount concept to scale that formula against,
+and the instruction specified "50% chance" as a literal flat number, not a formula to derive
+— so `Bounty.STAT_BOUNTY_SUCCESS_CHANCE` (0.5) is rolled directly (`Math.random() <
+Bounty.STAT_BOUNTY_SUCCESS_CHANCE`) with no power term at all, in
+`mercenaryFactory.resolveStatBounty`.
+
+**Constants** (`Bounty` block, `constants.js`) — note these use Bounty's own local sign
+convention (positive cost-like numbers, e.g. `WIN_TAX_PERCENT`), unlike
+`Raid.REGULAR_STAT_RAID_COST`'s negative convention:
+
+```js
+STAT_BOUNTY_COST: 300000,          // potatoes, charged whether the attempt wins or loses
+STAT_BOUNTY_SUCCESS_CHANCE: 0.5,   // flat — see the comment above for why this doesn't scale
+STAT_BOUNTY_REWARD: 0.2            // permanent +0.2 work multiplier on a win
+```
+
+**Flow** (`takeBounty.js`'s `runStatBountyAttempt`):
+
+1. **Affordability check FIRST, before rolling anything** — `userDetails.potatoes <
+   Bounty.STAT_BOUNTY_COST` rejects immediately with a plain message and makes **no writes
+   at all**, mirroring how shop/upgrade purchases in this codebase reject upfront on
+   insufficient funds (`guildBuy.js`'s `doesGuildHaveEnoughToPurchase`). Unlike `/rob`'s fine
+   formula (a deliberate, already-decided penalty for a *different* mechanic that can put a
+   player negative), a Stat Bounty attempt a player can't afford simply never starts.
+2. `mercenaryFactory.resolveStatBounty(userDetails)` rolls the flat 50% and picks one of 3
+   flavor-text variants (`StatBountyFlavor`, `constants.js`) — computation only, no writes;
+   affordability is deliberately **not** this function's job (kept in `takeBounty.js` instead,
+   same responsibility split `resolveBountyAttempt`/`resolveNpcRob` already use for their own
+   pure-computation role).
+3. `Bounty.STAT_BOUNTY_COST` is charged **unconditionally** — win or lose, same as Guild Stat
+   Raid's own `removeFromBankOrPurse` call. Tracked as `totalLosses -= cost` (Bounty's own
+   existing loss-tracking convention), since it's a real cost regardless of outcome, not
+   income to net against.
+4. The same combined `mercenaryRank`/`spudKeep`/`mercenaryBuff` cooldown-skip roll every
+   other Bounty mode uses — extracted into a shared `resolveBountyCooldownSkip` helper
+   (2026-09-10) so the tiered branch and this one don't duplicate the roll logic. Only ever
+   rolled on a **win**; a loss always takes the full `Bounty.BOUNTY_TIMER_SECONDS`, no roll.
+5. **On a win**: `addAttributes.mercenaryBountyWinCount = 1` (this Stat Bounty win counts
+   toward Mercenary Rank progress exactly like any other Bounty win — the direct analog of
+   Guild Stat Raid incrementing `guildRaidWinCount`/`raidCount`), then the actual grant is
+   applied via `raidFactory.handleStatSplit([{ id: userId, username }], 'workMultiplierAmount',
+   Bounty.STAT_BOUNTY_REWARD)` — the exact same 1-person-"raidList" write path Guild Stat Raid
+   and every other stat-granting reward in this codebase already uses (updates both
+   `workMultiplierAmount` and `sweetPotatoBuffs.workMultiplierAmount` together).
+6. **On a loss**: no stat grant, no win-count increment, `bountyTimer` resets to `Date.now()`
+   — no cooldown-skip roll at all, same "no skip roll on a loss" precedent every other
+   raid/bounty mode already sets.
+7. **Still applies, unconditionally win or lose**, same as every other Bounty mode: companion
+   leveling for the `bountyRewardPercent` perk type (identical cooldown-scaled call the
+   tiered branch uses), and — via the shared tail (`dynamoHandler.updateUserFields` +
+   `dynamoHandler.findUser` re-fetch) — the achievement and quest checks.
+
+**Deliberately does NOT apply**: currency/tax logic (`Bounty.WIN_TAX_PERCENT` — there's no
+currency reward to tax), Yukon drop chance (Guild Stat Raid has no companion-drop equivalent
+either), Rival Bounty Hunter notoriety accrual (keyed by a band letter this tier-less mode
+doesn't have), `largestBountyReward` tracking (currency-specific, doesn't apply to a stat
+grant).
+
+**Embed**: a dedicated `embedFactory.createStatBountyResultEmbed` (not forced into
+`createBountyResultEmbed`'s tier/scenario/currency-keyed shape) — mirrors `createRaidEmbed`'s
+own handling of Guild Stat Raid: a "Potatoes Spent" field always shown, a "Permanent Stat
+Reward" field shown only on a win, plus the same Mercenary Rank/companion-XP/cooldown-skip
+fields every other Bounty result embed shows.
+
+**Preview**: `/bounty-board` shows a one-line "Stat Bounty" row alongside its existing
+12-tier table and Baby Bounty line — the flat 50%/300,000/+0.20 numbers, since there's no
+per-tier table to build for a flat-chance mode.
+
 ## Flavor-text scenarios (`BountyScenarios`)
 
 Keyed by **band letter** (`I`/`II`/`III` — see `mercenaryFactory.getBandLetter`, which maps

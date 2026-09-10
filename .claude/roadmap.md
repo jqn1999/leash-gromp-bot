@@ -10506,3 +10506,73 @@ passing (up from 1372).
 
 **Docs**: `.claude/reference/commands.md`'s `/rob` row and `/help topic:rob-betting`'s `/rob`
 paragraph (`HelpTopics` in `constants.js`) both updated to mention the new option.
+
+## New: Stat Bounty, a third `/take-bounty` mode (2026-09-10, direct instruction)
+
+Direct instruction: *"Add a stat bounty for mercs as an option in take bounty. It should be
+very similar to guild stat raids with 50% chance for .2 multi and costing 300k."* Mirrors
+Guild Stat Raid's own shape (`Raid.REGULAR_STAT_RAID_REWARD`/`_COST`/`_DIFFICULTY`,
+`statRaidScenarios` in `startRaid.js`): a flat 300,000-potato buy-in, charged whether the
+attempt wins or loses, for a chance at a permanent `+0.2` work multiplier instead of the
+usual 12-tier potato/starch ladder reward. See
+[systems/mercenary-bounties.md#stat-bounty-take-bounty-modestat-2026-09-10](systems/mercenary-bounties.md#stat-bounty-take-bounty-modestat-2026-09-10)
+for the full writeup — this entry is the summary.
+
+**Notable design points**:
+
+- **Flat 50% chance, not a power-scaled formula.** Guild Stat Raid's own success chance
+  (`calculateRaidSuccessChance`) scales against a roster's summed `totalMultiplier` and caps
+  at 50%. A solo mercenary has no roster/headcount concept to scale that formula against, and
+  the instruction specified "50% chance" as a literal number — so `Bounty.
+  STAT_BOUNTY_SUCCESS_CHANCE` (0.5) is rolled directly with no power term, in the new
+  `mercenaryFactory.resolveStatBounty`.
+- **Routed entirely separately from the 12-tier ladder.** `takeBounty.js`'s
+  `runBountyAttempt` branches on `mode === 'stat'` before ever calling `mercenaryFactory.
+  resolveBountyAttempt` — that function's result shape is tightly coupled to weighted-tier-
+  rolling/currency-reward/Rival-notoriety/Yukon-drop, none of which applies here. Mirrors how
+  Guild Stat Raid is its own separate scenario-table branch in `startRaid.js`, never a
+  variant of the potato-reward branch. Only the mercenary-gate/cooldown-ready checks at the
+  top of `runBountyAttempt` are shared; the new `runStatBountyAttempt` owns everything past
+  that.
+- **Cooldown-skip logic extracted into a shared helper** (`resolveBountyCooldownSkip`) rather
+  than duplicated — both the tiered branch and the new stat branch now call the same
+  function for the combined `mercenaryRank`/`spudKeep`/`mercenaryBuff` roll, a small
+  restructure done specifically to avoid a second copy of that logic drifting out of sync on
+  a future rebalance.
+- **Affordability rejected up front, before any roll** — `userDetails.potatoes < Bounty.
+  STAT_BOUNTY_COST` rejects with no writes at all, mirroring `guildBuy.js`'s
+  `doesGuildHaveEnoughToPurchase` precedent, deliberately NOT reusing `/rob`'s
+  already-decided "can go negative" fine-formula precedent (a different mechanic).
+- **The cost is charged unconditionally, win or lose** (tracked as `totalLosses -= cost`),
+  same as Guild Stat Raid's own `removeFromBankOrPurse`. A win still increments
+  `mercenaryBountyWinCount` (counts toward Mercenary Rank exactly like any other Bounty win)
+  and applies the grant via the exact same `raidFactory.handleStatSplit` write path every
+  other stat-granting reward in this codebase already uses.
+- **Deliberately excluded**: `WIN_TAX_PERCENT` (no currency reward to tax), Yukon drop
+  chance, Rival Bounty Hunter notoriety (band-letter-keyed, this mode has no tier/band), and
+  `largestBountyReward` tracking.
+- **New flavor text** (`StatBountyFlavor`, `constants.js`) — 3 win/lose variants, written
+  fresh in Bounty's own solo-heist/outlaw voice rather than reusing Guild Raid's
+  monster-encounter-toned `regularStatRaidMobs`.
+- **Embed**: a new dedicated `embedFactory.createStatBountyResultEmbed` rather than forcing
+  Stat Bounty into `createBountyResultEmbed`'s tier/scenario/currency-keyed shape — mirrors
+  `createRaidEmbed`'s own handling of Guild Stat Raid (a cost field always shown, a stat-grant
+  field shown only on a win).
+- **`/bounty-board` preview**: a one-line "Stat Bounty" row added alongside the existing
+  12-tier table and Baby Bounty line, showing the flat 50%/300,000/+0.20 numbers.
+
+**Tests**: new `src/commands/user/__tests__/takeBountyStatMode.test.js` (6 tests) covering
+insufficient-potatoes rejection with zero writes, the exact-cost affordability boundary, a
+win charging the cost/granting the stat/incrementing the win counter/updating
+`sweetPotatoBuffs.workMultiplierAmount`, a loss charging the cost with no grant and no
+win-count increment, cooldown-skip never rolling on a loss, and a win's skip roll hitting to
+backdate the cooldown and auto-chain one more attempt. `mercenaryFactory.test.js` gained its
+own `resolveStatBounty` describe block (3 tests) covering the win/loss boundary at exactly
+the flat chance and confirming it never touches `userDetails.potatoes` (affordability stays
+`takeBounty.js`'s job). Full suite: 1385/1385 passing (up from 1376 — 9 new tests, zero
+regressions, zero removed).
+
+**Docs**: `.claude/systems/mercenary-bounties.md` gained a full "Stat Bounty" section;
+`.claude/reference/commands.md`'s `/take-bounty` row and `/help topic:mercenary`'s content
+(`HelpTopics` in `constants.js`) both updated to mention the new mode and its numbers
+(char-budget-checked against `help.test.js`'s hard 4096-char cap — still well under it).

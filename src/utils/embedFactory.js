@@ -2203,6 +2203,11 @@ class EmbedFactory {
                 inline: false,
             },
             {
+                name: 'Stat Bounty:',
+                value: `${(Bounty.STAT_BOUNTY_SUCCESS_CHANCE * 100).toFixed(0)}% chance for a permanent +${Bounty.STAT_BOUNTY_REWARD.toFixed(2)} work multiplier — costs ${Bounty.STAT_BOUNTY_COST.toLocaleString()} potatoes, charged whether you win or lose.`,
+                inline: false,
+            },
+            {
                 name: 'Bounty Cooldown:',
                 value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
                 inline: false,
@@ -2320,6 +2325,75 @@ class EmbedFactory {
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`)
+            .setDescription(won ? 'Success!' : 'Failed.')
+            .setColor(color)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Stat Bounty's own dedicated result embed (2026-09-10) — deliberately NOT forced into
+    // createBountyResultEmbed's shape above (tier/scenario/currency-keyed, none of which
+    // Stat Bounty has); instead mirrors createRaidEmbed's own handling of Guild Stat Raid
+    // (see that function above): a flat cost is always shown regardless of outcome, a stat
+    // grant is shown only on a win. `result` is mercenaryFactory.resolveStatBounty's own
+    // return shape; `rankInfo` is computed by takeBounty.js the same way every other Bounty
+    // mode already does (mercenaryFactory.getMercenaryRankInfo off mercenaryBountyWinCount).
+    createStatBountyResultEmbed(userDisplayName, result, rankInfo, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
+        const { won, successChance, cost, statGrantAmount, flavor } = result;
+        const color = won ? 'Green' : 'Red';
+        const fields = [];
+
+        fields.push({
+            name: 'Result:',
+            value: won ? flavor.win : flavor.lose,
+            inline: false,
+        });
+
+        fields.push({
+            name: 'Success Chance:',
+            value: `${(successChance * 100).toFixed(2)}%`,
+            inline: true,
+        });
+
+        fields.push({
+            name: 'Potatoes Spent:',
+            value: `${cost.toLocaleString()} potatoes`,
+            inline: true,
+        });
+
+        if (won) {
+            fields.push({
+                name: '🏅 Permanent Stat Reward!',
+                value: `+${statGrantAmount.toFixed(2)} Work Multiplier`,
+                inline: false,
+            });
+        }
+
+        if (companionXpGained > 0) {
+            fields.push({
+                name: '🐾 Companion XP:',
+                value: `+${companionXpGained.toLocaleString()} XP (${companionName})`,
+                inline: true,
+            });
+        }
+
+        fields.push({
+            name: 'Mercenary Rank:',
+            value: `Rank ${rankInfo.rank}${won ? ' (win recorded!)' : ''}`,
+            inline: true,
+        });
+
+        // Same combined mercenaryRank/spudKeep/mercenaryBuff cooldown-skip roll every other
+        // Bounty mode already shows — see createBountyResultEmbed's own comment on this pair.
+        const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
+        if (cooldownSkipField) {
+            fields.push(cooldownSkipField);
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} attempts a Stat Bounty`)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

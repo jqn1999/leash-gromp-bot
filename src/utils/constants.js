@@ -1629,7 +1629,7 @@ const HelpTopics = [
         id: "mercenary",
         label: "Mercenary Bounties",
         description: "The solo, guild-independent alternative to Guild Raids",
-        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 39,000 → B12 23,400,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/1.55x/18%/+14/+10/+7; R5 275/1.90x/27%/+21/+16/+10; R6 (max) 525/2.35x/38%/+30/+22/+15.\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +2% (R1) → +7% (R6, `/work`-only); `workTimer`/`bountyTimer` 3% (R1) → 12% (R6) cooldown-skip chance; `robChance` +3% (R1) → +10% (R6), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
+        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular|stat>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 39,000 → B12 23,400,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only. Stat Bounty is a third, tier-less mode: pay 300,000 potatoes (charged win or lose) for a flat 50% chance at a permanent +0.2 work multiplier — no currency reward, no tax, no tier.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/1.55x/18%/+14/+10/+7; R5 275/1.90x/27%/+21/+16/+10; R6 (max) 525/2.35x/38%/+30/+22/+15.\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +2% (R1) → +7% (R6, `/work`-only); `workTimer`/`bountyTimer` 3% (R1) → 12% (R6) cooldown-skip chance; `robChance` +3% (R1) → +10% (R6), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
     },
     {
         id: "heist",
@@ -2285,7 +2285,24 @@ const Bounty = {
     // only an actual guild<->mercenary crossing is. 24h — a starting value, easy to
     // retune; long enough to block same-day double-dipping, short enough not to feel like
     // a punishment for a genuine one-time switch.
-    GUILD_SWITCH_COOLDOWN_SECONDS: 86400
+    GUILD_SWITCH_COOLDOWN_SECONDS: 86400,
+
+    // Stat Bounty (2026-09-10, direct instruction: "Add a stat bounty for mercs as an
+    // option in take bounty. It should be very similar to guild stat raids with 50% chance
+    // for .2 multi and costing 300k") - a third /take-bounty mode, mirroring Guild Stat
+    // Raid's own shape (Raid.REGULAR_STAT_RAID_REWARD/_COST/_DIFFICULTY): a flat upfront
+    // potato cost for a CHANCE at a permanent work-multiplier grant, instead of the usual
+    // potato/starch tier-ladder reward/penalty. Deliberately a FLAT 50% chance rather than
+    // Guild Stat Raid's power-scaled-and-capped calculateRaidSuccessChance formula (fed by
+    // a roster's totalMultiplier) - a solo mercenary has no roster/headcount concept to
+    // scale against the way a guild does, so there's nothing meaningful to plug into that
+    // formula's "power" side; the user specified "50% chance" as a single flat number, not
+    // a formula to derive. Values below use Bounty's own local sign convention (positive
+    // numbers for cost-like fields, e.g. WIN_TAX_PERCENT above) rather than
+    // Raid.REGULAR_STAT_RAID_COST's negative convention.
+    STAT_BOUNTY_COST: 300000,          // potatoes, charged whether the attempt wins or loses
+    STAT_BOUNTY_SUCCESS_CHANCE: 0.5,   // flat - see the comment above for why this doesn't scale
+    STAT_BOUNTY_REWARD: 0.2            // permanent +0.2 work multiplier on a win
 }
 
 // Flavor-text scenario tables, keyed by tier — mirrors regularWorkMobs'/raid mob arrays'
@@ -2429,6 +2446,28 @@ const BountyStatReward = {
         bankMultiplier: 1.5, bankMaxGain: 5000000
     }
 }
+
+// Stat Bounty's own flavor text (2026-09-10) — separate from BountyScenarios (band-keyed,
+// tier-ladder flavor) since Stat Bounty has no tier/band at all, just a flat win/lose roll.
+// Bounty's existing voice is solo-heist/outlaw-toned (see BountyScenarios above), not Guild
+// Raid's monster-encounter tone (regularStatRaidMobs) — new mercenary-flavored lines
+// instead of reusing that list. One entry picked uniformly at random on every Stat Bounty
+// attempt; win/loss is decided separately by the flat 50% roll, same "flavor only" division
+// of labor BountyScenarios already uses.
+const StatBountyFlavor = [
+    {
+        win: "You stake your whole purse on a rumor — a retired blademaster holed up in the Bramblewood who trains one student a season. She puts you through a week of drills that'll ache for a month, but you walk out sharper for it, every last potato well spent.",
+        lose: "The old blademaster takes one look at your stance, hands back nothing, and tells you to come back when you're actually ready to learn. Your potatoes buy you a hard lesson and not one thing else."
+    },
+    {
+        win: "A retired quartermaster lets you into the King's old drilling yard for the right price — the kind of grueling conditioning fresh recruits never forget. You leave standing taller, the coin gone but the strength earned.",
+        lose: "The drilling yard chews you up and spits you out by midday — the quartermaster shrugs, pockets your potatoes, and says everyone learns their limits eventually."
+    },
+    {
+        win: "You buy passage into a hidden mercenary lodge said to sharpen even seasoned blades. The training is brutal and the tuition steep, but the strength it leaves behind is real and permanent.",
+        lose: "The lodge's masters size you up, take your potatoes as an entry fee anyway, and send you home the moment the real drills begin — some doors just aren't ready to open yet."
+    }
+]
 
 // /rob-npc — a solo-only heist against a fictional target (no real player involved, a
 // newly-minted payout, not drawn from anyone's balance). No target to compare relative
@@ -3692,6 +3731,7 @@ module.exports = {
     Bounty,
     BountyScenarios,
     BountyStatReward,
+    StatBountyFlavor,
     RobNpc,
     MercenaryCompanionDrop,
     Rival,

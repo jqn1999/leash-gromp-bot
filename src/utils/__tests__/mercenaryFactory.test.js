@@ -1526,3 +1526,45 @@ describe('getMercenaryCooldownSkipSources', () => {
         expect(sources.find(s => s.key === 'spudKeep')).toEqual({ key: 'spudKeep', chance: 0, label: 'Spud Keep' });
     });
 });
+
+// Stat Bounty (2026-09-10, direct instruction — "Add a stat bounty for mercs... very
+// similar to guild stat raids with 50% chance for .2 multi and costing 300k"). Deliberately
+// does NOT test affordability here — that check lives in takeBounty.js, not this function
+// (see resolveStatBounty's own comment on the responsibility split), so it's covered by
+// takeBountyStatMode.test.js instead.
+describe('resolveStatBounty', () => {
+    test('a roll just under the flat 50% chance is a win and grants the full Bounty.STAT_BOUNTY_REWARD', () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(Bounty.STAT_BOUNTY_SUCCESS_CHANCE - 0.0001) // win check
+            .mockReturnValueOnce(0); // flavor index
+        const result = mercenaryFactory.resolveStatBounty(baseUser());
+        randomSpy.mockRestore();
+
+        expect(result.mode).toBe('stat');
+        expect(result.won).toBe(true);
+        expect(result.successChance).toBe(Bounty.STAT_BOUNTY_SUCCESS_CHANCE);
+        expect(result.cost).toBe(Bounty.STAT_BOUNTY_COST);
+        expect(result.statGrantAmount).toBe(Bounty.STAT_BOUNTY_REWARD);
+        expect(result.flavor).toBeDefined();
+        expect(result.flavor.win).toEqual(expect.any(String));
+        expect(result.flavor.lose).toEqual(expect.any(String));
+    });
+
+    test('a roll at/above the flat 50% chance is a loss and grants no stat amount', () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(Bounty.STAT_BOUNTY_SUCCESS_CHANCE) // win check fails (Math.random() < chance is false at exactly chance)
+            .mockReturnValueOnce(0); // flavor index
+        const result = mercenaryFactory.resolveStatBounty(baseUser());
+        randomSpy.mockRestore();
+
+        expect(result.won).toBe(false);
+        expect(result.statGrantAmount).toBe(0);
+        expect(result.cost).toBe(Bounty.STAT_BOUNTY_COST);
+    });
+
+    test('never touches userDetails.potatoes — affordability is not this function\'s job', () => {
+        const user = baseUser({ potatoes: 0 });
+        expect(() => mercenaryFactory.resolveStatBounty(user)).not.toThrow();
+        expect(user.potatoes).toBe(0);
+    });
+});
