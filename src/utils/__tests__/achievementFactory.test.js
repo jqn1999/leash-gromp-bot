@@ -101,6 +101,25 @@ describe('new Poison/Mimic weekly-milestone achievements', () => {
     });
 });
 
+// Guild Rival Warbands (systems/guilds.md#guild-rival-warbands) — warband_breaker, keyed on
+// the new LIFETIME per-user warbandRepelledCount (bumped on every live-roster member on a
+// /repel-warband win — see repelWarband.js), same "checkAndUnlock is fully generic off
+// statPath, no achievementFactory.js changes needed" precedent every other new achievement
+// in this file already establishes.
+describe('warband_breaker (Guild Rival Warbands)', () => {
+    test('unlocks at exactly 15 lifetime warbandRepelledCount', async () => {
+        const userDetails = { userId: 'u1', achievements: [], warbandRepelledCount: 15 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).toContain('warband_breaker');
+    });
+
+    test('does not unlock at 14', async () => {
+        const userDetails = { userId: 'u1', achievements: [], warbandRepelledCount: 14 };
+        const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+        expect(newlyUnlocked.map(a => a.id)).not.toContain('warband_breaker');
+    });
+});
+
 describe('getProgress', () => {
     test('reports isUnlocked and currentValue for every achievement without persisting anything', () => {
         const userDetails = { achievements: ['first_steps'], workCount: 5 };

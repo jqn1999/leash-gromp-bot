@@ -10898,3 +10898,67 @@ whichever factory-per-system convention fits, mirroring `mercenaryFactory.js`'s
 (`/guild-infamy`) and `src/commands/guilds/repelWarband.js` (`/repel-warband`); `embedFactory.js` (new
 result/status embeds mirroring `createNotorietyEmbed`/`createRivalConfrontationResultEmbed`); a new
 `warband_breaker` entry in `Achievements`.
+
+### Implemented (2026-09-10) — see [systems/guilds.md#guild-rival-warbands](systems/guilds.md#guild-rival-warbands) for the shipped writeup
+
+Built exactly as scoped above, with the two decisions the user gave directly after this entry was
+written (resolving two of this entry's own "Open questions," not re-derived):
+
+1. **Infamy resets by SUBTRACTING the threshold on any resolution (win or lose), not a full reset to
+   0** — shipped this way from day one, per direct instruction, rather than repeating
+   `mercenaryNotoriety`'s own two-step (full-reset-then-subtract) history.
+2. **Both the stat grant AND the potato reward go to every member of the LIVE raid roster on a win**
+   (`raidFactory.getLiveRaidRoster`, not `guild.memberList`) — the stat grant is a flat, non-divided
+   per-member `raidFactory.handleStatSplit` call (mirrors Metal King's own calls exactly); the potato
+   reward routes through the existing `addToBankOrPurse` (exported from `startRaid.js` for this reuse)
+   with the live roster as the `raidList` argument, exactly like every other raid reward in this
+   codebase.
+
+Full test suite after implementation: **1425/1425** (1386 baseline + 39 new: 6 in a new dedicated
+`startRaidInfamy.test.js` for the accrual hook, 14 in a new `guildRivalFactory.test.js` for the pure
+resolve function — including a dedicated spy-based test proving `getEffectiveRaidPower`/
+`getRaidLevelInfo` are never called, mirroring the pattern `Rival`'s own equivalent judgment-call
+comments describe — 13 in a new `repelWarband.test.js` for the gate order/Infamy math/reward-penalty
+routing, 4 in a new `guildInfamy.test.js`, and 2 added to `achievementFactory.test.js` for
+`warband_breaker`).
+
+Things confirmed or further-decided that this entry itself had left open, beyond the two decisions
+above:
+
+- **`Raid.T2_RAID_REWARD` (613,000), `Raid.ELITE_PENALTY_INCREASE` (1.5), and
+  `Raid.LEGENDARY_PENALTY_INCREASE` (2.0)** were all re-verified live in `constants.js` at
+  implementation time (not assumed from this entry's own summary) before being wired in as
+  `GuildRival.PENALTY_RATIO`'s anchor/values.
+- **The stat grant's exact per-track magnitude** was a genuine gap this entry left unspecified (only
+  the SCOPE — 1/2/3 tracks by scenario — was fully specified, mirroring Rival's own shape). Rival's
+  own `pickStatGrant` formula is a PER-USER percentage-of-current-stat delta, which has no analog that
+  fits `handleStatSplit`'s flat-broadcast signature (one amount, applied identically to the whole
+  roster) — so a new, dedicated constant was added instead (`GuildRival.STAT_GRANT`), anchored to
+  `Raid.REGULAR_STAT_RAID_REWARD`'s own existing flat per-raider Stat Raid grant (0.2) for the
+  `workMultiplierAmount` term, with `passiveAmount`/`bankCapacity` scaled off it via Metal King's own
+  cross-track ratio (2.0 : 1,000,000 : 10,000,000) so the three tracks stay proportionate to each
+  other. Flagged for the same balance-pass confirmation as the potato reward/penalty numbers — a
+  grounded starting anchor, not shipped as gospel.
+- **The potato reward pays the standard 5% `Raid.GUILD_RAID_TAX_PERCENT` house tax**, since
+  `addToBankOrPurse` is reused completely as-is (including its existing `houseUserId` tax branch) with
+  `interaction.client.user.id` passed exactly like every real `/start-raid` win-branch call site
+  already does — this wasn't explicitly called out in this entry's own reward table (which shows
+  pre-tax illustrative totals), but follows directly from "no new payout mechanism needed at all."
+- **The Ashclove Company roster shipped with 4 entries** (Ashclove herself plus the 3 illustrative
+  names this entry already suggested — Sable Shallot, Leektha Ashborn, Chiveroot the Quiet Blade), not
+  padded to 6 to match `RivalMercenaries`' own roster size — this entry never asked for a specific
+  count, only "3-4 more" alongside Ashclove.
+- **`/repel-warband`'s empty-live-roster case** (not part of this entry's own explicit 2-gate order,
+  which only covers role-then-Infamy) is rejected as a third gate, checked after Infamy and before any
+  roll — mirrors the identical guard `startRaid.js`'s own `resolveRaid` already applies before rolling
+  anything, avoiding a divide-by-zero inside `handlePotatoSplit` if a reward/penalty ever had to spill
+  past a full/empty bank with nobody on the roster to receive it.
+- **`removeFromBankOrPurse`'s floor-at-0 behavior was verified, not assumed** — confirmed by reading the
+  function (it tops `bankStored` to exactly 0 before computing the genuine shortfall to spill, never
+  writes a negative value) and by a dedicated test forcing a penalty larger than the guild's entire
+  bank.
+- **Not held for a release-reviewer pass before pushing** (unlike the guild-treasury-interest rework
+  earlier the same day) — every edge case flagged as a concern (empty roster, bank-can't-cover-penalty,
+  Infamy underflow) has direct test coverage exercising the real code path, not just a read-through,
+  and the reward/penalty math is a straightforward reuse of already-reviewed `startRaid.js`
+  infrastructure rather than new financial logic of its own.

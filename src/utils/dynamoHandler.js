@@ -584,6 +584,14 @@ function getDefaultUserFields(userId, username) {
         // resetting-vs-monotonic split this codebase already established.
         mercenaryNotoriety: 0,
         rivalConfrontationWinCount: 0,
+        // Guild Rival Warbands (systems/guilds.md#guild-rival-warbands) — a LIFETIME,
+        // never-reset per-user counter, bumped on every live-raid-roster member (not just the
+        // Elder who ran /repel-warband) whenever a confrontation resolves a win. Exists only
+        // because this codebase's Achievement system has no guild-level concept at all — the
+        // guild-wide guildInfamy resource itself can't back a per-user achievement directly,
+        // so this mirrors guildRaidWinCount's own per-participant bump for raid_novice/
+        // raid_veteran, feeding the new warband_breaker achievement the same way.
+        warbandRepelledCount: 0,
         // Safehouses (systems/safehouses.md) — mercenary-exclusive, purely defensive extra
         // bank capacity. Array of { slot, balance } for each PURCHASED slot only (not one
         // entry per Safehouse.SLOTS definition) — an empty array means no safehouses owned
@@ -1603,8 +1611,15 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         },
         raidHistory: [],       // most recent HISTORY_MAX_ENTRIES guild raids — see startRaid.js
         contractHistory: [],   // most recent HISTORY_MAX_ENTRIES completed Guild Contracts — see guildContractFactory.js
-        guildCompanion: null   // { id, acquiredAt, acquiredRaidTier } once won — see systems/guilds.md's
+        guildCompanion: null,  // { id, acquiredAt, acquiredRaidTier } once won — see systems/guilds.md's
                                 // "Guild Raid Companion" design / guildCompanionFactory.js
+        // Guild Rival Warbands (systems/guilds.md#guild-rival-warbands) — the guild-wide,
+        // resettable resource-threshold gate for /repel-warband, fed only by /start-raid wins
+        // (startRaid.js's own wonThisRaid diff). Mirrors mercenaryNotoriety's own
+        // subtract-the-threshold-on-any-resolution shape (win OR lose) directly, not a full
+        // reset to 0 — any Infamy banked past GuildRival.INFAMY_THRESHOLD before a guild
+        // chooses to fight carries into the next cycle instead of being discarded.
+        guildInfamy: 0
     };
 }
 

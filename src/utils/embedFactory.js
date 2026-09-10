@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -2667,6 +2667,95 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} confronts ${rival.name} — ${scenarioLabel} Scenario`)
+            .setDescription(won ? 'Success!' : 'Failed.')
+            .setColor(color)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Guild Rival Warbands — /guild-infamy's read-only status embed, mirrors
+    // createNotorietyEmbed's own shape exactly (progress readout + availability line), scoped
+    // to the guild rather than a single player.
+    createGuildInfamyEmbed(guildName, infamy, threshold, repelable) {
+        const fields = [
+            {
+                name: 'Infamy:',
+                value: `${infamy.toLocaleString()} / ${threshold.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: 'Repel Warband:',
+                value: repelable ? 'Ready now! An Elder, Co-Leader, or the Leader can run /repel-warband — which scenario you get is a surprise.' : 'Not available yet.',
+                inline: false,
+            },
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}'s Infamy`)
+            .setDescription(AshcloveCompany.description)
+            .setColor(repelable ? 'Green' : 'Yellow')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Guild Rival Warbands — /repel-warband's result embed, mirrors
+    // createRivalConfrontationResultEmbed's own win/loss shape. `result` is
+    // guildRivalFactory.resolveWarbandConfrontation's own return shape; `newInfamy` is the
+    // guild's guildInfamy AFTER the subtract-the-threshold write (see repelWarband.js).
+    createWarbandConfrontationResultEmbed(guildName, result, newInfamy) {
+        const { scenario, won, successChance, rival, rewardAmount, penaltyAmount, statTracks } = result;
+        const color = won ? 'Green' : 'Red';
+        const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
+        const fields = [];
+
+        fields.push({
+            name: 'Result:',
+            value: won ? rival.winFlavor : rival.loseFlavor,
+            inline: false,
+        });
+
+        fields.push({
+            name: 'Success Chance:',
+            value: `${(successChance * 100).toFixed(2)}%`,
+            inline: true,
+        });
+
+        if (won) {
+            fields.push({
+                name: 'Potatoes Gained (guild):',
+                value: `${rewardAmount.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        } else {
+            fields.push({
+                name: 'Potatoes Lost (guild bank):',
+                value: `${penaltyAmount.toLocaleString()} potatoes`,
+                inline: true,
+            });
+        }
+
+        if (won && statTracks) {
+            const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            const statText = statTracks.map(track => `+${GuildRival.STAT_GRANT[track].toLocaleString()} ${statLabels[track]} (every raider)`).join('\n');
+            fields.push({
+                name: '🏅 Permanent Stat Reward',
+                value: statText,
+                inline: false,
+            });
+        }
+
+        fields.push({
+            name: 'Infamy:',
+            value: `${newInfamy.toLocaleString()}/${GuildRival.INFAMY_THRESHOLD.toLocaleString()}`,
+            inline: true,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName} confronts ${rival.name} — ${scenarioLabel} Scenario`)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

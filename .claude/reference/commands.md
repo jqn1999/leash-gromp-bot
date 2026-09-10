@@ -71,6 +71,8 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `guildContract.js` | `/guild-contract` | Shows the active weekly Guild Contract, the guild's aggregate progress, and a Top Contributors leaderboard (read-only, doesn't snapshot/claim) — see [systems/guild-contracts.md](../systems/guild-contracts.md) |
 | `guildHistory.js` | `/guild-history` | Paginated past raids or completed Guild Contracts (`type: raids \| contracts`) — see [systems/guilds.md](../systems/guilds.md#guild-history) |
 | `joinSpudKeep.js` | `/join-spud-keep` | Elder/Co-Leader/Leader idempotently enters the guild into today's Spud Keep contest — see [systems/spud-keep.md](../systems/spud-keep.md) |
+| `guildInfamy.js` | `/guild-infamy` | Read-only: current Infamy vs. threshold and whether `/repel-warband` is available — see [systems/guilds.md](../systems/guilds.md#guild-rival-warbands) |
+| `repelWarband.js` | `/repel-warband` | Elder+ resolves an Ashclove Company warband confrontation immediately (no confirm, no options — scenario is rolled, not chosen) once Infamy crosses the threshold — subtracts the threshold win or lose — see [systems/guilds.md](../systems/guilds.md#guild-rival-warbands) |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 

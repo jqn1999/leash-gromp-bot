@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions, Work } = require("../../utils/constants")
+const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions, Work } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
@@ -1521,6 +1521,20 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // staying a bare number).
     const freshGuild = await dynamoHandler.findGuildById(guildId);
     const wonThisRaid = Number.isFinite(freshGuild?.raidCount) && freshGuild.raidCount > raidCountBeforeThisRaid;
+
+    // Guild Rival Warbands (systems/guilds.md#guild-rival-warbands) — Infamy accrues ONLY
+    // from a WINNING raid, keyed by raid MODE (baby/regular both map to the same +1 — Baby
+    // reuses Regular's own T1 closure object literally, so this needs no special-casing).
+    // Stat Raid wins do not feed Infamy at all — 'stat' has no key in INFAMY_PER_RAID_MODE,
+    // so the lookup is undefined and the write is skipped below.
+    if (wonThisRaid) {
+        const infamyGain = GuildRival.INFAMY_PER_RAID_MODE[raidSelection];
+        if (Number.isFinite(infamyGain)) {
+            const currentInfamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
+            await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + infamyGain);
+        }
+    }
+
     // Whether THIS resolution's Cinderroot sacrifice fired — free reuse of the same
     // freshGuild fetch already happening for the win/loss diff, rather than a second DB
     // round-trip, and without threading a new field through any scenario closure's return
@@ -1614,5 +1628,11 @@ module.exports = {
     buildRaidPreview,
     // Exported so /skip-chances (skipChances.js) can preview the same combined chance
     // resolveRaid actually rolls against, without duplicating the formula.
-    getRaidCooldownSkipSources
+    getRaidCooldownSkipSources,
+    // Exported so /repel-warband (repelWarband.js, Guild Rival Warbands — see
+    // systems/guilds.md#guild-rival-warbands) can route its own potato reward/penalty
+    // through the exact same guild-bank-first/split-mode infrastructure every ordinary raid
+    // reward/penalty already uses, rather than duplicating either function.
+    addToBankOrPurse,
+    removeFromBankOrPurse
 }

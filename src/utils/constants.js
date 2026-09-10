@@ -230,7 +230,15 @@ const Achievements = [
     // mercenary_legend's 525 mirrors Rank 6's cap, since Rival confrontations have no
     // rank-style ceiling to anchor a capstone threshold to.
     { id: "rival_first_blood", name: "Turned the Tables", description: "Defeat your first Rival Bounty Hunter", statPath: "rivalConfrontationWinCount", threshold: 1 },
-    { id: "rival_hunter_of_hunters", name: "Hunter of Hunters", description: "Defeat 15 Rival Bounty Hunters", statPath: "rivalConfrontationWinCount", threshold: 15 }
+    { id: "rival_hunter_of_hunters", name: "Hunter of Hunters", description: "Defeat 15 Rival Bounty Hunters", statPath: "rivalConfrontationWinCount", threshold: 15 },
+    // Guild Rival Warbands — per-user, not per-guild, since this codebase's Achievement
+    // system has no guild-level concept at all (see achievements.md's "Data model"). Keyed on
+    // the new LIFETIME warbandRepelledCount, bumped on every live-roster member (not just the
+    // Elder who ran /repel-warband) the moment a confrontation resolves a win — same
+    // per-participant bump shape guildRaidWinCount already uses for ordinary raid wins. 15
+    // mirrors rival_hunter_of_hunters' own threshold directly — same "sustained commitment"
+    // marker, since Warband confrontations have no rank-style cap to anchor a capstone to.
+    { id: "warband_breaker", name: "Convoy's Guard", description: "Repel 15 Ashclove Company warbands", statPath: "warbandRepelledCount", threshold: 15 }
 ]
 
 const CatchUp = {
@@ -1608,6 +1616,12 @@ const HelpTopics = [
         content: "Cinderroot, the Hoardwarden is a single, permanently guild-bound companion your guild can win off a rare drop roll on a WINNING raid resolution — once won, it belongs to the whole guild until sacrificed (see below).\n\n**Drop chance** (per winning raid, gated off once your guild already owns one): Baby 0%, Regular/Stat 0.5%, Elite 1%, Legendary 2.5%.\n\n**Three passive perks**, scaling with Guild Level (see `/help topic:guilds`):\n• Raid cooldown skip chance: 5% (L1) → 20% (L10) — an extra source alongside your guild buff/Spud Keep/Guild Level's own reduction.\n• Raid reward bonus: +9% (L1) → +30% (L10) — multiplies the WINNING side of every raid reward.\n• Treasury interest bonus: a MULTIPLIER on the guild's whole computed treasury interest amount, +25% (L1) → +100% (L10, i.e. the interest amount doubles) — scales with Guild Level like the other two perks.\n\n**Fourth mechanic — sacrifice**: on a raid LOSS, the raider who started it can choose to sacrifice Cinderroot to void that loss's entire potato penalty outright. It's one-time — your guild loses Cinderroot permanently and has to earn a fresh drop roll to get it back."
     },
     {
+        id: "guild-warbands",
+        label: "Guild Rival Warbands",
+        description: "Guild Infamy, the Ashclove Company, and /repel-warband",
+        content: "A guild-wide equivalent of Mercenary Rival Bounty Hunters. Winning `/start-raid` raids builds your guild's Infamy (`guild.guildInfamy`) — Baby/Regular +1, Elite +2, Legendary +3 (Stat Raid wins don't feed it at all). Once Infamy hits 10, Elder+ can run `/repel-warband` to fight off the Ashclove Company, a band of raider-poachers who ambush guild convoys hauling home a raid's take. `/guild-infamy` shows current progress; `/repel-warband` resolves immediately, no confirm step, no player choice of difficulty.\n\nEvery resolution — win OR lose — subtracts the 10-Infamy threshold rather than zeroing it out, so any Infamy banked past 10 carries into the next cycle instead of being thrown away. A confrontation rolls one of three scenarios (60% Easy / 30% Medium / 10% Hard), each with its own success-chance range (Easy 40-60%, Medium 20-40%, Hard 10-20%) — deliberately independent of your guild's raid power or level, so the odds stay the same at any stage of a guild's life.\n\n**On a win**: every member of your guild's LIVE raid roster (same roster `/start-raid` already uses) gets a flat permanent stat bump (Easy 1 random track, Medium 2 distinct tracks, Hard all 3) plus a share of a potato reward pegged to Regular T2's own raid reward (1x/2x/3x by scenario), paid through the same guild-bank-first mechanism every raid reward already uses. **On a loss**: the guild bank pays a penalty (1x/1.5x/2x the scenario's reward, escalating the same way Elite/Legendary raid penalties do), spilling to raiders only if the bank can't fully cover it — floored at 0, the bank is never pushed negative."
+    },
+    {
         id: "spud-keep",
         label: "Spud Keep",
         description: "The daily Guild-vs-Merc-Faction territory contest",
@@ -2830,6 +2844,101 @@ const RivalMercenaries = {
     ]
 }
 
+// Guild Rival Warbands — a guild-wide equivalent of Rival Bounty Hunters (see
+// roadmap.md's "Guild Rival Warbands" entry for the full derivation and
+// systems/guilds.md#guild-rival-warbands for the shipped writeup). Infamy
+// (guild.guildInfamy) accrues ONLY from /start-raid wins (guilds have no /rob-equivalent
+// second income activity the way Mercenaries have Bounty+Heist feeding mercenaryNotoriety),
+// keyed by raid MODE rather than Raid's internal T1-T4 sub-tier. Once Infamy crosses
+// INFAMY_THRESHOLD, /repel-warband unlocks — Elder+ only (a guild-wide, bank-risking
+// action, unlike /confront-rival's personal one), no player choice of scenario, no
+// getEffectiveRaidPower/getRaidLevelInfo anywhere in the resolution path (deliberately
+// power-independent, mirroring Rival's own "stays stable at any power level" design goal).
+const GuildRival = {
+    // Baby/Regular win: +1 (Baby reuses Regular's own T1 closure object literally, so no
+    // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +2,
+    // Legendary: +3 — same 1/2/3 escalation NOTORIETY_PER_BOUNTY_TIER already uses for
+    // Bounty's I/II/III bands. Stat Raid is excluded entirely (not present as a key here) —
+    // a flat-cost gamble for a permanent multiplier, not a combat-flavored win/loss.
+    INFAMY_PER_RAID_MODE: { baby: 1, regular: 1, elite: 2, legendary: 3 },
+    // 10, not Rival's 20 — a guild has exactly ONE accrual stream (raid wins, on
+    // Raid.RAID_TIMER_SECONDS, identical to Bounty's own cooldown) versus a mercenary's TWO
+    // independent streams (Bounty + the twice-as-fast Heist), so real-time pacing to unlock
+    // is kept comparable by halving the threshold to compensate for the missing second
+    // stream — see roadmap.md's worked derivation.
+    INFAMY_THRESHOLD: 10,
+    // Byte-identical to Rival.SCENARIO_CHANCE/SUCCESS_CHANCE_RANGE — no guild-specific
+    // reason to diverge from the shape players already know from Rival Bounty Hunters.
+    SCENARIO_CHANCE: { easy: 0.60, medium: 0.30, hard: 0.10 },
+    SUCCESS_CHANCE_RANGE: { easy: [0.40, 0.60], medium: [0.20, 0.40], hard: [0.10, 0.20] },
+    // Reward is pegged directly to Raid.T2_RAID_REWARD (Regular T2's own live reward) as the
+    // "typical mid-raid win" anchor, escalated 1x/2x/3x by scenario — mirrors
+    // Rival.TIER_REWARD_FACTOR's own 1/2/3 shape exactly. Unlike Rival, this doesn't need a
+    // "never out-earn organized guild raiding" suppression — there's nothing above a guild's
+    // own raiding for a guild mechanic to out-earn, so the anchor is a real raid-tier number,
+    // not a fraction of one.
+    TIER_REWARD_FACTOR: { easy: 1, medium: 2, hard: 3 },
+    // Penalty = (Raid.T2_RAID_REWARD * TIER_REWARD_FACTOR[scenario]) * PENALTY_RATIO[scenario],
+    // ±20% randomized the same as every other reward/penalty roll in this codebase. Mirrors
+    // Raid.ELITE_PENALTY_INCREASE (1.5x) / Raid.LEGENDARY_PENALTY_INCREASE (2.0x) directly —
+    // a Hard-scenario loss risking double its own reward back is the same relative stakes
+    // Legendary Guild Raid's own top bracket already carries.
+    PENALTY_RATIO: { easy: 1.0, medium: 1.5, hard: 2.0 },
+    // Guaranteed stat bump on a win, scope keyed by scenario (easy: 1 random track, medium:
+    // 2 DISTINCT tracks, hard: all 3 — mirrors Rival's own TIER_I/II/III scope shape), but
+    // granted as a FLAT per-track amount via raidFactory.handleStatSplit (that function only
+    // ever takes one flat rewardAmount applied identically to every roster member — the same
+    // shape Metal King's own handleStatSplit calls already use), not Rival's per-user
+    // percentage-of-current-stat formula, since Rival's grant math has no analog that fits
+    // handleStatSplit's flat-broadcast signature. Magnitude is a first-pass number, not
+    // reused verbatim from Metal King (whose own 2.0/1,000,000/10,000,000 are tuned for a
+    // rare 1% jackpot roll, not a guaranteed-on-every-win grant): workMultiplierAmount
+    // anchors to Raid.REGULAR_STAT_RAID_REWARD's own existing flat per-raider Stat Raid
+    // grant (0.2), and passiveAmount/bankCapacity scale off it using Metal King's own
+    // cross-track ratio (workMulti : passive : capacity = 2.0 : 1,000,000 : 10,000,000, i.e.
+    // 500,000x / 5,000,000x the workMulti term) so the three tracks stay proportionate to
+    // each other. Flagged for the same balance-pass confirmation as the potato reward/penalty
+    // numbers above — a grounded starting anchor, not a number to treat as final.
+    STAT_GRANT: { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 }
+}
+
+// The Ashclove Company — poacher-raiders who track which guild banners keep coming home
+// loaded, then hit the return convoy, not the raid itself (the "genuine reason a GUILD
+// specifically would face this that a lone mercenary wouldn't" — a guild's accumulated
+// raiding success is a thing that structurally doesn't exist for a solo player). Deliberately
+// distinct from both Rival Bounty Hunters' root-vegetable roster and the squash/gourd-family
+// raid bosses/Cinderroot — allium family (onion, garlic, leek, shallot, chive), a sharp,
+// "raiding party" flavor that reads as its own faction at a glance. One entry drawn uniformly
+// at random on every /repel-warband call, same shape as RivalMercenaries.roster/pickRandomRival
+// — Ashclove herself is the company's own named leader, not guaranteed to show on every
+// confrontation, just the roster's own headline entry the way Turnipbeard/Taromire/etc. are
+// for RivalMercenaries.
+const AshcloveCompany = {
+    description: "Your guild's raiding success has drawn a different kind of attention — a company of raider-poachers who don't hunt any one member, only the convoy riding home with the haul.",
+    roster: [
+        { name: "Ashclove, the Garlicked Reaver",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "The Company's own founder and banner-bearer — former raider herself, before she decided ambushing convoys paid better than riding in one.",
+          winFlavor: "Ashclove's own ambush gets sprung early, and your guild's convoy fights clear of the road before her company can close the trap.",
+          loseFlavor: "Ashclove's company knows exactly which bend in the road to wait at. Your convoy never sees the ambush coming." },
+        { name: "Sable Shallot, the Layered Blade",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "Ashclove's second — patient, methodical, and fond of peeling a guild's defenses back one layer at a time before she ever strikes.",
+          winFlavor: "Sable Shallot's patient approach finally runs out of layers to peel — your guard breaks her ambush before it closes.",
+          loseFlavor: "Sable Shallot peels through your convoy's guard exactly the way she always does — one layer at a time, until nothing's left to defend." },
+        { name: "Leektha Ashborn, the Green Lance",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "The Company's fastest rider, known for closing on a convoy before its outriders even spot dust on the road.",
+          winFlavor: "Leektha's lance never quite closes the distance this time — your convoy's outriders spot her a bend too early.",
+          loseFlavor: "Leektha closes the distance before your outriders can even raise the alarm. The convoy never had a chance to form up." },
+        { name: "Chiveroot the Quiet Blade",
+          thumbnailUrl: "https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png",
+          description: "Says less than any other Company raider and needs to — by the time anyone hears Chiveroot coming, the ambush has already started.",
+          winFlavor: "Chiveroot's quiet approach finally meets a guard that was quieter still — the ambush is turned back before a blade is drawn.",
+          loseFlavor: "Nobody hears Chiveroot coming. Nobody ever does." }
+    ]
+}
+
 // Mercenary-exclusive stash system (systems/safehouses.md) — purely defensive, closing
 // the gap where even a fully-regraded personal bank can't cover the next shop tier's cost
 // (the bankCapacity shop ladder jumps from a 50,000,000 tier-6 cap straight to a
@@ -3736,6 +3845,8 @@ module.exports = {
     MercenaryCompanionDrop,
     Rival,
     RivalMercenaries,
+    GuildRival,
+    AshcloveCompany,
     Safehouse,
     metalKingRaidBoss,
     metalPotatoSuccess,

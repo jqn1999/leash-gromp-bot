@@ -995,3 +995,185 @@ developer-level call, all cosmetic/mechanical rather than logic changes:
   `rollGuildCompanionDrop`'s own internal roll, which is `>= 0.005` (regular's own chance) at that
   value. A zero-power roster (`workMultiplierAmount: 0`, `totalMultiplier` computes to exactly `0`) is
   used the same way for every guaranteed-LOSS case, regardless of which `Math.random()` draw is active.
+
+## Guild Rival Warbands
+
+**Shipped 2026-09-10**, built off the design in
+[roadmap.md](../roadmap.md#guild-rival-warbands-a-guild-wide-equivalent-of-rival-bounty-hunters-2026-09-10-direct-instruction--planning-pass-only-not-scoped-for-build-yet)
+— a guild-wide equivalent of Mercenary-exclusive Rival Bounty Hunters
+([mercenary-bounties.md#rival-bounty-hunters](mercenary-bounties.md#rival-bounty-hunters)). Where
+Rival flips the framing from "you hunt a target" to "you've built a reputation and now something is
+hunting *you*" for a solo mercenary, Guild Rival Warbands does the same thing for a guild's own
+raiding success: **The Ashclove Company**, a rival free company of raider-poachers who track which
+guild banners keep coming home loaded, then hit the return convoy rather than the raid itself.
+
+### Infamy — guild-wide, `/start-raid`-win-only, threshold 10
+
+`guild.guildInfamy` is a single shared field on the guild record (mirrors `guild.raidCount`'s own
+"any winning raid contributes, regardless of who was on the roster" shape), fed **only** by
+`/start-raid` wins — guilds have no `/rob`-equivalent second income activity the way Mercenaries have
+both Bounty *and* Heist feeding `mercenaryNotoriety`. The accrual hook lives directly at
+`startRaid.js`'s `resolveRaid` — right after the existing `wonThisRaid` diff (the same `freshGuild`
+re-fetch `raidHistory`/the Cinderroot acquisition roll already reuse), before the `raidHistoryEntry` is
+built:
+
+```js
+if (wonThisRaid) {
+    const infamyGain = GuildRival.INFAMY_PER_RAID_MODE[raidSelection];
+    if (Number.isFinite(infamyGain)) {
+        const currentInfamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + infamyGain);
+    }
+}
+```
+
+`GuildRival.INFAMY_PER_RAID_MODE = { baby: 1, regular: 1, elite: 2, legendary: 3 }` — Baby and Regular
+both map to the same `+1` for free, since Baby reuses Regular's own T1 closure object literally (see
+`raids-and-world-events.md`'s "because Baby reuses the exact same closure object as Regular's own T1
+entry"). Stat Raid has no key in the lookup at all, so `infamyGain` is `undefined` and the write is
+skipped — the same "keyed by a band this tier-less mode doesn't have" exclusion Stat Bounty already
+gets from `NOTORIETY_PER_BOUNTY_TIER`.
+
+**Threshold: 10, not Rival's 20** — a guild has exactly ONE accrual stream (raid wins, on
+`Raid.RAID_TIMER_SECONDS`, identical to Bounty's own cooldown) versus a mercenary's TWO independent
+streams (Bounty + Heist, Heist's cooldown exactly half Bounty's), so the threshold is halved to keep
+real-time pacing to unlock comparable to a Bounty-only mercenary's own cadence — see the roadmap
+entry's own worked derivation.
+
+**Resets by SUBTRACTING the threshold on any resolution (win or lose), not a full reset to 0** —
+shipped this way from day one (direct instruction, 2026-09-10, after the roadmap entry's own "Open
+questions" section had recommended it), rather than repeating `mercenaryNotoriety`'s own two-step
+history (full-reset first, changed to subtract-the-threshold on 2026-08-30 as a separate follow-up).
+Any Infamy banked past the threshold before a guild chooses to fight carries straight into the next
+cycle instead of being discarded:
+
+```js
+const newInfamy = Math.max(0, currentInfamy - GuildRival.INFAMY_THRESHOLD);
+```
+
+### `/repel-warband` — Elder+, no confirm step, power-independent
+
+Gated, checked in order (mirrors `/confront-rival`'s own layered-rejection style, but Elder+ rather
+than a personal gate — same permission tier `/start-raid` already requires for any action that risks
+the guild's shared resources):
+
+1. Caller's guild role < Elder → reject. **Checked before the Infamy gate** — a below-Elder member
+   never even learns the guild's current Infamy/threshold gap from this command's own rejection
+   message.
+2. `guild.guildInfamy < GuildRival.INFAMY_THRESHOLD` → reject, stating current/needed Infamy (mirrors
+   `/notoriety`'s own progress-readout shape).
+3. Live raid roster (`raidFactory.getLiveRaidRoster`) empty → reject. Not part of the roadmap's own
+   stated 2-gate order, but required before resolving anything — mirrors the exact guard
+   `startRaid.js`'s own `resolveRaid` already applies before rolling (an empty roster has nobody to
+   grant the stat bump/potato reward/achievement counter to, and would divide-by-zero inside
+   `handlePotatoSplit` if a reward or penalty ever had to spill past a full/empty bank).
+
+Once gated, resolves immediately — no player choice of scenario, no confirm step (mirrors
+`/confront-rival`'s own immediacy). `src/utils/guildRivalFactory.js`'s `resolveWarbandConfrontation`
+is the pure-computation resolve function (no DB writes — same division of labor
+`mercenaryFactory.resolveRivalConfrontation` already establishes; the command owns persisting the
+result):
+
+```
+scenario      = weighted roll: 60% easy / 30% medium / 10% hard   (GuildRival.SCENARIO_CHANCE,
+                                                                     byte-identical to Rival.SCENARIO_CHANCE)
+successChance = getRandomFromInterval(min, max)  — GuildRival.SUCCESS_CHANCE_RANGE[scenario],
+                                                     byte-identical to Rival.SUCCESS_CHANCE_RANGE
+won           = Math.random() < successChance
+```
+
+**Deliberately no call to `raidFactory.getEffectiveRaidPower` or `raidFactory.getRaidLevelInfo`
+anywhere in the resolution path** — same explicit, stated design goal Rival Bounty Hunters itself is
+built on ("stays stable at any power level," not an oversight): a fresh Level 1 guild and a maxed
+Level 10 guild face the exact same Ashclove Company odds, since this event is framed as the luck/skill
+of the ambush itself, not a scaled-down raid roll. Proven directly by a dedicated test
+(`guildRivalFactory.test.js`) that spies on both functions and asserts neither is ever called.
+
+### Reward/penalty — routed through the exact infrastructure `/start-raid` already uses
+
+**On a win**: both the stat bump and the potato reward go to **every member of the live raid roster**
+(`raidFactory.getLiveRaidRoster` — the same roster an ordinary raid win already rewards, not the full
+`guild.memberList`), per direct instruction resolving the roadmap's own "Open questions."
+
+- **Stat bump**, scope keyed by scenario (easy: 1 random track, medium: 2 DISTINCT tracks, hard: all
+  3 — mirrors Rival's own `TIER_I/II/III` scope shape) — but a FLAT amount per track
+  (`GuildRival.STAT_GRANT`), applied via `raidFactory.handleStatSplit(raidList, track, amount)` once
+  per selected track, identically to every live-roster member (that function only ever takes ONE flat
+  `rewardAmount` broadcast to the whole `raidList` — mirrors Metal King's own `handleStatSplit` calls
+  in `startRaid.js` exactly, "given to every raider" in the same flat/non-divided sense Metal King's
+  jackpot already is). This is a genuinely different shape from Rival's own `pickStatGrant`, which
+  computes a PER-USER percentage-of-current-stat delta — that formula has no analog that fits
+  `handleStatSplit`'s flat-broadcast signature, so the magnitude is a new, dedicated constant instead
+  (`GuildRival.STAT_GRANT = { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 }`
+  — anchored to `Raid.REGULAR_STAT_RAID_REWARD`'s own existing flat per-raider Stat Raid grant for the
+  `workMultiplierAmount` term, scaled to the other two tracks via Metal King's own cross-track ratio;
+  flagged for the same balance-pass confirmation as the potato numbers below, not shipped as gospel).
+- **Potato reward**, pegged to `Raid.T2_RAID_REWARD` (Regular T2's own live reward, confirmed still
+  613,000 at ship time) as the "typical mid-raid win" anchor, escalated 1x/2x/3x by scenario
+  (`GuildRival.TIER_REWARD_FACTOR`, mirrors `Rival.TIER_REWARD_FACTOR`'s own 1/2/3 shape), ±20%
+  randomized the same as every other reward roll — routed through the guild's own **existing**
+  `addToBankOrPurse` (exported from `startRaid.js` specifically for this reuse), bank-first, then
+  whichever of `raidSplitMode`/`raidPayoutMode` the guild has already picked, with the live raid
+  roster as the split audience and `interaction.client.user.id` passed as `houseUserId` — meaning a
+  Warband win pays the exact same 5% house tax (`Raid.GUILD_RAID_TAX_PERCENT`) every other guild raid
+  reward already does. This doesn't need Rival's own "never out-earn organized guild raiding" ceiling
+  — there's nothing above a guild's own raiding for a guild mechanic to out-earn.
+- `raidFactory.incrementCounter(raidList, 'warbandRepelledCount')` — a new **lifetime, per-user**
+  counter, bumped on every live-roster member (not just the Elder who ran the command), mirroring
+  `guildRaidWinCount`'s own per-participant bump on an ordinary raid win. Exists because this
+  codebase's Achievement system has no guild-level concept at all — `guild.guildInfamy` itself can't
+  back a per-user achievement directly.
+
+**On a loss**: `Math.max(0, ...)`-floored penalty drained from `guild.bankStored` first via the
+guild's own **existing** `removeFromBankOrPurse` (also exported from `startRaid.js`), at
+`Raid.T2_RAID_REWARD * TIER_REWARD_FACTOR[scenario] * PENALTY_RATIO[scenario]` (±20% randomized) —
+`GuildRival.PENALTY_RATIO = { easy: 1.0, medium: 1.5, hard: 2.0 }` mirrors
+`Raid.ELITE_PENALTY_INCREASE`(1.5)/`LEGENDARY_PENALTY_INCREASE`(2.0) directly (both confirmed still
+live at ship time). `removeFromBankOrPurse`'s existing logic already floors `bankStored` at exactly 0
+rather than going negative (confirmed, not assumed — it tops the bank to 0 and routes only the
+genuine shortfall to the roster split, the identical mechanism an ordinary raid loss already uses), so
+no new floor logic was needed. No Cinderroot sacrifice offer is passed (`sacrificeOffer: null`) —
+Cinderroot's sacrifice mechanic is explicitly deferred for Guild Rival Warbands, not wired in.
+
+### The Ashclove Company (`AshcloveCompany`, `constants.js`)
+
+4 named members (allium family — onion/garlic/leek/shallot/chive — deliberately distinct from both
+Rival Bounty Hunters' root-vegetable roster and the squash/gourd-family raid bosses/Cinderroot):
+Ashclove, the Garlicked Reaver (the Company's own founder/banner-bearer), Sable Shallot, the Layered
+Blade, Leektha Ashborn, the Green Lance, and Chiveroot the Quiet Blade. One entry drawn uniformly at
+random on every `/repel-warband` call, same shape as `RivalMercenaries.roster`/`pickRandomRival`.
+
+### Commands
+
+Both live in `src/commands/guilds/`:
+
+| Command | Flow |
+|---|---|
+| `/guild-infamy` | No args, read-only (mirrors `/notoriety`). Rejects if the caller has no guild. Shows current Infamy/threshold and whether `/repel-warband` is available right now. |
+| `/repel-warband` | No options — the scenario is rolled internally. Gate order above. No confirm step, no cooldown (Infamy itself is the gate/cycle mechanism). Resolves immediately via `guildRivalFactory.resolveWarbandConfrontation`, writes the result, replies with the result embed. |
+
+### Data model
+
+```js
+guildInfamy: 0,             // guild table — resettable, SUBTRACTS INFAMY_THRESHOLD on every
+                             // /repel-warband resolution (win or lose), never a full reset
+warbandRepelledCount: 0,    // user table — LIFETIME, never reset; bumped on every live-roster
+                             // member on a WIN only, feeds warband_breaker
+```
+
+### Achievement
+
+| id | Name | Threshold |
+|---|---|---|
+| `warband_breaker` | Convoy's Guard | `warbandRepelledCount >= 15` |
+
+15 mirrors `rival_hunter_of_hunters`'s own threshold directly — same "sustained commitment" marker,
+since Warband confrontations have no rank-style cap to anchor a capstone number to.
+
+### Deferred, not shipped
+
+A fourth Cinderroot perk analogous to Yukon's `rivalSuccessChanceFlat` (a flat add to
+`/repel-warband`'s success-chance roll) — the roadmap entry's own section 7 explicitly recommends
+deferring this, since Cinderroot's three existing perks already went through two same-day retuning
+passes each and bolting on a fourth in the same pass risks needing its own immediate retune before
+anyone's had real playtime with either change.
