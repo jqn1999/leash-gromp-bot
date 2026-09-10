@@ -88,8 +88,9 @@ function getMemberRaidPower(userDetails) {
 // The effective raid power a roster rolls against, broken into its two components — a
 // rank-weighted teamPower (see getMemberRaidPower, which folds in each member's own
 // workMultiplierPercent companion perk alongside rebirth) and a headcount bonus for
-// bringing more raiders — same per-member % shape Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER
-// already uses, capped so a max-size roster doesn't spiral. Returns the breakdown (not
+// bringing more raiders — same "flat % per member" shape the guild treasury interest
+// formula's own base rate (TreasuryInterestScaling.dailyRatePerMember, constants.js) also
+// uses, capped so a max-size roster doesn't spiral. Returns the breakdown (not
 // just the final number) so currentRaid.js's embed can show players what the total
 // multiplier is actually made of, not just the opaque result — see getEffectiveRaidPower
 // below for callers that only need the number.

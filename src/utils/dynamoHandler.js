@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -921,15 +921,33 @@ const passivePotatoHandler = async function (timesInADay) {
     return;
 }
 
-// Guild treasury interest: a daily % of bankStored, scaled by member count, applied
-// fractionally on the same 5-minute cadence passivePotatoHandler already uses for
-// personal passive income — see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER. Unlike
-// personal passive income (a flat amount unrelated to what's already banked), this is a
-// genuine percentage of bankStored, so an empty or freshly-emptied treasury earns
-// nothing — there has to be something banked for a bigger roster to be worth it. Never
-// pushes bankStored past bankCapacity, same "cap wins" rule every other guild deposit
-// path already follows.
+// Guild treasury interest: a daily % of bankStored, scaled by member count AND by the
+// guild's own live Guild Level (TreasuryInterestScaling.dailyRatePerMember — 0.1%/member/day
+// at level 1 up to 2%/member/day at level 10), applied fractionally on the same 5-minute
+// cadence passivePotatoHandler already uses for personal passive income. Unlike personal
+// passive income (a flat amount unrelated to what's already banked), this is a genuine
+// percentage of bankStored, so an empty or freshly-emptied treasury earns nothing — there
+// has to be something banked for a bigger roster/higher level to be worth it.
+//
+// Reworked 2026-09-10, direct instruction, prompted by a live balance complaint: a
+// 4-member guild at guild level 6 with 101M banked and Cinderroot owned was earning only
+// ~646,400 potatoes/DAY total from the OLD flat-rate formula — a single player's own
+// personal passiveAmount stat alone routinely runs 15-20M/day, ~25-30x more than the
+// guild's ENTIRE shared treasury interest. The old flat
+// Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (0.1%/member/day at every level, no matter how
+// developed the guild was) is gone — replaced by the level-scaled
+// TreasuryInterestScaling.dailyRatePerMember above. Cinderroot's own perk 3c also changed
+// shape in the same pass: the old flat additive Bank.GUILD_COMPANION_TREASURY_RATE_BUMP
+// (folded into the per-member rate before multiplying by member count) is gone, replaced by
+// CinderrootTreasuryBonusPercent — a level-scaled MULTIPLIER (+25% at level 1 up to +100%,
+// i.e. doubling, at level 10) applied to the WHOLE computed interest amount, not the rate.
 const applyGuildTreasuryInterest = async function (timesInADay) {
+    // Lazily required (not a top-level import) to avoid a circular require —
+    // raidFactory.js itself requires this file at its own top level for its own
+    // dynamoHandler calls, so a top-level require here would hand raidFactory a
+    // half-built dynamoHandler — same fix already used in this file by
+    // getWorkCooldownSkipSources for mercenaryFactory/spudKeepFactory.
+    const raidFactory = require("./raidFactory");
     const allGuilds = await getGuilds();
 
     await Promise.all(allGuilds.map(async guild => {
@@ -937,12 +955,26 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
         if (bankStored <= 0) return;
 
         const memberCount = Array.isArray(guild.memberList) ? guild.memberList.length : 0;
+
+        // getGuilds() is a raw scanAll (unhealed) — raidCount can be undefined on a
+        // never-healed record, same reason bankStored/memberCount above are defensively
+        // coerced. getRaidLevelInfo already tolerates a non-finite input (defaults to 0
+        // wins => level 1), but toNumber keeps this call site consistent with every other
+        // numeric field this function reads off the raw scan.
+        const level = raidFactory.getRaidLevelInfo(toNumber(guild.raidCount)).level;
+        const baseRate = TreasuryInterestScaling.dailyRatePerMember[level - 1];
+        const dailyRate = baseRate * memberCount;
+        let interestRaw = bankStored * dailyRate / timesInADay;
+
         // guild here comes from getGuilds()'s raw scan (unhealed) — guildCompanion can be
         // undefined (never healed) as well as null (healed, never won one), so this must use
         // the loose `!= null` check, not `!== null` — see systems/guilds.md's "Guild Raid
         // Companion" design.
-        const dailyRate = (Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER + (guild.guildCompanion != null ? Bank.GUILD_COMPANION_TREASURY_RATE_BUMP : 0)) * memberCount;
-        const interest = Math.round(bankStored * dailyRate / timesInADay);
+        if (guild.guildCompanion != null) {
+            interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
+        }
+
+        const interest = Math.round(interestRaw);
         if (interest <= 0) return;
 
         // Deliberately NOT capped at bankCapacity (2026-09-10, direct instruction: "make it so

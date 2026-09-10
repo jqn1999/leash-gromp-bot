@@ -10380,3 +10380,86 @@ vague prose on a future edit, not just a length regression). Full suite: 1370/13
 that can go stale" to "cite them anyway, and keep them in sync") and the two hard Discord limits a
 future topic addition needs to respect. `reference/commands.md` gained a `help.js` row (it had
 none before this pass, an existing gap this audit happened to notice while touching `misc/`).
+
+## Guild treasury interest rework: flat rate -> level-scaled, Cinderroot bump -> level-scaled multiplier (2026-09-10, direct instruction)
+
+Prompted by a live balance discussion: a 4-member guild at guild level 6 with 101M banked and
+Cinderroot owned was earning only **~646,400 potatoes/DAY total** from `applyGuildTreasuryInterest`
+— meanwhile a single player's own personal `passiveAmount` stat alone is routinely
+**15-20 MILLION/day**, ~25-30x more than the whole guild's shared treasury interest, despite the
+treasury being a shared, guild-wide resource. Both replacement numbers below were direct
+instruction, not derived.
+
+**1. Base per-member daily rate, flat -> level-scaled.** `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER`
+(flat `0.001` at every guild level) is gone, replaced by `TreasuryInterestScaling.dailyRatePerMember`
+(`src/utils/constants.js`) — a new 10-entry, level-indexed array, same shape/lookup convention as
+`GuildBuffScaling`/`GuildCompanionScaling` (index 0 = guild level 1, looked up live off
+`guild.raidCount` via `raidFactory.getRaidLevelInfo`/`RaidLevel.THRESHOLDS`):
+
+```
+Before: 0.001 (0.1%) at every guild level, 1 through 10
+After:  [0.001, 0.002, 0.003, 0.005, 0.007, 0.009, 0.012, 0.015, 0.018, 0.02]
+        (0.1% at level 1 -> 2.0% at level 10, exactly as instructed)
+```
+
+**2. Cinderroot's treasury perk (3c), flat additive rate bump -> level-scaled multiplier on the
+whole computed amount.** `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` (a flat `0.0006` ADDED to the
+per-member rate before multiplying by member count) is gone, replaced by
+`CinderrootTreasuryBonusPercent` (`src/utils/constants.js`) — a new standalone 10-entry array of
+MULTIPLIERS applied to the fully-computed interest amount (`base rate × memberCount × bankStored /
+ticksPerDay`), not folded into the rate:
+
+```
+Before: dailyRate = (0.001 + (owns Cinderroot ? 0.0006 : 0)) * memberCount
+After:  interestRaw = bankStored * (dailyRatePerMember[level-1] * memberCount) / timesInADay
+        if (owns Cinderroot) interestRaw *= (1 + CinderrootTreasuryBonusPercent[level-1])
+        CinderrootTreasuryBonusPercent = [0.25, 0.33, 0.42, 0.50, 0.58, 0.67, 0.75, 0.83, 0.92, 1.00]
+        (+25% at level 1 -> +100%, i.e. the interest amount DOUBLES, at level 10)
+```
+
+**Worked example** (the exact scenario from the balance complaint — 4 members, guild level 6, 101M
+banked, Cinderroot owned): old formula, `dailyRate = (0.001 + 0.0006) * 4 = 0.0064`, per-tick
+`101,000,000 * 0.0064 / 288 ≈ 2,244`, ×288 ticks/day ≈ 646,400/day. New formula, `baseRate =
+dailyRatePerMember[5] = 0.009`, `dailyRate = 0.009 * 4 = 0.036`, per-tick `101,000,000 * 0.036 / 288
+= 12,625`, ×(1 + 0.67) Cinderroot multiplier = per-tick 21,084 ≈ **6,072,000/day** — roughly a 9.4x
+increase, closing most (not all — deliberately, since the treasury is meant to be a shared bonus on
+top of individual grinding, not a replacement for it) of the gap against a single player's own
+15-20M/day personal passive income.
+
+**Circular-require note**: `applyGuildTreasuryInterest` needs each guild's live level, computed via
+`raidFactory.getRaidLevelInfo(guild.raidCount).level` — but `raidFactory.js` itself `require`s
+`dynamoHandler.js` at its own top level, so a top-level `require("./raidFactory")` inside
+`dynamoHandler.js` would create a circular require. Fixed by lazily requiring `raidFactory` INSIDE
+`applyGuildTreasuryInterest`'s function body, mirroring the exact same fix already used earlier this
+session by `getWorkCooldownSkipSources` for `mercenaryFactory`/`spudKeepFactory`. `guild.raidCount`
+is coerced via the existing `toNumber` helper before the lookup (a never-healed `getGuilds()` scan
+row can have `raidCount: undefined`), matching how `bankStored`/`memberCount` are already
+defensively coerced in this function.
+
+**Also updated**: `embedFactory.js`'s `createGuildEmbed` Guild Companion field, which used to display
+the flat `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` percentage directly, now computes and shows the
+level-scaled `treasuryBonusPct` off `CinderrootTreasuryBonusPercent` at the guild's own
+`raidLevelInfo.level` (clamped the same way `guildCompanionFactory.getGuildCompanionScalingValue`
+clamps its own lookups). `/help topic:guilds` and `/help topic:cinderroot` (`HelpTopics`,
+`constants.js`) rewritten to describe the level-scaled base rate curve and the level-scaled
+multiplier instead of the old flat 0.1%/0.06% numbers.
+
+**Tests**: `dynamoHandler.test.js`'s `applyGuildTreasuryInterest` describe block — the four existing
+non-Cinderroot tests didn't set `raidCount`, which resolves to level 1 (`dailyRatePerMember[0] =
+.001`, numerically identical to the old flat rate), so their expected numbers were unchanged; only
+the Cinderroot test needed recomputing (flat bump -> multiplier changed its shape, not just its
+value). Added: a guild at `raidCount: 200` (guild level 6, `RaidLevel.THRESHOLDS`' own level-6
+threshold) without Cinderroot, proving the level lookup actually varies rather than always reading
+index 0; and the same level-6 guild WITH Cinderroot, proving the multiplier scales with level rather
+than being the old flat bump in disguise. Every new assertion's expected value is shown worked in a
+comment above it, matching this describe block's existing convention. Full suite: 1372/1372 passing
+(up from 1370 — two new tests, zero removed).
+
+**Docs**: `systems/guilds.md`'s "Guild treasury interest" section and Cinderroot's "Guild Raid
+Companion" write-up (sections on perk 3c, the `applyGuildTreasuryInterest` hook, and the `/guild`
+embed) all updated to describe the level-scaled mechanic, with the old flat-rate design kept in
+place as clearly-marked historical context (not deleted) since the original design rationale is
+still useful background.
+
+**Not pushed**: this touches a live economy formula affecting every guild's income — committed
+locally only, held for a `release-reviewer` pass before merging to `main`.

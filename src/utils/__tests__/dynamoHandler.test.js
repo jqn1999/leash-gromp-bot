@@ -23,7 +23,7 @@ jest.mock('aws-sdk', () => {
 const AWS = require('aws-sdk');
 const docClient = new AWS.DynamoDB.DocumentClient();
 const dynamoHandler = require('../dynamoHandler');
-const { Bank, shops, Work } = require('../constants');
+const { Bank, shops, Work, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require('../constants');
 
 const resolved = (value) => ({ promise: () => Promise.resolve(value) });
 const rejected = (err) => ({ promise: () => Promise.reject(err) });
@@ -465,8 +465,17 @@ describe('getDefaultGuildFields (via createGuild)', () => {
     });
 });
 
-// Guild treasury interest: a daily % of bankStored, scaled by member count, applied
-// fractionally every 5-minute tick (see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER).
+// Guild treasury interest: a daily % of bankStored, scaled by member count AND by the
+// guild's own live Guild Level (TreasuryInterestScaling.dailyRatePerMember), applied
+// fractionally every 5-minute tick. Reworked 2026-09-10 from the old flat
+// Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (0.1%/member/day at every level) — see
+// dynamoHandler.js's own comment above applyGuildTreasuryInterest for the balance
+// complaint that prompted it. A guild with no `raidCount` field (an unhealed
+// getGuilds() scan row) resolves to level 1 (TreasuryInterestScaling.dailyRatePerMember[0]
+// = .001), which happens to numerically match the OLD flat rate — so the first four tests
+// below (no raidCount set) keep their pre-rework expected numbers unchanged; only the
+// Cinderroot test needed recomputing, since perk 3c's shape itself changed (flat additive
+// rate bump -> level-scaled multiplier on the whole computed amount).
 describe('applyGuildTreasuryInterest', () => {
     test('credits interest scaled by member count', async () => {
         docClient.scan.mockReturnValue(resolved({
@@ -476,6 +485,7 @@ describe('applyGuildTreasuryInterest', () => {
 
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
+        // no raidCount -> level 1; baseRate = TreasuryInterestScaling.dailyRatePerMember[0] = .001
         // dailyRate = .001 * 2 members = .002; per-tick = 1,000,000 * .002 / 288 ≈ 6.94 → rounds to 7
         const params = docClient.update.mock.calls[0][0];
         expect(params.Key.guildId).toBe('g1');
@@ -495,6 +505,7 @@ describe('applyGuildTreasuryInterest', () => {
 
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
+        // no raidCount -> level 1; baseRate = .001
         // dailyRate = .001 * 25 members = .025; per-tick = 4,999,999 * .025 / 288 ≈ 434.03 → rounds to 434
         const params = docClient.update.mock.calls[0][0];
         const newValue = Object.values(params.ExpressionAttributeValues)[0];
@@ -522,13 +533,35 @@ describe('applyGuildTreasuryInterest', () => {
         expect(docClient.update).not.toHaveBeenCalled();
     });
 
+    // The base rate now scales with the guild's own live Guild Level (raidFactory.getRaidLevelInfo,
+    // keyed off raidCount via RaidLevel.THRESHOLDS) instead of being flat — this guild sits at
+    // raidCount 200, exactly RaidLevel.THRESHOLDS' own level-6 winsRequired threshold, to prove the
+    // level lookup actually varies rather than always reading index 0. Also the exact real-world
+    // scenario from the balance complaint that prompted this rework (4-member guild, guild level 6,
+    // 101M banked) — see dynamoHandler.js's own comment above applyGuildTreasuryInterest.
+    test('base rate scales with guild level, not flat — a level-6 guild uses a higher per-member rate', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }] }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        // raidCount 200 -> level 6; baseRate = TreasuryInterestScaling.dailyRatePerMember[5] = .009
+        // dailyRate = .009 * 4 members = .036; per-tick = 101,000,000 * .036 / 288 = 12,625 (exact)
+        const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
+        expect(newValue).toBe(101012625);
+    });
+
     // Cinderroot, the Hoardwarden's perk 3c (see systems/guilds.md's "Guild Raid
-    // Companion" design) — a flat rate bump on top of the base per-member daily rate for
-    // any guild that owns the companion. getGuilds() is a raw scanAll (unhealed), so
-    // guildCompanion can be undefined on a never-healed record as well as null on a
-    // healed-but-never-won one — both must be treated identically (no bump), only a
-    // real object should bump the rate.
-    test('credits the bumped rate for a guild that owns the companion vs. the base rate for one without', async () => {
+    // Companion" design) — reworked 2026-09-10 from a flat additive rate bump into a
+    // level-scaled MULTIPLIER (CinderrootTreasuryBonusPercent) applied to the WHOLE
+    // computed interest amount, after the base-rate-times-memberCount-times-bankStored
+    // math, not folded into the per-member rate beforehand. getGuilds() is a raw scanAll
+    // (unhealed), so guildCompanion can be undefined on a never-healed record as well as
+    // null on a healed-but-never-won one — both must be treated identically (no bonus),
+    // only a real object should apply the multiplier.
+    test('credits the level-scaled multiplier for a guild that owns the companion vs. the base amount for one without', async () => {
         docClient.scan.mockReturnValue(resolved({
             Items: [
                 { guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } },
@@ -540,10 +573,32 @@ describe('applyGuildTreasuryInterest', () => {
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
         const updateByGuildId = Object.fromEntries(docClient.update.mock.calls.map(([params]) => [params.Key.guildId, Object.values(params.ExpressionAttributeValues)[0]]));
-        // g1 (owns companion): dailyRate = (.001 + .0006) * 2 = .0032; per-tick = 1,000,000 * .0032 / 288 ≈ 11.11 -> 11
-        expect(updateByGuildId.g1).toBe(1000011);
-        // g2 (no companion): dailyRate = .001 * 2 = .002; per-tick = 1,000,000 * .002 / 288 ≈ 6.94 -> 7
+        // g1 (owns companion, no raidCount -> level 1): dailyRate = .001 * 2 = .002;
+        // interestRaw = 1,000,000 * .002 / 288 ≈ 6.9444; *(1 + CinderrootTreasuryBonusPercent[0]=.25)
+        // = 6.9444 * 1.25 ≈ 8.6806 -> rounds to 9
+        expect(updateByGuildId.g1).toBe(1000009);
+        // g2 (no companion, no raidCount -> level 1): dailyRate = .001 * 2 = .002;
+        // per-tick = 1,000,000 * .002 / 288 ≈ 6.94 -> 7 (unaffected by the companion rework)
         expect(updateByGuildId.g2).toBe(1000007);
+    });
+
+    // Proves the multiplier is genuinely level-scaled (not the old flat additive bump in
+    // disguise) — same level-6/101M/4-member scenario as the "base rate scales with guild
+    // level" test above, but now with Cinderroot owned. If this were still the old flat
+    // +0.06%/member/day bump, g1 would land far below this value regardless of level.
+    test('the companion multiplier itself scales with guild level, at a non-1 level', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        // raidCount 200 -> level 6; baseRate = .009; dailyRate = .009 * 4 = .036
+        // interestRaw = 101,000,000 * .036 / 288 = 12,625 (exact, see the no-companion test above)
+        // * (1 + CinderrootTreasuryBonusPercent[5] = .67) = 12,625 * 1.67 = 21,083.75 -> rounds to 21084
+        const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
+        expect(newValue).toBe(101021084);
     });
 
     // Never-healed record (guildCompanion undefined, not null) must be treated identically

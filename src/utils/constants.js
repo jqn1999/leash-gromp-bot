@@ -622,22 +622,6 @@ const Bank = {
     TAX_PERCENT: .05,
     GUILD_TAX_BASE: 5000,
     GUILD_TAX_PERCENT: .05,
-    // Guild treasury interest: a daily % of bankStored, scaled by member count — a
-    // fuller roster earns a faster-growing shared bank, tying nicely into the new
-    // memberCap upgrade. Applied fractionally on the same 5-minute tick
-    // passivePotatoHandler already uses (288x/day), never past bankCapacity.
-    GUILD_TREASURY_DAILY_RATE_PER_MEMBER: .001,
-    // Flat bump to the per-member daily treasury rate for a guild that owns Cinderroot, the
-    // Hoardwarden (guild.guildCompanion) — see systems/guilds.md's "Guild Raid Companion"
-    // design. Deliberately not level-scaled, unlike the companion's other two perks: the base
-    // formula itself is flat, so scaling only this bonus would introduce an inconsistency the
-    // original formula doesn't have.
-    // Raised 0.0002 -> 0.0006 (2026-09-10, direct instruction, same day as this companion's
-    // other two perks — cooldown-skip/reward-bonus — were raised and front-loaded following
-    // the "Cinderroot vs. Yukon" balance audit). 3x, matching the reward-bonus perk's own 3x
-    // scale factor (10% -> 30%) for consistency across all three perks in the same pass —
-    // relative bump over the 0.1%/member/day base rate goes from +20% to +60%.
-    GUILD_COMPANION_TREASURY_RATE_BUMP: 0.0006,
     // bankCapacity used to default to 0 — /bank's deposit check is `remainingBankSpace >
     // 0`, so a brand-new account could not protect a single potato from /rob until their
     // first Bank Shop purchase landed (~44 /work calls on average, hours of grinding).
@@ -651,6 +635,38 @@ const Bank = {
     // shops[bankShop].items[0].currentAmount, which must stay in sync with this value.
     STARTING_CAPACITY: 50000
 }
+
+// Guild treasury interest's level-scaled base rate (`dynamoHandler.applyGuildTreasuryInterest`) —
+// replaces the old flat `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` (0.1%/member/day at every
+// guild level). Same shape/lookup convention as `GuildBuffScaling`/`GuildCompanionScaling`
+// (index 0 = guild level 1, looked up live off `guild.raidCount` via `RaidLevel.THRESHOLDS`,
+// never stored). 2026-09-10, direct instruction, prompted by a live balance complaint: a
+// 4-member guild at guild level 6 with 101M banked and Cinderroot owned was earning only
+// ~646,400 potatoes/DAY total from the OLD flat formula — a single player's own personal
+// passiveAmount stat alone routinely runs 15-20M/day, ~25-30x more than the guild's ENTIRE
+// shared treasury interest. "scale from .1% base per member at guild level 1 up to 2% per
+// member at max guild level."
+const TreasuryInterestScaling = {
+    dailyRatePerMember: [0.001, 0.002, 0.003, 0.005, 0.007, 0.009, 0.012, 0.015, 0.018, 0.02]
+}
+
+// Cinderroot, the Hoardwarden's perk 3c (`guild.guildCompanion` — see systems/guilds.md's
+// "Guild Raid Companion" design) — replaces the old flat additive
+// `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` (+0.06%/member/day folded into the per-member rate
+// BEFORE multiplying by member count) with a level-scaled MULTIPLIER applied to the whole
+// computed interest amount instead (base rate × memberCount × bankStored / ticksPerDay), same
+// 10-level index-0-is-level-1 lookup shape as `TreasuryInterestScaling`/`GuildBuffScaling`
+// above. 2026-09-10, direct instruction, same balance pass as `TreasuryInterestScaling`:
+// "also scale cinderroot instead of .06% per member simplify it to just apply on the overall
+// guild interest amount and increase by 25% to 100% more based on guild level." A guild owning
+// Cinderroot at level 1 earns +25% more interest than it would without Cinderroot; at level 10,
+// +100% — the interest amount doubles. A guild without Cinderroot is completely unaffected by
+// this array. Deliberately its own standalone top-level array (not a third key nested inside
+// `GuildCompanionScaling`) since it's consumed differently from that object's other two
+// perks — those two are per-member-rate ADDITIONS looked up once and folded into a rate before
+// the rest of the raid-reward/cooldown math runs, while this one is a MULTIPLIER applied after
+// `applyGuildTreasuryInterest` has already fully computed the base interest amount.
+const CinderrootTreasuryBonusPercent = [0.25, 0.33, 0.42, 0.50, 0.58, 0.67, 0.75, 0.83, 0.92, 1.00]
 
 // Starch investing (systems/starch-trading.md). STARTING_CAPACITY must stay in sync with
 // shops[starchShop].items[0].currentAmount, same "single source of truth shared by the
@@ -1577,7 +1593,7 @@ const HelpTopics = [
         id: "guilds",
         label: "Guilds",
         description: "Creating, joining, and growing a guild, with real shop/level tables",
-        content: "`/create-new-guild` starts a guild, `/join-guild` joins one you've been invited to — one guild at a time (`/leave` first to switch). `/guild-bank` deposits (taxed 5,000 flat + 5%) or withdraws (free, Co-Leader+) the shared bank; `/guild-upgrade` spends it on two shop ladders (cost → new total):\n\n**Bank Capacity** (13 tiers): 1M→10M, 10M→25M, 25M→50M, 50M→100M, 100M→200M, 200M→400M, 400M→600M, 400M→800M, 400M→1B, 600M→1.2B, 600M→1.5B, 800M→2B, 800M→2.5B.\n**Member Cap** (4 tiers): 5M→8 members, 20M→12, 60M→17, 150M→25.\n\n**Guild Level** (computed live off raid wins, never resets) — wins needed / raid reward multiplier / raid cooldown skip-chance it grants: L1 0/1.00x/0%, L2 6/1.30x/3%, L3 19/1.70x/7%, L4 44/2.30x/10%, L5 100/3.00x/13%, L6 200/4.00x/17%, L7 375/5.20x/20%, L8 750/6.70x/23%, L9 1,500/8.30x/27%, L10 (max) 3,000/10.00x/30%.\n\n**Guild Buff** (`/set-buff`, one active at a time, Co-Leader+, 15-min switch cooldown) scales with Guild Level: `workMulti` +6% (L1) → +15% (L10, capped); `workTimer` 6% → 25% chance to skip `/work`'s cooldown; `raidTimer` 6% → 25% chance to skip your guild's raid cooldown on a win; `robChance` +6% → +20% to `/rob` for guild members. Guild treasury interest earns 0.1%/member/day of the bank (the one credit allowed to push past bank capacity). See `/help topic:cinderroot` for the rare guild raid companion that boosts several of these further, and `/help topic:spud-keep` for the daily territory contest guilds compete in."
+        content: "`/create-new-guild` starts a guild, `/join-guild` joins one you've been invited to — one guild at a time (`/leave` first to switch). `/guild-bank` deposits (taxed 5,000 flat + 5%) or withdraws (free, Co-Leader+) the shared bank; `/guild-upgrade` spends it on two shop ladders (cost → new total):\n\n**Bank Capacity** (13 tiers): 1M→10M, 10M→25M, 25M→50M, 50M→100M, 100M→200M, 200M→400M, 400M→600M, 400M→800M, 400M→1B, 600M→1.2B, 600M→1.5B, 800M→2B, 800M→2.5B.\n**Member Cap** (4 tiers): 5M→8 members, 20M→12, 60M→17, 150M→25.\n\n**Guild Level** (computed live off raid wins, never resets) — wins needed / raid reward multiplier / raid cooldown skip-chance it grants: L1 0/1.00x/0%, L2 6/1.30x/3%, L3 19/1.70x/7%, L4 44/2.30x/10%, L5 100/3.00x/13%, L6 200/4.00x/17%, L7 375/5.20x/20%, L8 750/6.70x/23%, L9 1,500/8.30x/27%, L10 (max) 3,000/10.00x/30%.\n\n**Guild Buff** (`/set-buff`, one active at a time, Co-Leader+, 15-min switch cooldown) scales with Guild Level: `workMulti` +6% (L1) → +15% (L10, capped); `workTimer` 6% → 25% chance to skip `/work`'s cooldown; `raidTimer` 6% → 25% chance to skip your guild's raid cooldown on a win; `robChance` +6% → +20% to `/rob` for guild members. Guild treasury interest also scales with Guild Level — 0.1%/member/day at L1 up to 2%/member/day at L10 (the one credit allowed to push past bank capacity). See `/help topic:cinderroot` for the rare guild raid companion that boosts several of these further, and `/help topic:spud-keep` for the daily territory contest guilds compete in."
     },
     {
         id: "raids",
@@ -1589,7 +1605,7 @@ const HelpTopics = [
         id: "cinderroot",
         label: "Cinderroot, the Hoardwarden",
         description: "The rare guild raid companion and its 3 perks",
-        content: "Cinderroot, the Hoardwarden is a single, permanently guild-bound companion your guild can win off a rare drop roll on a WINNING raid resolution — once won, it belongs to the whole guild until sacrificed (see below).\n\n**Drop chance** (per winning raid, gated off once your guild already owns one): Baby 0%, Regular/Stat 0.5%, Elite 1%, Legendary 2.5%.\n\n**Three passive perks**, scaling with Guild Level (see `/help topic:guilds`):\n• Raid cooldown skip chance: 5% (L1) → 20% (L10) — an extra source alongside your guild buff/Spud Keep/Guild Level's own reduction.\n• Raid reward bonus: +9% (L1) → +30% (L10) — multiplies the WINNING side of every raid reward.\n• Guild treasury interest bump: a flat +0.06%/member/day on top of the base 0.1%/member/day rate (a ≈60% relative boost) — not level-scaled.\n\n**Fourth mechanic — sacrifice**: on a raid LOSS, the raider who started it can choose to sacrifice Cinderroot to void that loss's entire potato penalty outright. It's one-time — your guild loses Cinderroot permanently and has to earn a fresh drop roll to get it back."
+        content: "Cinderroot, the Hoardwarden is a single, permanently guild-bound companion your guild can win off a rare drop roll on a WINNING raid resolution — once won, it belongs to the whole guild until sacrificed (see below).\n\n**Drop chance** (per winning raid, gated off once your guild already owns one): Baby 0%, Regular/Stat 0.5%, Elite 1%, Legendary 2.5%.\n\n**Three passive perks**, scaling with Guild Level (see `/help topic:guilds`):\n• Raid cooldown skip chance: 5% (L1) → 20% (L10) — an extra source alongside your guild buff/Spud Keep/Guild Level's own reduction.\n• Raid reward bonus: +9% (L1) → +30% (L10) — multiplies the WINNING side of every raid reward.\n• Treasury interest bonus: a MULTIPLIER on the guild's whole computed treasury interest amount, +25% (L1) → +100% (L10, i.e. the interest amount doubles) — scales with Guild Level like the other two perks.\n\n**Fourth mechanic — sacrifice**: on a raid LOSS, the raider who started it can choose to sacrifice Cinderroot to void that loss's entire potato penalty outright. It's one-time — your guild loses Cinderroot permanently and has to earn a fresh drop roll to get it back."
     },
     {
         id: "spud-keep",
@@ -1925,9 +1941,10 @@ const Raid = {
     // RAID_TEAM_DECAY below) — a straight average alone gives zero incentive to recruit
     // more raiders (bigger roster, same per-capita difficulty), and a straight SUM lets
     // any guild trivialize difficulty by just fielding more bodies regardless of their
-    // individual strength. This splits the difference: same shape as
-    // Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (flat % per member), capped so a
-    // max-roster guild doesn't spiral.
+    // individual strength. This splits the difference: same "flat % per member" shape the
+    // guild treasury interest formula's own base rate (see TreasuryInterestScaling.dailyRatePerMember,
+    // applyGuildTreasuryInterest in dynamoHandler.js) also uses, capped so a max-roster guild
+    // doesn't spiral.
     RAID_HEADCOUNT_BONUS_PER_MEMBER: 0.03,
     RAID_HEADCOUNT_BONUS_CAP: 0.50,
 
@@ -2965,8 +2982,10 @@ const GuildCompanionDrop = {
 
 // Level-scaled perk values for Cinderroot's two scaling perks, mirroring GuildBuffScaling's
 // exact shape (index 0 = level 1, looked up live from guild.raidCount via RaidLevel.THRESHOLDS'
-// 10-level curve). Perk 3c (treasury interest) is flat, not level-scaled — see
-// Bank.GUILD_COMPANION_TREASURY_RATE_BUMP above.
+// 10-level curve). Perk 3c (treasury interest) is ALSO level-scaled as of 2026-09-10, but as its
+// own standalone multiplier array rather than a third key here — see
+// CinderrootTreasuryBonusPercent above (near TreasuryInterestScaling), applied to the whole
+// computed interest amount rather than folded into a per-member rate the way perks 3a/3b are.
 //
 // Retuned TWICE, both 2026-09-10, both direct instruction. First pass, following a
 // balance-audit.md entry the same day ("Cinderroot vs. Yukon"): the original curve's ceiling
@@ -3634,6 +3653,8 @@ module.exports = {
     GuildContract,
     Bet,
     Bank,
+    TreasuryInterestScaling,
+    CinderrootTreasuryBonusPercent,
     Starch,
     GuildHistory,
     GuildBuffScaling,

@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Bank, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -1139,13 +1139,19 @@ class EmbedFactory {
             const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
             const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
             const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
+            // Treasury interest perk (3c, 2026-09-10 rework) is now a level-scaled MULTIPLIER
+            // on the guild's whole computed treasury interest amount, not a flat per-member
+            // rate bump — clamp the level lookup the same way GuildCompanionScaling's own
+            // values already are, in case a future retune shortens the array.
+            const clampedTreasuryLevel = Math.min(Math.max(raidLevelInfo.level, 1), CinderrootTreasuryBonusPercent.length);
+            const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
             // cooldownPct is a chance to skip the raid cooldown entirely on a win
             // (2026-09-05 cooldown-skip overhaul), not a guaranteed reduction — phrased as a
             // chance here so this preview never promises a number that isn't actually
             // guaranteed (same fix as /bounty-board's own cooldown line).
             fields.push({
                 name: `Guild Companion:`,
-                value: `${def?.name ?? guild.guildCompanion.id} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+                value: `${def?.name ?? guild.guildCompanion.id} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
                 inline: false
             });
         }

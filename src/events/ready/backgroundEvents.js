@@ -39,7 +39,8 @@ module.exports = async (client) => {
         await dynamoHandler.passivePotatoHandler(288);
     }, 300000);
 
-    // Guild treasury interest, same 5-minute cadence — see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER
+    // Guild treasury interest, same 5-minute cadence — see TreasuryInterestScaling/
+    // CinderrootTreasuryBonusPercent (constants.js) and applyGuildTreasuryInterest (dynamoHandler.js)
     setInterval(async () => {
         await dynamoHandler.applyGuildTreasuryInterest(288);
     }, 300000);

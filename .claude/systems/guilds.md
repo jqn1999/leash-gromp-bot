@@ -80,10 +80,37 @@ but can't spend it. Two shops:
 **Guild treasury interest**: `dynamoHandler.applyGuildTreasuryInterest`, on the same 5-minute
 `setInterval` tick `passivePotatoHandler` already uses in `backgroundEvents.js`. Unlike personal
 passive income (a flat amount unrelated to what's already banked), this is a real
-percentage of `bankStored` — `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (0.1%) × memberList.length`
-per day, applied fractionally per tick. An empty or freshly-spent treasury earns nothing (there
-has to be something banked for a bigger roster to matter), and a bigger roster earns faster — a
-deliberate reason to want the new `member-cap` upgrade beyond just raid headcount.
+percentage of `bankStored` — base rate × `memberList.length` per day, applied fractionally per
+tick. An empty or freshly-spent treasury earns nothing (there has to be something banked for a
+bigger roster/higher level to matter), and a bigger roster earns faster — a deliberate reason to
+want the new `member-cap` upgrade beyond just raid headcount.
+
+**Base rate scales with Guild Level (reworked 2026-09-10, direct instruction)** — the base
+per-member daily rate used to be a flat `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER` (0.1%) at
+every guild level, no matter how developed the guild was. This came from a live balance
+complaint: a 4-member guild at guild level 6 with 101M banked and Cinderroot owned was earning
+only ~646,400 potatoes/DAY total — meanwhile a single player's own personal `passiveAmount`
+stat alone is routinely 15-20 MILLION/day, ~25-30x more than the whole guild's shared treasury
+interest. Fixed by replacing the flat rate with `TreasuryInterestScaling.dailyRatePerMember`
+(`constants.js`) — a 10-entry, level-indexed array, same shape/lookup convention as
+`GuildBuffScaling`/`GuildCompanionScaling` (index 0 = guild level 1, looked up live off
+`guild.raidCount` via `raidFactory.getRaidLevelInfo`/`RaidLevel.THRESHOLDS`, never stored):
+
+| Guild Level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 (max) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Daily rate/member | 0.1% | 0.2% | 0.3% | 0.5% | 0.7% | 0.9% | 1.2% | 1.5% | 1.8% | 2.0% |
+
+Formula: `dailyRate = TreasuryInterestScaling.dailyRatePerMember[level - 1] * memberCount`;
+`interestRaw = bankStored * dailyRate / timesInADay` (then Cinderroot's multiplier, see below,
+then `Math.round`). Level 1 is unchanged from the old flat rate (0.1%), so a fresh guild's
+income doesn't drop — only a leveled-up guild's income grows, which is the entire point of the
+fix.
+
+**`applyGuildTreasuryInterest` lazily `require`s `raidFactory.js`** (inside the function body,
+not at module top level) to get the guild's live level — `raidFactory.js` itself `require`s
+`dynamoHandler.js` at its own top level, so a top-level require here would create a circular
+require. Same fix already used elsewhere in this file (`getWorkCooldownSkipSources` lazily
+requires `mercenaryFactory`/`spudKeepFactory` for the identical reason).
 
 **Deliberately allowed to push `bankStored` past `bankCapacity` (2026-09-10, direct
 instruction: "make it so guild interest can overflow the guild bank it's ok")** — interest used
@@ -470,6 +497,9 @@ also the shape the second pass's back-load reused, just scaled to a higher ceili
   `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER: 0.001` — now a ~60% relative bump over the 0.1% base
   rate (up from ~20%), still one flat line, no scaling table (the base formula itself is flat, so
   scaling only this bonus would introduce an inconsistency the original formula doesn't have).
+  **Superseded later the same day** — see "Perk 3c hook" (section 6) below: once the base treasury
+  formula itself became level-scaled, this flat additive bump was replaced with a level-scaled
+  MULTIPLIER (`CinderrootTreasuryBonusPercent`) on the whole computed interest amount instead.
 
 ### 2. Balance sanity check (perk 3b vs. the "uncapped bonus on an already-scaling multiplier" failure mode)
 
@@ -673,15 +703,40 @@ section independent of this feature; noted here since it directly informed the "
 
 ### 6. Perk 3c hook in `dynamoHandler.js`
 
-One-line change inside `applyGuildTreasuryInterest`:
+**Reworked 2026-09-10, direct instruction, later the same day as the original flat-bump version
+above** — prompted by the same live balance complaint that drove the base treasury rate's own
+level-scaling rework (see "Guild treasury interest" earlier in this doc): "also scale cinderroot
+instead of .06% per member simplify it to just apply on the overall guild interest amount and
+increase by 25% to 100% more based on guild level." The flat additive per-member rate bump is
+gone; perk 3c is now a level-scaled MULTIPLIER applied to the WHOLE computed interest amount,
+via a new standalone array (not a third `GuildCompanionScaling` key — see that const's own
+comment in `constants.js` for why):
 
 ```js
-const dailyRate = (Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER + (guild.guildCompanion != null ? Bank.GUILD_COMPANION_TREASURY_RATE_BUMP : 0)) * memberCount;
+const CinderrootTreasuryBonusPercent = [0.25, 0.33, 0.42, 0.50, 0.58, 0.67, 0.75, 0.83, 0.92, 1.00]
 ```
 
-No call into `guildCompanionFactory.js` needed — this perk is flat, not level-scaled, so the constant
-is read directly. `guild` here comes from `getGuilds()`'s raw scan (unhealed) — `!= null` (loose)
-handles both `undefined` and `null` identically, exactly the caveat from section 1.
+Full formula inside `applyGuildTreasuryInterest`:
+
+```js
+const level = raidFactory.getRaidLevelInfo(toNumber(guild.raidCount)).level;
+const baseRate = TreasuryInterestScaling.dailyRatePerMember[level - 1];
+const dailyRate = baseRate * memberCount;
+let interestRaw = bankStored * dailyRate / timesInADay;
+if (guild.guildCompanion != null) {
+    interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
+}
+const interest = Math.round(interestRaw);
+```
+
+A guild owning Cinderroot at level 1 earns +25% more interest than it would without Cinderroot;
+at level 10, +100% — the interest amount doubles. `guild` here comes from `getGuilds()`'s raw
+scan (unhealed) — `!= null` (loose) handles both `undefined` and `null` identically, exactly the
+caveat from section 1. `raidFactory.js` is required LAZILY inside the function body (not at
+module top level) to avoid a circular require — `raidFactory.js` itself requires
+`dynamoHandler.js` at its own top level, so a top-level require here would hand `raidFactory` a
+half-built `dynamoHandler`. Same fix already used in this file by `getWorkCooldownSkipSources`
+for `mercenaryFactory`/`spudKeepFactory`.
 
 ### 7. Sacrifice mechanic (3d) — the one genuinely new pattern, and the one perk that DOES touch every scenario closure
 
@@ -819,13 +874,21 @@ if (guild.guildCompanion) {
     const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
     const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
     const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
+    const clampedTreasuryLevel = Math.min(Math.max(raidLevelInfo.level, 1), CinderrootTreasuryBonusPercent.length);
+    const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
     fields.push({
         name: `Guild Companion:`,
-        value: `${def?.name ?? guild.guildCompanion.id} — -${cooldownPct}% raid cooldown, +${rewardPct}% raid rewards (winning side), +${(Bank.GUILD_COMPANION_TREASURY_RATE_BUMP * 100).toFixed(2)}%/member/day treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+        value: `${def?.name ?? guild.guildCompanion.id} — -${cooldownPct}% raid cooldown, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
         inline: false
     });
 }
 ```
+
+**Reworked 2026-09-10** alongside perk 3c's own rework (section 6) — this field used to read the
+flat `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` constant directly; it now computes
+`treasuryBonusPct` off the level-scaled `CinderrootTreasuryBonusPercent` array, using the same
+`raidLevelInfo.level` this embed already computes for cooldown/reward, clamped the same way
+`guildCompanionFactory.getGuildCompanionScalingValue` clamps its own lookups.
 
 Shows the **actual current numbers**, not just "you have a companion" — `cooldownPct`/`rewardPct` are
 already level-scaled via the same guild's `raidLevelInfo.level` `createGuildEmbed` already computes
@@ -864,8 +927,10 @@ convention.
   - 3a: a companion-owning guild's post-raid `raidTimer` write reflects the extra additive reduction
     term at its current level.
   - 3b: a companion-owning guild's winning-side reward reflects the `(1 + companionBonus)` factor.
-  - 3c: `applyGuildTreasuryInterest` credits the bumped rate for a companion-owning guild vs. the base
-    rate for one without.
+  - 3c: `applyGuildTreasuryInterest` applies the level-scaled `CinderrootTreasuryBonusPercent`
+    multiplier for a companion-owning guild vs. the base amount for one without, and confirms the
+    multiplier itself varies at a non-1 level (`dynamoHandler.test.js`'s
+    `applyGuildTreasuryInterest` describe block covers this today).
   - 3d, all three outcomes: accept (companion set to `null`, `removeFromBankOrPurse` short-circuits,
     zero bank drain/member split), decline (companion untouched, normal penalty), timeout (identical to
     decline — stub `awaitMessageComponent` to resolve `null`).
@@ -882,8 +947,8 @@ convention.
 
 | File | Change |
 |---|---|
-| `src/utils/constants.js` | `GuildCompanions[]`, `GuildCompanionDrop.CHANCE`, `GuildCompanionScaling`, `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP` |
-| `src/utils/dynamoHandler.js` | `getDefaultGuildFields`'s `guildCompanion: null`; one-line rate bump in `applyGuildTreasuryInterest` |
+| `src/utils/constants.js` | `GuildCompanions[]`, `GuildCompanionDrop.CHANCE`, `GuildCompanionScaling`, `TreasuryInterestScaling`, `CinderrootTreasuryBonusPercent` |
+| `src/utils/dynamoHandler.js` | `getDefaultGuildFields`'s `guildCompanion: null`; level-scaled base rate + Cinderroot multiplier in `applyGuildTreasuryInterest` |
 | `src/utils/guildCompanionFactory.js` (new) | `getGuildCompanionById`, `getGuildCompanionScalingValue`, `getRaidCooldownReduction`, `getRaidRewardBonus`, `rollGuildCompanionDrop` |
 | `src/commands/guilds/startRaid.js` | `raidRewardMultiplier` pre-adjustment (1 line); cooldown-reduction additive term + floor (a few lines); acquisition roll + `companionSacrificed` history field (after existing `raidHistory` write); `removeFromBankOrPurse` new optional param + sacrifice branch; new `promptCompanionSacrifice` helper; `sacrificeOffer` threaded through ~14 closure signatures and 4 call sites; 12 real loss bodies handle the `'sacrificed'` sentinel |
 | `src/utils/embedFactory.js` | `createGuildEmbed` new field; new `createGuildCompanionDropEmbed`/`createGuildCompanionSacrificePromptEmbed`/`createGuildCompanionSacrificeResultEmbed` |
