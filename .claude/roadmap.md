@@ -10209,3 +10209,51 @@ both read the constant live, so neither needed a code change — but one test
 base rate for one without") hardcoded the OLD rate's worked-out per-tick arithmetic in its
 expected value (`1000008` off the old `.0024` combined daily rate); recomputed off the new
 `.0032` combined rate and fixed to `1000011`. Full suite: 1342/1342 passing (no count change).
+
+## Rescale: guild level win requirements lowered 4x, benefits unchanged (2026-09-10, direct instruction)
+
+Direct instruction: "scale down max guild wins needed to instead be 3000 and rest wins needed
+accordingly. keep rewards/other benefits the same." `RaidLevel.THRESHOLDS`' `winsRequired` column
+(`constants.js`) divided by exactly 4 across all 10 levels (max 12,000 → 3,000), rounded to the
+nearest whole win — every OTHER column (`multiplier`, `raidCooldownReductionPercent`) left
+byte-for-byte untouched, so a guild now reaches any given level 4x faster but that level grants
+exactly what it always did:
+```
+winsRequired: [0, 25, 75, 175, 400, 800, 1500, 3000, 6000, 12000]
+           -> [0, 6, 19, 44, 100, 200, 375, 750, 1500, 3000]
+```
+Dividing every entry by the same constant preserves every ratio between them, so the curve's own
+"roughly doubling from level 4 on" acceleration shape is automatically preserved with zero
+re-derivation needed.
+
+**One knock-on fix required**: `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` is a raw win-count target
+(NOT an index into `RaidLevel.THRESHOLDS`), deliberately set to `3000` specifically because that
+value landed exactly on the OLD curve's own level-8 entry (`raidFactory.getGuildLevelClosestToWins`
+finds whichever level's `winsRequired` is numerically closest). Left unchanged, `3000` would have
+silently become this curve's own NEW level-10 (max) value instead — T4 would have quietly gone
+from "unlocks at level 8" to "unlocks only at max level," a real gameplay regression the
+instruction's "keep rewards/other benefits the same" was clearly not asking for. Rescaled the same
+4x, `3000 -> 750`, landing exactly on the new curve's own level-8 entry — T4 still unlocks at the
+same *relative* level as before. Elite (level 1) and Legendary (level 3) unlock levels needed no
+equivalent fix — both are computed via `getMinGuildLevelForTier` off each level's `multiplier`
+value, which this rescale never touches.
+
+**Tests**: three test files hardcoded win counts tied to the OLD curve as fixture/expected values —
+`raidFactory.test.js`'s `getGuildLevelClosestToWins` describe block (rewrote all three cases to
+derive their target values live off `RaidLevel.THRESHOLDS` instead of hardcoding numbers, so this
+suite doesn't need touching again if the curve is ever rescaled a second time) and its "reports how
+many wins remain until the next level" test (was `getRaidLevelInfo(10)` assuming level 1 with
+"next threshold at 25" in a comment — level 2 is now only 6 wins away, so 10 wins would already be
+level 2; rewrote to derive a guaranteed-level-1 win count from the live threshold instead); and
+`startRaidStaticRewards.test.js`'s Legendary dynamic-weighting test (was `raidCount: 75`,
+documented as "RaidLevel.THRESHOLDS' level-3 boundary" — now level 4 under the new curve; rewrote
+to look up level 3's actual `winsRequired` live instead of hardcoding). No test hardcoded a stale
+value that would have passed silently with the wrong meaning — every affected assertion failed
+loudly first, then was fixed properly rather than patched to just re-pass. Full suite: 1342/1342
+passing (no count change — existing tests rewritten, not new ones).
+
+**Docs**: `systems/guilds.md`'s "Guild level" table and its Cinderroot section's own since-outdated
+"12,000 wins" mention (updated to reflect the rescale but preserved as historical context, since the
+front-loading reasoning there predates and is independent of this rescale); `systems/mercenary-bounties.md`
+and `systems/raids-and-world-events.md`'s own stray "12,000" cross-references to `RaidLevel.THRESHOLDS`'
+old max.

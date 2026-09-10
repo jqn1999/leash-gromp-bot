@@ -664,7 +664,8 @@ pattern as Brassica/Yamsalot in the world raid pool — they need real commissio
 Reward amounts are randomized ±20% (`getRandomFromInterval(.8, 1.2)`) and, on the winning side only,
 scaled by the guild's raid reward multiplier — computed live from `raidCount` via
 `raidFactory.js`'s `getRaidLevelInfo`, not a stored field; see [systems/guilds.md](guilds.md#guild-level)
-for the full level curve (1.00x at level 1 up to 10.00x at level 10/12,000 wins). Penalties are
+for the full level curve (1.00x at level 1 up to 10.00x at level 10/3,000 wins as of 2026-09-10's
+rescale). Penalties are
 never scaled by it. On success, the reward goes to the guild bank if it fits, else it's split
 directly to members' liquid balances. On failure, the penalty is deducted from the guild bank if it
 covers the full amount, else it's split as a loss across members' liquid balances. `guild.raidCount`

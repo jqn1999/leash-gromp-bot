@@ -215,15 +215,27 @@ are now **computed live from `guild.raidCount`** (raid *wins* only, never attemp
 | Level | Raid wins needed | Reward multiplier | Raid cooldown reduction |
 |---|---|---|---|
 | 1 | 0 | 1.00x | 0% |
-| 2 | 25 | 1.30x | 3% |
-| 3 | 75 | 1.70x | 7% |
-| 4 | 175 | 2.30x | 10% |
-| 5 | 400 | 3.00x | 13% |
-| 6 | 800 | 4.00x | 17% |
-| 7 | 1,500 | 5.20x | 20% |
-| 8 | 3,000 | 6.70x | 23% |
-| 9 | 6,000 | 8.30x | 27% |
-| 10 (max) | 12,000 | 10.00x | 30% |
+| 2 | 6 | 1.30x | 3% |
+| 3 | 19 | 1.70x | 7% |
+| 4 | 44 | 2.30x | 10% |
+| 5 | 100 | 3.00x | 13% |
+| 6 | 200 | 4.00x | 17% |
+| 7 | 375 | 5.20x | 20% |
+| 8 | 750 | 6.70x | 23% |
+| 9 | 1,500 | 8.30x | 27% |
+| 10 (max) | 3,000 | 10.00x | 30% |
+
+**Wins-required rescaled 2026-09-10, direct instruction** ("scale down max guild wins needed to
+instead be 3000 and rest wins needed accordingly. keep rewards/other benefits the same") — every
+`winsRequired` divided by exactly 4 (max 12,000 → 3,000) and rounded to the nearest whole win.
+What each level actually GRANTS (the reward multiplier and cooldown-reduction columns above) is
+completely untouched — this is purely a pacing change, reaching any given level 4x faster, not a
+power change. `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` (T4's own unlock gate, a raw win-count target
+rather than an index into this table) was rescaled the same way (3,000 → 750) so T4 still unlocks
+at the same *relative* level (8) as before, instead of silently drifting to level 10 now that
+3,000 happens to be this table's own new max. Elite's level-1 and Legendary's level-3 unlocks are
+untouched by this change entirely — both are computed off each level's `multiplier`, which this
+rescale never changes.
 
 **Raid cooldown reduction** (`raidCooldownReductionPercent`, added 2026-08-30, direct instruction:
 "update guilds to get up to a 30% guild raid cooldown reduction at max level. Additive with guild
@@ -413,11 +425,15 @@ const GuildCompanionScaling = {
 
 **Retuned 2026-09-10, direct instruction, following the same-day `balance-audit.md` entry
 "Cinderroot vs. Yukon."** The original curve below (2%→8% cooldown, 3%→10% reward) had its
-ceiling gated behind guild level 10, which needs 12,000 cumulative guild raid WINS via
-`RaidLevel.THRESHOLDS` — capped at 1 raid/hour for the whole guild, ~500 days even with zero
-downtime. In practice almost every guild that ever owns Cinderroot sits at level 2-5 (reachable
-in weeks to months) for most of its lifetime, realizing only a fraction of that ceiling, while a
-comparably-invested mercenary's Yukon is already near its own full kit. Two changes:
+ceiling gated behind guild level 10, which at the time needed 12,000 cumulative guild raid WINS
+via `RaidLevel.THRESHOLDS` — capped at 1 raid/hour for the whole guild, ~500 days even with zero
+downtime. (`RaidLevel.THRESHOLDS`' own win counts were separately rescaled 4x later the same
+day — level 10 needs 3,000 wins now, ~125 days at that same zero-downtime pace — see the "Guild
+level" section above; this front-loading decision and its reasoning both predate that rescale
+and still stand on their own regardless.) In practice almost every guild that ever owns
+Cinderroot sat at level 2-5 (reachable in weeks to months) for most of its lifetime, realizing
+only a fraction of that ceiling, while a comparably-invested mercenary's Yukon is already near
+its own full kit. Two changes:
 1. **Ceiling raised**: cooldown-skip 8% → 20%, reward bonus 10% → 30%.
 2. **Front-loaded**: both curves now reach their new ceiling by level 6 instead of needing the
    practically-unreachable level 10 — a realistically-active guild's own typical level now

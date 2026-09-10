@@ -117,8 +117,9 @@ lookup already sets (see [raids-and-world-events.md](raids-and-world-events.md))
 
 `MercenaryRank.THRESHOLDS` (`constants.js`) reuses `CompanionLeveling.THRESHOLDS`'s early
 curve shape (0/15/50/125/275/525) rather than `RaidLevel.THRESHOLDS` — that curve is sized
-for a *guild's* aggregate win count across many members over a long lifetime (up to 12,000
-wins), not a solo player's own wins one at a time on an hourly-ish cooldown:
+for a *guild's* aggregate win count across many members over a long lifetime (up to 3,000
+wins as of 2026-09-10's rescale — see `systems/guilds.md`'s "Guild level" section), not a
+solo player's own wins one at a time on an hourly-ish cooldown:
 
 **Reworked into an accelerating curve, 2026-09-07** (direct instruction: "scaling a bit
 too instead of a flat buff each time, i want 4-5-6 to feel better to hit... numbers

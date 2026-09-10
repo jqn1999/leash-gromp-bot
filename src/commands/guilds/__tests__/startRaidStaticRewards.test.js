@@ -31,7 +31,7 @@ jest.mock('../../../utils/raidFactory', () => {
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow, buildRaidPreview } = require('../startRaid');
-const { Raid } = require('../../../utils/constants');
+const { Raid, RaidLevel } = require('../../../utils/constants');
 const { getWeightedScenarios, getEffectiveRaidPower, getGuildLevelClosestToWins, getRaidLevelInfo } = require('../../../utils/raidFactory');
 
 // T4's unlock level, derived the exact same way startRaid.js's own (unexported)
@@ -160,15 +160,17 @@ describe('/start-raid elite/legendary scenario closures read the new static cons
     });
 
     test('legendary: the same guaranteed-loss roll pays out exactly the penalty of whichever bracket 0.5 lands in under dynamic weighting', async () => {
-        // Legendary is gated to guild level 3+ (getMinGuildLevelForTier(2, .6) = 3) —
-        // raidCount 75 is RaidLevel.THRESHOLDS' level-3 boundary, the minimum that clears
-        // the gate. T4 (unlock level 8) still stays locked/excluded either way.
-        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: 75 }));
+        // Legendary is gated to guild level 3+ (getMinGuildLevelForTier(2, .6) = 3) — using
+        // RaidLevel.THRESHOLDS' own live level-3 boundary rather than a hardcoded win count,
+        // the minimum that clears the gate. T4 (unlock level 8) still stays locked/excluded
+        // either way.
+        const level3Wins = RaidLevel.THRESHOLDS.find(t => t.level === 3).winsRequired;
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: level3Wins }));
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const totalMultiplier = getEffectiveRaidPower([userFixture('leader', 10), userFixture('m2', 5)]);
-        const guildLevel = getRaidLevelInfo(75).level;
+        const guildLevel = getRaidLevelInfo(level3Wins).level;
         const bracket = expectedBracket('legendary', guildLevel, totalMultiplier, 0.5);
         expect(bracket.name).not.toBe('MK');
 

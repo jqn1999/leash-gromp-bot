@@ -66,19 +66,25 @@ describe('getLiveRaidRoster', () => {
     });
 });
 
-// Regression coverage for T4's level gate: 3,000 raid wins lands exactly on
-// RaidLevel.THRESHOLDS level 8, so this derives it rather than hardcoding "8" — stays
-// correct if the curve ever changes.
+// Regression coverage for T4's level gate: Raid.RAID_T4_MIN_LEVEL_TARGET_WINS lands exactly
+// on a RaidLevel.THRESHOLDS entry (see that constant's own comment), so all three cases here
+// derive their target values live off RaidLevel.THRESHOLDS rather than hardcoding win counts
+// tied to one specific curve — stays correct if the curve is ever rescaled (as it was
+// 2026-09-10, direct instruction: max wins needed 12,000 -> 3,000, every level scaled down
+// 4x accordingly, rewards/cooldown-reduction values at each level left untouched).
 describe('getGuildLevelClosestToWins', () => {
     test('resolves an exact threshold match to that level', () => {
-        expect(getGuildLevelClosestToWins(3000)).toBe(8);
+        const tier8 = RaidLevel.THRESHOLDS.find(t => t.level === 8);
+        expect(getGuildLevelClosestToWins(tier8.winsRequired)).toBe(8);
     });
 
     test('resolves a value between two thresholds to whichever is numerically closest', () => {
-        // Between level 7 (1500) and level 8 (3000); 2000 is closer to 1500.
-        expect(getGuildLevelClosestToWins(2000)).toBe(7);
-        // 2800 is closer to 3000.
-        expect(getGuildLevelClosestToWins(2800)).toBe(8);
+        const tier7 = RaidLevel.THRESHOLDS.find(t => t.level === 7);
+        const tier8 = RaidLevel.THRESHOLDS.find(t => t.level === 8);
+        const midpoint = (tier7.winsRequired + tier8.winsRequired) / 2;
+        // Just below the midpoint is closer to tier 7, just above is closer to tier 8.
+        expect(getGuildLevelClosestToWins(midpoint - 1)).toBe(7);
+        expect(getGuildLevelClosestToWins(midpoint + 1)).toBe(8);
     });
 
     test('clamps to the top level for a target beyond the curve', () => {
@@ -602,8 +608,11 @@ describe('getRaidLevelInfo', () => {
     });
 
     test('reports how many wins remain until the next level while not maxed', () => {
-        const result = getRaidLevelInfo(10); // level 1, next threshold at 25
-        expect(result.winsToNextLevel).toBe(15);
+        const tier2 = RaidLevel.THRESHOLDS.find(t => t.level === 2);
+        const winsSoFar = Math.floor(tier2.winsRequired / 2); // guaranteed still level 1
+        const result = getRaidLevelInfo(winsSoFar);
+        expect(result.level).toBe(1);
+        expect(result.winsToNextLevel).toBe(tier2.winsRequired - winsSoFar);
     });
 
     test('raidCooldownReductionPercent ramps from 0% at level 1 to 30% at max level', () => {

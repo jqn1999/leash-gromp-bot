@@ -696,18 +696,32 @@ const GuildHistory = {
 // three gate or reduce each other. Linear from 0% at Level 1 to the requested 30% cap at
 // Level 10, same "0 at the floor, hit the requested cap at max" shape MercenaryRank's own
 // cooldownReductionPercent already established, rounded to whole percentage points.
+// winsRequired rescaled 2026-09-10, direct instruction: "scale down max guild wins needed to
+// instead be 3000 and rest wins needed accordingly. keep rewards/other benefits the same."
+// Every winsRequired divided by exactly 4 (12,000 -> 3,000) and rounded to the nearest whole
+// win — a guild now reaches any given level 4x faster, but what that level actually GRANTS
+// (multiplier, raidCooldownReductionPercent) is completely untouched, so this is purely a
+// pacing change, not a power change. Because dividing every entry by the same constant
+// preserves every ratio between them, the curve's own "roughly doubling from level 4 on"
+// acceleration shape (noted in the comment above) is automatically preserved too — no
+// re-derivation needed. Raid.RAID_T4_MIN_LEVEL_TARGET_WINS (which is defined as a raw win
+// count, not an index into this array) was rescaled the same way (3,000 -> 750) so T4 still
+// unlocks at the same RELATIVE level (8) as before, rather than silently drifting to level 10
+// now that 3,000 coincidentally became this curve's own new level-10 value. Elite/Legendary's
+// own unlock levels (1 and 3) are untouched by this change entirely — they're computed off
+// `multiplier`, which this change never touches, not off winsRequired.
 const RaidLevel = {
     THRESHOLDS: [
         { level: 1, winsRequired: 0, multiplier: 1.00, raidCooldownReductionPercent: 0.00 },
-        { level: 2, winsRequired: 25, multiplier: 1.30, raidCooldownReductionPercent: 0.03 },
-        { level: 3, winsRequired: 75, multiplier: 1.70, raidCooldownReductionPercent: 0.07 },
-        { level: 4, winsRequired: 175, multiplier: 2.30, raidCooldownReductionPercent: 0.10 },
-        { level: 5, winsRequired: 400, multiplier: 3.00, raidCooldownReductionPercent: 0.13 },
-        { level: 6, winsRequired: 800, multiplier: 4.00, raidCooldownReductionPercent: 0.17 },
-        { level: 7, winsRequired: 1500, multiplier: 5.20, raidCooldownReductionPercent: 0.20 },
-        { level: 8, winsRequired: 3000, multiplier: 6.70, raidCooldownReductionPercent: 0.23 },
-        { level: 9, winsRequired: 6000, multiplier: 8.30, raidCooldownReductionPercent: 0.27 },
-        { level: 10, winsRequired: 12000, multiplier: 10.00, raidCooldownReductionPercent: 0.30 },  // max
+        { level: 2, winsRequired: 6, multiplier: 1.30, raidCooldownReductionPercent: 0.03 },
+        { level: 3, winsRequired: 19, multiplier: 1.70, raidCooldownReductionPercent: 0.07 },
+        { level: 4, winsRequired: 44, multiplier: 2.30, raidCooldownReductionPercent: 0.10 },
+        { level: 5, winsRequired: 100, multiplier: 3.00, raidCooldownReductionPercent: 0.13 },
+        { level: 6, winsRequired: 200, multiplier: 4.00, raidCooldownReductionPercent: 0.17 },
+        { level: 7, winsRequired: 375, multiplier: 5.20, raidCooldownReductionPercent: 0.20 },
+        { level: 8, winsRequired: 750, multiplier: 6.70, raidCooldownReductionPercent: 0.23 },
+        { level: 9, winsRequired: 1500, multiplier: 8.30, raidCooldownReductionPercent: 0.27 },
+        { level: 10, winsRequired: 3000, multiplier: 10.00, raidCooldownReductionPercent: 0.30 },  // max
     ]
 }
 
@@ -1745,9 +1759,11 @@ const Raid = {
     T4_RAID_DIFFICULTY: 1000,
 
     // T4 unlocks at whichever guild level's winsRequired is closest to this target —
-    // see raidFactory.js's getGuildLevelClosestToWins. 3,000 lands exactly on
-    // RaidLevel.THRESHOLDS level 8.
-    RAID_T4_MIN_LEVEL_TARGET_WINS: 3000,
+    // see raidFactory.js's getGuildLevelClosestToWins. Rescaled 3,000 -> 750 alongside
+    // RaidLevel.THRESHOLDS' own 2026-09-10 4x rescale (see that array's own comment) so T4
+    // still lands exactly on the same RELATIVE level (8) as before the rescale, rather than
+    // drifting to level 10 now that 3,000 is this curve's own new max.
+    RAID_T4_MIN_LEVEL_TARGET_WINS: 750,
 
     METAL_KING_REWARD: 10000000,
     METAL_KING_MULTIPLIER_REWARD: 2.0,
