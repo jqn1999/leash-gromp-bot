@@ -31,17 +31,45 @@ they have no static `content` string. Their embeds are generated live instead:
   never show up in a player-facing list. `moderation/` isn't special-cased directly; it disappears
   because every command in it happens to already be `devOnly`.
 
-Every other topic (`work`, `progression`, `guilds`, `raids`, `economy`, `rob-betting`,
-`quests-achievements`) is a hand-written `content` string rendered as-is by the generic
-`createHelpTopicEmbed(topicId)`. These intentionally avoid citing exact reward/difficulty numbers
-that live in `constants.js` and can be rebalanced — the prose describes *how a system works and
-which commands to run*, and points at those commands (whose own embeds/`/shop`/`/profile` show
-live numbers) rather than hardcoding a second copy of numbers that would go stale on the next
-balance pass.
+Every other topic is a hand-written `content` string rendered as-is by the generic
+`createHelpTopicEmbed(topicId)`.
+
+## 2026-09-10 audit: numbers, not vibes
+
+Every static topic used to *deliberately avoid* citing exact reward/difficulty numbers ("the
+bigger scores... carry real risk as your Rank climbs" instead of an actual chance/payout) on the
+theory that prose describing *how a system works* would age better than a second copy of numbers
+that could drift from `constants.js` on the next balance pass. In practice this meant the
+developer kept getting asked (by the project owner, in a live session) for the exact numbers
+`/help` should have just answered directly — "beef it up a lot," a full audit and rewrite.
+
+**The convention flipped**: every topic now cites real, current numbers — odds tables, payout
+caps, tier ladders, cooldowns — read fresh off `constants.js` (and, where the design lives in a
+factory function rather than a flat constant, off that function's actual behavior, e.g. `/work`'s
+weighted encounter table in `work.js`/`eventFactory.js`) at the moment the content was written.
+**This means `HelpTopics`' static content can now go stale the exact way the old design was
+trying to avoid** — a future balance pass that touches a constant cited here (`RaidLevel.THRESHOLDS`,
+`RobNpc.TIERS`, `GuildCompanionScaling`, etc.) needs to update the matching `HelpTopics` entry in
+the same change, or `/help` starts lying to players. `roadmap.md`'s dated entry for this audit
+lists which topic cites which constant, specifically so a future edit to one of those constants
+knows to check back here.
+
+Went from 11 topics to 17 (still comfortably under Discord's 25-choice `option.choices` cap) —
+`mercenary`'s old Heist paragraph and `rob-betting`'s old Tower paragraph were each split into
+their own dedicated topic (`heist`, `tower`) once they grew a real odds table, and three entirely
+new topics were added for systems that had no `/help` coverage at all: `cinderroot` (the guild
+raid companion), `spud-keep` (the daily Guild-vs-Merc-Faction contest), and `safehouses`
+(Mercenary-only extra bank capacity). `companions`/`commands` are unaffected — still fully
+dynamic, still can't drift from what's actually shipped, see below.
 
 ## Adding a topic
 
 Add an entry to `HelpTopics` with a `content` string — the slash command option and the
 overview page's topic list both pick it up automatically, no other file needs to change. Only
 build a dedicated `createHelp*Embed` method (like the companions/commands ones) if the topic
-needs to be generated from live data instead of being static prose.
+needs to be generated from live data instead of being static prose. Two hard Discord limits to
+respect (both covered by `src/commands/misc/__tests__/help.test.js`): `HelpTopics.length <= 25`
+(feeds the slash command's `choices` array) and each `content` string `<= 4096` chars (feeds
+`.setDescription()`) — `createHelpOverviewEmbed`'s own generated topic list (every other topic's
+label/id/description concatenated into one description) also grows with topic count, so check its
+length too once you've added a topic rather than assuming it stays under the cap forever.

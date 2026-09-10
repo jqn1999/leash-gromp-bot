@@ -111,6 +111,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 | File | Command | Summary |
 |---|---|---|
+| `help.js` | `/help topic:<name>` | Ephemeral, data-driven help topics (17, `HelpTopics` in `constants.js`) — most cite real live numbers straight off `constants.js` (odds, caps, tiers), not vague flavor text; `companions`/`commands` render live off their own source data instead of static content — see [systems/help.md](../systems/help.md) |
 | `start.js` | `/start` | Ephemeral, paginated (9 pages) onboarding tour covering every system in the bot — the recommended first command for a new player |
 | `currentEvent.js` | `/current-event` | Shows the active hourly special work event, if any |
 | `currentWorldRaid.js` | `/current-world-raid` | Shows the active world boss and its joined participants |

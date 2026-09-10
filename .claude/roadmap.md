@@ -10311,3 +10311,72 @@ bankCapacity" test (whose own numbers never actually approached the cap either w
 assertion was unaffected) since its title was now misleading. Full suite: 1342/1342 passing (no
 count change — one existing test rewritten, one renamed). Docs: `systems/guilds.md`'s "Guild
 treasury interest" section updated to describe the exception and why it exists.
+
+## `/help` full audit and content rewrite — numbers, not vibes (2026-09-10, direct instruction)
+
+Direct instruction: the developer kept having to answer numeric/odds questions in a live session
+that `/help` should have just answered directly — "a full audit and help command update... beef it
+up a lot." Every number in `HelpTopics` (`src/utils/constants.js`) was read fresh off the CURRENT
+`constants.js`/live formula at write time, not recalled from a comment/doc/training data — many
+values in this exact file had been changed 2-4 times in this same session's earlier balance
+passes (`RaidLevel.THRESHOLDS`' 4x rescale, `GuildCompanionScaling`'s front-load-then-back-load,
+`RobNpc.TIERS`' three retunes, `MercenaryBuff.SWITCH_COOLDOWN_SECONDS`'s 6h→15min drop, etc.), so
+trusting anything but the live file would have shipped stale numbers in the same change meant to
+fix staleness.
+
+**Restructured from 11 topics to 17** (still well under Discord's 25-choice `option.choices` cap;
+verified via `HelpTopics.length` in a test, not eyeballed): `overview`/`companions`/`commands` left
+as-is (high-level, or already fully dynamic). Every other existing topic (`work`, `progression`,
+`guilds`, `raids`, `economy`, `mercenary`, `rob-betting`, `quests-achievements`) had its `content`
+rewritten to cite real numbers. Three brand-new topics (`cinderroot`, `spud-keep`, `safehouses`)
+cover systems that had NO `/help` coverage before. Two topics were split out once their own real
+odds table made the parent topic too dense: `heist` out of `mercenary` (the 4-tier `RobNpc.TIERS`
+ladder), `tower` out of `rob-betting` (the Elite difficulty curve + reward decay).
+
+**Where each topic's numbers came from** (so a future balance pass touching one of these constants
+knows to check the matching `HelpTopics` entry too):
+
+- `work` — the cumulative encounter-chance table read directly off `work.js`'s `workScenarios[].chance`
+  (not `eventFactory.js`'s duplicated copy, which only diverges during a live hourly special event);
+  payout caps off `Work.MAX_*_POTATO`/`Work.GOLDEN_YAM_MULTIPLIER_*`; Metal Potato's internal 10%
+  success roll off `work.js`'s own `BASE_METAL_SUCCESS_CHANCE` literal (not a named constant).
+- `progression` — shop max tiers off `shops[].items[last]`, regrade caps off `REGRADE_CAPS`, regrade
+  chance curve (50%→0.5%) off `workRegradeTiers`/`passiveRegradeTiers`/`bankRegradeTiers`, rebirth
+  bonus curve off `Rebirth.*`.
+- `guilds` — the 13-tier bank-capacity/4-tier member-cap shop tables off `guildBuy.js`'s `guildShops`
+  (NOT `constants.js` — this shop is defined inline in the command file), Guild Level table off
+  `RaidLevel.THRESHOLDS` (the just-rescaled, 3,000-win-max version), Guild Buff off `GuildBuffScaling`.
+- `raids` — Elite/Legendary/T4 unlock levels off `raidFactory.getMinGuildLevelForTier`/
+  `getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS)` (Elite 1, Legendary 3 — computed
+  off `multiplier`, untouched by the rescale; T4 level 8, re-derived from the rescaled
+  `RAID_T4_MIN_LEVEL_TARGET_WINS: 750`), reward/penalty ladder off `Raid.T*_*`/`ELITE_T*_*`/`LEGENDARY_T*_*`.
+- `cinderroot` — `GuildCompanionDrop.CHANCE`, `GuildCompanionScaling` (verified this is the CURRENT
+  back-loaded array — see the two retune entries directly above this one — not the front-loaded
+  version from earlier the same day), `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP`.
+- `spud-keep` — `spudKeepFactory.js`'s lottery/Attacker's Bonus/Merc-Faction-N mechanics (the
+  largest-signed-up-guild's-roster-size cap, no floor), `SpudKeep.*`, `POT_REDIRECT_PERCENT`.
+- `safehouses` — `Safehouse.SLOTS` (the exact current 6-tier table, re-verified since it was asked
+  about directly earlier this session).
+- `economy` — `Bank.TAX_BASE`/`TAX_PERCENT`/`GUILD_TAX_*`, `Give.POTATO_TAX_PERCENT`/`STARCH_TAX_PERCENT`.
+- `mercenary` — `MercenaryRank.THRESHOLDS` (the accelerating-curve version), `MercenaryBuffScaling`,
+  `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` (verified 900s/15min, the lowered-same-day value).
+- `heist` — `RobNpc.TIERS` (verified against the FINAL of three same-day retune passes),
+  `RobNpc.LOSS_MULTIPLIER_SCALING`, `RobNpc.REWARD_ROLL_SUCCESS_SPREAD`.
+- `poison-mimic` — `PoisonMitigation`/`MimicMitigation`, `MimicSlaying.KILL_CHANCE`/
+  `HOARD_PAYOUT_PERCENT` (verified the post-same-day-nerf 5%/20% values).
+- `rob-betting` — `rob.js`'s `calculateRobChance` formula, `Rob.*`, `Roulette.*`, `GoldenReels.SYMBOLS`.
+- `tower` — `towerConstants.js`'s `ELITE_SUCCESS_CAP` (verified 0.95, the raised-earlier-this-session
+  value), `TOWER_ELITE_DIFFICULTY_INITIAL`/`_RATIO`, `TOWER_REWARD_GRACE_FLOOR`/`_DECAY_RATIO`.
+- `quests-achievements` — `Achievements.length` read live via `node -e` (59, not hardcoded from memory).
+
+**Tests**: new `src/commands/misc/__tests__/help.test.js` — every `HelpTopics` entry's `content`
+`<= 4096` chars, the array `<= 25` entries, `createHelpOverviewEmbed`'s generated topic list also
+`<= 4096`, every static topic's embed renders via `createHelpTopicEmbed` without throwing
+(`test.each` over every non-dynamic topic id), plus spot-checks that a few of the new topics
+actually contain the specific numbers they're supposed to (catches a topic silently reverting to
+vague prose on a future edit, not just a length regression). Full suite: 1370/1370 (up from 1342).
+
+**Docs**: `systems/help.md` rewritten — documents the convention flip (from "avoid citing numbers
+that can go stale" to "cite them anyway, and keep them in sync") and the two hard Discord limits a
+future topic addition needs to respect. `reference/commands.md` gained a `help.js` row (it had
+none before this pass, an existing gap this audit happened to notice while touching `misc/`).
