@@ -223,10 +223,11 @@ documents for itself) exposes `getMercenaryBuffValue(buffType, rank)`/`getMercen
 buffType, rank)`, taking `rank` as a plain number rather than resolving it itself — every caller
 gets `rank` from `mercenaryFactory.getMercenaryRankInfo(winCount).rank` first.
 
-**Switch cooldown**: `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` (21,600s / 6h) — long enough that a
-player can't just wait out one action's own cooldown and flip the buff for the next (`/work`'s
-300s, `/rob`/`/take-bounty`'s 3600s, `/rob-npc`'s 1800s), short enough not to read as a
-`/rebirth`-style near-permanent commitment. Backed by two new top-level `userDetails` fields,
+**Switch cooldown**: `MercenaryBuff.SWITCH_COOLDOWN_SECONDS` (900s / 15min, lowered from an
+initial 6h on 2026-09-10, same day, before any live playtesting of the original value) — still
+comfortably longer than `/work`'s own 300s cooldown (the shortest action this buff can affect),
+so a player still can't flip categories mid-`/work`-chain, just no longer locked out for most of
+a play session over one pick. Backed by two new top-level `userDetails` fields,
 `getDefaultUserFields`-defaulted like every other cooldown field in this system:
 
 ```js
@@ -1008,7 +1009,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), and `bountyTimer` remaining. |
 | `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power. Win/loss + scenario flavor + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
-| `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the 6h switch cooldown hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
+| `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the switch cooldown (15min) hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 
 **Mercenary Leaderboard** (2026-08-31) lives on the existing `/leaderboard` command, not
 here — a fourth `mercenary-leaderboard` option alongside `user-leaderboard`/

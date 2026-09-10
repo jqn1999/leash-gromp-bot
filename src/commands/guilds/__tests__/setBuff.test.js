@@ -1,6 +1,7 @@
-// Coverage for /set-buff's new 6h switch cooldown (2026-09-09, direct instruction —
-// /set-buff previously had ZERO cooldown, letting a leader/co-leader flip the guild's buff
-// any time). Mirrors setRaidSplit.test.js's own mock/fixture shape.
+// Coverage for /set-buff's switch cooldown (added 2026-09-09, direct instruction — /set-buff
+// previously had ZERO cooldown, letting a leader/co-leader flip the guild's buff any time;
+// lowered from an initial 6h to 15min on 2026-09-10, same instruction chain as
+// MercenaryBuff.SWITCH_COOLDOWN_SECONDS above). Mirrors setRaidSplit.test.js's own mock/fixture shape.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -53,9 +54,9 @@ describe('/set-buff switch cooldown', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('robChance'));
     });
 
-    test('a switch within the 6h cooldown window is rejected with no DB write', async () => {
+    test('a switch within the cooldown window is rejected with no DB write', async () => {
         const now = 10_000_000;
-        const switchedAt = now - 1000 * 1000; // 1000s ago, well under the 21,600s cooldown
+        const switchedAt = now - 100 * 1000; // 100s ago, well under the cooldown
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ guildBuff: 'workMulti', guildBuffSwitchTimer: switchedAt }));
         const interaction = fakeInteraction('robChance');
         const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);

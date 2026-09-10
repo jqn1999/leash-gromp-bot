@@ -7,8 +7,8 @@ const mercenaryBuffFactory = require("../../utils/mercenaryBuffFactory");
 
 // A solo, weaker parallel to /set-buff (systems/mercenary-bounties.md#mercenary-buff) —
 // lets an active mercenary pick one personal buff, scaled by Mercenary Rank instead of
-// Guild Level, gated behind a 6h switch cooldown so a player can't re-optimize their pick
-// before every single action.
+// Guild Level, gated behind a switch cooldown (MercenaryBuff.SWITCH_COOLDOWN_SECONDS) so a
+// player can't re-optimize their pick before every single action.
 module.exports = {
     name: "set-mercenary-buff",
     description: "Set your personal Mercenary Buff",

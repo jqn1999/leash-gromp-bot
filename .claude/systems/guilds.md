@@ -126,10 +126,11 @@ gracefully rather than crashing anything that reads it.
 
 Default `guildBuff` on guild creation is `"workMulti"` (see `createGuild` in `dynamoHandler.js`).
 
-**Switch cooldown (2026-09-09, direct instruction)** — `/set-buff` previously had NO cooldown at
-all, letting a Leader/Co-Leader flip the guild's buff any time with zero gate. It now carries the
-same 6h (21,600s) cooldown [Mercenary Buff](mercenary-bounties.md#mercenary-buff) introduced the
-same day, backed by a new `guild.guildBuffSwitchTimer` field (ms epoch, `Date.now()`-based, `0`
+**Switch cooldown (2026-09-09, direct instruction; lowered 2026-09-10)** — `/set-buff` previously
+had NO cooldown at all, letting a Leader/Co-Leader flip the guild's buff any time with zero gate.
+It now carries the same cooldown (900s / 15min, lowered same-day from an initial 6h)
+[Mercenary Buff](mercenary-bounties.md#mercenary-buff) introduced, backed by a new
+`guild.guildBuffSwitchTimer` field (ms epoch, `Date.now()`-based, `0`
 default so a guild's very first switch is always free — same "0 = never blocked" shape
 `mercenaryBuffSwitchTimer`/`guildMercenarySwitchTimer` already use). The cooldown constant itself
 is `BuffSwitchCooldown.GUILD_SWITCH_COOLDOWN_SECONDS` (`constants.js`), which just points at the

@@ -10136,3 +10136,24 @@ counters for Poison and Mimic, and `workScenarioCounts.mimicKilled` incrementing
 `dynamoHandler.test.js` (the new default counter fields, including `mimicKilled`), and
 `embedFactory.test.js` (new `createMimicPotatoEmbed` coverage from scratch — it had none before
 this pass — plus the new milestone-20 callout fields on both Poison and Mimic embeds).
+
+## Fix: Buff switch cooldown lowered 6h -> 15min (2026-09-10, direct instruction)
+
+`MercenaryBuff.SWITCH_COOLDOWN_SECONDS` (`constants.js`) lowered from `21600` (6h) to `900` (15min)
+— the value was an untested first pick from earlier the same day, changed before any live
+playtesting. Since `BuffSwitchCooldown.GUILD_SWITCH_COOLDOWN_SECONDS` (guild `/set-buff`'s own
+cooldown) is a direct reference to this same constant rather than a second literal, both
+`/set-mercenary-buff` and `/set-buff` picked up the new 15min value from this one change — no
+second edit needed, confirming the "reuse, don't duplicate" design from when the guild cooldown
+was added was worth doing. Still comfortably longer than `/work`'s own 300s cooldown (the
+shortest action either buff can affect), so a player still can't flip categories mid-`/work`-chain
+— just no longer locked out for most of a play session over one pick. `Bounty.GUILD_SWITCH_COOLDOWN_SECONDS`
+(the UNRELATED 24h guild<->mercenary track-switch cooldown, `constants.js` line ~2213) was
+deliberately left untouched — same name suffix, completely different constant, different concept.
+
+Two tests (`setMercenaryBuff.test.js`, `setBuff.test.js`) hardcoded a 1000s-ago switch timestamp
+"well under the 21,600s cooldown" for their still-on-cooldown case — 1000s is now PAST the new
+900s cooldown, which would have silently flipped both tests' meaning (asserting a rejection that
+would no longer occur) rather than failing loudly, except both do assert on the rejection message,
+so they failed immediately and correctly. Fixed to 100s ago. Full suite: 1342/1342 passing
+(no count change — existing tests, not new ones).

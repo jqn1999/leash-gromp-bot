@@ -77,9 +77,9 @@ describe('/set-mercenary-buff', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('rejects a category switch while the 6h cooldown is still running, with the remaining time in the message', async () => {
+    test('rejects a category switch while the cooldown is still running, with the remaining time in the message', async () => {
         const now = 10_000_000;
-        const switchedAt = now - 1000 * 1000; // 1000s ago, well under the 21,600s cooldown
+        const switchedAt = now - 100 * 1000; // 100s ago, well under the cooldown
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBuff: 'robChance', mercenaryBuffSwitchTimer: switchedAt }));
         const interaction = fakeInteraction({ buff: 'workTimer' });
         const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);

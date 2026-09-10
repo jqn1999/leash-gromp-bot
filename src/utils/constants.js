@@ -2854,17 +2854,20 @@ const MercenaryBuffDescriptions = {
 // exists today (only MercenaryRank/MercenaryQuest/MercenaryCompanionDrop), and `Bounty` is
 // scoped to the Bounty ladder itself, not buff-switching.
 const MercenaryBuff = {
-    SWITCH_COOLDOWN_SECONDS: 21600, // 6h — long enough a player can't just wait out one
-                                     // action's own cooldown and flip the buff for the next
-                                     // (/work 300s, /rob & /take-bounty 3600s, /rob-npc
-                                     // 1800s), short enough not to read as a /rebirth-style
-                                     // near-permanent commitment.
+    SWITCH_COOLDOWN_SECONDS: 900, // 15min — lowered from an initial 6h pick (2026-09-10,
+                                   // direct instruction, before any live playtesting of the
+                                   // original value). Still comfortably longer than /work's
+                                   // own 300s cooldown (the shortest action this buff can
+                                   // affect), so a player still can't flip categories
+                                   // mid-/work-chain, just no longer locked out for most of
+                                   // a play session over one pick.
 }
 
 // Guild's own /set-buff switch cooldown (2026-09-09, direct instruction — /set-buff had
 // ZERO cooldown before this, letting a leader/co-leader flip the guild's buff any time with
-// no gate at all). Reuses MercenaryBuff.SWITCH_COOLDOWN_SECONDS's exact 6h value rather than
-// a second hardcoded 21600 literal, kept as its own separately-named constant (not folded
+// no gate at all). Reuses MercenaryBuff.SWITCH_COOLDOWN_SECONDS's exact value (15min as of
+// 2026-09-10, lowered same-day from an initial 6h) rather than a second hardcoded literal,
+// kept as its own separately-named constant (not folded
 // into MercenaryBuff itself, which is scoped to the Mercenary track) so a future divergence
 // between the two switch cooldowns needs no restructuring.
 const BuffSwitchCooldown = {
