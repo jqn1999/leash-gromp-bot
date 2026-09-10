@@ -58,7 +58,7 @@ module.exports = {
     options: [
         {
             name: 'mode',
-            description: 'Regular (12 tiers, auto-selected), Baby (guaranteed easiest tier), or Stat Bounty (300k for a 50% chance at +0.2 work multiplier)',
+            description: 'Regular (12 tiers), Baby (easiest), or Stat Bounty (300k for 50% chance at +0.2 work multi)',
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [
