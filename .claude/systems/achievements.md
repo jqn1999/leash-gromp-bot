@@ -14,11 +14,12 @@ Each achievement is a plain data record, not a function:
 
 `statPath` is dot-notation into the user record (e.g. `"workScenarioCounts.golden"`,
 `"regrades.workMulti.regradeAmount"`), resolved by `getStatValue` in `achievementFactory.js`. An
-achievement unlocks the first time that value reaches `threshold`. 61 achievements ship as of this
+achievement unlocks the first time that value reaches `threshold`. 59 achievements ship as of this
 writing (updated 2026-09-10 — added `mimics_favorite_mark`/`immune_to_venom`/`mimics_best_customer`
-and, same day, `mimic_slayer`; see below; the 17/15/7 category breakdown just below hasn't been
-re-audited against the live list since 2026-08-26, only the total is kept current). **Names are
-potato-punned to match
+and, same day, `mimic_slayer`; see below; count verified directly against `Achievements.length` in
+`constants.js` rather than hand-tallied, since this doc's total had already drifted from the live
+array before this pass — the 17/15/7 category breakdown just below hasn't been re-audited against
+the live list since 2026-08-26, only the total is kept current). **Names are potato-punned to match
 the game's tone** (Spud of Steel, Root Cellar
 Architect, Fort Spudnox, Tater Tower Titan, etc. — see the full list live via `Achievements` in
 `constants.js`); `id` is the only field that's ever persisted per-user (in `userDetails.achievements`),
