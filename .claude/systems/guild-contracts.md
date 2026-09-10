@@ -164,11 +164,21 @@ right before removing the member from `memberList`: if the guild has an active, 
 snapshot for the current rotation and the departing member has a baseline entry in it, their
 delta-at-departure (`currentValue - baseline`, floored at 0) is folded into
 `guildContract.frozenContribution` — a running total that survives independently of who's currently
-in `memberList`. From then on `computeLiveMemberSum` naturally excludes them (it only sums members
-still present in `guild.memberList`), while their pre-departure contribution stays counted via the
-frozen bucket. This is a no-op (returns `null`, nothing written) if there's no active contract, no
-fresh baseline yet, the contract's already completed, or the departing member was never part of this
-rotation's snapshot — e.g. they joined after the snapshot was taken.
+in `memberList` — and their `memberBaselines` entry is **deleted**, not just superseded. This is a
+no-op (returns `null`, nothing written) if there's no active contract, no fresh baseline yet, the
+contract's already completed, or the departing member was never part of this rotation's snapshot —
+e.g. they joined after the snapshot was taken.
+
+Deleting the baseline (not only freezing the delta) fixes a real player-reported bug: a member who
+**rejoins the same guild later in the same rotation** would otherwise still have their old baseline
+sitting in `memberBaselines`, discoverable again by `computeLiveMemberSum`'s
+`memberBaselines[member.id] !== undefined` check — re-summing their full current-minus-old-baseline
+delta a SECOND time (once already frozen, once again live), and attributing any lifetime stat growth
+from their time away (another guild, solo play — `workCount` never resets and isn't guild-scoped) to
+this guild's contract too, inflating progress past what real combined guild work produced. With the
+entry deleted, a rejoining member is treated exactly like a brand-new mid-week joiner — no baseline,
+no contribution, until the next rotation snapshots them in — the same boundary already accepted for
+new joiners.
 
 `disbandGuild.js` deliberately does **not** get this hook — a disbanding guild's contract becomes
 moot the moment `memberList` empties (nothing will ever check it again, and `getGuilds()` already

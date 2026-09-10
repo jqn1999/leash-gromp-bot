@@ -187,6 +187,67 @@ describe('guildLevelStat (Guild Raid Rally)', () => {
     });
 });
 
+// Player-reported: a guild's contract finished with fewer combined /work actions than
+// the threshold should have required. Root cause — freezeDepartureContribution froze a
+// departing member's delta into frozenContribution but left their old memberBaselines
+// entry in place. Rejoining the SAME guild later in the same rotation left that stale
+// baseline discoverable by computeMemberDeltas, so their pre-departure delta got summed
+// a SECOND time (once frozen, once live again) — and any lifetime workCount growth from
+// time away (another guild, solo play) was also attributed to this guild, inflating
+// progress past what real combined guild work produced.
+describe('freezeDepartureContribution — rejoin within the same rotation', () => {
+    test('deletes the departing member\'s baseline so a later rejoin cannot double-count their pre-departure delta', async () => {
+        const template = GuildContracts[0];
+        const guild = baseGuild({
+            guildContract: {
+                templateId: template.id,
+                rotationDate: activeContract.rotationDate,
+                memberBaselines: { u1: 100, u2: 0 },
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+
+        // u1 had workCount 150 at departure (baseline 100 -> delta 50 frozen).
+        const updatedState = await guildContractFactory.freezeDepartureContribution(guild, 'u1', { userId: 'u1', [template.statPath]: 150 });
+
+        expect(updatedState.frozenContribution).toBe(50);
+        expect(updatedState.memberBaselines).not.toHaveProperty('u1');
+        expect(updatedState.memberBaselines.u2).toBe(0);
+    });
+
+    test('a rejoining member contributes nothing further until the next rotation, instead of re-summing from their stale baseline', async () => {
+        const template = GuildContracts[0];
+        const departureGuild = baseGuild({
+            guildContract: {
+                templateId: template.id,
+                rotationDate: activeContract.rotationDate,
+                memberBaselines: { u1: 100, u2: 0 },
+                frozenContribution: 0,
+                completed: false,
+            },
+        });
+        const stateAfterDeparture = await guildContractFactory.freezeDepartureContribution(departureGuild, 'u1', { userId: 'u1', [template.statPath]: 150 });
+
+        // u1 rejoins later the same rotation and keeps working (workCount now 500 — 350
+        // more since departure, none of it done in this guild). Their baseline was
+        // deleted, so computeMemberDeltas must skip them entirely rather than re-summing
+        // against the old baseline of 100.
+        const rejoinedGuild = baseGuild({
+            guildContract: stateAfterDeparture,
+        });
+        dynamoHandler.findUser.mockImplementation(async (id) => {
+            if (id === 'u1') return { userId: 'u1', [template.statPath]: 500 };
+            if (id === 'u2') return { userId: 'u2', [template.statPath]: 20 };
+        });
+
+        const progressResult = await guildContractFactory.getProgress(rejoinedGuild);
+
+        // Only u2's live delta (20) plus u1's frozen 50 — never u1's live delta (400).
+        expect(progressResult.progress).toBe(70);
+    });
+});
+
 describe('checkAndClaimContract — bankCapacityBonus reward', () => {
     // Regression: completing a contract used to add BANK_CAPACITY_REWARD straight onto
     // guild.bankCapacity with no separate bookkeeping, so the very next /guild-buy

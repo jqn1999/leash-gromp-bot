@@ -263,6 +263,18 @@ class GuildContractFactory {
     // forever). A no-op if there's no active contract, no fresh baseline for this guild
     // yet, the contract's already completed, or the departing member was never part of
     // this rotation's snapshot to begin with (e.g. they joined after the snapshot).
+    //
+    // Also DELETES their memberBaselines entry (not just freezes their delta) —
+    // player-reported bug: rejoining the SAME guild later in the same rotation left
+    // their old baseline in place (only frozenContribution was updated), so
+    // computeMemberDeltas' `memberBaselines[member.id] !== undefined` check found it
+    // again and re-summed their FULL current-minus-old-baseline delta a second time —
+    // double-counting their pre-departure work (already frozen) AND attributing any
+    // lifetime workCount growth from elsewhere (another guild, solo play) while they
+    // were away to this guild's contract, inflating progress past what real combined
+    // guild work would produce. Deleting the entry on departure makes a rejoining member
+    // behave exactly like a brand-new mid-week joiner (no baseline until next rotation)
+    // — the same accepted boundary already documented above checkAndClaimContract.
     async freezeDepartureContribution(guild, departingUserId, departingUserDetails) {
         const activeContract = await dynamoHandler.getActiveGuildContract();
         if (!activeContract) return null;
@@ -282,7 +294,9 @@ class GuildContractFactory {
         const delta = Math.max(0, numericCurrent - baseline);
 
         const frozenContribution = Number.isFinite(contractState.frozenContribution) ? contractState.frozenContribution : 0;
-        const updatedContractState = { ...contractState, frozenContribution: frozenContribution + delta };
+        const updatedMemberBaselines = { ...contractState.memberBaselines };
+        delete updatedMemberBaselines[departingUserId];
+        const updatedContractState = { ...contractState, memberBaselines: updatedMemberBaselines, frozenContribution: frozenContribution + delta };
 
         await dynamoHandler.updateGuildDatabase(guild.guildId, 'guildContract', updatedContractState);
         return updatedContractState;
