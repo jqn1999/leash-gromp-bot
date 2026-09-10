@@ -2012,7 +2012,8 @@ const SpudKeep = {
 // CompanionLeveling.THRESHOLDS's early curve shape (0/15/50/125/275/525) since Bounty's
 // win cadence (a real success-chance roll on a 3600s cooldown) is closer to that curve's
 // original design intent than RaidLevel's own curve, which is sized for a GUILD's
-// aggregate win count across many members over a long lifetime (up to 12,000 wins).
+// aggregate win count across many members over a long lifetime (up to 3,000 wins as of
+// 2026-09-10's rescale — see RaidLevel.THRESHOLDS' own comment above).
 // rewardMultiplier is capped at 1.75x — a deliberate "veteran mercenary" reward that lets
 // realized reward keep growing with rank even though Bounty's own difficulty/reward ladder
 // (Bounty.TIERS below) no longer needs rank to gate anything.
@@ -2933,7 +2934,9 @@ const GuildCompanionDrop = {
 //
 // Retuned 2026-09-10, direct instruction, following a balance-audit.md entry the same day
 // ("Cinderroot vs. Yukon"). The original curve's ceiling (8%/10% at level 10) was fine on its
-// own, but level 10 itself needs 12,000 CUMULATIVE GUILD RAID WINS via RaidLevel.THRESHOLDS —
+// own, but level 10 AT THE TIME needed 12,000 CUMULATIVE GUILD RAID WINS via
+// RaidLevel.THRESHOLDS (later the same day rescaled 4x to 3,000 — see that array's own
+// comment; this front-loading reasoning predates and stands independent of that rescale) —
 // capped at 1 raid/hour for the whole guild, that's ~500 days even with zero downtime, so in
 // practice almost every guild that ever owns Cinderroot sits at level 2-5 (reachable in weeks
 // to months) for most of its practical lifetime, realizing only a sliver of the old ceiling —

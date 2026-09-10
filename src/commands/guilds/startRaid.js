@@ -186,8 +186,9 @@ const legendaryRaidMobs = [
 ]
 
 // Guild level at which T4 unlocks in every raid-select tier — derived from
-// Raid.RAID_T4_MIN_LEVEL_TARGET_WINS (3,000) rather than hardcoded, so it tracks
-// RaidLevel.THRESHOLDS if that curve ever changes. Resolves to level 8 today.
+// Raid.RAID_T4_MIN_LEVEL_TARGET_WINS (750, rescaled 2026-09-10 alongside RaidLevel.THRESHOLDS'
+// own 4x rescale) rather than hardcoded, so it tracks RaidLevel.THRESHOLDS if that curve ever
+// changes. Resolves to level 8 today.
 const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
 
 function chooseMobFromList(mobList) {
