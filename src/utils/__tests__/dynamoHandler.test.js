@@ -534,8 +534,8 @@ describe('applyGuildTreasuryInterest', () => {
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
         const updateByGuildId = Object.fromEntries(docClient.update.mock.calls.map(([params]) => [params.Key.guildId, Object.values(params.ExpressionAttributeValues)[0]]));
-        // g1 (owns companion): dailyRate = (.001 + .0002) * 2 = .0024; per-tick = 1,000,000 * .0024 / 288 ≈ 8.33 -> 8
-        expect(updateByGuildId.g1).toBe(1000008);
+        // g1 (owns companion): dailyRate = (.001 + .0006) * 2 = .0032; per-tick = 1,000,000 * .0032 / 288 ≈ 11.11 -> 11
+        expect(updateByGuildId.g1).toBe(1000011);
         // g2 (no companion): dailyRate = .001 * 2 = .002; per-tick = 1,000,000 * .002 / 288 ≈ 6.94 -> 7
         expect(updateByGuildId.g2).toBe(1000007);
     });

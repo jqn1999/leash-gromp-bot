@@ -632,7 +632,12 @@ const Bank = {
     // design. Deliberately not level-scaled, unlike the companion's other two perks: the base
     // formula itself is flat, so scaling only this bonus would introduce an inconsistency the
     // original formula doesn't have.
-    GUILD_COMPANION_TREASURY_RATE_BUMP: 0.0002,
+    // Raised 0.0002 -> 0.0006 (2026-09-10, direct instruction, same day as this companion's
+    // other two perks — cooldown-skip/reward-bonus — were raised and front-loaded following
+    // the "Cinderroot vs. Yukon" balance audit). 3x, matching the reward-bonus perk's own 3x
+    // scale factor (10% -> 30%) for consistency across all three perks in the same pass —
+    // relative bump over the 0.1%/member/day base rate goes from +20% to +60%.
+    GUILD_COMPANION_TREASURY_RATE_BUMP: 0.0006,
     // bankCapacity used to default to 0 — /bank's deposit check is `remainingBankSpace >
     // 0`, so a brand-new account could not protect a single potato from /rob until their
     // first Bank Shop purchase landed (~44 /work calls on average, hours of grinding).

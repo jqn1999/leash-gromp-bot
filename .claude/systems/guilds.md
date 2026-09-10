@@ -436,10 +436,13 @@ by the above):
 - **3b, raid reward bonus: 3% (level 1) → 10% (level 10).** A clean array with the roadmap's stated
   endpoints, deliberately smaller than Yukon's flat 13.5% per the roadmap's own instruction, and
   shaped with the same "flatter early, steeper late" acceleration `GuildBuffScaling`'s own arrays use.
-- **3c, treasury interest bump: flat +0.02%/member/day** (a new `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP:
-  0.0002`, alongside the existing `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER: 0.001`) — a ~20%
-  relative bump over the 0.1% base rate, one line, no scaling table (the base formula itself is flat,
-  so scaling only this bonus would introduce an inconsistency the original formula doesn't have).
+- **3c, treasury interest bump: flat +0.06%/member/day** (`Bank.GUILD_COMPANION_TREASURY_RATE_BUMP:
+  0.0006`, raised from the original `0.0002` on 2026-09-10 — direct instruction, same day and same
+  audit follow-up as perks 3a/3b's ceiling raise above — 3x, matching 3b's own reward-bonus scale
+  factor for consistency across all three perks in one pass), alongside the existing
+  `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER: 0.001` — now a ~60% relative bump over the 0.1% base
+  rate (up from ~20%), still one flat line, no scaling table (the base formula itself is flat, so
+  scaling only this bonus would introduce an inconsistency the original formula doesn't have).
 
 ### 2. Balance sanity check (perk 3b vs. the "uncapped bonus on an already-scaling multiplier" failure mode)
 

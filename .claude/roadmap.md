@@ -10195,3 +10195,17 @@ reference the new value but the roll itself didn't need to change, since 0.99 st
 threshold). Docs updated: `systems/guilds.md`'s Cinderroot section (new retune note, the array
 itself, and the "Balance sanity check" worked example's own numbers — +10% became +30% on the
 same Legendary T2 max-level-guild example). Full suite: 1342/1342 passing (no count change).
+
+**Same-day follow-up — perk 3c (treasury interest) raised too.** `Bank.GUILD_COMPANION_TREASURY_RATE_BUMP`
+raised `0.0002 -> 0.0006` (3x, matching perk 3b's own reward-bonus scale factor for consistency
+across all three Cinderroot perks in one pass) — the flat per-member daily treasury-interest bump
+for a guild owning Cinderroot goes from a ~20% to a ~60% relative bump over the existing 0.1%/day
+base rate (`Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER`). Deliberately still NOT level-scaled (the
+base formula itself is flat, so scaling only this bonus would introduce an inconsistency the
+original formula doesn't have) — same reasoning as when this perk first shipped, just a bigger
+flat bump. `embedFactory.js`'s display and `dynamoHandler.applyGuildTreasuryInterest`'s formula
+both read the constant live, so neither needed a code change — but one test
+(`dynamoHandler.test.js`, "credits the bumped rate for a guild that owns the companion vs. the
+base rate for one without") hardcoded the OLD rate's worked-out per-tick arithmetic in its
+expected value (`1000008` off the old `.0024` combined daily rate); recomputed off the new
+`.0032` combined rate and fixed to `1000011`. Full suite: 1342/1342 passing (no count change).
