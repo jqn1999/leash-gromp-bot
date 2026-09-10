@@ -945,9 +945,13 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
         const interest = Math.round(bankStored * dailyRate / timesInADay);
         if (interest <= 0) return;
 
-        const bankCapacity = toNumber(guild.bankCapacity);
-        const newBankStored = Math.min(bankStored + interest, bankCapacity);
-        if (newBankStored === bankStored) return;
+        // Deliberately NOT capped at bankCapacity (2026-09-10, direct instruction: "make it so
+        // guild interest can overflow the guild bank it's ok") — every other credit into
+        // bankStored (raid rewards, /bank deposits) still respects the cap, only interest is
+        // allowed past it. A guild sitting right at capacity still keeps earning interest
+        // instead of it silently capping to a no-op every tick once bankStored reaches
+        // bankCapacity.
+        const newBankStored = bankStored + interest;
 
         await updateGuildDatabase(guild.guildId, 'bankStored', newBankStored);
     }));

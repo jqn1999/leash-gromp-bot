@@ -468,7 +468,7 @@ describe('getDefaultGuildFields (via createGuild)', () => {
 // Guild treasury interest: a daily % of bankStored, scaled by member count, applied
 // fractionally every 5-minute tick (see Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER).
 describe('applyGuildTreasuryInterest', () => {
-    test('credits interest scaled by member count, never past bankCapacity', async () => {
+    test('credits interest scaled by member count', async () => {
         docClient.scan.mockReturnValue(resolved({
             Items: [{ guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }] }],
         }));
@@ -483,7 +483,11 @@ describe('applyGuildTreasuryInterest', () => {
         expect(newValue).toBe(1000007);
     });
 
-    test('caps the credited amount so bankStored never exceeds bankCapacity', async () => {
+    // 2026-09-10, direct instruction ("make it so guild interest can overflow the guild bank
+    // it's ok") — interest is deliberately the ONE credit into bankStored that does NOT
+    // respect bankCapacity, unlike raid rewards/deposits. A guild already at or near capacity
+    // keeps earning real interest instead of it silently no-op-ing once bankStored hits the cap.
+    test('interest is allowed to push bankStored past bankCapacity', async () => {
         docClient.scan.mockReturnValue(resolved({
             Items: [{ guildId: 'g1', bankStored: 4999999, bankCapacity: 5000000, memberList: Array.from({ length: 25 }, (_, i) => ({ id: `m${i}` })) }],
         }));
@@ -491,9 +495,11 @@ describe('applyGuildTreasuryInterest', () => {
 
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
+        // dailyRate = .001 * 25 members = .025; per-tick = 4,999,999 * .025 / 288 ≈ 434.03 → rounds to 434
         const params = docClient.update.mock.calls[0][0];
         const newValue = Object.values(params.ExpressionAttributeValues)[0];
-        expect(newValue).toBe(5000000);
+        expect(newValue).toBe(5000433);
+        expect(newValue).toBeGreaterThan(5000000); // past bankCapacity, and that's fine
     });
 
     test('skips guilds with nothing stored — an empty treasury earns no interest', async () => {

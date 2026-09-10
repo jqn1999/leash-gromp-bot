@@ -81,10 +81,18 @@ but can't spend it. Two shops:
 `setInterval` tick `passivePotatoHandler` already uses in `backgroundEvents.js`. Unlike personal
 passive income (a flat amount unrelated to what's already banked), this is a real
 percentage of `bankStored` — `Bank.GUILD_TREASURY_DAILY_RATE_PER_MEMBER (0.1%) × memberList.length`
-per day, applied fractionally per tick, never pushed past `bankCapacity`. An empty or freshly-spent
-treasury earns nothing (there has to be something banked for a bigger roster to matter), and a
-bigger roster earns faster — a deliberate reason to want the new `member-cap` upgrade beyond just
-raid headcount.
+per day, applied fractionally per tick. An empty or freshly-spent treasury earns nothing (there
+has to be something banked for a bigger roster to matter), and a bigger roster earns faster — a
+deliberate reason to want the new `member-cap` upgrade beyond just raid headcount.
+
+**Deliberately allowed to push `bankStored` past `bankCapacity` (2026-09-10, direct
+instruction: "make it so guild interest can overflow the guild bank it's ok")** — interest used
+to be clamped at `bankCapacity` the same way every other credit into `bankStored` (raid rewards,
+`/bank` deposits) still is; a guild sitting at or near capacity would just stop earning any real
+interest, effectively capping it at 0 forever until the guild spent some of its own bank down.
+Interest is now the ONE exception — every other write into `bankStored` (raid rewards,
+`/bank` deposits) still respects `bankCapacity` exactly as before, only the treasury-interest
+tick doesn't.
 
 ## Guild buffs
 

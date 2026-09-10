@@ -10288,3 +10288,26 @@ and expected embed text — was `'10%'` (front-loaded level 1), now `'5%'` (back
 Full suite: 1342/1342 passing (no count change). Docs: `systems/guilds.md`'s Cinderroot section
 rewritten to describe both same-day passes (front-load, then back-load) and why the second one
 was needed so soon after the first.
+
+## Fix: guild treasury interest can now overflow bankCapacity (2026-09-10, direct instruction)
+
+Direct instruction: "make it so guild interest can overflow the guild bank it's ok."
+`dynamoHandler.applyGuildTreasuryInterest` (`src/utils/dynamoHandler.js`) previously clamped its
+credit to `bankStored` at `bankCapacity` — `Math.min(bankStored + interest, bankCapacity)` — the
+same cap every other credit into `bankStored` (raid rewards, `/bank` deposits) also respects. In
+practice this meant a guild sitting at or already past capacity earned literally zero real
+interest, since every tick's credit just silently rounded down to a no-op. Removed the clamp for
+this ONE credit path only — `newBankStored = bankStored + interest`, unconditionally. Every other
+write into `bankStored` elsewhere in the codebase is untouched and still respects `bankCapacity`
+exactly as before; this is a deliberate, narrow exception for interest specifically, not a general
+removal of the bank capacity concept.
+
+**Tests**: `dynamoHandler.test.js`'s `applyGuildTreasuryInterest` describe block had a test
+explicitly titled "caps the credited amount so bankStored never exceeds bankCapacity," asserting
+`newValue` clamped to exactly `bankCapacity` — rewrote it to assert the new, opposite behavior
+(interest correctly pushes `bankStored` past `bankCapacity`, `5000433` vs. a `5000000` cap,
+computed off the same fixture's own dailyRate/memberCount math). Renamed the adjacent "never past
+bankCapacity" test (whose own numbers never actually approached the cap either way, so its
+assertion was unaffected) since its title was now misleading. Full suite: 1342/1342 passing (no
+count change — one existing test rewritten, one renamed). Docs: `systems/guilds.md`'s "Guild
+treasury interest" section updated to describe the exception and why it exists.
