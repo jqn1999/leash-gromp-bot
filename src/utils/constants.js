@@ -1729,7 +1729,7 @@ const HelpTopics = [
         id: "rob-betting",
         label: "Rob, Betting & Games",
         description: "Risk-your-potatoes side activities, with real odds",
-        content: "`/rob recipient [skip-confirm]` — 1 hour cooldown. Success chance is `5% + (20% - your share of total server wealth × 20%)`, so a poorer robber has better odds against a richer target — plus a flat +10% if your guild picked the `robChance` buff, or your own Mercenary Buff pick. A win steals 25-50% of the target's LIQUID potatoes (banked/safehoused potatoes are safe); a miss fines you 25-50% of your own wealth (or a flat 5,000 if that computes negative) and adds roughly 57.5 minutes onto your next `/work` cooldown. Shows a confirm/cancel preview by default (odds and stakes before you commit); pass `skip-confirm:true` to skip straight to the roll.\n\n`/potato-roulette` — a 38-pocket wheel: 18 Golden, 18 Dirt, 2 Rotten. A color bet (golden/dirt) wins 47.37% of spins, paying your full bet back as profit. A Rotten bet wins the rarer 5.26%, paying 17x your bet as profit — both carry the identical 5.26% house edge.\n\n`/golden-reels bet-amount spins:<1-100>` — one weighted symbol per spin (not 3 independent reels): Golden Potato 0.1% for 200x your bet back, Metal Potato 0.6% for 40x, Large Potato 4% for 6x, Regular Potato 18% for 1.5x, anything else (77.3%) is a total loss — overall RTP is exactly 95%.\n\n`/coinflip` and `/rps` are quick 50/50 gambling games (coinflip pays 95% of your bet on a win — a 5% house edge). `/enter-tower` is a separate once-a-day climb — see `/help topic:tower`."
+        content: "`/rob recipient [skip-confirm]` — 1 hour cooldown. Success chance is `5% + (20% - your share of total server wealth × 20%)`, so a poorer robber has better odds against a richer target — plus a flat +10% if your guild picked the `robChance` buff, or your own Mercenary Buff pick. A win steals 25-50% of the target's LIQUID potatoes (banked/safehoused potatoes are safe); a miss fines you 25-50% of your own wealth (or a flat 5,000 if that computes negative) and adds roughly 57.5 minutes onto your next `/work` cooldown. Shows a confirm/cancel preview by default (odds and stakes before you commit); pass `skip-confirm:true` to skip straight to the roll.\n\n`/potato-roulette` — a 38-pocket wheel: 18 Golden, 18 Dirt, 2 Rotten. A color bet (golden/dirt) wins 47.37% of spins, paying your full bet back as profit. A Rotten bet wins the rarer 5.26%, paying 17x your bet as profit — both carry the identical 5.26% house edge.\n\n`/golden-reels bet-amount spins:<1-100>` — one weighted symbol per spin (not 3 independent reels): Golden Potato 0.1% for 200x your bet back, Metal Potato 0.6% for 40x, Large Potato 4% for 6x, Regular Potato 20% for 1.5x, anything else (75.3%) is a total loss — overall RTP is exactly 98%.\n\n`/coinflip` and `/rps` are quick 50/50 gambling games (coinflip pays 95% of your bet on a win — a 5% house edge). `/enter-tower` is a separate once-a-day climb — see `/help topic:tower`."
     },
     {
         id: "tower",
@@ -1788,17 +1788,26 @@ const Roulette = {
 // resolve-time (goldenReels.js's rollSymbol). Golden Potato's 0.001 chance is pinned to
 // the exact same probability /work's own Golden Potato encounter uses (workScenarios[0]
 // in work.js) so "Golden" means one consistent rarity across the whole game. Payout
-// multipliers are TOTAL return multiples (stake included), not net-profit multiples —
-// RTP = sum(chance * payoutMultiplier) = .001*200 + .006*40 + .04*6 + .18*1.5 = 0.95,
-// an exact analytic 95% RTP / 5% house edge (confirmed independently via a 20M-iteration
-// Monte Carlo during implementation — see betting-and-games.md). Falling past the last
-// cumulative threshold (.227) is a loss (0x, lose the full bet).
+// multipliers are TOTAL return multiples (stake included), not net-profit multiples.
+//
+// RTP raised 95% -> 98%, 2026-09-11 direct instruction ("get it closer to 98 rtp"), by
+// bumping ONLY Regular Potato's chance (18% -> 20%) rather than touching any payout or any
+// other symbol's odds. Deliberately the lowest-variance lever available: Regular Potato
+// contributes just ~0.1% of the game's total payout variance (Golden/Metal Potato together
+// account for ~96% of it despite being <1% of spins combined — see the RTP/variance
+// breakdown in this session's own analysis), so this raises the floor without touching
+// jackpot rarity or the game's actual swinginess at all. Also directly answers a real
+// player complaint from the same session (an 80-spin cold streak with almost no hits) by
+// cutting the flat "no match" rate from 77.3% to 75.3%.
+// RTP = sum(chance * payoutMultiplier) = .001*200 + .006*40 + .04*6 + .20*1.5 = 0.98,
+// an exact analytic 98% RTP / 2% house edge. Falling past the last cumulative threshold
+// (.247) is a loss (0x, lose the full bet).
 const GoldenReels = {
     SYMBOLS: [
         { name: 'Golden Potato', chance: .001, payoutMultiplier: 200 },
         { name: 'Metal Potato', chance: .006, payoutMultiplier: 40 },
         { name: 'Large Potato', chance: .04, payoutMultiplier: 6 },
-        { name: 'Regular Potato', chance: .18, payoutMultiplier: 1.5 },
+        { name: 'Regular Potato', chance: .20, payoutMultiplier: 1.5 },
     ],
     // Raised 10 -> 100, 2026-09-11 direct instruction. At SPIN_DELAY_MS's own 2s per-spin
     // pace, a full 100-spin run takes ~200s (~3.3 min) of sequential embed edits — still

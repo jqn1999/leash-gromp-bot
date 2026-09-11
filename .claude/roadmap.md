@@ -11560,3 +11560,25 @@ run now takes ~200s (~3.3 min) of sequential embed edits, still comfortably insi
 15-minute follow-up token window. `goldenReels.test.js`'s own MAX_SPINS-clamp test already reads the
 constant dynamically and runs under `jest.useFakeTimers()`, so it needed no changes and stayed fast.
 Full suite: **1503/1503** across 82 suites.
+
+## Buff: Golden Reels RTP raised 95% -> 98% (2026-09-11, direct instruction)
+
+Prompted directly by the "analyze Golden Reels" discussion earlier the same session (an 80-spin cold
+streak with almost no Large/Metal/Golden hits, confirmed via a live 5M-spin simulation of the actual
+`rollSymbol()` code to be normal-odds variance, not a bug) — "get it closer to 98 rtp."
+
+`GoldenReels.SYMBOLS`' Regular Potato entry: `chance: .18 -> .20`, payout (`1.5x`) and every other
+symbol's chance/payout completely untouched. RTP = `.001*200 + .006*40 + .04*6 + .20*1.5` = exactly
+`0.98`. Deliberately the lowest-variance lever available rather than touching a payout or a rarer
+symbol's odds: Regular Potato contributes under ~0.1% of the game's total payout variance (Golden +
+Metal Potato together account for ~96% of it despite being under 1% of spins combined — see this
+session's own variance-decomposition analysis) — raises the floor and cuts the flat "no match" rate
+from 77.3% to 75.3% without touching jackpot rarity or the game's actual swinginess at all.
+
+Updated: `constants.js`'s own RTP-derivation comment and the `/help topic:rob-betting` odds line;
+`goldenReels.test.js`'s analytic-RTP/probability-sum/cumulative-threshold assertions (all previously
+hardcoded to the old 0.95/.227/.773 figures — the Monte Carlo test's `>0.90`/`<1.00` tolerance band
+already comfortably covered 0.98 with no change needed); `systems/betting-and-games.md`'s Golden
+Reels section, which was ALSO still stale on the earlier same-day MAX_SPINS 10->100 bump (never
+updated when that shipped) — fixed both in the same pass. Full suite: **1503/1503** across 82
+suites.

@@ -38,8 +38,8 @@ function statsFixture(overrides = {}) {
 }
 
 // rollSymbol() draws Math.random() and cumulative-sums GoldenReels.SYMBOLS' chance
-// values (.001, .007, .047, .227) — these pick a value squarely inside each symbol's
-// slice (or past .227 for a guaranteed loss).
+// values (.001, .007, .047, .247) — these pick a value squarely inside each symbol's
+// slice (or past .247 for a guaranteed loss).
 const RANDOM_FOR = {
     golden: 0.0005,
     metal: 0.004,
@@ -72,17 +72,17 @@ async function runCallback(interaction) {
 describe('GoldenReels paytable (constants.js)', () => {
     test('probabilities sum to exactly 1.0 once the implicit loss slice is included', () => {
         const totalNamedChance = GoldenReels.SYMBOLS.reduce((sum, s) => sum + s.chance, 0);
-        expect(totalNamedChance).toBeCloseTo(0.227, 10);
+        expect(totalNamedChance).toBeCloseTo(0.247, 10);
         // loss chance is whatever's left over, never stored as its own constant
-        expect(1 - totalNamedChance).toBeCloseTo(0.773, 10);
+        expect(1 - totalNamedChance).toBeCloseTo(0.753, 10);
     });
 
-    test('analytic RTP (sum of chance * payoutMultiplier) is exactly 95%', () => {
+    test('analytic RTP (sum of chance * payoutMultiplier) is exactly 98%', () => {
         const rtp = GoldenReels.SYMBOLS.reduce((sum, s) => sum + s.chance * s.payoutMultiplier, 0);
-        expect(rtp).toBeCloseTo(0.95, 10);
+        expect(rtp).toBeCloseTo(0.98, 10);
     });
 
-    test('Monte Carlo simulation of the real cumulative-threshold roll converges near the analytic 95% RTP', () => {
+    test('Monte Carlo simulation of the real cumulative-threshold roll converges near the analytic 98% RTP', () => {
         // Reimplements goldenReels.js's own rollSymbol() cumulative-sum/strict-< logic
         // against the live GoldenReels.SYMBOLS constants, exactly as the technical design
         // recommended running as a regression check on the constant table. Pure
@@ -90,7 +90,7 @@ describe('GoldenReels paytable (constants.js)', () => {
         // multi-million-iteration sample is fast. Tolerance is wide (+/-5 percentage
         // points) because the 200x jackpot at a 0.1% chance dominates the variance —
         // this is a sanity check against a broken roll (e.g. wrong cumulative order, a
-        // stray <=, a missing slice), not a tight re-derivation of the exact 95% figure
+        // stray <=, a missing slice), not a tight re-derivation of the exact 98% figure
         // (that's the analytic test above).
         const N = 3_000_000;
         let totalReturned = 0;
