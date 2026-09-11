@@ -1,5 +1,5 @@
-// /guild-companion-donate — donate-and-equip. Available to the OWNING PLAYER themselves,
-// no guild-role gate. See systems/guilds.md's "Guild Companion (Cinderroot) Rework" section.
+// /guild-companion-donate — donate. Available to the OWNING PLAYER themselves, no
+// guild-role gate. See systems/guilds.md's "Guild Companion (Cinderroot) Rework" section.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -67,9 +67,9 @@ describe('/guild-companion-donate callback', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('rejects when the guild already possesses one (equipped or benched)', async () => {
+    test('rejects when the guild already possesses one', async () => {
         dynamoHandler.findUser.mockResolvedValue(userWithCinderroot());
-        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ guildCompanion: { id: 'cinderroot', equipped: false } }));
+        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ guildCompanion: { id: 'cinderroot' } }));
         const interaction = fakeInteraction('i1');
 
         await callback({}, interaction);
@@ -93,7 +93,7 @@ describe('/guild-companion-donate callback', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('a valid donation removes the instance from the player and equips it on the guild', async () => {
+    test('a valid donation removes the instance from the player and adds it to the guild', async () => {
         const userDetails = userWithCinderroot();
         dynamoHandler.findUser.mockResolvedValue(userDetails);
         dynamoHandler.findGuildById.mockResolvedValue(baseGuild());
@@ -103,10 +103,11 @@ describe('/guild-companion-donate callback', () => {
         await callback({}, interaction);
 
         expect(dynamoHandler.updateGuildFieldsWithLock).toHaveBeenCalledWith('g1', 3, {
-            guildCompanion: expect.objectContaining({ id: 'cinderroot', equipped: true, acquiredRaidTier: null }),
+            guildCompanion: expect.objectContaining({ id: 'cinderroot', acquiredRaidTier: null }),
         });
         const [, , { guildCompanion: guildCompanionValue }] = dynamoHandler.updateGuildFieldsWithLock.mock.calls[0];
         expect(guildCompanionValue.acquiredAt).toBeGreaterThanOrEqual(beforeCall);
+        expect(guildCompanionValue.equipped).toBeUndefined();
 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', {
             companions: expect.objectContaining({ owned: [], active: null, favorites: [null, null, null, null, null] }),

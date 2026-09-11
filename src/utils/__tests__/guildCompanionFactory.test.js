@@ -1,13 +1,18 @@
 // Cinderroot, the Hoardwarden — see systems/guilds.md's "Guild Companion (Cinderroot)
-// Rework" section. Reworked 2026-09-11: Cinderroot is now a real personal companion
+// Rework" section. Reworked 2026-09-11: Cinderroot is a real personal companion
 // (Companions[], dropSource: "guildRaid"), found by whoever started a winning raid, and
-// must be explicitly donated/equipped onto a guild to do anything. rollGuildCompanionDrop
-// no longer writes anything itself (the award lands on the finder's own companions via
+// must be explicitly donated onto a guild to do anything. rollGuildCompanionDrop no longer
+// writes anything itself (the award lands on the finder's own companions via
 // resolveCinderrootAward, called by the caller) — so dynamoHandler doesn't need to be
 // mocked here at all anymore.
+//
+// Revised same day (direct instruction): the equip/unequip toggle this rework originally
+// shipped with was removed as unnecessary complexity. `guild.guildCompanion` is back to its
+// original two-state shape — a guild either possesses Cinderroot (fully active) or doesn't.
+// `isCinderrootEquipped`/`validateEquipRequest`/`validateUnequipRequest`/
+// `setCinderrootEquipped` are gone; every perk getter gates on simple possession.
 const {
     getGuildCompanionById,
-    isCinderrootEquipped,
     getGuildCompanionScalingValue,
     getRaidCooldownReduction,
     getRaidRewardBonus,
@@ -16,9 +21,6 @@ const {
     validateDonateRequest,
     removeDonatedCompanionFromOwned,
     buildDonatedGuildCompanion,
-    validateEquipRequest,
-    validateUnequipRequest,
-    setCinderrootEquipped,
 } = require('../guildCompanionFactory');
 const { Companions, GuildCompanionDrop, GuildCompanionScaling } = require('../constants');
 
@@ -46,25 +48,6 @@ describe('getGuildCompanionById', () => {
 
     test('returns null for an unknown id, not a throw', () => {
         expect(getGuildCompanionById('does-not-exist')).toBeNull();
-    });
-});
-
-describe('isCinderrootEquipped', () => {
-    test('false when guildCompanion is null or unhealed (undefined)', () => {
-        expect(isCinderrootEquipped({ guildCompanion: null })).toBe(false);
-        expect(isCinderrootEquipped({})).toBe(false);
-    });
-
-    test('false when possessed but benched', () => {
-        expect(isCinderrootEquipped({ guildCompanion: { id: 'cinderroot', equipped: false } })).toBe(false);
-    });
-
-    test('false for a legacy record with no equipped field at all', () => {
-        expect(isCinderrootEquipped({ guildCompanion: { id: 'cinderroot' } })).toBe(false);
-    });
-
-    test('true only when possessed AND equipped', () => {
-        expect(isCinderrootEquipped({ guildCompanion: { id: 'cinderroot', equipped: true } })).toBe(true);
     });
 });
 
@@ -97,14 +80,8 @@ describe('getRaidCooldownReduction / getRaidRewardBonus', () => {
         expect(getRaidRewardBonus(guild, 10)).toBe(0);
     });
 
-    test('return 0 when the guild possesses Cinderroot but it is BENCHED (equipped: false)', () => {
-        const guild = { guildCompanion: { id: 'cinderroot', equipped: false } };
-        expect(getRaidCooldownReduction(guild, 10)).toBe(0);
-        expect(getRaidRewardBonus(guild, 10)).toBe(0);
-    });
-
-    test('return the correct level-scaled value when the guild has it EQUIPPED', () => {
-        const guild = { guildCompanion: { id: 'cinderroot', equipped: true } };
+    test('return the correct level-scaled value when the guild possesses it', () => {
+        const guild = { guildCompanion: { id: 'cinderroot' } };
         expect(getRaidCooldownReduction(guild, 1)).toBe(GuildCompanionScaling.raidCooldownReductionPercent[0]);
         expect(getRaidCooldownReduction(guild, 10)).toBe(GuildCompanionScaling.raidCooldownReductionPercent[9]);
         expect(getRaidRewardBonus(guild, 1)).toBe(GuildCompanionScaling.raidRewardBonusPercent[0]);
@@ -123,14 +100,11 @@ describe('rollGuildCompanionDrop', () => {
         expect(result).toEqual({ awarded: false });
     });
 
-    test('never awards when the guild already POSSESSES a companion (equipped or benched), even on a guaranteed roll', async () => {
+    test('never awards when the guild already POSSESSES a companion, even on a guaranteed roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
 
-        const equippedGuild = { guildId: 'g1', guildCompanion: { id: 'cinderroot', equipped: true } };
-        expect(await rollGuildCompanionDrop(equippedGuild, 'legendary', true)).toEqual({ awarded: false });
-
-        const benchedGuild = { guildId: 'g1', guildCompanion: { id: 'cinderroot', equipped: false } };
-        expect(await rollGuildCompanionDrop(benchedGuild, 'legendary', true)).toEqual({ awarded: false });
+        const guild = { guildId: 'g1', guildCompanion: { id: 'cinderroot' } };
+        expect(await rollGuildCompanionDrop(guild, 'legendary', true)).toEqual({ awarded: false });
 
         randomSpy.mockRestore();
     });
@@ -186,9 +160,9 @@ describe('resolveCinderrootAward', () => {
 });
 
 describe('validateDonateRequest', () => {
-    test('rejects when the guild already possesses one (equipped or benched)', () => {
+    test('rejects when the guild already possesses one', () => {
         const userDetails = baseUserDetails({ companions: { owned: [{ instanceId: 'i1', id: 'cinderroot', workCount: 0 }], active: null, favorites: [null, null, null, null, null], ownedCount: 1, mythicOwnedCount: 0 } });
-        const guild = { guildCompanion: { id: 'cinderroot', equipped: false } };
+        const guild = { guildCompanion: { id: 'cinderroot' } };
 
         const result = validateDonateRequest(userDetails, guild, 'i1');
         expect(result.valid).toBe(false);
@@ -282,59 +256,15 @@ describe('removeDonatedCompanionFromOwned', () => {
 });
 
 describe('buildDonatedGuildCompanion', () => {
-    test('builds the expected shape with equipped: true and a null acquiredRaidTier', () => {
+    test('builds the expected two-field shape with a null acquiredRaidTier, no equipped key', () => {
         const before = Date.now();
         const result = buildDonatedGuildCompanion();
         const after = Date.now();
 
         expect(result.id).toBe('cinderroot');
-        expect(result.equipped).toBe(true);
+        expect(result.equipped).toBeUndefined();
         expect(result.acquiredRaidTier).toBeNull();
         expect(result.acquiredAt).toBeGreaterThanOrEqual(before);
         expect(result.acquiredAt).toBeLessThanOrEqual(after);
-    });
-});
-
-describe('validateEquipRequest / validateUnequipRequest', () => {
-    test('equip rejects when the guild has no Cinderroot at all', () => {
-        const result = validateEquipRequest({ guildCompanion: null });
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/doesn't have a cinderroot/i);
-    });
-
-    test('equip rejects when already equipped', () => {
-        const result = validateEquipRequest({ guildCompanion: { id: 'cinderroot', equipped: true } });
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/already equipped/i);
-    });
-
-    test('equip accepts a benched Cinderroot', () => {
-        const result = validateEquipRequest({ guildCompanion: { id: 'cinderroot', equipped: false } });
-        expect(result.valid).toBe(true);
-    });
-
-    test('unequip rejects when the guild has no Cinderroot at all', () => {
-        const result = validateUnequipRequest({ guildCompanion: null });
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/doesn't have a cinderroot/i);
-    });
-
-    test('unequip rejects when already benched', () => {
-        const result = validateUnequipRequest({ guildCompanion: { id: 'cinderroot', equipped: false } });
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/already benched/i);
-    });
-
-    test('unequip accepts an equipped Cinderroot', () => {
-        const result = validateUnequipRequest({ guildCompanion: { id: 'cinderroot', equipped: true } });
-        expect(result.valid).toBe(true);
-    });
-});
-
-describe('setCinderrootEquipped', () => {
-    test('toggles equipped without touching the rest of the record', () => {
-        const guildCompanion = { id: 'cinderroot', acquiredAt: 123, acquiredRaidTier: 'regular', equipped: true };
-        expect(setCinderrootEquipped(guildCompanion, false)).toEqual({ ...guildCompanion, equipped: false });
-        expect(setCinderrootEquipped(guildCompanion, true)).toEqual({ ...guildCompanion, equipped: true });
     });
 });

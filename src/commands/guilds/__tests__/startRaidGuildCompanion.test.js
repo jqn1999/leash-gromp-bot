@@ -4,11 +4,12 @@
 // roll and the sacrifice mechanic is the wiring at the call site, not the pure functions
 // themselves.
 //
-// Reworked 2026-09-11 alongside the Cinderroot Rework: `guild.guildCompanion` now gates
-// every perk/sacrifice consumer on `equipped === true`, not just possession, and the
-// acquisition roll no longer writes straight onto the guild — it awards a real personal
-// companion instance to the raid-STARTING member (via dynamoHandler.updateUserFields), the
-// same shape Yukon's own acquisition already uses.
+// Reworked 2026-09-11 alongside the Cinderroot Rework: the acquisition roll no longer
+// writes straight onto the guild — it awards a real personal companion instance to the
+// raid-STARTING member (via dynamoHandler.updateUserFields), the same shape Yukon's own
+// acquisition already uses. Revised again same day (direct instruction): the equip/unequip
+// toggle was removed — `guild.guildCompanion` gates every perk/sacrifice consumer on simple
+// possession (`!= null`) again, no second flag.
 //
 // Same mocking approach as startRaidSplitMode.test.js/startRaidStaticRewards.test.js:
 // RaidFactory's class methods are mocked so handlePotatoSplit/handlePotatoSplitByShare can
@@ -38,11 +39,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow } = require('../startRaid');
 const { Raid, RaidLevel, GuildCompanionScaling } = require('../../../utils/constants');
 
-// equipped: true — every existing perk/sacrifice test below exercises the EQUIPPED gate,
-// which is the state every one of these mechanics actually reads through
-// guildCompanionFactory's isCinderrootEquipped.
-const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true };
-const benchedCinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: false };
+const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' };
 
 function defaultCompanions() {
     return { owned: [], active: null, favorites: [null, null, null, null, null], ownedCount: 0, mythicOwnedCount: 0 };
@@ -137,8 +134,8 @@ beforeEach(() => {
 // the guild's own selected buff/Spud Keep/RaidLevel's automatic reduction, rolled only on a
 // WIN. Exercised the same "sequence Math.random() to force a hit/miss" way
 // takeBountyCooldownSkip.test.js/robNpcCooldownSkip.test.js already establish.
-describe('Cinderroot perk 3a: raid cooldown reduction (now a skip-chance source, EQUIPPED-gated)', () => {
-    test("an EQUIPPED companion's win, when the skip roll hits, attributes the skip to Cinderroot, backdates raidTimer to ready-now, and chains exactly one more attempt", async () => {
+describe('Cinderroot perk 3a: raid cooldown reduction (now a skip-chance source)', () => {
+    test("a possessed companion's win, when the skip roll hits, attributes the skip to Cinderroot, backdates raidTimer to ready-now, and chains exactly one more attempt", async () => {
         const guild = guildFixture({ guildCompanion: cinderroot });
         // A single constant mock stands in for every findGuildById call across both the
         // original resolution and its one chained link (resolveRaid re-fetches on every
@@ -193,28 +190,10 @@ describe('Cinderroot perk 3a: raid cooldown reduction (now a skip-chance source,
         expect(raidTimerCall[2]).toBe(expectedValue);
     });
 
-    test('a BENCHED companion (possessed, equipped: false) gets no extra skip chance either', async () => {
-        const FIXED_NOW = 1_000_000_000_000;
-        const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
-        const guild = guildFixture({ guildCompanion: benchedCinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
-
-        const interaction = fakeInteraction();
-        await runStartRaidFlow(interaction, 'baby');
-
-        randomSpy.mockRestore();
-        dateSpy.mockRestore();
-
-        const raidTimerCall = dynamoHandler.updateGuildDatabase.mock.calls.find(([, field]) => field === 'raidTimer');
-        const expectedValue = FIXED_NOW + Raid.RAID_TIMER_SECONDS * 1000;
-        expect(raidTimerCall[2]).toBe(expectedValue);
-    });
 });
 
-describe('Cinderroot perk 3b: raid reward bonus (EQUIPPED-gated)', () => {
-    test("an EQUIPPED companion's winning-side reward reflects the (1 + companionBonus) factor", async () => {
+describe('Cinderroot perk 3b: raid reward bonus', () => {
+    test("a possessed companion's winning-side reward reflects the (1 + companionBonus) factor", async () => {
         // Guaranteed baby-mode T1 win (see startRaidSplitMode.test.js's own comment on this
         // exact roster/draw combination).
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
@@ -262,31 +241,10 @@ describe('Cinderroot perk 3b: raid reward bonus (EQUIPPED-gated)', () => {
         expect(amount).toBe(expectedAmount);
     });
 
-    test('a BENCHED companion gets the same un-boosted reward as no companion at all', async () => {
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
-        const guild = guildFixture({ guildCompanion: benchedCinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
-
-        const interaction = fakeInteraction();
-        await runStartRaidFlow(interaction, 'baby');
-        randomSpy.mockRestore();
-
-        expect(mockHandlePotatoSplit).toHaveBeenCalledTimes(1);
-        const [, amount] = mockHandlePotatoSplit.mock.calls[0];
-
-        const randomMultiplier = 1.0;
-        const baseMultiplier = RaidLevel.THRESHOLDS[0].multiplier;
-        const totalRaidSplitBeforeTax = Math.round(Raid.T1_RAID_REWARD * randomMultiplier * baseMultiplier);
-        const tax = Math.floor(totalRaidSplitBeforeTax * Raid.GUILD_RAID_TAX_PERCENT);
-        const expectedAmount = totalRaidSplitBeforeTax - tax;
-
-        expect(amount).toBe(expectedAmount);
-    });
 });
 
-describe('Cinderroot perk 3d: sacrifice mechanic (EQUIPPED-gated)', () => {
-    test('accept: companion is set to null (fully destructive, not just benched), removeFromBankOrPurse short-circuits (zero bank drain / member split)', async () => {
+describe('Cinderroot perk 3d: sacrifice mechanic', () => {
+    test('accept: companion is set to null (fully destructive), removeFromBankOrPurse short-circuits (zero bank drain / member split)', async () => {
         weakRosterSetup();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
@@ -364,21 +322,6 @@ describe('Cinderroot perk 3d: sacrifice mechanic (EQUIPPED-gated)', () => {
         expect(mockHandlePotatoSplit).toHaveBeenCalledTimes(1);
     });
 
-    test('a BENCHED companion (possessed, equipped: false) is never offered for sacrifice — a benched Cinderroot is not "in use"', async () => {
-        weakRosterSetup();
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
-
-        const guild = guildFixture({ guildCompanion: benchedCinderroot });
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
-
-        const interaction = fakeInteraction({ sacrificeChoice: 'accept' }); // would accept if ever asked
-        await runStartRaidFlow(interaction, 'baby');
-        randomSpy.mockRestore();
-
-        expect(interaction.followUp).not.toHaveBeenCalled();
-        expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalledWith('g1', 'guildCompanion', null);
-        expect(mockHandlePotatoSplit).toHaveBeenCalledTimes(1);
-    });
 });
 
 describe('Cinderroot acquisition roll (through runStartRaidFlow) — now awards the FINDER, not the guild', () => {
@@ -440,12 +383,9 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow) — now awards 
         expect(companionsCall).toBeUndefined();
     });
 
-    test.each([
-        ['equipped', cinderroot],
-        ['benched', benchedCinderroot],
-    ])('never fires once a guild already POSSESSES one (%s), even on a guaranteed win with a guaranteed roll', async (_label, existingCompanion) => {
+    test('never fires once a guild already POSSESSES one, even on a guaranteed win with a guaranteed roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
-        const guild = guildFixture({ guildCompanion: existingCompanion });
+        const guild = guildFixture({ guildCompanion: cinderroot });
         dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
 
         const interaction = fakeInteraction();

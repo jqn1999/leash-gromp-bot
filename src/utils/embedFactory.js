@@ -437,9 +437,6 @@ function buildSpudKeepPayoutShareField(shares, pageIndex = 0) {
 function buildCinderrootStatusValue(guild, level) {
     const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
     const name = def?.name ?? guild.guildCompanion.id;
-    if (guild.guildCompanion.equipped !== true) {
-        return `${name} is benched — not currently protecting your guild's raids or treasury. A Leader or Co-Leader can re-equip it with /guild-companion-equip.`;
-    }
     const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, level) * 100);
     const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, level) * 100);
     // Treasury interest perk (3c, 2026-09-10 rework) is a level-scaled MULTIPLIER on the
@@ -1162,9 +1159,8 @@ class EmbedFactory {
         // cases identically, showing nothing rather than crashing either way.
         if (guild.guildCompanion) {
             // Guild Companion (Cinderroot) Rework (2026-09-11) — buildCinderrootStatusValue
-            // (shared with the dedicated /guild-companion status embed below) renders a
-            // distinct "benched" line instead of the perk breakdown once equipped === false,
-            // so a benched Cinderroot is never mistaken for an active one here.
+            // is shared with the dedicated /guild-companion status embed below, so the two
+            // never drift on wording or numbers.
             fields.push({
                 name: `Guild Companion:`,
                 value: buildCinderrootStatusValue(guild, raidLevelInfo.level),
@@ -1346,7 +1342,7 @@ class EmbedFactory {
     createGuildCompanionDropEmbed(guildName, finderDisplayName, def) {
         const embed = new EmbedBuilder()
             .setTitle(`${finderDisplayName} found ${def.name}!`)
-            .setDescription(`${def.dropFlavor}\n\n${def.name} has joined ${finderDisplayName}'s own companion roster (check /companion) — donate it to ${guildName} with /guild-companion-donate to equip its perks for the whole guild.`)
+            .setDescription(`${def.dropFlavor}\n\n${def.name} has joined ${finderDisplayName}'s own companion roster (check /companion) — donate it to ${guildName} with /guild-companion-donate to activate its perks for the whole guild.`)
             .setColor("Gold")
             .setThumbnail(def.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -1354,8 +1350,8 @@ class EmbedFactory {
         return embed;
     }
 
-    // Shown when a raid loss offers the raid-starting member the choice to sacrifice an
-    // EQUIPPED Cinderroot to void the loss's entire penalty — see startRaid.js's
+    // Shown when a raid loss offers the raid-starting member the choice to sacrifice a
+    // possessed Cinderroot to void the loss's entire penalty — see startRaid.js's
     // promptCompanionSacrifice. Unchanged behavior from before the Cinderroot Rework, just
     // sourced from Companions[] via guildCompanionFactory now instead of the old
     // GuildCompanions[0].
@@ -1385,9 +1381,10 @@ class EmbedFactory {
     }
 
     // Read-only Cinderroot status view (/guild-companion) — mirrors createGuildInfamyEmbed's
-    // own never-mutates precedent. Distinguishes "no Cinderroot at all" from "benched, not
-    // equipped" from "equipped", using the exact same buildCinderrootStatusValue helper
-    // createGuildEmbed's own inline field uses, so the two views never drift.
+    // own never-mutates precedent. Distinguishes "no Cinderroot at all" from "has
+    // Cinderroot" (always fully active once possessed), using the exact same
+    // buildCinderrootStatusValue helper createGuildEmbed's own inline field uses, so the two
+    // views never drift.
     createGuildCompanionStatusEmbed(guildName, guild, level) {
         const description = guild.guildCompanion
             ? buildCinderrootStatusValue(guild, level)
@@ -1395,7 +1392,7 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}'s Guild Companion`)
             .setDescription(description)
-            .setColor(guild.guildCompanion?.equipped === true ? "Gold" : "Grey")
+            .setColor(guild.guildCompanion != null ? "Gold" : "Grey")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;

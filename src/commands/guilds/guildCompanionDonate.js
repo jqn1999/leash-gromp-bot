@@ -4,18 +4,19 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const guildCompanionFactory = require("../../utils/guildCompanionFactory");
 
-// Guild Companion (Cinderroot) Rework (systems/guilds.md) — donate-and-equip. Available to
-// the OWNING PLAYER themselves, no guild-role gate at all: it's their own find, and
-// requiring Leader/Co-Leader here would let a Leader block a member from ever contributing
-// what they found. Preconditions (guildCompanionFactory.validateDonateRequest): the player
-// actually owns the given Cinderroot instance, it isn't out scavenging, and the guild
-// doesn't already possess one (equipped or benched — strict per-guild singleton). Effect:
-// the instance is removed from the player's own companions entirely (see
-// removeDonatedCompanionFromOwned) and guild.guildCompanion is written as equipped: true —
-// genuinely ownerless guild property from this point on, not a reference back to the finder.
+// Guild Companion (Cinderroot) Rework (systems/guilds.md) — donate. Available to the OWNING
+// PLAYER themselves, no guild-role gate at all: it's their own find, and requiring
+// Leader/Co-Leader here would let a Leader block a member from ever contributing what they
+// found. Preconditions (guildCompanionFactory.validateDonateRequest): the player actually
+// owns the given Cinderroot instance, it isn't out scavenging, and the guild doesn't already
+// possess one (strict per-guild singleton). Effect: the instance is removed from the
+// player's own companions entirely (see removeDonatedCompanionFromOwned) and
+// guild.guildCompanion is written — genuinely ownerless guild property from this point on,
+// not a reference back to the finder. To reclaim it later, a Leader/Co-Leader can pull it
+// back out entirely with /guild-companion-withdraw.
 module.exports = {
     name: "guild-companion-donate",
-    description: "Donate your own Cinderroot to your guild, equipping it immediately",
+    description: "Donate your own Cinderroot to your guild, activating it immediately",
     devOnly: false,
     deleted: false,
     options: [
@@ -87,6 +88,6 @@ module.exports = {
         const updatedCompanions = guildCompanionFactory.removeDonatedCompanionFromOwned(userDetails, instanceId);
         await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — it's equipped and already protecting the guild's raids and treasury! Check /guild-companion for details.`);
+        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — it's already protecting the guild's raids and treasury! Check /guild-companion for details.`);
     }
 }

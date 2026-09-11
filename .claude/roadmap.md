@@ -11182,7 +11182,7 @@ Cinderroot section (full rewrite of the acquisition/equip section), `/help topic
 Built exactly as designed above. Full suite after implementation: **1482/1482** across 83 suites
 (1479 from the initial implementation pass, +3 regression tests added for the guild-write-locking
 fix described below).
-See [systems/guilds.md](systems/guilds.md#guild-companion-cinderroot-rework-personal-find-guild-equipunequip)
+See [systems/guilds.md](systems/guilds.md#guild-companion-cinderroot-rework-personal-find-donate-in-withdraw-out)
 for the full writeup (data model, command table, migration mechanism, and every judgment call made
 along the way — command naming/count, where `resolveCinderrootAward` landed, the migration's exact
 code shape, and the donate command's autocomplete option, none of which changed a decision this
@@ -11213,3 +11213,66 @@ donate specifically, reordering so the guarded guild write happens BEFORE the pl
 inventory is touched — a lost race now costs the loser nothing, they just retry. 3 new regression
 tests added across the three command test files. Caught and fixed during direct verification of the
 implementation, not by the release-reviewer pass that followed (which then confirmed the fix).
+
+### Revision (2026-09-11, direct instruction): remove the equip/unequip toggle, add withdraw instead
+
+Shipped same day as the above, in direct response to the player-facing question "how do users take
+Cinderroot out of the guild?" — the approved design never actually specified a way to reclaim a
+donated Cinderroot; only donate (in) and equip/unequip (an active/benched toggle while staying guild
+property) existed. Direct instruction simplified the model instead of adding a third state:
+
+- **The `equipped` field and the benched/equipped distinction are REMOVED entirely** — "equip/unequip
+  it adds complexity." `guild.guildCompanion` reverts to its original two-field shape (`{id,
+  acquiredAt, acquiredRaidTier}`, no `equipped` key) — every consumer (perk getters, treasury
+  interest, sacrifice-offer gate) goes back to gating on simple possession (`guild.guildCompanion !=
+  null`), not a second flag. A guild either has Cinderroot, actively protecting it, or doesn't — no
+  benched middle state.
+- **`/guild-companion-equip` and `/guild-companion-unequip` are deleted outright** (not `deleted:
+  true`-retired — these commands were added and reverted same-session with zero real usage, unlike
+  the `companionBuy.js`-style precedent for retiring a command with real history).
+- **`/guild-companion-donate` is otherwise unchanged**: still no role gate, still adds Cinderroot to a
+  guild that doesn't have one, still tells the donor "your guild already has one" if it does — this
+  was already exactly the approved behavior, just minus the now-removed `equipped: true` field on
+  the written record.
+- **New: `/guild-companion-withdraw`** (Leader/Co-Leader only, same authority as the deleted unequip)
+  — pulls Cinderroot out of the guild entirely and mints a personal instance for **whoever runs the
+  command** (not a chosen target, not the original donor — direct instruction: "whoever runs the
+  withdraw command"). Guild-side write (clearing `guild.guildCompanion`) is version-guarded via
+  `updateGuildFieldsWithLock` and happens BEFORE the withdrawer is personally awarded an instance —
+  same race-safety principle as donate's own ordering: two Leaders/Co-Leaders racing to withdraw at
+  once can't both walk away with a personal copy, since only the winner of the guarded write ever
+  reaches the award step.
+- **Migration is no longer needed at all** — since `guild.guildCompanion` reverts to its pre-rework
+  shape, every legacy guild record (which never had an `equipped` field to begin with) is already in
+  the correct shape with zero healing required. The `findGuildById` migration block added earlier
+  the same day is deleted along with its dedicated tests.
+- Sacrifice is completely unaffected — still fully destructive, still gated on simple possession.
+
+### Implemented (2026-09-11)
+
+Built exactly as designed above. Full suite after this revision: **1457/1457** across 82 suites
+(down from 1482/83 — two commands and their test files deleted outright, benched-state test cases
+across `guildCompanionFactory.test.js`/`startRaidGuildCompanion.test.js`/`dynamoHandler.test.js`
+removed rather than adapted since there's no longer a distinct state left to exercise, and the two
+dedicated migration tests replaced by one "passes an existing record through untouched" case,
+offset by one new `guildCompanionWithdraw.test.js` suite carrying its own donate-mirroring
+race-safety regression test). See
+[systems/guilds.md](systems/guilds.md#guild-companion-cinderroot-rework-personal-find-donate-in-withdraw-out)
+for the rewritten section (data model, command table, and this revision's own judgment calls —
+exact reject/success message wording, and the choice to remove rather than adapt the now-impossible
+benched-state test cases).
+
+Files touched: `guildCompanionFactory.js` (`isCinderrootEquipped`/`validateEquipRequest`/
+`validateUnequipRequest`/`setCinderrootEquipped` deleted, every perk getter/`rollGuildCompanionDrop`/
+`buildDonatedGuildCompanion` reverted to simple-possession gating), `dynamoHandler.js` (treasury
+interest gate reverted, `findGuildById`'s equipped-field migration block deleted along with its
+`GuildRoles` import that had no other use in the file), `startRaid.js` (sacrifice-offer gate
+reverted), `embedFactory.js` (`buildCinderrootStatusValue`/the status embed's color simplified to
+has-it/doesn't), 2 command files deleted (`guildCompanionEquip.js`/`guildCompanionUnequip.js`, plus
+their test files), 1 new command file (`guildCompanionWithdraw.js`, plus its own test file with the
+race-safety regression case), `guildCompanionDonate.js`/`guildCompanion.js` given minor wording-only
+edits, and updated tests in `guildCompanionFactory.test.js`/`startRaidGuildCompanion.test.js`/
+`startRaidCooldownSkip.test.js`/`dynamoHandler.test.js`/`guildCompanionDonate.test.js`/
+`guildCompanion.test.js`. Docs updated: `systems/guilds.md`'s Cinderroot section rewritten,
+`/help topic:cinderroot` (constants.js `HelpTopics`) rewritten, `reference/commands.md`'s command
+table updated.

@@ -560,12 +560,12 @@ describe('applyGuildTreasuryInterest', () => {
     // math, not folded into the per-member rate beforehand. getGuilds() is a raw scanAll
     // (unhealed), so guildCompanion can be undefined on a never-healed record as well as
     // null on a healed-but-never-won one — both must be treated identically (no bonus),
-    // only a real object with equipped === true should apply the multiplier (reworked
-    // again 2026-09-11 — a BENCHED companion isn't "in use" either, see below).
-    test('credits the level-scaled multiplier for a guild with the companion EQUIPPED vs. the base amount for one without', async () => {
+    // only a real object (simple possession — the equip/unequip toggle this rework briefly
+    // shipped with was removed the same day) applies the multiplier.
+    test('credits the level-scaled multiplier for a guild that HAS the companion vs. the base amount for one without', async () => {
         docClient.scan.mockReturnValue(resolved({
             Items: [
-                { guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true } },
+                { guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } },
                 { guildId: 'g2', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: null },
             ],
         }));
@@ -583,29 +583,13 @@ describe('applyGuildTreasuryInterest', () => {
         expect(updateByGuildId.g2).toBe(1000007);
     });
 
-    // A BENCHED (equipped: false) Cinderroot isn't "in use" protecting the treasury either
-    // — same un-boosted amount as owning none at all.
-    test('a BENCHED companion (possessed, equipped: false) gets no treasury bonus', async () => {
-        docClient.scan.mockReturnValue(resolved({
-            Items: [
-                { guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: false } },
-            ],
-        }));
-        docClient.update.mockReturnValue(resolved({}));
-
-        await dynamoHandler.applyGuildTreasuryInterest(288);
-
-        const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
-        expect(newValue).toBe(1000007);
-    });
-
     // Proves the multiplier is genuinely level-scaled (not the old flat additive bump in
     // disguise) — same level-6/101M/4-member scenario as the "base rate scales with guild
-    // level" test above, but now with Cinderroot equipped. If this were still the old flat
+    // level" test above, but now with Cinderroot possessed. If this were still the old flat
     // +0.06%/member/day bump, g1 would land far below this value regardless of level.
     test('the companion multiplier itself scales with guild level, at a non-1 level', async () => {
         docClient.scan.mockReturnValue(resolved({
-            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true } }],
+            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } }],
         }));
         docClient.update.mockReturnValue(resolved({}));
 
@@ -660,15 +644,13 @@ describe('findGuildById self-healing', () => {
         expect(healedFieldNames).toContain('guildCompanion');
     });
 
-    // Guild Companion (Cinderroot) Rework migration (2026-09-11) — a guild found with a
-    // non-null guildCompanion that predates the `equipped` field (every guild that already
-    // owned Cinderroot before this rework shipped, e.g. "Honest Workers") gets migrated:
-    // a real Cinderroot instance is minted for the guild's CURRENT LEADER (the same
-    // acquisition step every other Cinderroot goes through) then immediately removed again
-    // from their owned array, and guild.guildCompanion is healed to carry
-    // `equipped: true`. Net effect: the guild record ends up otherwise byte-identical, and
-    // the leader's account ends up exactly where a real donate-and-equip would have left it.
-    test("migrates a legacy guildCompanion (missing `equipped`) by minting-and-removing an instance for the current Leader, then healing equipped: true", async () => {
+    // Guild Companion (Cinderroot) Rework's brief `equipped`-field migration was removed the
+    // same day the equip/unequip toggle itself was — since guild.guildCompanion reverted to
+    // its original two-field shape, every existing guild record (old or newly-donated) is
+    // already correctly shaped, so no migration/healing is needed for it at all. A legacy
+    // (pre-equipped-field) or a Rework-era (equipped-field) record are both passed through
+    // untouched by findGuildById.
+    test('passes a guildCompanion record through untouched, whether it predates the brief equipped-field experiment or not', async () => {
         const existingGuild = {
             guildId: 'g1', guildName: 'Honest Workers', guildNameLowercase: 'honest workers',
             memberCap: 5, memberList: [
@@ -681,68 +663,16 @@ describe('findGuildById self-healing', () => {
             guildVersion: 0,
             guildContract: { templateId: null, rotationDate: null, memberBaselines: {}, frozenContribution: 0, completed: false },
             raidHistory: [], contractHistory: [],
-            guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } // missing `equipped` — legacy shape
-        };
-        const leaderRecord = {
-            userId: 'leader-1', username: 'LeaderOne',
-            companions: { owned: [], active: null, favorites: [null, null, null, null, null], ownedCount: 0, mythicOwnedCount: 0 },
-        };
-
-        docClient.query.mockImplementation((params) => {
-            if (params.ExpressionAttributeValues && ':guildId' in params.ExpressionAttributeValues) {
-                return resolved({ Items: [existingGuild] });
-            }
-            if (params.ExpressionAttributeValues && ':userId' in params.ExpressionAttributeValues) {
-                return resolved({ Items: [leaderRecord] });
-            }
-            return resolved({ Items: [] });
-        });
-        docClient.update.mockReturnValue(resolved({}));
-
-        const guild = await dynamoHandler.findGuildById('g1');
-
-        expect(guild.guildCompanion).toEqual({ id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true });
-
-        const guildCompanionUpdateCall = docClient.update.mock.calls.find(([params]) =>
-            params.Key.guildId === 'g1' && Object.values(params.ExpressionAttributeNames)[0] === 'guildCompanion');
-        expect(guildCompanionUpdateCall).toBeDefined();
-        expect(Object.values(guildCompanionUpdateCall[0].ExpressionAttributeValues)[0]).toEqual({ id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true });
-
-        // The leader's own account was minted-and-removed: net owned array unchanged
-        // (empty), but ownedCount permanently credited once, same as a real find would.
-        // findUser's own generic self-heal fires first for this (deliberately minimal)
-        // leader fixture, so several other `companions` updates land on the same userId
-        // before the migration's own write — take the LAST one, which is the migration's.
-        const leaderCompanionsUpdateCalls = docClient.update.mock.calls.filter(([params]) =>
-            params.Key.userId === 'leader-1' && Object.values(params.ExpressionAttributeNames)[0] === 'companions');
-        expect(leaderCompanionsUpdateCalls.length).toBeGreaterThan(0);
-        const leaderCompanionsValue = Object.values(leaderCompanionsUpdateCalls[leaderCompanionsUpdateCalls.length - 1][0].ExpressionAttributeValues)[0];
-        expect(leaderCompanionsValue.owned).toEqual([]);
-        expect(leaderCompanionsValue.ownedCount).toBe(1);
-    });
-
-    // A guild already carrying `equipped` (either value) is left alone by the migration —
-    // it isn't "legacy" and shouldn't re-mint anything on every single lookup.
-    test('does not re-migrate a guildCompanion that already has an equipped field', async () => {
-        const existingGuild = {
-            guildId: 'g1', guildName: 'Test Guild', guildNameLowercase: 'test guild',
-            memberCap: 5, memberList: [{ id: 'leader-1', username: 'LeaderOne', role: 'Leader' }],
-            bankCapacity: 1000000, bankCapacityBonus: 1000000, bankStored: 0,
-            raidCount: 0, thumbnailUrl: 'thumb.png', raidTimer: 0, inviteList: [],
-            guildBuff: 'workMulti', raidSplitMode: 'even', raidPayoutMode: 'bank',
-            guildVersion: 0,
-            guildContract: { templateId: null, rotationDate: null, memberBaselines: {}, frozenContribution: 0, completed: false },
-            raidHistory: [], contractHistory: [],
-            guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: false }
+            guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' }
         };
         docClient.query.mockReturnValue(resolved({ Items: [existingGuild] }));
         docClient.update.mockReturnValue(resolved({}));
 
         const guild = await dynamoHandler.findGuildById('g1');
 
-        expect(guild.guildCompanion).toEqual({ id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: false });
+        expect(guild.guildCompanion).toEqual({ id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' });
         const guildCompanionUpdateCall = docClient.update.mock.calls.find(([params]) =>
-            Object.values(params.ExpressionAttributeNames)[0] === 'guildCompanion');
+            params.Key.guildId === 'g1' && Object.values(params.ExpressionAttributeNames)[0] === 'guildCompanion');
         expect(guildCompanionUpdateCall).toBeUndefined();
     });
 });

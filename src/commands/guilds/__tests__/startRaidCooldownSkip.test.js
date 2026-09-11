@@ -38,9 +38,7 @@ const { runStartRaidFlow, getRaidCooldownSkipSources } = require('../startRaid')
 const { getRaidLevelInfo } = require('../../../utils/raidFactory');
 const { Raid, SpudKeep, GuildCompanionScaling } = require('../../../utils/constants');
 
-// equipped: true — Guild Companion (Cinderroot) Rework (2026-09-11) gates every perk
-// (including this skip-chance source) on `equipped === true`, not just possession.
-const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true };
+const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' };
 
 function fakeInteraction() {
     const replyObj = {

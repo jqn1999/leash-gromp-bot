@@ -228,10 +228,9 @@ function calculateRaidSuccessChance(totalMultiplier, raidDifficulty, maximumSucc
 // own call is an unconditional flat buy-in charged win-or-lose, never a loss penalty, and
 // deliberately never passes this.
 async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost, raidSplitMode = 'even', raidListByMulti = [], sacrificeOffer = null) {
-    // Guild Companion (Cinderroot) Rework — a BENCHED (equipped: false) Cinderroot isn't
-    // "in use" protecting anything, so the sacrifice offer additionally requires
-    // equipped === true, not just possession (guildCompanion != null).
-    if (sacrificeOffer && sacrificeOffer.guildCompanion != null && sacrificeOffer.guildCompanion.equipped === true && totalRaidCost < 0) {
+    // Guild Companion (Cinderroot) Rework — offered whenever the guild simply possesses
+    // Cinderroot (no separate equip/benched state anymore).
+    if (sacrificeOffer && sacrificeOffer.guildCompanion != null && totalRaidCost < 0) {
         const accepted = await promptCompanionSacrifice(sacrificeOffer);
         if (accepted) {
             await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', null);

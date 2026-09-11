@@ -73,10 +73,9 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `joinSpudKeep.js` | `/join-spud-keep` | Elder/Co-Leader/Leader idempotently enters the guild into today's Spud Keep contest — see [systems/spud-keep.md](../systems/spud-keep.md) |
 | `guildInfamy.js` | `/guild-infamy` | Read-only: current Infamy vs. threshold and whether `/repel-warband` is available — see [systems/guilds.md](../systems/guilds.md#guild-rival-warbands) |
 | `repelWarband.js` | `/repel-warband` | Elder+ resolves an Ashclove Company warband confrontation immediately (no confirm, no options — scenario is rolled, not chosen) once Infamy crosses the threshold — subtracts the threshold win or lose — see [systems/guilds.md](../systems/guilds.md#guild-rival-warbands) |
-| `guildCompanion.js` | `/guild-companion` | Read-only: current Cinderroot status — none / benched / equipped — see [systems/guilds.md](../systems/guilds.md#guild-companion-cinderroot-rework-personal-find-guild-equipunequip) |
-| `guildCompanionDonate.js` | `/guild-companion-donate` | The owning player (no role gate) donates their own found Cinderroot to their guild, equipping it immediately |
-| `guildCompanionEquip.js` | `/guild-companion-equip` | Co-Leader/Leader re-equips a benched Cinderroot |
-| `guildCompanionUnequip.js` | `/guild-companion-unequip` | Co-Leader/Leader benches an equipped Cinderroot (reversible, not destructive) |
+| `guildCompanion.js` | `/guild-companion` | Read-only: current Cinderroot status — none / active — see [systems/guilds.md](../systems/guilds.md#guild-companion-cinderroot-rework-personal-find-donate-in-withdraw-out) |
+| `guildCompanionDonate.js` | `/guild-companion-donate` | The owning player (no role gate) donates their own found Cinderroot to their guild, activating it immediately |
+| `guildCompanionWithdraw.js` | `/guild-companion-withdraw` | Co-Leader/Leader pulls the guild's Cinderroot out entirely, awarding a personal instance to whoever ran the command |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 

@@ -51,9 +51,9 @@ describe('/guild-companion', () => {
         expect(EmbedFactory.prototype.createGuildCompanionStatusEmbed).toHaveBeenCalledWith('Some Guild', guild, 1);
     });
 
-    test('passes the live guild-level lookup through for a leveled guild with Cinderroot equipped', async () => {
+    test('passes the live guild-level lookup through for a leveled guild that has Cinderroot', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const guild = baseGuild({ raidCount: 6, guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', equipped: true } });
+        const guild = baseGuild({ raidCount: 6, guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } });
         dynamoHandler.findGuildById.mockResolvedValue(guild);
         const interaction = fakeInteraction();
 

@@ -5,12 +5,13 @@ const embedFactory = new EmbedFactory();
 
 // Guild Companion (Cinderroot) Rework (systems/guilds.md) — read-only status view, mirrors
 // /guild-infamy's own never-mutates precedent. Distinguishes "no Cinderroot at all" from
-// "benched, not equipped" from "equipped" — the same three states createGuildEmbed's own
-// Guild Companion field already renders, surfaced here as a standalone view for a player
-// who just wants Cinderroot's status without the rest of the guild embed.
+// "has Cinderroot" (always fully active once possessed) — the same two states
+// createGuildEmbed's own Guild Companion field already renders, surfaced here as a
+// standalone view for a player who just wants Cinderroot's status without the rest of the
+// guild embed.
 module.exports = {
     name: "guild-companion",
-    description: "View your guild's Cinderroot status — none, benched, or equipped",
+    description: "View your guild's Cinderroot status — none, or active",
     devOnly: false,
     deleted: false,
     options: [],
