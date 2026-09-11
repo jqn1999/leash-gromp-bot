@@ -315,6 +315,31 @@ workCount }`) — mirrors `getActivePerkValue`'s own lookup idiom. Takes a back 
   accumulated Notoriety (each of which already granted its own XP), so this reflects the
   marginal, single-attempt investment of the confrontation itself. Unconditional on win/loss.
 
+**Work-Only Companion Leveling Bonus (2026-09-11, direct instruction)** — every companion
+above that carries one of the five accelerant-eligible perk types (`robChanceFlat`,
+`starchSellBonusPercent`, `regradeChanceBoostPercent`, `rivalSuccessChanceFlat`,
+`passiveIncomePercent`) gets a second leveling path on top of ordinary `/work`. 7 of the 15
+roster companions carry NONE of these — Sprout, Fieldmouse, Ladybug, Guinea Pig, Prospector,
+Firefly, Spudsprite — and only ever level through `/work`, at the same flat baseline every
+other companion also gets from `/work` alone, leaving them stuck slower overall purely
+because of which perk they happen to carry (player-reported, framed around Guinea Pig/
+Prospector specifically — their perks, poison protection and better special-encounter odds,
+are exactly the kind you'd want equipped WHILE actively grinding, unlike Companion
+Scavenging's own perk-agnostic leveling path, which only works on a benched companion).
+Fixed by doubling `/work`'s own baseline grant (1 → `CompanionLeveling.
+WORK_ONLY_LEVELING_MULTIPLIER`, 2) while one of these 7 is the active/equipped companion — no
+other action's grant changes, and no companion outside this list of 7 is affected.
+`companionFactory.hasAccelerantPerk`/`isWorkOnlyCompanion` derive membership from
+`CompanionLeveling.ACCELERANT_PERK_TYPES` by exclusion (checked against the ROSTER
+definition's `perks` array, same lookup idiom as `restrictToPerkType` above), not a hardcoded
+id list, so a future companion is automatically classified correctly.
+`companionFactory.getWorkLevelingGrant(activeCompanion)` is the single lookup `work.js`'s own
+leveling call site uses in place of the old bare literal `1`. `cinderroot` (the guild
+companion, empty `perks` array) vacuously has no accelerant perk too but is explicitly
+excluded from this classification — it isn't a normal personal-leveling target (see
+`guildCompanionFactory.js`), donated away to a guild rather than kept as someone's own
+equipped companion.
+
 **Display: "XP," not "Work Count" (2026-08-31, direct ask — "make companion works just
 called exp or something since it goes up through many different means now")** —
 display-text-only rename, the underlying field stays `companions.owned[].workCount`

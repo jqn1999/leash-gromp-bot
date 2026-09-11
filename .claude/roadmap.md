@@ -11302,7 +11302,7 @@ pure duplication with no unique behavior of its own.
 Full suite after this follow-up: **1456/1456** across 81 suites (1457 minus the 3 deleted
 `guildCompanion.test.js` cases, plus 2 new `createGuildEmbed` field tests).
 
-## Work-Only Companion Leveling Bonus: 2x /work leveling for companions with no accelerant path (2026-09-11, direct instruction) — planning pass only, not implemented yet
+## Work-Only Companion Leveling Bonus: 2x /work leveling for companions with no accelerant path (2026-09-11, direct instruction)
 
 Player-reported, framed around Guinea Pig and Prospector specifically ("only level up through
 direct works and have no skip chance or anything which make them take forever to level up").
@@ -11418,4 +11418,47 @@ literal zero-leveling-options bug, is the real pain point.
   still gets exactly 1, unaffected by this change) — the accelerant-set boundary is exactly the kind
   of thing worth a regression test given it's defined by exclusion, not an explicit allow-list.
 
-Not yet implemented — this entry is the design only, pending the user saying to build it.
+### Implemented (2026-09-11)
+
+Built exactly as designed above. Full suite after implementation: **1474/1474** across 81 suites.
+
+- `constants.js`: `CompanionLeveling` gains `ACCELERANT_PERK_TYPES` (the 5-entry perk-type list)
+  and `WORK_ONLY_LEVELING_MULTIPLIER` (2).
+- `companionFactory.js`: three new functions — `hasAccelerantPerk(companion)` (checked against
+  the ROSTER `perks` array, same lookup idiom `levelActiveCompanion`'s own `restrictToPerkType`
+  gate already uses), `isWorkOnlyCompanion(companion)` (exclusion-derived, with an explicit
+  `cinderroot` id exclusion — confirmed via `guildCompanionFactory.js` that Cinderroot CAN
+  technically sit as someone's personal equipped companion before donation, so this isn't relying
+  on it being literally unreachable), and `getWorkLevelingGrant(activeCompanion)` (returns
+  `WORK_ONLY_LEVELING_MULTIPLIER` for a work-only companion, else the baseline `1`).
+- `work.js`: the leveling call site (was `levelActiveCompanion(updatedUserDetails.companions, 1)`)
+  now resolves the active companion via `getActiveCompanion` and passes
+  `getWorkLevelingGrant(activeCompanion)` instead. Also updated the separate `_companionXpGained`
+  display flag (stamped earlier in `performWork`, before the real DB write, purely for the result
+  embed's "Work Count:" suffix) from a hardcoded `1` to the same `getWorkLevelingGrant` lookup —
+  missed by the original design writeup, found while reading the actual file: without this fix the
+  embed would have kept showing "+1 XP" for a work-only companion even though the real grant was 2.
+- No other leveling call site touched (`rob.js`, `sellStarch.js`, `regrade.js`, `confrontRival.js`,
+  `mercenaryFactory.js`'s Bounty/Heist, `applyPassiveCompanionTick`) — scoped to `/work`'s own
+  baseline grant only, as designed.
+- Confirmed the 7 work-only companions live via `Companions.filter(c =>
+  companionFactory.isWorkOnlyCompanion(c))`: sprout, fieldmouse, ladybug, guinea_pig, prospector,
+  firefly, spudsprite — matches this section's own list exactly.
+- Docs: `/help topic:companions` (`createHelpCompanionsEmbed`'s description in `embedFactory.js`)
+  and `systems/companions.md`'s Leveling section both updated with a new paragraph naming the
+  affected 7 and the 2x rate, in place right after the `/confront-rival` leveling paragraph.
+- Tests: `companionFactory.test.js` gained a dedicated `hasAccelerantPerk /
+  isWorkOnlyCompanion / getWorkLevelingGrant` describe block covering all 7 work-only companions,
+  5 accelerated companions (one per accelerant perk type), Yamimic's mirrored manifest, Cinderroot's
+  explicit exclusion, and the null/undefined-active fallback. `workCompanionXpDisplay.test.js`
+  (the one existing test file asserting `/work`'s own embed XP suffix) had its original "companion
+  equipped" case switched from Sprout to Barn Owl (Sprout's expected grant changed from 1 to 2, so
+  reusing it unmodified would have silently started asserting the NEW behavior under a comment still
+  describing the old one) and gained a new describe block directly proving Sprout shows "+2 XP" and
+  Barn Owl still shows "+1 XP" from the same `/work` call.
+
+No judgment calls deviated from the design as written — naming landed on the roadmap's own suggested
+`WORK_ONLY_LEVELING_MULTIPLIER`/`hasAccelerantPerk`, plus two small additions the design didn't spell
+out verbatim: `isWorkOnlyCompanion` as a named intermediate (rather than inlining the negation at
+each call site) and `getWorkLevelingGrant` as the single lookup `work.js` calls, both to keep the
+call site itself a one-line change.

@@ -249,13 +249,16 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     // of threading a new formal parameter through every scenario closure: a non-persisted,
     // in-memory-only flag stamped onto userDetails once here and read directly at each of
     // the 12 createWorkEmbed/createPoisonPotatoEmbed/createCompanionEncounterEmbed/
-    // createAncientPotatoEmbed call sites below. /work's own grant is unconditional and flat
-    // (no perk-type/companion-id gate, unlike the other 5 commands), and no scenario handler
-    // changes companions.active mid-call (Companion Encounter only appends a new UNEQUIPPED
-    // instance — see applyCompanionAward's own "does not auto-equip" comment), so
-    // companions?.active's truthiness right here is already a reliable predictor of what
-    // that later write will grant.
-    userDetails._companionXpGained = userDetails.companions?.active ? 1 : 0;
+    // createAncientPotatoEmbed call sites below. /work's own grant is unconditional (no
+    // perk-type/companion-id gate, unlike the other 5 commands) but, since the Work-Only
+    // Companion Leveling Bonus (2026-09-11), no longer flat across every companion — see
+    // companionFactory.getWorkLevelingGrant. No scenario handler changes companions.active
+    // mid-call (Companion Encounter only appends a new UNEQUIPPED instance — see
+    // applyCompanionAward's own "does not auto-equip" comment), so resolving the active
+    // companion right here is already a reliable predictor of what that later write will
+    // grant.
+    const activeCompanionForXpDisplay = companionFactory.getActiveCompanion(userDetails);
+    userDetails._companionXpGained = activeCompanionForXpDisplay ? companionFactory.getWorkLevelingGrant(activeCompanionForXpDisplay) : 0;
 
     const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
     if (timeUntilWorkAvailableInMS > 0) {
@@ -331,11 +334,17 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         // companionFactory.levelActiveCompanion is the shared helper — also used by
         // Bounty/Heist attempts now (roadmap #59) — that resolves the active INSTANCE (not
         // companion id, since 2026-08-25's instance rework) and folds in the Max-Level
-        // capstone's tracking automatically. /work's own grant stays flat 1 per call — it
-        // IS the baseline every other action's grant scales against (see
-        // companionFactory.getCooldownScaledWorkCountGrant).
+        // capstone's tracking automatically. /work's own grant is 1 per call for every
+        // companion with a second leveling path elsewhere (/rob, /sell-starch, /regrade,
+        // /confront-rival, or passive ticking) — that 1 IS the baseline every other action's
+        // grant scales against (see companionFactory.getCooldownScaledWorkCountGrant) — but
+        // doubles to 2 for the 7 companions with NO second path at all (Work-Only Companion
+        // Leveling Bonus, 2026-09-11 direct instruction), since /work is the only way they
+        // level up. See companionFactory.getWorkLevelingGrant for the exact rule.
         if (updatedUserDetails.companions?.active) {
-            const trackedCompanions = companionFactory.levelActiveCompanion(updatedUserDetails.companions, 1);
+            const activeCompanionForLeveling = companionFactory.getActiveCompanion(updatedUserDetails);
+            const workLevelingGrant = companionFactory.getWorkLevelingGrant(activeCompanionForLeveling);
+            const trackedCompanions = companionFactory.levelActiveCompanion(updatedUserDetails.companions, workLevelingGrant);
             await dynamoHandler.updateUserFields(userId, { companions: trackedCompanions });
             // Mirrors this block's own DB write back onto the in-memory object immediately
             // — the achievement check just below reads updatedUserDetails directly, and

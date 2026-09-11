@@ -85,11 +85,13 @@ async function runWork(companions) {
 }
 
 describe('/work result embed folds companion XP into the existing "Work Count:" field', () => {
+    // Barn Owl carries robChanceFlat (an accelerant perk — see Work-Only Companion Leveling
+    // Bonus below) so it stays at /work's universal baseline grant of 1.
     test('a companion equipped shows "N (+1 XP: Name)" in the Work Count field', async () => {
-        const interaction = await runWork(companionsWith('sprout', 'sprout-a', 41));
+        const interaction = await runWork(companionsWith('barn_owl', 'owl-a', 41));
         const embed = interaction.editReply.mock.calls[0][0].embeds[0];
         const field = embed.data.fields.find(f => f.name === 'Work Count:');
-        expect(field.value).toBe('42 (+1 XP: Sprout)');
+        expect(field.value).toBe('42 (+1 XP: Barn Owl)');
     });
 
     test('nothing equipped shows the plain count with no XP suffix', async () => {
@@ -100,8 +102,29 @@ describe('/work result embed folds companion XP into the existing "Work Count:" 
     });
 
     test('never adds a second, standalone "Companion XP" field on /work\'s own embed, even with a companion equipped', async () => {
-        const interaction = await runWork(companionsWith('sprout', 'sprout-a', 41));
+        const interaction = await runWork(companionsWith('barn_owl', 'owl-a', 41));
         const embed = interaction.editReply.mock.calls[0][0].embeds[0];
         expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
+    });
+});
+
+// Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — companions with no
+// second leveling path at all (no robChanceFlat/starchSellBonusPercent/regradeChanceBoostPercent/
+// rivalSuccessChanceFlat/passiveIncomePercent perk — see companionFactory.getWorkLevelingGrant)
+// get double /work's own baseline grant, since /work is the only way they ever level up.
+// Sprout (workMultiplierPercent only) is one of the 7 affected roster companions.
+describe('/work doubles its own leveling grant for work-only companions (no accelerant perk)', () => {
+    test('a work-only companion (Sprout) shows "N (+2 XP: Name)" in the Work Count field', async () => {
+        const interaction = await runWork(companionsWith('sprout', 'sprout-a', 41));
+        const embed = interaction.editReply.mock.calls[0][0].embeds[0];
+        const field = embed.data.fields.find(f => f.name === 'Work Count:');
+        expect(field.value).toBe('42 (+2 XP: Sprout)');
+    });
+
+    test('an accelerated companion (Barn Owl, carries robChanceFlat) still shows only "+1 XP" from /work', async () => {
+        const interaction = await runWork(companionsWith('barn_owl', 'owl-a', 41));
+        const embed = interaction.editReply.mock.calls[0][0].embeds[0];
+        const field = embed.data.fields.find(f => f.name === 'Work Count:');
+        expect(field.value).toBe('42 (+1 XP: Barn Owl)');
     });
 });

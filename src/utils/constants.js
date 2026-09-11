@@ -1053,7 +1053,33 @@ const CompanionLeveling = {
     // instance so the 300s tick and 450s grant period compose with zero long-run drift
     // (grants land on the 2nd and 3rd tick of every 3-tick/900s window, never skipping or
     // double-counting a second) instead of naively rounding every single tick.
-    PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT: 450
+    PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT: 450,
+    // Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — the perk types
+    // above that grant a companion a SECOND leveling path beyond ordinary /work: robChanceFlat
+    // (/rob), starchSellBonusPercent (/sell-starch), regradeChanceBoostPercent (/regrade),
+    // rivalSuccessChanceFlat (/confront-rival), and passiveIncomePercent (passive ticking, see
+    // applyPassiveCompanionTick). A companion whose roster `perks` carry NONE of these
+    // (sprout, fieldmouse, ladybug, guinea_pig, prospector, firefly, spudsprite, as of this
+    // writing — see companionFactory.hasAccelerantPerk, derived from this list rather than a
+    // hardcoded id set) only ever levels through /work, at the same flat baseline every other
+    // companion also gets from /work alone — leaving them stuck slower overall than a
+    // companion with a second path, purely because of which perk it happens to carry. Player-
+    // reported (framed around Guinea Pig/Prospector specifically), found to be systemic across
+    // all 7. Two alternatives considered and rejected: a bonus grant on a random in-work proc
+    // (luck-gated, contradicts this system's own "time investment, not outcome-based reward"
+    // principle) and a per-companion shortened leveling curve (risks rippling into Companion
+    // Market pricing/Fusion/Ascension/achievement thresholds, which all read the one shared
+    // CompanionLeveling.THRESHOLDS curve directly). A flat multiplier on /work's own existing
+    // grant, applied only while one of these 7 is equipped, was chosen instead — see
+    // companionFactory.getWorkLevelingGrant, work.js's own /work leveling call site.
+    ACCELERANT_PERK_TYPES: [
+        "robChanceFlat",
+        "starchSellBonusPercent",
+        "regradeChanceBoostPercent",
+        "rivalSuccessChanceFlat",
+        "passiveIncomePercent"
+    ],
+    WORK_ONLY_LEVELING_MULTIPLIER: 2
 }
 
 // Companion Hunt (2026-09-08, direct instruction — "a command a user can use to scavenge
@@ -3731,6 +3757,115 @@ const shops = [
     }
 ]
 
+// Guild-bank-funded shops for /guild-upgrade — same tier-list shape as `shops` above
+// (currentAmount/amount/cost) but no per-item id/name/description, since guildShopFactory's
+// createGuildShopPageEmbed synthesizes a tier label straight from the numbers instead of
+// requiring 17 hand-authored item names. See guildShopFactory.js for the tier-lookup/
+// purchase logic that reads this data (kept threshold-based, not exact-match, per its own
+// comment there — a guild's base bank capacity can drift off a tier boundary from Guild
+// Contract rewards).
+const guildShops = [
+    {
+        shopId: "bankCapacity",
+        description: "This is where you upgrade your guild bank",
+        items: [
+            {
+                currentAmount: 0,
+                amount: 10000000,
+                cost: 1000000,
+            },
+            {
+                currentAmount: 10000000,
+                amount: 25000000,
+                cost: 10000000,
+            },
+            {
+                currentAmount: 25000000,
+                amount: 50000000,
+                cost: 25000000,
+            },
+            {
+                currentAmount: 50000000,
+                amount: 100000000,
+                cost: 50000000,
+            },
+            {
+                currentAmount: 100000000,
+                amount: 200000000,
+                cost: 100000000,
+            },
+            {
+                currentAmount: 200000000,
+                amount: 400000000,
+                cost: 200000000,
+            },
+            {
+                currentAmount: 400000000,
+                amount: 600000000,
+                cost: 400000000,
+            },
+            {
+                currentAmount: 600000000,
+                amount: 800000000,
+                cost: 400000000,
+            },
+            {
+                currentAmount: 800000000,
+                amount: 1000000000,
+                cost: 400000000,
+            },
+            {
+                currentAmount: 1000000000,
+                amount: 1200000000,
+                cost: 600000000,
+            },
+            {
+                currentAmount: 1200000000,
+                amount: 1500000000,
+                cost: 600000000,
+            },
+            {
+                currentAmount: 1500000000,
+                amount: 2000000000,
+                cost: 800000000,
+            },
+            {
+                currentAmount: 2000000000,
+                amount: 2500000000,
+                cost: 800000000,
+            }
+        ],
+        title: "Guild Potato Storage Shop (increase bank capacity)"
+    },
+    {
+        shopId: "memberCap",
+        description: "This is where you upgrade your guild's member limit",
+        items: [
+            {
+                currentAmount: 5,
+                amount: 8,
+                cost: 5000000,
+            },
+            {
+                currentAmount: 8,
+                amount: 12,
+                cost: 20000000,
+            },
+            {
+                currentAmount: 12,
+                amount: 17,
+                cost: 60000000,
+            },
+            {
+                currentAmount: 17,
+                amount: 25,
+                cost: 150000000,
+            }
+        ],
+        title: "Guild Roster Expansion Shop (increase member cap)"
+    }
+]
+
 // Regrade tier tables — moved here from regrade.js (which still owns all the actual
 // purchase/roll logic) so other files can reuse the same data instead of duplicating it.
 // Mirrors shops' own "tier data lives in constants.js" precedent. First introduced so
@@ -3827,6 +3962,7 @@ const awsConfigurations = {
 
 module.exports = {
     shops,
+    guildShops,
     workRegradeTiers,
     passiveRegradeTiers,
     bankRegradeTiers,

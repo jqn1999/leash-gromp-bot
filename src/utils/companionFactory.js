@@ -381,6 +381,49 @@ function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor =
     return Math.max(1, Math.round((actionCooldownSeconds / Work.WORK_TIMER_SECONDS) * discountFactor));
 }
 
+// Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — true iff `companion`
+// (a ROSTER definition, e.g. from getActiveCompanion/getCompanionById, not an owned instance)
+// carries at least one perk type from CompanionLeveling.ACCELERANT_PERK_TYPES, i.e. it has a
+// second leveling path beyond ordinary /work through /rob, /sell-starch, /regrade,
+// /confront-rival, or passive ticking (see levelActiveCompanion's own restrictToPerkType gate
+// and applyPassiveCompanionTick below, which check these same perk types). Guards against a
+// missing companion/perks array the same defensive way getActivePerkValue does.
+function hasAccelerantPerk(companion) {
+    return (companion?.perks ?? []).some(p => CompanionLeveling.ACCELERANT_PERK_TYPES.includes(p.type));
+}
+
+// True for exactly the roster companions with NO second leveling path at all — they only
+// ever grow through ordinary /work, at the same flat baseline every other companion also
+// gets from /work alone, which is what getWorkLevelingGrant below compensates for. Derived
+// from hasAccelerantPerk (an exclusion rule keyed on perk TYPE) rather than a hardcoded id
+// list, so a future companion is automatically classified correctly without a second change
+// site — mirrors this system's own established "restrict by perk type, not by name"
+// convention. `cinderroot` (the guild companion) carries an empty `perks` array and would
+// otherwise vacuously qualify as "work-only" too — explicitly excluded here since it isn't a
+// normal personal-leveling target (see guildCompanionFactory.js): it's donated away to a
+// guild, not kept as someone's own equipped companion, though it technically CAN sit
+// equipped as an ordinary owned instance before that donation happens, so this isn't relying
+// on it being literally unreachable at this call site.
+function isWorkOnlyCompanion(companion) {
+    if (!companion || companion.id === 'cinderroot') {
+        return false;
+    }
+    return !hasAccelerantPerk(companion);
+}
+
+// /work's own baseline leveling grant (the workCountGained argument work.js passes into
+// levelActiveCompanion for its own call, distinct from every other action's grant computed
+// above/below) — CompanionLeveling.WORK_ONLY_LEVELING_MULTIPLIER (2x) while the active
+// companion is work-only (see isWorkOnlyCompanion), otherwise the universal baseline of 1
+// every other companion already gets from /work. `activeCompanion` is the ROSTER definition
+// (see getActiveCompanion), not the owned instance — pass null/undefined for "nothing
+// equipped" and this falls back to the baseline of 1, the same as isWorkOnlyCompanion's own
+// guard (work.js's own `if (companions?.active)` guard already skips calling this at all in
+// that case, but this stays safe either way).
+function getWorkLevelingGrant(activeCompanion) {
+    return isWorkOnlyCompanion(activeCompanion) ? CompanionLeveling.WORK_ONLY_LEVELING_MULTIPLIER : 1;
+}
+
 // Levels the currently-EQUIPPED instance by workCountGained and folds in
 // applyMaxLevelTracking automatically, so every caller gets the Max-Level capstone for
 // free without a separate call. No-op (returns the exact same `companions` reference,
@@ -848,6 +891,9 @@ module.exports = {
     applyCompanionAward,
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
+    hasAccelerantPerk,
+    isWorkOnlyCompanion,
+    getWorkLevelingGrant,
     levelActiveCompanion,
     getAppliedCompanionXpGain,
     applyPassiveCompanionTick,

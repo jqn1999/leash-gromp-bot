@@ -22,6 +22,9 @@ const {
     applyCompanionAward,
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
+    hasAccelerantPerk,
+    isWorkOnlyCompanion,
+    getWorkLevelingGrant,
     levelActiveCompanion,
     getAppliedCompanionXpGain,
     applyPassiveCompanionTick,
@@ -1047,6 +1050,63 @@ describe('levelActiveCompanion', () => {
             const companions = { owned: [], active: null };
             expect(levelActiveCompanion(companions, 8, null, 'robChanceFlat')).toBe(companions);
         });
+    });
+});
+
+// Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — companions with NO
+// accelerant-eligible perk (robChanceFlat/starchSellBonusPercent/regradeChanceBoostPercent/
+// rivalSuccessChanceFlat/passiveIncomePercent) only ever level through /work, so /work's own
+// grant doubles for exactly those. Classification is by exclusion (perk TYPE membership), not
+// a hardcoded id list — this locks in the full roster classification as a regression test.
+describe('hasAccelerantPerk / isWorkOnlyCompanion / getWorkLevelingGrant', () => {
+    // The 7 roster companions with no accelerant-eligible perk at all, as of this writing.
+    const WORK_ONLY_IDS = ['sprout', 'fieldmouse', 'ladybug', 'guinea_pig', 'prospector', 'firefly', 'spudsprite'];
+    // A representative sample of accelerated companions — one per accelerant perk type.
+    const ACCELERATED_IDS = ['barn_owl', 'mole', 'elder_rootbeard', 'yukon', 'rootcarver'];
+
+    test.each(WORK_ONLY_IDS)('%s has no accelerant perk and is classified work-only', (id) => {
+        const companion = getCompanionById(id);
+        expect(hasAccelerantPerk(companion)).toBe(false);
+        expect(isWorkOnlyCompanion(companion)).toBe(true);
+        expect(getWorkLevelingGrant(companion)).toBe(CompanionLeveling.WORK_ONLY_LEVELING_MULTIPLIER);
+    });
+
+    test.each(ACCELERATED_IDS)('%s carries an accelerant perk and is not classified work-only', (id) => {
+        const companion = getCompanionById(id);
+        expect(hasAccelerantPerk(companion)).toBe(true);
+        expect(isWorkOnlyCompanion(companion)).toBe(false);
+        expect(getWorkLevelingGrant(companion)).toBe(1);
+    });
+
+    // Yamimic mirrors every accelerant perk type via its manifest (see MimicryCompanion),
+    // including at `value: null` — hasAccelerantPerk only ever checks `.type`, never
+    // `.value`, matching levelActiveCompanion's own restrictToPerkType gate.
+    test('yamimic carries accelerant-eligible perk types (mirrored manifest) and is not work-only', () => {
+        const yamimic = getCompanionById('yamimic');
+        expect(hasAccelerantPerk(yamimic)).toBe(true);
+        expect(isWorkOnlyCompanion(yamimic)).toBe(false);
+    });
+
+    // Cinderroot (guild companion, empty perks array) vacuously has no accelerant perk, but
+    // is explicitly excluded from work-only classification — it isn't a normal personal-
+    // leveling target (see guildCompanionFactory.js), and this guards against it silently
+    // getting the 2x bonus if it's ever someone's equipped companion pre-donation.
+    test('cinderroot vacuously has no accelerant perk but is explicitly excluded from work-only classification', () => {
+        const cinderroot = getCompanionById('cinderroot');
+        expect(cinderroot.perks).toEqual([]);
+        expect(hasAccelerantPerk(cinderroot)).toBe(false);
+        expect(isWorkOnlyCompanion(cinderroot)).toBe(false);
+        expect(getWorkLevelingGrant(cinderroot)).toBe(1);
+    });
+
+    test('getWorkLevelingGrant falls back to the baseline of 1 when nothing is equipped (null/undefined)', () => {
+        expect(getWorkLevelingGrant(null)).toBe(1);
+        expect(getWorkLevelingGrant(undefined)).toBe(1);
+    });
+
+    test('hasAccelerantPerk/isWorkOnlyCompanion do not throw on a companion-shaped object with no perks array', () => {
+        expect(hasAccelerantPerk({ id: 'nothing' })).toBe(false);
+        expect(isWorkOnlyCompanion({ id: 'nothing' })).toBe(true);
     });
 });
 
