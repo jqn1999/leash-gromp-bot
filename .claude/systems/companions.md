@@ -1270,7 +1270,8 @@ market-tax discount for a full roster) for now.
   `/work`-leveled crossing instead.
 - **Full-Roster flourish** — `/profile`'s title gets a " 🏆Menagerie Complete" suffix (same
   title-flourish precedent " 🌱Rebirth N" already sets on that same embed) once
-  `companions.ownedCount >= Companions.length` (13, matching `full_roster`'s own threshold
+  `companions.ownedCount >= Companions.length` (15 as of the Guild Companion Rework's
+  Cinderroot addition, matching `full_roster`'s own threshold
   exactly) — `ownedCount` is a lifetime, never-decrementing counter, so this stays a
   permanent capstone once earned, same as the achievement itself. `/companion`'s own list
   description gets an equivalent "🏆 Menagerie Complete" line, but compares against a
@@ -1411,7 +1412,7 @@ checker — no new checking code needed:
 |---|---|---|
 | `first_companion` | New Best Friend | `companions.ownedCount >= 1` |
 | `companion_collector` | Menagerie Keeper | `companions.ownedCount >= 5` |
-| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 13` (all of them, including Yukon — bumped 10→12 when Guinea Pig/Prospector shipped, then 12→13 when Yukon shipped with Mercenary Bounties; `ownedCount` increments on ANY new companion acquisition regardless of `dropSource`, so this needed the same mechanical bump both times) |
+| `full_roster` | Every Creature Great and Small | `companions.ownedCount >= 15` (all of them, including Yukon and Cinderroot — bumped 10→12 when Guinea Pig/Prospector shipped, then 12→13 when Yukon shipped with Mercenary Bounties, then 13→15 (2026-09-11, Guild Companion Rework) when Cinderroot moved into `Companions[]` — this last bump also silently corrected a pre-existing 1-off drift, since Yamimic's own earlier addition had never gotten a matching bump; `ownedCount` increments on ANY new companion acquisition regardless of `dropSource`, so this needs the same mechanical bump on every roster addition) |
 | `mythic_bond` | A Rare Kind of Loyal | `companions.mythicOwnedCount >= 1` |
 | `first_max_level_companion` | Bonded for Life | `companions.maxLevelCount >= 1` |
 | `mythic_max_level_companion` | Legend in Full Bloom | `companions.mythicMaxLevelCount >= 1` |

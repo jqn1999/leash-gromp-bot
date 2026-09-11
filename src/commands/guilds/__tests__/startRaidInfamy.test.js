@@ -74,6 +74,13 @@ function userFixture(id, workMultiplierAmount) {
         workMultiplierAmount,
         rebirthCount: 0,
         autoJoinRaids: true,
+        // Needed for guildCompanionFactory.resolveCinderrootAward's applyCompanionAward
+        // call on a Cinderroot find (Guild Companion Rework, 2026-09-11) — a low enough
+        // Math.random() draw on a win can land inside GuildCompanionDrop.CHANCE for any
+        // non-baby mode (including 'stat' via its own rare Metal King branch), so this
+        // needs to be present even though this file's own tests are about Infamy, not
+        // Cinderroot.
+        companions: { owned: [], active: null, favorites: [null, null, null, null, null], ownedCount: 0, mythicOwnedCount: 0 },
     };
 }
 

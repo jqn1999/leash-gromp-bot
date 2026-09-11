@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, GuildCompanions, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -430,6 +430,31 @@ function buildSpudKeepPayoutShareField(shares, pageIndex = 0) {
     };
 }
 
+// Cinderroot's guild-info display line — shared by createGuildEmbed's own inline field and
+// the dedicated /guild-companion status embed below, so the two never drift on wording or
+// numbers. Assumes guild.guildCompanion is already known truthy (both call sites already
+// guard on that before calling this).
+function buildCinderrootStatusValue(guild, level) {
+    const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
+    const name = def?.name ?? guild.guildCompanion.id;
+    if (guild.guildCompanion.equipped !== true) {
+        return `${name} is benched — not currently protecting your guild's raids or treasury. A Leader or Co-Leader can re-equip it with /guild-companion-equip.`;
+    }
+    const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, level) * 100);
+    const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, level) * 100);
+    // Treasury interest perk (3c, 2026-09-10 rework) is a level-scaled MULTIPLIER on the
+    // guild's whole computed treasury interest amount, not a flat per-member rate bump —
+    // clamp the level lookup the same way GuildCompanionScaling's own values already are,
+    // in case a future retune shortens the array.
+    const clampedTreasuryLevel = Math.min(Math.max(level, 1), CinderrootTreasuryBonusPercent.length);
+    const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
+    // cooldownPct is a chance to skip the raid cooldown entirely on a win (2026-09-05
+    // cooldown-skip overhaul), not a guaranteed reduction — phrased as a chance here so
+    // this never promises a number that isn't actually guaranteed (same fix as
+    // /bounty-board's own cooldown line).
+    return `${name} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`;
+}
+
 class EmbedFactory {
     // Paginated 2 pages — Overview (economy stats) and Activity & Records — same
     // Previous/Next button mechanics as /quests, just over a fixed field set instead of
@@ -445,7 +470,7 @@ class EmbedFactory {
             title += ` 🌱Rebirth ${userDetails.rebirthCount}`;
         }
         // Full-Roster capstone (Option A, cosmetic-only) — same threshold the full_roster
-        // achievement checks (Companions.length, currently 13, includes Yukon).
+        // achievement checks (Companions.length, currently 15, includes Yukon and Cinderroot).
         if ((userDetails.companions?.ownedCount || 0) >= Companions.length) {
             title += ` 🏆Menagerie Complete`;
         }
@@ -1136,22 +1161,13 @@ class EmbedFactory {
         // healed) — a plain truthy check handles both the healed-null and unhealed-undefined
         // cases identically, showing nothing rather than crashing either way.
         if (guild.guildCompanion) {
-            const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
-            const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, raidLevelInfo.level) * 100);
-            const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, raidLevelInfo.level) * 100);
-            // Treasury interest perk (3c, 2026-09-10 rework) is now a level-scaled MULTIPLIER
-            // on the guild's whole computed treasury interest amount, not a flat per-member
-            // rate bump — clamp the level lookup the same way GuildCompanionScaling's own
-            // values already are, in case a future retune shortens the array.
-            const clampedTreasuryLevel = Math.min(Math.max(raidLevelInfo.level, 1), CinderrootTreasuryBonusPercent.length);
-            const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
-            // cooldownPct is a chance to skip the raid cooldown entirely on a win
-            // (2026-09-05 cooldown-skip overhaul), not a guaranteed reduction — phrased as a
-            // chance here so this preview never promises a number that isn't actually
-            // guaranteed (same fix as /bounty-board's own cooldown line).
+            // Guild Companion (Cinderroot) Rework (2026-09-11) — buildCinderrootStatusValue
+            // (shared with the dedicated /guild-companion status embed below) renders a
+            // distinct "benched" line instead of the perk breakdown once equipped === false,
+            // so a benched Cinderroot is never mistaken for an active one here.
             fields.push({
                 name: `Guild Companion:`,
-                value: `${def?.name ?? guild.guildCompanion.id} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`,
+                value: buildCinderrootStatusValue(guild, raidLevelInfo.level),
                 inline: false
             });
         }
@@ -1321,12 +1337,16 @@ class EmbedFactory {
     }
 
     // Announces Cinderroot's acquisition roll firing — see startRaid.js's
-    // rollGuildCompanionDrop call and systems/guilds.md's "Guild Raid Companion" design.
-    // Posted via a followUp, distinct from the raid result message.
-    createGuildCompanionDropEmbed(guildName, def) {
+    // rollGuildCompanionDrop/resolveCinderrootAward call site and systems/guilds.md's
+    // "Guild Companion (Cinderroot) Rework" section. Posted via a followUp, distinct from
+    // the raid result message. Reworked 2026-09-11 — Cinderroot now lands on the raid-
+    // STARTING member's own inventory, not directly on the guild, so this announces the
+    // finder by name and nudges toward donating rather than framing it as an automatic
+    // guild-wide grant.
+    createGuildCompanionDropEmbed(guildName, finderDisplayName, def) {
         const embed = new EmbedBuilder()
-            .setTitle(`${guildName} has won ${def.name}!`)
-            .setDescription(def.dropFlavor)
+            .setTitle(`${finderDisplayName} found ${def.name}!`)
+            .setDescription(`${def.dropFlavor}\n\n${def.name} has joined ${finderDisplayName}'s own companion roster (check /companion) — donate it to ${guildName} with /guild-companion-donate to equip its perks for the whole guild.`)
             .setColor("Gold")
             .setThumbnail(def.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -1334,11 +1354,13 @@ class EmbedFactory {
         return embed;
     }
 
-    // Shown when a raid loss offers the raid-starting member the choice to sacrifice
-    // Cinderroot to void the loss's entire penalty — see startRaid.js's
-    // promptCompanionSacrifice.
+    // Shown when a raid loss offers the raid-starting member the choice to sacrifice an
+    // EQUIPPED Cinderroot to void the loss's entire penalty — see startRaid.js's
+    // promptCompanionSacrifice. Unchanged behavior from before the Cinderroot Rework, just
+    // sourced from Companions[] via guildCompanionFactory now instead of the old
+    // GuildCompanions[0].
     createGuildCompanionSacrificePromptEmbed() {
-        const def = GuildCompanions[0];
+        const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
         const embed = new EmbedBuilder()
             .setTitle(`Sacrifice ${def.name}?`)
             .setDescription(`Your guild's raid has failed. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose the companion in exchange. This choice is yours alone to make; you have 30 seconds to decide.`)
@@ -1351,12 +1373,29 @@ class EmbedFactory {
 
     // Shown after accepting the sacrifice — see startRaid.js's promptCompanionSacrifice.
     createGuildCompanionSacrificeResultEmbed() {
-        const def = GuildCompanions[0];
+        const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
         const embed = new EmbedBuilder()
             .setTitle(`${def.name} has been sacrificed`)
             .setDescription(def.sacrificeFlavor)
             .setColor("Red")
             .setThumbnail(def.thumbnailUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Read-only Cinderroot status view (/guild-companion) — mirrors createGuildInfamyEmbed's
+    // own never-mutates precedent. Distinguishes "no Cinderroot at all" from "benched, not
+    // equipped" from "equipped", using the exact same buildCinderrootStatusValue helper
+    // createGuildEmbed's own inline field uses, so the two views never drift.
+    createGuildCompanionStatusEmbed(guildName, guild, level) {
+        const description = guild.guildCompanion
+            ? buildCinderrootStatusValue(guild, level)
+            : `Your guild doesn't have Cinderroot, the Hoardwarden yet. It's found personally — whoever starts a winning guild raid has a rare chance to find one (see /help topic:cinderroot) — then any member who finds one can donate it to the guild with /guild-companion-donate.`;
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}'s Guild Companion`)
+            .setDescription(description)
+            .setColor(guild.guildCompanion?.equipped === true ? "Gold" : "Grey")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;
@@ -2907,9 +2946,10 @@ class EmbedFactory {
         // Full-Roster capstone (Option A, cosmetic-only, same direct instruction as the
         // Max-Level tag above) — a one-line flourish once every companion in the roster is
         // owned, matching the existing full_roster achievement's own threshold exactly
-        // (Companions.length, currently 13 — includes Yukon, the Highwayman). Compared
-        // against uniqueOwnedCount (distinct types currently owned), not raw instance count —
-        // see companion.js's buildOwnedPages for why a duplicate must not push this over.
+        // (Companions.length, currently 15 — includes Yukon, the Highwayman and Cinderroot,
+        // the Hoardwarden). Compared against uniqueOwnedCount (distinct types currently
+        // owned), not raw instance count — see companion.js's buildOwnedPages for why a
+        // duplicate must not push this over.
         const menagerieComplete = uniqueOwnedCount >= Companions.length ? '\n🏆 Menagerie Complete — every companion, collected.' : '';
 
         const embed = new EmbedBuilder()

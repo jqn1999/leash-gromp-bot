@@ -191,7 +191,17 @@ const Achievements = [
     // Bumped 10->12 (Guinea Pig & Prospector) then 12->13 (Yukon, the Highwayman, added
     // by Mercenary Bounties) — same mechanical bump every roster addition needs, since
     // ownedCount increments on ANY new companion acquisition regardless of dropSource.
-    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 13 companions", statPath: "companions.ownedCount", threshold: 13 },
+    // Bumped again 13->15 (2026-09-11, Guild Companion Rework): Cinderroot, the Hoardwarden
+    // moved into Companions[] (dropSource: "guildRaid", counts toward this the same way
+    // Yukon already does), AND this also silently corrects a pre-existing 1-off drift —
+    // Yamimic, the Thousand-Faced (Heirloom) was added to the roster at some point after
+    // Yukon's own bump without a matching bump here, so the true live count
+    // (Companions.length) was already 14, one ahead of this literal, before Cinderroot's
+    // own addition made it 15. embedFactory.js's own "Menagerie Complete" cosmetic tags
+    // read Companions.length live (never drift), but this achievement's own threshold is a
+    // static literal like every other achievement here, so it needs a manual bump on every
+    // roster change — there is no way around that with this schema.
+    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 15 companions", statPath: "companions.ownedCount", threshold: 15 },
     { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 },
 
     // Max-Level capstone (Option A, cosmetic-only — direct instruction: "just cosmetic
@@ -1497,6 +1507,38 @@ const Companions = [
         ]
     },
     {
+        id: "cinderroot",
+        name: "Cinderroot, the Hoardwarden",
+        rarity: CompanionRarity.LEGENDARY,
+        // Guild Companion (Cinderroot) Rework (2026-09-11, direct instruction) — moved here
+        // from the old guild-only GuildCompanions[] array (deleted, see the comment left in
+        // its old spot near GuildCompanionDrop/GuildCompanionScaling below). Found the exact
+        // same way Yukon is: a real personal companion instance landing in
+        // userDetails.companions.owned, awarded to whoever STARTED the winning raid (see
+        // guildCompanionFactory.resolveCinderrootAward/rollGuildCompanionDrop and
+        // startRaid.js's drop-handling call site) — no longer auto-granted straight to the
+        // guild. dropSource: "guildRaid" mirrors Yukon's own dropSource: "bounty" exactly —
+        // companionFactory.getCompanionsByRarity excludes ANY non-null dropSource from the
+        // normal /work roll pool, so this stays out of ordinary rolls the same way Yukon
+        // already is.
+        dropSource: "guildRaid",
+        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
+        description: "A wyrm-shaped tuber said to slumber beneath the deepest raid vaults, hoarding a sliver of every victory it's ever seen — a guild has to prove itself across enough raids before it rises to guard their spoils instead of someone else's.",
+        dropFlavor: "Something ancient and scorch-scaled stirs in the raid's aftermath and settles at your side instead of the vault — Cinderroot has decided you're worth following. Donate it to your guild with /guild-companion-donate to put its hoard-guarding perks to work for everyone.",
+        sacrificeFlavor: "Cinderroot coils around the guild's stash one last time, shielding it with its own scorched hide — then goes still. The raid's cost is paid in full, and Cinderroot pays it alone.",
+        scavengeFlavor: "Cinderroot barely stirred from its coil the whole time it was out scavenging — whatever it dragged back, it clearly considers a footnote next to a guild's hoard.",
+        // DISPLAY-ONLY, deliberately empty — Cinderroot's three real perks (raid cooldown
+        // skip chance, raid reward bonus, treasury interest bonus) are guild-level effects
+        // scaled by GUILD level (raidCount), consumed exclusively through
+        // guildCompanionFactory.js's own dedicated functions — NOT wired through the
+        // generic per-companion pipeline (getActivePerkValue) at all, and never should be.
+        // This empty array exists only so getActivePerkValue's `active.perks.find(...)`
+        // stays a safe no-op (returns 0) in the brief window between being found and being
+        // donated, if a player equips it as their own personal active companion before
+        // donating it — do not wire real values into this array in a future pass.
+        perks: []
+    },
+    {
         id: "yamimic",
         name: "Yamimic, the Thousand-Faced",
         rarity: CompanionRarity.HEIRLOOM,
@@ -1612,8 +1654,8 @@ const HelpTopics = [
     {
         id: "cinderroot",
         label: "Cinderroot, the Hoardwarden",
-        description: "The rare guild raid companion and its 3 perks",
-        content: "Cinderroot, the Hoardwarden is a single, permanently guild-bound companion your guild can win off a rare drop roll on a WINNING raid resolution — once won, it belongs to the whole guild until sacrificed (see below).\n\n**Drop chance** (per winning raid, gated off once your guild already owns one): Baby 0%, Regular/Stat 0.5%, Elite 1%, Legendary 2.5%.\n\n**Three passive perks**, scaling with Guild Level (see `/help topic:guilds`):\n• Raid cooldown skip chance: 5% (L1) → 20% (L10) — an extra source alongside your guild buff/Spud Keep/Guild Level's own reduction.\n• Raid reward bonus: +9% (L1) → +30% (L10) — multiplies the WINNING side of every raid reward.\n• Treasury interest bonus: a MULTIPLIER on the guild's whole computed treasury interest amount, +25% (L1) → +100% (L10, i.e. the interest amount doubles) — scales with Guild Level like the other two perks.\n\n**Fourth mechanic — sacrifice**: on a raid LOSS, the raider who started it can choose to sacrifice Cinderroot to void that loss's entire potato penalty outright. It's one-time — your guild loses Cinderroot permanently and has to earn a fresh drop roll to get it back."
+        description: "The rare guild raid companion, its 3 perks, and how to equip it",
+        content: "Cinderroot, the Hoardwarden is a real, personal, Legendary-tier companion — found off a rare drop roll on a WINNING guild raid resolution by whoever STARTED that raid, landing straight in their own companion roster (`/companion`), exactly like Yukon. While it sits in your own inventory it's an ordinary Legendary companion with no guild perks at all — it only starts protecting a guild once explicitly donated.\n\n**Donating & equipping**: any player can donate their OWN Cinderroot to their guild with `/guild-companion-donate` — no role gate, as long as the guild doesn't already possess one (equipped or benched). This removes it from your inventory entirely and equips it on the guild immediately. From then on, a Leader/Co-Leader can `/guild-companion-unequip` it to bench it (still the guild's, just inactive — none of the perks below apply while benched) or `/guild-companion-equip` a benched one back on. `/guild-companion` shows the current status: none, benched, or equipped.\n\n**Drop chance** (per winning raid, rolled only for that raid's starter, gated off entirely once your guild already possesses one): Baby 0%, Regular/Stat 0.5%, Elite 1%, Legendary 2.5%.\n\n**Three passive perks** (only while EQUIPPED on a guild), scaling with Guild Level (see `/help topic:guilds`):\n• Raid cooldown skip chance: 5% (L1) → 20% (L10) — an extra source alongside your guild buff/Spud Keep/Guild Level's own reduction.\n• Raid reward bonus: +9% (L1) → +30% (L10) — multiplies the WINNING side of every raid reward.\n• Treasury interest bonus: a MULTIPLIER on the guild's whole computed treasury interest amount, +25% (L1) → +100% (L10, i.e. the interest amount doubles) — scales with Guild Level like the other two perks.\n\n**Fourth mechanic — sacrifice**: on a raid LOSS, while Cinderroot is EQUIPPED (a benched one can't be sacrificed), the raider who started it can choose to sacrifice it to void that loss's entire potato penalty outright. It's one-time and fully destructive — your guild loses Cinderroot permanently (not just benched) and needs a fresh find-and-donate cycle to get another one."
     },
     {
         id: "guild-warbands",
@@ -3108,26 +3150,16 @@ const BuffSwitchCooldown = {
     GUILD_SWITCH_COOLDOWN_SECONDS: MercenaryBuff.SWITCH_COOLDOWN_SECONDS,
 }
 
-// Cinderroot, the Hoardwarden — a single, singleton, permanently-guild-bound companion a guild
-// can win off a rare drop roll on a winning raid resolution (see
-// systems/guilds.md's "Guild Raid Companion" design). Deliberately its own small array, NOT
-// merged into Companions above — that array is entirely userDetails-scoped and everything that
-// reads it (getActivePerkValue, the companion market, /help topic:companions) goes through
-// getActiveCompanion(userDetails); a guild-owned singleton needs its own shape rather than being
-// force-fit into machinery built around one user's own owned/equipped instances. Shaped as an
-// array (not a bare object) purely so a future second guild companion doesn't require
-// restructuring, mirroring Companions/getCompanionById's own id-lookup convention.
-const GuildCompanions = [
-    {
-        id: "cinderroot",
-        name: "Cinderroot, the Hoardwarden",
-        // placeholder until real art exists — reuses Metal King Potato's raid-boss thumbnail
-        thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198661965015416842/latest.png?ex=65c8f272&is=65b67d72&hm=05a83ee3e8a39e6a0f3b8904e127f6655aeafcf239562d5ce484cd9ec42cd789&",
-        description: "A wyrm-shaped tuber said to slumber beneath the deepest raid vaults, hoarding a sliver of every victory it's ever seen — a guild has to prove itself across enough raids before it rises to guard their spoils instead of someone else's.",
-        dropFlavor: "Something ancient and scorch-scaled stirs in the raid's aftermath — Cinderroot has decided your guild's hoard is worth guarding.",
-        sacrificeFlavor: "Cinderroot coils around the guild's stash one last time, shielding it with its own scorched hide — then goes still. The raid's cost is paid in full, and Cinderroot pays it alone."
-    }
-];
+// Cinderroot, the Hoardwarden used to live here as its own small, guild-owned-singleton
+// array (a `GuildCompanions[]`, separate from `Companions` above), a single record written
+// directly onto `guild.guildCompanion` with no player ever "owning" it. Guild Companion
+// (Cinderroot) Rework (2026-09-11, direct instruction) moved its actual roster entry into
+// `Companions` above (id: "cinderroot", dropSource: "guildRaid") — it's now found as a real
+// personal companion instance by whoever started a winning raid, then explicitly donated to
+// a guild (see guildCompanionFactory.js's donate/equip/unequip functions and
+// systems/guilds.md's "Guild Companion (Cinderroot) Rework" section). `guild.guildCompanion`
+// itself is unchanged in shape apart from one new field (`equipped`) — see
+// guildCompanionFactory.js's own top comment.
 
 // Drop chance for Cinderroot, keyed by raid-select mode instead of Bounty band letter, mirroring
 // MercenaryCompanionDrop.YUKON_CHANCE's exact shape and its own halved 2026-08-31 rate
@@ -3822,7 +3854,6 @@ module.exports = {
     MercenaryBuffDescriptions,
     MercenaryBuff,
     BuffSwitchCooldown,
-    GuildCompanions,
     GuildCompanionDrop,
     GuildCompanionScaling,
     RaidLevel,

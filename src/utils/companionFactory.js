@@ -24,15 +24,20 @@ function rollRarity() {
     return CompanionRarity.HEIRLOOM;
 }
 
-// Excludes any companion whose dropSource is explicitly something other than the normal
-// /work roll (today, only Yukon, the Highwayman: dropSource "bounty" — see
+// Excludes any companion with a non-null dropSource — i.e. anything NOT awarded through the
+// normal /work roll. Today that's Yukon, the Highwayman (dropSource "bounty" — see
 // MercenaryCompanionDrop in constants.js, rolled separately on a winning /take-bounty
-// resolution). Every other companion is implicitly dropSource "work" by omission and
-// unaffected. rollCompanion()'s own logic (rollRarity() then a uniform pick within this
-// filtered pool) is completely untouched by this — a static roster filter, not new
-// per-user gating logic inside the roll path itself.
+// resolution) and Cinderroot, the Hoardwarden (dropSource "guildRaid" — rolled on a winning
+// guild raid resolution for whoever started it, see guildCompanionFactory.js). Every other
+// companion is implicitly dropSource "work" by omission and unaffected. Generalized
+// 2026-09-11 (Guild Companion Rework) from an earlier version that only excluded the
+// literal string "bounty" — confirmed safe: no companion besides Yukon set dropSource at
+// all before Cinderroot's rework, so this was a pure widening, not a behavior change for
+// anything pre-existing. rollCompanion()'s own logic (rollRarity() then a uniform pick
+// within this filtered pool) is completely untouched by this — a static roster filter, not
+// new per-user gating logic inside the roll path itself.
 function getCompanionsByRarity(rarity) {
-    return Companions.filter(c => c.rarity === rarity && c.dropSource !== "bounty");
+    return Companions.filter(c => c.rarity === rarity && c.dropSource == null);
 }
 
 // Heirloom's own ownership-prerequisite gate (2026-09-06, direct instruction) — true only

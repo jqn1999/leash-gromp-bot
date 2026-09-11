@@ -135,12 +135,16 @@ describe('hasAllMythics / rollCompanion Heirloom gating', () => {
 });
 
 describe('getCompanionsByRarity / rollCompanion', () => {
-    // Yukon, the Highwayman (dropSource "bounty") is the one deliberate exception —
-    // Mercenary Bounties' own drop mechanism, not the normal /work roll (see
-    // MercenaryCompanionDrop in constants.js). Every other roster entry (implicitly
-    // dropSource "work" by omission) must still be reachable here.
-    test('every non-Bounty-exclusive roster entry is reachable through its own rarity bucket', () => {
-        for (const companion of Companions.filter(c => c.dropSource !== 'bounty')) {
+    // Yukon, the Highwayman (dropSource "bounty") and Cinderroot, the Hoardwarden
+    // (dropSource "guildRaid", added by the Guild Companion Rework 2026-09-11) are the
+    // deliberate exceptions — each has its own dedicated drop mechanism, not the normal
+    // /work roll (see MercenaryCompanionDrop/GuildCompanionDrop in constants.js). Every
+    // other roster entry (implicitly dropSource "work" by omission) must still be
+    // reachable here. The filter itself was generalized from a literal `!== 'bounty'`
+    // check to `dropSource == null` alongside Cinderroot's move into Companions[] — this
+    // test exercises that generalized form directly.
+    test('every companion with no dropSource is reachable through its own rarity bucket', () => {
+        for (const companion of Companions.filter(c => c.dropSource == null)) {
             expect(getCompanionsByRarity(companion.rarity)).toContainEqual(companion);
         }
     });
@@ -151,11 +155,18 @@ describe('getCompanionsByRarity / rollCompanion', () => {
         expect(getCompanionsByRarity(yukon.rarity)).not.toContainEqual(yukon);
     });
 
-    test('rollCompanion always returns a companion whose rarity matches what it rolled, and never Yukon', () => {
+    test('a guildRaid-exclusive companion (Cinderroot) is excluded from the normal roll pool entirely', () => {
+        const cinderroot = Companions.find(c => c.id === 'cinderroot');
+        expect(cinderroot.dropSource).toBe('guildRaid');
+        expect(getCompanionsByRarity(cinderroot.rarity)).not.toContainEqual(cinderroot);
+    });
+
+    test('rollCompanion always returns a companion whose rarity matches what it rolled, and never Yukon or Cinderroot', () => {
         for (let i = 0; i < 200; i++) {
             const companion = rollCompanion();
             expect(Companions).toContainEqual(companion);
             expect(companion.id).not.toBe('yukon');
+            expect(companion.id).not.toBe('cinderroot');
         }
     });
 });

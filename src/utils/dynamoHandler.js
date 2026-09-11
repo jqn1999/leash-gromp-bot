@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent, GuildRoles } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -976,9 +976,11 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
 
         // guild here comes from getGuilds()'s raw scan (unhealed) — guildCompanion can be
         // undefined (never healed) as well as null (healed, never won one), so this must use
-        // the loose `!= null` check, not `!== null` — see systems/guilds.md's "Guild Raid
-        // Companion" design.
-        if (guild.guildCompanion != null) {
+        // the loose `!= null` check, not `!== null` — see systems/guilds.md's "Guild
+        // Companion (Cinderroot) Rework" section. Reworked 2026-09-11: a BENCHED
+        // (equipped: false) Cinderroot isn't "in use" for the guild, so the bonus now also
+        // requires `equipped === true`, not just possession.
+        if (guild.guildCompanion != null && guild.guildCompanion.equipped === true) {
             interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
         }
 
@@ -1500,6 +1502,51 @@ const findGuildById = async function (guildId) {
                 if (Object.keys(healedFields).length > 0) {
                     console.log(`findGuildById healed fields for ${guildId}: ${Object.keys(healedFields).join(', ')}`);
                     guild = { ...guild, ...healedFields };
+                }
+            }
+
+            // Guild Companion (Cinderroot) Rework migration (2026-09-11) — a guild found
+            // with a non-null guildCompanion that predates the `equipped` field (every
+            // guild that already owned Cinderroot before this rework shipped) needs more
+            // than the generic missingFields loop above can give it: that loop only ever
+            // heals a field that's entirely ABSENT at the top level, not a sub-key missing
+            // from an object that's already present. Direct instruction on how to migrate:
+            // mint a real Cinderroot instance for the guild's CURRENT LEADER (the same
+            // acquisition step every other Cinderroot goes through, via
+            // companionFactory.applyCompanionAward — including its ownedCount achievement
+            // credit, preserving continuity rather than creating an "ownerless legacy"
+            // special case), then immediately remove that same instance from their owned
+            // array again, the same net effect a real donate-and-equip has. End state: the
+            // guild record gains `equipped: true` and is otherwise byte-identical; nothing
+            // else about it changes, and the leader's account ends up exactly where a real
+            // donation would have left it (no lingering extra owned instance).
+            if (guild.guildCompanion != null && guild.guildCompanion.equipped === undefined) {
+                const leader = (guild.memberList || []).find(m => m.role === GuildRoles.LEADER);
+                if (leader) {
+                    const leaderDetails = await findUser(leader.id, leader.username);
+                    const cinderroot = leaderDetails ? companionFactory.getCompanionById('cinderroot') : null;
+                    if (leaderDetails && cinderroot) {
+                        const { companions: awardedCompanions } = companionFactory.applyCompanionAward(leaderDetails, cinderroot);
+                        const mintedInstanceId = awardedCompanions.owned[awardedCompanions.owned.length - 1].instanceId;
+                        const finalCompanions = {
+                            ...awardedCompanions,
+                            owned: awardedCompanions.owned.filter(c => c.instanceId !== mintedInstanceId)
+                        };
+                        await updateUserFields(leader.id, { companions: finalCompanions });
+                    } else {
+                        console.log(`findGuildById could not mint a migration Cinderroot instance for guild ${guildId}'s leader — healing equipped: true anyway`);
+                    }
+                } else {
+                    console.log(`findGuildById found no Leader to migrate guild ${guildId}'s legacy guildCompanion onto — healing equipped: true anyway`);
+                }
+
+                const healedGuildCompanion = { ...guild.guildCompanion, equipped: true };
+                const migrated = await updateGuildDatabase(guildId, 'guildCompanion', healedGuildCompanion);
+                if (migrated) {
+                    console.log(`findGuildById migrated legacy guildCompanion for ${guildId} to equipped: true`);
+                    guild = { ...guild, guildCompanion: healedGuildCompanion };
+                } else {
+                    console.log(`findGuildById could not migrate legacy guildCompanion for ${guildId} — leaving unset`);
                 }
             }
 

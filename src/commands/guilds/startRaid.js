@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, GuildCompanions, Work } = require("../../utils/constants")
+const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, Work } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
@@ -12,6 +12,11 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
 const spudKeepFactory = require("../../utils/spudKeepFactory");
+
+// Cinderroot's sacrifice flavor, looked up once at module load — its roster entry now
+// lives in Companions[] (see guildCompanionFactory.js/constants.js's Guild Companion
+// Rework), read through guildCompanionFactory rather than the old GuildCompanions[0].
+const CINDERROOT_SACRIFICE_FLAVOR = guildCompanionFactory.getGuildCompanionById('cinderroot').sacrificeFlavor;
 
 // isChainedReply distinguishes the original /start-raid (or /current-raid button) invocation
 // (edits the deferred reply, clearing the confirm buttons) from an auto-chained extra
@@ -223,7 +228,10 @@ function calculateRaidSuccessChance(totalMultiplier, raidDifficulty, maximumSucc
 // own call is an unconditional flat buy-in charged win-or-lose, never a loss penalty, and
 // deliberately never passes this.
 async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRaidCost, raidSplitMode = 'even', raidListByMulti = [], sacrificeOffer = null) {
-    if (sacrificeOffer && sacrificeOffer.guildCompanion != null && totalRaidCost < 0) {
+    // Guild Companion (Cinderroot) Rework — a BENCHED (equipped: false) Cinderroot isn't
+    // "in use" protecting anything, so the sacrifice offer additionally requires
+    // equipped === true, not just possession (guildCompanion != null).
+    if (sacrificeOffer && sacrificeOffer.guildCompanion != null && sacrificeOffer.guildCompanion.equipped === true && totalRaidCost < 0) {
         const accepted = await promptCompanionSacrifice(sacrificeOffer);
         if (accepted) {
             await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', null);
@@ -372,7 +380,7 @@ const regularRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
@@ -411,7 +419,7 @@ const regularRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
@@ -445,7 +453,7 @@ const regularRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
@@ -479,7 +487,7 @@ const regularRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
@@ -575,7 +583,7 @@ const eliteRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
@@ -610,7 +618,7 @@ const eliteRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
@@ -644,7 +652,7 @@ const eliteRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
@@ -678,7 +686,7 @@ const eliteRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
@@ -755,7 +763,7 @@ const legendaryRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${ultimateRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
@@ -790,7 +798,7 @@ const legendaryRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${hardRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
@@ -824,7 +832,7 @@ const legendaryRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${mediumRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
@@ -858,7 +866,7 @@ const legendaryRaidScenarios = [
                 if (raidSplit === 'sacrificed') {
                     totalRaidSplit = 0;
                     raidSplit = null;
-                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${GuildCompanions[0].sacrificeFlavor}`;
+                    raidResultDescription = `${regularRaidMob.failureDescription}\n\n${CINDERROOT_SACRIFICE_FLAVOR}`;
                 } else {
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
@@ -1552,15 +1560,20 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
     await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
 
-    // Cinderroot's acquisition roll (see systems/guilds.md's "Guild Raid Companion"
-    // design, section 4) — one call, no closures touched. interaction.followUp (not a
-    // second editReply) posts a distinct, additional message announcing the drop, since
-    // every scenario closure above has already sent its own result via sendResult by the
-    // time control returns here.
+    // Cinderroot's acquisition roll (see systems/guilds.md's "Guild Companion
+    // (Cinderroot) Rework" section) — one call, no closures touched. Reworked 2026-09-11:
+    // a hit now awards a real personal companion instance to the raid-STARTING member
+    // (userId/userDetails, already fetched at the top of this function) rather than
+    // writing straight onto the guild — mirrors mercenaryFactory.resolveYukonAward's own
+    // acquisition exactly. interaction.followUp (not a second editReply) posts a distinct,
+    // additional message announcing the find, since every scenario closure above has
+    // already sent its own result via sendResult by the time control returns here.
     const companionDrop = await guildCompanionFactory.rollGuildCompanionDrop(guild, raidSelection, wonThisRaid);
     if (companionDrop.awarded) {
-        const def = guildCompanionFactory.getGuildCompanionById(companionDrop.companion.id);
-        await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, def)] }).catch(() => {});
+        const { companions: updatedCompanions } = guildCompanionFactory.resolveCinderrootAward(userDetails);
+        await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
+        const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
+        await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, userDisplayName, def)] }).catch(() => {});
     }
 
     // finalNextRaidAvailableAt is set by whichever resolveRaidCooldown call the winning

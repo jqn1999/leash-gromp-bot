@@ -10985,7 +10985,7 @@ the constant), and `repelWarband.test.js` (the assertion, using `.hard` since th
 mock guarantees a hard-scenario win). Full suite: 1425/1425, no new tests needed since existing
 coverage already exercised this call path — only the constant's shape and values changed.
 
-## Guild Companion (Cinderroot) Rework: personal find, guild equip/unequip (2026-09-10, direct instruction) — planning pass only, not implemented yet
+## Guild Companion (Cinderroot) Rework: personal find, guild equip/unequip (2026-09-10, direct instruction) — implemented 2026-09-11
 
 Today Cinderroot is a pure guild-owned singleton (`guild.guildCompanion = { id, acquiredAt,
 acquiredRaidTier }`, see systems/guilds.md's "Guild Rival Warbands" section's neighbor, the
@@ -11177,5 +11177,39 @@ announcement embed), new command(s) under `src/commands/guilds/`, `systems/guild
 Cinderroot section (full rewrite of the acquisition/equip section), `/help topic:cinderroot`
 (mention personal find + guild equip instead of "auto-granted to the guild").
 
-Not yet implemented — this entry is the design only, pending confirmation before a developer
-picks it up.
+### Implemented (2026-09-11)
+
+Built exactly as designed above. Full suite after implementation: **1482/1482** across 83 suites
+(1479 from the initial implementation pass, +3 regression tests added for the guild-write-locking
+fix described below).
+See [systems/guilds.md](systems/guilds.md#guild-companion-cinderroot-rework-personal-find-guild-equipunequip)
+for the full writeup (data model, command table, migration mechanism, and every judgment call made
+along the way — command naming/count, where `resolveCinderrootAward` landed, the migration's exact
+code shape, and the donate command's autocomplete option, none of which changed a decision this
+entry or its own resolved open questions already settled). Files touched: `constants.js`
+(`Companions[]` gains the moved `cinderroot` entry, `GuildCompanions[]` deleted, `HelpTopics`
+`cinderroot` entry rewritten), `companionFactory.js` (`getCompanionsByRarity`'s filter
+generalized), `guildCompanionFactory.js` (rewritten — equipped-gate helper, reworked
+`rollGuildCompanionDrop`, new `resolveCinderrootAward`/donate/equip/unequip functions),
+`dynamoHandler.js` (treasury interest gate, `findGuildById` migration), `startRaid.js` (drop-
+handling call site now awards the finder, sacrifice-offer gate), `embedFactory.js` (shared
+`buildCinderrootStatusValue` helper, guild-info display, drop/sacrifice embeds, new status embed),
+4 new command files (`guildCompanion.js`, `guildCompanionDonate.js`, `guildCompanionEquip.js`,
+`guildCompanionUnequip.js`) plus one test file each, and updated tests in
+`companionFactory.test.js`/`startRaidGuildCompanion.test.js`/`startRaidCooldownSkip.test.js`/
+`startRaidInfamy.test.js`/`dynamoHandler.test.js`.
+
+**Post-implementation fix, same day, before this shipped**: the initial pass had all three new
+guild-mutating commands (`guildCompanionDonate.js`/`guildCompanionEquip.js`/`guildCompanionUnequip.js`)
+writing via a blind, unguarded `dynamoHandler.updateGuildDatabase` — unlike every other
+guild-mutating command in this codebase (`leave.js`/`kick.js`/`promote.js`/`invite.js`/`demote.js`/
+`passLeadership.js`/`joinGuild.js`), which all use the version-guarded `updateGuildFieldsWithLock`.
+For `/guild-companion-donate` specifically this was a real data-loss risk: two members racing to
+donate could both pass validation against a stale read, each permanently delete their own
+Cinderroot from their own inventory, and the last DB write would silently discard the other's
+donation with no compensation. Fixed by switching all three to `updateGuildFieldsWithLock` (with
+the standard "your guild changed while processing this, please try again" retry message) and, for
+donate specifically, reordering so the guarded guild write happens BEFORE the player's personal
+inventory is touched — a lost race now costs the loser nothing, they just retry. 3 new regression
+tests added across the three command test files. Caught and fixed during direct verification of the
+implementation, not by the release-reviewer pass that followed (which then confirmed the fix).
