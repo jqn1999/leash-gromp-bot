@@ -92,7 +92,17 @@ class towerFactory{
             this.policy = tC.POLICY.SAFE
             return
         }
-        await confirmation.update({content: '', components: []})
+        // Best-effort ack (2026-09-11, root-caused from a live crash — see tower.md) —
+        // confirmation.update() acks the CLICKED button interaction, which Discord invalidates
+        // 3 seconds after the click if we haven't responded yet. Every one of this file's
+        // confirmation.update() calls (this one and the 8 others below) immediately proceeds
+        // regardless of the result, and the run's actual next-screen edit always goes through
+        // this.interaction.editReply() instead (the original webhook token, good for ~15
+        // minutes, not this 3-second window) — so a DiscordAPIError[10062] "Unknown
+        // interaction" here (seen live: a REST BurstHandler queuing this specific request
+        // behind other bot traffic long enough to blow the window) must never crash the whole
+        // run over a purely cosmetic ack.
+        await confirmation.update({content: '', components: []}).catch(() => {})
         this.policy = confirmation.customId === 'policy_greedy' ? tC.POLICY.GREEDY : tC.POLICY.SAFE
     }
 
@@ -501,16 +511,16 @@ class towerFactory{
             return 0
         }
         if(confirmation.customId === 'fast_forward'){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return 'fast_forward'
         }
         if(confirmation.customId === 'leave'){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return 'leave'
         }
         for (var i in fl.choices){
             if(confirmation.customId == fl.choices[i].name){
-                await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
                 return i
             }
         }
@@ -565,10 +575,10 @@ class towerFactory{
             return false
         }
         if(confirmation.customId == "continue"){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return true
         }else if(confirmation.customId == "leave"){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
     }
@@ -598,10 +608,10 @@ class towerFactory{
             return false
         }
         if(confirmation.customId == "fight"){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return true
         }else if(confirmation.customId == "leave"){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
     }
@@ -631,7 +641,7 @@ class towerFactory{
             return true
         }
         if(confirmation.customId == "continue"){
-            await confirmation.update({content: '', components: []})
+        await confirmation.update({content: '', components: []}).catch(() => {})
             return true
         }
     }

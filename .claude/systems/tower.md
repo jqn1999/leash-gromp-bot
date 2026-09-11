@@ -1484,3 +1484,41 @@ Two changes, both in response to that:
 
 Root cause of the underlying throw is still open — this makes it survivable for the player and
 loggable for whoever investigates next, not identified.
+
+#### Root cause found: bare `confirmation.update()` calls, no `.catch()` (2026-09-11, from a real stack trace)
+
+The fixed logging above worked immediately — the very next crash produced a real trace:
+
+```
+Tower run crashed for rednaxeia (168378996474511360) at floor 21: DiscordAPIError[10062]: Unknown interaction
+    at async ButtonInteraction.update (.../discord.js/src/structures/interfaces/InteractionResponses.js:233:5)
+    at async towerFactory.createFloorEmbed (.../src/utils/towerFactory.js:513:17)
+    ...
+  requestBody: { files: [], json: { type: 7, data: [Object] } },
+  rawError: { message: 'Unknown interaction', code: 10062 },
+```
+
+Code `10062` means Discord had already invalidated that specific button click's interaction token by
+the time our `confirmation.update({content: '', components: []})` call reached it — clicked-component
+interactions must be acked within **3 seconds** of the click, a much tighter window than the ~15
+minute webhook token backing `this.interaction.editReply()`. The `BurstHandler`/`REST` frames in the
+trace point to discord.js's own rate-limit request queue: under enough concurrent bot traffic, this
+specific callback POST can sit queued long enough to blow that 3-second window on its own, with
+nothing wrong in our code's timing at all.
+
+Every `confirmation.update(...)` call in this file (9 sites — `chooseRiskPolicy`, `createFloorEmbed`
+x3, `createNextEmbed` x2, `createEliteEmbed` x2, `createEliteEncounter`) is **purely cosmetic**: it
+just clears the previous screen's buttons, and every call site proceeds to its own return value
+regardless of whether it succeeds. The real next-screen content always goes out separately through
+`this.interaction.editReply()`, which doesn't share this 3-second constraint. So there was never a
+reason for a failure here to take down the whole run — it just wasn't guarded the same way this
+file's `awaitMessageComponent(...).catch(() => null)` calls already were.
+
+Fix: every `confirmation.update(...)` call now ends in `.catch(() => {})`, matching the existing
+best-effort-ack convention already used elsewhere in this file. Regression coverage in
+`towerFactory.test.js`'s "confirmation.update() acks are best-effort, not fatal" block simulates a
+rejected update (a `DiscordAPIError`-shaped rejection with `code: 10062`) at both `createFloorEmbed`
+and `chooseRiskPolicy` and asserts the run still returns/records the clicked choice instead of
+throwing. This is very likely the actual cause of both the floor-13 and floor-1 incidents — a rate-
+limit-driven race that could hit any floor's own button ack, matching both reports being on
+different, unrelated floors with unrelated content.

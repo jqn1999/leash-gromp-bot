@@ -11618,3 +11618,29 @@ Root cause of the underlying throw is still open — this makes it survivable fo
 loggable for next time, not identified. New test: `enter-tower.test.js` covers the crash path
 (restores the flag, replies with the floor-specific message, never reaches payout/leaderboard
 bookkeeping). Full suite: **1508/1508** across 83 suites.
+
+## Fix: Tower crash root cause found and fixed — unguarded confirmation.update() acks (2026-09-11, from a real stack trace)
+
+The logging fix from the entry above worked immediately: the next Tower crash produced a real stack
+trace, `DiscordAPIError[10062]: Unknown interaction` thrown from `ButtonInteraction.update()` inside
+`towerFactory.createFloorEmbed`. Code 10062 means the clicked button's own interaction had already
+been invalidated by Discord — component interactions must be acked within 3 seconds of the click, a
+much tighter window than the ~15-minute webhook token backing `this.interaction.editReply()`. The
+`BurstHandler`/REST frames in the trace point to discord.js's own rate-limit request queue: under
+enough concurrent bot traffic, this specific callback POST can sit queued long enough to blow that
+window with nothing wrong in the run's own code timing at all.
+
+Every `confirmation.update(...)` call in `towerFactory.js` (9 sites: `chooseRiskPolicy`,
+`createFloorEmbed` x3, `createNextEmbed` x2, `createEliteEmbed` x2, `createEliteEncounter`) is purely
+cosmetic — it only clears the previous screen's buttons, and every call site proceeds to its own
+return value regardless of the result. The run's real next-screen content always goes out separately
+via `this.interaction.editReply()`, unaffected by this 3-second window — so there was never a reason
+for a failure here to take down the whole run. Fixed: all 9 now end in `.catch(() => {})`, matching
+this file's existing best-effort-ack convention for `awaitMessageComponent(...).catch(() => null)`.
+
+This is very likely the actual cause behind both the floor-13 and floor-1 incidents reported earlier
+the same day — a rate-limit-driven race that can hit any floor's own button ack, which fits both
+reports landing on different, content-unrelated floors. 2 new regression tests in
+`towerFactory.test.js` simulate a rejected update (`code: 10062`) at `createFloorEmbed` and
+`chooseRiskPolicy` and assert the run still returns/records the clicked choice instead of throwing.
+Docs: `systems/tower.md`'s new "Root cause found" section. Full suite: **1510/1510** across 83 suites.

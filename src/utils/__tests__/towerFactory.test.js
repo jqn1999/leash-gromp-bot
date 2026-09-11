@@ -920,3 +920,40 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1500000 - 200000);
     });
 });
+
+// Root-caused from a live crash (2026-09-11) — see tower.md's "Auto-recovery" section. A real
+// production stack trace showed confirmation.update() throwing DiscordAPIError[10062] "Unknown
+// interaction" (the clicked button's own 3-second ack window had already elapsed, most likely
+// queued behind other bot traffic in discord.js's REST rate-limit handler) and crashing the
+// entire run, even though the run's real next-screen content is always sent separately via
+// this.interaction.editReply() (a ~15-minute webhook token, unaffected by that 3-second window).
+describe('confirmation.update() acks are best-effort, not fatal', () => {
+    test('createFloorEmbed still returns the clicked choice even when acking it throws', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({
+                customId: 'Fight',
+                update: jest.fn().mockRejectedValue(Object.assign(new Error('Unknown interaction'), { code: 10062 })),
+            }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = { name: 'Test Floor', thumbnailUrl: 'https://example.com/x.png', choices: [{ name: 'Fight', outcome: tC.PAYOUT.POTATOES, value: 100, result: 'ok' }] };
+
+        const index = await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', 'desc');
+
+        expect(index).toBe('0');
+    });
+
+    test('chooseRiskPolicy still records the clicked policy even when acking it throws', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({
+                customId: 'policy_greedy',
+                update: jest.fn().mockRejectedValue(Object.assign(new Error('Unknown interaction'), { code: 10062 })),
+            }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await tF.chooseRiskPolicy();
+
+        expect(tF.policy).toBe(tC.POLICY.GREEDY);
+    });
+});
