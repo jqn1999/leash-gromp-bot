@@ -55,7 +55,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `guild.js` | `/guild` | Guild info embed — optional `guild-name` has autocomplete, shows real stored casing |
 | `guildMembers.js` | `/guild-members` | Member list with roles — optional `guild-name` has autocomplete, shows real stored casing |
 | `guildBank.js` | `/guild-bank` | Deposit (taxed, any member) / withdraw (Co-Leader+, untaxed) |
-| `guildBuy.js` | `/guild-upgrade` | Spends guild bank potatoes on bank-capacity or member-cap tier upgrades |
+| `guildBuy.js` | `/guild-upgrade` | Co-Leader/Leader only. `/shop`-style paginated embed + "Buy Next Tier" button (not immediate purchase) for bank-capacity (13 tiers) or member-cap (4 tiers), spent from the guild bank — shows cost, guild's current tier, and afford-check before buying, then re-renders with both the cost paid and the new value |
 | `invite.js` | `/invite` | Elder+ invites a user to the guild |
 | `joinGuild.js` | `/join-guild` | Accept an invite and join, if under member cap — `guild-name` is now optional (autocomplete scoped to guilds you're actually invited to); omit it to get a paginated embed with one join button per pending invite instead |
 | `leave.js` | `/leave` | Non-Leader member leaves the guild |

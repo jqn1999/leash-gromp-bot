@@ -67,15 +67,47 @@ in the condition).
 - **Withdraw**: Co-Leader/Leader only, no tax.
 
 [guildBuy.js](../../src/commands/guilds/guildBuy.js) (`guild-upgrade`): spends `guild.bankStored`
-(not personal potatoes) against a tiered shop list — tier lookup keyed by an exact `currentAmount`
-match, same pattern as the personal shops in [economy-and-work.md](economy-and-work.md). Restricted
-to Co-Leader/Leader, same as bank withdrawals — a regular Member can deposit into the shared bank
+(not personal potatoes) against a tiered shop list (`guildShops`, `constants.js` — same
+"tier data lives in constants.js" convention as the personal `shops`). Restricted to
+Co-Leader/Leader, same as bank withdrawals — a regular Member can deposit into the shared bank
 but can't spend it. Two shops:
-- `bank-capacity`: costs 1M→800M potatoes, capacity 10M→2.5B.
-- `member-cap`: costs 5M→150M potatoes, cap 5→25 members. Closes a real gap — `memberCap` was
-  hardcoded to `5` at guild creation with **no** upgrade path anywhere in the code, even though
+- `bank-capacity`: costs 1M→800M potatoes, capacity 10M→2.5B (13 tiers).
+- `member-cap`: costs 5M→150M potatoes, cap 5→25 members (4 tiers). Closes a real gap — `memberCap`
+  was hardcoded to `5` at guild creation with **no** upgrade path anywhere in the code, even though
   `join-guild`'s own at-capacity error message told players to "upgrade their member cap." The
   error message was apparently written assuming this would exist; it didn't until now.
+
+**Reworked 2026-09-11 (direct instruction — "it only tells the user if its not available cuz not
+enough money or they bought it without saying how much the upgrade was") from a bare-text
+immediate-purchase command into a `/shop`-style embed + button flow.** Runs the same shape as the
+personal `/shop`: `interaction.editReply` shows a paginated (`PAGE_SIZE = 5`, so bank-capacity
+pages while member-cap fits on one page) `createGuildShopPageEmbed` with a ✅/➡️/🔒 marker per
+tier, the guild's current tier, the next tier's cost, and whether the *guild bank* (not the
+invoking player's personal potatoes) can afford it — plus a "Buy Next Tier (cost)" button,
+disabled once maxed. A custom `awaitMessageComponent` collector loop (mirroring `/shop`'s own)
+handles pagination and the buy click in place, re-rendering with fresh guild state after every
+purchase attempt so the buyer sees both the cost just paid AND the resulting value, not just an
+after-the-fact number.
+
+Tier/purchase logic split out into [guildShopFactory.js](../../src/utils/guildShopFactory.js)
+(mirrors `shopFactory.js`'s role for the personal shops):
+- `getNextItemFromShop` is **threshold-based** (first tier whose `amount` exceeds the current
+  base), not an exact `currentAmount` match — kept exactly as the pre-embed `guildBuy.js` fixed it
+  earlier the same day, since a guild's base bank capacity can drift off a tier boundary from
+  Guild Contract rewards (see `bankCapacityBonus` below); an exact-match lookup regresses that fix
+  and permanently reports "already maxed out!" for any drifted guild.
+- `attemptGuildShopBuy(guildId, shopSelect)` is the actual purchase — re-fetches the guild fresh
+  at call time (same "don't trust a value the caller captured while the shop page sat open"
+  reasoning as `shopFactory.attemptShopBuy`), and writes `bankStored` + the target field
+  (`bankCapacity` or `memberCap`) together in a **single `updateGuildFieldsWithLock` call**
+  conditioned on the `guildVersion` the caller read. Closes a real race the old immediate-purchase
+  flow had: two Co-Leaders clicking Buy near-simultaneously could both read the same stale
+  tier/cost off a blind `updateGuildDatabase` write and both deduct the same bank funds for what
+  the DB only ever recorded as one purchase; a lost race now fails cleanly with "your guild changed
+  while processing this purchase... please try again" instead. Returns `{ ok, message }` (no
+  `userDisplayName` prefix) rather than replying itself, so it's directly testable —
+  `guildShopFactory.test.js` covers the drift/threshold regression, the race guard, and the
+  cost-and-resulting-value message content in isolation from the button/collector wiring.
 
 **Guild treasury interest**: `dynamoHandler.applyGuildTreasuryInterest`, on the same 5-minute
 `setInterval` tick `passivePotatoHandler` already uses in `backgroundEvents.js`. Unlike personal

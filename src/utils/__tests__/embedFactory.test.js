@@ -1338,3 +1338,58 @@ describe('createGuildEmbed Guild Companion field', () => {
         expect(field.value).toMatch(/chance to skip raid cooldown/i);
     });
 });
+
+// /guild-upgrade's shop-style embed — mirrors createShopPageEmbed's own marker/afford-check
+// shape, adapted for guildShops' { currentAmount, amount, cost } items (no per-item id/name/
+// description) and the GUILD's own bank/tier progress instead of a player's personal potatoes.
+describe('createGuildShopPageEmbed', () => {
+    const { guildShops } = require('../constants');
+    const bankShop = guildShops.find(s => s.shopId === 'bankCapacity');
+    const [tier0, tier1] = bankShop.items;
+
+    test('marks owned/next/locked tiers correctly, including on a drifted (non-boundary) base value', () => {
+        // base = 9,000,000 sits between tier0's currentAmount(0) and amount(10,000,000) —
+        // same drift scenario guildShopFactory's own regression test covers.
+        const progress = { shopId: 'bankCapacity', baseValue: 9000000, bankStored: 5000000 };
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0, tier1], 0, 1, progress);
+
+        expect(embed.data.fields[0].name).toContain('➡️');
+        expect(embed.data.fields[1].name).toContain('🔒');
+    });
+
+    test('an owned (already-surpassed) tier is marked with a checkmark', () => {
+        const progress = { shopId: 'bankCapacity', baseValue: tier1.amount, bankStored: 0 };
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0], 0, 1, progress);
+
+        expect(embed.data.fields[0].name).toContain('✅');
+    });
+
+    test('fully maxed out shows a maxed-out line instead of a next-tier callout', () => {
+        const progress = { shopId: 'bankCapacity', baseValue: 999999999999, bankStored: 0 };
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0], 0, 1, progress);
+
+        expect(embed.data.description).toMatch(/Fully maxed out/i);
+        expect(embed.data.description).not.toMatch(/Next up/i);
+    });
+
+    test('description shows an affordable next tier as affordable', () => {
+        const progress = { shopId: 'bankCapacity', baseValue: 0, bankStored: tier0.cost };
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0], 0, 1, progress);
+
+        expect(embed.data.description).toMatch(/Next up/);
+        expect(embed.data.description).toMatch(/can afford this/);
+    });
+
+    test('description shows an unaffordable next tier with the shortfall, against the GUILD bank not personal potatoes', () => {
+        const progress = { shopId: 'bankCapacity', baseValue: 0, bankStored: 100 };
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0], 0, 1, progress);
+
+        expect(embed.data.description).toMatch(/need [\d,]+ more in the guild bank/);
+    });
+
+    test('without progress (no context), renders with no markers and no throw', () => {
+        expect(() => embedFactory.createGuildShopPageEmbed(bankShop, [tier0, tier1], 0, 1)).not.toThrow();
+        const embed = embedFactory.createGuildShopPageEmbed(bankShop, [tier0, tier1], 0, 1);
+        expect(embed.data.fields[0].name).not.toMatch(/✅|➡️|🔒/);
+    });
+});

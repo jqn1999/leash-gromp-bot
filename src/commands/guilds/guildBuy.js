@@ -1,135 +1,44 @@
-const { ApplicationCommandOptionType } = require("discord.js");
-const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { buildPaginationRow, getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { GuildRoles } = require("../../utils/constants");
+const { GuildRoles, guildShops } = require("../../utils/constants");
+const { GUILD_SHOP_ID_BY_SELECT, getGuildShopBaseValue, getNextItemFromShop, attemptGuildShopBuy } = require("../../utils/guildShopFactory");
+const { EmbedFactory } = require("../../utils/embedFactory");
+const embedFactory = new EmbedFactory();
 
-const guildShops = [
-    {
-        shopId: "bankCapacity",
-        description: "This is where you upgrade your guild bank",
-        items: [
-            {
-                currentAmount: 0,
-                amount: 10000000,
-                cost: 1000000,
-            },
-            {
-                currentAmount: 10000000,
-                amount: 25000000,
-                cost: 10000000,
-            },
-            {
-                currentAmount: 25000000,
-                amount: 50000000,
-                cost: 25000000,
-            },
-            {
-                currentAmount: 50000000,
-                amount: 100000000,
-                cost: 50000000,
-            },
-            {
-                currentAmount: 100000000,
-                amount: 200000000,
-                cost: 100000000,
-            },
-            {
-                currentAmount: 200000000,
-                amount: 400000000,
-                cost: 200000000,
-            },
-            {
-                currentAmount: 400000000,
-                amount: 600000000,
-                cost: 400000000,
-            },
-            {
-                currentAmount: 600000000,
-                amount: 800000000,
-                cost: 400000000,
-            },
-            {
-                currentAmount: 800000000,
-                amount: 1000000000,
-                cost: 400000000,
-            },
-            {
-                currentAmount: 1000000000,
-                amount: 1200000000,
-                cost: 600000000,
-            },
-            {
-                currentAmount: 1200000000,
-                amount: 1500000000,
-                cost: 600000000,
-            },
-            {
-                currentAmount: 1500000000,
-                amount: 2000000000,
-                cost: 800000000,
-            },
-            {
-                currentAmount: 2000000000,
-                amount: 2500000000,
-                cost: 800000000,
-            }
-        ],
-        title: "Guild Potato Storage Shop (increase bank capacity)"
-    },
-    {
-        shopId: "memberCap",
-        description: "This is where you upgrade your guild's member limit",
-        items: [
-            {
-                currentAmount: 5,
-                amount: 8,
-                cost: 5000000,
-            },
-            {
-                currentAmount: 8,
-                amount: 12,
-                cost: 20000000,
-            },
-            {
-                currentAmount: 12,
-                amount: 17,
-                cost: 60000000,
-            },
-            {
-                currentAmount: 17,
-                amount: 25,
-                cost: 150000000,
-            }
-        ],
-        title: "Guild Roster Expansion Shop (increase member cap)"
-    }
-]
+const PAGE_SIZE = 5;
+const BUY_ID = 'guild_shop_buy_next';
 
-function doesGuildHaveEnoughToPurchase(currentPotatoes, itemSelectedCost, interaction, userDisplayName) {
-    if (currentPotatoes < itemSelectedCost) {
-        interaction.editReply(`${userDisplayName} you do not have enough to purchase this item! You currently have ${currentPotatoes.toLocaleString()} potatoes in your guild bank and need ${(itemSelectedCost-currentPotatoes).toLocaleString()} more potatoes!`)
-        return false;
+function chunkArray(array, size) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+        chunks.push(array.slice(i, i + size));
     }
-    return true
+    return chunks.length > 0 ? chunks : [[]];
 }
 
-// Threshold-based, not an exact match against currentAmount — a guild's actual base
-// value can land BETWEEN two tier boundaries (see bankCapacityBonus's own history:
-// Guild Contract completions granted before that field existed bumped raw bankCapacity
-// with no bonus tracking at all, and the missing-field healing that backfilled a
-// default bankCapacityBonus for those pre-existing guilds can't reconstruct their exact
-// historical drift). An exact-match lookup permanently reports "already maxed out!" for
-// any guild whose base capacity doesn't land precisely on a tier boundary; this instead
-// finds the next tier not yet fully purchased (the first item whose amount exceeds the
-// current base), so any drift — from this cause or any other — self-heals to the
-// correct next purchase instead of hard-locking the shop.
-function getNextItemFromShop(shop, currentAmount) {
-    for (const element of shop.items) {
-        if (element.amount > currentAmount) {
-            return element;
-        }
+// One-click purchase button — same reasoning as /shop's own buildBuyRow: the page above it
+// already shows the next tier's cost and whether the guild bank can afford it, so there's no
+// separate confirm step. Only disabled once every tier is owned; left enabled (rather than
+// disabled) when unaffordable so a click still gets a clear reason from attemptGuildShopBuy
+// instead of a dead button.
+function buildBuyRow(shopDetails, baseValue) {
+    const nextItem = getNextItemFromShop(shopDetails, baseValue);
+    const button = new ButtonBuilder()
+        .setCustomId(BUY_ID)
+        .setLabel(nextItem === -1 ? 'Maxed Out' : `Buy Next Tier (${nextItem.cost.toLocaleString()})`)
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(nextItem === -1);
+    return new ActionRowBuilder().addComponents(button);
+}
+
+function buildRows(shopDetails, baseValue, pageIndex, totalPages) {
+    const rows = [];
+    if (totalPages > 1) {
+        rows.push(buildPaginationRow('guild_shop', pageIndex, totalPages));
     }
-    return -1;
+    rows.push(buildBuyRow(shopDetails, baseValue));
+    return rows;
 }
 
 module.exports = {
@@ -159,8 +68,10 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
         let shopSelect = interaction.options.get('shop-select')?.value;
-        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+        const shopId = GUILD_SHOP_ID_BY_SELECT[shopSelect];
+        const shopDetails = guildShops.find((currentShop) => currentShop.shopId == shopId);
 
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
@@ -178,55 +89,54 @@ module.exports = {
             return;
         }
 
-        let guildBankStored = guild.bankStored;
-        let guildBankCapacity = guild.bankCapacity;
-        // bankCapacityBonus is Guild Contract's (see guildContractFactory.js) additive
-        // reward, tracked separately so the shop's tier lookup runs against the
-        // shop-purchased BASE value, not the reward-inflated total — same
-        // base = total - bonus pattern buy.js/rebirthFactory.js use for the user shop
-        // (userDetails.bankCapacity - sweetPotatoBuffs.bankCapacity - regradeAmount).
-        // Without this, a contract reward knocks bankCapacity off the tier ladder's
-        // exact-match values and every future purchase reports "already maxed out!".
-        const guildBankCapacityBonus = Number.isFinite(guild.bankCapacityBonus) ? guild.bankCapacityBonus : 0;
-        let guildBaseBankCapacity = guildBankCapacity - guildBankCapacityBonus;
+        let baseValue = getGuildShopBaseValue(guild, shopId);
+        let progress = { shopId, baseValue, bankStored: guild.bankStored };
 
-        let chosenItem, guildHasEnough;
-        switch (shopSelect) {
-            case 'bank-capacity':
-                const bankShop = guildShops.find((currentShop) => currentShop.shopId == 'bankCapacity');
-                chosenItem = getNextItemFromShop(bankShop, guildBaseBankCapacity);
-                if (chosenItem == -1) {
-                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
-                    return;
-                }
-                guildHasEnough = doesGuildHaveEnoughToPurchase(guildBankStored, chosenItem.cost, interaction, userDisplayName);
-                if (guildHasEnough) {
-                    guildBankStored -= chosenItem.cost;
-                    // Bonus re-added on top of the shop's flat tier value so it survives
-                    // this purchase instead of being overwritten by it.
-                    const newBankCapacity = chosenItem.amount + guildBankCapacityBonus;
-                    await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
-                    await dynamoHandler.updateGuildDatabase(guild.guildId, "bankCapacity", newBankCapacity);
-                    interaction.editReply(`${userDisplayName} your guild bank upgrade has completed and you now have a max guild bank capacity of ${newBankCapacity.toLocaleString()}`);
-                }
+        const pages = chunkArray(shopDetails.items, PAGE_SIZE);
+        let pageIndex = 0;
+        const renderPage = (idx) => embedFactory.createGuildShopPageEmbed(shopDetails, pages[idx], idx, pages.length, progress);
+
+        const embed = renderPage(0);
+        const components = buildRows(shopDetails, baseValue, 0, pages.length);
+        const reply = await interaction.editReply({ embeds: [embed], components });
+
+        // Same custom collector loop as /shop — reacts to prev/next pagination AND the "Buy
+        // Next Tier" click in place, refreshing baseValue/progress from a fresh guild fetch
+        // after every buy attempt (attemptGuildShopBuy already re-fetches internally for the
+        // purchase itself; this second fetch is just to redraw the embed with whatever
+        // actually landed, same two-fetch shape /shop's own collector loop already has).
+        const collectorFilter = i => i.user.id === interaction.user.id;
+        while (true) {
+            const clicked = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);
+            if (!clicked) {
+                await reply.edit({ components: [] }).catch(() => {});
                 break;
-            case 'member-cap':
-                const memberCapShop = guildShops.find((currentShop) => currentShop.shopId == 'memberCap');
-                chosenItem = getNextItemFromShop(memberCapShop, guild.memberCap);
-                if (chosenItem == -1) {
-                    interaction.editReply(`${userDisplayName} this upgrade is already maxed out!`);
-                    return;
+            }
+
+            if (clicked.customId === 'guild_shop_prev' || clicked.customId === 'guild_shop_next') {
+                pageIndex = clicked.customId === 'guild_shop_next' ? pageIndex + 1 : pageIndex - 1;
+                await clicked.update({ embeds: [renderPage(pageIndex)], components: buildRows(shopDetails, baseValue, pageIndex, pages.length) });
+                continue;
+            }
+
+            if (clicked.customId === BUY_ID) {
+                await clicked.deferUpdate();
+
+                const result = await attemptGuildShopBuy(guild.guildId, shopSelect);
+
+                const refreshedGuild = await dynamoHandler.findGuildById(guild.guildId);
+                if (refreshedGuild) {
+                    baseValue = getGuildShopBaseValue(refreshedGuild, shopId);
+                    progress = { shopId, baseValue, bankStored: refreshedGuild.bankStored };
                 }
-                guildHasEnough = doesGuildHaveEnoughToPurchase(guildBankStored, chosenItem.cost, interaction, userDisplayName);
-                if (guildHasEnough) {
-                    guildBankStored -= chosenItem.cost;
-                    const newMemberCap = chosenItem.amount;
-                    await dynamoHandler.updateGuildDatabase(guild.guildId, 'bankStored', guildBankStored);
-                    await dynamoHandler.updateGuildDatabase(guild.guildId, "memberCap", newMemberCap);
-                    interaction.editReply(`${userDisplayName} your guild's member cap has been upgraded to ${newMemberCap} members!`);
-                }
-                break;
+
+                await interaction.editReply({
+                    content: `${userDisplayName}, ${result.message}`,
+                    embeds: [renderPage(pageIndex)],
+                    components: buildRows(shopDetails, baseValue, pageIndex, pages.length)
+                });
+                continue;
+            }
         }
-        return
     }
 }

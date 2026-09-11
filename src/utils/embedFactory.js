@@ -13,6 +13,7 @@ const mercenaryFactory = require("../utils/mercenaryFactory");
 const cooldownFactory = require("../utils/cooldownFactory");
 const safehouseFactory = require("../utils/safehouseFactory");
 const shopFactory = require("../utils/shopFactory");
+const guildShopFactory = require("../utils/guildShopFactory");
 const eventFactory = new EventFactory();
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
@@ -967,6 +968,63 @@ class EmbedFactory {
             } else {
                 const afford = progress.potatoes >= nextItem.cost ? '✅ you can afford this' : `❌ need ${(nextItem.cost - progress.potatoes).toLocaleString()} more`;
                 description += `\n➡️ Next up: **${nextItem.name}** — ${nextItem.cost.toLocaleString()} potatoes (${afford})`;
+            }
+        }
+        description += `\nPage ${pageIndex + 1} / ${totalPages}`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${shopDetails.title}`)
+            .setDescription(description)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(shopList)
+        return embed;
+    }
+
+    // /guild-upgrade's own paginated shop view — same ✅/➡️/🔒 marker and "current tier /
+    // next up / page indicator" description shape as createShopPageEmbed above, adapted for
+    // guildShops' item shape ({ currentAmount, amount, cost }, no per-item id/name/
+    // description). `progress`, when passed, is { shopId, baseValue, bankStored } — the
+    // GUILD's own tier progress and bank balance (not the viewing player's personal
+    // potatoes), since this is a shared guild-funded shop. nextItem is looked up by
+    // reference (via guildShopFactory.getNextItemFromShop, which is threshold- not
+    // exact-match-based) rather than a second independent numeric comparison, so the "next"
+    // marker can never disagree with the actual next purchase on a guild whose base value
+    // has drifted off a tier boundary — see guildShopFactory.js's own comment.
+    createGuildShopPageEmbed(shopDetails, pageItems, pageIndex, totalPages, progress = null) {
+        const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
+
+        let numericBaseValue, nextItem;
+        if (progress) {
+            numericBaseValue = Number(progress.baseValue);
+            nextItem = guildShopFactory.getNextItemFromShop(shopDetails, progress.baseValue);
+        }
+
+        const shopList = pageItems.map(element => {
+            let marker = '';
+            if (progress) {
+                const status = guildShopFactory.getGuildShopTierStatus(element, numericBaseValue, nextItem);
+                marker = status === guildShopFactory.GUILD_SHOP_TIER_STATUS.OWNED ? '✅ '
+                    : status === guildShopFactory.GUILD_SHOP_TIER_STATUS.NEXT ? '➡️ '
+                    : '🔒 ';
+            }
+            return {
+                name: `${marker}Tier: ${element.currentAmount.toLocaleString()} → ${element.amount.toLocaleString()}`,
+                value: `Cost: ${element.cost.toLocaleString()} potatoes`,
+                inline: false,
+            };
+        });
+
+        let description = `${shopDetails.description}`;
+        if (progress) {
+            description += `\nYour guild's current tier: ${guildShopFactory.formatGuildShopValue(progress.shopId, progress.baseValue)}`;
+            if (nextItem === -1) {
+                description += `\n✅ Fully maxed out!`;
+            } else {
+                const afford = progress.bankStored >= nextItem.cost ? '✅ your guild bank can afford this' : `❌ need ${(nextItem.cost - progress.bankStored).toLocaleString()} more in the guild bank`;
+                description += `\n➡️ Next up: **Tier ${nextItem.currentAmount.toLocaleString()} → ${nextItem.amount.toLocaleString()}** — ${nextItem.cost.toLocaleString()} potatoes (${afford})`;
             }
         }
         description += `\nPage ${pageIndex + 1} / ${totalPages}`;

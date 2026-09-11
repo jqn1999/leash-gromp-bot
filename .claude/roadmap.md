@@ -11462,3 +11462,68 @@ No judgment calls deviated from the design as written — naming landed on the r
 out verbatim: `isWorkOnlyCompanion` as a named intermediate (rather than inlining the negation at
 each call site) and `getWorkLevelingGrant` as the single lookup `work.js` calls, both to keep the
 call site itself a one-line change.
+
+## `/guild-upgrade` reworked into a `/shop`-style embed + button (2026-09-11, player-reported)
+
+Player report: "it only tells the user if its not available cuz not enough money or they bought
+it without saying how much the upgrade was" — `guildBuy.js` bought immediately in the same
+interaction with no preview, and its plain-text success/failure replies never showed cost and
+resulting value together.
+
+Rebuilt to mirror the personal `/shop` command exactly: an `interaction.editReply` embed showing
+every tier (paginated, `PAGE_SIZE = 5`) with a ✅/➡️/🔒 marker, the guild's current tier, the next
+tier's cost, and an afford-check against the *guild bank* — plus a "Buy Next Tier (cost)" button. A
+custom `awaitMessageComponent` collector loop (same shape as `shop.js`'s own) handles pagination and
+buy clicks in place, re-rendering with fresh guild state after every purchase so the cost paid and
+the new value are both visible, not just the after-value like before.
+
+- New [guildShopFactory.js](../src/utils/guildShopFactory.js), mirroring `shopFactory.js`'s role —
+  `getGuildShopBaseValue`, the threshold-based `getNextItemFromShop` (kept EXACTLY as the pre-embed
+  `guildBuy.js` already fixed it earlier the same day — see the "Fix guild bank-capacity shop
+  lockout" work folded into today's session — since an exact-match lookup regresses guilds whose
+  base bank capacity has drifted off a tier boundary from Guild Contract rewards back to a permanent
+  "already maxed out!"), `getGuildShopTierStatus` (drives the ✅/➡️/🔒 markers by reference against
+  whatever `getNextItemFromShop` actually returned, not a second independent numeric check, so it
+  can't disagree with the real next tier on a drifted guild), `formatGuildShopValue`, and
+  `attemptGuildShopBuy(guildId, shopSelect)` — the actual purchase, re-fetching the guild fresh at
+  call time and returning `{ ok, message }` rather than replying itself (directly testable, no
+  interaction/collector mocking needed).
+- `guildShops` (the 13-tier bank-capacity / 4-tier member-cap data) moved into `constants.js`,
+  matching where the personal `shops` array already lives — `guildShopFactory.js` holds only the
+  logic, same split as `shopFactory.js`/`constants.js`.
+- New `embedFactory.createGuildShopPageEmbed`, structurally mirroring `createShopPageEmbed` but
+  synthesizing a `Tier: {currentAmount} → {amount}` field name straight from the numbers (guild
+  shop items have no per-item id/name/description, unlike the personal shops' 17 hand-authored
+  items) and checking the afford branch against `guild.bankStored`, not the viewing player's
+  personal potatoes.
+- **Closed a real concurrency gap while touching these writes anyway**: the old purchase used two
+  separate, unguarded `dynamoHandler.updateGuildDatabase` calls (`bankStored`, then
+  `bankCapacity`/`memberCap`) — two Co-Leaders clicking Buy near-simultaneously could both read the
+  same stale tier/cost and both deduct the same bank funds for what the DB only ever recorded as one
+  purchase. `attemptGuildShopBuy` now writes both fields together in a single
+  `updateGuildFieldsWithLock` call conditioned on `guild.guildVersion`, matching every other
+  guild-mutating command in this codebase (`leave.js`/`kick.js`/`promote.js`/etc., and this same
+  session's own `guildCompanionDonate.js`/`guildCompanionEquip.js`/`guildCompanionUnequip.js`/
+  `guildCompanionWithdraw.js`) — a lost race now fails cleanly with "your guild changed while
+  processing this purchase... please try again" instead of a silent double-spend.
+- The Leader/Co-Leader role gate is unchanged — still checked before the shop embed ever renders,
+  not just on the buy click.
+- Tests: new `guildShopFactory.test.js` (tier lookup incl. the drift/threshold regression, tier
+  status markers, value formatting, and `attemptGuildShopBuy` incl. the race-guard regression, all
+  directly against the extracted function, no interaction mocking). New `createGuildShopPageEmbed`
+  describe block in `embedFactory.test.js` (marker logic incl. drift, maxed-out, afford/can't-afford
+  against the guild bank). `guildIdReferenceErrorFixes.test.js`'s existing `/guild-upgrade` tests
+  adapted to simulate a button click via a mocked `awaitMessageComponent` (same pattern
+  `startRaidCooldownSkip.test.js`/`startRaidGuildCompanion.test.js` already use) so the full
+  command/button wiring stays exercised end to end, not just `guildShopFactory` in isolation — the
+  drift-tolerant regression test from that file was preserved and adapted, not dropped. Full suite
+  after implementation: **1503/1503** across 82 suites.
+- Judgment calls (left unspecified by the brief): the command stays non-ephemeral (matches its old
+  behavior and every other guild-shared-resource command, unlike `/shop`'s ephemeral personal view);
+  the collector stays filtered to the invoking user only (same as `/shop`, and the invoking user was
+  already the one gated by the Leader/Co-Leader check to open the shop at all); button custom ID is
+  `guild_shop_buy_next` and pagination `idPrefix` is `'guild_shop'` (distinct from `/shop`'s own
+  `shop_buy_next`/`'shop'` so the two commands' buttons never collide if ever shown side by side);
+  exact tier-label wording (`Tier: {currentAmount} → {amount}`) and success-message phrasing were the
+  developer's call, per the brief's own "your call on exact wording/placement" — both the cost paid
+  and the resulting value are genuinely visible either way.
