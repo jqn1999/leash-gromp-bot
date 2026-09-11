@@ -19,7 +19,7 @@ async function processDailyStreak(interaction) {
         if (!userDetails) return null;
         return await dailyStreakFactory.processLogin(userDetails);
     } catch (e) {
-        console.log(`processDailyStreak error: ${e}`);
+        console.error(`processDailyStreak error:`, e);
         return null;
     }
 }
@@ -30,7 +30,7 @@ async function notifyDailyStreak(interaction, streakResult, userDisplayName) {
         const streakEmbed = embedFactory.createDailyStreakEmbed(userDisplayName, streakResult.streak, streakResult.reward);
         await interaction.followUp({ embeds: [streakEmbed] });
     } catch (e) {
-        console.log(`notifyDailyStreak error: ${e}`);
+        console.error(`notifyDailyStreak error:`, e);
     }
 }
 
@@ -54,7 +54,7 @@ async function notifyAchievements(interaction, userDisplayName) {
             await interaction.followUp({ embeds: achievementEmbeds });
         }
     } catch (e) {
-        console.log(`notifyAchievements error: ${e}`);
+        console.error(`notifyAchievements error:`, e);
     }
 }
 
@@ -76,7 +76,7 @@ async function handleAutocomplete(client, interaction) {
         }
         await commandObject.autocomplete(client, interaction);
     } catch (e) {
-        console.log(`There was an error running autocomplete for this command ${e}`);
+        console.error(`There was an error running autocomplete for this command:`, e);
         await interaction.respond([]).catch(() => {});
     }
 }
@@ -161,7 +161,11 @@ module.exports = async (client, interaction) => {
         await notifyDailyStreak(interaction, await streakResultPromise, userDisplayName);
         await notifyAchievements(interaction, userDisplayName);
     } catch (e) {
-        console.log(`There was an error running this command ${e}`)
+        // Logging the Error object itself (not `${e}`, which only calls its .toString() and
+        // drops the stack) — this used to be the ONLY signal an uncaught command bug left
+        // behind, and a bare "Error: message" with no stack was never enough to pinpoint
+        // where it actually threw (see the Tower crash investigation in tower.md).
+        console.error(`There was an error running this command:`, e)
         // Without this, any uncaught error in a command's callback (a bug like a
         // ReferenceError, a rejected promise, etc.) leaves the interaction stuck on
         // Discord's "thinking..." state indefinitely, since deferReply() already fired but

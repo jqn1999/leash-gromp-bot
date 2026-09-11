@@ -22,6 +22,8 @@ function fakeInteraction() {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
         followUp: jest.fn().mockResolvedValue(),
+        reply: jest.fn().mockResolvedValue(),
+        deferred: true,
         user: { id: 'user-1', username: 'User', displayName: 'User' },
     };
 }
@@ -85,4 +87,28 @@ test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone clears t
 
     expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringContaining('barred entry'));
     expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', expectedEffectivePower, false);
+});
+
+// Auto-recovery (2026-09-11): a run that throws partway through used to strand the player
+// (canEnterTower already flipped false, no other write to ever restore it) until the next
+// day's 4am UTC reset — see tower.md's "/admin-reset-tower" section. Now the entry is
+// restored automatically and the player is told plainly what happened.
+test('a run that throws mid-climb restores canEnterTower and tells the player, instead of leaving them stuck', async () => {
+    dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+    towerFactory.mockImplementation(() => ({
+        floor: 7,
+        startRun: jest.fn().mockRejectedValue(new Error('boom')),
+    }));
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'canEnterTower', false);
+    expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('user-1', 'canEnterTower', true);
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringMatching(/unexpected error.*floor 7.*enter-tower again/is),
+    }));
+    // The crashed run must never reach payout/leaderboard bookkeeping.
+    expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled();
+    expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
 });

@@ -11582,3 +11582,39 @@ already comfortably covered 0.98 with no change needed); `systems/betting-and-ga
 Reels section, which was ALSO still stale on the earlier same-day MAX_SPINS 10->100 bump (never
 updated when that shipped) — fixed both in the same pass. Full suite: **1503/1503** across 82
 suites.
+
+## Fix: /admin-reset-tower + Tower crash auto-recovery (2026-09-11, direct instruction + live bug report)
+
+Player screenshot showed `/enter-tower` producing the bot's generic "Something went wrong running
+that command" error while a separate, already-open "FLOOR 13: COMBAT" prompt with live Fight/Fast
+Forward buttons remained stuck on screen. New `/admin-reset-tower player:<mention>` (`devOnly` +
+Administrator, `adminResetTower.js`) force-restores a target player's `canEnterTower` to `true` —
+`enter-tower.js` flips that flag `false` BEFORE the run starts, and the whole climb lives purely in
+memory until a full completion, so any crash mid-run used to strand the player with no way back in
+until the next day's 4am UTC reset and nothing else needing to be rolled back. 4/4 new tests.
+Docs: `systems/tower.md`'s new "`/admin-reset-tower`" section, `reference/commands.md`'s moderation
+table.
+
+The underlying crash cause was NOT pinned down by static reading of `towerFactory.js` (every
+`awaitMessageComponent` collector already has a safe timeout fallback; the Malevolent Pineapple floor
+data implicated in that report is well-formed) — flagged honestly as unresolved pending real logs.
+
+Same day, a second report arrived: a run breaking on floor 1 this time (not floor 13), even after
+the admin reset — different floor, same symptom, confirming it isn't tied to one floor's content and
+will keep recurring. Two follow-up changes:
+
+1. `enter-tower.js` now wraps `tF.startRun()` in its own try/catch — any exception restores
+   `canEnterTower` to `true` immediately (the same write `/admin-reset-tower` does by hand) and
+   replies with an honest, specific message naming the floor the crash hit (`tF.floor`) instead of
+   the generic error, so a crash costs the player that run, not their whole day. `/admin-reset-tower`
+   becomes a backstop for whatever this doesn't cover rather than the only recovery path.
+2. Found and fixed the actual reason this couldn't be root-caused from logs in the first place:
+   every catch block in `handleCommands.js` logged errors via `` console.log(`...${e}`) `` — template-
+   interpolating an Error only calls `.toString()`, silently dropping the stack trace. Changed all
+   five to `console.error(msg, e)` (the Error object itself, not a string built from it) so the
+   *next* occurrence is finally diagnosable.
+
+Root cause of the underlying throw is still open — this makes it survivable for the player and
+loggable for next time, not identified. New test: `enter-tower.test.js` covers the crash path
+(restores the flag, replies with the floor-specific message, never reaches payout/leaderboard
+bookkeeping). Full suite: **1508/1508** across 83 suites.

@@ -91,7 +91,32 @@ module.exports = {
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
         let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue)
-        let tower_out = await tF.startRun()
+        let tower_out;
+        try {
+            tower_out = await tF.startRun()
+        } catch (e) {
+            // Auto-recovery (2026-09-11) — startRun() keeps the whole climb in memory and
+            // only ever restores canEnterTower via a full, successful completion (see
+            // tower.md's "/admin-reset-tower" section), so ANY uncaught exception mid-run
+            // used to strand the player until the next day's 4am UTC reset with no way to
+            // recover on their own. Restoring the flag here means a crash costs the player
+            // this run's progress, not their whole day. Logging e (not just its message —
+            // see the matching fix in handleCommands.js) finally captures a real stack trace
+            // to root-cause the crash itself, which static reading alone couldn't pin down.
+            console.error(`Tower run crashed for ${username} (${userId}) at floor ${tF.floor}:`, e);
+            await dynamoHandler.updateUserDatabase(userId, "canEnterTower", true);
+            const recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was banked, but your entry has been restored, so you can run /enter-tower again right away.`;
+            try {
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
+                } else {
+                    await interaction.reply({ content: recoveryMessage });
+                }
+            } catch (replyError) {
+                console.error(`Failed to notify ${username} of their tower run crash:`, replyError);
+            }
+            return;
+        }
         let rewards = tower_out[0];
         let floor = tower_out[1];
         let died = tower_out[2];

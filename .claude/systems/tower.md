@@ -1428,3 +1428,59 @@ PASSIVE_INCOME/BANK_CAPACITY overflow-to-potatoes, WORK_MULTIPLIER overflow drop
 credits once already at cap, King Kiwi's deferred payout capped at actual payout time via
 `checkElitePayout`, and a full interactive Golden Ginger pick reporting the applied — not raw —
 amount). Full suite re-run clean.
+
+### `/admin-reset-tower`
+
+`enter-tower.js`'s callback flips `userDetails.canEnterTower` to `false` (`updateUserDatabase`)
+BEFORE `towerFactory.startRun()` is ever called — the entire run itself (every floor, every reward,
+`this.run`/`this.floor` on the `towerFactory` instance) lives purely in memory for the whole climb
+and is only ever persisted at the very end, via `processRewardPayouts`/`updateIfNewRecord`/
+`recordTowerLeaderboardEntry`. If anything throws partway through a run — a Discord API hiccup on
+an `editReply`, an expired/invalidated interaction token on a long multi-floor climb, an unhandled
+exception anywhere in `towerFactory.js` — `handleCommands.js`'s top-level catch reports a generic
+"Something went wrong" error, but `canEnterTower` is already permanently `false` for the rest of the
+day, with no in-progress state to roll back (there isn't any) and no way for the player to retry
+until the next 4am UTC reset.
+
+`/admin-reset-tower player:<mention>` (`adminResetTower.js`, `devOnly` + Administrator) is the fix:
+force-sets that one player's `canEnterTower` back to `true`, unconditionally and idempotently — safe
+to run even if nothing was actually stuck (the reply says so distinctly rather than implying a fix
+happened). Since the run's own progress is never persisted mid-flight, restoring this one field is
+the complete recovery; there's nothing else to reset.
+
+This doesn't fix whatever causes an individual run to crash in the first place (a genuine "why did
+THIS run throw" root-cause investigation needs the actual error log/stack trace from the incident,
+not just a static read of `towerFactory.js` — none of the code paths inspected while building this
+command turned up an obvious defect: every `awaitMessageComponent` collector already has a `.catch(
+() => null)` guard with a safe default-choice fallback on timeout, and the specific floor data
+implicated in one reported incident, Malevolent Pineapple, is well-formed). It only guarantees a
+stuck player always has a fast path back in, regardless of cause.
+
+#### Auto-recovery (2026-09-11, follow-up — same day)
+
+The admin command above is a manual mitigation; it still required someone to notice a player was
+stuck and run it for them. A second player report arrived the same day (a run breaking on floor 1
+this time, not floor 13 — different floor, different floor content, same generic "Something went
+wrong" symptom), confirming this isn't tied to one specific floor entry and will keep recurring
+until the actual throw site is found.
+
+Two changes, both in response to that:
+
+1. **`enter-tower.js` now wraps `tF.startRun()` in its own try/catch.** On any exception, it
+   restores `canEnterTower` to `true` immediately (the exact write `/admin-reset-tower` was doing by
+   hand), then edits the reply with an honest explanation naming the floor the crash happened at
+   (`tF.floor`, read straight off the same instance rather than needing the run to have returned
+   normally) — "your run hit an unexpected error... nothing was banked... you can run /enter-tower
+   again right away." A crash now costs the player that one run's progress, not their whole day, and
+   `/admin-reset-tower` becomes a backstop for the case this doesn't cover (e.g. the crash happening
+   somewhere `enter-tower.js` itself can't reach) rather than the only recovery path.
+2. **The actual bug this was hiding: `handleCommands.js`'s (and every other catch block in that
+   file's) error logging interpolated the Error object into a template string — `` `...${e}` `` —
+   which only calls `.toString()` and prints `Error: <message>` with the stack trace silently
+   dropped.** That's the reason the floor-13 incident couldn't be root-caused from logs alone even
+   if someone had gone looking. Changed every one of that file's catch blocks to `console.error(...,
+   e)` (the object itself, not a template-interpolated string), which is precisely what was missing
+   to catch the *next* occurrence with an actual stack trace to work from.
+
+Root cause of the underlying throw is still open — this makes it survivable for the player and
+loggable for whoever investigates next, not identified.
