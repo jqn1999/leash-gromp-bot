@@ -11549,3 +11549,14 @@ One test needed updating: `towerFactory.test.js` had a regression test explicitl
 0.9) — true when written, no longer true now that both sit at 0.95 by direct instruction. Updated to
 assert both values directly rather than their prior inequality. Full suite: **1503/1503** across 82
 suites.
+
+## Buff: Golden Reels max spin count raised 10 -> 100 (2026-09-11, direct instruction)
+
+`GoldenReels.MAX_SPINS: 10 -> 100` — both the slash command's own `maxValue` and the defensive
+re-clamp in `goldenReels.js`'s callback read this constant directly, so no second change site.
+`/help topic:rob-betting`'s `/golden-reels bet-amount spins:<1-10>` syntax example updated to
+`<1-100>` to match. No change to odds, payouts, or `SPIN_DELAY_MS` (still 2s/spin) — a full 100-spin
+run now takes ~200s (~3.3 min) of sequential embed edits, still comfortably inside Discord's
+15-minute follow-up token window. `goldenReels.test.js`'s own MAX_SPINS-clamp test already reads the
+constant dynamically and runs under `jest.useFakeTimers()`, so it needed no changes and stayed fast.
+Full suite: **1503/1503** across 82 suites.
