@@ -28,6 +28,7 @@ jest.mock('../../../utils/raidFactory', () => {
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const repelWarband = require('../repelWarband');
+const guildRivalFactory = require('../../../utils/guildRivalFactory');
 const { GuildRival, Raid } = require('../../../utils/constants');
 
 // addToBankOrPurse (reused as-is from startRaid.js, per decision #2) applies the same 5%
@@ -96,6 +97,24 @@ beforeEach(() => {
 function guildInfamyWriteCalls() {
     return dynamoHandler.updateGuildDatabase.mock.calls.filter(call => call[1] === 'guildInfamy');
 }
+
+// Guild level feeding Warband success chance (2026-09-11, direct instruction: "bump guild
+// level to increase chance of guild infamy success rate similar to merc levels").
+describe('/repel-warband threads the guild\'s current level into the confrontation', () => {
+    test('calls resolveWarbandConfrontation with the guild\'s level derived from raidCount, not level 1 blindly', async () => {
+        const guild = guildFixture({ bankStored: 0, raidCount: 200 }); // RaidLevel.THRESHOLDS level 6
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
+        liveRosterSetup(guild);
+        const interaction = fakeInteraction();
+        const spy = jest.spyOn(guildRivalFactory, 'resolveWarbandConfrontation');
+        try {
+            await repelWarband.callback(null, { ...interaction, user: { id: 'leader', username: 'Leader', displayName: 'Leader' } });
+            expect(spy).toHaveBeenCalledWith(6);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});
 
 describe('/repel-warband gate order: role BEFORE Infamy', () => {
     test('a below-Elder member is rejected on role alone, even with Infamy already >= threshold — never learns the Infamy gap', async () => {

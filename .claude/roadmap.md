@@ -11644,3 +11644,34 @@ reports landing on different, content-unrelated floors. 2 new regression tests i
 `towerFactory.test.js` simulate a rejected update (`code: 10062`) at `createFloorEmbed` and
 `chooseRiskPolicy` and assert the run still returns/records the clicked choice instead of throwing.
 Docs: `systems/tower.md`'s new "Root cause found" section. Full suite: **1510/1510** across 83 suites.
+
+## Buff: Guild level now feeds /repel-warband success chance, mirroring Mercenary Rank (2026-09-11, direct instruction)
+
+"Bump guild level to increase chance of guild infamy success rate similar to merc levels." Guild
+Rival Warbands (`/repel-warband`) was deliberately power-independent by design — `GuildRival.
+SUCCESS_CHANCE_RANGE` never read raid power, mirroring Rival Bounty Hunters' own "stays stable at
+any power level" goal — but that meant leveling a guild up did nothing for Warband odds specifically,
+the exact same gap Mercenary Rank's `rivalSuccessBonus` was added to close on the merc side back on
+2026-08-29 ("players reported not feeling ranking up do anything for Rival odds").
+
+New `GuildRival.LEVEL_SUCCESS_BONUS` (10 entries per scenario, index 0 = guild level 1) — rather than
+inventing a new curve, it's `RaidLevel.THRESHOLDS`' own `raidCooldownReductionPercent` shape re-scaled
+so guild level 10 lands on exactly `MercenaryRank.THRESHOLDS`' own max-rank `rivalSuccessBonus` per
+scenario (easy 0.30, medium 0.22, hard 0.15) — a fully-leveled guild gets the identical ceiling bonus
+a max-rank mercenary gets. `guildRivalFactory.resolveWarbandConfrontation(guildLevel = 1)` now takes
+guild level as an explicit parameter (computed by `repelWarband.js` via `getRaidLevelInfo(guild.
+raidCount)`, kept OUT of `guildRivalFactory.js` itself so that file stays exactly as pure/DB-free as
+its own header always promised — the existing test asserting it never calls `getEffectiveRaidPower`/
+`getRaidLevelInfo` itself still passes unchanged and is still true).
+
+Surfaced in two places, mirroring `/notoriety`'s "visible before fighting" precedent for Mercenary
+Rank's own bonus: `/guild-infamy`'s preview embed now shows the guild's current per-scenario bonus,
+and `/repel-warband`'s result embed gets a "Guild Level Bonus:" field (shown only when > 0, so a
+Level 1 guild's embed is unchanged). Docs: `systems/guilds.md`'s Guild Rival Warbands section,
+including correcting its now-stale "no getRaidLevelInfo anywhere in the resolution path" claim.
+
+New/updated tests: `guildRivalFactory.test.js` (default level-1/no-bonus backward compat, a
+level-6 bonus applied correctly, and the level-10-matches-max-rank parity check), `repelWarband.
+test.js` (guild level threaded from `raidCount` into the resolve call), `guildInfamy.test.js`
+(guild level threaded into the preview embed, all 3 pre-existing assertions updated for the new
+5th arg). Full suite: **1515/1515** across 83 suites.

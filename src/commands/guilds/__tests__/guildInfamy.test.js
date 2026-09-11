@@ -62,7 +62,8 @@ describe('/guild-infamy', () => {
             'Some Guild',
             GuildRival.INFAMY_THRESHOLD,
             GuildRival.INFAMY_THRESHOLD,
-            true
+            true,
+            1
         );
     });
 
@@ -77,7 +78,8 @@ describe('/guild-infamy', () => {
             'Some Guild',
             GuildRival.INFAMY_THRESHOLD - 1,
             GuildRival.INFAMY_THRESHOLD,
-            false
+            false,
+            1
         );
     });
 
@@ -92,7 +94,28 @@ describe('/guild-infamy', () => {
             'Some Guild',
             0,
             GuildRival.INFAMY_THRESHOLD,
-            false
+            false,
+            1
+        );
+    });
+
+    // Guild level feeding Warband success chance (2026-09-11, direct instruction) — this
+    // preview embed needs the guild's own current level so players can see the bonus BEFORE
+    // repelling, same "visible before fighting" precedent /notoriety's own Rival Success
+    // Bonus field already set.
+    test('threads the guild\'s current level (from raidCount) through to the embed', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ raidCount: 200 })); // RaidLevel.THRESHOLDS level 6
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(EmbedFactory.prototype.createGuildInfamyEmbed).toHaveBeenCalledWith(
+            'Some Guild',
+            0,
+            GuildRival.INFAMY_THRESHOLD,
+            false,
+            6
         );
     });
 });

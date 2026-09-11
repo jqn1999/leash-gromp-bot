@@ -2941,9 +2941,11 @@ const RivalMercenaries = {
 // second income activity the way Mercenaries have Bounty+Heist feeding mercenaryNotoriety),
 // keyed by raid MODE rather than Raid's internal T1-T4 sub-tier. Once Infamy crosses
 // INFAMY_THRESHOLD, /repel-warband unlocks — Elder+ only (a guild-wide, bank-risking
-// action, unlike /confront-rival's personal one), no player choice of scenario, no
-// getEffectiveRaidPower/getRaidLevelInfo anywhere in the resolution path (deliberately
-// power-independent, mirroring Rival's own "stays stable at any power level" design goal).
+// action, unlike /confront-rival's personal one), no player choice of scenario, and no
+// getEffectiveRaidPower anywhere in the resolution path (deliberately power-independent —
+// the base SUCCESS_CHANCE_RANGE roll never reads raid power, mirroring Rival's own "stays
+// stable at any power level" design goal). getRaidLevelInfo's guild LEVEL (not raw power)
+// does feed in as of 2026-09-11 — see LEVEL_SUCCESS_BONUS below for why.
 const GuildRival = {
     // Baby/Regular win: +1 (Baby reuses Regular's own T1 closure object literally, so no
     // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +2,
@@ -3000,6 +3002,30 @@ const GuildRival = {
         easy: { workMultiplierAmount: 0.2, passiveAmount: 100000, bankCapacity: 1000000 },
         medium: { workMultiplierAmount: 0.4, passiveAmount: 300000, bankCapacity: 3000000 },
         hard: { workMultiplierAmount: 0.6, passiveAmount: 500000, bankCapacity: 5000000 }
+    },
+    // Guild level success bonus (2026-09-11, direct instruction: "bump guild level to
+    // increase chance of guild infamy success rate similar to merc levels") — mirrors
+    // MercenaryRank.THRESHOLDS' own rivalSuccessBonus fix exactly (2026-08-29: "players
+    // reported not feeling ranking up do anything for Rival odds"). Guild level had the
+    // identical gap on /repel-warband: SUCCESS_CHANCE_RANGE above is completely
+    // power-independent by design (see this file's own header comment — "a fresh Level 1
+    // guild and a maxed Level 10 guild face the exact same Ashclove Company odds"), so
+    // raiding your way up 10 guild levels did nothing for Warband odds either, only for
+    // ordinary raid rewards.
+    //
+    // Indexed by guild level (RaidLevel.THRESHOLDS, index 0 = level 1), added directly onto
+    // successChance the same way rankSuccessBonus stacks onto Rival's own range roll. Rather
+    // than inventing a new curve shape, each scenario's per-level progression is
+    // RaidLevel.THRESHOLDS' own raidCooldownReductionPercent curve (0 at level 1, already a
+    // proven "guild level payoff" shape, roughly linear with a slight accelerating tail)
+    // RE-SCALED so level 10 lands on MercenaryRank's own rank-6 (max) rivalSuccessBonus for
+    // that same scenario — easy 0.30, medium 0.22, hard 0.15 — so a fully-leveled guild gets
+    // exactly the same ceiling bonus a max-rank mercenary gets, not a guild-specific number
+    // pulled from nowhere.
+    LEVEL_SUCCESS_BONUS: {
+        easy:   [0.00, 0.03, 0.07, 0.10, 0.13, 0.17, 0.20, 0.23, 0.27, 0.30],
+        medium: [0.00, 0.02, 0.05, 0.07, 0.10, 0.12, 0.15, 0.17, 0.20, 0.22],
+        hard:   [0.00, 0.02, 0.04, 0.05, 0.07, 0.09, 0.10, 0.12, 0.14, 0.15]
     }
 }
 

@@ -9,11 +9,18 @@ const { getRandomFromInterval } = require("../utils/helperCommands");
 // reward/stat bump via the guild's existing addToBankOrPurse/raidFactory.handleStatSplit, or
 // debiting the penalty via removeFromBankOrPurse).
 //
-// Deliberately does NOT call raidFactory.getEffectiveRaidPower or raidFactory.getRaidLevelInfo
-// anywhere below — success chance is a literal range roll (GuildRival.SUCCESS_CHANCE_RANGE),
-// same "stays stable at any power level" design goal Rival Bounty Hunters itself is built on,
-// not a guild-power-scaled roll. A fresh Level 1 guild and a maxed Level 10 guild face the
-// exact same Ashclove Company odds.
+// Deliberately does NOT call raidFactory.getEffectiveRaidPower anywhere below — the base
+// success chance is a literal range roll (GuildRival.SUCCESS_CHANCE_RANGE), same "stays
+// stable at any power level" design goal Rival Bounty Hunters itself is built on, not a
+// guild-power-scaled roll.
+//
+// guildLevel DOES feed in as of 2026-09-11, direct instruction ("bump guild level to increase
+// chance of guild infamy success rate similar to merc levels") — mirrors
+// resolveRivalConfrontation's own rankSuccessBonus fix on the merc side exactly (2026-08-29,
+// same complaint: ranking/leveling up did nothing for these odds specifically). See
+// GuildRival.LEVEL_SUCCESS_BONUS's own comment in constants.js for the curve derivation. A
+// fresh Level 1 guild still faces the same base odds as before; only a guild that's actually
+// leveled up (via ordinary raid wins, same as any other guild-level perk) gets better ones.
 
 const STAT_TRACKS = ['workMultiplierAmount', 'passiveAmount', 'bankCapacity'];
 
@@ -59,17 +66,20 @@ function rollWarbandScenario() {
 
 // /repel-warband's single resolve function — computation only, no DB writes, same division
 // of labor mercenaryFactory.resolveRivalConfrontation already uses; the caller
-// (repelWarband.js) owns persisting the result. No userDetails/guild argument at all — unlike
-// Rival (which still reads Mercenary Rank/Yukon bonuses), nothing here reads any per-guild or
-// per-user modifier, by explicit design (see file header).
-async function resolveWarbandConfrontation() {
+// (repelWarband.js) owns persisting the result. `guildLevel` (1-10, from
+// raidFactory.getRaidLevelInfo(guild.raidCount) — the caller's job, not this function's,
+// same "pure computation, no other factory reached into" boundary this file's header sets)
+// is the only per-guild input this reads; nothing here touches raid power or any per-user
+// modifier.
+async function resolveWarbandConfrontation(guildLevel = 1) {
     const scenario = rollWarbandScenario();
     const [minChance, maxChance] = GuildRival.SUCCESS_CHANCE_RANGE[scenario];
-    const successChance = getRandomFromInterval(minChance, maxChance);
+    const levelSuccessBonus = GuildRival.LEVEL_SUCCESS_BONUS[scenario][guildLevel - 1];
+    const successChance = getRandomFromInterval(minChance, maxChance) + levelSuccessBonus;
     const won = Math.random() < successChance;
     const rival = pickRandomAshcloveMember();
 
-    const result = { scenario, won, successChance, rival, rewardAmount: 0, penaltyAmount: 0, statTracks: null };
+    const result = { scenario, won, successChance, levelSuccessBonus, guildLevel, rival, rewardAmount: 0, penaltyAmount: 0, statTracks: null };
     const scenarioRewardBase = Raid.T2_RAID_REWARD * GuildRival.TIER_REWARD_FACTOR[scenario];
 
     if (won) {

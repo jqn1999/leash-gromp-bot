@@ -1,5 +1,6 @@
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const { GuildRival } = require("../../utils/constants");
+const { getRaidLevelInfo } = require("../../utils/raidFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -23,8 +24,9 @@ module.exports = {
 
         const infamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
         const repelable = infamy >= GuildRival.INFAMY_THRESHOLD;
+        const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
 
-        const embed = embedFactory.createGuildInfamyEmbed(guild.guildName, infamy, GuildRival.INFAMY_THRESHOLD, repelable);
+        const embed = embedFactory.createGuildInfamyEmbed(guild.guildName, infamy, GuildRival.INFAMY_THRESHOLD, repelable, guildLevel);
         interaction.editReply({ embeds: [embed] });
     }
 }

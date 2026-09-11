@@ -1309,12 +1309,56 @@ successChance = getRandomFromInterval(min, max)  — GuildRival.SUCCESS_CHANCE_R
 won           = Math.random() < successChance
 ```
 
-**Deliberately no call to `raidFactory.getEffectiveRaidPower` or `raidFactory.getRaidLevelInfo`
-anywhere in the resolution path** — same explicit, stated design goal Rival Bounty Hunters itself is
-built on ("stays stable at any power level," not an oversight): a fresh Level 1 guild and a maxed
-Level 10 guild face the exact same Ashclove Company odds, since this event is framed as the luck/skill
-of the ambush itself, not a scaled-down raid roll. Proven directly by a dedicated test
-(`guildRivalFactory.test.js`) that spies on both functions and asserts neither is ever called.
+**Deliberately no call to `raidFactory.getEffectiveRaidPower` anywhere in the resolution path** — same
+explicit, stated design goal Rival Bounty Hunters itself is built on ("stays stable at any power
+level," not an oversight): the base range roll never reads raid power, since this event is framed as
+the luck/skill of the ambush itself, not a scaled-down raid roll. Proven directly by a dedicated test
+(`guildRivalFactory.test.js`) that spies on `getEffectiveRaidPower`/`getRaidLevelInfo` and asserts
+neither is ever called BY `guildRivalFactory.js` ITSELF — see the next section for why that's now a
+narrower claim than it used to be.
+
+#### Guild level DOES feed success chance, as of 2026-09-11 (direct instruction)
+
+"Bump guild level to increase chance of guild infamy success rate similar to merc levels" — mirrors
+`resolveRivalConfrontation`'s own `rankSuccessBonus` fix on the merc side exactly (2026-08-29, same
+underlying complaint: ranking/leveling up did nothing for these specific odds, only reward SIZE on a
+win already landing at the same rate). Guild level had the identical gap here: `SUCCESS_CHANCE_RANGE`
+above is completely power-independent by design, so raiding a guild from Level 1 to Level 10 did
+nothing for Warband odds, only for ordinary raid rewards/cooldown.
+
+`resolveWarbandConfrontation(guildLevel = 1)` takes guild level as an explicit **parameter**, not
+something it computes itself — `repelWarband.js` calls `getRaidLevelInfo(guild.raidCount)` and passes
+the resulting `level` in, keeping `guildRivalFactory.js` exactly as pure/DB-free/other-factory-free as
+its file header always promised (this is also why the "never calls `getEffectiveRaidPower`/
+`getRaidLevelInfo`" test above still passes unchanged — the function itself still never reaches into
+`raidFactory.js`, it's just handed a number the caller already computed there).
+
+```js
+const levelSuccessBonus = GuildRival.LEVEL_SUCCESS_BONUS[scenario][guildLevel - 1];
+const successChance = getRandomFromInterval(minChance, maxChance) + levelSuccessBonus;
+```
+
+`GuildRival.LEVEL_SUCCESS_BONUS` (10 entries per scenario, index 0 = guild level 1) is deliberately
+NOT a new curve invented from scratch — each scenario's progression is `RaidLevel.THRESHOLDS`' own
+`raidCooldownReductionPercent` curve (0 at level 1, an already-proven "guild level payoff" shape,
+roughly linear with a slight accelerating tail) RE-SCALED so guild level 10 lands on exactly the same
+ceiling `MercenaryRank.THRESHOLDS`' max rank (6) already hits for that scenario — easy 0.30, medium
+0.22, hard 0.15 — so a fully-leveled guild gets the identical ceiling bonus a max-rank mercenary gets,
+not a guild-specific number pulled from nowhere:
+
+```
+easy:   [0.00, 0.03, 0.07, 0.10, 0.13, 0.17, 0.20, 0.23, 0.27, 0.30]
+medium: [0.00, 0.02, 0.05, 0.07, 0.10, 0.12, 0.15, 0.17, 0.20, 0.22]
+hard:   [0.00, 0.02, 0.04, 0.05, 0.07, 0.09, 0.10, 0.12, 0.14, 0.15]
+```
+
+Surfaced in two places, mirroring `/notoriety`'s own "visible before fighting, not just on the result"
+precedent for `rankSuccessBonus`:
+- `/guild-infamy`'s preview embed (`createGuildInfamyEmbed`) shows the guild's current-level bonus per
+  scenario ahead of time — needs `getRaidLevelInfo(guild.raidCount)` too, so `guildInfamy.js` computes
+  it the same way `repelWarband.js` does.
+- `/repel-warband`'s result embed (`createWarbandConfrontationResultEmbed`) adds a "Guild Level Bonus:"
+  field, shown only when `> 0` (so a Level 1 guild's embed looks exactly like it always did).
 
 ### Reward/penalty — routed through the exact infrastructure `/start-raid` already uses
 

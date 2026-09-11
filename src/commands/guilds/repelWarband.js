@@ -1,7 +1,7 @@
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { GuildRoles, GuildRival } = require("../../utils/constants");
-const { RaidFactory, getLiveRaidRoster, getMemberRaidPower } = require("../../utils/raidFactory");
+const { RaidFactory, getLiveRaidRoster, getMemberRaidPower, getRaidLevelInfo } = require("../../utils/raidFactory");
 const { addToBankOrPurse, removeFromBankOrPurse } = require("./startRaid");
 const guildRivalFactory = require("../../utils/guildRivalFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -60,7 +60,11 @@ module.exports = {
             return;
         }
 
-        const result = await guildRivalFactory.resolveWarbandConfrontation();
+        // Guild level feeds success chance the same way Mercenary Rank feeds
+        // /confront-rival's own odds (2026-09-11, direct instruction) — see
+        // guildRivalFactory.js's own comment for the derivation.
+        const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
+        const result = await guildRivalFactory.resolveWarbandConfrontation(guildLevel);
 
         // Subtracts the flat INFAMY_THRESHOLD, win OR lose, rather than resetting to 0 —
         // mirrors mercenaryNotoriety's own subtract-the-threshold shape directly (shipped

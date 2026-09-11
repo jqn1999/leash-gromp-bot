@@ -2756,7 +2756,7 @@ class EmbedFactory {
     // Guild Rival Warbands — /guild-infamy's read-only status embed, mirrors
     // createNotorietyEmbed's own shape exactly (progress readout + availability line), scoped
     // to the guild rather than a single player.
-    createGuildInfamyEmbed(guildName, infamy, threshold, repelable) {
+    createGuildInfamyEmbed(guildName, infamy, threshold, repelable, guildLevel = 1) {
         const fields = [
             {
                 name: 'Infamy:',
@@ -2769,6 +2769,16 @@ class EmbedFactory {
                 inline: false,
             },
         ];
+
+        // Guild level's own contribution to Warband success chance (2026-09-11) — same
+        // "surfaced before fighting, not just on the result embed" precedent
+        // createNotorietyEmbed's own Rival Success Bonus field already set.
+        const { easy, medium, hard } = GuildRival.LEVEL_SUCCESS_BONUS;
+        fields.push({
+            name: 'Warband Success Bonus (this Level):',
+            value: `+${(easy[guildLevel - 1] * 100).toFixed(0)}% Easy / +${(medium[guildLevel - 1] * 100).toFixed(0)}% Medium / +${(hard[guildLevel - 1] * 100).toFixed(0)}% Hard`,
+            inline: false,
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}'s Infamy`)
@@ -2785,7 +2795,7 @@ class EmbedFactory {
     // guildRivalFactory.resolveWarbandConfrontation's own return shape; `newInfamy` is the
     // guild's guildInfamy AFTER the subtract-the-threshold write (see repelWarband.js).
     createWarbandConfrontationResultEmbed(guildName, result, newInfamy) {
-        const { scenario, won, successChance, rival, rewardAmount, penaltyAmount, statTracks } = result;
+        const { scenario, won, successChance, levelSuccessBonus, guildLevel, rival, rewardAmount, penaltyAmount, statTracks } = result;
         const color = won ? 'Green' : 'Red';
         const scenarioLabel = scenario.charAt(0).toUpperCase() + scenario.slice(1);
         const fields = [];
@@ -2801,6 +2811,17 @@ class EmbedFactory {
             value: `${(successChance * 100).toFixed(2)}%`,
             inline: true,
         });
+
+        // Surfaced explicitly (2026-09-11) — same "make the bonus actually FELT, not just
+        // mathematically present" precedent /confront-rival's own Mercenary Rank Bonus field
+        // already set. 0 at guild level 1, so this only appears once it's doing something.
+        if (levelSuccessBonus > 0) {
+            fields.push({
+                name: 'Guild Level Bonus:',
+                value: `+${(levelSuccessBonus * 100).toFixed(0)}% (Level ${guildLevel})`,
+                inline: true,
+            });
+        }
 
         if (won) {
             fields.push({

@@ -87,7 +87,7 @@ describe('resolveWarbandConfrontation', () => {
     // fully deterministic); on a LOSS: (5) the penalty variance roll only. Mirrors
     // mercenaryFactory.test.js's resolveRivalConfrontation describe block exactly.
 
-    test('a deliberately POWER-INDEPENDENT resolution: never calls getEffectiveRaidPower or getRaidLevelInfo', async () => {
+    test('a deliberately POWER-INDEPENDENT resolution: never calls getEffectiveRaidPower or getRaidLevelInfo itself (guildLevel is an explicit param from the caller, not computed here)', async () => {
         const effSpy = jest.spyOn(raidFactory, 'getEffectiveRaidPower');
         const levelSpy = jest.spyOn(raidFactory, 'getRaidLevelInfo');
         try {
@@ -97,6 +97,53 @@ describe('resolveWarbandConfrontation', () => {
         } finally {
             effSpy.mockRestore();
             levelSpy.mockRestore();
+        }
+    });
+
+    // Guild level success bonus (2026-09-11, direct instruction — mirrors
+    // mercenaryFactory's own rankSuccessBonus fix for /confront-rival).
+    test('defaults to guild level 1 (no bonus) when no guildLevel is passed — old callers/behavior unaffected', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)      // scenario roll -> easy
+            .mockReturnValueOnce(0)        // successChance roll -> low end of the range
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await guildRivalFactory.resolveWarbandConfrontation();
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.guildLevel).toBe(1);
+        expect(result.levelSuccessBonus).toBe(0);
+        expect(result.successChance).toBeCloseTo(GuildRival.SUCCESS_CHANCE_RANGE.easy[0]);
+    });
+
+    test('a higher guild level adds LEVEL_SUCCESS_BONUS[scenario][level-1] on top of the range roll', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // scenario roll -> hard
+            .mockReturnValueOnce(0)        // successChance roll -> low end of the range
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await guildRivalFactory.resolveWarbandConfrontation(6);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.scenario).toBe('hard');
+        expect(result.guildLevel).toBe(6);
+        expect(result.levelSuccessBonus).toBe(GuildRival.LEVEL_SUCCESS_BONUS.hard[5]);
+        expect(result.successChance).toBeCloseTo(GuildRival.SUCCESS_CHANCE_RANGE.hard[0] + GuildRival.LEVEL_SUCCESS_BONUS.hard[5]);
+    });
+
+    test('a maxed guild level (10) reaches exactly the same ceiling bonus as max Mercenary Rank, per scenario', () => {
+        const { MercenaryRank } = require('../constants');
+        const maxRankBonus = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].rivalSuccessBonus;
+        for (const scenario of ['easy', 'medium', 'hard']) {
+            expect(GuildRival.LEVEL_SUCCESS_BONUS[scenario][9]).toBe(maxRankBonus[scenario]);
         }
     });
 
