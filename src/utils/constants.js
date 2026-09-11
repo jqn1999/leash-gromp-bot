@@ -1814,7 +1814,16 @@ const GoldenReels = {
 // maxed — rebirth is what pushes a rebuilt-post-rebirth roster past this baseline
 // toward T4's real ceiling, since rebirth wipes shop+regrade back down first).
 const Raid = {
-    REGULAR_MAXIMUM_RAID_SUCCESS_RATE: .9,
+    // Raised 0.9 -> 0.95, 2026-09-11 direct instruction ("bump the max % chance of success
+    // for merc bounties and guild raids to 95%") — brings this in line with Tower's own
+    // Elite cap (towerConstants.js's ELITE_SUCCESS_CAP, bumped to the same 0.95 back on
+    // 2026-09-09 specifically via an INDEPENDENT constant so it wouldn't touch this one).
+    // This is the single shared ceiling mercenaryFactory.js's Bounty success-chance calc,
+    // bountyBoard.js's preview, and every Regular/Baby Guild Raid bracket (T1-T4 + Metal
+    // King) all read directly — bumping it here covers "merc bounties and guild raids" in
+    // one place, matching the instruction's own scope. Elite/Legendary/Stat Raid keep their
+    // own deliberately lower caps (0.75/0.6/0.5) — a real difficulty curve, not touched.
+    REGULAR_MAXIMUM_RAID_SUCCESS_RATE: .95,
     ELITE_MAXIMUM_RAID_SUCCESS_RATE: .75,
     LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE: .6,
     MAXIMUM_STAT_RAID_SUCCESS_RATE: .5,

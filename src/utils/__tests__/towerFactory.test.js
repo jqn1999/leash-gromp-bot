@@ -341,14 +341,17 @@ describe('difficulty curve', () => {
         expect(success).toBeCloseTo(0.5, 10);
     });
 
-    // Raised 0.9 -> 0.95 (2026-09-09, direct instruction) — now a Tower-only constant,
-    // deliberately decoupled from Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (still 0.9), since
-    // Guild Raid and Mercenary Bounty's own success caps weren't part of the request.
-    test('ELITE_SUCCESS_CAP is 0.95, independent of Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE', () => {
+    // Raised 0.9 -> 0.95 (2026-09-09, direct instruction) as its own Tower-only constant,
+    // deliberately decoupled from Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE so Tower's bump
+    // wouldn't silently drag Guild Raid/Mercenary Bounty's own caps along with it. That
+    // second bump landed on its own two days later (2026-09-11, direct instruction: "bump
+    // the max % chance of success for merc bounties and guild raids to 95%"), so the two
+    // constants now happen to share a value — still genuinely independent (each can move on
+    // its own without touching the other), just no longer numerically distinct.
+    test('ELITE_SUCCESS_CAP is 0.95, defined independently of Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE', () => {
         const { Raid } = require('../constants');
         expect(tC.ELITE_SUCCESS_CAP).toBe(0.95);
-        expect(tC.ELITE_SUCCESS_CAP).not.toBe(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
-        expect(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE).toBe(0.9);
+        expect(Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE).toBe(0.95);
     });
 });
 

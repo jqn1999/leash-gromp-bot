@@ -11527,3 +11527,25 @@ the new value are both visible, not just the after-value like before.
   exact tier-label wording (`Tier: {currentAmount} → {amount}`) and success-message phrasing were the
   developer's call, per the brief's own "your call on exact wording/placement" — both the cost paid
   and the resulting value are genuinely visible either way.
+
+## Buff: Mercenary Bounty / Guild Raid max success chance raised 90% -> 95% (2026-09-11, direct instruction)
+
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (`constants.js`) raised from `.9` to `.95` — the single
+shared success-chance ceiling `mercenaryFactory.js`'s Bounty resolution, `bountyBoard.js`'s preview,
+and every Regular/Baby Guild Raid bracket (T1-T4 + Metal King) all read directly, so one constant
+covers both systems exactly as asked ("bump the max % chance of success for merc bounties and guild
+raids to 95%"). Elite (`.75`), Legendary (`.6`), and Stat Raid (`.5`) caps are untouched — those are
+a deliberate difficulty curve, not part of the request, and `getMinGuildLevelForTier`'s Elite/
+Legendary unlock-level gate only ever reads its own tier's cap, never the Regular one, so their
+unlock levels don't shift either.
+
+Directly precedented in this same codebase: Tower's own Elite success cap was raised to the same
+0.95 two days earlier (2026-09-09), specifically via an INDEPENDENT `towerConstants.js` constant
+(`ELITE_SUCCESS_CAP`) so that bump wouldn't silently drag this one along — the two constants now
+happen to share a value again, still defined completely independently of each other.
+
+One test needed updating: `towerFactory.test.js` had a regression test explicitly asserting
+`ELITE_SUCCESS_CAP` and `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` were NUMERICALLY DISTINCT (0.95 vs
+0.9) — true when written, no longer true now that both sit at 0.95 by direct instruction. Updated to
+assert both values directly rather than their prior inequality. Full suite: **1503/1503** across 82
+suites.
