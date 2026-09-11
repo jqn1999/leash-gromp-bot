@@ -11301,3 +11301,121 @@ pure duplication with no unique behavior of its own.
 
 Full suite after this follow-up: **1456/1456** across 81 suites (1457 minus the 3 deleted
 `guildCompanion.test.js` cases, plus 2 new `createGuildEmbed` field tests).
+
+## Work-Only Companion Leveling Bonus: 2x /work leveling for companions with no accelerant path (2026-09-11, direct instruction) — planning pass only, not implemented yet
+
+Player-reported, framed around Guinea Pig and Prospector specifically ("only level up through
+direct works and have no skip chance or anything which make them take forever to level up").
+Investigation found the pattern is systemic, not specific to those two — see below.
+
+### Root cause: some companions get a SECOND leveling path, most don't
+
+Every companion levels via ordinary `/work` (`work.js:338`,
+`companionFactory.levelActiveCompanion(updatedUserDetails.companions, 1)` — a flat `1` per call,
+the baseline every other leveling grant scales against). On top of that baseline, a companion whose
+`perks` array includes certain perk types gets a SECOND, independent leveling path:
+
+| Perk type | Extra leveling source | Companions with it today |
+|---|---|---|
+| `robChanceFlat` | `/rob` (perk-type-restricted grant, `rob.js:117-121`) | barn_owl, elder_rootbeard, yamimic (+ yukon, via its own id-restricted Bounty/Heist path) |
+| `starchSellBonusPercent` | `/sell-starch` (`sellStarch.js:99-104`) | mole, rootcarver, elder_rootbeard, yamimic |
+| `regradeChanceBoostPercent` | `/regrade` (`regrade.js`, 3 call sites) | elder_rootbeard, yamimic |
+| `rivalSuccessChanceFlat` | `/confront-rival` (`confrontRival.js:81-86`) | yukon, yamimic |
+| `passiveIncomePercent` | Passive ticking — levels purely from elapsed EQUIPPED time, zero action required (`companionFactory.applyPassiveCompanionTick`) | rootcarver, elder_rootbeard, mochi, yamimic |
+| (id-restricted, not perk-type) | Bounty/Heist, `restrictToCompanionId: 'yukon'` only | yukon |
+
+Every one of these is a genuine, DELIBERATE player action (or, for passive ticking, zero action at
+all) — consistent with this codebase's own stated design principle for these grants (see `rob.js`'s
+own comment: "a genuine TIME investment, not an outcome-based reward").
+
+Running every roster entry's `perks` array against this table (`node -e` against the live
+`Companions` array, verified directly) surfaces **7 of the 15 roster companions with NONE of these
+perk types at all** — no accelerant path beyond ordinary `/work`, full stop:
+
+| Companion | Rarity | Perk type(s) |
+|---|---|---|
+| sprout | common | workMultiplierPercent |
+| fieldmouse | common | workCooldownSkipChance |
+| ladybug | common | bankCapacityPercent |
+| guinea_pig | common | poisonImmunity |
+| prospector | rare | specialEncounterMultiplierBonus, workMultiplierPercent |
+| firefly | rare | workMultiplierPercent |
+| spudsprite | legendary | workCooldownSkipChance, workMultiplierPercent |
+
+(`cinderroot` also has no accelerant-eligible perk type, but isn't a normal personal-leveling
+target — see the Guild Companion rework above; excluded from this list and this fix.)
+
+Guinea Pig and Prospector are exactly the two the player named, but the underlying gap affects 7
+companions spanning Common through Legendary — a systemic pattern, not a two-companion special case.
+
+### Why Guinea Pig/Prospector specifically sting more than the list length suggests
+
+Their perks are the kind of thing you'd want equipped WHILE actively grinding — poison protection,
+better special-encounter odds. Companion Scavenging (`CompanionScavenging`, `systems/companions.md`
+#scavenging) already offers a genuine, deliberate, perk-type-agnostic leveling path available to
+every companion including these 7 — but it only works on a BENCHED (unequipped) companion. So a
+player who wants Guinea Pig's protection has to choose between (a) keeping it equipped and accepting
+the flat, slowest-possible `/work`-only leveling rate, or (b) benching it to scavenge-level it
+faster, forgoing its protection while they do. A player using Barn Owl gets both the perk equipped
+AND accelerated leveling from `/rob` at the same time — no such trade-off. That asymmetry, not a
+literal zero-leveling-options bug, is the real pain point.
+
+### Options considered
+
+1. **Bonus grant on a random in-work proc** (e.g. extra workCount specifically when Poison Potato
+   hits with Guinea Pig equipped, or when a Prospector-doubled special encounter fires) — REJECTED.
+   These procs are governed by dice the player doesn't choose to trigger, unlike `/rob`/`/sell-starch`
+   /`/regrade`/`/confront-rival`, which the player deliberately chooses to do. Rewarding a lucky roll
+   with bonus leveling contradicts this system's own "time investment, not outcome-based reward"
+   principle (see above) and would make leveling speed for these 7 companions swingy/luck-dependent
+   in a way nothing else in this system is.
+2. **A per-companion shortened leveling curve** (smaller `CompanionLeveling.THRESHOLDS` requirement
+   for these 7 specifically) — REJECTED as riskier than it sounds. `workCount` currently maps to
+   level via ONE shared curve, read directly by Companion Market pricing, Fusion/Ascension, and
+   several achievement thresholds (`mythicMaxLevelCount`-style counters, `hasReachedMaxLevel`
+   tracking) — introducing a per-companion custom curve risks rippling into all of those rather than
+   staying contained to the leveling grant itself.
+3. **A flat MULTIPLIER on the existing `/work` grant specifically while one of these 7 is active** —
+   RECOMMENDED. Not luck-gated (applies to every `/work` call uniformly, so it's still a pure time
+   investment, just a faster-accruing one). Touches exactly one call site
+   (`work.js:338`'s literal `1`) and reuses 100% of existing leveling/threshold/display machinery —
+   no new mechanic, no new command, no new UI. Automatically future-proof: defined as "any companion
+   whose perks include NONE of the accelerant-eligible types above," not a hardcoded id list, so a
+   new companion added later is correctly included or excluded without a second change site (mirrors
+   this system's own established "restrict by perk type, not by name" convention used for
+   `/rob`/`/sell-starch`/`/regrade`/`/confront-rival`).
+
+### Resolved by direct instruction
+
+- **Scope: all 7 affected companions** (sprout, fieldmouse, ladybug, guinea_pig, prospector,
+  firefly, spudsprite), not just the two originally named — "such as" in the original ask read
+  correctly as illustrative, confirmed via AskUserQuestion rather than assumed.
+- **Multiplier: 2x** — ordinary `/work` grants these companions 2 workCount per call instead of the
+  universal baseline of 1, while one of them is the active/equipped companion. No other action's
+  grant changes; no companion outside this list of 7 is affected at all.
+
+### Implementation shape (for whoever builds this)
+
+- A new constant, likely `CompanionLeveling.WORK_ONLY_LEVELING_MULTIPLIER = 2` (or similar naming —
+  developer's call), alongside a helper — e.g. `companionFactory.hasAccelerantPerk(companion)` —
+  checking the active companion's roster `perks` array against the accelerant-eligible set
+  (`robChanceFlat`, `starchSellBonusPercent`, `regradeChanceBoostPercent`, `rivalSuccessChanceFlat`,
+  `passiveIncomePercent`) — a companion is boosted iff NONE of its perk types are in that set.
+- `work.js:338`'s call becomes something like
+  `levelActiveCompanion(updatedUserDetails.companions, getWorkLevelingGrant(activeCompanion))`
+  rather than a bare literal `1` — needs the active companion's roster definition in scope at that
+  point (already resolvable via `companionFactory.getActiveCompanion(userDetails)` or equivalent,
+  used elsewhere in this same file).
+- `cinderroot` (no perks array at all) technically matches "none of its perk types are accelerant-
+  eligible" vacuously — should be explicitly excluded (or simply never reachable here in practice,
+  since it's normally donated away before ever being someone's personal active companion — confirm
+  either way rather than leaving it to accident).
+- Update `/help topic:companions` and `systems/companions.md#leveling` to mention the 2x rate for
+  this specific set, so it's not a silent, undocumented number.
+- Test coverage: extend `work.js`'s existing companion-leveling tests (or a dedicated
+  `companionFactory.test.js` case for the new helper) to cover at least one boosted companion (e.g.
+  guinea_pig gets 2 workCount from a single `/work` call) and one unboosted companion (e.g. barn_owl
+  still gets exactly 1, unaffected by this change) — the accelerant-set boundary is exactly the kind
+  of thing worth a regression test given it's defined by exclusion, not an explicit allow-list.
+
+Not yet implemented — this entry is the design only, pending the user saying to build it.
