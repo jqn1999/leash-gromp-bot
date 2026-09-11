@@ -430,10 +430,12 @@ function buildSpudKeepPayoutShareField(shares, pageIndex = 0) {
     };
 }
 
-// Cinderroot's guild-info display line — shared by createGuildEmbed's own inline field and
-// the dedicated /guild-companion status embed below, so the two never drift on wording or
-// numbers. Assumes guild.guildCompanion is already known truthy (both call sites already
-// guard on that before calling this).
+// Cinderroot's guild-info display line, used by createGuildEmbed's own inline field.
+// Assumes guild.guildCompanion is already known truthy (the call site guards on that
+// before calling this — see the field's own how-to fallback for the null case). A
+// dedicated /guild-companion status command used to share this too, but was removed
+// (2026-09-11, direct instruction) as redundant with this same field already being
+// visible on /guild.
 function buildCinderrootStatusValue(guild, level) {
     const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
     const name = def?.name ?? guild.guildCompanion.id;
@@ -1156,17 +1158,17 @@ class EmbedFactory {
         // guild can be findGuildById- (healed, guildCompanion is null/object) or
         // findGuildByName-sourced (raw scan, guildCompanion can be undefined if never
         // healed) — a plain truthy check handles both the healed-null and unhealed-undefined
-        // cases identically, showing nothing rather than crashing either way.
-        if (guild.guildCompanion) {
-            // Guild Companion (Cinderroot) Rework (2026-09-11) — buildCinderrootStatusValue
-            // is shared with the dedicated /guild-companion status embed below, so the two
-            // never drift on wording or numbers.
-            fields.push({
-                name: `Guild Companion:`,
-                value: buildCinderrootStatusValue(guild, raidLevelInfo.level),
-                inline: false
-            });
-        }
+        // cases identically. Always shown now (2026-09-11, direct instruction — the dedicated
+        // /guild-companion status command was removed as redundant with this field, so this
+        // field needs to carry BOTH states on its own: the active perk breakdown, or a nudge
+        // toward finding/donating one, instead of just disappearing when a guild has none).
+        fields.push({
+            name: `Guild Companion:`,
+            value: guild.guildCompanion
+                ? buildCinderrootStatusValue(guild, raidLevelInfo.level)
+                : `Your guild doesn't have Cinderroot, the Hoardwarden yet. It's found personally — whoever starts a winning guild raid has a rare chance to find one (see /help topic:cinderroot) — then any member who finds one can donate it to the guild with /guild-companion-donate.`,
+            inline: false
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(`${guild.guildName}`)
@@ -1375,24 +1377,6 @@ class EmbedFactory {
             .setDescription(def.sacrificeFlavor)
             .setColor("Red")
             .setThumbnail(def.thumbnailUrl)
-            .setFooter({ text: "Made by Beggar" })
-            .setTimestamp(Date.now())
-        return embed;
-    }
-
-    // Read-only Cinderroot status view (/guild-companion) — mirrors createGuildInfamyEmbed's
-    // own never-mutates precedent. Distinguishes "no Cinderroot at all" from "has
-    // Cinderroot" (always fully active once possessed), using the exact same
-    // buildCinderrootStatusValue helper createGuildEmbed's own inline field uses, so the two
-    // views never drift.
-    createGuildCompanionStatusEmbed(guildName, guild, level) {
-        const description = guild.guildCompanion
-            ? buildCinderrootStatusValue(guild, level)
-            : `Your guild doesn't have Cinderroot, the Hoardwarden yet. It's found personally — whoever starts a winning guild raid has a rare chance to find one (see /help topic:cinderroot) — then any member who finds one can donate it to the guild with /guild-companion-donate.`;
-        const embed = new EmbedBuilder()
-            .setTitle(`${guildName}'s Guild Companion`)
-            .setDescription(description)
-            .setColor(guild.guildCompanion != null ? "Gold" : "Grey")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;

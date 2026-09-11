@@ -1292,3 +1292,49 @@ describe('createQuestCompleteEmbed', () => {
         expect(embed.data.fields[0].value).toContain('+0.40x Work Multiplier');
     });
 });
+
+// The dedicated /guild-companion status command was removed (2026-09-11, direct instruction —
+// it was pure duplication of this same field already shown on /guild) in favor of always
+// showing this field, using a how-to fallback when the guild has none instead of just omitting
+// the field entirely. Regression coverage for that always-shown behavior.
+describe('createGuildEmbed Guild Companion field', () => {
+    const raidFactory = require('../raidFactory');
+    const companionFactory = require('../companionFactory');
+
+    function baseGuild(overrides = {}) {
+        return {
+            guildName: 'Some Guild',
+            memberList: [{ id: 'u1', username: 'Leader', role: 'Leader' }],
+            memberCap: 5,
+            raidCount: 0,
+            bankStored: 0,
+            bankCapacity: 1000000,
+            totalEarnings: 0,
+            guildBuff: 'workMulti',
+            guildCompanion: null,
+            ...overrides,
+        };
+    }
+
+    beforeEach(() => {
+        raidFactory.getRaidLevelInfo.mockReturnValue({ level: 1, winsToNextLevel: 6, multiplier: 1 });
+        companionFactory.getCompanionById.mockReturnValue({ id: 'cinderroot', name: 'Cinderroot, the Hoardwarden' });
+    });
+
+    test('shows a how-to nudge (not just an absent field) when the guild has no Cinderroot', () => {
+        const embed = embedFactory.createGuildEmbed(baseGuild());
+        const field = embed.data.fields.find(f => f.name === 'Guild Companion:');
+        expect(field).toBeDefined();
+        expect(field.value).toMatch(/doesn't have Cinderroot/i);
+        expect(field.value).toContain('/guild-companion-donate');
+    });
+
+    test('shows the active perk breakdown when the guild possesses Cinderroot', () => {
+        const guild = baseGuild({ guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } });
+        const embed = embedFactory.createGuildEmbed(guild);
+        const field = embed.data.fields.find(f => f.name === 'Guild Companion:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('Cinderroot, the Hoardwarden');
+        expect(field.value).toMatch(/chance to skip raid cooldown/i);
+    });
+});

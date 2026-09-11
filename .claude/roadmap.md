@@ -11276,3 +11276,28 @@ edits, and updated tests in `guildCompanionFactory.test.js`/`startRaidGuildCompa
 `guildCompanion.test.js`. Docs updated: `systems/guilds.md`'s Cinderroot section rewritten,
 `/help topic:cinderroot` (constants.js `HelpTopics`) rewritten, `reference/commands.md`'s command
 table updated.
+
+### Follow-up (2026-09-11, same day): dedicated `/guild-companion` status command removed
+
+Prompted by a direct, pointed question: "is guild-companion even needed if it shows up on guild
+command." It wasn't — `/guild`'s own `createGuildEmbed` already rendered the exact same "Guild
+Companion:" field via the same `buildCinderrootStatusValue` helper, so the standalone command was
+pure duplication with no unique behavior of its own.
+
+- `guildCompanion.js` and its test file deleted outright (same "zero real usage, just delete it"
+  reasoning as the equip/unequip removal above — this command shipped and was removed the same
+  day).
+- `createGuildCompanionStatusEmbed` (the now-unreferenced embed builder) deleted from
+  `embedFactory.js`.
+- The one thing the dedicated command did that the `/guild` field DIDN'T — a "how to find/donate
+  one" nudge when a guild has none — was folded directly into `createGuildEmbed`'s own field
+  instead of that field just disappearing on a guild with no Cinderroot. The field is now always
+  present, showing either the active perk breakdown or the how-to text.
+- `guildCompanionDonate.js`'s success message updated to point at `/guild` instead of the removed
+  command.
+- Added dedicated regression coverage for `createGuildEmbed`'s Guild Companion field (previously
+  untested in either state) — `embedFactory.test.js`'s new `createGuildEmbed Guild Companion field`
+  describe block, covering both the how-to-nudge and active-perk-breakdown branches.
+
+Full suite after this follow-up: **1456/1456** across 81 suites (1457 minus the 3 deleted
+`guildCompanion.test.js` cases, plus 2 new `createGuildEmbed` field tests).

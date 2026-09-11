@@ -1090,24 +1090,31 @@ instance to whoever runs that command.
   tradeable/fusable Legendary companion are between being FOUND and being DONATED, and again after
   a WITHDRAW — exactly like Yukon has zero restrictions post-acquisition.
 
-### Read-only status: `/guild-companion`
+### Status is shown on `/guild`, no dedicated status command
 
-Mirrors `/guild-infamy`'s own never-mutates precedent — shows one of two states: no Cinderroot at
-all, or possessed (the full perk breakdown, identical wording to `/guild`'s own Guild Companion
-field, since possession always means active now). Both views share one `embedFactory.js` helper
-(`buildCinderrootStatusValue`) so they can never drift on wording or numbers.
+A standalone `/guild-companion` read-only status command originally shipped alongside donate,
+mirroring `/guild-infamy`'s own never-mutates precedent — but since `/guild`'s own embed
+(`createGuildEmbed`) already renders a "Guild Companion:" field, it was pure duplication. Removed
+(2026-09-11, direct instruction, prompted by the player-facing question "is guild-companion even
+needed if it shows up on guild command"). Its one piece of real value — the "how to find/donate
+one" nudge for a guild with none — was folded directly into that same `/guild` field instead of
+just going blank when a guild has no Cinderroot, so the field now always shows something either
+way. Both branches still share the same `buildCinderrootStatusValue` helper for the possessed case,
+so numbers/wording can't drift.
 
 ### Commands
 
-All four live in `src/commands/guilds/`, following this codebase's single-purpose-command
+All three live in `src/commands/guilds/`, following this codebase's single-purpose-command
 convention (no Discord `Subcommand` option type is used anywhere else in this codebase, so this
 rework didn't introduce one either):
 
 | Command | Who can call | Behavior |
 |---|---|---|
-| `/guild-companion` | anyone in a guild | Read-only status (none / active) |
 | `/guild-companion-donate` | the OWNING PLAYER, no role gate | Donates an owned Cinderroot instance (autocomplete, filtered to owned Cinderroot instances only) to their guild, activating it immediately. Rejects if the guild already possesses one, if the player doesn't own that instance, or if it's out scavenging |
 | `/guild-companion-withdraw` | Leader/Co-Leader | Pulls the guild's Cinderroot out entirely and awards a personal instance to whoever ran the command. Rejects if the guild has none at all |
+
+Status: check `/guild` — its "Guild Companion:" field always shows either the active perk
+breakdown or how to get one.
 
 ### No migration needed
 

@@ -88,6 +88,6 @@ module.exports = {
         const updatedCompanions = guildCompanionFactory.removeDonatedCompanionFromOwned(userDetails, instanceId);
         await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — it's already protecting the guild's raids and treasury! Check /guild-companion for details.`);
+        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — it's already protecting the guild's raids and treasury! Check /guild for details.`);
     }
 }
