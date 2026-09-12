@@ -286,6 +286,11 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // shape every /work-shaped reward already uses, was missing here too.
     const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
     const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier;
+    // Capped 2026-09-12, direct instruction — see RobNpc.MAX_REWARD_MULTIPLIER's own comment
+    // in constants.js. Applied to BOTH the loss-side lossScale below and the win-side reward
+    // (via effectiveMultiplier further down), so risk and reward flatten together past this
+    // point rather than a player's downside continuing to grow after their upside stopped.
+    const cappedDevelopedMultiplier = Math.min(developedMultiplier, RobNpc.MAX_REWARD_MULTIPLIER);
 
     const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null };
     if (!won) {
@@ -304,7 +309,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
         // fraction of developedMultiplier's excess over 1x; a brand-new player (1x) sees no
         // change from the flat pre-scaling baseline at all.
         if (tier.hasPenalty) {
-            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (developedMultiplier - 1);
+            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (cappedDevelopedMultiplier - 1);
             result.penaltyAmount = Math.round(tier.payoutCap * tier.penaltyPercentOfCap * getRandomFromInterval(.8, 1.2) * lossScale);
         }
         return result;
@@ -318,7 +323,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // PAYOUT_MULTIPLIER stays shared across every tier — only the cap (tier.payoutCap)
     // varies — see RobNpc's own comment in constants.js for why that's still enough
     // differentiation between tiers at real server wealth.
-    const effectiveMultiplier = applyCatchUp(developedMultiplier, catchUpBonus);
+    const effectiveMultiplier = applyCatchUp(cappedDevelopedMultiplier, catchUpBonus);
     // rewardRoll was already rolled above (it's what this attempt's own odds were weighed
     // against) — reused here rather than a fresh roll, so the payout actually matches the
     // risk the player just took.

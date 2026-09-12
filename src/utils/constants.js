@@ -2618,6 +2618,24 @@ const StatBountyFlavor = [
 const RobNpc = {
     NPC_ROB_TIMER_SECONDS: 1800,   // 30 min — shared across every tier
     PAYOUT_MULTIPLIER: 4.5,        // shared across every tier — see this block's own comment above
+    // Added 2026-09-12, direct instruction ("how should i adjust merc so that it caps around
+    // the 250 power range of guilds") — every other reward stream in this game has a real
+    // ceiling (Bounty's own 12-tier ladder + .95 success cap, Rival's own
+    // `MAX_RIVAL_REWARD_BASE`, every Guild Raid tier's success-rate cap), but Heist's win-side
+    // reward (`resolveNpcRob`'s `calculateGainAmount(..., effectiveMultiplier, ...)` call)
+    // multiplied its capped base directly by the player's own raw developed power with no
+    // ceiling at all — the one truly unbounded reward curve in the whole economy, which is
+    // exactly why solo Mercenary income (Bounty + Heist combined) kept climbing indefinitely
+    // instead of leveling off the way every other system does. Caps `developedMultiplier`
+    // itself (both the win-side reward term AND the loss-side `lossScale`, so risk and reward
+    // flatten TOGETHER rather than a player's downside continuing to grow past the point
+    // their upside stopped — see mercenaryFactory.js's own comment at the cap's use site) at
+    // 250, matching Guild Elite's own effective power reference from the same day's balance
+    // audit: below 250 nothing changes at all (same curve as before), above it Heist income
+    // (the dominant driver of Mercenary's own growth) flatlines outright while Bounty keeps
+    // inching up on its own separate, much-higher-power asymptote — see balance-audit.md's
+    // 2026-09-12 entry for the full before/after comparison against Guild Regular/Elite.
+    MAX_REWARD_MULTIPLIER: 250,
     // Failure penalty for any tier with hasPenalty: true — a per-tier fraction of that
     // tier's own payoutCap (see each TIERS entry's own penaltyPercentOfCap below), scaled by
     // the same +/-20% variance roll every other reward/penalty pair in this game uses

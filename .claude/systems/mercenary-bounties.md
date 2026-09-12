@@ -899,6 +899,24 @@ uses — catch-up exists to help an underperforming player keep pace with a matu
 so a catch-up-boosted player shouldn't also take a bigger loss because of the same boost
 meant to help them.
 
+**`RobNpc.MAX_REWARD_MULTIPLIER` (250), added 2026-09-12** — direct instruction, prompted by a
+same-day balance audit finding that combined solo Mercenary income (Bounty + Heist) eventually
+outpaced Guild Regular AND Guild Elite, purely because Heist's win-side reward multiplied its
+capped base directly by the player's own raw `developedMultiplier` with **no ceiling at all** —
+the one truly unbounded reward curve in the whole economy (Bounty's own 12-tier ladder + `.95`
+success cap, Rival's own `MAX_RIVAL_REWARD_BASE`, and every Guild Raid tier's success-rate cap
+all plateau somewhere; Heist didn't). "How should i adjust merc so that it caps around the 250
+power range of guilds" — `developedMultiplier` is now clamped at `RobNpc.MAX_REWARD_MULTIPLIER`
+**before** either the loss-side `lossScale` formula above or the win-side `effectiveMultiplier`
+(`applyCatchUp(cappedDevelopedMultiplier, catchUpBonus)`) read it, so risk and reward flatten
+TOGETHER past 250 rather than a player's downside continuing to grow after their upside stopped
+(the alternative — cap the win side only and let losses keep scaling — was considered and
+rejected, direct instruction, in favor of symmetry). Below 250 nothing changes at all; catch-up's
+own bonus still applies genuinely on top of the already-capped value (a catch-up-boosted player
+past the cap can still exceed 250x effective, just starting from 250 rather than from their real,
+higher `developedMultiplier`). See `balance-audit.md`'s 2026-09-12 entries for the full
+before/after EV comparison against Guild Regular/Elite/Legendary that motivated this.
+
 `PAYOUT_MULTIPLIER` stays **shared** across every tier rather than scaling per-tier — only
 the cap differs. Verified at implementation against a live reported server total
 (~19.7M potatoes, giving `workGainAmount` ~39,400 via `Work.PERCENT_OF_TOTAL`) that

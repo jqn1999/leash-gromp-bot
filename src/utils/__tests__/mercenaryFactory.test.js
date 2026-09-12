@@ -2,6 +2,7 @@ jest.mock('../dynamoHandler');
 
 const mercenaryFactory = require('../mercenaryFactory');
 const raidFactory = require('../raidFactory');
+const { applyCatchUp } = require('../workFactory');
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, RobNpc, MercenaryCompanionDrop, Raid, Work, CompanionLeveling, Rival, RivalMercenaries } = require('../constants');
 
 function baseUser(overrides = {}) {
@@ -939,6 +940,95 @@ describe('resolveNpcRob', () => {
 
         expect(ratio).toBeGreaterThan(0.35);
         expect(ratio).toBeLessThan(0.50);
+    });
+
+    // RobNpc.MAX_REWARD_MULTIPLIER (2026-09-12, direct instruction: "how should i adjust merc
+    // so that it caps around the 250 power range of guilds") — Heist was the one reward
+    // stream in the whole economy with no ceiling on its win-side scaling (every other
+    // system — Bounty's own 12-tier ladder, Rival's MAX_RIVAL_REWARD_BASE, every Guild Raid
+    // tier — caps out somewhere). Caps developedMultiplier at 250 for BOTH the win-side
+    // reward and the loss-side lossScale, so risk and reward flatten together rather than a
+    // player's downside continuing to grow after their upside stopped.
+    describe('RobNpc.MAX_REWARD_MULTIPLIER caps win AND loss scaling at 250', () => {
+        test('below the cap, reward and loss scale with real power exactly as before (no regression)', async () => {
+            const power = 150; // well under the 250 cap
+            const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+
+            const winSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint
+                .mockReturnValueOnce(0);                   // win check -> hit
+            let winResult;
+            try {
+                winResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: power }), 1_000_000, 0, 'noble_vault');
+            } finally {
+                winSpy.mockRestore();
+            }
+            expect(winResult.amount).toBe(Math.round(nobleVault.payoutCap * power * 0.95));
+
+            const lossSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL) // reward roll -> midpoint
+                .mockReturnValueOnce(0.999999)             // win check -> miss
+                .mockReturnValueOnce(0);                   // loss variance roll -> 0.8x
+            let lossResult;
+            try {
+                lossResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: power }), 1_000_000, 0, 'noble_vault');
+            } finally {
+                lossSpy.mockRestore();
+            }
+            const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
+            expect(lossResult.penaltyAmount).toBe(Math.round(nobleVault.payoutCap * nobleVault.penaltyPercentOfCap * 0.8 * lossScale));
+        });
+
+        test('at and above the cap, reward and loss both use 250 instead of the real (higher) power', async () => {
+            const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+            const cappedReward = Math.round(nobleVault.payoutCap * RobNpc.MAX_REWARD_MULTIPLIER * 0.95);
+            const cappedLossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (RobNpc.MAX_REWARD_MULTIPLIER - 1);
+            const cappedLoss = Math.round(nobleVault.payoutCap * nobleVault.penaltyPercentOfCap * 0.8 * cappedLossScale);
+
+            for (const power of [250, 500, 10000]) {
+                const winSpy = jest.spyOn(Math, 'random')
+                    .mockReturnValueOnce(MIDPOINT_REWARD_ROLL)
+                    .mockReturnValueOnce(0);
+                let winResult;
+                try {
+                    winResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: power }), 1_000_000, 0, 'noble_vault');
+                } finally {
+                    winSpy.mockRestore();
+                }
+                expect(winResult.amount).toBe(cappedReward);
+
+                const lossSpy = jest.spyOn(Math, 'random')
+                    .mockReturnValueOnce(MIDPOINT_REWARD_ROLL)
+                    .mockReturnValueOnce(0.999999)
+                    .mockReturnValueOnce(0); // loss variance roll -> 0.8x
+                let lossResult;
+                try {
+                    lossResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: power }), 1_000_000, 0, 'noble_vault');
+                } finally {
+                    lossSpy.mockRestore();
+                }
+                expect(lossResult.penaltyAmount).toBe(cappedLoss);
+            }
+        });
+
+        test('catch-up bonus still applies on top of the capped multiplier, not bypassed by it', async () => {
+            const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
+            const catchUpBonus = 5; // "a large catchUpBonus" per this file's own existing convention
+            const winSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL)
+                .mockReturnValueOnce(0);
+            let winResult;
+            try {
+                winResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 500 }), 1_000_000, catchUpBonus, 'noble_vault');
+            } finally {
+                winSpy.mockRestore();
+            }
+            // effectiveMultiplier = applyCatchUp(250, 5) -- catch-up is applied to the ALREADY-
+            // capped 250, not the real 500, but still genuinely adds on top of it.
+            const expectedEffectiveMultiplier = applyCatchUp(RobNpc.MAX_REWARD_MULTIPLIER, catchUpBonus);
+            expect(winResult.amount).toBe(Math.round(nobleVault.payoutCap * expectedEffectiveMultiplier * 0.95));
+            expect(expectedEffectiveMultiplier).toBeGreaterThan(RobNpc.MAX_REWARD_MULTIPLIER);
+        });
     });
 
     // The Royal Treasury retune (2026-09-09, THIRD pass — see the constant's own comment for

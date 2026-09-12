@@ -11784,3 +11784,28 @@ alone pays a player roughly 3-25x what solo Bounty pays at the identical persona
 whole range, entirely from the shared-cooldown/large-reward-pool structure of guild raiding — a
 guild member's baseline (Regular only, no Elite/Legendary at all) is already dramatically ahead of
 going solo, independent of the Elite/Legendary trap question this table was built to illustrate.
+
+## Fix: RobNpc.MAX_REWARD_MULTIPLIER caps Heist's win/loss scaling at 250 (2026-09-12, direct instruction)
+
+Follow-up to the same-day discovery that solo Mercenary income (Bounty + Heist combined) was
+omitted from the earlier Elite/Legendary balance comparison — once properly included, it turned out
+to eventually outpace Guild Regular AND Guild Elite entirely, purely because `/rob-npc`'s win-side
+reward (`calculateGainAmount(..., effectiveMultiplier, ...)`) multiplied its capped base directly by
+the player's own raw `developedMultiplier` with no ceiling at all — the one truly unbounded reward
+curve in the whole economy (Bounty's own 12-tier ladder, Rival's own `MAX_RIVAL_REWARD_BASE`, every
+Guild Raid tier's success-rate cap all plateau somewhere; Heist didn't).
+
+"How should i adjust merc so that it caps around the 250 power range of guilds" — new
+`RobNpc.MAX_REWARD_MULTIPLIER = 250`, matching the guild-power reference from the same day's balance
+audit. Clamps `developedMultiplier` in `mercenaryFactory.resolveNpcRob` before EITHER the loss-side
+`lossScale` formula or the win-side `effectiveMultiplier` (`applyCatchUp(cappedDevelopedMultiplier,
+catchUpBonus)`) reads it — asked directly whether risk and reward should flatten together or only
+reward, chose **cap both** for symmetry (no "gotcha" where developing further makes an already-
+adopted activity strictly worse). Below 250, behavior is completely unchanged; catch-up's own bonus
+still applies genuinely on top of the capped value, so a catch-up-boosted player can still exceed
+250x effective starting from that floor.
+
+New tests in `mercenaryFactory.test.js`: below-cap regression (identical to pre-change formula),
+at/above-cap (both win and loss pinned to the capped value regardless of how much higher the real
+power goes), and catch-up still stacking on top of the capped value rather than being bypassed by
+it. Docs: `mercenary-bounties.md`'s Heist section. Full suite: **1523/1523** across 83 suites.
