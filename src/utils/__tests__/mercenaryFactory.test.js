@@ -1172,6 +1172,26 @@ describe('resolveYukonAward', () => {
     });
 });
 
+// 2026-09-12, direct instruction: "if a merc is above 20 notoriety, their notoriety gain
+// from bounties and rob-npc is decreased by half, rounding down, minimum of 1." Keyed off
+// Rival.CONFRONTATION_THRESHOLD (also 20) rather than a fresh constant.
+describe('getNotorietyGain', () => {
+    test('at or below the threshold, gain is untouched', () => {
+        expect(mercenaryFactory.getNotorietyGain(0, 4)).toBe(4);
+        expect(mercenaryFactory.getNotorietyGain(Rival.CONFRONTATION_THRESHOLD, 4)).toBe(4);
+    });
+
+    test('above the threshold, gain is halved and rounded down', () => {
+        expect(mercenaryFactory.getNotorietyGain(Rival.CONFRONTATION_THRESHOLD + 1, 4)).toBe(2);
+        expect(mercenaryFactory.getNotorietyGain(Rival.CONFRONTATION_THRESHOLD + 1, 3)).toBe(1); // floor(1.5) = 1
+        expect(mercenaryFactory.getNotorietyGain(1000, 4)).toBe(2);
+    });
+
+    test('above the threshold, a halved gain is floored at a minimum of 1, never 0', () => {
+        expect(mercenaryFactory.getNotorietyGain(Rival.CONFRONTATION_THRESHOLD + 1, 1)).toBe(1);
+    });
+});
+
 describe('pickRandomRival', () => {
     test('returns the first roster entry when the roll lands on index 0', () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);

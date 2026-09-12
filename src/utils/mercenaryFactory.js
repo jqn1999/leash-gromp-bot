@@ -378,6 +378,24 @@ function resolveGuaranteedStatBump(userDetails, scenario) {
     return pickStatGrant('I', userDetails);
 }
 
+// Notoriety-gain taper (2026-09-12, direct instruction: "if a merc is above 20 notoriety,
+// their notoriety gain from bounties and rob-npc is decreased by half, rounding down,
+// minimum of 1") — shared by takeBounty.js and robNpc.js's own win-side Notoriety accrual
+// (see Rival.NOTORIETY_PER_BOUNTY_TIER / RobNpc.TIERS' own notorietyPerWin), so the two
+// call sites can't drift out of sync on the threshold or the rounding rule. Deliberately
+// keyed off Rival.CONFRONTATION_THRESHOLD (also 20) rather than a fresh constant — once a
+// player has enough Notoriety to /confront-rival, further stacking past that gate (instead
+// of actually confronting) grows half as fast, discouraging sitting on a banked
+// confrontation indefinitely. currentNotoriety is the value BEFORE this win's own gain is
+// added (mercenaryNotoriety resets on confrontation, so this only tapers while a player is
+// deliberately over-threshold, not once they've cashed it in).
+function getNotorietyGain(currentNotoriety, baseGain) {
+    if (currentNotoriety > Rival.CONFRONTATION_THRESHOLD) {
+        return Math.max(1, Math.floor(baseGain / 2));
+    }
+    return baseGain;
+}
+
 // One entry drawn uniformly at random on every /confront-rival call, independent of which
 // scenario got rolled — the scenario changes the fight's numbers, never which rival shows up
 // (RivalMercenaries.roster).
@@ -492,6 +510,7 @@ module.exports = {
     resolveYukonAward,
     resolveGuaranteedStatBump,
     pickTwoDistinctStatGrants,
+    getNotorietyGain,
     pickRandomRival,
     rollRivalScenario,
     resolveRivalConfrontation

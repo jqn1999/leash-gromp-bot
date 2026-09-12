@@ -1297,10 +1297,9 @@ carry straight into the next cycle's progress instead of being discarded.
 
 `userDetails.mercenaryNotoriety` (a resetting counter, distinct from the lifetime
 `mercenaryBountyWinCount` that drives Rank) builds up from ordinary Bounty/`/rob-npc` **wins**
-— a one-line constant lookup added directly at each command's existing win-branch call site
-(`takeBounty.js`, `robNpc.js`), not a `mercenaryFactory.js` function, matching
-`mercenaryBountyWinCount`'s own "simple counter bumps live at the command call site" division
-of labor:
+— a per-tier constant lookup added at each command's existing win-branch call site
+(`takeBounty.js`, `robNpc.js`), run through the shared `mercenaryFactory.getNotorietyGain`
+taper (see below) so both call sites can't drift on the threshold/rounding rule:
 
 - `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
 - `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/2/3/4 for Corner
@@ -1308,6 +1307,20 @@ of labor:
   be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1) before the Heist Ladder rework
   (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor of each `RobNpc.TIERS`
   entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s own per-tier shape.
+
+**Gain taper above the confrontation threshold (2026-09-12, direct instruction)**: "if a merc is
+above 20 notoriety, their notoriety gain from bounties and rob-npc is decreased by half,
+rounding down, minimum of 1." `mercenaryFactory.getNotorietyGain(currentNotoriety, baseGain)` —
+called with `userDetails.mercenaryNotoriety` as it stood BEFORE this win's own gain — returns
+`baseGain` unchanged at or below `Rival.CONFRONTATION_THRESHOLD` (also 20, reused rather than a
+fresh constant), and `Math.max(1, Math.floor(baseGain / 2))` once strictly above it. Since
+`/confront-rival` subtracts the threshold rather than resetting to 0 (see above), a player who
+qualifies to confront but keeps farming instead sees their FURTHER Notoriety gains halved —
+direct pressure to actually cash in a confrontation rather than bank Notoriety indefinitely past
+the gate. A player who confronts promptly (dropping back to `mercenaryNotoriety - 20`, usually
+well under the threshold again) never feels the taper at all. Both call sites route through this
+one shared helper (`mercenaryFactory.getNotorietyGain`) rather than duplicating the
+threshold/rounding logic inline.
 
 `/confront-rival` is gated by, checked in order (mirroring `take-bounty.js`'s own
 layered-rejection style):

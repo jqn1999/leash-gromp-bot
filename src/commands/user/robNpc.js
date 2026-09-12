@@ -178,7 +178,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     // tier's own notorietyPerWin instead of a single flat constant. See
     // systems/mercenary-bounties.md#rival-bounty-hunters.
     if (result.won) {
-        addAttributes.mercenaryNotoriety = tier.notorietyPerWin;
+        addAttributes.mercenaryNotoriety = mercenaryFactory.getNotorietyGain(userDetails.mercenaryNotoriety, tier.notorietyPerWin);
         // Durable lifetime counter (systems/quests.md#mercenary-quest) — separate from
         // mercenaryNotoriety above, which resets on /confront-rival and so can't safely
         // drive delta-based quest progress. Does NOT feed Mercenary Rank — that's

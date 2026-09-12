@@ -197,7 +197,10 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         // 3-band letter (see mercenaryFactory.getBandLetter), not the numeric 1-12
         // tier the 12-Tier Bounty Ladder rework introduced. See
         // systems/mercenary-bounties.md#rival-bounty-hunters.
-        addAttributes.mercenaryNotoriety = Rival.NOTORIETY_PER_BOUNTY_TIER[mercenaryFactory.getBandLetter(result.tier)];
+        addAttributes.mercenaryNotoriety = mercenaryFactory.getNotorietyGain(
+            userDetails.mercenaryNotoriety,
+            Rival.NOTORIETY_PER_BOUNTY_TIER[mercenaryFactory.getBandLetter(result.tier)]
+        );
 
         taxAmount = Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
         netRewardAmount = result.rewardAmount - taxAmount;

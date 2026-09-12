@@ -12117,3 +12117,30 @@ a direct and accepted consequence of the same combined retune, not a drift). Doc
 `mercenary-bounties.md`, `raids-and-world-events.md`. Chart republished to the same URL (Version 8)
 — Elite crosses maxed Solo Merc at power ~140, Legendary's own crossover pulled in from ≈555 to
 ≈344.
+
+## Balance: Notoriety gain tapers above the confrontation threshold (2026-09-12, direct instruction)
+
+Player: "make it so that if a merc is above 20 notoriety, their notoriety gain from bounties and
+rob-npc is decreased by half, rounding down, minimum of 1."
+
+`Rival.CONFRONTATION_THRESHOLD` is already 20, so this keys directly off it rather than a fresh
+constant — once a player has enough `mercenaryNotoriety` to `/confront-rival` but keeps farming
+Bounty/Heist wins instead of cashing it in, further gains taper to half.
+
+Added a shared `mercenaryFactory.getNotorietyGain(currentNotoriety, baseGain)` helper (previously
+this was a one-line constant lookup inlined separately at each of `takeBounty.js`'s and
+`robNpc.js`'s own win-branch call sites — pulled into one function so the two couldn't drift on the
+threshold/rounding rule) — returns `baseGain` unchanged at or below the threshold,
+`Math.max(1, Math.floor(baseGain / 2))` above it. `currentNotoriety` is read BEFORE the win's own
+gain is added, so a player sitting exactly at 20 (not yet over) still gets a full-rate gain that
+pushes them over — the taper only bites on gains rolled while ALREADY over.
+
+New tests: `mercenaryFactory.test.js` unit-tests the helper directly (at/below unchanged, above
+halved-and-floored, the minimum-1 floor on a baseGain of 1). `rivalNotorietyAccrual.test.js` (which
+already covered plain accrual end-to-end for both commands) got 4 new cases: above-threshold for
+both `/take-bounty` (Tier I, demonstrating the min-1 floor since `NOTORIETY_PER_BOUNTY_TIER.I` is
+1) and `/rob-npc` (Royal Treasury, `notorietyPerWin` 4, demonstrating a genuine halving to 2), plus
+an at-exactly-20 boundary case for each confirming the taper does NOT apply there (only strictly
+above). Full suite: **1548/1548** across 84 suites — no existing test broke (all existing
+`baseUser()` fixtures default `mercenaryNotoriety: 0`, comfortably under the threshold). Docs:
+`mercenary-bounties.md`.
