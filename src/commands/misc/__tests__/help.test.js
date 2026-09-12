@@ -79,11 +79,12 @@ describe('spot-check the new 2026-09-10 topics cite real numbers, not vibes', ()
 
     test('heist cites the current RobNpc.TIERS payout caps', () => {
         const content = contentFor('heist');
-        expect(content).toContain('5,000');
-        expect(content).toContain('10,000');
-        expect(content).toContain('20,000');
-        // Royal Treasury's own cap, 50,000 -> 45,000 on 2026-09-12 (fourth retune pass).
-        expect(content).toContain('45,000');
+        // All four caps scaled x0.4580 on 2026-09-12 (fifth retune pass, paired with the
+        // Elite/Legendary reward buff) — was 5,000/10,000/20,000/45,000.
+        expect(content).toContain('2,500');
+        expect(content).toContain('4,500');
+        expect(content).toContain('9,000');
+        expect(content).toContain('20,500');
     });
 
     test('spud-keep cites the current pot redirect percent and attacker bonus base', () => {

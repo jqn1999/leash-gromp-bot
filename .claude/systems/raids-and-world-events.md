@@ -432,6 +432,30 @@ previously-monotonic efficiency ramp — T4 stays the best ABSOLUTE payout, just
 per-point one anymore, a direct consequence of capping the plateau value itself rather than the
 rate. See `balance-audit.md`'s third 2026-09-12 entry for the full derivation.
 
+**Update (2026-09-12, same day, fourth retune) — Elite/Legendary reward buffed ×2.1833, paired with
+a Solo Merc nerf, crossover moved to power ~140.** After the guild-raid EV chart was rebuilt against
+a realistic best-case Solo Merc (Rank 6, Royal Treasury, Yukon maxed — see
+`mercenary-bounties.md`'s own Heist section), the "3x/7x peak vs. Merc" caps from the accessibility
+retune above turned out to only hold against a much weaker OLD Merc baseline: Elite never actually
+caught up to the new baseline even at power 600, and Legendary only overtook it around power ~555 —
+far later than the original intent ("around 140 power merc should start falling behind a bit").
+Direct instruction, after being shown both single-lever magnitudes (a lone Elite buff would need
+4.77x, overshooting the 3x cap to 13.6x against the old baseline; a lone Merc nerf of the same
+magnitude would crush early-game Solo Merc below even a fresh Regular guild's own income): *"do an
+elite and legendary buff + nerf merc, not as aggressive on both sides."* Split via the geometric
+mean of the 4.77x gap — **Elite and Legendary reward scaled ×2.1833** (difficulty untouched;
+`ELITE_T1_REWARD` 13,341,239→29,127,291 through `LEGENDARY_T4_REWARD` 130,588,822→285,108,348, each
+penalty scaled by the same factor to preserve the 1.5x/2.0x ratio), the other half of the split
+being a matching ×0.4580 cut to Solo Merc (Bounty TIERS + all 4 Heist payout caps — see
+`mercenary-bounties.md`'s own "Fifth pass" section). This lands Elite's own crossover with maxed
+Solo Merc almost exactly at power 140 as intended, and pulls Legendary's crossover in from ≈555 to
+≈344. Re-measured against the correct (post-nerf) Solo Merc baseline rather than the stale old one,
+Elite's peak ratio comes out to ~3.36x — essentially the original 3x design intent once compared to
+the right reference point. Efficiency bands shifted up in lockstep with the reward scale: Elite
+32,900→49,400/pt (was 15,000→22,700), Legendary 33,900→56,500/pt (was 15,500→26,000) —
+`raidFactory.test.js`'s own band assertions were widened to match. See `balance-audit.md`'s fifth
+2026-09-12 entry for the full derivation, including the rejected single-lever alternatives.
+
 `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stayed in `constants.js`, values unchanged,
 as of this 2026-08-26 entry** — but their role had already narrowed to exactly one thing:
 `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` in `raidFactory.js` and its two call sites

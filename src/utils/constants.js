@@ -1713,13 +1713,13 @@ const HelpTopics = [
         id: "mercenary",
         label: "Mercenary Bounties",
         description: "The solo, guild-independent alternative to Guild Raids",
-        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular|stat>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 39,000 → B12 23,400,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only. Stat Bounty is a third, tier-less mode: pay 300,000 potatoes (charged win or lose) for a flat 50% chance at a permanent +0.2 work multiplier — no currency reward, no tax, no tier.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/1.55x/18%/+14/+10/+7; R5 275/1.90x/27%/+21/+16/+10; R6 (max) 525/2.35x/38%/+30/+22/+15.\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +2% (R1) → +7% (R6, `/work`-only); `workTimer`/`bountyTimer` 3% (R1) → 12% (R6) cooldown-skip chance; `robChance` +3% (R1) → +10% (R6), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
+        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular|stat>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 18,000 → B12 10,718,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only. Stat Bounty is a third, tier-less mode: pay 300,000 potatoes (charged win or lose) for a flat 50% chance at a permanent +0.2 work multiplier — no currency reward, no tax, no tier.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/1.55x/18%/+14/+10/+7; R5 275/1.90x/27%/+21/+16/+10; R6 (max) 525/2.35x/38%/+30/+22/+15.\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +2% (R1) → +7% (R6, `/work`-only); `workTimer`/`bountyTimer` 3% (R1) → 12% (R6) cooldown-skip chance; `robChance` +3% (R1) → +10% (R6), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
     },
     {
         id: "heist",
         label: "Heist (/rob-npc)",
         description: "The 4-tier solo Heist Ladder and its odds/payouts",
-        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 5,000 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 10,000 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 20,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6 only, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 45,000 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
+        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 2,500 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 4,500 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 9,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6 only, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 20,500 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
     },
     {
         id: "poison-mimic",
@@ -2032,21 +2032,42 @@ const Raid = {
     // 800, Legendary overtakes Elite above that — a ramp, not an inversion. See
     // balance-audit.md's 2026-09-12 entry (second retune) for the full derivation and
     // before/after curves.
+    // Fifth pass, 2026-09-12, direct instruction — the 3x/7x caps above were calibrated
+    // against the OLD, weak Solo Merc baseline (Rank 4, Noble's Vault, no companion). Once
+    // the EV chart was rebuilt against a realistic BEST-CASE Solo Merc (Rank 6, Royal
+    // Treasury, Yukon maxed — see that baseline's own history above the RobNpc.TIERS
+    // block), Elite never fully caught up to it even at power 600 and Legendary only
+    // overtook it around power ~555, far later than the original "merc should start
+    // falling behind around power 140" intent. Rather than pick one lever (a lone
+    // ~4.77x Elite/Legendary buff, which would overshoot the OLD 3x/7x ceiling to ~13.6x;
+    // or a lone ~79% flat Solo Merc cut, which overshoots the other way — it would drop
+    // even LOW-power Solo Merc income below what a brand-new Regular guild already earns,
+    // contradicting "merc is fine until ~140") — direct instruction: "do an elite and
+    // legendary buff + nerf merc, not as aggressive on both sides." Split via the
+    // geometric mean of the 4.77x gap: Elite/Legendary reward scaled x2.1833, Solo Merc
+    // (Bounty TIERS + all 4 RobNpc.TIERS payoutCaps) scaled x0.4580 (a 54.2% cut) — see
+    // those blocks' own comments. This lands the literal EV-equality crossover at power
+    // 140 as intended, and re-measured against the NEW (already-rebuilt) merc baseline —
+    // not the stale old one the 3x/7x ceiling was calibrated against — Elite's peak ratio
+    // against the fully-nerfed new baseline comes out to ~3.36x, essentially the original
+    // 3x target once compared to the correct reference point. Penalty:reward ratios
+    // (1.5x Elite, 2.0x Legendary) preserved exactly, same as every prior retune. See
+    // balance-audit.md's 2026-09-12 entry (fifth retune) for the full derivation.
     ELITE_T1_DIFFICULTY: 885,
-    ELITE_T1_REWARD: 13341239,
-    ELITE_T1_PENALTY: -20011858,
+    ELITE_T1_REWARD: 29127291,
+    ELITE_T1_PENALTY: -43690937,
 
     ELITE_T2_DIFFICULTY: 1053,
-    ELITE_T2_REWARD: 18509987,
-    ELITE_T2_PENALTY: -27764981,
+    ELITE_T2_REWARD: 40411972,
+    ELITE_T2_PENALTY: -60617958,
 
     ELITE_T3_DIFFICULTY: 1252,
-    ELITE_T3_REWARD: 25163776,
-    ELITE_T3_PENALTY: -37745663,
+    ELITE_T3_REWARD: 54938872,
+    ELITE_T3_PENALTY: -82408308,
 
     ELITE_T4_DIFFICULTY: 1489,
-    ELITE_T4_REWARD: 33661662,
-    ELITE_T4_PENALTY: -50492493,
+    ELITE_T4_REWARD: 73491902,
+    ELITE_T4_PENALTY: -110237853,
 
     ELITE_METAL_KING_DIFFICULTY: 6000,
     ELITE_METAL_KING_REWARD: 30000000,
@@ -2056,22 +2077,24 @@ const Raid = {
     ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
 
     // See ELITE_T1_DIFFICULTY's own comment above for the full 2026-09-12 accessibility
-    // retune (both brackets solved together, same methodology, same commit).
+    // retune (both brackets solved together, same methodology, same commit), and its
+    // "Fifth pass" addendum for the 2026-09-12 x2.1833 reward buff (Legendary scaled by
+    // the same factor as Elite, same commit).
     LEGENDARY_T1_DIFFICULTY: 3000,
-    LEGENDARY_T1_REWARD: 46581033,
-    LEGENDARY_T1_PENALTY: -93162066,
+    LEGENDARY_T1_REWARD: 101698148,
+    LEGENDARY_T1_PENALTY: -203396296,
 
     LEGENDARY_T2_DIFFICULTY: 3568,
-    LEGENDARY_T2_REWARD: 67705734,
-    LEGENDARY_T2_PENALTY: -135411467,
+    LEGENDARY_T2_REWARD: 147818701,
+    LEGENDARY_T2_PENALTY: -295637402,
 
     LEGENDARY_T3_DIFFICULTY: 4244,
-    LEGENDARY_T3_REWARD: 95181622,
-    LEGENDARY_T3_PENALTY: -190363244,
+    LEGENDARY_T3_REWARD: 207805497,
+    LEGENDARY_T3_PENALTY: -415610994,
 
     LEGENDARY_T4_DIFFICULTY: 5047,
-    LEGENDARY_T4_REWARD: 130588822,
-    LEGENDARY_T4_PENALTY: -261177644,
+    LEGENDARY_T4_REWARD: 285108348,
+    LEGENDARY_T4_PENALTY: -570216696,
 
     LEGENDARY_METAL_KING_DIFFICULTY: 12000,
     LEGENDARY_METAL_KING_REWARD: 60000000,
@@ -2424,19 +2447,25 @@ const Bounty = {
     // above is untouched; a player only feels this on a LOSS, and only more so at higher
     // tiers, exactly mirroring how Legendary Guild Raid risks double its own reward while
     // Regular risks only its own reward back.
+    // Fourth pass, 2026-09-12, direct instruction — reward/penalty scaled x0.4580 (a
+    // 54.2% cut) as one half of the combined "buff Elite/Legendary + nerf Solo Merc"
+    // retune — see ELITE_T1_DIFFICULTY's own "Fifth pass" comment in the Raid block for
+    // the full derivation. Difficulty (odds side) and each tier's own penalty:reward
+    // ratio (climbing 1.0x -> 2.0x, see the comment above) are both untouched — this is a
+    // reward-magnitude-only cut, applied uniformly across all 12 tiers.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 39000,    penalty: -39000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 69000,    penalty: -75000 },       // 1.09x
-        { tier: 3,  difficulty: 26,   reward: 123000,   penalty: -145000 },      // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 215000,   penalty: -274000 },      // 1.27x
-        { tier: 5,  difficulty: 69,   reward: 383000,   penalty: -522000 },      // 1.36x
-        { tier: 6,  difficulty: 111,  reward: 660000,   penalty: -960000 },      // 1.45x
-        { tier: 7,  difficulty: 180,  reward: 1143000,  penalty: -1766000 },     // 1.55x
-        { tier: 8,  difficulty: 291,  reward: 1967000,  penalty: -3219000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 3374000,  penalty: -5828000 },     // 1.73x
-        { tier: 10, difficulty: 763,  reward: 5777000,  penalty: -10504000 },    // 1.82x
-        { tier: 11, difficulty: 1236, reward: 10001000, penalty: -19093000 },    // 1.91x
-        { tier: 12, difficulty: 2000, reward: 23400000, penalty: -46800000 },    // 2.00x
+        { tier: 1,  difficulty: 10,   reward: 18000,    penalty: -18000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 32000,    penalty: -34000 },       // 1.06x
+        { tier: 3,  difficulty: 26,   reward: 56000,    penalty: -66000 },       // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 98000,    penalty: -126000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 175000,   penalty: -239000 },      // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 302000,   penalty: -440000 },      // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 524000,   penalty: -809000 },      // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 901000,   penalty: -1474000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 1545000,  penalty: -2669000 },     // 1.73x
+        { tier: 10, difficulty: 763,  reward: 2646000,  penalty: -4811000 },     // 1.82x
+        { tier: 11, difficulty: 1236, reward: 4581000,  penalty: -8745000 },     // 1.91x
+        { tier: 12, difficulty: 2000, reward: 10718000, penalty: -21436000 },    // 2.00x
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
@@ -2777,7 +2806,9 @@ const RobNpc = {
             baseChance: 0.30,
             chancePerRank: 0.10,
             maxChance: 0.80,          // reached at Rank 6 (0.30 + 0.10*5 = 0.80)
-            payoutCap: 5000,          // half of Work.MAX_LARGE_POTATO(10000) — unchanged from pre-ladder /rob-npc
+            // Cap cut x0.4580 2026-09-12 (see royal_treasury's own "Fourth pass" comment
+            // below for the full combined-retune derivation) — chance/odds untouched.
+            payoutCap: 2500,
             hasPenalty: false,        // whiff-only, no loss — the safe intro tier, exactly as /rob-npc always behaved
             notorietyPerWin: 1,
             statGrantChanceOnWin: 0
@@ -2809,7 +2840,7 @@ const RobNpc = {
             baseChance: 0.36,
             chancePerRank: 0.08,
             maxChance: 0.76,
-            payoutCap: 10000,         // matches Work.MAX_LARGE_POTATO exactly
+            payoutCap: 4500,          // was 10,000 (matched Work.MAX_LARGE_POTATO) — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
             penaltyPercentOfCap: 0.5, // x1.0 — unchanged base rate
             notorietyPerWin: 2,
@@ -2837,7 +2868,7 @@ const RobNpc = {
             baseChance: 0.32,
             chancePerRank: 0.06,
             maxChance: 0.62,
-            payoutCap: 20000,
+            payoutCap: 9000,           // was 20,000 — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,
             penaltyPercentOfCap: 0.75, // x1.5, same factor Guild Raid's own Elite penalty uses
             notorietyPerWin: 3,
@@ -2887,12 +2918,32 @@ const RobNpc = {
             // margin over Noble's Vault's own best case at both this tier's own gate (25x) and
             // at 50x, rather than a razor's-edge parity. See balance-audit.md's 2026-09-12
             // entry (fourth Royal Treasury retune) for the full before/after EV breakdown.
+            //
+            // Fifth pass, same day, direct instruction ("should we nerf the values for solo
+            // merc or should we buff the values for elite and legendary... around 140 power
+            // merc should start falling behind a bit") — this tier alone was 60-82% of Solo
+            // Merc's total EV, and even after the fourth pass above, Elite never caught up to
+            // a maxed Solo Merc by power 600 and Legendary only overtook it around power ~555
+            // — far later than intended. Rather than cut this tier alone again (which would
+            // reopen the very dominance trap the four passes above exist to prevent, since
+            // Noble's Vault's own cap wouldn't move), this cut is PROPORTIONAL across the
+            // whole ladder: every RobNpc.TIERS payoutCap AND every Bounty.TIERS
+            // reward/penalty scaled by the same x0.4580 factor (a 54.2% cut), paired with a
+            // x2.1833 buff to Elite/Legendary's own reward tables (see ELITE_T1_DIFFICULTY's
+            // own "Fifth pass" comment in the Raid block for the full derivation, including
+            // the low-power-overshoot check that ruled out a nerf-only approach). Because
+            // every tier's cap scaled by the identical factor, the dominance-over-Noble's-
+            // Vault relationship (linear in payoutCap for both tiers) is mathematically
+            // unaffected by this cut — unlike the fourth pass's Royal-Treasury-only cut,
+            // there was nothing to re-derive here beyond re-running the existing regression
+            // test. See balance-audit.md's 2026-09-12 entry (fifth retune) for the full
+            // before/after breakdown.
             minPowerRequired: 25,
             baseChance: 0.10,
             chancePerRank: 0.08,      // still technically "+/rank" for shape consistency with the other 3 tiers,
                                        // but only reachable at Rank 6 itself (0.10 + 0.08*5 = 0.50 flat once unlocked)
             maxChance: 0.50,
-            payoutCap: 45000,
+            payoutCap: 20500,          // was 45,000 — cut x0.4580
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged
             notorietyPerWin: 4,

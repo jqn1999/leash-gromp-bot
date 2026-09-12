@@ -610,11 +610,18 @@ describe('Bounty.TIERS ladder shape', () => {
         // range — replaced with one deliberately loose band, wide enough to only catch a
         // genuine regression (bounty reward collapsing to near-zero or wildly outpacing
         // guild raiding), not to calibrate a shape both underlying curves have given up.
+        //
+        // Band lowered again 2026-09-12 (fifth retune pass) — Bounty.TIERS reward cut
+        // x0.4580 AND Elite/Legendary reward buffed x2.1833 in the same combined retune
+        // (see RobNpc.TIERS' royal_treasury entry and Raid.ELITE_T1_DIFFICULTY's own
+        // comments), so bounty-vs-matching-difficulty-guild-reward ratios dropped from a
+        // ~0.10-0.65 range to ~0.07-0.24 — a direct, intended consequence of making Solo
+        // Merc fall further behind guild raiding, not a regression.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            expect(ratio).toBeGreaterThan(0.20);
-            expect(ratio).toBeLessThan(0.70);
+            expect(ratio).toBeGreaterThan(0.05);
+            expect(ratio).toBeLessThan(0.30);
         });
     });
 });
@@ -1052,10 +1059,13 @@ describe('resolveNpcRob', () => {
     // itself needed a re-buff (its own maxChance rose 0.42 -> 0.62 after being found dominated
     // by lower tiers). Pass 3 (odds -> 0.50) restores the lead against Noble's Vault's NEW best
     // case (its max Rank-6 chance) at high power, not just at Royal Treasury's own gate.
-    // Cap lowered 50,000 -> 45,000 on 2026-09-12 (fourth retune pass, see the constant's own
-    // comment) — re-verified this invariant still holds with a comfortable margin (~10-12%
-    // at both power points below) rather than assuming the fourth pass didn't disturb it.
-    test('Royal Treasury (0.50 chance, 45K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the fourth retune pass', () => {
+    // Cap lowered 50,000 -> 45,000 on 2026-09-12 (fourth retune pass), then every RobNpc.TIERS
+    // cap (this one included) scaled x0.4580 -> 20,500 in the same day's fifth retune pass
+    // (paired with an Elite/Legendary reward buff — see the constant's own comment). That
+    // fifth cut is PROPORTIONAL across every tier, so the dominance relationship checked here
+    // (linear in payoutCap for both tiers) is mathematically unaffected by it — re-verified
+    // here anyway rather than assumed.
+    test('Royal Treasury (0.50 chance, scaled cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the fifth retune pass', () => {
         const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
         const royalTreasury = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
 

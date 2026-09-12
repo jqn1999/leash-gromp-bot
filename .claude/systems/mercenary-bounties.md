@@ -533,18 +533,22 @@ penalty(tier) = round(reward(tier) * ratio(tier) / 1000) * 1000
 
 | Tier | Reward | Penalty | Ratio |
 |---|---|---|---|
-| B1 | 39,000 | -39,000 | 1.00x |
-| B2 | 69,000 | -75,000 | 1.09x |
-| B3 | 123,000 | -145,000 | 1.18x |
-| B4 | 215,000 | -274,000 | 1.27x |
-| B5 | 383,000 | -522,000 | 1.36x |
-| B6 | 660,000 | -960,000 | 1.45x |
-| B7 | 1,143,000 | -1,766,000 | 1.55x |
-| B8 | 1,967,000 | -3,219,000 | 1.64x |
-| B9 | 3,374,000 | -5,828,000 | 1.73x |
-| B10 | 5,777,000 | -10,504,000 | 1.82x |
-| B11 | 10,001,000 | -19,093,000 | 1.91x |
-| B12 | 23,400,000 | -46,800,000 | 2.00x |
+| B1 | 18,000 | -18,000 | 1.00x |
+| B2 | 32,000 | -34,000 | 1.06x |
+| B3 | 56,000 | -66,000 | 1.18x |
+| B4 | 98,000 | -126,000 | 1.29x |
+| B5 | 175,000 | -239,000 | 1.37x |
+| B6 | 302,000 | -440,000 | 1.46x |
+| B7 | 524,000 | -809,000 | 1.54x |
+| B8 | 901,000 | -1,474,000 | 1.64x |
+| B9 | 1,545,000 | -2,669,000 | 1.73x |
+| B10 | 2,646,000 | -4,811,000 | 1.82x |
+| B11 | 4,581,000 | -8,745,000 | 1.91x |
+| B12 | 10,718,000 | -21,436,000 | 2.00x |
+
+**Reward/penalty values above reflect the 2026-09-12 fifth-retune cut (×0.4580, see that update's
+own section below) — the original 2026-08-29 third-pass values (B1 39,000 → B12 23,400,000) are
+superseded.**
 
 **Reward is completely untouched** — only the loss side moved, so the earlier "~30% of a
 realistic guild's total reward" reward calibration (see the third-pass table above) still
@@ -571,6 +575,22 @@ regression test was widened to one band (20%-50%) across all 12 tiers rather tha
 bands, since the interpolated guild-efficiency curve now dips right at the Regular→Elite seam
 (Elite's own efficiency briefly sits BELOW Regular's own top efficiency there), spiking a couple of
 tiers' ratios in a way a simple two-band split can no longer describe cleanly.
+
+**Fifth pass, 2026-09-12, direct instruction** ("should we nerf the values for solo merc or should
+we buff the values for elite and legendary... around 140 power merc should start falling behind a
+bit") — Bounty's own reward/penalty values ARE touched this time, for the first time since the
+third pass. This is one half of a combined retune (the other half buffs Elite/Legendary reward
+×2.1833 — see `raids-and-world-events.md`'s own 2026-09-12 update): every `Bounty.TIERS`
+reward/penalty scaled ×0.4580 (a 54.2% cut), paired with the same ×0.4580 cut applied to all four
+`RobNpc.TIERS` payout caps (see `RobNpc`'s own section below). Solved via the geometric mean of the
+4.77x gap between Elite's and a maxed Solo Merc's EV at power 140 — split so neither lever alone had
+to do all the work (a lone buff would've overshot the "3x vs. Merc" design ceiling to 13.6x; a lone
+Merc-only nerf would've crushed early-game Solo Merc income below even a fresh Regular guild's own).
+See `balance-audit.md`'s 2026-09-12 entry (fifth retune) for the full derivation and low-power-
+overshoot check. Net effect on Bounty specifically: its own reward-vs-matching-difficulty-guild-
+reward ratio (the "~30%" target the third pass calibrated) dropped further to a ~7-24% range —
+`mercenaryFactory.test.js`'s ladder-shape test band was widened/lowered to match, since a lower
+ratio here is exactly what "merc falls further behind" means, not a regression.
 
 Deliberately NOT reduced further by `rankInfo.rewardMultiplier` or Yukon's
 `bountyRewardPercent` — those stay reward-side-only perks — so as a mercenary ranks up,
@@ -807,10 +827,14 @@ roll to size a matching penalty off of.
 
 | Tier | Rank | Power gate | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|---|---|
-| Market Stall | 1+ | — (none) | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
-| Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
-| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 45,000 | 1.0 (x2.0) | 36,000-54,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Market Stall | 1+ | — (none) | 30% / +10% / 80% | 2,500 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
+| Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 4,500 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 1,800-2,700 baseline | +2 | — |
+| Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 9,000 | 0.75 (x1.5) | 5,400-8,100 baseline | +3 | — |
+| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 20,500 | 1.0 (x2.0) | 16,400-24,600 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+
+**Payout caps above reflect the 2026-09-12 fifth-retune cut (×0.4580 across all 4 tiers — see the
+"Fifth pass" section below) — the fourth-pass values (Market Stall 5,000 → Royal Treasury 45,000)
+are superseded.**
 
 Power gates land on real shop checkpoints from `SCALING_ANCHOR_TABLE` (3x/15x/25x). "On a
 whiff" figures above are the pre-`lossScale` baseline at exactly 1x developed multiplier —
@@ -907,6 +931,23 @@ razor's-edge parity. `baseChance`/`chancePerRank`/`maxChance`/`penaltyPercentOfC
 untouched — this pass was a payout-cap-only cut, the opposite lever from the three
 odds-only passes above. See `balance-audit.md`'s 2026-09-12 entry (fourth Royal Treasury
 retune) for the full Bounty-vs-Heist EV breakdown this was solved from.
+
+**Fifth pass, same day, direct instruction** ("should we nerf the values for solo merc or should we
+buff the values for elite and legendary... around 140 power merc should start falling behind a
+bit") — even after the fourth pass, Elite never caught up to a maxed Solo Merc by power 600 and
+Legendary only overtook it around power ~555, far later than intended. Rather than cut Royal
+Treasury alone again (which would reopen the very dominance trap the three passes above exist to
+prevent, since Noble's Vault's own cap wouldn't move), this cut is **proportional across every
+tier**: all 4 `RobNpc.TIERS` payout caps (Market Stall/Merchant's Wagon/Noble's Vault/Royal
+Treasury) scaled by the same ×0.4580 factor (a 54.2% cut), paired with a ×2.1833 buff to
+Elite/Legendary's own reward tables (see `raids-and-world-events.md`'s own 2026-09-12 update).
+Because every tier's cap scaled by the identical factor, the dominance-over-Noble's-Vault
+relationship (linear in `payoutCap` for both tiers) is mathematically unaffected by this cut — the
+existing regression test was re-verified rather than re-derived. `baseChance`/`chancePerRank`/
+`maxChance`/`penaltyPercentOfCap` all untouched again — a second payout-cap-only cut, just spread
+across the whole ladder this time instead of one tier. See `balance-audit.md`'s 2026-09-12 entry
+(fifth retune) for the full derivation, including the single-lever alternatives (buff-only,
+nerf-only) that were computed and rejected first.
 
 **`penaltyPercentOfCap` escalates by tier (2026-09-08, direct instruction — see Bounty's own
 matching penalty-escalation entry above for the full rationale).** Was a single flat 0.5

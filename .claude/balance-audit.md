@@ -2639,3 +2639,71 @@ suite: **1541/1541** across 84 suites (one pre-existing test — `help.test.js`'
 current RobNpc.TIERS payout caps" — pinned the literal old "50,000" string and needed updating to
 "45,000"; `mercenaryFactory.test.js`'s dominance-invariant test re-verified rather than assumed
 to still pass). Docs: `mercenary-bounties.md`.
+
+**Follow-up (2026-09-12, same day, fifth retune): combined Elite/Legendary buff + Solo Merc nerf,
+crossover moved to power ~140.** Direct instruction: "should we nerf the values for solo merc or
+should we buff the values for elite and legendary? this is far later than i was expecting for merc
+to fall off compared to guild. Originally the ask was that around 140 power merc should start
+falling behind a bit."
+
+Computed both single-lever magnitudes first, using the just-shipped 45,000-cap curve above
+(Elite EV(140)=2.56M vs. Solo Merc EV(140)=12.21M, a 4.77x gap):
+
+- **Buff Elite alone 4.77x** → hits the power-140 crossover, but blows the "peak 3x vs. Solo Merc"
+  design ceiling from the accessibility retune out to **13.6x at power 580** (measured against the
+  OLD, pre-rebuild Solo Merc baseline that 3x was originally calibrated against).
+- **Nerf Solo Merc alone ÷4.77 (~79% cut)** → also hits the power-140 crossover, and (checked
+  before assuming it was clean) a PROPORTIONAL cut across the whole ladder does NOT reopen the
+  Royal-Treasury-vs-Noble's-Vault dominance trap (EV is linear in `payoutCap` for both tiers, so
+  scaling every tier's cap by the same factor leaves the sign of the comparison untouched — unlike
+  the fourth pass's Royal-Treasury-only cut). But it overshoots the OTHER way: at power 80, a
+  79%-cut Solo Merc (1.45M) would earn LESS than a level-6 Regular guild's own income (1.97M),
+  directly contradicting "merc should be fine until ~140."
+
+Player's own follow-up: "Can you see if this is going to be 3x the new merc baseline" and "Can we
+do an elite and legendary buff + nerf merc, not as aggressive on both sides" — asked to split the
+4.77x gap rather than push it all onto one lever. Solved via the geometric mean:
+**buffScale = √4.77 ≈ 2.1833** (Elite + Legendary reward), **nerfScale = 1/2.1833 ≈ 0.4580** (a
+54.2% cut, Bounty TIERS + all 4 RobNpc.TIERS payout caps, proportionally).
+
+Verified before implementing:
+- **Crossover check**: buffed Elite(140) = nerfed Merc(140) = 5,590,325 exactly, by construction.
+- **Low-power overshoot check**: nerfed Merc(80) = 3.16M, still comfortably ahead of Regular's
+  1.97M — unlike the flat-79%-nerf option, this split doesn't crush early-game Solo Merc below
+  even a fresh guild's income.
+- **Old-baseline ceiling re-check**: 2.1833x against the OLD (pre-rebuild) Solo Merc baseline
+  peaks at ~6.23x — still over the original "3x" number, but that number was calibrated against a
+  baseline this session already established as stale (the pre-rebuild Rank 4/Noble's Vault/no
+  companion line). Re-measured against the actually-relevant reference — Elite (buffed) vs. Solo
+  Merc (also nerfed, i.e. the real post-retune state) — the peak ratio is **3.36x at power 600**,
+  essentially exactly the original 3x design intent once compared to the correct baseline. Player
+  confirmed proceeding on this basis rather than re-litigating the old ceiling as a hard rule.
+
+**Dominance invariant**: unaffected by construction (proportional scaling of every `RobNpc.TIERS`
+`payoutCap` preserves the sign of the linear EV comparison regardless of the scale factor) —
+`mercenaryFactory.test.js`'s regression test re-verified after the change rather than assumed.
+
+**New curves** (power → Elite / Legendary / Solo Merc, potatoes/hr):
+
+| Power | Elite | Legendary | Solo Merc | Elite/Merc | Legendary/Merc |
+|---|---|---|---|---|---|
+| 80 | -2.79M | -54.86M | 3.16M | — | — |
+| 116 | ≈2.15M (crosses Regular w/T4) | -46.4M | 4.60M | 0.47x | — |
+| 140 | 5.59M | -39.89M | 5.59M | **1.00x (target crossover)** | — |
+| 300 | 27.94M | 0.02M | 10.91M | 2.56x | 0.00x |
+| 344 | ≈32.0M | ≈10.9M (crosses Solo Merc) | ≈10.98M | 2.92x | **1.00x (target crossover)** |
+| 600 | 46.46M | 74.86M | 13.84M | 3.36x | 5.41x |
+
+Elite now crosses maxed Solo Merc almost exactly at power 140 as originally intended; Legendary's
+own crossover pulled in from ≈555 to ≈344. Bounty's own reward-vs-matching-difficulty-guild-reward
+ratio (a separate, previously-tuned ~30%-of-guild-reward design target from the 2026-08-29 pass)
+dropped to a ~7-24% range as a direct, accepted consequence — `mercenaryFactory.test.js`'s "Bounty
+ladder shape" test band was widened/lowered to match rather than treated as a regression, since a
+lower bounty-vs-guild ratio at matching difficulty is exactly what "merc falls further behind" means.
+
+Chart republished to the same URL (Version 8). Full test suite: **1541/1541** across 84 suites —
+`help.test.js` (payout-cap and bounty-reward-range strings), `raidFactory.test.js` (Elite/Legendary
+efficiency bands shifted up ×2.1833), and `mercenaryFactory.test.js` (Bounty ladder-shape band,
+Royal Treasury dominance test title) all needed updating for the new numbers; no test caught an
+actual regression beyond the expected magnitude shift. Docs: `mercenary-bounties.md`,
+`raids-and-world-events.md`.

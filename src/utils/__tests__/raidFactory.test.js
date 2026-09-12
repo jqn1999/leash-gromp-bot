@@ -808,9 +808,11 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         // Fresh target bands measured directly off the solved constants (small headroom
         // above/below for the integer rounding on each bracket's own difficulty/reward).
         // Regular's own band widened on its low end to fit T4's now-lower efficiency.
+        // Elite/Legendary bands both shifted up x2.1833 on 2026-09-12 (fifth retune pass,
+        // paired with the Solo Merc nerf below) — difficulty untouched, reward scaled.
         regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(7000); expect(e).toBeLessThanOrEqual(20100); });
-        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(15000); expect(e).toBeLessThanOrEqual(22700); });
-        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(15500); expect(e).toBeLessThanOrEqual(26000); });
+        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(32000); expect(e).toBeLessThanOrEqual(50000); });
+        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(33000); expect(e).toBeLessThanOrEqual(57000); });
 
         // What still differentiates the modes: absolute difficulty and reward keep
         // climbing across the full 12-tier ladder (each mode's T1 harder AND
