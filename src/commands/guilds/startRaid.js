@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, Work } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
@@ -528,10 +528,9 @@ const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]
 // halving pass (DIFFICULTY_MULTIPLIER 6x/4.5x/3x -> 3x/2.25x/1.5x) is now moot — there's no
 // runtime multiplier left to halve, the static constants already have that history baked
 // in via the ladder anchoring.
-// ELITE_PENALTY_INCREASE still lives in constants.js's Raid object, but is no longer read
-// anywhere in this file — every bracket's penalty is a static constant with the ratio
-// already applied. It remains load-bearing for getMinGuildLevelForTier's gate math only
-// (see runStartRaidFlow below and raidFactory.js's getUnlockedRaidModes).
+// Every bracket's penalty below is a static constant with its 1.5x-of-reward ratio already
+// applied (the old ELITE_PENALTY_INCREASE constant this used to be read from at roll time
+// was deleted 2026-09-12 — see Raid.ELITE_MIN_GUILD_LEVEL's own comment in constants.js).
 const eliteRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
@@ -708,10 +707,10 @@ const eliteRaidScenarios = [
 
 // Static per-bracket difficulty/reward/penalty redesign (2026-08-26) — same rework as
 // eliteRaidScenarios above; see that block's comment and constants.js's own comment on the
-// ELITE_T1_DIFFICULTY block for the full derivation. LEGENDARY_PENALTY_INCREASE still lives
-// in constants.js's Raid object but, like ELITE_PENALTY_INCREASE, is no longer read
-// anywhere in this file — only getMinGuildLevelForTier's gate math (below, and
-// raidFactory.js's getUnlockedRaidModes) still depends on it.
+// ELITE_T1_DIFFICULTY block for the full derivation. Every bracket's penalty below already
+// has its 2.0x-of-reward ratio baked in (the old LEGENDARY_PENALTY_INCREASE constant was
+// deleted 2026-09-12 alongside ELITE_PENALTY_INCREASE — see Raid.ELITE_MIN_GUILD_LEVEL's
+// own comment in constants.js).
 const legendaryRaidScenarios = [
     {
         action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
@@ -1113,18 +1112,15 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
     const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
 
-    // Elite/Legendary gated by guild level, not by how much totalMultiplier the
-    // roster brings — below the derived level, the tier's success-rate cap sits
-    // under its mathematical breakeven point (see getMinGuildLevelForTier), so no
-    // amount of individual stat investment can make it profitable. Checked before
-    // any raid-list/member work so a guild that can't unlock a tier finds out
-    // immediately instead of after paying for member lookups.
+    // Elite/Legendary gated by a flat guild-level requirement (Raid.ELITE_MIN_GUILD_LEVEL/
+    // LEGENDARY_MIN_GUILD_LEVEL — see that constant's own comment for why this replaced a
+    // breakeven-derived gate on 2026-09-12), not by how much totalMultiplier the roster
+    // brings. Checked before any raid-list/member work so a guild that can't unlock a tier
+    // finds out immediately instead of after paying for member lookups.
     if (raidSelection === 'elite' || raidSelection === 'legendary') {
-        const penaltyMult = raidSelection === 'elite' ? Raid.ELITE_PENALTY_INCREASE : Raid.LEGENDARY_PENALTY_INCREASE;
-        const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
-        const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+        const requiredLevel = raidSelection === 'elite' ? Raid.ELITE_MIN_GUILD_LEVEL : Raid.LEGENDARY_MIN_GUILD_LEVEL;
         if (guildLevel < requiredLevel) {
-            interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
+            interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel}. Your guild is currently Level ${guildLevel}.`);
             return;
         }
     }
@@ -1359,16 +1355,14 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         return sendRaidResult(interaction, embed, isChainedReply);
     }
 
-    // Elite/Legendary gated by guild level, not by how much totalMultiplier the roster
-    // brings — re-checked here (not just at the preview stage) since guild level can change
-    // between chain links.
+    // Elite/Legendary gated by a flat guild-level requirement (Raid.ELITE_MIN_GUILD_LEVEL/
+    // LEGENDARY_MIN_GUILD_LEVEL) — re-checked here (not just at the preview stage) since
+    // guild level can change between chain links.
     if (raidSelection === 'elite' || raidSelection === 'legendary') {
-        const penaltyMult = raidSelection === 'elite' ? Raid.ELITE_PENALTY_INCREASE : Raid.LEGENDARY_PENALTY_INCREASE;
-        const maxRate = raidSelection === 'elite' ? Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE : Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE;
-        const requiredLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
+        const requiredLevel = raidSelection === 'elite' ? Raid.ELITE_MIN_GUILD_LEVEL : Raid.LEGENDARY_MIN_GUILD_LEVEL;
         if (guildLevel < requiredLevel) {
             if (!isChainedReply) {
-                interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel} — below that, the difficulty cap means your guild would lose potatoes on average even with a perfect roster. Your guild is currently Level ${guildLevel}.`);
+                interaction.editReply(`${userDisplayName}, ${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} raids unlock at Guild Level ${requiredLevel}. Your guild is currently Level ${guildLevel}.`);
             } else {
                 console.log(`startRaid.js chain link ${chainDepth} aborted: guild level dropped below the ${raidSelection} gate for guild ${guildId}`);
             }

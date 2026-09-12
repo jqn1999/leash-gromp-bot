@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getMinGuildLevelForTier, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
 const { RaidLevel, Raid } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -630,54 +630,6 @@ describe('getRaidLevelInfo', () => {
     });
 });
 
-// Regression coverage for the "Legendary raids are a guaranteed-loss trap at low guild
-// level" finding: every raid bracket has equal-magnitude base reward/penalty and the
-// tier's own difficulty multiplier cancels out, so a tier's breakeven success chance
-// reduces to penaltyMult / (raidRewardMultiplier + penaltyMult). Below the level this
-// resolves to, the tier's OWN success-rate cap sits under that breakeven point, so no
-// amount of totalMultiplier can turn it profitable — startRaid.js gates tier selection
-// on this instead of letting a guild discover the trap by losing potatoes.
-describe('getMinGuildLevelForTier', () => {
-    // Mirrors startRaid.js's own (unexported) ELITE_PENALTY_INCREASE/
-    // LEGENDARY_PENALTY_INCREASE = 1.5/2 (softened 2026-08-23 from 2/3, alongside a T1-T3
-    // DIFFICULTY_MULTIPLIER halving — see balance-audit.md's guild-raid mode-breakeven
-    // pass and startRaid.js's own comment on ELITE_PENALTY_INCREASE) and
-    // Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE/Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE
-    // exactly, so this test tracks the real in-game thresholds rather than arbitrary
-    // numbers.
-    test('Elite (1.5x penalty, 75% cap) is viable from guild level 1 — thin margin, not a trap', () => {
-        expect(getMinGuildLevelForTier(1.5, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
-    });
-
-    test('Legendary (2x penalty, 60% cap) is not viable until guild level 3', () => {
-        expect(getMinGuildLevelForTier(2, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(3);
-    });
-
-    test('Regular (1x penalty, 90% cap) is viable from guild level 1', () => {
-        expect(getMinGuildLevelForTier(1, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
-    });
-
-    test('at the returned level, the cap is truly at or above breakeven — never a false unlock', () => {
-        RaidLevel.THRESHOLDS.forEach(tier => {
-            [1, 2, 3].forEach(penaltyMult => {
-                [.9, .75, .6].forEach(maxRate => {
-                    const minLevel = getMinGuildLevelForTier(penaltyMult, maxRate);
-                    if (tier.level === minLevel) {
-                        const breakeven = penaltyMult / (tier.multiplier + penaltyMult);
-                        expect(maxRate).toBeGreaterThanOrEqual(breakeven);
-                    }
-                });
-            });
-        });
-    });
-
-    test('an unreachable breakeven point clamps to the top level rather than returning undefined', () => {
-        // A penalty multiplier so large no guild level's raidRewardMultiplier could ever
-        // clear it before the cap.
-        expect(getMinGuildLevelForTier(1000, 0.5)).toBe(RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].level);
-    });
-});
-
 describe('getUnlockedRaidModes', () => {
     // Baby, Regular, and Stat are always offered — Baby is deliberately gate-free (it's
     // the guaranteed-T1-only on-ramp for guilds too weak for Regular's full table); Stat
@@ -690,17 +642,19 @@ describe('getUnlockedRaidModes', () => {
         expect(modes.stat).toBe(true);
     });
 
-    // Mirrors the getMinGuildLevelForTier describe block above: Elite (1.5x penalty, 75%
-    // cap) is viable from level 1, Legendary (2x penalty, 60% cap) not until level 3 —
+    // Elite/Legendary gated by flat guild-level requirements (Raid.ELITE_MIN_GUILD_LEVEL=7/
+    // LEGENDARY_MIN_GUILD_LEVEL=9, 2026-09-12, direct instruction — replaced the old
+    // breakeven-derived gate, see that constant's own comment in constants.js for why) —
     // this function must agree with startRaid.js's own gate exactly, or a button here
     // could offer a mode /start-raid would immediately reject.
-    test('elite is unlocked from guild level 1', () => {
-        expect(getUnlockedRaidModes(1).elite).toBe(true);
+    test('elite is locked below its required level and unlocked from it', () => {
+        expect(getUnlockedRaidModes(Raid.ELITE_MIN_GUILD_LEVEL - 1).elite).toBe(false);
+        expect(getUnlockedRaidModes(Raid.ELITE_MIN_GUILD_LEVEL).elite).toBe(true);
     });
 
-    test('legendary is locked below guild level 3 and unlocked from level 3', () => {
-        expect(getUnlockedRaidModes(2).legendary).toBe(false);
-        expect(getUnlockedRaidModes(3).legendary).toBe(true);
+    test('legendary is locked below its required level and unlocked from it', () => {
+        expect(getUnlockedRaidModes(Raid.LEGENDARY_MIN_GUILD_LEVEL - 1).legendary).toBe(false);
+        expect(getUnlockedRaidModes(Raid.LEGENDARY_MIN_GUILD_LEVEL).legendary).toBe(true);
     });
 });
 
@@ -713,9 +667,8 @@ describe('getUnlockedRaidModes', () => {
 // all scaled together. Now every bracket is an independent static constant, so that
 // relationship is a documented convention rather than something the code enforces —
 // these tests exist so a future dev retuning one bracket's reward without symmetrically
-// retuning its penalty gets caught here instead of silently breaking
-// getMinGuildLevelForTier's gate math (which only reads ELITE_PENALTY_INCREASE/
-// LEGENDARY_PENALTY_INCREASE directly, never the per-bracket constants).
+// retuning its penalty gets caught here instead of silently drifting off the documented
+// 1.5x (Elite) / 2.0x (Legendary) penalty:reward convention.
 describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () => {
     test('the 12-bracket difficulty ladder (Regular T1-T4, Elite T1-T4, Legendary T1-T4) is strictly monotonically increasing end-to-end', () => {
         const ladder = [
@@ -759,21 +712,24 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         expect(Raid.LEGENDARY_T1_DIFFICULTY).toBeGreaterThan(Raid.ELITE_T4_DIFFICULTY);
     });
 
-    // Every Elite bracket's penalty/reward ratio should match Raid.ELITE_PENALTY_INCREASE
-    // (1.5x) — this is no longer code-enforced (see this describe block's own comment),
-    // so it's asserted here directly per-bracket with a small tolerance for the
-    // architect's own rounded-to-nearest-thousand derivation.
-    test('every Elite bracket\'s penalty/reward ratio matches Raid.ELITE_PENALTY_INCREASE', () => {
+    // Every Elite bracket's penalty/reward ratio should be 1.5x, every Legendary bracket's
+    // 2.0x — this is no longer code-enforced (see this describe block's own comment), so
+    // it's asserted here directly per-bracket with a small tolerance for the architect's
+    // own rounded-to-nearest-thousand derivation. Literal ratios, not named constants —
+    // the old ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE constants these used to be
+    // asserted against were deleted 2026-09-12 alongside the breakeven-derived unlock gate
+    // they used to feed (see Raid.ELITE_MIN_GUILD_LEVEL's own comment in constants.js).
+    test('every Elite bracket\'s penalty/reward ratio is 1.5x', () => {
         ['ELITE_T1', 'ELITE_T2', 'ELITE_T3', 'ELITE_T4'].forEach(prefix => {
             const ratio = Math.abs(Raid[`${prefix}_PENALTY`]) / Raid[`${prefix}_REWARD`];
-            expect(ratio).toBeCloseTo(Raid.ELITE_PENALTY_INCREASE, 2);
+            expect(ratio).toBeCloseTo(1.5, 2);
         });
     });
 
-    test('every Legendary bracket\'s penalty/reward ratio matches Raid.LEGENDARY_PENALTY_INCREASE', () => {
+    test('every Legendary bracket\'s penalty/reward ratio is 2.0x', () => {
         ['LEGENDARY_T1', 'LEGENDARY_T2', 'LEGENDARY_T3', 'LEGENDARY_T4'].forEach(prefix => {
             const ratio = Math.abs(Raid[`${prefix}_PENALTY`]) / Raid[`${prefix}_REWARD`];
-            expect(ratio).toBeCloseTo(Raid.LEGENDARY_PENALTY_INCREASE, 2);
+            expect(ratio).toBeCloseTo(2.0, 2);
         });
     });
 
@@ -828,14 +784,5 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         // Elite's own starting efficiency, and likewise Elite's top matches Legendary's start.
         expect(regular[3]).toBeCloseTo(elite[0], -2);
         expect(elite[3]).toBeCloseTo(legendary[0], -2);
-    });
-
-    // Explicit "must not move" requirement from the design: removing DIFFICULTY_MULTIPLIER
-    // from the runtime math must not change getMinGuildLevelForTier's gate levels, since
-    // ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (the only inputs it reads) are
-    // themselves unchanged by this rework.
-    test('getMinGuildLevelForTier gate levels for Elite/Legendary are unchanged by the redesign (still 1 and 3)', () => {
-        expect(getMinGuildLevelForTier(Raid.ELITE_PENALTY_INCREASE, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE)).toBe(1);
-        expect(getMinGuildLevelForTier(Raid.LEGENDARY_PENALTY_INCREASE, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)).toBe(3);
     });
 });

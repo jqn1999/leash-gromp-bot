@@ -45,12 +45,15 @@ time). Each bracket now has its own independently-set `_DIFFICULTY`/`_REWARD`/`_
 
 All 12 non-Metal-King brackets (Regular T1-4 unchanged, Elite T1-4, Legendary T1-4) sit on one
 continuous geometric ladder (ratio `2^(1/4)`) from Regular's own T4 (1,000) through
-Legendary's own T4 (4,000, unchanged). `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE`
-(1.5/2.0, unchanged values) are baked into each bracket's static `_PENALTY` rather than
-applied at roll time — they're still live, but only for `getMinGuildLevelForTier`'s gate math
-(Elite unlocks at guild level 1, Legendary at level 3, both unchanged). Full derivation:
-[systems/raids-and-world-events.md](../systems/raids-and-world-events.md#success-chance--tiers),
-[balance-audit.md](../balance-audit.md)'s 2026-08-26 entry.
+Legendary's own T4 (4,000, unchanged). Each bracket's static `_PENALTY` has a 1.5x (Elite) /
+2.0x (Legendary) ratio to its own reward baked in directly. The `ELITE_PENALTY_INCREASE`/
+`LEGENDARY_PENALTY_INCREASE` constants those ratios used to be read from — and the
+`getMinGuildLevelForTier` breakeven-derived gate they fed — were **deleted 2026-09-12**, direct
+instruction, replaced by flat `Raid.ELITE_MIN_GUILD_LEVEL` (7) / `LEGENDARY_MIN_GUILD_LEVEL` (9)
+requirements (up from the old derived levels 1/3 — a 2026-09-12 balance audit found the old gate
+understated the real requirement by ~22-23% once dynamic tier weighting is accounted for). Full
+derivation: [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#success-chance--tiers),
+[balance-audit.md](../balance-audit.md)'s 2026-08-26 and 2026-09-12 entries.
 
 ### `Raid.RAID_TEAM_DECAY` (0.5)
 

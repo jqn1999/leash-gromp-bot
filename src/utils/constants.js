@@ -1850,24 +1850,27 @@ const Raid = {
     // (removeFromBankOrPurse), since a loss isn't income to skim.
     GUILD_RAID_TAX_PERCENT: 0.05,
 
-    // Moved here 2026-08-24 from startRaid.js's own bare, undeclared module-scope
-    // assignments (`ELITE_PENALTY_INCREASE = 1.5`, an implicit global — this codebase's
-    // established but fragile pattern for a few module-scope tuning numbers). Needed a
-    // real exported home once raidFactory.js's getUnlockedRaidModes (see /current-raid's
-    // start-raid button) needed the same numbers getMinGuildLevelForTier already keyed
-    // off of, rather than either duplicating the magic numbers a second place or reaching
-    // for startRaid.js's implicit global from a different file.
-    //
-    // Role narrowed 2026-08-26: no longer applied at roll time anywhere in
-    // startRaid.js's scenario closures — every Elite/Legendary bracket's penalty is now
-    // a static constant with this ratio already baked in (see the ELITE_T*/LEGENDARY_T*
-    // block below). These two constants stay alive for exactly one thing:
-    // getMinGuildLevelForTier(penaltyMult, maxSuccessRate) below and its two call sites
-    // (raidFactory.js's getUnlockedRaidModes, startRaid.js's own gate check in
-    // runStartRaidFlow) — both still read these directly, gate levels unchanged (Elite
-    // level 1, Legendary level 3).
-    ELITE_PENALTY_INCREASE: 1.5,
-    LEGENDARY_PENALTY_INCREASE: 2,
+    // Elite/Legendary unlock gate — replaced 2026-09-12, direct instruction ("let's make
+    // elite raids require tier 7 and legendary require tier 9"), superseding the old
+    // breakeven-derived gate (getMinGuildLevelForTier(penaltyMult, maxSuccessRate), which
+    // computed Elite=1/Legendary=3 from ELITE_PENALTY_INCREASE=1.5/LEGENDARY_PENALTY_
+    // INCREASE=2 and each mode's success-rate cap). That gate only checked whether a
+    // SINGLE tier's own cap sat above ITS OWN isolated breakeven — the same day's balance
+    // audit (see balance-audit.md's 2026-09-12 entry) found it understated the real
+    // requirement by ~22-23% once the 2026-08-27 dynamic tier-weighting rework is
+    // accounted for (a roster sitting at one tier's breakeven still rolls the other 3
+    // tiers a large fraction of the time, most of them under-cap), and additionally found
+    // Legendary's old level-3 unlock left real guilds (e.g. a level 6, 4-5 person roster)
+    // able to select a mode hundreds of multiplier points below where it stops being a
+    // guaranteed loss. Flat guild-level requirements, set directly rather than derived,
+    // are simpler to reason about and immune to that whole class of "isolated-tier-vs-
+    // weighted-blend" drift if the tier ladder or weighting sharpness ever changes again.
+    // ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE and getMinGuildLevelForTier itself
+    // were deleted outright along with this — once role was already narrowed (2026-08-26)
+    // to feeding only this one gate check, and that gate is now a flat number, nothing else
+    // in the codebase called either.
+    ELITE_MIN_GUILD_LEVEL: 7,
+    LEGENDARY_MIN_GUILD_LEVEL: 9,
 
     T1_RAID_REWARD: 100000,
     T1_RAID_PENALTY: -100000,
@@ -1954,11 +1957,14 @@ const Raid = {
     // 30,000/pt (T1) -> 50,000/pt (T4) — each mode boundary landing on the exact same
     // efficiency value (Regular T4 = Elite T1 = 20,000/pt; Elite T4 = Legendary T1 =
     // 30,000/pt), continuous the same way the difficulty ladder itself is. Penalty =
-    // reward * ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE (1.5x/2.0x, same
-    // constants as before, baked into the static value here instead of applied at roll
-    // time) — see raidFactory.test.js for a regression assertion tying each bracket's
-    // penalty/reward ratio back to its mode's PENALTY_INCREASE constant, since that
-    // relationship is now a documented convention rather than something the code
+    // reward * 1.5x (Elite) / 2.0x (Legendary) — the old ELITE_PENALTY_INCREASE/
+    // LEGENDARY_PENALTY_INCREASE constants these ratios used to be read from at roll time
+    // were deleted 2026-09-12 once their only remaining job (feeding the old breakeven-
+    // derived unlock gate — see ELITE_MIN_GUILD_LEVEL/LEGENDARY_MIN_GUILD_LEVEL's own
+    // comment) went away; the ratios themselves are unchanged, just baked into each
+    // static value below directly. See raidFactory.test.js for a regression assertion
+    // tying each bracket's penalty/reward ratio back to its literal 1.5x/2.0x multiple,
+    // since that relationship is a documented convention, not something the code
     // structurally guarantees. Metal King is deliberately NOT part of either ramp (still
     // excluded from the smoothed ladder per direct instruction — "not including metal
     // king") — its difficulty/reward/stat-rewards are untouched by this reward retune.
@@ -2340,8 +2346,9 @@ const Bounty = {
     // higher for higher reward but merc should have more similar penalties") — penalty was
     // previously a flat `-reward` (1.0x ratio) across all 12 tiers, unlike Guild Raid's own
     // shape where the penalty:reward RATIO itself climbs for bigger-stakes content (1.0x
-    // Regular -> 1.5x Elite -> 2.0x Legendary, see Raid.ELITE_PENALTY_INCREASE/
-    // LEGENDARY_PENALTY_INCREASE). Rather than reuse Guild Raid's discrete 3-step bands
+    // Regular -> 1.5x Elite -> 2.0x Legendary, baked directly into each ELITE_T*/
+    // LEGENDARY_T* bracket's own static penalty value — see that block's own comment).
+    // Rather than reuse Guild Raid's discrete 3-step bands
     // (which would land a cliff in EV right at the B4->B5 and B8->B9 boundaries — this
     // ladder's own reward/difficulty are already a smooth, continuous geometric progression
     // with no such cliffs, so a discrete step would be the one discontinuity left), the
@@ -2974,9 +2981,10 @@ const GuildRival = {
     TIER_REWARD_FACTOR: { easy: 1, medium: 2, hard: 3 },
     // Penalty = (Raid.T2_RAID_REWARD * TIER_REWARD_FACTOR[scenario]) * PENALTY_RATIO[scenario],
     // ±20% randomized the same as every other reward/penalty roll in this codebase. Mirrors
-    // Raid.ELITE_PENALTY_INCREASE (1.5x) / Raid.LEGENDARY_PENALTY_INCREASE (2.0x) directly —
-    // a Hard-scenario loss risking double its own reward back is the same relative stakes
-    // Legendary Guild Raid's own top bracket already carries.
+    // Elite's own 1.5x and Legendary's own 2.0x penalty:reward ratio directly (baked into
+    // each ELITE_T*/LEGENDARY_T* bracket's static penalty value) — a Hard-scenario loss
+    // risking double its own reward back is the same relative stakes Legendary Guild Raid's
+    // own top bracket already carries.
     PENALTY_RATIO: { easy: 1.0, medium: 1.5, hard: 2.0 },
     // Guaranteed stat bump on a win, scope keyed by scenario (easy: 1 random track, medium:
     // 2 DISTINCT tracks, hard: all 3 — mirrors Rival's own TIER_I/II/III scope shape), but

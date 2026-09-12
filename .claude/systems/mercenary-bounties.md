@@ -448,7 +448,9 @@ power is `workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultipli
 the equipped companion's `workMultiplierPercent` perk as of 2026-08-24), unaffected by
 Firefly-style `guildRaidMultiplierPercent` (applied separately in `startRaid.js`, not
 inside `getEffectiveRaidPower` itself, and irrelevant to solo Bounty anyway). All 12 tiers
-still share `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (.9) as their success-chance cap — a
+still share `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (`.95` as of 2026-09-11, raised from `.9`
+directly alongside Guild Raid's own regular-mode cap — see raids-and-world-events.md) as their
+success-chance cap — a
 deliberate, low-risk exception left coupled to `Raid`, since it's a shared *concept*
 ("Bounty is Regular-mode-equivalent, not Elite/Legendary-equivalent"), not a magnitude the
 12-tier rework touched.

@@ -18,7 +18,7 @@ jest.mock('../../../utils/dynamoHandler');
 
 const { buildRaidPreview } = require('../startRaid');
 const { Raid } = require('../../../utils/constants');
-const { getMinGuildLevelForTier, getWeightedScenarios, getGuildLevelClosestToWins } = require('../../../utils/raidFactory');
+const { getWeightedScenarios, getGuildLevelClosestToWins } = require('../../../utils/raidFactory');
 
 describe('buildRaidPreview', () => {
     test('elite T1/T2/T3 (guild level below T4 unlock) reads the new static ELITE_T* constants directly — no separate multiplier table', () => {

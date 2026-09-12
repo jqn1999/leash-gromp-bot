@@ -11714,3 +11714,73 @@ of a negative amount, graceful degradation with no args), `startRaidGuildCompani
 real prompt embed, through the actual `runStartRaidFlow`, states the loss amount and boss name).
 Docs: `systems/guilds.md`'s Guild Companion and Guild Rival Warbands sections. Full suite:
 **1526/1526** across 83 suites.
+
+## Fix: Elite/Legendary guild-level gate replaced with flat levels 7/9 (2026-09-12, direct instruction)
+
+"Let's make elite raids require tier 7 and legendary require tier 9" — follow-up to the same-day
+balance audit (`balance-audit.md`) that found the OLD gate (`getMinGuildLevelForTier`, a breakeven-
+derived formula resolving to guild level 1 for Elite and level 3 for Legendary) understated the real
+requirement by ~22-23% in both modes, since it only checked a single tier's own isolated breakeven
+rather than the actual weighted mix across all 4 tiers a roster really faces (`getDynamicTierWeights`).
+Legendary's old level-3 unlock in particular let real guilds (the audit's own reference guild: level
+6, 4-5 members, owns Cinderroot) select a mode hundreds of multiplier points below where it stops
+being a guaranteed loss.
+
+New `Raid.ELITE_MIN_GUILD_LEVEL = 7` / `Raid.LEGENDARY_MIN_GUILD_LEVEL = 9` — flat, direct numbers
+rather than a re-derived formula (deliberately not chasing the weighted-blend math into the gate
+function itself; simpler to reason about and immune to drift if the tier ladder or weighting
+sharpness ever moves again). Wired into `raidFactory.js`'s `getUnlockedRaidModes` and both of
+`startRaid.js`'s gate checks (initial + chain-link re-check).
+
+Since the old gate's only remaining job was this exact check, `getMinGuildLevelForTier` (the
+function) and `Raid.ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` (its only inputs, already
+unused everywhere else per a 2026-08-26 role-narrowing) were deleted outright rather than left as
+dead code — nothing else in the codebase called any of the three afterward. Every comment
+referencing them (constants.js, startRaid.js, raidFactory.js) and every test asserting against them
+(`raidFactory.test.js`'s dedicated `getMinGuildLevelForTier` describe block and its "unchanged by
+the redesign, still 1 and 3" regression test — both now testing a mechanism that no longer exists)
+were updated or removed; the underlying 1.5x/2.0x penalty:reward ratio invariant is still tested,
+just against literal numbers instead of the deleted named constants.
+
+Test fixtures across `startRaidStaticRewards.test.js`/`startRaidInfamy.test.js` that ran Elite/
+Legendary scenarios at a low guild level (relying on the old level-1/level-3 gate) were bumped to
+the new levels' actual `winsRequired` (looked up live off `RaidLevel.THRESHOLDS`, not hardcoded) —
+these were silently exercising the gate-rejection path instead of the scenario logic they were meant
+to test, which would have gone undetected without checking every Elite/Legendary test site by hand.
+
+Also fixed in the same pass: the `.9`→`.95` `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` doc drift the
+same balance audit flagged (`raids-and-world-events.md`, `mercenary-bounties.md`, `guilds.md`'s own
+verification note) — all three still said `.9` despite the code reading `.95` since an earlier
+same-session bump.
+
+Docs: `raids-and-world-events.md`'s whole Elite/Legendary breakeven-derivation section (a large,
+detailed historical analysis) marked explicitly historical rather than rewritten line-by-line, with
+one clear "Update (2026-09-12)" note explaining what replaced it and why; `reference/constants.md`
+and `guilds.md` updated at their own specific stale mentions. Full suite: **1520/1520** across 83
+suites (down from 1526 — 6 tests deleted that asserted a mechanism which no longer exists, no
+coverage lost beyond that).
+
+### Extended Elite/Legendary vs. Regular vs. solo Bounty comparison (same guild-level-6 context as the balance audit)
+
+Player asked to add Guild Regular to the earlier Elite/Legendary-vs-Bounty comparison table and
+extend the power range down to 80. Recomputed directly against the live `getDynamicTierWeights`
+function (guild level 6, Cinderroot, N=4, per-player-hour) rather than re-deriving by hand:
+
+| Power | Guild Regular/player-hr | Guild Elite/player-hr | Guild Legendary/player-hr | Solo Merc/hr (Rank 1 / Rank 3) |
+|---|---|---|---|---|
+| 80 | +2.73M | -5.97M | -38.2M | +139k / +273k |
+| 140 | +3.74M | -1.89M | -31.4M | +218k / +467k |
+| 150 | +3.74M | -1.21M | -30.2M | +258k / +534k |
+| 200 | +3.74M | +2.19M | -24.5M | +377k / +756k |
+| 250 | +3.74M | +5.58M | -18.8M | +466k / +964k |
+| 300 | +3.74M | +8.98M | -13.1M | +742k / +1.37M |
+| 350 | +3.74M | +12.4M | -7.41M | +542k / +1.23M |
+| 360 | +3.74M | +13.1M | -6.27M | +544k / +1.26M |
+
+Regular flattens out at power ≈100+ (per-player) since every eligible tier (T1-T3; T4 needs guild
+level 8) is already sitting at its 95% success cap by then — Metal King excluded from this table for
+methodological consistency with the original comparison. Notable, unprompted finding: Guild Regular
+alone pays a player roughly 3-25x what solo Bounty pays at the identical personal power across this
+whole range, entirely from the shared-cooldown/large-reward-pool structure of guild raiding — a
+guild member's baseline (Regular only, no Elite/Legendary at all) is already dramatically ahead of
+going solo, independent of the Elite/Legendary trap question this table was built to illustrate.

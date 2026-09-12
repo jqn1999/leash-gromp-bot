@@ -114,11 +114,12 @@ beforeEach(() => {
 
 describe('/start-raid elite/legendary scenario closures read the new static constants', () => {
     // Weak roster (totalMultiplier ~12.9, well under any Elite/Legendary bracket's
-    // difficulty), guild level 1 — success chance is negligible for every bracket, so a
-    // fixed Math.random() = 0.5 deterministically both (a) rolls into a specific bracket
-    // via the cumulative-chance table, and (b) fails the success check inside it,
-    // exercising the FAILURE/penalty branch — the exact branch that used to multiply by
-    // DIFFICULTY_MULTIPLIER * ELITE_PENALTY_INCREASE/LEGENDARY_PENALTY_INCREASE at roll
+    // difficulty), at Elite's own unlock level (Raid.ELITE_MIN_GUILD_LEVEL, 7 as of
+    // 2026-09-12 — see that constant's own comment in constants.js) — success chance is
+    // negligible for every bracket, so a fixed Math.random() = 0.5 deterministically both
+    // (a) rolls into a specific bracket via the cumulative-chance table, and (b) fails the
+    // success check inside it, exercising the FAILURE/penalty branch — the exact branch
+    // that used to multiply by DIFFICULTY_MULTIPLIER * a penalty-increase constant at roll
     // time.
     //
     // Under the OLD static-odds mechanism, a fixed Math.random() = 0.5 always landed in
@@ -129,13 +130,15 @@ describe('/start-raid elite/legendary scenario closures read the new static cons
     // above) rather than hand-asserting a bracket name, avoiding exactly the
     // "second, independently-drifting hand-computed table" bug class the
     // buildRaidPreview rework already had to fix once.
-    test('elite: a guaranteed-loss roll at guild level 1 pays out exactly the penalty of whichever bracket 0.5 lands in under dynamic weighting', async () => {
-        dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
+    test('elite: a guaranteed-loss roll at Elite\'s unlock level pays out exactly the penalty of whichever bracket 0.5 lands in under dynamic weighting', async () => {
+        const eliteMinWins = RaidLevel.THRESHOLDS.find(t => t.level === Raid.ELITE_MIN_GUILD_LEVEL).winsRequired;
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: eliteMinWins }));
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const totalMultiplier = getEffectiveRaidPower([userFixture('leader', 10), userFixture('m2', 5)]);
-        const bracket = expectedBracket('elite', 1, totalMultiplier, 0.5);
+        const guildLevel = getRaidLevelInfo(eliteMinWins).level;
+        const bracket = expectedBracket('elite', guildLevel, totalMultiplier, 0.5);
         expect(bracket.name).not.toBe('MK'); // sanity: this roster/roll must land in a real T1-T4 bracket
 
         // Single-source-of-truth invariant: the preview embed this same roster/mode/
@@ -143,7 +146,7 @@ describe('/start-raid elite/legendary scenario closures read the new static cons
         // the live roll (below) actually lands on — preview and live roll can never
         // silently disagree about which bracket is even reachable.
         const previewLabel = { T4: 'Tier 4', T3: 'Tier 3', T2: 'Tier 2', T1: 'Tier 1' }[bracket.name];
-        const previewBracket = buildRaidPreview('elite', totalMultiplier, 1.0, 1).find(b => b.name === previewLabel);
+        const previewBracket = buildRaidPreview('elite', totalMultiplier, 1.0, guildLevel).find(b => b.name === previewLabel);
         expect(previewBracket.odds).toBeGreaterThan(0);
 
         await runStartRaidFlow(interaction, 'elite');
@@ -160,17 +163,18 @@ describe('/start-raid elite/legendary scenario closures read the new static cons
     });
 
     test('legendary: the same guaranteed-loss roll pays out exactly the penalty of whichever bracket 0.5 lands in under dynamic weighting', async () => {
-        // Legendary is gated to guild level 3+ (getMinGuildLevelForTier(2, .6) = 3) — using
-        // RaidLevel.THRESHOLDS' own live level-3 boundary rather than a hardcoded win count,
-        // the minimum that clears the gate. T4 (unlock level 8) still stays locked/excluded
-        // either way.
-        const level3Wins = RaidLevel.THRESHOLDS.find(t => t.level === 3).winsRequired;
-        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: level3Wins }));
+        // Legendary is gated to Raid.LEGENDARY_MIN_GUILD_LEVEL (9 as of 2026-09-12 — see
+        // that constant's own comment in constants.js) — using RaidLevel.THRESHOLDS' own
+        // live level-9 boundary rather than a hardcoded win count, the minimum that clears
+        // the gate. T4 (unlock level 8) is actually already unlocked at this level, unlike
+        // the old level-3 gate this replaced.
+        const legendaryMinWins = RaidLevel.THRESHOLDS.find(t => t.level === Raid.LEGENDARY_MIN_GUILD_LEVEL).winsRequired;
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: legendaryMinWins }));
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const totalMultiplier = getEffectiveRaidPower([userFixture('leader', 10), userFixture('m2', 5)]);
-        const guildLevel = getRaidLevelInfo(level3Wins).level;
+        const guildLevel = getRaidLevelInfo(legendaryMinWins).level;
         const bracket = expectedBracket('legendary', guildLevel, totalMultiplier, 0.5);
         expect(bracket.name).not.toBe('MK');
 

@@ -27,7 +27,10 @@ jest.mock('../../../utils/raidFactory', () => {
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow } = require('../startRaid');
-const { GuildRival } = require('../../../utils/constants');
+const { GuildRival, Raid, RaidLevel } = require('../../../utils/constants');
+
+const ELITE_MIN_WINS = RaidLevel.THRESHOLDS.find(t => t.level === Raid.ELITE_MIN_GUILD_LEVEL).winsRequired;
+const LEGENDARY_MIN_WINS = RaidLevel.THRESHOLDS.find(t => t.level === Raid.LEGENDARY_MIN_GUILD_LEVEL).winsRequired;
 
 function fakeInteraction() {
     const replyObj = {
@@ -163,10 +166,10 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
     });
 
     test('elite win: +2 Infamy', async () => {
-        // Guild Level 5 (raidCount: 100) clears Elite's own unlock gate (Level 1) with
-        // plenty of room, and stays well under T4's own much higher unlock target so T4
-        // stays excluded from the weighted roll the same way it is at level 1.
-        const guild = guildFixture({ guildInfamy: 5, raidCount: 100 });
+        // Clears Elite's own unlock gate (Raid.ELITE_MIN_GUILD_LEVEL = 7 as of 2026-09-12)
+        // exactly, and stays under T4's own separate unlock level (8) so T4 stays excluded
+        // from the weighted roll.
+        const guild = guildFixture({ guildInfamy: 5, raidCount: ELITE_MIN_WINS });
         mockWin(guild);
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
@@ -181,8 +184,10 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
     });
 
     test('legendary win: +3 Infamy', async () => {
-        // Guild Level 5 (raidCount: 100) also clears Legendary's own unlock gate (Level 3).
-        const guild = guildFixture({ guildInfamy: 8, raidCount: 100 });
+        // Clears Legendary's own unlock gate (Raid.LEGENDARY_MIN_GUILD_LEVEL = 9 as of
+        // 2026-09-12) exactly — T4 (unlock level 8) is actually already unlocked here too,
+        // unlike the old level-3 gate this replaced.
+        const guild = guildFixture({ guildInfamy: 8, raidCount: LEGENDARY_MIN_WINS });
         mockWin(guild);
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);

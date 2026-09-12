@@ -79,19 +79,27 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   from picking Regular and getting lucky is that here it's **guaranteed** — no chance of instead
   rolling into Regular's far rarer but much harder Metal King/T4/T3/T2 brackets. No guild-level
   gate at all (`getUnlockedRaidModes` always reports `baby: true`), same as Regular/Stat.
-- **Elite/Legendary are gated by guild level**, not by roster strength: `raidFactory.js`'s
-  `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` derives the guild level at which a tier's
-  success-rate cap first sits at or above that tier's mathematical breakeven success chance
-  (`penaltyMult / (raidRewardMultiplier + penaltyMult)` — every bracket has equal-magnitude base
-  reward/penalty and the tier's own difficulty multiplier cancels out of the ratio). Below that
-  level, a tier is negative-EV no matter how large `totalMultiplier` gets, since the cap itself sits
-  under breakeven — no amount of individual stat investment can compensate. Elite resolves to guild
-  level 1 (already viable, thin margin); Legendary to level 3 (down from level 4 pre-2026-08-23, see
-  the mode-breakeven softening pass below). `start-raid` rejects a locked selection with the reason
-  instead of letting a guild discover the trap by losing potatoes over several raids.
-  **This gate alone doesn't mean a tier is realistically winnable, only that it's not
-  mathematically guaranteed-negative** — see "Mode-level breakeven" below for the gap this leaves
-  open on `regular` mode's own T2/T3, which this gate was never applied to at all.
+- **Elite/Legendary are gated by a flat guild-level requirement** — `Raid.ELITE_MIN_GUILD_LEVEL` (7)
+  and `Raid.LEGENDARY_MIN_GUILD_LEVEL` (9), checked directly in both `raidFactory.js`'s
+  `getUnlockedRaidModes` and `startRaid.js`'s own gate check in `runStartRaidFlow`. `start-raid`
+  rejects a locked selection with the reason instead of letting a guild discover the trap by losing
+  potatoes over several raids.
+  **Replaced 2026-09-12** (direct instruction: "let's make elite raids require tier 7 and legendary
+  require tier 9") **a breakeven-DERIVED gate** — `getMinGuildLevelForTier(penaltyMult,
+  maxSuccessRate)`, which resolved to guild level 1 for Elite and level 3 for Legendary by checking
+  only whether a single tier's own success-rate cap sat above that tier's ISOLATED breakeven
+  (`penaltyMult / (raidRewardMultiplier + penaltyMult)`). The rest of this section (below) is now a
+  **historical record of that old gate's derivation**, not a description of the live mechanism — kept
+  because it explains WHY the old numbers were what they were, and because a 2026-09-12 balance audit
+  (see `balance-audit.md`) found that old gate understated the real requirement by ~22-23% once the
+  2026-08-27 dynamic tier-weighting rework (a roster at one tier's own breakeven still rolls the
+  other 3 tiers a large fraction of the time, most of them under-cap) is accounted for — the same
+  "isolated-tier gate vs. weighted-blend reality" gap this section's own "Still open, not yet fixed"
+  note below already flagged as a known risk for Regular's ungated T2/T3, now confirmed to have
+  quietly applied to Elite/Legendary too. The new flat levels are simpler to reason about and immune
+  to that whole class of drift if the tier ladder or weighting sharpness ever changes again.
+  `getMinGuildLevelForTier` itself, along with `Raid.ELITE_PENALTY_INCREASE`/
+  `LEGENDARY_PENALTY_INCREASE` (which fed it), were deleted outright once nothing else called them.
 
 ### Effective raid power
 
@@ -182,7 +190,8 @@ by the team-combination weighting). Only the bank-overflow branch of `startRaid.
 ### Success chance & tiers
 
 `successChance = min(effectiveRaidPower / difficulty, maximumSuccessRate)`. Max rates:
-`REGULAR_MAXIMUM_RAID_SUCCESS_RATE=.9`, `ELITE_MAXIMUM_RAID_SUCCESS_RATE=.75`,
+`REGULAR_MAXIMUM_RAID_SUCCESS_RATE=.95` (raised from `.9`, 2026-09-11, direct instruction, same bump
+Mercenary Bounty's own cap shares — see mercenary-bounties.md), `ELITE_MAXIMUM_RAID_SUCCESS_RATE=.75`,
 `LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE=.6`, `MAXIMUM_STAT_RAID_SUCCESS_RATE=.5`.
 
 Each tier rolls one `Math.random()` against a cumulative weighted table. The **roll odds** below
@@ -340,17 +349,21 @@ unchanged constants — same role-narrowing described below still applies). See 
 2026-08-26 (same-day follow-up) entry for the full EV-at-cap comparison against the pre-retune flat
 numbers — every bracket ended up more positive-EV at its own unlock guild level, none went negative.
 
-`ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stay in `constants.js`, values unchanged**,
-but their role narrows to exactly one thing: `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)`
-in `raidFactory.js` and its two call sites (`getUnlockedRaidModes`, and `startRaid.js`'s own gate
-check in `runStartRaidFlow`) — both still read these two constants directly, and neither gate level
-moved (Elite still unlocks at guild level 1, Legendary at level 3). Since the penalty/reward ratio is
+`ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stayed in `constants.js`, values unchanged,
+as of this 2026-08-26 entry** — but their role had already narrowed to exactly one thing:
+`getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` in `raidFactory.js` and its two call sites
+(`getUnlockedRaidModes`, and `startRaid.js`'s own gate check in `runStartRaidFlow`), which at the
+time still read these two constants directly (Elite unlocked at guild level 1, Legendary at level
+3). **Both constants and that whole gate function were deleted 2026-09-12** once the gate moved to
+flat levels (`Raid.ELITE_MIN_GUILD_LEVEL`/`LEGENDARY_MIN_GUILD_LEVEL` — see this section's own
+"Elite/Legendary are gated by a flat guild-level requirement" bullet above) and nothing else called
+either constant or `getMinGuildLevelForTier` anymore. Since the penalty/reward ratio is
 now a documented convention rather than something the code structurally enforces (previously
 guaranteed by both sides sharing the same `DIFFICULTY_MULTIPLIER * PENALTY_INCREASE` factor),
 `raidFactory.test.js` asserts each Elite/Legendary bracket's `|penalty|/reward` ratio still matches
-its mode's `PENALTY_INCREASE` constant — a future retune of one bracket's reward without
-symmetrically retuning its penalty would otherwise silently break `getMinGuildLevelForTier`'s gate
-math with nothing catching it.
+its mode's 1.5x/2.0x convention (literal numbers as of 2026-09-12, since the named constants these
+used to be asserted against are gone) — a future retune of one bracket's reward without
+symmetrically retuning its penalty would otherwise silently drift with nothing catching it.
 
 **Bug fixed as a side effect of this rework, not a separate change**: `startRaid.js`'s
 `buildRaidPreview` (the pre-confirm preview embed shown before a raid roll is committed) used to
@@ -619,6 +632,20 @@ level's real `RaidLevel.THRESHOLDS` reward multiplier), the old tuning showed st
 at the unlock moments (Elite Lv3 needed ~12.8x Regular's own Lv3 breakeven; Legendary Lv7 needed
 ~5.6x Elite's own Lv7 breakeven) rather than a gradual ramp. The DIFFICULTY_MULTIPLIER-halving +
 penalty-softening change flattened both transitions to a consistent ~4.6x step.
+
+**Update (2026-09-12) — this whole isolated-tier-breakeven analysis is now historical.** Everything
+above this point in the section computed a single tier's own breakeven in isolation, exactly the
+narrow question `getMinGuildLevelForTier` answered. A 2026-09-12 balance audit (`balance-audit.md`)
+computed the REAL weighted-blend breakeven instead (mixing all 4 tiers by their actual
+`getDynamicTierWeights` odds at a given power, the way a real roster's outcomes actually average
+out) and found it sits ~22-23% above the isolated-tier number for both Elite and Legendary at guild
+level 6 — meaning a roster sitting at, say, Elite's old "level 1 is already viable" isolated-T1
+breakeven was often still losing money once T2-T4 rolls (which that same roster is well under-cap
+for) are mixed in at their real weight. Direct instruction replaced the whole breakeven-derived gate
+with flat levels (`Raid.ELITE_MIN_GUILD_LEVEL=7`, `LEGENDARY_MIN_GUILD_LEVEL=9`) rather than trying
+to re-derive `getMinGuildLevelForTier` against the weighted-blend formula — simpler, and immune to
+this whole class of drift if the ladder or weighting sharpness changes again. See this section's own
+opening bullet ("Elite/Legendary are gated by a flat guild-level requirement") for the live gate.
 
 **Still open, not yet fixed**: Regular's own T2/T3 have no eligibility gate at all — unlike
 Elite/Legendary (mode-level gate) and T4 (per-bracket gate), nothing stops a level-1 guild from

@@ -300,9 +300,11 @@ completely untouched — this is purely a pacing change, reaching any given leve
 power change. `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` (T4's own unlock gate, a raw win-count target
 rather than an index into this table) was rescaled the same way (3,000 → 750) so T4 still unlocks
 at the same *relative* level (8) as before, instead of silently drifting to level 10 now that
-3,000 happens to be this table's own new max. Elite's level-1 and Legendary's level-3 unlocks are
-untouched by this change entirely — both are computed off each level's `multiplier`, which this
-rescale never changes.
+3,000 happens to be this table's own new max. Elite's level-1 and Legendary's level-3 unlocks (as of
+this 2026-09-10 entry — both were later replaced by flat `Raid.ELITE_MIN_GUILD_LEVEL=7`/
+`LEGENDARY_MIN_GUILD_LEVEL=9` requirements on 2026-09-12, see raids-and-world-events.md) are
+untouched by THIS rescale entirely — both were computed off each level's `multiplier` at the time,
+which this rescale never changed.
 
 **Raid cooldown reduction** (`raidCooldownReductionPercent`, added 2026-08-30, direct instruction:
 "update guilds to get up to a 30% guild raid cooldown reduction at max level. Additive with guild
@@ -681,8 +683,8 @@ fighting over the same reply message.
 trait is guaranteed, zero-risk success" — does **not** match the real code. `babyRaidScenarios =
 [regularRaidScenarios[regularRaidScenarios.length - 1]]` reuses the literal T1 closure object, whose
 own `successChance` is computed by `calculateRaidSuccessChance(totalMultiplier, Raid.T1_RAID_DIFFICULTY,
-Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)`, capped at `REGULAR_MAXIMUM_RAID_SUCCESS_RATE = 0.9` — never
-100%. Baby is guaranteed to land in the T1 *bracket* (never rolls into Metal King/T4/T3/T2), not
+Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)`, capped at `REGULAR_MAXIMUM_RAID_SUCCESS_RATE = 0.95`
+(raised from `0.9` on 2026-09-11) — never 100%. Baby is guaranteed to land in the T1 *bracket* (never rolls into Metal King/T4/T3/T2), not
 guaranteed to *win* — a weak roster's Baby raid can and does lose. **The actual decision to exclude
 Baby from the acquisition roll (0% chance) still stands** — it's the cheapest, least risky bracket to
 farm repeatedly, so excluding it from a rare-drop source is still the right call — but flag this
