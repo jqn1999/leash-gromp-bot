@@ -82,7 +82,8 @@ describe('spot-check the new 2026-09-10 topics cite real numbers, not vibes', ()
         expect(content).toContain('5,000');
         expect(content).toContain('10,000');
         expect(content).toContain('20,000');
-        expect(content).toContain('50,000');
+        // Royal Treasury's own cap, 50,000 -> 45,000 on 2026-09-12 (fourth retune pass).
+        expect(content).toContain('45,000');
     });
 
     test('spud-keep cites the current pot redirect percent and attacker bonus base', () => {

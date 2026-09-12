@@ -2569,3 +2569,73 @@ relying on the pre-existing level-1/level-8 cases to catch a regression here.
 Full test suite: **1526/1526** across 83 suites. Direct implementation of the player's own
 explicit instruction, verified end-to-end through `runStartRaidFlow`/`buildRaidPreview`, not just
 the constants file in isolation.
+
+## Follow-up (2026-09-12, later): EV chart rebuilt against a best-case Solo Merc, then Royal Treasury's own cap cut
+
+Player: "can you rebuild the ev curves when considering solo merc bounty + the max rob-npc at max
+merc rank with yukon." The Solo Merc reference line in the published EV chart had been Rank 4,
+Noble's Vault, no companion since the chart's very first version — never re-derived against a
+stronger solo mercenary. Rebuilt using: Rank 6 (max), **The Royal Treasury** (the actual top Heist
+tier at max rank — NOT Noble's Vault, which is Royal Treasury's own worse alternative once Rank 6
+is reached), and Yukon equipped at max companion level (`robChanceFlat` 0.12 × 1.45 level
+multiplier = +17.4% success chance on Heist/real-`/rob`; `bountyRewardPercent` 0.135 × 1.45 =
++19.6% on Bounty reward).
+
+**Result: Solo Merc roughly 4-5x'd across the whole power range**, and the picture flipped
+entirely — Elite never caught up to it (peaked at 66% of Solo Merc even at power 600), Legendary
+only barely edged ahead very late (~power 575+). The Elite/Legendary "exactly 3x/7x" caps from the
+2026-09-12 accessibility retune are still true against the OLD, weaker Solo Merc baseline (Rank 4,
+Noble's Vault) — they just don't mean much once Solo Merc is genuinely maxed out.
+
+**Player's own diagnosis, verified**: "max merc is way too high, is there no cap on the rob-npc?"
+There IS a cap (both `RobNpc.MAX_REWARD_MULTIPLIER`=250 on the power-scaling side and each tier's
+own `payoutCap`) — the caps just aren't small. Breakdown at max Rank/Yukon (per-hour EV):
+
+| Power | Bounty EV/hr | Royal Treasury EV/hr (old, 50K cap) | Heist's share of total |
+|---|---|---|---|
+| 80 | 1.37M | 6.13M | 82% |
+| 250 | 5.07M | 19.22M | 79% |
+| 400 | 8.48M | 19.22M (capped) | 69% |
+| 600 | 12.91M | 19.22M (capped) | 60% |
+
+Royal Treasury is 60-82% of the whole Solo Merc line. Why, even capped: a successful roll pays
+`min(payoutCap, workGainAmount×4.5) × min(power, 250) × 0.95` — at power ≥250 that's
+`50,000 × 250 × 0.95 = 11.875M potatoes per win`, at 67.4% odds (50% base at max rank + Yukon's
++17.4%, added AFTER the tier's own `maxChance` clamp per `resolveNpcRob`, so genuinely uncapped
+past 50%), twice an hour (1800s cooldown, further halved by Rank 6's 38% cooldown-skip chance).
+
+**Requested fix: cut Royal Treasury's `payoutCap` 50,000 → 30,000.** Checked first against the
+existing dominance-over-Noble's-Vault invariant (`mercenaryFactory.test.js`'s own regression test,
+guarding a trap fixed three separate times on 2026-09-09) before implementing anything — since
+that invariant is linear in `payoutCap` for both tiers, a straight cut to 30,000 was verified to
+REOPEN it:
+
+| Royal Treasury `payoutCap` | EV @ power=25 (own gate) | EV @ power=50 | vs. Noble's Vault's own best case |
+|---|---|---|---|
+| 50,000 (old) | 268,750 | 550,000 | ahead |
+| 41,005 | — | — | exact parity (crossover) |
+| 30,000 (requested) | 161,250 | 330,000 | **behind** Noble's Vault (220,400 / 443,650) |
+
+At 30,000, a max-rank player would rationally farm the easier Noble's Vault forever and skip Royal
+Treasury except for its 5% stat-grant chance — the identical trap already fixed three times.
+Player chose "pick a higher cap that preserves dominance" over accepting the regression or cutting
+Noble's Vault to match. Solved for the smallest round cap giving a comfortable margin (not a
+razor's-edge parity, matching the third pass's own stated bar): **45,000**, landing ~10-12% ahead
+of Noble's Vault's own best case at both the 25x gate and 50x power — a real 10% cut from 50,000,
+short of the literal 30,000 ask but the closest value that doesn't reopen a previously-fixed trap.
+
+**New Solo Merc curve** (Rank 6, Royal Treasury @ 45,000, Yukon maxed):
+
+| Power | Solo Merc | Elite | Legendary | Elite/Merc | Legendary/Merc |
+|---|---|---|---|---|---|
+| 80 | 6.89M | -1.28M | -25.13M | — | — |
+| 300 | 23.82M | 12.80M | 0.01M | 0.54x | 0.00x |
+| 430 | 27.12M | 17.11M | 14.86M | 0.63x | 0.55x |
+| 600 | 30.21M | 21.28M | 34.29M | 0.70x | 1.14x |
+
+Elite still never fully catches up (peaks ~70% of Solo Merc at power 600); Legendary now overtakes
+around power ~555 (was ~575 before the cap cut). Chart republished to the same URL. Full test
+suite: **1541/1541** across 84 suites (one pre-existing test — `help.test.js`'s "heist cites the
+current RobNpc.TIERS payout caps" — pinned the literal old "50,000" string and needed updating to
+"45,000"; `mercenaryFactory.test.js`'s dominance-invariant test re-verified rather than assumed
+to still pass). Docs: `mercenary-bounties.md`.

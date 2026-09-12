@@ -1052,7 +1052,10 @@ describe('resolveNpcRob', () => {
     // itself needed a re-buff (its own maxChance rose 0.42 -> 0.62 after being found dominated
     // by lower tiers). Pass 3 (odds -> 0.50) restores the lead against Noble's Vault's NEW best
     // case (its max Rank-6 chance) at high power, not just at Royal Treasury's own gate.
-    test('Royal Treasury (0.50 chance, 50K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the third retune pass', () => {
+    // Cap lowered 50,000 -> 45,000 on 2026-09-12 (fourth retune pass, see the constant's own
+    // comment) — re-verified this invariant still holds with a comfortable margin (~10-12%
+    // at both power points below) rather than assuming the fourth pass didn't disturb it.
+    test('Royal Treasury (0.50 chance, 45K cap) beats Noble\'s Vault\'s own best case (max chance) at high power, after the fourth retune pass', () => {
         const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
         const royalTreasury = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
 

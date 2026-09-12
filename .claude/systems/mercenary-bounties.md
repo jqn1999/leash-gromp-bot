@@ -810,7 +810,7 @@ roll to size a matching penalty off of.
 | Market Stall | 1+ | — (none) | 30% / +10% / 80% | 5,000 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
 | Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 10,000 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 4,000-6,000 baseline | +2 | — |
 | Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 20,000 | 0.75 (x1.5) | 12,000-18,000 baseline | +3 | — |
-| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 50,000 | 1.0 (x2.0) | 40,000-60,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 45,000 | 1.0 (x2.0) | 36,000-54,000 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 Power gates land on real shop checkpoints from `SCALING_ANCHOR_TABLE` (3x/15x/25x). "On a
 whiff" figures above are the pre-`lossScale` baseline at exactly 1x developed multiplier —
@@ -889,6 +889,24 @@ and Noble's Vault's own best case now sits around power ~4.5x — well below Roy
 razor's-edge parity right at unlock. `penaltyPercentOfCap` was never touched across any of the
 three passes (the x2.0 Guild-Raid-Legendary-matching ratio from 2026-09-08 stays intact) —
 every fix across all three passes has been a WIN-side, success-rate-only buff.
+
+**Fourth pass, 2026-09-12, direct instruction: "max merc is way too high... lower the royal
+treasury to 30k."** Prompted by rebuilding the Guild Raid EV chart's own Solo Merc reference
+line against a best-case solo mercenary (Rank 6, Yukon at max companion level) — Royal
+Treasury turned out to be 60-82% of that entire line's hourly EV, dwarfing Bounty's own share,
+because a capped win (`payoutCap * min(power, 250) * 0.95`) at power ≥250 pays **11.875M
+potatoes per successful roll** at 67.4% odds, twice an hour. A straight cut to 30,000 was
+checked against the third pass's own dominance-over-Noble's-Vault invariant before
+implementing and found to REOPEN it: at 30,000 Royal Treasury becomes strictly worse than
+Noble's Vault's own best case at every power from Royal Treasury's own 25x gate onward (the
+crossover sits at payoutCap ≈41,000) — the identical trap the three passes above exist to
+prevent. Player chose to keep the dominance invariant over the literal 30,000 ask: cap set to
+**45,000** instead (still a real 10% cut from 50,000), landing a comfortable ~10-12% margin
+over Noble's Vault's own best case at both the 25x gate and at 50x power, rather than a
+razor's-edge parity. `baseChance`/`chancePerRank`/`maxChance`/`penaltyPercentOfCap` all
+untouched — this pass was a payout-cap-only cut, the opposite lever from the three
+odds-only passes above. See `balance-audit.md`'s 2026-09-12 entry (fourth Royal Treasury
+retune) for the full Bounty-vs-Heist EV breakdown this was solved from.
 
 **`penaltyPercentOfCap` escalates by tier (2026-09-08, direct instruction — see Bounty's own
 matching penalty-escalation entry above for the full rationale).** Was a single flat 0.5

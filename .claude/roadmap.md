@@ -12061,3 +12061,24 @@ pre-existing, unrelated doc-drift bug found along the way: `starch-trading.md` h
 paragraph still describing the pre-2026-08-24-rescale numbers (25,000/200,000cap figures) years
 out of sync with the accurate table earlier in the same file. Full suite: **1541/1541** across 84
 suites. Docs: `starch-trading.md`.
+
+## Nerf: Royal Treasury (Heist) payout cap cut 50,000 -> 45,000 (2026-09-12, direct instruction)
+
+Player: "max merc is way too high, is there no cap on the rob-npc? what ev does the bounty give
+vs the rob npc" — then, after the breakdown showed Royal Treasury was 60-82% of the whole Solo
+Merc EV line: "low the royal treasury to 30k."
+
+Checked the literal 30,000 ask against `mercenaryFactory.test.js`'s own dominance-over-Noble's-
+Vault regression test before implementing — found it would reopen a trap fixed three separate
+times on 2026-09-09 (Royal Treasury becoming strictly worse than the easier-to-reach Noble's Vault
+at every power). Player chose to preserve that invariant over the exact number: cap set to
+**45,000** instead — the smallest round value keeping a comfortable ~10-12% margin over Noble's
+Vault's own best case, rather than 30,000's razor-reversed ordering.
+
+Fixed a live player-facing doc-drift bug in the same pass: `Companions`/`/help`'s own `heist` topic
+content hardcoded "payout cap 50,000" in plain English, now "45,000". Full suite: **1541/1541**
+across 84 suites (`help.test.js`'s own regression pinned the literal old string and needed
+updating; `mercenaryFactory.test.js`'s dominance test re-verified rather than assumed to still
+hold). Docs: `mercenary-bounties.md`. Chart republished to the same URL — Solo Merc drops
+6.9M-30.2M across power 80-600 (was 7.5M-32.1M); Legendary now overtakes it around power ~555
+(was ~575).

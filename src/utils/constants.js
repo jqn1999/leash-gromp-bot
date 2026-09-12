@@ -1719,7 +1719,7 @@ const HelpTopics = [
         id: "heist",
         label: "Heist (/rob-npc)",
         description: "The 4-tier solo Heist Ladder and its odds/payouts",
-        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 5,000 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 10,000 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 20,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6 only, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 50,000 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
+        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 5,000 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 10,000 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 20,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6 only, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 45,000 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
     },
     {
         id: "poison-mimic",
@@ -2871,12 +2871,28 @@ const RobNpc = {
             // penaltyPercentOfCap (1.0, the x2.0 Guild-Raid-Legendary-matching ratio from
             // 2026-09-08) stay unchanged throughout all three passes — every fix here has been
             // a WIN-side, success-rate-only buff, per instruction.
+            //
+            // Fourth pass, 2026-09-12, direct instruction ("max merc is way too high... lower
+            // the royal treasury to 30k") — this tier turned out to be 60-82% of a maxed-out
+            // solo mercenary's (Rank 6, Yukon at max companion level) total hourly EV once the
+            // guild-raid EV curves were rebuilt against that baseline, dwarfing Bounty's own
+            // share. A straight cut to 30,000 as first requested was checked against this
+            // tier's own dominance-over-Noble's-Vault invariant (the exact thing the three
+            // passes above exist to protect) and found to REOPEN it — at 30,000 this tier
+            // becomes strictly worse than Noble's Vault's own best case at every power from
+            // this tier's own unlock gate onward (crossover sits at ~41,000), the identical
+            // trap fixed three times above. Player chose "pick a higher cap that preserves
+            // dominance" over accepting that regression or cutting Noble's Vault to match — cap
+            // set to 45,000 (still a real 10% cut from 50,000) to land a comfortable ~10-12%
+            // margin over Noble's Vault's own best case at both this tier's own gate (25x) and
+            // at 50x, rather than a razor's-edge parity. See balance-audit.md's 2026-09-12
+            // entry (fourth Royal Treasury retune) for the full before/after EV breakdown.
             minPowerRequired: 25,
             baseChance: 0.10,
             chancePerRank: 0.08,      // still technically "+/rank" for shape consistency with the other 3 tiers,
                                        // but only reachable at Rank 6 itself (0.10 + 0.08*5 = 0.50 flat once unlocked)
             maxChance: 0.50,
-            payoutCap: 50000,
+            payoutCap: 45000,
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged
             notorietyPerWin: 4,
