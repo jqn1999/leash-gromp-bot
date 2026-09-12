@@ -2127,3 +2127,159 @@ lifetime) is the part worth acting on.
   numerically identical by design (0.5%/1%/2.5%) — confirmed via direct comparison, not a divergence.
 - Reward-bonus dilution-by-roster-size theory (an intuitive but incorrect explanation for "feels
   weak") — checked and ruled out; see Finding 4a.
+
+---
+
+## 2026-09-12 — Guild Raid Elite/Legendary vs. solo Mercenary Bounty at matched individual power
+
+Prompted by a player question ("is Elite/Legendary Guild Raid economics fair vs. Mercenary Bounty
+at similar work multipliers?"), scoped to a specific guild (level 6, roster 4-5, owns Cinderroot).
+Independently re-derived the player's own worked math against live `constants.js`/`startRaid.js`/
+`raidFactory.js`/`mercenaryFactory.js` via `node -e`, then extended it. Not a full-scope pass —
+Shops/Regrades/Rebirth/Companions/World Raids untouched this session.
+
+### Findings
+
+**1. [Confirmed, no bug] The player's own Elite/Legendary tier-level breakeven derivation is
+numerically exact against live code.** `raidRewardMultiplier` at guild level 6 with Cinderroot =
+`RaidLevel.THRESHOLDS[5].multiplier (4.00) * (1 + GuildCompanionScaling.raidRewardBonusPercent[5]
+(0.18)) = 4.72`, `* (1 - Raid.GUILD_RAID_TAX_PERCENT (0.05)) = 4.484` net (tax confirmed win-side-only,
+`startRaid.js:305-313`'s `addToBankOrPurse`; penalty confirmed unscaled by `raidRewardMultiplier`,
+only by the same `.8-1.2` random roll every bracket gets — `startRaid.js:681/688` etc.). Breakeven
+success chance `= penaltyMult/(effReward+penaltyMult)`: Elite (`ELITE_PENALTY_INCREASE=1.5`,
+`constants.js:1869`) = 25.07%, Legendary (`LEGENDARY_PENALTY_INCREASE=2`, `:1870`) = 30.85% — tier-
+and reward-magnitude-independent since every bracket's `|penalty|/reward` ratio is fixed at exactly
+1.5x/2.0x (verified: `ELITE_T1..T4_PENALTY / ELITE_T1..T4_REWARD` all = 1.5 exactly). Converted to
+per-player power via the 2026-08-26 team-power formula (`RAID_TEAM_DECAY=0.5` geometric decay +
+`RAID_HEADCOUNT_BONUS_PER_MEMBER=0.03/member` capped `0.50`): team factor N=4 = 2.044x, N=5 = 2.17x
+— both hand-recomputed and matching. Elite T1 per-player breakeven ≈146(4p)/137(5p); Legendary T1
+≈359(4p)/338(5p). All of this matches the player's pre-session numbers to within rounding.
+
+**2. [HIGH, live, NOT previously documented — the real correction to the player's framing] The
+per-tier breakeven number above is NOT the guild's actual aggregate breakeven once the 2026-08-27
+dynamic tier-weighting rework is accounted for, and the gap is large enough to flip the sign.**
+`getDynamicTierWeights` (`raidFactory.js:193-201`) spreads roll probability across all 4 tiers in a
+mode based on proximity to the roster's own `totalMultiplier`, not just the nearest one — so a
+roster sitting exactly at "T1's own breakeven power" still rolls T2/T3/T4 a meaningful fraction of
+the time (e.g. ~47% combined weight at Elite's own T1 difficulty per the existing docs), where its
+same fixed power is now well UNDER those harder tiers' own breakeven, dragging the weighted-average
+EV negative. Numerically re-derived via `node -e` (weighting all 4 tiers by `getDynamicTierWeights`,
+success-chance-per-tier `min(power/difficulty, cap)`, EV summed by weight) at guild level 6's real
+4.484 net multiplier:
+
+| Mode | Per-tier-only breakeven (player's framing) | Actual weighted-average breakeven (this session) | Gap |
+|---|---|---|---|
+| Elite, N=4 | ~146 | **~178** | +22% |
+| Elite, N=5 | ~137 | **~167** | +22% |
+| Legendary, N=4 | ~359 | **~441** | +23% |
+| Legendary, N=5 | ~338 | **~415** | +23% |
+
+Concretely: a 4-person guild sitting at per-player power 150 (just above the player's cited Elite
+breakeven of 146) is actually running Elite at **-1.94M EV per raid** (**-1.94M/4 ≈ -486k per
+player-hour**, since one raid/hour serves the whole roster) — not breakeven, a real loss, because
+~30% of rolls land in T2-T4 where that same power is deeply under-cap. This is the exact same
+structural failure mode the 2026-08-27 "dynamic tier weighting" dead-zone (Regular mode) and the
+2026-09-11 comment on Elite/Legendary being "unaffected by the 2026-08-27 change... but still
+subject to the same fixed-odds-is-now-historical caveat" already flagged as unresolved — this session
+confirms it concretely for Elite/Legendary specifically, with numbers, for the first time.
+**`getMinGuildLevelForTier`'s existing gate (Elite unlocks level 1, Legendary level 3) only checks
+whether a tier's own success-cap sits above ITS OWN per-tier breakeven — it does not, and structurally
+cannot, account for this weighted-blend effect**, so the gate is measurably more permissive than the
+guild's actual breakeven requires, in both modes, by ~22-23%.
+
+**3. [Doc drift, low severity] `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` is live `0.95`
+(`constants.js:1841`), not the `0.9` cited in `raids-and-world-events.md`'s "Success chance & tiers"
+section and `mercenary-bounties.md`'s "Success chance" section (both say `.9`).** This constant is
+what caps Bounty's own success chance (`mercenaryFactory.js:132`), so the discrepancy isn't cosmetic
+for anyone reasoning about solo Bounty EV from the docs alone — recommend a doc fix, no code change
+implied (0.95 looks intentional, just undocumented as of whatever change last touched it).
+
+**4. [Informational — the actual head-to-head, extended per the player's request] Computed solo
+Bounty EV at the SAME individual power range (140-360) `resolveBountyAttempt`'s real formula
+(`rollWeightedTier` + `min(power/difficulty, 0.95)` + `Bounty.WIN_TAX_PERCENT=0.05` + rank
+`rewardMultiplier`, rank assumed = Rank 3/50 wins/1.30x/11% cooldown-skip, a reasonable mid-progress
+assumption for a player who's already reached 140-360x, with Rank 1 shown as a zero-Bounty-history
+floor):
+
+| Power | Merc EV/attempt (Rank 1) | Merc EV/hr (Rank 1, ~1.00 attempts/hr) | Merc EV/hr (Rank 3, ~1.10 attempts/hr) | Guild Elite EV/player-hr (N=4) | Guild Legendary EV/player-hr (N=4) |
+|---|---|---|---|---|---|
+| 140 | +218k | +218k | +467k | **-2.65M** | **-35.8M** |
+| 150 | +258k | +258k | +535k | **-1.94M** | **-34.6M** |
+| 200 | +377k | +377k | +758k | +1.57M | **-28.7M** |
+| 250 | +466k | +466k | +965k | +5.08M | **-22.7M** |
+| 300 | +742k | +742k | +1.38M | +8.60M | **-16.7M** |
+| 350 | +542k | +542k | +1.23M | +12.1M | **-10.8M** |
+| 360 | +544k | +544k | +1.26M | +12.8M | **-9.6M** |
+
+(Guild EV/player-hour = the shared once-per-hour raid's total EV ÷ N, using the SAME per-player
+power on both sides — this is the fair "what does the same individual do with the same personal
+stat this hour" comparison the player asked for, not a raw per-attempt number since Bounty's own
+cooldown is individual while Guild Raid's is shared across the whole roster.)
+
+### Verdict
+
+**Not a uniform trap, and not uniformly fair either — it's sharply power-dependent, split right
+around the corrected breakeven from Finding 2, and the location of that split is currently
+mis-stated by ~22-23% in the guild's favor by the existing per-tier gate math.**
+
+- **Legendary is a live, real trap across the player's entire cited 140-360 range.** Every power
+  point in that band is solidly negative EV per player-hour (-35.8M down to -9.6M in the N=4 table
+  above) while solo Bounty is earning +218k to +1.38M/hr at the identical personal power over the
+  same range. A guild whose members sit anywhere in 140-360 and picks Legendary because the game
+  lets them (unlocked at guild level 3, a low bar) is measurably worse off than if every one of
+  those members had just soloed Bounty instead. This matches the exact "Elite/Legendary raid
+  becoming a negative-EV trap for an under-leveled guild" failure shape this audit's scope
+  description already names as a known category — this is a live, numeric instance of it, not a
+  hypothetical. **This is the one finding worth prioritizing**: Legendary's level-3 unlock gate is
+  reachable by guilds whose rosters are nowhere near the ~415-440/player power actually needed.
+- **Elite is only a trap at the LOW end of the cited range (140-~180/player), not "several hundred
+  x."** Once a guild clears ~178(4p)/167(5p) per-player power — a materially lower bar than the
+  player's own pre-session Legendary-flavored framing implied, and well within reach of an
+  established, not-maxed guild — Elite flips solidly positive and by power 250-360 is already
+  earning its players 6-10x what solo Bounty pays at the same individual power (structural: Elite's
+  reward pool runs into the tens of millions per raid and a multi-member roster gets a real
+  `teamPower` multiplier — up to 3.0x ceiling at a large maxed roster — that a solo player
+  structurally cannot access). So "is it reasonable to need several-hundred-x per player just to
+  break even on Elite" — no, and it isn't actually true; the real Elite bar is under 200.
+- **Breakeven-by-construction (Finding 2's corrected number) being ~0-EV is intentional and not
+  itself a bug** — the player's own instinct that "breakeven != the number to evaluate fairness at"
+  is correct; evaluated 50-100% above the CORRECTED breakeven, both Elite and (eventually,
+  ~450+/player) Legendary look like clearly worthwhile guild content relative to solo Bounty. The
+  bug is narrower and specific: (a) the corrected breakeven itself sits materially above what the
+  existing per-tier gate math reports (Finding 2), and (b) Legendary's guild-level-3 unlock puts
+  real guilds into the trap zone of Finding 2/the verdict's first bullet in practice, not just in
+  theory, given the player's own stated roster is already there.
+- **Time/effort is a genuine, uncounted point in Guild Raid's favor that doesn't show up in the EV
+  tables**: `RAID_TIMER_SECONDS`/`BOUNTY_TIMER_SECONDS` are both 3600s, but Guild Raid's is shared
+  across the whole live roster (a passive `autoJoinRaids` member spends zero personal actions per
+  cycle; only one officer clicks Start Raid), while Bounty requires every individual attempt
+  personally. This doesn't rescue a negative-EV raid choice, but it means the two aren't
+  apples-to-apples on attention cost even when they're apples-to-apples on power and EV.
+
+### Recommendation (flagged for `product-owner`/`architect`, not applied)
+
+1. Re-run the `getMinGuildLevelForTier`-style gate check using the actual dynamic-tier-weighted EV
+   integral (same method this session used, and the same method `raids-and-world-events.md`'s own
+   Regular-mode "dead zone" fix already established as the right one) rather than a single tier's
+   own isolated breakeven, for both Elite and Legendary — Finding 2's ~22-23% gap suggests either
+   the unlock guild levels should move up, or (probably preferable, since Elite's corrected
+   breakeven is still quite reachable) the gate function itself should switch to the weighted-EV
+   method so it stays self-correcting if the tier-weighting sharpness or ladder ever moves again.
+2. Specifically re-examine Legendary's guild-level-3 unlock against the corrected ~415-440/player
+   breakeven — level 3 is very early, and this session's own reference guild (level 6, roster 4-5)
+   is a plausible real-world example of a guild that has UNLOCKED Legendary well before it can
+   profitably run it, exactly the shape of trap this session's brief called out as a known risk
+   pattern to watch for.
+3. Fix the `.9`→`.95` doc drift on `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` in
+   `raids-and-world-events.md` and `mercenary-bounties.md` (Finding 3) — low severity, but it's the
+   cap that determines solo Bounty's own ceiling success chance and is currently mis-stated in both
+   docs that reference it.
+
+### Checked, no issues found (this pass)
+
+- Guild raid reward/penalty/tax application order (`startRaid.js`'s `addToBankOrPurse`/reward
+  formulas) — matches the player's own pre-session description exactly, no divergence found.
+- Bounty's reward/penalty/tax/rank-multiplier formula (`mercenaryFactory.js:114-199`) — read in
+  full, matches `mercenary-bounties.md`'s documented shape with no drift found beyond Finding 3.
+- `MercenaryRank.THRESHOLDS` live values match `mercenary-bounties.md`'s documented table exactly
+  (rank 1-6 reward multipliers and cooldown-skip percentages).
