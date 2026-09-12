@@ -1359,12 +1359,19 @@ class EmbedFactory {
     // preview like /rob has; instead this breaks down every bracket you could land in
     // along with its own odds, success chance, and stakes, so whoever's starting it (and
     // committing the whole roster's raid list) isn't picking blind.
-    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode = 'even', raidPayoutMode = 'bank') {
-        const fields = brackets.map(bracket => ({
+    // Shared by createRaidPreviewEmbed (below) and createRaidOddsEmbed (raidOdds.js's
+    // read-only preview) so both render every bracket's odds/success chance/stakes
+    // identically — one source of truth for how a bracket becomes an embed field.
+    buildRaidBracketFields(brackets) {
+        return brackets.map(bracket => ({
             name: `${bracket.name} (${(bracket.odds * 100).toFixed(0)}% odds of this bracket)`,
             value: `${(bracket.successChance * 100).toFixed(1)}% success chance\n✅ ${bracket.rewardText}\n❌ ${bracket.penaltyText}`,
             inline: false,
         }));
+    }
+
+    createRaidPreviewEmbed(guildName, raidSelection, raiderCount, totalMultiplier, brackets, guildLevel, raidRewardMultiplier, raidSplitMode = 'even', raidPayoutMode = 'bank') {
+        const fields = this.buildRaidBracketFields(brackets);
 
         // Reward numbers in each bracket above already have the level multiplier baked
         // in — this line just makes it visible why, instead of leaving players to infer
@@ -1379,6 +1386,44 @@ class EmbedFactory {
             .setTitle(`${guildName}, start a ${raidSelection} raid?`)
             .setDescription(`${raiderCount} raider${raiderCount == 1 ? '' : 's'} joined, ${totalMultiplier.toFixed(2)}x effective raid power (top raider's own power counted fully, each next-strongest counted at ${(Raid.RAID_TEAM_DECAY * 100).toFixed(0)}% of the rank above them, plus a headcount bonus for roster size).${levelNote}${payoutNote} Confirm to roll — whichever bracket below you land in resolves immediately, no second chance to back out once rolled.`)
             .setColor("Yellow")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Read-only counterpart to createRaidPreviewEmbed above, for /raid-odds (raidOdds.js,
+    // 2026-09-12, direct instruction: "give a way for guilds to see the raid
+    // probabilities of each tier without having to wait for raid cd to be done", then
+    // "it can be similar to the bounty board mercs have which has a single embed with
+    // all the odds/rewards/etc"). Mirrors createBountyBoardEmbed's own shape exactly:
+    // one compact line per bracket (not one embed field per bracket — /start-raid's own
+    // createRaidPreviewEmbed above already does that, and it gets long fast once every
+    // mode is shown side by side) grouped into one field per raid mode, so every
+    // unlocked mode's full tier breakdown fits in a single embed at a glance.
+    // `modeSections` is [{ label, brackets }] — one entry per mode raidOdds.js has
+    // already unlocked-filtered, in the same {name, odds, successChance, rewardText,
+    // penaltyText} shape buildRaidPreview returns for every mode.
+    createRaidOddsEmbed(guildName, totalMultiplier, guildLevel, raidRewardMultiplier, modeSections, raidTimeRemainingSeconds) {
+        const fields = modeSections.map(section => ({
+            name: `${section.label}:`,
+            value: section.brackets.map(b =>
+                `${b.name}: ${(b.odds * 100).toFixed(0)}% odds, ${(b.successChance * 100).toFixed(1)}% success — ✅${b.rewardText} ❌${b.penaltyText}`
+            ).join('\n'),
+            inline: false,
+        }));
+        fields.push({
+            name: 'Raid Cooldown:',
+            value: raidTimeRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(raidTimeRemainingSeconds)} — these are a preview only, nothing has been rolled.` : 'Ready now! Run /current-raid or /start-raid to actually roll one of these brackets.',
+            inline: false,
+        });
+
+        const levelNote = guildLevel > 1 ? ` Guild Level ${guildLevel} (${raidRewardMultiplier.toFixed(2)}x reward multiplier) is already applied below.` : '';
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}'s raid odds`)
+            .setDescription(`Based on your guild's current ${totalMultiplier.toFixed(2)}x effective raid power (top raider's own power counted fully, each next-strongest counted at ${(Raid.RAID_TEAM_DECAY * 100).toFixed(0)}% of the rank above them, plus a headcount bonus for roster size).${levelNote}`)
+            .setColor("Blue")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
             .setFields(fields)

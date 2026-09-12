@@ -198,6 +198,20 @@ const legendaryRaidMobs = [
 const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 7
 const ELITE_LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 8
 
+// Guild level + the level's own payout multiplier (raw RaidLevel.THRESHOLDS multiplier,
+// boosted by Cinderroot's own perk 3b if owned — see systems/guilds.md's "Guild Raid
+// Companion" design) — previously computed inline, separately, in both runStartRaidFlow
+// and resolveRaid below (identical 3 lines each). Extracted 2026-09-12 so /raid-odds
+// (raidOdds.js, a read-only preview with no cooldown gate) can derive the exact same
+// numbers a real raid attempt would use without a third copy of this formula drifting
+// out of sync.
+function getRaidLevelAndRewardMultiplier(guild) {
+    const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
+    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
+    const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
+    return { guildLevel, raidRewardMultiplier };
+}
+
 function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);
     const reward = mobList[random];
@@ -1106,13 +1120,11 @@ async function runStartRaidFlow(interaction, raidSelection) {
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
     // Cinderroot, the Hoardwarden's perk 3b (see systems/guilds.md's "Guild Raid Companion"
-    // design) — pre-adjusted here, once, before raidRewardMultiplier is threaded as a plain
-    // value into every scenario closure and the raid preview embed below, so neither needs
-    // any changes of its own to pick up the boosted number.
-    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
-    const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
+    // design) is folded into raidRewardMultiplier here, once, before it's threaded as a
+    // plain value into every scenario closure and the raid preview embed below, so
+    // neither needs any changes of its own to pick up the boosted number.
+    const { guildLevel, raidRewardMultiplier } = getRaidLevelAndRewardMultiplier(guild);
 
     // Elite/Legendary gated by a flat guild-level requirement (Raid.ELITE_MIN_GUILD_LEVEL/
     // LEGENDARY_MIN_GUILD_LEVEL — see that constant's own comment for why this replaced a
@@ -1297,9 +1309,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const guildId = guild.guildId;
     const guildName = guild.guildName;
     const memberList = guild.memberList;
-    const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
-    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
-    const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
+    const { guildLevel, raidRewardMultiplier } = getRaidLevelAndRewardMultiplier(guild);
 
     // Cooldown-skip overhaul (2026-09-05, direct instruction: "on a loss there is no
     // cooldown skip and no auto trigger") — the same 4 terms that used to shave raidTimer
@@ -1639,6 +1649,11 @@ module.exports = {
     // buildRaidPreview.test.js) — same convention runStartRaidFlow above already
     // established for exporting an otherwise-internal function for test coverage.
     buildRaidPreview,
+    // Exported so /raid-odds (raidOdds.js, 2026-09-12, direct instruction — a read-only
+    // preview of every raid tier's odds with no cooldown gate) can derive the exact same
+    // guild-level payout multiplier a real raid attempt would use, without a third copy
+    // of this formula drifting out of sync.
+    getRaidLevelAndRewardMultiplier,
     // Exported so /skip-chances (skipChances.js) can preview the same combined chance
     // resolveRaid actually rolls against, without duplicating the formula.
     getRaidCooldownSkipSources,

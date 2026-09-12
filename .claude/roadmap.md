@@ -11960,3 +11960,37 @@ so it needed no functional change, just a clarifying comment; `buildRaidPreview.
 directly pin the new level-7 boundary rather than relying on incidental coverage. Full suite:
 **1526/1526** across 83 suites. Chart updated to also plot a "Regular pre-T4" series (guild level
 6, T1-T3 only) alongside "Regular w/ T4" (now shown at level 7, its own new gate, instead of 8).
+
+## New: `/raid-odds` — read-only raid-tier preview with no cooldown gate (2026-09-12, direct instruction)
+
+Player: "give a way for guilds to see the raid probabilities of each tier without having to wait
+for raid cd to be done", then, once shown a first pass: "it can be similar to the bounty board
+mercs have which has a single embed with all the odds/rewards/etc."
+
+New command `src/commands/guilds/raidOdds.js`. Any guild member can run it (no Elder/Co-Leader/
+Leader gate — nothing is committed or rolled). Computes the guild's real effective raid power
+(same `getEffectiveRaidPower` + Firefly boost + World Boss buff ingredients `runStartRaidFlow`
+itself uses) and calls `buildRaidPreview` once per unlocked raid mode (`getUnlockedRaidModes`), so
+these numbers can never drift from what a real raid attempt would actually roll against. Critically,
+**no cooldown check at all** — that's the entire point, unlike `/start-raid`'s own pre-roll preview
+which only renders once `raidTimer` has elapsed.
+
+Embed shape mirrors `/bounty-board`'s `createBountyBoardEmbed` (one compact line per bracket,
+grouped into one field per mode) rather than `/start-raid`'s own `createRaidPreviewEmbed` (one
+field per bracket) — the latter gets long fast once every mode is shown side by side in a single
+embed instead of just the one mode being confirmed. A new shared `createRaidOddsEmbed` was added
+to `embedFactory.js`; `createRaidPreviewEmbed`'s own bracket-to-field mapping was factored into a
+new `buildRaidBracketFields` helper both embeds could have shared, though only the older one still
+uses it directly (the new one needs the bounty-board-style compact lines instead).
+
+Extracted `getRaidLevelAndRewardMultiplier(guild)` in `startRaid.js` — the guild-level-plus-
+Cinderroot-bonus calc `runStartRaidFlow` and `resolveRaid` each already computed inline, identically
+— so `/raid-odds` doesn't need a third copy of the same 3 lines to drift out of sync from. Exported
+alongside `buildRaidPreview` for the same reason `getRaidCooldownSkipSources` was already exported
+for `/skip-chances`.
+
+New test suite `raidOdds.test.js` (6 tests): confirms odds show up even while on cooldown (the core
+regression this command exists to fix), confirms the cooldown field's own wording changes once
+ready, confirms Elite/Legendary sections are correctly gated by `getUnlockedRaidModes`, and confirms
+the no-guild/empty-roster rejection paths still short-circuit before building anything. Full suite:
+**1532/1532** across 84 suites. Docs: `raids-and-world-events.md`.

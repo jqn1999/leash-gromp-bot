@@ -1,7 +1,7 @@
 # Raids & scheduled world events
 
 Guild raids: [src/utils/raidFactory.js](../../src/utils/raidFactory.js) +
-[src/commands/guilds/{createRaid,joinRaid,startRaid,currentRaid}.js](../../src/commands/guilds/).
+[src/commands/guilds/{createRaid,joinRaid,startRaid,currentRaid,raidOdds}.js](../../src/commands/guilds/).
 World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
 [src/commands/misc/{currentWorldRaid,joinWorldRaid}.js](../../src/commands/misc/). Scheduling:
 [src/events/ready/backgroundEvents.js](../../src/events/ready/backgroundEvents.js) +
@@ -65,6 +65,25 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   only the original invoker's own clicks are ever processed, and `runStartRaidFlow`'s internal role
   check is authoritative either way. The roster embed also shows a one-line reward-split-mode
   indicator (see "Reward split mode" in [guilds.md](guilds.md#raid-reward-split-mode)).
+- **`raid-odds` (2026-09-12, direct instruction: "give a way for guilds to see the raid
+  probabilities of each tier without having to wait for raid cd to be done", then "it can be
+  similar to the bounty board mercs have which has a single embed with all the odds/rewards/etc")**
+  — a read-only preview with **no cooldown check at all**, unlike `/start-raid`'s own pre-roll
+  preview embed (`buildRaidPreview`), which only ever renders once `raidTimer` has already
+  elapsed. Any guild member can run it (no Elder/Co-Leader/Leader gate — nothing is committed or
+  rolled, same "viewing never claims/spends anything" precedent `/bounty-board` and `/current-raid`
+  already established). Shows every raid mode the guild has actually unlocked (`raidFactory.js`'s
+  `getUnlockedRaidModes`) in ONE embed, one field per mode, each field a compact one-line-per-
+  bracket breakdown — mirrors `createBountyBoardEmbed`'s own shape exactly rather than
+  `createRaidPreviewEmbed`'s one-field-per-bracket layout (which gets long fast once every mode is
+  shown side by side instead of just one). A trailing "Raid Cooldown" field states the actual
+  remaining time (or "Ready now!") so the preview never implies a raid is rollable right now when
+  it isn't. Built from the exact same `buildRaidPreview`/`getRaidLevelAndRewardMultiplier` (the
+  latter extracted from `runStartRaidFlow`/`resolveRaid`'s own previously-duplicated 3-line
+  guild-level-plus-Cinderroot-bonus calc, specifically so a third copy wouldn't need to exist) and
+  the same effective-power formula (`getEffectiveRaidPower` + Firefly's `guildRaidMultiplierPercent`
+  boost + the live World Boss `workMulti` buff) `runStartRaidFlow` itself uses — these odds can
+  never drift from what a real raid attempt would actually roll against.
 - `start-raid`: Elder/Co-Leader/Leader only. Requires a non-empty live roster and an elapsed
   `raidTimer` (`Raid.RAID_TIMER_SECONDS = 3600` — see "Guild Raid cooldown skip" below for how a
   win can clear it to ready-now instead of just shortening it, via the `raidTimer` buff and 3
