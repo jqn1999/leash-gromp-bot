@@ -2495,3 +2495,48 @@ Full test suite: **1524/1524** across 83 suites (7 pre-existing fixture/regressi
 or rewritten against the new constants, one new regression test added for Elite/Legendary's new T4
 difficulty). No further recommendation — direct implementation of the player's own explicit
 numeric targets (break-even power per mode, 3x/7x caps), each verified to land within tolerance.
+
+## Follow-up (2026-09-12, same day): Regular T4's own payout capped at ~6M, prompted directly by the new chart
+
+Player, looking at the just-updated EV chart: "Regular t4 might be paying out too much. Have it cap
+at around 6 million instead of 16, it would take past 380 power for elite to even beat it right now."
+
+**Change**: `T4_RAID_REWARD`/`T4_RAID_PENALTY` cut from 8,605,263 to 3,240,000 (1:1 ratio preserved).
+`T4_RAID_DIFFICULTY` (430) left untouched — the accessibility fix from the entry above (95% success
+cap reachable at 200 power/player, guild level 8) still holds exactly as designed; only the payout
+once capped moved.
+
+**Why this specific number**: per-player EV is linear in T4's own reward once every Regular tier's
+success chance is fully capped at 0.95 (`EV = reward * (0.95*rEff - 0.05)` at that point, where
+`rEff` is guild level 8's own payout multiplier) — so the target reward was solved directly from
+that linear relationship rather than searched. Verified against the full weighted-EV formula
+(including T1-T3's own small residual weight at the plateau, not just T4 in isolation): blended
+Regular EV/player now plateaus at **~6.00M** (was ~15.89M), confirmed flat from power ~220 onward.
+
+**Elite-vs-Regular crossover, the player's own stated concern**: with Regular's plateau cut to ~6M,
+Elite (unaffected by this change) now overtakes Regular's ceiling around **power ~185-190** — down
+from ~365-370 before this cut. Elite's own guild-level-7 requirement (a real grind) now pays off in
+EV terms much sooner in the power curve than it used to, rather than requiring a further ~200 power
+of climbing on top of the level-7 grind just to out-earn a lower, easier-to-run mode.
+
+**Side effect, expected and directly documented, not hidden**: T4's own reward efficiency dropped to
+~7,535/pt (3,240,000 / 430) — BELOW Regular T3's own 16,577/pt. Regular's T1→T4 efficiency ramp is
+no longer strictly monotonic (T1 10,757 → T2 13,188 → T3 16,577 → T4 7,535). This is a direct,
+accepted consequence of capping T4's ABSOLUTE payout rather than its per-point rate — T4 remains by
+far Regular's best tier in absolute reward terms (3.24M vs. T3's 1.54M), it's simply no longer the
+best per-difficulty-point one. `raidFactory.test.js`'s efficiency-ramp test was split: Elite/
+Legendary still asserted fully monotonic, Regular's T1-T3 still monotonic with T4 explicitly
+asserted to sit BELOW T3 rather than above it.
+
+**Second-order effect on the Bounty-vs-guild comparison**: `mercenaryFactory.test.js`'s "~30% of
+guild-equivalent reward" regression (already widened once this same day for the Elite/Legendary
+retune above) needed widening again — Regular T4's efficiency drop creates a SECOND dip in the
+interpolated "guild efficiency at matching difficulty" curve (at the Regular T3→T4 seam, on top of
+the existing Regular→Elite dip), pushing a few Bounty tiers' ratios as high as ~0.65. The band is now
+a deliberately loose (0.20, 0.70) sanity check across all 12 tiers rather than a calibration target —
+two independent same-day design decisions each reshaped guild efficiency in different places, so the
+comparison curve is no longer one coherent ramp to calibrate tightly against.
+
+Full test suite: **1524/1524** across 83 suites. Direct implementation of the player's own explicit
+numeric target (~6M cap), verified against the live weighted-EV formula rather than an isolated
+single-tier estimate.

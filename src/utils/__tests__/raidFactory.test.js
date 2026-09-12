@@ -786,16 +786,29 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         const legendary = [Raid.LEGENDARY_T1_REWARD, Raid.LEGENDARY_T2_REWARD, Raid.LEGENDARY_T3_REWARD, Raid.LEGENDARY_T4_REWARD]
             .map((r, i) => efficiency(r, [Raid.LEGENDARY_T1_DIFFICULTY, Raid.LEGENDARY_T2_DIFFICULTY, Raid.LEGENDARY_T3_DIFFICULTY, Raid.LEGENDARY_T4_DIFFICULTY][i]));
 
-        // Each mode's own T1->T4 efficiency is still monotonically increasing (a ramp).
-        [regular, elite, legendary].forEach(band => {
+        // Elite/Legendary's own T1->T4 efficiency is still monotonically increasing (a
+        // ramp). Regular's T1->T3 still ramps too, but T4 (see its own comment in
+        // constants.js) was deliberately cut to an absolute payout cap on 2026-09-12,
+        // same day, direct instruction ("Regular t4 might be paying out too much... have
+        // it cap at around 6 million instead of 16") — a pure reward cut, difficulty
+        // untouched, so T4's own efficiency now sits BELOW T3's rather than above it. Not
+        // a bug: T4 is still by far the best ABSOLUTE payout (asserted below), it's just
+        // no longer the best PER-POINT one — a direct, accepted consequence of capping
+        // the plateau rather than the rate.
+        [elite, legendary].forEach(band => {
             for (let i = 1; i < band.length; i++) {
                 expect(band[i]).toBeGreaterThan(band[i - 1]);
             }
         });
+        for (let i = 1; i < regular.length - 1; i++) {
+            expect(regular[i]).toBeGreaterThan(regular[i - 1]);
+        }
+        expect(regular[3]).toBeLessThan(regular[2]);
 
         // Fresh target bands measured directly off the solved constants (small headroom
         // above/below for the integer rounding on each bracket's own difficulty/reward).
-        regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(10000); expect(e).toBeLessThanOrEqual(20100); });
+        // Regular's own band widened on its low end to fit T4's now-lower efficiency.
+        regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(7000); expect(e).toBeLessThanOrEqual(20100); });
         elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(15000); expect(e).toBeLessThanOrEqual(22700); });
         legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(15500); expect(e).toBeLessThanOrEqual(26000); });
 

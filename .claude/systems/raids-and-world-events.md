@@ -399,6 +399,20 @@ done the level-9 grind, directly matching the "levels bring EV, not raw power" g
 `balance-audit.md`'s second 2026-09-12 entry for the full new tier table, cross-mode ordering check,
 and the reasoning behind the numeric solve.
 
+**Update (2026-09-12, same day, third retune) — Regular T4's own payout capped at ~6M.** Direct
+instruction, after seeing the just-published EV chart: *"Regular t4 might be paying out too much.
+Have it cap at around 6 million instead of 16, it would take past 380 power for elite to even beat
+it right now."* `T4_RAID_REWARD`/`PENALTY` cut 8,605,263 → 3,240,000 (1:1 ratio kept); difficulty
+(430) untouched, so the accessibility fix immediately above (95% cap reachable at 200 power/player)
+is unaffected — only the payout once capped moved. Solved directly off the linear relationship
+between T4's own reward and its plateau EV once every tier's success chance is capped: blended
+Regular EV/player now plateaus at ~6.00M (was ~15.89M). Elite (unchanged) now overtakes Regular's
+ceiling around power ~185-190 instead of ~365-370 — directly resolving the player's stated concern.
+Side effect: T4's own efficiency (~7,535/pt) dropped below T3's (16,577/pt), breaking Regular's
+previously-monotonic efficiency ramp — T4 stays the best ABSOLUTE payout, just not the best
+per-point one anymore, a direct consequence of capping the plateau value itself rather than the
+rate. See `balance-audit.md`'s third 2026-09-12 entry for the full derivation.
+
 `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stayed in `constants.js`, values unchanged,
 as of this 2026-08-26 entry** — but their role had already narrowed to exactly one thing:
 `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` in `raidFactory.js` and its two call sites

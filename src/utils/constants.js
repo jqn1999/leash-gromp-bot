@@ -1906,8 +1906,27 @@ const Raid = {
     // by rebirth stacking. Gated separately behind guild level (see
     // RAID_T4_MIN_LEVEL_TARGET_WINS below) on top of its own steep difficulty, since
     // guild-level progression and individual stat power are only loosely correlated.
-    T4_RAID_REWARD: 8605263,
-    T4_RAID_PENALTY: -8605263,
+    //
+    // REWARD (and penalty, 1:1) cut again 2026-09-12, same day, direct instruction:
+    // "Regular t4 might be paying out too much. Have it cap at around 6 million instead
+    // of 16, it would take past 380 power for elite to even beat it right now." T4's own
+    // DIFFICULTY (430) is UNCHANGED — the accessibility fix above (95% success cap
+    // reachable at 200 power/player, guild level 8) is untouched, only the PAYOUT once
+    // capped moved. Solved directly off the live weighted-EV formula (per-player EV is
+    // linear in T4's own reward once every tier's success chance is capped, since
+    // 0.95*reward*rEff - 0.05*reward = reward*(0.95*rEff-0.05) at guild level 8's own
+    // rEff): the blended Regular EV/player plateau lands at ~6.00M (was ~15.89M).
+    // Elite (unaffected by this change) now overtakes Regular's own plateau around power
+    // ~185, down from ~365-370 before this cut — Regular's now-lower ceiling stops
+    // out-earning Elite (which needs a harder-to-reach guild level 7, not just power) so
+    // much later into the power curve. Side effect: T4's own efficiency (3,240,000/430 ≈
+    // 7,535/pt) is now BELOW T3's (16,577/pt) — Regular's own T1->T4 efficiency ramp is no
+    // longer strictly monotonic, a direct and accepted consequence of capping T4's
+    // absolute payout rather than its per-point rate; see raidFactory.test.js's own
+    // updated assertion for this. See balance-audit.md's 2026-09-12 entry (third retune)
+    // for the full derivation.
+    T4_RAID_REWARD: 3240000,
+    T4_RAID_PENALTY: -3240000,
     T4_RAID_DIFFICULTY: 430,
 
     // T4 unlocks at whichever guild level's winsRequired is closest to this target —

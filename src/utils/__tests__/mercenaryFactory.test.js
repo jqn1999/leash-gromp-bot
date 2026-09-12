@@ -598,25 +598,23 @@ describe('Bounty.TIERS ladder shape', () => {
         // same-day accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment)
         // solved difficulty AND reward against a break-even-power target and an absolute
         // peak-vs-solo-Merc cap (3x Elite, 7x Legendary) instead of a reward-efficiency
-        // band. Net effect: Elite's own per-point efficiency (15,000-22,700) now sits
-        // close to — even briefly BELOW — Regular's own top efficiency (~20,000 at T4,
-        // difficulty 430), rather than dramatically above it. That creates a real dip in
-        // this test's own interpolated "guild efficiency at matching difficulty" curve
-        // right at the Regular->Elite seam (difficulty ~430-885), which is exactly where
-        // Bounty tiers 9-10 (difficulty 471/763) happen to fall — so their ratio spikes
-        // to ~0.28-0.36 instead of holding the old ~0.25-0.35 Regular-only band, and
-        // tiers 11-12 (now inside Elite's own, much less dominant, difficulty range) land
-        // at ~0.31-0.46 instead of the old ~0.08-0.12. The old two-band split (clean
-        // separation below/above Elite's difficulty) no longer reflects reality now that
-        // Elite isn't uniformly more reward-efficient than Regular per point — replaced
-        // with one wider band across every tier, still tight enough to catch a real
-        // regression (bounty reward going to near-zero or wildly outpacing guild raiding)
-        // without asserting a shape this retune deliberately gave up.
+        // band. A THIRD same-day change then cut Regular T4's own reward to an absolute
+        // payout cap (~6M, see Raid.T4_RAID_REWARD's own comment), dropping its efficiency
+        // below Regular T3's. Net effect: this test's own interpolated "guild efficiency
+        // at matching difficulty" curve is no longer a smooth ramp anywhere — it dips at
+        // the Regular T3->T4 seam (difficulty ~93-430) AND at the Regular->Elite seam
+        // (~430-885), both from independent design decisions made the same day, not one
+        // coherent curve. Bounty tiers landing near either dip (tiers 7-10, difficulty
+        // 180-763) swing as high as ~0.65; others stay closer to the original ~0.25-0.30.
+        // The old two-band (and even a single 0.20-0.50) split no longer covers the real
+        // range — replaced with one deliberately loose band, wide enough to only catch a
+        // genuine regression (bounty reward collapsing to near-zero or wildly outpacing
+        // guild raiding), not to calibrate a shape both underlying curves have given up.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
             expect(ratio).toBeGreaterThan(0.20);
-            expect(ratio).toBeLessThan(0.50);
+            expect(ratio).toBeLessThan(0.70);
         });
     });
 });

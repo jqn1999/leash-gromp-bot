@@ -11919,3 +11919,25 @@ at matching difficulty" curve now dips right at the Regular->Elite seam, spiking
 tiers' ratios unpredictably — replaced with one wider (0.20, 0.50) band across all 12 Bounty tiers,
 still tight enough to catch a real regression. Docs: `raids-and-world-events.md`,
 `mercenary-bounties.md`, `guilds.md`. Full suite: **1524/1524** across 83 suites.
+
+## Nerf: Regular T4's payout capped ~6M (2026-09-12, same day, direct instruction)
+
+Player, after seeing the just-updated EV chart: "Regular t4 might be paying out too much. Have it
+cap at around 6 million instead of 16, it would take past 380 power for elite to even beat it right
+now." `T4_RAID_REWARD`/`T4_RAID_PENALTY` cut 8,605,263 → 3,240,000 (1:1 ratio kept); `T4_RAID_
+DIFFICULTY` (430) untouched, so the accessibility fix from the retune above (95% cap reachable at
+200 power/player, guild level 8) is unaffected — only the size of the payout once capped moved.
+
+Solved directly from the live weighted-EV formula (linear in T4's own reward once every tier's
+success chance is capped): blended Regular EV/player now plateaus at ~6.00M (was ~15.89M). Elite
+(unchanged) now overtakes Regular's ceiling around power ~185-190, down from ~365-370 — directly
+addressing the player's own stated concern.
+
+Side effect, documented not hidden: T4's own efficiency (~7,535/pt) dropped below T3's (16,577/pt),
+breaking Regular's previously-monotonic T1→T4 efficiency ramp — T4 stays by far the best ABSOLUTE
+payout, just no longer the best per-point one, a direct consequence of capping the plateau rather
+than the rate. Two tests widened accordingly: `raidFactory.test.js`'s efficiency-ramp test now
+checks Regular's T1-T3 monotonic with T4 explicitly below T3; `mercenaryFactory.test.js`'s
+Bounty-vs-guild-equivalent-reward band widened to (0.20, 0.70) since this creates a second
+independent dip in that comparison's own interpolated curve. Full suite: **1524/1524** across 83
+suites. Chart republished to the same URL with the new Regular curve.
