@@ -2283,3 +2283,64 @@ mis-stated by ~22-23% in the guild's favor by the existing per-tier gate math.**
   full, matches `mercenary-bounties.md`'s documented shape with no drift found beyond Finding 3.
 - `MercenaryRank.THRESHOLDS` live values match `mercenary-bounties.md`'s documented table exactly
   (rank 1-6 reward multipliers and cooldown-skip percentages).
+
+## Correction (2026-09-12, same day): the "solo Merc" comparison above omitted Yukon and rob-npc (Heist)
+
+Player asked directly: "did solo merc take into account yukon and rob-npc? have rob-npc count
+towards the ev for doing noble vaults." **No, it didn't — this is a material omission, not a minor
+one.** The head-to-head table above modeled ONLY `/take-bounty`. Recomputed with both included.
+
+**Yukon** (`bountyRewardPercent: 0.135`, `robChanceFlat: 0.12`) — a real, obtainable-but-rare
+Legendary companion (0.5-2.5%/win depending on Bounty tier), not universal. Boosts Bounty's own win
+reward by 13.5% and adds a flat +12% to `/rob-npc`'s success chance.
+
+**`/rob-npc` (Heist)** is structurally different from Bounty, not just a second income stream at the
+same shape: `resolveNpcRob`'s reward is `min(payoutCap, workGainAmount * RobNpc.PAYOUT_MULTIPLIER)
+* rewardRoll * developedMultiplier * 0.95` (`mercenaryFactory.js:226-330`) — the capped base is then
+multiplied by the player's OWN raw power directly, unlike Bounty's fixed per-tier reward. At any
+server wealth above ~2.2M total potatoes (`workGainAmount >= ~4,444`, a low bar — the reference
+`workGainAmount ~39,400` from this doc's own earlier entry is 9x past that), the cap is always
+binding, so the formula simplifies cleanly to `payoutCap * power * 0.95` on a win. Noble's Vault
+(`payoutCap: 20,000`, `rankRequired: 4`, needed to even select this tier) at Rank 4 (`tierChance =
+0.32 + 0.06*3 = 0.50`, `cooldownReductionPercent: 0.18`) on a 30-minute cooldown (half Bounty's
+3600s) — losses scale via `lossScale = 1 + 0.5*(power-1)` (verified against this doc's own earlier
+"Noble's Vault at 27.2x: ~41% of win" worked example, reproduced exactly: 40.9%).
+
+**Corrected combined table** (Guild figures unchanged from the entry above; Merc now = Bounty +
+Noble's Vault combined, per-hour, at Rank 4 — needed to unlock Noble's Vault at all, a materially
+different rank assumption than the original Rank 1/3 table used):
+
+| Power | Guild Regular/player-hr | Guild Elite/player-hr | Guild Legendary/player-hr | Solo Merc/hr (no Yukon) | Solo Merc/hr (Yukon) |
+|---|---|---|---|---|---|
+| 80 | +2.73M | -5.97M | -38.2M | +1.53M | +2.24M |
+| 140 | +3.74M | -1.89M | -31.4M | +2.68M | +3.95M |
+| 150 | +3.74M | -1.21M | -30.2M | +2.92M | +4.28M |
+| 200 | +3.74M | +2.19M | -24.5M | +3.95M | +5.77M |
+| 250 | +3.74M | +5.58M | -18.8M | +4.98M | +7.27M |
+| 300 | +3.74M | +8.98M | -13.1M | +6.23M | +8.99M |
+| 350 | +3.74M | +12.4M | -7.41M | +6.85M | +10.06M |
+| 360 | +3.74M | +13.1M | -6.27M | +7.04M | +10.35M |
+
+**This overturns the previous verdict's framing, not just the numbers.** Once Heist is counted, solo
+Mercenary income:
+- **Beats Guild Regular outright from power ~150-200 onward** (with Yukon, from ~140), not the
+  "guild Regular pays 3-25x solo Bounty" claim in the entry above — that claim is now known to be an
+  artifact of comparing guild income against an incomplete solo-income model, not a real structural
+  advantage of guild play.
+- **Matches or beats Guild Elite up to roughly power 300** (with Yukon, further) — Elite only
+  reasserts a clear lead above ~300-350/player. The previous "Elite pays 6-10x solo Bounty by
+  power 250-360" claim is also now known to be an artifact of the same omission.
+- Guild Legendary's verdict is unaffected — it's negative enough across this whole range that no
+  correction to the solo-income side changes its conclusion.
+
+**Sensitivity**: the Noble's Vault numbers are fairly ROBUST to the exact reference `workGainAmount`
+used, not fragile to it — the payoutCap binds for any server above ~2.2M total potatoes, a low bar
+for an active server, so this isn't a "pick a number that flatters the conclusion" artifact.
+
+**Recommendation update**: recommendation #1/#2 above (re-examine Elite/Legendary's unlock levels
+against solo-income parity) should be re-evaluated against THIS corrected solo-income baseline, not
+the Bounty-only one this doc's earlier entry used — the gap Elite needs to justify itself against is
+now much smaller than previously stated, and Regular's own relative advantage claim was simply wrong
+as stated. Not re-litigated further here since the player has already acted on the original (now
+partially superseded) Elite/Legendary unlock-level finding — flagged for whoever revisits raid
+economy balance next.
