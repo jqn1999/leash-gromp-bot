@@ -349,6 +349,23 @@ unchanged constants — same role-narrowing described below still applies). See 
 2026-08-26 (same-day follow-up) entry for the full EV-at-cap comparison against the pre-retune flat
 numbers — every bracket ended up more positive-EV at its own unlock guild level, none went negative.
 
+**Update (2026-09-12) — Elite/Legendary's reward tripled; the Regular→Elite efficiency continuity
+above no longer holds, by design.** Direct instruction: "adjust elite and legendary...so that it
+starts becoming up to 5-10x the solo merc track since the guild rewards are also split among all
+members." Every `ELITE_T*`/`LEGENDARY_T*` REWARD and PENALTY (never difficulty) was multiplied by
+3, preserving the 1.5x/2.0x penalty:reward ratio exactly. New efficiency bands: Elite
+60,000→90,000/pt, Legendary 90,000→150,000/pt (both exactly 3x the bands above); Regular's own
+10,000→20,000/pt is untouched. The Elite↔Legendary boundary is STILL continuous (90,000/pt on both
+sides — both modes were tripled together), but Regular T4 (still 20,000/pt) → Elite T1 (now
+60,000/pt) is now a deliberate 3x jump, not a seam. A difficulty cut was the other lever on offer
+and was rejected specifically because it would have pushed `ELITE_T1_DIFFICULTY` below
+`Raid.T4_RAID_DIFFICULTY` (1,000), reopening the exact "Elite's own T1 easier than Regular's own
+T4" cliff this whole 2026-08-26 rework exists to prevent. Scaling reward and penalty by the same
+factor is also mathematically inert on WHERE each mode breaks even (that point is a function of the
+penalty:reward ratio alone) — Legendary's own real-power breakeven stays at the same ~415/player
+(guild level 6) it was before this change; only the size of the win/loss around that point tripled.
+See `balance-audit.md`'s 2026-09-12 entry for the full before/after curve against solo Mercenary.
+
 `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stayed in `constants.js`, values unchanged,
 as of this 2026-08-26 entry** — but their role had already narrowed to exactly one thing:
 `getMinGuildLevelForTier(penaltyMult, maxSuccessRate)` in `raidFactory.js` and its two call sites

@@ -593,14 +593,29 @@ describe('Bounty.TIERS ladder shape', () => {
             }
         }
         const GUILD_LEVEL_2_MULTIPLIER = 1.3;
+        // Elite/Legendary's own reward (and penalty) tripled 2026-09-12, direct instruction
+        // ("adjust elite and legendary...up to 5-10x the solo merc track since the guild
+        // rewards are also split among all members") — Regular's own numbers, and every
+        // Bounty tier here, are untouched. Bounty tiers whose difficulty already sits inside
+        // Elite's own difficulty range (>= ELITE_T1_DIFFICULTY) now interpolate against that
+        // tripled curve, so their ratio to "what an equivalent-difficulty guild raid pays"
+        // drops to ~10% (30%/3) — a direct, intended widening of the solo-vs-guild gap this
+        // change exists to create, not a regression. Only Bounty tiers 11-12 (difficulty
+        // 1,236/2,000) currently reach that far; every lower tier still interpolates
+        // entirely within Regular's own untouched curve and keeps the original ~30%.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            // Wide band ("roughly 30%") rather than an exact match — the actual target
-            // ratio drifts a little tier to tier since rewards are rounded to the nearest
-            // 1,000 and guild's own efficiency curve has real kinks at mode boundaries.
-            expect(ratio).toBeGreaterThan(0.25);
-            expect(ratio).toBeLessThan(0.35);
+            // Wide bands rather than an exact match — the actual target ratio drifts a
+            // little tier to tier since rewards are rounded to the nearest 1,000 and guild's
+            // own efficiency curve has real kinks at mode boundaries.
+            if (tier.difficulty < Raid.ELITE_T1_DIFFICULTY) {
+                expect(ratio).toBeGreaterThan(0.25);
+                expect(ratio).toBeLessThan(0.35);
+            } else {
+                expect(ratio).toBeGreaterThan(0.08);
+                expect(ratio).toBeLessThan(0.12);
+            }
         });
     });
 });

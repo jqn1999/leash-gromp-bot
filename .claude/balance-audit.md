@@ -2344,3 +2344,53 @@ now much smaller than previously stated, and Regular's own relative advantage cl
 as stated. Not re-litigated further here since the player has already acted on the original (now
 partially superseded) Elite/Legendary unlock-level finding — flagged for whoever revisits raid
 economy balance next.
+
+## Follow-up (2026-09-12, same day): Elite/Legendary reward tripled, correcting the "only ~3x solo Merc" gap
+
+Player: "adjust elite and legendary so that it starts becoming up to 5-10x the solo merc track since
+the guild rewards are also split among all members." Direct response to this doc's own prior
+finding (two entries up) that Guild Elite topped out around ~3x solo Merc's own EV/player-hour even
+at power 600, and Legendary stayed negative until ~415 — nowhere near enough margin to justify
+organizing and coordinating 4-5 people around a reward that then gets divided that many ways.
+
+**Change**: `ELITE_T1-T4`/`LEGENDARY_T1-T4` REWARD and PENALTY tripled (1.5x/2.0x ratio preserved
+exactly); DIFFICULTY untouched. Verified two things before implementing: (1) a difficulty cut large
+enough to matter would have pushed `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY`, reopening
+the exact difficulty-cliff the 2026-08-26 rework exists to prevent (confirmed against
+`raidFactory.test.js`'s own regression test for that specific invariant) — reward-only was the
+lower-risk lever. (2) Scaling reward and penalty by the same factor is mathematically inert on
+breakeven LOCATION (a pure function of the ratio, never absolute size), confirmed numerically:
+Legendary's own zero-crossing stayed at exactly power ≈415-420 before and after, only the magnitude
+around it changed.
+
+**New curve** (guild level 6, N=4, per-player-hour; solo Merc = Bounty + Noble's Vault at Rank 4,
+post-250-cap from the entry above):
+
+| Power | Guild Elite | Elite ÷ Merc | Guild Legendary | Legendary ÷ Merc | Solo Merc |
+|---|---|---|---|---|---|
+| 150 | -3.6M | -1.2x | -90.7M | -31.1x | 2.9M |
+| 200 | 6.6M | 1.7x | -73.6M | -18.6x | 3.9M |
+| 250 | 16.8M | 3.4x | -56.5M | -11.3x | 5.0M |
+| 300 | 26.9M | 4.9x | -39.3M | -7.1x | 5.5M |
+| 400 | 47.3M | 8.0x | -5.1M | -0.9x | 5.9M |
+| 500 | 61.7M | 8.9x | 29.1M | 4.2x | 6.9M |
+| 600 | 68.7M | 9.7x | 63.4M | 8.9x | 7.1M |
+
+Elite crosses into the requested 5-10x band around power 300-320 and stays there through the whole
+600-power range tested. Legendary needs its own ~415 breakeven first (unchanged from before this
+change), then reaches a comparable ~9x by power 600 — both land inside the requested range at
+achievable power, without exceeding it.
+
+**Side effect, expected and verified rather than accidental**: the Regular→Elite reward-efficiency
+"no cliff" continuity from the 2026-08-26 rework (both sides landing on the same 20,000/pt value)
+is now a deliberate 3x jump (20,000/pt → 60,000/pt) — the Elite↔Legendary boundary stays perfectly
+continuous since both modes were tripled together. `raidFactory.test.js`'s continuity test was
+rewritten to assert the new relationship directly rather than deleted. Also flagged: Bounty tiers
+B11-B12 (difficulty already inside Elite's own range) now sit at ~10% of guild-equivalent reward
+instead of the ladder's own ~30% baseline — a real, direct consequence of only tripling guild
+reward, confirmed in `mercenaryFactory.test.js`'s own regression test rather than left silently
+drifting.
+
+No further recommendation — this was a direct implementation of the player's own explicit numeric
+target (5-10x), verified to land inside that band across the tested power range, not a finding
+requiring further action.

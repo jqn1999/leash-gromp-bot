@@ -1968,21 +1968,39 @@ const Raid = {
     // structurally guarantees. Metal King is deliberately NOT part of either ramp (still
     // excluded from the smoothed ladder per direct instruction — "not including metal
     // king") — its difficulty/reward/stat-rewards are untouched by this reward retune.
+    //
+    // Reward (and penalty, to preserve the 1.5x/2.0x ratio) tripled 2026-09-12, direct
+    // instruction: "decreasing difficulty or adjusting payouts for elite and legendary so
+    // that it starts becoming up to 5-10x the solo merc track since the guild rewards are
+    // also split among all members." Difficulty deliberately left untouched (a difficulty
+    // cut was the other option offered — see the same day's chat) specifically because
+    // reducing it would have pushed `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY`
+    // (1,000), reopening the exact "Elite's own T1 easier than Regular's own T4" cliff the
+    // 2026-08-26 rework was built to close (raidFactory.test.js's own regression test for
+    // that). Scaling reward AND penalty by the SAME factor is also mathematically inert on
+    // WHERE each mode breaks even — that point only depends on the penalty:reward RATIO
+    // (unchanged), never their absolute size — so Legendary's own real-power breakeven
+    // (~415/player at guild level 6, per balance-audit.md's 2026-09-12 entry) is completely
+    // unmoved by this change; only the SIZE of the win/loss around it triples. Guild
+    // Elite/player-hour now reaches ~5x solo Merc's own (now-capped) EV around power 300,
+    // ~9-10x by power 600; Legendary trails behind (still needs its own ~415 breakeven
+    // first) but reaches a comparable ~9x by power 600 too. See balance-audit.md's
+    // 2026-09-12 entry for the full before/after curve.
     ELITE_T1_DIFFICULTY: 1189,
-    ELITE_T1_REWARD: 23780000,
-    ELITE_T1_PENALTY: -35670000,
+    ELITE_T1_REWARD: 71340000,
+    ELITE_T1_PENALTY: -107010000,
 
     ELITE_T2_DIFFICULTY: 1414,
-    ELITE_T2_REWARD: 32993000,
-    ELITE_T2_PENALTY: -49490000,
+    ELITE_T2_REWARD: 98979000,
+    ELITE_T2_PENALTY: -148470000,
 
     ELITE_T3_DIFFICULTY: 1682,
-    ELITE_T3_REWARD: 44853000,
-    ELITE_T3_PENALTY: -67280000,
+    ELITE_T3_REWARD: 134559000,
+    ELITE_T3_PENALTY: -201840000,
 
     ELITE_T4_DIFFICULTY: 2000,
-    ELITE_T4_REWARD: 60000000,
-    ELITE_T4_PENALTY: -90000000,
+    ELITE_T4_REWARD: 180000000,
+    ELITE_T4_PENALTY: -270000000,
 
     ELITE_METAL_KING_DIFFICULTY: 6000,
     ELITE_METAL_KING_REWARD: 30000000,
@@ -1992,20 +2010,20 @@ const Raid = {
     ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
 
     LEGENDARY_T1_DIFFICULTY: 2378,
-    LEGENDARY_T1_REWARD: 71340000,
-    LEGENDARY_T1_PENALTY: -142680000,
+    LEGENDARY_T1_REWARD: 214020000,
+    LEGENDARY_T1_PENALTY: -428040000,
 
     LEGENDARY_T2_DIFFICULTY: 2828,
-    LEGENDARY_T2_REWARD: 103693000,
-    LEGENDARY_T2_PENALTY: -207386000,
+    LEGENDARY_T2_REWARD: 311079000,
+    LEGENDARY_T2_PENALTY: -622158000,
 
     LEGENDARY_T3_DIFFICULTY: 3364,
-    LEGENDARY_T3_REWARD: 145773000,
-    LEGENDARY_T3_PENALTY: -291546000,
+    LEGENDARY_T3_REWARD: 437319000,
+    LEGENDARY_T3_PENALTY: -874638000,
 
     LEGENDARY_T4_DIFFICULTY: 4000,
-    LEGENDARY_T4_REWARD: 200000000,
-    LEGENDARY_T4_PENALTY: -400000000,
+    LEGENDARY_T4_REWARD: 600000000,
+    LEGENDARY_T4_PENALTY: -1200000000,
 
     LEGENDARY_METAL_KING_DIFFICULTY: 12000,
     LEGENDARY_METAL_KING_REWARD: 60000000,

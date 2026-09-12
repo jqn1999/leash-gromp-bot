@@ -535,6 +535,13 @@ holds exactly as it did. A player only feels this on a LOSS, and only more so at
 tiers — B12 now risks double its own reward back, the same relative stakes Legendary Guild
 Raid's own top bracket carries, while B1 is completely unchanged.
 
+**Update (2026-09-12)**: that "~30%" calibration itself only still holds for B1-B10 (difficulty
+< `Raid.ELITE_T1_DIFFICULTY`). Elite/Legendary's own reward tripled the same day (see
+`raids-and-world-events.md`'s own 2026-09-12 update), so B11-B12 (difficulty 1,236/2,000, already
+inside Elite's own difficulty range) now interpolate against that tripled guild curve and sit at
+~10% instead — a direct, intended widening of the solo-vs-guild gap at the top of Bounty's own
+ladder, not drift. See `mercenaryFactory.test.js`'s own regression test for the exact split.
+
 Deliberately NOT reduced further by `rankInfo.rewardMultiplier` or Yukon's
 `bountyRewardPercent` — those stay reward-side-only perks — so as a mercenary ranks up,
 wins keep growing while losses stay flat: the risk/reward ratio genuinely improves with

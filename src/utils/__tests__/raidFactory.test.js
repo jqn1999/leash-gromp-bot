@@ -754,11 +754,23 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
     });
 
     // Same-day follow-up, direct instruction: "make regular smoothed out 10-20k, elite
-    // 20-30k, legendary 30-50k per point" — reward/difficulty efficiency now ramps
-    // deliberately within each mode instead of sitting flat at ~15,000/pt everywhere,
-    // with each mode boundary landing on the same efficiency value as a continuous ramp
-    // (Regular T4 = Elite T1 = 20,000/pt; Elite T4 = Legendary T1 = 30,000/pt).
-    test('reward/difficulty efficiency ramps within each mode\'s target band and is continuous across mode boundaries', () => {
+    // 20-30k, legendary 30-50k per point" — reward/difficulty efficiency ramps
+    // deliberately within each mode instead of sitting flat at ~15,000/pt everywhere.
+    //
+    // The Regular->Elite->Legendary CONTINUITY this test originally also asserted (each
+    // mode boundary landing on the same efficiency value, e.g. Regular T4 = Elite T1 =
+    // 20,000/pt) was deliberately broken 2026-09-12, direct instruction: "adjust elite and
+    // legendary...so that it starts becoming up to 5-10x the solo merc track since the
+    // guild rewards are also split among all members." Elite/Legendary's own reward AND
+    // penalty were tripled (preserving the 1.5x/2.0x ratio and, since scaling both sides by
+    // the same factor is mathematically inert on breakeven LOCATION, every existing
+    // breakeven-power number too) while DIFFICULTY was deliberately left untouched — cutting
+    // difficulty instead was considered and rejected because it would have pushed
+    // `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY` (1,000), reopening the exact
+    // "Elite's own T1 easier than Regular's own T4" cliff the test below this one exists to
+    // catch. A real, visible reward-efficiency jump at the Regular->Elite seam is the
+    // accepted trade-off, not an oversight — see balance-audit.md's 2026-09-12 entry.
+    test('reward/difficulty efficiency ramps within each mode\'s target band (no longer continuous across the Regular->Elite/Legendary boundary, by design)', () => {
         const efficiency = (reward, difficulty) => reward / difficulty;
 
         const regular = [Raid.T1_RAID_REWARD, Raid.T2_RAID_REWARD, Raid.T3_RAID_REWARD, Raid.T4_RAID_REWARD]
@@ -775,14 +787,19 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
             }
         });
 
-        // Each mode sits within its own target band.
+        // Each mode sits within its own target band — Elite/Legendary's own bands tripled
+        // alongside their reward (20-30k -> 60-90k, 30-50k -> 90-150k); Regular's is untouched.
         regular.forEach(e => expect(e).toBeGreaterThanOrEqual(10000) && expect(e).toBeLessThanOrEqual(20000));
-        elite.forEach(e => expect(e).toBeGreaterThanOrEqual(20000) && expect(e).toBeLessThanOrEqual(30000));
-        legendary.forEach(e => expect(e).toBeGreaterThanOrEqual(30000) && expect(e).toBeLessThanOrEqual(50000));
+        elite.forEach(e => expect(e).toBeGreaterThanOrEqual(60000) && expect(e).toBeLessThanOrEqual(90000));
+        legendary.forEach(e => expect(e).toBeGreaterThanOrEqual(90000) && expect(e).toBeLessThanOrEqual(150000));
 
-        // Continuous across mode boundaries — Regular's own top efficiency matches
-        // Elite's own starting efficiency, and likewise Elite's top matches Legendary's start.
-        expect(regular[3]).toBeCloseTo(elite[0], -2);
-        expect(elite[3]).toBeCloseTo(legendary[0], -2);
+        // Regular->Elite is the one boundary that broke: Elite's own starting efficiency is
+        // now exactly 3x Regular's own top efficiency (not equal to it, per this test's old
+        // name) — the direct, intended effect of tripling Elite's reward while leaving every
+        // difficulty constant, including Regular's own, untouched.
+        expect(elite[0]).toBeCloseTo(regular[3] * 3, -2);
+        // Elite->Legendary stays continuous, unaffected — BOTH modes were tripled together,
+        // so their shared boundary value (previously 30,000/pt, now 90,000/pt) moved as one.
+        expect(legendary[0]).toBeCloseTo(elite[3], -2);
     });
 });

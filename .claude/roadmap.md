@@ -11809,3 +11809,40 @@ New tests in `mercenaryFactory.test.js`: below-cap regression (identical to pre-
 at/above-cap (both win and loss pinned to the capped value regardless of how much higher the real
 power goes), and catch-up still stacking on top of the capped value rather than being bypassed by
 it. Docs: `mercenary-bounties.md`'s Heist section. Full suite: **1523/1523** across 83 suites.
+
+## Buff: Elite/Legendary reward tripled to reach 5-10x solo Merc (2026-09-12, direct instruction)
+
+"Decreasing difficulty or adjusting payouts for elite and legendary so that it starts becoming up
+to 5-10x the solo merc track since the guild rewards are also split among all members." Follow-up
+to the same-day discovery that Elite/Legendary guild raid EV per player-hour only reached ~3x solo
+Mercenary income at best (and Legendary stayed negative until power ~415) — nowhere near enough to
+justify organizing 4-5 people around a reward that then gets divided that many ways.
+
+Two levers were on the table (difficulty cut vs. reward increase); went with **reward increase
+only**. Every `ELITE_T1-T4`/`LEGENDARY_T1-T4` REWARD and PENALTY tripled (preserving the 1.5x/2.0x
+penalty:reward ratio exactly — both sides scaled by the same factor); DIFFICULTY left completely
+untouched. Two reasons this was the safer lever: (1) cutting difficulty by enough to matter would
+have pushed `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY` (1,000), reopening the exact
+"Elite's own T1 easier than Regular's own T4" cliff the 2026-08-26 static-ladder rework exists to
+prevent — real existing test coverage would have caught this immediately; (2) scaling reward and
+penalty by the same factor is mathematically inert on WHERE each mode breaks even (that point is a
+pure function of the penalty:reward ratio, never their absolute size), so Legendary's own real
+breakeven stays exactly where it was (~415/player at guild level 6) — only the size of the win/loss
+around that point changed, nothing about difficulty or the level-7/9 gate needed re-deriving.
+
+Result (guild level 6, 4-person roster, per-player-hour): Elite reaches ~5x solo Merc around power
+300, ~9-10x by power 600. Legendary still needs its own ~415 breakeven first, then climbs to a
+comparable ~9x by power 600. Elite/Legendary's own reward-efficiency band tripled alongside (Elite
+20-30k/pt → 60-90k/pt, Legendary 30-50k/pt → 90-150k/pt) — the Elite↔Legendary boundary stays
+perfectly continuous (both tripled together), but Regular→Elite is now a deliberate 3x jump instead
+of a seamless ramp, an accepted trade-off given the whole point was widening that exact gap.
+
+Test updates: `raidFactory.test.js`'s efficiency-continuity test rewritten (Regular→Elite
+discontinuity asserted directly instead of a now-false equality; Elite→Legendary continuity
+re-verified as still holding); `mercenaryFactory.test.js`'s "Bounty ~30% of guild-equivalent reward"
+regression split into two bands (unaffected tiers below Elite's own difficulty stay ~30%; B11-B12,
+whose difficulty now falls inside Elite's tripled range, drop to ~10% — the exact intended
+consequence of tripling Elite's reward without touching Bounty's own). No other test needed
+changes — difficulty-ordering, ratio, and monotonicity tests were all untouched by construction.
+Docs: `raids-and-world-events.md`, `mercenary-bounties.md`. Full suite: **1523/1523** across 83
+suites.
