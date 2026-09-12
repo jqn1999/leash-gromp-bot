@@ -354,6 +354,36 @@ describe('createUserEmbed Mercenary Buff field', () => {
         const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({ isMercenary: false }), 0);
         expect(embed.data.fields.find(f => f.name === 'Mercenary Buff:')).toBeUndefined();
     });
+
+    // Bug fix, 2026-09-12 (player report: the Mercenary Buff's work-multi bonus wasn't
+    // showing up on /profile or /user-stats). The "Mercenary Buff:" field above always
+    // printed the right label — this is the field that was actually missing the bonus:
+    // "Current Work Multiplier:" silently excluded it from its live total, so a mercenary
+    // who picked workMulti saw their buff listed as active but the number right above it
+    // never moved. Rank 1's own workMulti scale is 2% (MercenaryBuffScaling.workMulti[0]).
+    test('"Current Work Multiplier:" reflects an active workMulti Mercenary Buff', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
+        }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
+        expect(field.value).toBe('1.02x (+0.02x)');
+    });
+
+    test('"Current Work Multiplier:" is untouched when the Mercenary Buff is a different category', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            mercenaryBuff: 'robChance', workMultiplierAmount: 1,
+        }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
+        expect(field.value).toBe('1.00x');
+    });
+
+    test('createUserStatsEmbed\'s Live work-multiplier figure also reflects an active workMulti Mercenary Buff', async () => {
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
+        }));
+        const field = embed.data.fields.find(f => f.name.includes('Current Work Multiplier Upgrade'));
+        expect(field.value).toContain('Live: 1.02x (+0.02x guild/mercenary/companion/rebirth/world buff)');
+    });
 });
 
 // createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).

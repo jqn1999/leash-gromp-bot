@@ -11994,3 +11994,36 @@ regression this command exists to fix), confirms the cooldown field's own wordin
 ready, confirms Elite/Legendary sections are correctly gated by `getUnlockedRaidModes`, and confirms
 the no-guild/empty-roster rejection paths still short-circuit before building anything. Full suite:
 **1532/1532** across 84 suites. Docs: `raids-and-world-events.md`.
+
+## Fix: Mercenary Buff's workMulti bonus wasn't reflected on /profile or /user-stats (2026-09-12, player report)
+
+Player report: "Someone is reporting that the merc buff for work multi isn't displaying on their
+profile or user stats." Investigated both Mercenary Buff and Guild Buff.
+
+Root cause, found in `embedFactory.js`: both `createUserEmbed` (`/profile`) and
+`createUserStatsEmbed` (`/user-stats`) compute their own "Current Work Multiplier"/"Live:" figure
+from a LOCAL DUPLICATE of `workFactory.js`'s formula (`getGuildWorkMulti`, mirrored inside
+`embedFactory.js` itself rather than imported, to dodge a require cycle — a pre-existing pattern,
+not something introduced by this fix) — summing guild buff + companion perk + rebirth % + World
+Boss buff. `workFactory.js`'s OWN real `/work` calculation has always correctly included a 5th
+term, `getMercenaryWorkMulti`, alongside every one of those — but `embedFactory.js`'s two display
+duplicates never got an equivalent copy. So a mercenary who picked `workMulti` as their Mercenary
+Buff saw it correctly listed as active (`Mercenary Buff: +2% effective work multiplier...` — that
+field itself was never broken), but the "Current Work Multiplier" number right above it never
+moved to reflect it. **Display-only bug** — `/work`'s actual payout was already correct the whole
+time; players were just never shown that it was.
+
+**Guild Buff checked as part of the same investigation and found to be fine** — its own `workMulti`
+category was already correctly folded into both displays via the existing `getGuildWorkMulti`
+duplicate.
+
+**Fix**: added a matching local `getMercenaryWorkMulti` duplicate to `embedFactory.js` (same
+`isMercenary && mercenaryBuff === 'workMulti'` check, same `mercenaryBuffFactory.getMercenaryBuffValue`
+lookup `workFactory.js`'s own version uses) and folded it into both `totalWorkBonus` (`/profile`)
+and `liveWorkBonus` (`/user-stats`), updating the "Live: ... guild/companion/rebirth/world buff"
+label text to `guild/mercenary/companion/rebirth/world buff`.
+
+3 new tests in `embedFactory.test.js`: confirms `/profile`'s "Current Work Multiplier:" field now
+includes the bonus when `mercenaryBuff === 'workMulti'`, confirms it's untouched for any other
+Mercenary Buff category (no false-positive bonus), and confirms `/user-stats`'s own "Live:" figure
+shows the same fix. Full suite: **1535/1535** across 84 suites. Docs: `mercenary-bounties.md`.

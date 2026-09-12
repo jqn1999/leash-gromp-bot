@@ -523,10 +523,11 @@ class EmbedFactory {
             const activeWorldBuff = await dynamoHandler.getActiveWorldBuff();
 
             const additionalWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            const mercenaryWorkMulti = getMercenaryWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
             const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
             const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
-            const totalWorkBonus = additionalWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
+            const totalWorkBonus = additionalWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
             const workMultiLabel = totalWorkBonus > 0
                 ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (+${totalWorkBonus.toFixed(2)}x)`
                 : `${(userDetails.workMultiplierAmount).toFixed(2)}x`;
@@ -662,11 +663,13 @@ class EmbedFactory {
     }
 
     // Async as of the live-data update — matches createUserEmbed's shape exactly (same
-    // three live modifiers: guild buff, active companion perk, rebirth's live %) so
-    // /user-stats and /profile can no longer show two different "current" numbers for
-    // the same account. The base+buff+regrade breakdown stays (useful on its own — it's
-    // the only place that shows where the stored number actually comes from), with the
-    // live effective total appended alongside it rather than replacing it.
+    // five live modifiers: guild buff, Mercenary Buff, active companion perk, rebirth's
+    // live %, World Boss buff — Mercenary Buff added 2026-09-12, see
+    // getMercenaryWorkMulti's own comment for the bug it fixes) so /user-stats and
+    // /profile can no longer show two different "current" numbers for the same account.
+    // The base+buff+regrade breakdown stays (useful on its own — it's the only place that
+    // shows where the stored number actually comes from), with the live effective total
+    // appended alongside it rather than replacing it.
     async createUserStatsEmbed(userId, currentName, userAvatarHash, userDetails) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
 
@@ -685,10 +688,11 @@ class EmbedFactory {
         // reality whenever one was active. Fetched once, reused below for the status line.
         const activeWorldBuff = await dynamoHandler.getActiveWorldBuff();
         const guildWorkMulti = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
+        const mercenaryWorkMulti = getMercenaryWorkMulti(userDetails, userDetails.workMultiplierAmount);
         const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
         const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
         const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
-        const liveWorkBonus = guildWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
+        const liveWorkBonus = guildWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
 
         const worldBuffPassivePercent = dynamoHandler.isWorldBuffLive(activeWorldBuff, "passiveBoost") ? activeWorldBuff.value : 0;
         const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent;
@@ -702,7 +706,7 @@ class EmbedFactory {
             {
                 name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
                 value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
-                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/companion/rebirth/world buff)` : ''),
+                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/mercenary/companion/rebirth/world buff)` : ''),
                 inline: false,
             },
             {
@@ -4804,6 +4808,23 @@ async function getGuildWorkMulti(userDetails, userMultiplier){
         }
     }
     return 0
+}
+
+// Mercenary Buff's workMulti category (systems/mercenary-bounties.md#mercenary-buff) — the
+// solo, weaker parallel to getGuildWorkMulti above, mirrors workFactory.js's own
+// getMercenaryWorkMulti exactly (a local duplicate, same convention getGuildWorkMulti above
+// already established for this file rather than importing workFactory.js). Bug fix,
+// 2026-09-12 (player report: Mercenary Buff's work-multi bonus wasn't reflected in the
+// "Current Work Multiplier" shown on /profile or /user-stats) — the Mercenary Buff field
+// itself always showed correctly (it just prints getMercenaryBuffLabel), but the LIVE work
+// multiplier total right above it never added this term in, silently understating what
+// /work actually pays whenever a mercenary had picked workMulti as their buff.
+function getMercenaryWorkMulti(userDetails, userMultiplier) {
+    if (userDetails.isMercenary && userDetails.mercenaryBuff === "workMulti") {
+        const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+        return userMultiplier * mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rank);
+    }
+    return 0;
 }
 
 module.exports = {

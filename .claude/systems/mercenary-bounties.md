@@ -253,6 +253,23 @@ writes `mercenaryBuff`/`mercenaryBuffSwitchTimer` and replies with the new value
 `isMercenary` is true — `Mercenary Buff: <label> — next switch available <t:UNIX:R>`, or
 "None yet — run /set-mercenary-buff to pick one" if never picked.
 
+**Bug fixed 2026-09-12** (player report: the `workMulti` buff wasn't showing up on `/profile` or
+`/user-stats`): the field above (`Mercenary Buff: <label>`) was never actually broken — it always
+printed the right label. What WAS broken is a completely separate field: `embedFactory.js`'s
+"Current Work Multiplier:" (`/profile`) and "Live: …" figure (`/user-stats`) each carry their OWN
+local duplicate of `workFactory.js`'s `getGuildWorkMulti`/`getMercenaryWorkMulti` (a pre-existing
+"avoid a circular require" pattern this file already used for `getGuildWorkMulti` — see that
+function's own comment in `embedFactory.js`), and only `getGuildWorkMulti` had ever been
+duplicated over; `getMercenaryWorkMulti` simply didn't exist there. So a mercenary who picked
+`workMulti` saw the buff correctly listed as active, but the "Current Work Multiplier" number
+directly above it never moved to reflect it — `/work`'s own real payout WAS already correctly
+boosted (`workFactory.js`'s own `getMercenaryWorkMulti` was never missing from the real
+calculation, only from these two display-only duplicates), so this was a display-only bug, not a
+reward-calculation one. Fixed by adding the same local `getMercenaryWorkMulti` duplicate to
+`embedFactory.js` and folding it into both figures. Guild Buff's own `workMulti` category was
+checked as part of this same investigation and found to be unaffected — it was already correctly
+included in both displays via the existing `getGuildWorkMulti` duplicate.
+
 ## The 12-Tier Bounty Ladder (`Bounty.TIERS`, 2026-08-28 rework)
 
 Replaces the old 3-tier, rank-gated design entirely. Direct instruction: *"there are
