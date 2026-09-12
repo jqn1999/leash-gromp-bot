@@ -67,15 +67,17 @@ function rollWarbandScenario() {
 // /repel-warband's single resolve function — computation only, no DB writes, same division
 // of labor mercenaryFactory.resolveRivalConfrontation already uses; the caller
 // (repelWarband.js) owns persisting the result. `guildLevel` (1-10, from
-// raidFactory.getRaidLevelInfo(guild.raidCount) — the caller's job, not this function's,
-// same "pure computation, no other factory reached into" boundary this file's header sets)
-// is the only per-guild input this reads; nothing here touches raid power or any per-user
-// modifier.
-async function resolveWarbandConfrontation(guildLevel = 1) {
+// raidFactory.getRaidLevelInfo(guild.raidCount)) and `cinderrootBonus` (from
+// guildCompanionFactory.getWarbandSuccessBonus(guild)) are both the caller's job to compute,
+// not this function's — same "pure computation, no other factory reached into" boundary
+// this file's header sets. `cinderrootBonus` mirrors mercenaryFactory's own yukonSuccessBonus
+// exactly: folded straight into successChance, never surfaced as its own field on the
+// returned result (same invisibility Yukon's own bonus has on /confront-rival's result).
+async function resolveWarbandConfrontation(guildLevel = 1, cinderrootBonus = 0) {
     const scenario = rollWarbandScenario();
     const [minChance, maxChance] = GuildRival.SUCCESS_CHANCE_RANGE[scenario];
     const levelSuccessBonus = GuildRival.LEVEL_SUCCESS_BONUS[scenario][guildLevel - 1];
-    const successChance = getRandomFromInterval(minChance, maxChance) + levelSuccessBonus;
+    const successChance = getRandomFromInterval(minChance, maxChance) + levelSuccessBonus + cinderrootBonus;
     const won = Math.random() < successChance;
     const rival = pickRandomAshcloveMember();
 

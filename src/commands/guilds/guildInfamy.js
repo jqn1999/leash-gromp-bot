@@ -26,7 +26,7 @@ module.exports = {
         const repelable = infamy >= GuildRival.INFAMY_THRESHOLD;
         const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
 
-        const embed = embedFactory.createGuildInfamyEmbed(guild.guildName, infamy, GuildRival.INFAMY_THRESHOLD, repelable, guildLevel);
+        const embed = embedFactory.createGuildInfamyEmbed(guild.guildName, infamy, GuildRival.INFAMY_THRESHOLD, repelable, guildLevel, guild.guildCompanion != null);
         interaction.editReply({ embeds: [embed] });
     }
 }

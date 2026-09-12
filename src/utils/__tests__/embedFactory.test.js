@@ -1393,3 +1393,34 @@ describe('createGuildShopPageEmbed', () => {
         expect(embed.data.fields[0].name).not.toMatch(/✅|➡️|🔒/);
     });
 });
+
+// lossAmount/mobName (2026-09-11, direct instruction: "fix the cinderroot raid loss embed
+// to say what the loss amount and boss was so the person can make a better decision on if
+// they should sacrifice cinderroot") — before this, the prompt gave zero information about
+// what was actually being weighed against losing Cinderroot forever.
+describe('createGuildCompanionSacrificePromptEmbed', () => {
+    const companionFactory = require('../companionFactory');
+
+    beforeEach(() => {
+        companionFactory.getCompanionById.mockReturnValue({ id: 'cinderroot', name: 'Cinderroot, the Hoardwarden', thumbnailUrl: 'https://example.com/cinderroot.png' });
+    });
+
+    test('shows the loss amount and boss name when provided', () => {
+        const embed = embedFactory.createGuildCompanionSacrificePromptEmbed(-613000, 'Malevolent Pineapple');
+        expect(embed.data.description).toContain('613,000 potatoes');
+        expect(embed.data.description).toContain('Malevolent Pineapple');
+    });
+
+    test('shows the absolute value of a negative loss amount, not a negative number', () => {
+        const embed = embedFactory.createGuildCompanionSacrificePromptEmbed(-1839000, 'Grimtater, the Ghostly Potato Monarch');
+        expect(embed.data.description).toContain('1,839,000 potatoes');
+        expect(embed.data.description).not.toContain('-1,839,000');
+    });
+
+    test('degrades gracefully to the old wording when no loss context is passed', () => {
+        expect(() => embedFactory.createGuildCompanionSacrificePromptEmbed()).not.toThrow();
+        const embed = embedFactory.createGuildCompanionSacrificePromptEmbed();
+        expect(embed.data.description).not.toContain('undefined');
+        expect(embed.data.description).not.toContain('NaN');
+    });
+});

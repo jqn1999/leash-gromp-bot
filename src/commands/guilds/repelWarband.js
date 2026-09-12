@@ -4,6 +4,7 @@ const { GuildRoles, GuildRival } = require("../../utils/constants");
 const { RaidFactory, getLiveRaidRoster, getMemberRaidPower, getRaidLevelInfo } = require("../../utils/raidFactory");
 const { addToBankOrPurse, removeFromBankOrPurse } = require("./startRaid");
 const guildRivalFactory = require("../../utils/guildRivalFactory");
+const guildCompanionFactory = require("../../utils/guildCompanionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -62,9 +63,12 @@ module.exports = {
 
         // Guild level feeds success chance the same way Mercenary Rank feeds
         // /confront-rival's own odds (2026-09-11, direct instruction) — see
-        // guildRivalFactory.js's own comment for the derivation.
+        // guildRivalFactory.js's own comment for the derivation. Cinderroot's own flat bonus
+        // (2026-09-11, "similar to Yukon") stacks on top the same way Yukon's own perk stacks
+        // with Mercenary Rank on the merc side.
         const { level: guildLevel } = getRaidLevelInfo(guild.raidCount);
-        const result = await guildRivalFactory.resolveWarbandConfrontation(guildLevel);
+        const cinderrootBonus = guildCompanionFactory.getWarbandSuccessBonus(guild);
+        const result = await guildRivalFactory.resolveWarbandConfrontation(guildLevel, cinderrootBonus);
 
         // Subtracts the flat INFAMY_THRESHOLD, win OR lose, rather than resetting to 0 —
         // mirrors mercenaryNotoriety's own subtract-the-threshold shape directly (shipped

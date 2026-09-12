@@ -147,6 +147,43 @@ describe('resolveWarbandConfrontation', () => {
         }
     });
 
+    // Cinderroot's own flat bonus (2026-09-11, "have cinderroot also buff win chance for it
+    // similar to Yukon") — mirrors mercenaryFactory's own yukonSuccessBonus exactly: folded
+    // into successChance, never surfaced as its own field on the result.
+    test('defaults cinderrootBonus to 0 when not passed — old callers/behavior unaffected', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.999999)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0);
+        let result;
+        try {
+            result = await guildRivalFactory.resolveWarbandConfrontation();
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.successChance).toBeCloseTo(GuildRival.SUCCESS_CHANCE_RANGE.easy[0]);
+        expect(result.cinderrootBonus).toBeUndefined(); // not surfaced on the result, same as Yukon's own bonus
+    });
+
+    test('a passed cinderrootBonus stacks additively on top of the level bonus and range roll', async () => {
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // scenario roll -> hard
+            .mockReturnValueOnce(0)        // successChance roll -> low end
+            .mockReturnValueOnce(0.999999) // win check fails
+            .mockReturnValueOnce(0)        // rival pick
+            .mockReturnValueOnce(0);       // penalty variance roll
+        let result;
+        try {
+            result = await guildRivalFactory.resolveWarbandConfrontation(6, GuildRival.CINDERROOT_SUCCESS_BONUS);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const expected = GuildRival.SUCCESS_CHANCE_RANGE.hard[0] + GuildRival.LEVEL_SUCCESS_BONUS.hard[5] + GuildRival.CINDERROOT_SUCCESS_BONUS;
+        expect(result.successChance).toBeCloseTo(expected);
+    });
+
     test('successChance is drawn from the low end of the rolled scenario\'s range on a 0 roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.5)      // scenario roll -> easy (>= .40)

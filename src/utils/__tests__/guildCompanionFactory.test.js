@@ -16,13 +16,14 @@ const {
     getGuildCompanionScalingValue,
     getRaidCooldownReduction,
     getRaidRewardBonus,
+    getWarbandSuccessBonus,
     rollGuildCompanionDrop,
     resolveCinderrootAward,
     validateDonateRequest,
     removeDonatedCompanionFromOwned,
     buildDonatedGuildCompanion,
 } = require('../guildCompanionFactory');
-const { Companions, GuildCompanionDrop, GuildCompanionScaling } = require('../constants');
+const { Companions, GuildCompanionDrop, GuildCompanionScaling, GuildRival } = require('../constants');
 
 function baseUserDetails(overrides = {}) {
     return {
@@ -86,6 +87,23 @@ describe('getRaidCooldownReduction / getRaidRewardBonus', () => {
         expect(getRaidCooldownReduction(guild, 10)).toBe(GuildCompanionScaling.raidCooldownReductionPercent[9]);
         expect(getRaidRewardBonus(guild, 1)).toBe(GuildCompanionScaling.raidRewardBonusPercent[0]);
         expect(getRaidRewardBonus(guild, 10)).toBe(GuildCompanionScaling.raidRewardBonusPercent[9]);
+    });
+});
+
+// Cinderroot's 4th perk (2026-09-11, "have cinderroot also buff win chance for it similar to
+// Yukon") — flat, unlike the other three, so no level argument at all.
+describe('getWarbandSuccessBonus', () => {
+    test('returns 0 when the guild has no companion (null)', () => {
+        expect(getWarbandSuccessBonus({ guildCompanion: null })).toBe(0);
+    });
+
+    test('returns 0 when the guild record is unhealed (guildCompanion undefined)', () => {
+        expect(getWarbandSuccessBonus({})).toBe(0);
+    });
+
+    test('returns GuildRival.CINDERROOT_SUCCESS_BONUS when the guild possesses it, regardless of guild level', () => {
+        const guild = { guildCompanion: { id: 'cinderroot' } };
+        expect(getWarbandSuccessBonus(guild)).toBe(GuildRival.CINDERROOT_SUCCESS_BONUS);
     });
 });
 

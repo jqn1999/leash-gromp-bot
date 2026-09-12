@@ -99,8 +99,10 @@ function guildInfamyWriteCalls() {
 }
 
 // Guild level feeding Warband success chance (2026-09-11, direct instruction: "bump guild
-// level to increase chance of guild infamy success rate similar to merc levels").
-describe('/repel-warband threads the guild\'s current level into the confrontation', () => {
+// level to increase chance of guild infamy success rate similar to merc levels"), and
+// Cinderroot's own flat bonus on top ("have cinderroot also buff win chance for it similar
+// to Yukon").
+describe('/repel-warband threads the guild\'s current level and Cinderroot bonus into the confrontation', () => {
     test('calls resolveWarbandConfrontation with the guild\'s level derived from raidCount, not level 1 blindly', async () => {
         const guild = guildFixture({ bankStored: 0, raidCount: 200 }); // RaidLevel.THRESHOLDS level 6
         dynamoHandler.findGuildById.mockResolvedValue(guild);
@@ -109,7 +111,21 @@ describe('/repel-warband threads the guild\'s current level into the confrontati
         const spy = jest.spyOn(guildRivalFactory, 'resolveWarbandConfrontation');
         try {
             await repelWarband.callback(null, { ...interaction, user: { id: 'leader', username: 'Leader', displayName: 'Leader' } });
-            expect(spy).toHaveBeenCalledWith(6);
+            expect(spy).toHaveBeenCalledWith(6, 0);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    test('passes GuildRival.CINDERROOT_SUCCESS_BONUS as the cinderrootBonus arg once the guild possesses one', async () => {
+        const guild = guildFixture({ bankStored: 0, guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: null } });
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
+        liveRosterSetup(guild);
+        const interaction = fakeInteraction();
+        const spy = jest.spyOn(guildRivalFactory, 'resolveWarbandConfrontation');
+        try {
+            await repelWarband.callback(null, { ...interaction, user: { id: 'leader', username: 'Leader', displayName: 'Leader' } });
+            expect(spy).toHaveBeenCalledWith(1, GuildRival.CINDERROOT_SUCCESS_BONUS);
         } finally {
             spy.mockRestore();
         }

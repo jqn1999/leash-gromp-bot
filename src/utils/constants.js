@@ -1553,15 +1553,17 @@ const Companions = [
         dropFlavor: "Something ancient and scorch-scaled stirs in the raid's aftermath and settles at your side instead of the vault — Cinderroot has decided you're worth following. Donate it to your guild with /guild-companion-donate to put its hoard-guarding perks to work for everyone.",
         sacrificeFlavor: "Cinderroot coils around the guild's stash one last time, shielding it with its own scorched hide — then goes still. The raid's cost is paid in full, and Cinderroot pays it alone.",
         scavengeFlavor: "Cinderroot barely stirred from its coil the whole time it was out scavenging — whatever it dragged back, it clearly considers a footnote next to a guild's hoard.",
-        // DISPLAY-ONLY, deliberately empty — Cinderroot's three real perks (raid cooldown
-        // skip chance, raid reward bonus, treasury interest bonus) are guild-level effects
-        // scaled by GUILD level (raidCount), consumed exclusively through
-        // guildCompanionFactory.js's own dedicated functions — NOT wired through the
-        // generic per-companion pipeline (getActivePerkValue) at all, and never should be.
-        // This empty array exists only so getActivePerkValue's `active.perks.find(...)`
-        // stays a safe no-op (returns 0) in the brief window between being found and being
-        // donated, if a player equips it as their own personal active companion before
-        // donating it — do not wire real values into this array in a future pass.
+        // DISPLAY-ONLY, deliberately empty — Cinderroot's real perks (raid cooldown skip
+        // chance, raid reward bonus, treasury interest bonus — all three guild-LEVEL-scaled;
+        // plus a 4th, flat, Warband success bonus added 2026-09-11 that is NOT level-scaled,
+        // see GuildRival.CINDERROOT_SUCCESS_BONUS) are all guild-wide effects, consumed
+        // exclusively through guildCompanionFactory.js's own dedicated functions — NOT wired
+        // through the generic per-companion pipeline (getActivePerkValue) at all, and never
+        // should be. This empty array exists only so getActivePerkValue's
+        // `active.perks.find(...)` stays a safe no-op (returns 0) in the brief window between
+        // being found and being donated, if a player equips it as their own personal active
+        // companion before donating it — do not wire real values into this array in a future
+        // pass.
         perks: []
     },
     {
@@ -3026,7 +3028,18 @@ const GuildRival = {
         easy:   [0.00, 0.03, 0.07, 0.10, 0.13, 0.17, 0.20, 0.23, 0.27, 0.30],
         medium: [0.00, 0.02, 0.05, 0.07, 0.10, 0.12, 0.15, 0.17, 0.20, 0.22],
         hard:   [0.00, 0.02, 0.04, 0.05, 0.07, 0.09, 0.10, 0.12, 0.14, 0.15]
-    }
+    },
+    // Cinderroot's own contribution to Warband success chance (2026-09-11, direct
+    // instruction: "have cinderroot also buff win chance for it similar to Yukon") — mirrors
+    // Yukon's own rivalSuccessChanceFlat perk exactly, value included: a flat +5% additive
+    // bonus, same magnitude, not scaled by guild level at all (Yukon's own bonus isn't
+    // scaled by Mercenary Rank either — it's a fixed companion-ownership perk, orthogonal to
+    // rank/level scaling). Kept flat rather than folded into LEVEL_SUCCESS_BONUS above
+    // because it's gated on a completely different condition (guild POSSESSES Cinderroot,
+    // not guild LEVEL) — a Level 1 guild that's donated a Cinderroot gets this bonus just
+    // the same as a Level 10 guild without one. See guildCompanionFactory.js's
+    // getWarbandSuccessBonus for the actual gate.
+    CINDERROOT_SUCCESS_BONUS: 0.05
 }
 
 // The Ashclove Company — poacher-raiders who track which guild banners keep coming home

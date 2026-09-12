@@ -63,7 +63,8 @@ describe('/guild-infamy', () => {
             GuildRival.INFAMY_THRESHOLD,
             GuildRival.INFAMY_THRESHOLD,
             true,
-            1
+            1,
+            false
         );
     });
 
@@ -79,7 +80,8 @@ describe('/guild-infamy', () => {
             GuildRival.INFAMY_THRESHOLD - 1,
             GuildRival.INFAMY_THRESHOLD,
             false,
-            1
+            1,
+            false
         );
     });
 
@@ -95,7 +97,8 @@ describe('/guild-infamy', () => {
             0,
             GuildRival.INFAMY_THRESHOLD,
             false,
-            1
+            1,
+            false
         );
     });
 
@@ -115,7 +118,27 @@ describe('/guild-infamy', () => {
             0,
             GuildRival.INFAMY_THRESHOLD,
             false,
-            6
+            6,
+            false
+        );
+    });
+
+    // Cinderroot's own flat bonus (2026-09-11, "similar to Yukon") — threaded through as a
+    // boolean (possession, not level-scaled) so the preview embed can show it.
+    test('threads guild.guildCompanion possession through to the embed', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: null } }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(EmbedFactory.prototype.createGuildInfamyEmbed).toHaveBeenCalledWith(
+            'Some Guild',
+            0,
+            GuildRival.INFAMY_THRESHOLD,
+            false,
+            1,
+            true
         );
     });
 });

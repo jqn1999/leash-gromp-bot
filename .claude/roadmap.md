@@ -11675,3 +11675,42 @@ level-6 bonus applied correctly, and the level-10-matches-max-rank parity check)
 test.js` (guild level threaded from `raidCount` into the resolve call), `guildInfamy.test.js`
 (guild level threaded into the preview embed, all 3 pre-existing assertions updated for the new
 5th arg). Full suite: **1515/1515** across 83 suites.
+
+## Buff/Fix: Cinderroot Warband bonus + informative sacrifice-loss embed (2026-09-11, direct instruction)
+
+Two follow-ups to the same-day Guild Rival Warband level-bonus change:
+
+**1. "Have cinderroot also buff win chance for it similar to Yukon."** New
+`GuildRival.CINDERROOT_SUCCESS_BONUS = 0.05` — same flat magnitude and shape as Yukon's own
+`rivalSuccessChanceFlat` perk on `/confront-rival`, deliberately NOT level-scaled (Yukon's bonus
+isn't scaled by Mercenary Rank either). New `guildCompanionFactory.getWarbandSuccessBonus(guild)`
+returns it once the guild possesses Cinderroot, `0` otherwise. `guildRivalFactory.
+resolveWarbandConfrontation(guildLevel = 1, cinderrootBonus = 0)` folds it straight into
+`successChance`, mirroring `mercenaryFactory`'s own `yukonSuccessBonus` exactly — including NOT
+surfacing it as its own field on the returned result, matching Yukon's own invisibility on
+`/confront-rival`'s result embed. `repelWarband.js` computes both bonuses and passes them in.
+Surfaced instead on `/guild`/`/guild-companion`'s own status line (now lists a 4th clause) and
+`/guild-infamy`'s preview embed (new field, shown only when the guild has one).
+
+**2. "Fix the cinderroot raid loss embed to say what the loss amount and boss was so the person can
+make a better decision on if they should sacrifice cinderroot."** The sacrifice prompt
+(`createGuildCompanionSacrificePromptEmbed`) took no arguments at all before this — a player deciding
+whether to permanently lose Cinderroot had zero information about what the loss actually was.
+`removeFromBankOrPurse` already had the loss amount (`totalRaidCost`) in scope; it just never made
+it to the prompt. Added an optional trailing `mobName` parameter (default `null`, same
+"default to old behavior" precedent every other optional param on this function uses), passed by
+all 12 real loss call sites (`ultimateRaidMob.name`/`hardRaidMob.name`/`mediumRaidMob.name`/
+`regularRaidMob.name`, whichever that bracket already has in scope — `statRaidScenarios`' own
+unconditional buy-in call needs no change, it never passes a `sacrificeOffer`). The prompt now reads
+"Your guild's raid has failed against **{boss}**, costing your guild **{amount} potatoes**" and
+degrades to the old generic wording if either piece is omitted.
+
+New/updated tests: `guildCompanionFactory.test.js` (`getWarbandSuccessBonus`), `guildRivalFactory.
+test.js` (default-0 backward compat, additive stacking with the level bonus), `repelWarband.test.js`
+(both bonuses threaded from `guild.raidCount`/`guild.guildCompanion`), `guildInfamy.test.js`
+(Cinderroot possession threaded into the preview embed), `embedFactory.test.js` (new
+`createGuildCompanionSacrificePromptEmbed` describe block: loss amount, boss name, absolute value
+of a negative amount, graceful degradation with no args), `startRaidGuildCompanion.test.js` (the
+real prompt embed, through the actual `runStartRaidFlow`, states the loss amount and boss name).
+Docs: `systems/guilds.md`'s Guild Companion and Guild Rival Warbands sections. Full suite:
+**1526/1526** across 83 suites.

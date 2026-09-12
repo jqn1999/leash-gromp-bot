@@ -1,4 +1,4 @@
-const { GuildCompanionDrop, GuildCompanionScaling } = require("./constants");
+const { GuildCompanionDrop, GuildCompanionScaling, GuildRival } = require("./constants");
 const companionFactory = require("./companionFactory");
 
 // Cinderroot, the Hoardwarden — see systems/guilds.md's "Guild Companion (Cinderroot)
@@ -41,6 +41,18 @@ function getRaidCooldownReduction(guild, level) {
 function getRaidRewardBonus(guild, level) {
     if (guild.guildCompanion == null) return 0;
     return getGuildCompanionScalingValue('raidRewardBonusPercent', level);
+}
+
+// Cinderroot's 4th perk (2026-09-11, direct instruction: "have cinderroot also buff win
+// chance for it similar to Yukon") — a flat additive bonus on /repel-warband's own rolled
+// successChance, mirroring Yukon's own rivalSuccessChanceFlat perk on /confront-rival
+// exactly (same GuildRival.CINDERROOT_SUCCESS_BONUS = 0.05 magnitude as Yukon's 0.05).
+// Deliberately NOT level-scaled, unlike this file's other three perks — gated purely on
+// possession, same as Yukon's own perk is gated purely on being the active companion, not
+// on any rank/level of the mercenary holding it.
+function getWarbandSuccessBonus(guild) {
+    if (guild.guildCompanion == null) return 0;
+    return GuildRival.CINDERROOT_SUCCESS_BONUS;
 }
 
 // One roll per winning raid RESOLUTION (never per member — see roadmap's fairness
@@ -120,6 +132,7 @@ module.exports = {
     getGuildCompanionScalingValue,
     getRaidCooldownReduction,
     getRaidRewardBonus,
+    getWarbandSuccessBonus,
     rollGuildCompanionDrop,
     resolveCinderrootAward,
     validateDonateRequest,

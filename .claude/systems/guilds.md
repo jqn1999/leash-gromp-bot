@@ -1223,6 +1223,47 @@ there's no longer a distinct state to exercise, and the two dedicated migration 
 replaced by one "passes an existing record through untouched" case, offset by one new
 `guildCompanionWithdraw.test.js` suite with its own race-safety regression test).
 
+### Cinderroot's 4th perk: Warband success bonus (2026-09-11, follow-up)
+
+"Have cinderroot also buff win chance for it similar to Yukon" — added right after Guild Rival
+Warbands itself got a guild-LEVEL success bonus (see that section below). `guildCompanionFactory.
+getWarbandSuccessBonus(guild)` returns `GuildRival.CINDERROOT_SUCCESS_BONUS` (flat `0.05`, the exact
+same magnitude AND shape as Yukon's own `rivalSuccessChanceFlat` perk on `/confront-rival`) once the
+guild possesses one, `0` otherwise — deliberately NOT level-scaled, unlike this file's other three
+perks (cooldown skip/reward bonus/treasury interest), since Yukon's own bonus isn't scaled by
+Mercenary Rank either; it's a flat companion-ownership perk, orthogonal to any level/rank curve.
+`repelWarband.js` computes it alongside guild level and passes both into
+`guildRivalFactory.resolveWarbandConfrontation(guildLevel, cinderrootBonus)`, which folds
+`cinderrootBonus` straight into `successChance` — mirroring `mercenaryFactory`'s own
+`yukonSuccessBonus` exactly, right down to NOT surfacing it as its own field on the returned result
+(Yukon's bonus is likewise invisible on `/confront-rival`'s own result embed). Surfaced instead on
+the two embeds that already show guild-level context: `/guild-companion`/`/guild`'s own Guild
+Companion status line (`buildCinderrootStatusValue`) now lists a 4th clause, and `/guild-infamy`'s
+preview embed gets a new "Cinderroot Bonus (flat, all scenarios):" field, shown only once the guild
+actually possesses one.
+
+### Sacrifice prompt now states the loss amount and boss (2026-09-11, follow-up)
+
+"Fix the cinderroot raid loss embed to say what the loss amount and boss was so the person can make
+a better decision on if they should sacrifice cinderroot" — before this, `createGuildCompanion
+SacrificePromptEmbed()` took no arguments at all and rendered a generic "your guild's raid has
+failed" with no numbers, so the player had to decide whether losing Cinderroot forever was worth it
+with zero information about what "it" actually cost.
+
+`removeFromBankOrPurse` already receives `totalRaidCost` (the loss amount, negative) as its 4th
+parameter — that number was simply never threaded past this function into the prompt. Fix: a new
+optional trailing `mobName` parameter (default `null`, same "default to old behavior" precedent
+every other optional parameter on this function already uses) is now passed by all 12 real loss
+call sites (`ultimateRaidMob.name`/`hardRaidMob.name`/`mediumRaidMob.name`/`regularRaidMob.name`,
+whichever that bracket already had in scope) — `statRaidScenarios`' own unconditional buy-in call
+needs no change, since it never passes a `sacrificeOffer` at all. `promptCompanionSacrifice` forwards
+both `totalRaidCost` and `mobName` into `embedFactory.createGuildCompanionSacrificePromptEmbed
+(lossAmount, mobName)`, which now renders "Your guild's raid has failed against **{mobName}**,
+costing your guild **{amount} potatoes**" when both are provided, and degrades to the old generic
+wording when either is omitted (so a hypothetical future caller that forgets one doesn't render
+"undefined" into the embed). `Math.abs()` is applied on display since `totalRaidCost` itself is
+stored negative.
+
 ## Guild Rival Warbands
 
 **Shipped 2026-09-10**, built off the design in
@@ -1326,12 +1367,16 @@ win already landing at the same rate). Guild level had the identical gap here: `
 above is completely power-independent by design, so raiding a guild from Level 1 to Level 10 did
 nothing for Warband odds, only for ordinary raid rewards/cooldown.
 
-`resolveWarbandConfrontation(guildLevel = 1)` takes guild level as an explicit **parameter**, not
-something it computes itself — `repelWarband.js` calls `getRaidLevelInfo(guild.raidCount)` and passes
-the resulting `level` in, keeping `guildRivalFactory.js` exactly as pure/DB-free/other-factory-free as
-its file header always promised (this is also why the "never calls `getEffectiveRaidPower`/
+`resolveWarbandConfrontation(guildLevel = 1, cinderrootBonus = 0)` takes both as explicit
+**parameters**, not something it computes itself — `repelWarband.js` calls
+`getRaidLevelInfo(guild.raidCount)` and `guildCompanionFactory.getWarbandSuccessBonus(guild)` and
+passes both in, keeping `guildRivalFactory.js` exactly as pure/DB-free/other-factory-free as its
+file header always promised (this is also why the "never calls `getEffectiveRaidPower`/
 `getRaidLevelInfo`" test above still passes unchanged — the function itself still never reaches into
-`raidFactory.js`, it's just handed a number the caller already computed there).
+`raidFactory.js`, it's just handed numbers the caller already computed there). `cinderrootBonus`
+(see the "Cinderroot's 4th perk" section above) stacks additively on top of `levelSuccessBonus` the
+same way Yukon's own `rivalSuccessChanceFlat` stacks with `rankSuccessBonus` on the merc side —
+neither companion's bonus is scaled by the other axis (level/rank).
 
 ```js
 const levelSuccessBonus = GuildRival.LEVEL_SUCCESS_BONUS[scenario][guildLevel - 1];

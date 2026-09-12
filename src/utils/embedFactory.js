@@ -448,11 +448,14 @@ function buildCinderrootStatusValue(guild, level) {
     // in case a future retune shortens the array.
     const clampedTreasuryLevel = Math.min(Math.max(level, 1), CinderrootTreasuryBonusPercent.length);
     const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
+    // 4th perk (2026-09-11, "similar to Yukon") — flat, not level-scaled, so it needs no
+    // clamped level lookup the way the three perks above do.
+    const warbandBonusPct = Math.round(guildCompanionFactory.getWarbandSuccessBonus(guild) * 100);
     // cooldownPct is a chance to skip the raid cooldown entirely on a win (2026-09-05
     // cooldown-skip overhaul), not a guaranteed reduction — phrased as a chance here so
     // this never promises a number that isn't actually guaranteed (same fix as
     // /bounty-board's own cooldown line).
-    return `${name} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest. Can be sacrificed on a raid loss to void that loss's penalty entirely.`;
+    return `${name} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest, +${warbandBonusPct}% Warband success chance (/repel-warband). Can be sacrificed on a raid loss to void that loss's penalty entirely.`;
 }
 
 class EmbedFactory {
@@ -1415,11 +1418,19 @@ class EmbedFactory {
     // promptCompanionSacrifice. Unchanged behavior from before the Cinderroot Rework, just
     // sourced from Companions[] via guildCompanionFactory now instead of the old
     // GuildCompanions[0].
-    createGuildCompanionSacrificePromptEmbed() {
+    // lossAmount/mobName (2026-09-11, direct instruction: "fix the cinderroot raid loss embed
+    // to say what the loss amount and boss was so the person can make a better decision on if
+    // they should sacrifice cinderroot") — both optional, defaulting to the old wording, so
+    // this degrades gracefully if a future call site is ever added without them rather than
+    // rendering "undefined" into the embed.
+    createGuildCompanionSacrificePromptEmbed(lossAmount = null, mobName = null) {
         const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
+        const lossLine = Number.isFinite(lossAmount)
+            ? ` against ${mobName ?? 'this raid\'s boss'}, costing your guild **${Math.abs(lossAmount).toLocaleString()} potatoes**`
+            : '';
         const embed = new EmbedBuilder()
             .setTitle(`Sacrifice ${def.name}?`)
-            .setDescription(`Your guild's raid has failed. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose the companion in exchange. This choice is yours alone to make; you have 30 seconds to decide.`)
+            .setDescription(`Your guild's raid has failed${lossLine}. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose the companion in exchange. This choice is yours alone to make; you have 30 seconds to decide.`)
             .setColor("Orange")
             .setThumbnail(def.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -2756,7 +2767,7 @@ class EmbedFactory {
     // Guild Rival Warbands — /guild-infamy's read-only status embed, mirrors
     // createNotorietyEmbed's own shape exactly (progress readout + availability line), scoped
     // to the guild rather than a single player.
-    createGuildInfamyEmbed(guildName, infamy, threshold, repelable, guildLevel = 1) {
+    createGuildInfamyEmbed(guildName, infamy, threshold, repelable, guildLevel = 1, hasCinderroot = false) {
         const fields = [
             {
                 name: 'Infamy:',
@@ -2779,6 +2790,17 @@ class EmbedFactory {
             value: `+${(easy[guildLevel - 1] * 100).toFixed(0)}% Easy / +${(medium[guildLevel - 1] * 100).toFixed(0)}% Medium / +${(hard[guildLevel - 1] * 100).toFixed(0)}% Hard`,
             inline: false,
         });
+
+        // Cinderroot's own flat contribution (2026-09-11, "similar to Yukon") — separate line
+        // since it's gated on possession, not level, and only shown once the guild actually
+        // has one (0% otherwise, a no-op line not worth cluttering the embed with).
+        if (hasCinderroot) {
+            fields.push({
+                name: 'Cinderroot Bonus (flat, all scenarios):',
+                value: `+${(GuildRival.CINDERROOT_SUCCESS_BONUS * 100).toFixed(0)}%`,
+                inline: false,
+            });
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${guildName}'s Infamy`)

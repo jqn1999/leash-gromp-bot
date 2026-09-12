@@ -244,6 +244,33 @@ describe('Cinderroot perk 3b: raid reward bonus', () => {
 });
 
 describe('Cinderroot perk 3d: sacrifice mechanic', () => {
+    // lossAmount/mobName (2026-09-11, direct instruction: "fix the cinderroot raid loss
+    // embed to say what the loss amount and boss was so the person can make a better
+    // decision on if they should sacrifice cinderroot") — exercised through the real
+    // embedFactory (not mocked in this file), so this proves the actual prompt shown to the
+    // player, not just that some value was passed somewhere internally.
+    test('the sacrifice prompt embed states the actual loss amount and which boss caused it', async () => {
+        weakRosterSetup();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        const guild = guildFixture({ guildCompanion: cinderroot });
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild);
+
+        const interaction = fakeInteraction({ sacrificeChoice: 'decline' });
+        await runStartRaidFlow(interaction, 'baby');
+        randomSpy.mockRestore();
+
+        const promptCall = interaction.followUp.mock.calls.find(([payload]) => payload.embeds?.[0]?.data?.title?.includes('Sacrifice'));
+        expect(promptCall).toBeDefined();
+        const description = promptCall[0].embeds[0].data.description;
+        const expectedLoss = Math.round(Raid.T1_RAID_PENALTY * 1.0); // randomMultiplier at Math.random() === 0.5
+        expect(description).toContain(`${Math.abs(expectedLoss).toLocaleString()} potatoes`);
+        // Baby mode reuses regularRaidScenarios' own T1 closure -> regularRaidMob — asserting
+        // the generic "against <name>, costing your guild" shape avoids needing to know
+        // exactly which regularRaidMobs[0] entry a fixed 0.5 roll landed on.
+        expect(description).toMatch(/against .+, costing your guild/);
+    });
+
     test('accept: companion is set to null (fully destructive), removeFromBankOrPurse short-circuits (zero bank drain / member split)', async () => {
         weakRosterSetup();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
