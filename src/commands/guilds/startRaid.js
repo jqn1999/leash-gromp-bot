@@ -190,11 +190,13 @@ const legendaryRaidMobs = [
     ]
 ]
 
-// Guild level at which T4 unlocks in every raid-select tier — derived from
-// Raid.RAID_T4_MIN_LEVEL_TARGET_WINS (750, rescaled 2026-09-10 alongside RaidLevel.THRESHOLDS'
-// own 4x rescale) rather than hardcoded, so it tracks RaidLevel.THRESHOLDS if that curve ever
-// changes. Resolves to level 8 today.
-const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
+// Guild level at which T4 unlocks in each raid-select tier — derived from a target win
+// count rather than hardcoded, so it tracks RaidLevel.THRESHOLDS if that curve ever
+// changes. Split into two as of 2026-09-12 (direct instruction, "Make regular t4 unlock
+// at lvl 7") — Regular's own T4 unlocks one level earlier than Elite/Legendary's own T4
+// now, where a single shared level used to gate all three.
+const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 7
+const ELITE_LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 8
 
 function chooseMobFromList(mobList) {
     let random = Math.floor(Math.random() * mobList.length);
@@ -400,7 +402,7 @@ const regularRaidScenarios = [
         // Kept in place rather than deleted, same "superseded but correct" convention
         // DIFFICULTY_MULTIPLIER's removal already established.
         chance: .03,
-        minGuildLevel: T4_MIN_LEVEL,
+        minGuildLevel: REGULAR_T4_MIN_LEVEL,
         difficulty: Raid.T4_RAID_DIFFICULTY
     },
     {
@@ -598,7 +600,7 @@ const eliteRaidScenarios = [
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .05,
-        minGuildLevel: T4_MIN_LEVEL,
+        minGuildLevel: ELITE_LEGENDARY_T4_MIN_LEVEL,
         difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
@@ -778,7 +780,7 @@ const legendaryRaidScenarios = [
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .09,
-        minGuildLevel: T4_MIN_LEVEL,
+        minGuildLevel: ELITE_LEGENDARY_T4_MIN_LEVEL,
         difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {

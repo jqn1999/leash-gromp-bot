@@ -35,7 +35,11 @@ const { Raid, RaidLevel } = require('../../../utils/constants');
 const { getWeightedScenarios, getEffectiveRaidPower, getGuildLevelClosestToWins, getRaidLevelInfo } = require('../../../utils/raidFactory');
 
 // T4's unlock level, derived the exact same way startRaid.js's own (unexported)
-// T4_MIN_LEVEL constant is — see raidFactory.js's getGuildLevelClosestToWins.
+// ELITE_LEGENDARY_T4_MIN_LEVEL constant is — see raidFactory.js's getGuildLevelClosestToWins.
+// Regular's own T4 unlocks a level earlier (7, not 8) since 2026-09-12 — see
+// Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS's own comment — but this file's expectedBracket
+// helper below is only ever called with mode 'elite'/'legendary', so this one constant
+// (Elite/Legendary-only now) is all it needs.
 const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
 
 // Derives which bracket a given Math.random() draw actually lands in under DYNAMIC

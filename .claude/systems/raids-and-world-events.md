@@ -455,9 +455,9 @@ rework addressed a *different* cliff (a mode's own T1 vs. the previous mode's ow
 **T4 is additionally gated behind guild level**, on top of its own steep difficulty — guild-level
 progression and individual stat power are only loosely correlated, so a small guild of a few very
 heavily-invested members could otherwise reach T4-caliber `effectiveRaidPower` well before the guild
-has any real raiding track record. `raidFactory.js`'s `getGuildLevelClosestToWins(3000)` resolves to
-whichever `RaidLevel.THRESHOLDS` level's `winsRequired` is closest to 3,000 (level 8, exactly, today)
-— derived rather than hardcoded so it tracks the curve if it ever changes. Below that level, T4 isn't
+has any real raiding track record. `raidFactory.js`'s `getGuildLevelClosestToWins(targetWins)`
+resolves a target win count to whichever `RaidLevel.THRESHOLDS` level's `winsRequired` is closest —
+derived rather than hardcoded so it tracks the curve if it ever changes. Below that level, T4 isn't
 in the roll table at all: for `regular`/`elite`/`legendary` mode, `getWeightedScenarios` (see
 "Dynamic tier weighting" below) strips it out via the same `minGuildLevel` tag before computing
 weights for the remaining eligible tiers, so the remaining odds still sum to 100% and nothing is
@@ -465,6 +465,15 @@ silently unreachable (`getEligibleScenarios` — the pre-2026-08-27 static-odds 
 same exclusion — is still exported and still used for anything that only needs level-gated static
 odds with no roster-power weighting on top). The preview embed only shows T4 once it's actually
 rollable.
+
+**Update (2026-09-12) — Regular's own T4 now unlocks a level earlier than Elite/Legendary's own
+T4.** Until this date all three modes' own T4 shared one target (`getGuildLevelClosestToWins(3000)`
+-> level 8, exactly, at the time). Direct instruction: *"Make regular t4 unlock at lvl 7."* Split
+into `Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS` (375, guild level 7's own exact `winsRequired`) for
+Regular only; `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` (750, still level 8) is now Elite/Legendary-only.
+`startRaid.js`'s single `T4_MIN_LEVEL` const split into `REGULAR_T4_MIN_LEVEL` and
+`ELITE_LEGENDARY_T4_MIN_LEVEL` accordingly, each wired to its own mode's scenario array. Regular
+T4's own difficulty/reward are unaffected — only when it becomes available moved.
 
 ### Dynamic tier weighting
 

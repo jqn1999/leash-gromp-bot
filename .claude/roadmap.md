@@ -11941,3 +11941,22 @@ checks Regular's T1-T3 monotonic with T4 explicitly below T3; `mercenaryFactory.
 Bounty-vs-guild-equivalent-reward band widened to (0.20, 0.70) since this creates a second
 independent dip in that comparison's own interpolated curve. Full suite: **1524/1524** across 83
 suites. Chart republished to the same URL with the new Regular curve.
+
+## Buff: Regular's own T4 unlocks at guild level 7 instead of 8 (2026-09-12, same day, direct instruction)
+
+Player: "Make regular t4 unlock at lvl 7." Split the single shared `RAID_T4_MIN_LEVEL_TARGET_WINS`
+constant that used to gate ALL THREE modes' own T4 bracket (Regular, Elite, Legendary) into two:
+a new `REGULAR_T4_MIN_LEVEL_TARGET_WINS` (375, guild level 7's own exact winsRequired) for Regular
+only, leaving the original `RAID_T4_MIN_LEVEL_TARGET_WINS` (750, level 8) untouched for Elite/
+Legendary's own T4. `startRaid.js`'s single `T4_MIN_LEVEL` const split into `REGULAR_T4_MIN_LEVEL`
+and `ELITE_LEGENDARY_T4_MIN_LEVEL`, each wired to its own scenario array's T4 entry. Regular T4's
+own difficulty/reward (430 / ~6M) are completely unaffected — only WHEN it becomes available moved.
+
+Two test files shared the same single-constant assumption and needed splitting the same way:
+`startRaidStaticRewards.test.js`'s `expectedBracket` helper only ever runs against elite/legendary,
+so it needed no functional change, just a clarifying comment; `buildRaidPreview.test.js`'s
+`expectedOdds` helper is mode-aware now (picks the right constant per mode), and 3 new
+`test.each` cases added (`['regular', 6, 900]`, `['regular', 7, 900]`, `['regular', 8, 900]`)
+directly pin the new level-7 boundary rather than relying on incidental coverage. Full suite:
+**1526/1526** across 83 suites. Chart updated to also plot a "Regular pre-T4" series (guild level
+6, T1-T3 only) alongside "Regular w/ T4" (now shown at level 7, its own new gate, instead of 8).

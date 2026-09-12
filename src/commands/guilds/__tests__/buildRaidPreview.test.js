@@ -127,7 +127,11 @@ describe('buildRaidPreview', () => {
 // the same formula and constants the roll loop itself reads — rather than trusting
 // buildRaidPreview's internals by inspection alone.
 describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', () => {
-    const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
+    // Split 2026-09-12 (direct instruction, "Make regular t4 unlock at lvl 7") — Regular's
+    // own T4 now unlocks a level earlier than Elite/Legendary's own T4, where a single
+    // shared level used to gate all three modes' T4 bracket.
+    const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // level 7
+    const ELITE_LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS); // level 8
 
     // Reconstructs the exact per-bracket odds getWeightedScenarios would produce for a
     // given mode/guildLevel/totalMultiplier, off the same live Raid.* constants
@@ -140,9 +144,10 @@ describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', ()
         // 2026-08-26 static rework, so this mirrors that naming quirk rather than
         // assuming a uniform prefix.
         const diff = tier => mode === 'regular' ? Raid[`${tier}_RAID_DIFFICULTY`] : Raid[`${mode.toUpperCase()}_${tier}_DIFFICULTY`];
+        const t4MinLevel = mode === 'regular' ? REGULAR_T4_MIN_LEVEL : ELITE_LEGENDARY_T4_MIN_LEVEL;
         const metalKing = { name: 'Metal King', chance: .01 };
         const tiers = [
-            { name: 'Tier 4', difficulty: diff('T4'), minGuildLevel: T4_MIN_LEVEL },
+            { name: 'Tier 4', difficulty: diff('T4'), minGuildLevel: t4MinLevel },
             { name: 'Tier 3', difficulty: diff('T3') },
             { name: 'Tier 2', difficulty: diff('T2') },
             { name: 'Tier 1', difficulty: diff('T1') },
@@ -156,6 +161,8 @@ describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', ()
 
     test.each([
         ['regular', 1, 150],
+        ['regular', 6, 900],
+        ['regular', 7, 900],
         ['regular', 8, 900],
         ['elite', 1, 1189],
         ['elite', 1, 2000],

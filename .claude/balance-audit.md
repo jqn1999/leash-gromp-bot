@@ -2540,3 +2540,32 @@ comparison curve is no longer one coherent ramp to calibrate tightly against.
 Full test suite: **1524/1524** across 83 suites. Direct implementation of the player's own explicit
 numeric target (~6M cap), verified against the live weighted-EV formula rather than an isolated
 single-tier estimate.
+
+## Follow-up (2026-09-12, same day): Regular T4's own unlock moved from guild level 8 to 7
+
+Player, requesting the chart also show pre-T4 Regular alongside the direct instruction: "Make
+regular t4 unlock at lvl 7." Discovered that Regular's own T4, Elite's own T4, and Legendary's own
+T4 all shared ONE constant (`Raid.RAID_T4_MIN_LEVEL_TARGET_WINS`, resolving to guild level 8) —
+moving it for Regular alone required splitting it into two: `REGULAR_T4_MIN_LEVEL_TARGET_WINS`
+(375, guild level 7's own exact `winsRequired`, so `getGuildLevelClosestToWins` resolves it
+unambiguously) for Regular, and the original constant (750, level 8) kept for Elite/Legendary's
+own T4, unaffected by this change. Regular T4's own difficulty (430) and reward (~3.24M, ~6M
+plateau) are completely untouched — only the guild level at which it becomes available moved.
+
+**Chart addition, same request**: added a "Regular pre-T4" series (guild level 6, T1-T3 only,
+flat at ~1.61M since T1-T3 are already trivially winnable at any power shown) alongside "Regular
+w/ T4" — now plotted at level 7 (its own new gate) instead of level 8, following the same
+own-unlock-level convention Elite/Legendary already use. At level 7 (down from 8), Regular w/ T4's
+own plateau dropped from ~6.00M to ~4.53M (level 7's own payout multiplier is smaller than level
+8's — 5.2×1.21 vs. 6.7×1.24), and Elite now overtakes it around power ≈145 instead of ≈185.
+
+**Test impact**: two test files assumed the single shared T4 gate constant across all three modes.
+`startRaidStaticRewards.test.js`'s `expectedBracket` helper is only ever invoked for elite/
+legendary, so needed no behavior change. `buildRaidPreview.test.js`'s `expectedOdds` helper picks
+the wrong constant for 'regular' mode if left as-is — made mode-aware, and three new `test.each`
+rows (`['regular', 6/7/8, 900]`) added specifically to pin the new level-7 boundary rather than
+relying on the pre-existing level-1/level-8 cases to catch a regression here.
+
+Full test suite: **1526/1526** across 83 suites. Direct implementation of the player's own
+explicit instruction, verified end-to-end through `runStartRaidFlow`/`buildRaidPreview`, not just
+the constants file in isolation.

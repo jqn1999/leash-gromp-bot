@@ -1929,12 +1929,24 @@ const Raid = {
     T4_RAID_PENALTY: -3240000,
     T4_RAID_DIFFICULTY: 430,
 
-    // T4 unlocks at whichever guild level's winsRequired is closest to this target —
-    // see raidFactory.js's getGuildLevelClosestToWins. Rescaled 3,000 -> 750 alongside
-    // RaidLevel.THRESHOLDS' own 2026-09-10 4x rescale (see that array's own comment) so T4
-    // still lands exactly on the same RELATIVE level (8) as before the rescale, rather than
-    // drifting to level 10 now that 3,000 is this curve's own new max.
+    // Elite/Legendary's own T4 unlocks at whichever guild level's winsRequired is closest
+    // to this target — see raidFactory.js's getGuildLevelClosestToWins. Rescaled 3,000 ->
+    // 750 alongside RaidLevel.THRESHOLDS' own 2026-09-10 4x rescale (see that array's own
+    // comment) so T4 still lands exactly on the same RELATIVE level (8) as before the
+    // rescale, rather than drifting to level 10 now that 3,000 is this curve's own new
+    // max. Regular's own T4 used to share this same constant/level too, until it was
+    // split out below on 2026-09-12 (direct instruction) — this one is Elite/Legendary
+    // T4-only now.
     RAID_T4_MIN_LEVEL_TARGET_WINS: 750,
+
+    // Regular T4's own unlock level, split out from the shared constant above 2026-09-12,
+    // direct instruction: "Make regular t4 unlock at lvl 7." 375 is guild level 7's own
+    // exact winsRequired (RaidLevel.THRESHOLDS[6].winsRequired), so
+    // getGuildLevelClosestToWins resolves it unambiguously to level 7 — one level earlier
+    // than Elite/Legendary's own T4 (still level 8, unaffected). Regular T4's own
+    // difficulty/reward (see T4_RAID_DIFFICULTY/REWARD above) are untouched by this —
+    // only WHEN it becomes available moved, not what it pays out once it is.
+    REGULAR_T4_MIN_LEVEL_TARGET_WINS: 375,
 
     METAL_KING_REWARD: 10000000,
     METAL_KING_MULTIPLIER_REWARD: 2.0,
