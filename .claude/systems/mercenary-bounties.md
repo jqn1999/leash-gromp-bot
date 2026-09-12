@@ -535,12 +535,25 @@ holds exactly as it did. A player only feels this on a LOSS, and only more so at
 tiers — B12 now risks double its own reward back, the same relative stakes Legendary Guild
 Raid's own top bracket carries, while B1 is completely unchanged.
 
-**Update (2026-09-12)**: that "~30%" calibration itself only still holds for B1-B10 (difficulty
-< `Raid.ELITE_T1_DIFFICULTY`). Elite/Legendary's own reward tripled the same day (see
-`raids-and-world-events.md`'s own 2026-09-12 update), so B11-B12 (difficulty 1,236/2,000, already
-inside Elite's own difficulty range) now interpolate against that tripled guild curve and sit at
-~10% instead — a direct, intended widening of the solo-vs-guild gap at the top of Bounty's own
-ladder, not drift. See `mercenaryFactory.test.js`'s own regression test for the exact split.
+**Update (2026-09-12)**: that "~30%" calibration itself only still held for B1-B10 (difficulty
+< `Raid.ELITE_T1_DIFFICULTY`) once Elite/Legendary's own reward tripled the same day (see
+`raids-and-world-events.md`'s own 2026-09-12 update) — B11-B12 (difficulty 1,236/2,000, already
+inside Elite's own difficulty range) interpolated against that tripled guild curve and sat at ~10%
+instead, a direct, intended widening of the solo-vs-guild gap at the top of Bounty's own ladder.
+
+**Superseded again, same day** — a full raid accessibility retune (see `raids-and-world-events.md`'s
+second 2026-09-12 update, and `balance-audit.md`'s matching entry) lowered Elite/Legendary's
+difficulty AND reward together, solving each mode against a break-even-power target and a 3x/7x
+peak-vs-solo-Merc cap instead of a reward-efficiency band. Net effect: Guild Raid's own per-point
+efficiency dropped enough that it's no longer uniformly ABOVE Bounty's implied efficiency at matching
+difficulty — the neat B1-B10-flat / B11-B12-dropped split above no longer holds. Bounty's own reward
+values here are still completely untouched by any of this (this retune only ever touched
+`Raid.ELITE_T*`/`LEGENDARY_T*`/`T*_RAID_*`, never `Bounty.TIERS`) — what changed is only what "the
+guild-equivalent reward at matching difficulty" comparison now looks like. `mercenaryFactory.test.js`'s
+regression test was widened to one band (20%-50%) across all 12 tiers rather than two clean
+bands, since the interpolated guild-efficiency curve now dips right at the Regular→Elite seam
+(Elite's own efficiency briefly sits BELOW Regular's own top efficiency there), spiking a couple of
+tiers' ratios in a way a simple two-band split can no longer describe cleanly.
 
 Deliberately NOT reduced further by `rankInfo.rewardMultiplier` or Yukon's
 `bountyRewardPercent` — those stay reward-side-only perks — so as a mercenary ranks up,

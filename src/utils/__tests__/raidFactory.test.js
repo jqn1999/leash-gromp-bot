@@ -143,9 +143,11 @@ describe('getEligibleScenarios', () => {
 // placeholders) — see systems/raids-and-world-events.md's "Dynamic tier weighting"
 // section for the full derivation these fixtures are anchored to.
 describe('getDynamicTierWeights', () => {
-    // Regular's own T1-T4 difficulty ladder (10/85/600/1000) — not part of the
-    // geometric-ratio ladder Elite/Legendary sit on above Regular T4, so its spacing is
-    // uneven, unlike Elite/Legendary's uniform 2^(1/4) spacing below.
+    // Regular's own T1-T4 difficulty ladder (4/20/93/430, scaled down 2026-09-12's
+    // accessibility retune from 10/46/215/1000 — see Raid.T1_RAID_DIFFICULTY's own
+    // comment) — not part of the geometric-ratio ladder Elite/Legendary sit on above
+    // Regular T4, so its spacing is uneven, unlike Elite/Legendary's uniform 2^(1/4)
+    // spacing below.
     function regularTiers() {
         return [
             { name: 'T4', difficulty: Raid.T4_RAID_DIFFICULTY, minGuildLevel: 8 },
@@ -177,28 +179,28 @@ describe('getDynamicTierWeights', () => {
     });
 
     test('T4 excluded below its unlock guild level still redistributes correctly among T1-T3, and the fixture values match a fresh node -e computation', () => {
-        const M = 150;
+        const M = 65;
         const weighted = getDynamicTierWeights(regularTiers(), /*guildLevel*/ 1, M);
         expect(weighted.map(t => t.name)).toEqual(['T3', 'T2', 'T1']); // T4 excluded, order preserved
         expect(weighted.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
 
-        // Freshly recomputed via node -e against the live constants (SHARPNESS=3,
-        // softened from 4 on 2026-08-27 (same day) once the smoothed ladder made 4
-        // needlessly sharp — Regular's own T1-T4 ladder is evenly geometrically spaced
-        // — T1=10/T2=46/T3=215, T4 excluded from the normalization entirely since it's
-        // below its own unlock level here) — use as a regression anchor.
+        // Freshly recomputed via node -e against the live constants (post-2026-09-12
+        // accessibility retune: T1=4/T2=20/T3=93, T4 excluded from the normalization
+        // entirely since it's below its own unlock level here) — use as a regression
+        // anchor. M=65 (was 150 pre-retune) chosen to sit at the same relative position
+        // between T2 and T3 as the original fixture did against the old ladder.
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.0008035604165325501, 6);
-        expect(byName.T2).toBeCloseTo(0.0782153567036123, 6);
-        expect(byName.T3).toBeCloseTo(0.9209810828798551, 6);
+        expect(byName.T1).toBeCloseTo(0.0006285172612945186, 6);
+        expect(byName.T2).toBeCloseTo(0.07856465766181482, 6);
+        expect(byName.T3).toBeCloseTo(0.9208068250768907, 6);
     });
 
-    test('at a higher totalMultiplier (300), weight shifts decisively toward T3, still summing to 1 among T1-T3', () => {
-        const weighted = getDynamicTierWeights(regularTiers(), 1, 300);
+    test('at a higher totalMultiplier (90), weight shifts decisively toward T3, still summing to 1 among T1-T3', () => {
+        const weighted = getDynamicTierWeights(regularTiers(), 1, 90);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
-        expect(byName.T1).toBeCloseTo(0.00009963423276808508, 6);
-        expect(byName.T2).toBeCloseTo(0.009697997680714327, 6);
-        expect(byName.T3).toBeCloseTo(0.9902023680865176, 5);
+        expect(byName.T1).toBeCloseTo(0.00009569851663058948, 6);
+        expect(byName.T2).toBeCloseTo(0.01196231457882368, 6);
+        expect(byName.T3).toBeCloseTo(0.9879419869045457, 5);
     });
 
     // The "one global SHARPNESS constant works for both a wide, uneven ladder (Regular)
@@ -216,12 +218,14 @@ describe('getDynamicTierWeights', () => {
         const weighted = getDynamicTierWeights(eliteTiers, 100, Raid.ELITE_T1_DIFFICULTY);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
 
-        // Freshly recomputed via node -e (SHARPNESS=3): T1 dominant but every tier keeps
-        // real, non-trivial (>5%) presence — not a near-monopoly.
-        expect(byName.T1).toBeCloseTo(0.46341035149422743, 6);
-        expect(byName.T2).toBeCloseTo(0.2755263037913236, 6);
-        expect(byName.T3).toBeCloseTo(0.16369421068582993, 6);
-        expect(byName.T4).toBeCloseTo(0.09736913402861906, 6);
+        // Freshly recomputed via node -e (SHARPNESS=3) against Elite's post-2026-09-12
+        // accessibility-retune difficulty ladder (885/1053/1252/1489, was
+        // 1189/1414/1682/2000): T1 dominant but every tier keeps real, non-trivial
+        // (>5%) presence — not a near-monopoly.
+        expect(byName.T1).toBeCloseTo(0.46364324655947065, 6);
+        expect(byName.T2).toBeCloseTo(0.2752508296992583, 6);
+        expect(byName.T3).toBeCloseTo(0.16375733564891506, 6);
+        expect(byName.T4).toBeCloseTo(0.09734858809235586, 6);
         Object.values(byName).forEach(w => {
             expect(w).toBeGreaterThan(0.05);
             expect(w).toBeLessThan(0.95);
@@ -232,13 +236,13 @@ describe('getDynamicTierWeights', () => {
     // same SHARPNESS still produces a real blend near a tier boundary rather than
     // snapping to exactly one tier — same "no degenerate near-monopoly" property,
     // confirmed for the OTHER regime the "one global constant" claim needs to hold for.
-    // M=70 sits between T1=10 and T2=46, closer to T2 — under the OLD uneven ladder this
-    // fixture used M=150 (between T2=85 and T3=600), but after the 2026-08-27 retune that
-    // totalMultiplier lands T3 as the dominant tier instead (T3 now sits close enough to
-    // 150 to flip the near-monopoly to T3, not T2), so M=70 was picked instead to keep
-    // this test's own claim (T2 dominant, T3 still real-and-non-negligible) true.
+    // M=30 sits between T1=4 and T2=20, closer to T2 — under the pre-2026-09-12-retune
+    // ladder this fixture used M=70 (between T1=10 and T2=46), but the accessibility
+    // retune shrank T2/T3 enough that 70 now lands past T3=93's own boundary (flipping
+    // the near-monopoly to T3, not T2), so M=30 was picked instead to keep this test's
+    // own claim (T2 dominant, T3 still real-and-non-negligible) true.
     test('the same global SHARPNESS also avoids a degenerate near-monopoly for Regular\'s wide, uneven spacing near a tier boundary', () => {
-        const weighted = getDynamicTierWeights(regularTiers(), 100, 70);
+        const weighted = getDynamicTierWeights(regularTiers(), 100, 30);
         const t2 = weighted.find(t => t.name === 'T2').weight;
         const t3 = weighted.find(t => t.name === 'T3').weight;
         // T2 dominates (roster sits much closer to T2's own difficulty) but T3 still
@@ -733,19 +737,20 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         });
     });
 
-    // Elite/Legendary T4's DIFFICULTY and every mode's Metal King numbers are explicitly
-    // called out as unchanged since the original 2026-08-26 static-per-bracket rework —
-    // T4's own REWARD/PENALTY moved in the SAME-DAY follow-up reward-efficiency retune
-    // (see the next test), so only difficulty and Metal King stay byte-identical here.
-    test('Elite/Legendary T4 difficulty and every Metal King bracket are byte-identical to the original static-rework values', () => {
-        expect(Raid.ELITE_T4_DIFFICULTY).toBe(2000);
+    // Metal King is deliberately excluded from every raid retune pass (2026-08-26's
+    // static rework, 2026-09-12's reward triple, and 2026-09-12's later accessibility
+    // retune alike) — stays byte-identical across all of them. Elite/Legendary T4's own
+    // DIFFICULTY, unlike Metal King, is NOT byte-identical anymore — the 2026-09-12
+    // accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment) cut difficulty
+    // across every Regular/Elite/Legendary bracket, T4 included; its new value is
+    // asserted directly below as a fresh regression anchor.
+    test('every mode\'s Metal King bracket is byte-identical to the original static-rework values', () => {
         expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(6000);
         expect(Raid.ELITE_METAL_KING_REWARD).toBe(30000000);
         expect(Raid.ELITE_METAL_KING_MULTIPLIER_REWARD).toBe(6.0);
         expect(Raid.ELITE_METAL_KING_PASSIVE_REWARD).toBe(3000000);
         expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(30000000);
 
-        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(4000);
         expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(12000);
         expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(60000000);
         expect(Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD).toBe(12.0);
@@ -753,24 +758,25 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000);
     });
 
-    // Same-day follow-up, direct instruction: "make regular smoothed out 10-20k, elite
-    // 20-30k, legendary 30-50k per point" — reward/difficulty efficiency ramps
-    // deliberately within each mode instead of sitting flat at ~15,000/pt everywhere.
-    //
-    // The Regular->Elite->Legendary CONTINUITY this test originally also asserted (each
-    // mode boundary landing on the same efficiency value, e.g. Regular T4 = Elite T1 =
-    // 20,000/pt) was deliberately broken 2026-09-12, direct instruction: "adjust elite and
-    // legendary...so that it starts becoming up to 5-10x the solo merc track since the
-    // guild rewards are also split among all members." Elite/Legendary's own reward AND
-    // penalty were tripled (preserving the 1.5x/2.0x ratio and, since scaling both sides by
-    // the same factor is mathematically inert on breakeven LOCATION, every existing
-    // breakeven-power number too) while DIFFICULTY was deliberately left untouched — cutting
-    // difficulty instead was considered and rejected because it would have pushed
-    // `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY` (1,000), reopening the exact
-    // "Elite's own T1 easier than Regular's own T4" cliff the test below this one exists to
-    // catch. A real, visible reward-efficiency jump at the Regular->Elite seam is the
-    // accepted trade-off, not an oversight — see balance-audit.md's 2026-09-12 entry.
-    test('reward/difficulty efficiency ramps within each mode\'s target band (no longer continuous across the Regular->Elite/Legendary boundary, by design)', () => {
+    test('Elite/Legendary T4 difficulty after the 2026-09-12 accessibility retune', () => {
+        expect(Raid.ELITE_T4_DIFFICULTY).toBe(1489);
+        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(5047);
+    });
+
+    // 2026-09-12 accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment)
+    // superseded the earlier same-day reward-triple this test used to document. Elite and
+    // Legendary's own (difficulty scale, reward scale) pair were each solved numerically
+    // against a break-even-power target and a peak-EV-vs-solo-Merc cap (3x Elite, 7x
+    // Legendary), not against a target reward/difficulty efficiency band — so unlike the
+    // superseded design, Elite/Legendary's own per-point efficiency is NOT dramatically
+    // higher than Regular's anymore; it now sits close to (and even overlaps) Regular's
+    // own band, since it's DIFFICULTY (much higher for the harder modes) and guild-LEVEL
+    // gating (Elite needs level 7, Legendary level 9 — a much bigger payout multiplier;
+    // see effRewardMult in the balance-audit.md derivation), not raw efficiency-per-point,
+    // that differentiates the three modes now. This is the direct, intended effect of
+    // solving for an absolute vs-Merc ceiling rather than an efficiency band — not an
+    // oversight.
+    test('reward/difficulty efficiency still ramps within each mode (a ramp, not flat), bands now overlapping across modes by design', () => {
         const efficiency = (reward, difficulty) => reward / difficulty;
 
         const regular = [Raid.T1_RAID_REWARD, Raid.T2_RAID_REWARD, Raid.T3_RAID_REWARD, Raid.T4_RAID_REWARD]
@@ -780,26 +786,26 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         const legendary = [Raid.LEGENDARY_T1_REWARD, Raid.LEGENDARY_T2_REWARD, Raid.LEGENDARY_T3_REWARD, Raid.LEGENDARY_T4_REWARD]
             .map((r, i) => efficiency(r, [Raid.LEGENDARY_T1_DIFFICULTY, Raid.LEGENDARY_T2_DIFFICULTY, Raid.LEGENDARY_T3_DIFFICULTY, Raid.LEGENDARY_T4_DIFFICULTY][i]));
 
-        // Each mode's own T1->T4 efficiency is monotonically increasing (a ramp, not flat).
+        // Each mode's own T1->T4 efficiency is still monotonically increasing (a ramp).
         [regular, elite, legendary].forEach(band => {
             for (let i = 1; i < band.length; i++) {
                 expect(band[i]).toBeGreaterThan(band[i - 1]);
             }
         });
 
-        // Each mode sits within its own target band — Elite/Legendary's own bands tripled
-        // alongside their reward (20-30k -> 60-90k, 30-50k -> 90-150k); Regular's is untouched.
-        regular.forEach(e => expect(e).toBeGreaterThanOrEqual(10000) && expect(e).toBeLessThanOrEqual(20000));
-        elite.forEach(e => expect(e).toBeGreaterThanOrEqual(60000) && expect(e).toBeLessThanOrEqual(90000));
-        legendary.forEach(e => expect(e).toBeGreaterThanOrEqual(90000) && expect(e).toBeLessThanOrEqual(150000));
+        // Fresh target bands measured directly off the solved constants (small headroom
+        // above/below for the integer rounding on each bracket's own difficulty/reward).
+        regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(10000); expect(e).toBeLessThanOrEqual(20100); });
+        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(15000); expect(e).toBeLessThanOrEqual(22700); });
+        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(15500); expect(e).toBeLessThanOrEqual(26000); });
 
-        // Regular->Elite is the one boundary that broke: Elite's own starting efficiency is
-        // now exactly 3x Regular's own top efficiency (not equal to it, per this test's old
-        // name) — the direct, intended effect of tripling Elite's reward while leaving every
-        // difficulty constant, including Regular's own, untouched.
-        expect(elite[0]).toBeCloseTo(regular[3] * 3, -2);
-        // Elite->Legendary stays continuous, unaffected — BOTH modes were tripled together,
-        // so their shared boundary value (previously 30,000/pt, now 90,000/pt) moved as one.
-        expect(legendary[0]).toBeCloseTo(elite[3], -2);
+        // What still differentiates the modes: absolute difficulty and reward keep
+        // climbing across the full 12-tier ladder (each mode's T1 harder AND
+        // better-paying in raw terms than the previous mode's T4), even though
+        // per-point efficiency bands now overlap.
+        expect(Raid.ELITE_T1_DIFFICULTY).toBeGreaterThan(Raid.T4_RAID_DIFFICULTY);
+        expect(Raid.ELITE_T1_REWARD).toBeGreaterThan(Raid.T4_RAID_REWARD);
+        expect(Raid.LEGENDARY_T1_DIFFICULTY).toBeGreaterThan(Raid.ELITE_T4_DIFFICULTY);
+        expect(Raid.LEGENDARY_T1_REWARD).toBeGreaterThan(Raid.ELITE_T4_REWARD);
     });
 });

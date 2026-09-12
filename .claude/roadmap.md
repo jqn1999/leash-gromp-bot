@@ -11846,3 +11846,76 @@ consequence of tripling Elite's reward without touching Bounty's own). No other 
 changes — difficulty-ordering, ratio, and monotonicity tests were all untouched by construction.
 Docs: `raids-and-world-events.md`, `mercenary-bounties.md`. Full suite: **1523/1523** across 83
 suites.
+
+## Fix/Nerf: full raid accessibility retune — difficulty and payouts lowered on all 12 brackets, Elite/Legendary vs.-solo-Merc cap tightened to 3x/7x (2026-09-12, same day, direct instruction)
+
+Player, immediately after the reward-triple above: "Can we lower difficulty across the board on all
+raid tiers and types and also lower their payouts appropriately? I want success caps generally
+reachable as you climb up in work multi as a guild. The main thing is guilds need to work to get the
+guild levels which brings their EV higher so players that come from merc can't suddenly just start
+doing raids and getting tons of potatoes without the grind. Lower the potato payout of elite and
+legendary tier so that elite caps at 3x solo merc per raider and legendary is 7x per raider compared
+to solo merc."
+
+Prompted by the player's own follow-up question: a 4-person, 200-power/player guild — already a
+meaningful power level — only had a **40.9%** shot at Regular's own T4, even once T4's level-8 gate
+was met (EV was still strongly positive despite the coinflip-ish odds, since Regular's reward:penalty
+ratio is exactly 1:1 and the level-based payout multiplier only applies to wins — but the SUCCESS
+CHANCE itself wasn't "generally reachable").
+
+**All 12 non-Metal-King brackets retuned** (Regular T1-4, Elite T1-4, Legendary T1-4) — difficulty
+AND reward/penalty lowered together, solved numerically per mode:
+
+- **Regular**: difficulty and reward both scaled by the same factor (0.4303) across all four
+  brackets, chosen so T4 hits its own 95% success cap at exactly 200 power/player once a guild
+  clears T4's level-8 gate (was 40.9% at that same power). Reward/difficulty efficiency preserved
+  exactly (same 10,000-20,000/pt ramp) — this is a pure "reachable sooner" change, not a reward
+  buff. T1-T3 were already trivially winnable and stay that way, just proportionally smaller
+  (4/20/93, was 10/46/215).
+- **Elite**: difficulty and reward each solved against two targets — EV/player break-even at
+  **100 power/player** at guild level 7 (Elite's own unlock level, unchanged from the interim
+  design), and peak EV/player capped at **3x** solo Merc's own EV at that same power (down from the
+  previous uncapped growth, which reached ~9.7x by power 600). T1 difficulty: 1189 -> 885.
+- **Legendary**: break-even at **300 power/player** at guild level 9 (Legendary's own unlock level;
+  down from ~415 at guild level 6 in the interim design), peak capped at **7x** solo Merc (down from
+  an uncapped ~8.9x by power 600). T1 difficulty: 2378 -> 3000 — went UP, not down, because
+  break-even is now evaluated at level 9's much bigger payout multiplier (~10.5x vs. level 6's
+  ~4.7x) — a harder difficulty curve still breaks even at a LOWER raw power number once the guild
+  has done the level-9 grind, which is exactly the "levels bring EV higher, not raw power" goal the
+  player stated directly.
+- Penalty:reward ratios (1.5x Elite, 2.0x Legendary, 1:1 Regular) preserved exactly on every
+  bracket — untouched by either knob.
+
+**Cliff-guard invariant re-verified, not just assumed**: Elite's own T1 difficulty (885) still sits
+above Regular's own new T4 difficulty (430) — the "Elite easier than Regular's hardest tier" cliff
+the 2026-08-26 rework exists to prevent still holds, just with a smaller margin (was 1189 vs. 1000).
+This only worked because Regular T4 was cut by a much larger factor (0.43x) than Elite (0.74x) in
+the same pass — cutting Elite alone, as considered and rejected in the interim design two turns ago,
+would have reopened it.
+
+**Cross-mode ordering checked at a shared guild level 9** (the level where all three modes are
+unlocked simultaneously) to rule out an inversion: Regular remains the better per-power choice
+below ~power 230, Elite overtakes it and stays ahead through roughly power 800, Legendary overtakes
+Elite above that — a ramp, not a lower-mode-always-wins or higher-mode-always-wins degenerate case.
+
+**Side effect, expected**: Elite's own new efficiency band (15,000-22,700/pt) and Legendary's
+(15,500-26,000/pt) now sit close to, and overlap, Regular's own band (10,000-20,100/pt) — per-point
+reward efficiency is no longer what differentiates the three modes (it briefly was, dramatically, in
+the interim design); absolute difficulty and guild-level payout gating do that job now. This is the
+direct, intended consequence of solving for an absolute vs.-Merc ceiling instead of a reward-
+efficiency band — not an oversight.
+
+Test updates: `raidFactory.test.js` — 4 `getDynamicTierWeights` fixture tests recomputed against
+the new difficulty ladder (two needed a different `totalMultiplier` picked to sit at the same
+relative position between tiers, since the old ladder's own inputs no longer probe the same regime);
+the "byte-identical to original static-rework" test split into a Metal-King-only version (still
+byte-identical) plus a fresh regression anchor for Elite/Legendary T4's new difficulty; the
+reward-efficiency-band test rewritten entirely (bands now overlap by design, replaced the old
+non-overlapping-band + boundary-equality assertions with fresh measured bands plus absolute
+difficulty/reward ordering checks). `mercenaryFactory.test.js`'s "Bounty ~30% of guild-equivalent
+reward" test's two-band split (by difficulty vs. Elite T1) no longer cleanly separates the data —
+Elite no longer uniformly out-efficiencies Regular per point, so the interpolated "guild efficiency
+at matching difficulty" curve now dips right at the Regular->Elite seam, spiking a couple of Bounty
+tiers' ratios unpredictably — replaced with one wider (0.20, 0.50) band across all 12 Bounty tiers,
+still tight enough to catch a real regression. Docs: `raids-and-world-events.md`,
+`mercenary-bounties.md`, `guilds.md`. Full suite: **1524/1524** across 83 suites.

@@ -1872,52 +1872,43 @@ const Raid = {
     ELITE_MIN_GUILD_LEVEL: 7,
     LEGENDARY_MIN_GUILD_LEVEL: 9,
 
-    T1_RAID_REWARD: 100000,
-    T1_RAID_PENALTY: -100000,
-    T1_RAID_DIFFICULTY: 10,
+    // Accessibility retune (2026-09-12, direct instruction — "lower difficulty across
+    // the board on all raid tiers and types and also lower their payouts appropriately
+    // ... I want success caps generally reachable as you climb up in work multi as a
+    // guild"). Regular's real pain point was T4: a 4-person, 200-power/player roster
+    // (already a meaningful power level) only had a 40.9% shot at it even once T4's own
+    // level-8 gate was met. All four brackets scaled down by the SAME factor (0.4303,
+    // difficulty AND reward together, preserving both the exact 10,000-20,000/pt
+    // efficiency ramp below and Regular's 1:1 reward:penalty convention) so this is a
+    // pure "reachable sooner" change, not a reward buff or nerf at any fixed power — T4's
+    // own difficulty was chosen so a level-8 guild hits its 95% success cap at exactly
+    // 200 power/player (4-person roster). T1-T3 were already trivially winnable at any
+    // realistic power and stay that way, just proportionally smaller. See
+    // raidFactory.test.js for the regression pinning T4's new success chance at 200
+    // power/player, and balance-audit.md's 2026-09-12 entry for the full derivation.
+    T1_RAID_REWARD: 43026,
+    T1_RAID_PENALTY: -43026,
+    T1_RAID_DIFFICULTY: 4,
 
-    // T1-T4 reward efficiency (reward/difficulty) is now a deliberate 10,000->20,000
-    // potatoes-per-point ramp across the tier ladder (2026-08-26, direct instruction —
-    // "make regular smoothed out 10-20k, elite 20-30k, legendary 30-50k per point"),
-    // continuous into Elite's own 20,000-30,000/pt band below (Regular T4 and Elite T1
-    // land on the exact same 20,000/pt boundary). T1 (10,000/pt) is unchanged from
-    // before this pass; T2-T4 are retuned. Penalty stays a 1:1 magnitude match to
-    // reward, same convention Regular has always used (no separate PENALTY_INCREASE
-    // constant at this mode — that's an Elite/Legendary-only concept).
-    // Retuned 2026-08-27 — Regular's own T1-T4 internal ladder (10/85/600/1000, ratios
-    // 8.5x/7.06x/1.67x) was wildly uneven compared to Elite/Legendary's already-even
-    // geometric spacing, and the dynamic tier-weighting rework above (SHARPNESS=4)
-    // exposed a real EV dead zone around the T2->T3 boundary (worst -1,629,449 at
-    // totalMultiplier~=248) as a direct consequence. Fixed by making T1-T4 evenly
-    // geometrically spaced, holding T1 (10) and T4 (1000) fixed — both load-bearing
-    // elsewhere (T1 is a universal newbie landmark referenced everywhere; T4 anchors
-    // Elite's ladder at 2x and Legendary's at 4x) — ratio r = (1000/10)^(1/3) ~= 4.6416.
-    // Reward derived at the same 10,000->20,000/pt efficiency ramp above, applied to the
-    // rounded new difficulty values, rounded to the nearest 1,000 (T2: 13,333/pt * 46 ~=
-    // 613,000; T3: 16,667/pt * 215 ~= 3,583,000). Verified fix: scanning totalMultiplier
-    // 5-1200 at SHARPNESS=4 against this new ladder, the worst weighted-average EV per
-    // attempt is -1,085 at totalMultiplier=5 (an edge-case near-zero-power roster, not a
-    // real dead zone) — down from -1,629,449 under the old ladder. Do NOT lower
-    // RAID_TIER_WEIGHT_SHARPNESS back to 1.5 against this new ladder — smoothing T1-T3
-    // widened the T3->T4 gap to the same ~4.64x magnitude as every other step, and at
-    // SHARPNESS=1.5 that opens a NEW dead zone at the T3/T4 boundary instead (worst
-    // -621,490 at totalMultiplier=98); SHARPNESS=4 keeps that region solidly positive
-    // (+402,652 at totalMultiplier=120).
-    T2_RAID_REWARD: 613000,
-    T2_RAID_PENALTY: -613000,
-    T2_RAID_DIFFICULTY: 46,
+    // T1-T4 reward efficiency (reward/difficulty) is still the 10,000->20,000
+    // potatoes-per-point ramp established 2026-08-26 (continuous into Elite's own T1
+    // efficiency, itself since retuned — see that block's own comment), untouched by the
+    // 2026-09-12 accessibility scale-down since difficulty and reward moved together.
+    T2_RAID_REWARD: 263751,
+    T2_RAID_PENALTY: -263751,
+    T2_RAID_DIFFICULTY: 20,
 
-    T3_RAID_REWARD: 3583000,
-    T3_RAID_PENALTY: -3583000,
-    T3_RAID_DIFFICULTY: 215,
+    T3_RAID_REWARD: 1541633,
+    T3_RAID_PENALTY: -1541633,
+    T3_RAID_DIFFICULTY: 93,
 
     // Ultra-late-game bracket — shop AND regrade fully maxed, meaningfully pushed past
     // by rebirth stacking. Gated separately behind guild level (see
     // RAID_T4_MIN_LEVEL_TARGET_WINS below) on top of its own steep difficulty, since
     // guild-level progression and individual stat power are only loosely correlated.
-    T4_RAID_REWARD: 20000000,
-    T4_RAID_PENALTY: -20000000,
-    T4_RAID_DIFFICULTY: 1000,
+    T4_RAID_REWARD: 8605263,
+    T4_RAID_PENALTY: -8605263,
+    T4_RAID_DIFFICULTY: 430,
 
     // T4 unlocks at whichever guild level's winsRequired is closest to this target —
     // see raidFactory.js's getGuildLevelClosestToWins. Rescaled 3,000 -> 750 alongside
@@ -1969,38 +1960,62 @@ const Raid = {
     // excluded from the smoothed ladder per direct instruction — "not including metal
     // king") — its difficulty/reward/stat-rewards are untouched by this reward retune.
     //
-    // Reward (and penalty, to preserve the 1.5x/2.0x ratio) tripled 2026-09-12, direct
-    // instruction: "decreasing difficulty or adjusting payouts for elite and legendary so
-    // that it starts becoming up to 5-10x the solo merc track since the guild rewards are
-    // also split among all members." Difficulty deliberately left untouched (a difficulty
-    // cut was the other option offered — see the same day's chat) specifically because
-    // reducing it would have pushed `ELITE_T1_DIFFICULTY` below `Raid.T4_RAID_DIFFICULTY`
-    // (1,000), reopening the exact "Elite's own T1 easier than Regular's own T4" cliff the
-    // 2026-08-26 rework was built to close (raidFactory.test.js's own regression test for
-    // that). Scaling reward AND penalty by the SAME factor is also mathematically inert on
-    // WHERE each mode breaks even — that point only depends on the penalty:reward RATIO
-    // (unchanged), never their absolute size — so Legendary's own real-power breakeven
-    // (~415/player at guild level 6, per balance-audit.md's 2026-09-12 entry) is completely
-    // unmoved by this change; only the SIZE of the win/loss around it triples. Guild
-    // Elite/player-hour now reaches ~5x solo Merc's own (now-capped) EV around power 300,
-    // ~9-10x by power 600; Legendary trails behind (still needs its own ~415 breakeven
-    // first) but reaches a comparable ~9x by power 600 too. See balance-audit.md's
-    // 2026-09-12 entry for the full before/after curve.
-    ELITE_T1_DIFFICULTY: 1189,
-    ELITE_T1_REWARD: 71340000,
-    ELITE_T1_PENALTY: -107010000,
+    // Reward tripled 2026-09-12 (superseded later the same day — see the accessibility
+    // retune below), then a same-day follow-up direct instruction went further: "Can we
+    // lower difficulty across the board on all raid tiers and types and also lower their
+    // payouts appropriately? ... I want success caps generally reachable as you climb up
+    // in work multi as a guild. The main thing is guilds need to work to get the guild
+    // levels which brings their EV higher so players that come from merc can't suddenly
+    // just start doing raids and getting tons of potatoes without the grind. Lower the
+    // potato payout of elite and legendary tier so that elite caps at 3x solo merc per
+    // raider and legendary is 7x per raider compared to solo merc."
+    //
+    // This time difficulty WAS cut (unlike the same-day tripling above, which deliberately
+    // left it alone — see that paragraph's own reasoning about the Regular-T4 cliff).
+    // What made it safe now: Regular's own T4 was cut in the SAME pass (see its own
+    // comment above) by a much larger factor than Elite's, so Elite T1's new difficulty
+    // (885) still sits above Regular T4's new difficulty (430) — the "Elite easier than
+    // Regular's hardest tier" cliff-guard invariant (raidFactory.test.js) still holds,
+    // just with a smaller margin than before.
+    //
+    // Solved numerically (two unknowns per mode — a difficulty scale and a reward scale
+    // applied uniformly across that mode's own T1-T4 — against two targets each):
+    //   Elite: EV/player break-even == 100 power/player at guild level 7 (Elite's own
+    //     unlock level), AND peak EV/player == 3x solo Merc's own EV at that same power.
+    //   Legendary: break-even == 300 power/player at guild level 9 (Legendary's own
+    //     unlock level), AND peak == 7x solo Merc.
+    // Penalty:reward ratios (1.5x Elite, 2.0x Legendary) preserved exactly — untouched by
+    // either knob, per the test-guarded convention noted below. Elite's breakeven power
+    // is UNCHANGED from the interim 5x-cap design two turns ago (100/player, same
+    // difficulty scale 0.7445x) — only the reward scale moved, down from 0.3117x to
+    // 0.1870x, to bring the cap down from 5x to 3x. Legendary's difficulty actually went
+    // UP (2378 -> 3000 on T1, a 1.262x scale) even though its break-even power dropped
+    // (415 -> 300): break-even is evaluated at Legendary's OWN level-9 gate now, whose
+    // payout multiplier (8.3x base * 1.27 companion = ~10.5x, vs level 6's ~4.7x used for
+    // the old 415 figure) is more than double — so a harder difficulty curve still breaks
+    // even at a lower raw power number, because the guild-LEVEL grind is what's actually
+    // doing the work, exactly matching the "levels bring EV higher, not raw power" design
+    // goal above. The reward cut (to 0.2176x) is what reins the old uncapped upside in to
+    // a firm 7x. Cross-mode ordering was verified at a shared level 9: Regular remains the
+    // better per-power choice below ~power 230, Elite overtakes it through roughly power
+    // 800, Legendary overtakes Elite above that — a ramp, not an inversion. See
+    // balance-audit.md's 2026-09-12 entry (second retune) for the full derivation and
+    // before/after curves.
+    ELITE_T1_DIFFICULTY: 885,
+    ELITE_T1_REWARD: 13341239,
+    ELITE_T1_PENALTY: -20011858,
 
-    ELITE_T2_DIFFICULTY: 1414,
-    ELITE_T2_REWARD: 98979000,
-    ELITE_T2_PENALTY: -148470000,
+    ELITE_T2_DIFFICULTY: 1053,
+    ELITE_T2_REWARD: 18509987,
+    ELITE_T2_PENALTY: -27764981,
 
-    ELITE_T3_DIFFICULTY: 1682,
-    ELITE_T3_REWARD: 134559000,
-    ELITE_T3_PENALTY: -201840000,
+    ELITE_T3_DIFFICULTY: 1252,
+    ELITE_T3_REWARD: 25163776,
+    ELITE_T3_PENALTY: -37745663,
 
-    ELITE_T4_DIFFICULTY: 2000,
-    ELITE_T4_REWARD: 180000000,
-    ELITE_T4_PENALTY: -270000000,
+    ELITE_T4_DIFFICULTY: 1489,
+    ELITE_T4_REWARD: 33661662,
+    ELITE_T4_PENALTY: -50492493,
 
     ELITE_METAL_KING_DIFFICULTY: 6000,
     ELITE_METAL_KING_REWARD: 30000000,
@@ -2009,21 +2024,23 @@ const Raid = {
     ELITE_METAL_KING_PASSIVE_REWARD: 3000000,
     ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
 
-    LEGENDARY_T1_DIFFICULTY: 2378,
-    LEGENDARY_T1_REWARD: 214020000,
-    LEGENDARY_T1_PENALTY: -428040000,
+    // See ELITE_T1_DIFFICULTY's own comment above for the full 2026-09-12 accessibility
+    // retune (both brackets solved together, same methodology, same commit).
+    LEGENDARY_T1_DIFFICULTY: 3000,
+    LEGENDARY_T1_REWARD: 46581033,
+    LEGENDARY_T1_PENALTY: -93162066,
 
-    LEGENDARY_T2_DIFFICULTY: 2828,
-    LEGENDARY_T2_REWARD: 311079000,
-    LEGENDARY_T2_PENALTY: -622158000,
+    LEGENDARY_T2_DIFFICULTY: 3568,
+    LEGENDARY_T2_REWARD: 67705734,
+    LEGENDARY_T2_PENALTY: -135411467,
 
-    LEGENDARY_T3_DIFFICULTY: 3364,
-    LEGENDARY_T3_REWARD: 437319000,
-    LEGENDARY_T3_PENALTY: -874638000,
+    LEGENDARY_T3_DIFFICULTY: 4244,
+    LEGENDARY_T3_REWARD: 95181622,
+    LEGENDARY_T3_PENALTY: -190363244,
 
-    LEGENDARY_T4_DIFFICULTY: 4000,
-    LEGENDARY_T4_REWARD: 600000000,
-    LEGENDARY_T4_PENALTY: -1200000000,
+    LEGENDARY_T4_DIFFICULTY: 5047,
+    LEGENDARY_T4_REWARD: 130588822,
+    LEGENDARY_T4_PENALTY: -261177644,
 
     LEGENDARY_METAL_KING_DIFFICULTY: 12000,
     LEGENDARY_METAL_KING_REWARD: 60000000,

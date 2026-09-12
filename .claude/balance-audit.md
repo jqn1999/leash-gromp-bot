@@ -2394,3 +2394,104 @@ drifting.
 No further recommendation — this was a direct implementation of the player's own explicit numeric
 target (5-10x), verified to land inside that band across the tested power range, not a finding
 requiring further action.
+
+## Follow-up (2026-09-12, same day): full accessibility retune — difficulty lowered on all 12 brackets, Elite/Legendary cap tightened to 3x/7x
+
+Player, prompted by their own question about a 4-person, 200-power/player guild's Regular T4 odds
+(40.9% — a below-even-money coinflip on the guild's own hardest bracket, at a power level that
+isn't trivial): "Can we lower difficulty across the board on all raid tiers and types and also lower
+their payouts appropriately? I want success caps generally reachable as you climb up in work multi
+as a guild. The main thing is guilds need to work to get the guild levels which brings their EV
+higher so players that come from merc can't suddenly just start doing raids and getting tons of
+potatoes without the grind. Lower the potato payout of elite and legendary tier so that elite caps
+at 3x solo merc per raider and legendary is 7x per raider compared to solo merc."
+
+**Methodology**: solved numerically per mode, two free knobs (a uniform difficulty scale and a
+uniform reward scale applied across that mode's own T1-T4) against two targets:
+
+| Mode | Break-even target | Peak-vs-Merc target | Solved difficulty scale | Solved reward scale |
+|---|---|---|---|---|
+| Elite | 100 power/player @ guild lvl 7 | 3.0x | 0.7445 | 0.1870 |
+| Legendary | 300 power/player @ guild lvl 9 | 7.0x | 1.2617 | 0.2176 |
+| Regular | T4 reaches 95% cap @ 200 power/player, guild lvl 8 | (none — no vs-Merc target given for Regular) | 0.4303 | 0.4303 (= difficulty scale, preserving efficiency) |
+
+Break-even/peak evaluated at each mode's OWN unlock guild level (Elite=7, Legendary=9, Regular's own
+T4 gate=8) rather than a shared baseline level, since that's the level at which the mode first
+becomes reachable and where its own payout multiplier (`RaidLevel.THRESHOLDS` ×
+`GuildCompanionScaling.raidRewardBonusPercent`) applies.
+
+**Full new tier tables**:
+
+| Bracket | Difficulty (old → new) | Reward (old → new) | Efficiency (new, potatoes/pt) |
+|---|---|---|---|
+| Regular T1 | 10 → 4 | 100,000 → 43,026 | 10,757 |
+| Regular T2 | 46 → 20 | 613,000 → 263,751 | 13,188 |
+| Regular T3 | 215 → 93 | 3,583,000 → 1,541,633 | 16,577 |
+| Regular T4 | 1,000 → 430 | 20,000,000 → 8,605,263 | 20,012 |
+| Elite T1 | 1,189 → 885 | 71,340,000 → 13,341,239 | 15,075 |
+| Elite T2 | 1,414 → 1,053 | 98,979,000 → 18,509,987 | 17,578 |
+| Elite T3 | 1,682 → 1,252 | 134,559,000 → 25,163,776 | 20,099 |
+| Elite T4 | 2,000 → 1,489 | 180,000,000 → 33,661,662 | 22,607 |
+| Legendary T1 | 2,378 → 3,000 | 214,020,000 → 46,581,033 | 15,527 |
+| Legendary T2 | 2,828 → 3,568 | 311,079,000 → 67,705,734 | 18,976 |
+| Legendary T3 | 3,364 → 4,244 | 437,319,000 → 95,181,622 | 22,427 |
+| Legendary T4 | 4,000 → 5,047 | 600,000,000 → 130,588,822 | 25,875 |
+
+Penalty:reward ratios untouched (Regular 1:1, Elite 1.5x, Legendary 2.0x reward, applied to each new
+reward value). Metal King brackets untouched, as with every prior raid retune.
+
+**Legendary's difficulty went UP, not down — verified this is correct, not a bug.** Break-even is
+now checked at guild level 9 (Legendary's real unlock gate), whose payout multiplier
+(8.3 base × 1.27 companion × 0.95 tax ≈ 10.01x) is more than double level 6's (≈4.48x, the baseline
+the old ~415 break-even figure used). A harder difficulty curve can still break even at a LOWER raw
+power number once that much bigger level-based multiplier applies — direct numeric confirmation of
+the player's own stated design goal, that guild-LEVEL grind (not raw player power) should be the
+thing that unlocks real raid EV. Elite's own difficulty scale (0.7445) and break-even power (100)
+are unchanged from the interim 5x-cap design two turns ago — only its reward scale moved (0.3117 →
+0.1870) to bring the cap down from 5x to 3x, confirming peak ratio scales linearly in reward scale
+alone, independent of difficulty scale, as expected from the plateau-EV algebra (once success chance
+saturates at a mode's cap, EV becomes a pure linear function of reward, since the dynamic tier-weight
+distribution's own dependence on the difficulty scale cancels out in the limit).
+
+**Cliff-guard re-verified**: Elite's new T1 difficulty (885) still exceeds Regular's new T4
+difficulty (430) — the "Elite easier than Regular's hardest tier" invariant from the 2026-08-26
+rework holds, on a smaller margin (was 1189 vs. 1000) than before. This only works because Regular's
+own T4 was cut proportionally MORE (0.43x) than Elite's (0.74x) — cutting Elite's difficulty alone
+by this much (as considered and explicitly rejected two turns ago, in the reward-triple entry above)
+would have reopened it.
+
+**Cross-mode ordering, checked at a shared guild level 9** (power 80-1000, per-player EV):
+
+| Power | Regular | Elite | Legendary |
+|---|---|---|---|
+| 80 | 4.4M | 1.1M | -25.1M |
+| 150 | 13.9M | 8.3M | -17.1M |
+| 200 | 20.1M | 13.4M | -11.4M |
+| 300 | 20.2M | 23.6M | 0.008M |
+| 400 | 20.2M | 30.3M | 11.4M |
+| 600 | 20.2M | 42.1M | 34.3M |
+| 800 | 20.2M | 47.9M | 57.1M |
+| 1000 | 20.2M | 47.9M | 74.7M |
+
+Regular is the best per-power choice below ~power 230 (Elite/Legendary aren't worth it yet at that
+power even for a level-9 guild), Elite overtakes and leads through roughly power 800, Legendary
+overtakes Elite above that — a ramp reflecting each mode's own difficulty ceiling, not an inversion
+where a "lower" mode always dominates a "higher" one or vice versa. Regular's own plateau (~20.2M)
+sits below Elite's own peak-vs-Merc-defined ceiling, consistent with Regular never having been given
+an explicit vs-Merc target — its own implied peak ratio (computed, not targeted) works out to ~2.8x
+solo Merc at power 600, forming a sensible Regular(~2.8x) < Elite(3x) < Legendary(7x) ladder.
+
+**Side effect, expected, not a regression**: Elite's own reward efficiency (15,000-22,700/pt) and
+Legendary's (15,500-26,000/pt) now sit close to, and overlap, Regular's own (10,000-20,100/pt) — per-
+point efficiency is no longer what separates the three modes (it dramatically was in the interim,
+reward-tripled design one entry up). Absolute difficulty and the guild-level payout gate now do that
+job. `mercenaryFactory.test.js`'s Bounty-vs-guild-equivalent-reward regression needed its two-band
+split (by difficulty relative to Elite's own T1) replaced with one wider band, since the interpolated
+guild-efficiency curve now dips right at the Regular→Elite seam (Elite's efficiency briefly sits
+BELOW Regular's own top efficiency), spiking a couple of Bounty tiers' ratios in a way the old clean
+two-band split can no longer describe.
+
+Full test suite: **1524/1524** across 83 suites (7 pre-existing fixture/regression tests recomputed
+or rewritten against the new constants, one new regression test added for Elite/Legendary's new T4
+difficulty). No further recommendation — direct implementation of the player's own explicit
+numeric targets (break-even power per mode, 3x/7x caps), each verified to land within tolerance.

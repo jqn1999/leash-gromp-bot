@@ -306,10 +306,14 @@ non-Metal-King brackets now sit on one continuous **geometric difficulty ladder*
 T4 (4,000, unchanged — already the live value pre-rework, since Elite T4 was already anchored at 2x
 Regular T4 and Legendary T4 at 2x Elite T4):
 
-Regular's own T2/T3 rows below were retuned again the very next day by the internal-ladder-
-smoothing pass documented above this section — the table shows the CURRENT live values
-(difficulty 46/215, not the original 85/600 this 2026-08-26 rework shipped with); Elite/Legendary
-rows are unaffected and still reflect this rework's original numbers unchanged.
+**This entire table is now historical, not live** — kept for the ladder-ratio derivation history
+below, not as a current-numbers reference. Regular's own T2/T3 rows were retuned the very next day
+by the internal-ladder-smoothing pass documented above this section (difficulty 46/215, not the
+original 85/600 shown here); every row was then retuned again, twice more, on 2026-09-12 — first a
+reward/penalty triple on Elite/Legendary only (see that section's own "Update" note above), then a
+same-day full accessibility retune touching difficulty AND reward on all 12 brackets (see that
+section's own second "Update" note, and `balance-audit.md`'s matching entry, for the actual
+CURRENT live difficulty/reward/efficiency values).
 
 | Bracket | Difficulty | Reward | Penalty | Efficiency (reward/difficulty) |
 |---|---|---|---|---|
@@ -365,6 +369,35 @@ factor is also mathematically inert on WHERE each mode breaks even (that point i
 penalty:reward ratio alone) — Legendary's own real-power breakeven stays at the same ~415/player
 (guild level 6) it was before this change; only the size of the win/loss around that point tripled.
 See `balance-audit.md`'s 2026-09-12 entry for the full before/after curve against solo Mercenary.
+
+**Update (2026-09-12, same day) — superseded again: full accessibility retune, all 12 brackets,
+Elite/Legendary vs-Merc cap tightened to 3x/7x.** Prompted by the player's own follow-up: a
+4-person, 200-power/player guild had only a 40.9% shot at Regular's own T4 even once its level-8
+gate was met — success chance itself wasn't "generally reachable" as work multi climbed, direct
+instruction: *"lower difficulty across the board on all raid tiers and types and also lower their
+payouts appropriately... I want success caps generally reachable as you climb up in work multi as a
+guild... guilds need to work to get the guild levels which brings their EV higher so players that
+come from merc can't suddenly just start doing raids... elite caps at 3x solo merc per raider and
+legendary is 7x."* This time difficulty WAS cut (the tripling above deliberately left it alone) —
+made safe because Regular's own T4 was cut by a much bigger factor (0.43x) than Elite's (0.74x) in
+the same pass, so Elite T1's new difficulty (885) still sits above Regular T4's new difficulty
+(430), preserving the cliff-guard invariant with a smaller margin than before (was 1189 vs. 1000).
+
+New efficiency bands (no longer clean, non-overlapping bands like the table above — see why below):
+Regular 10,000→20,100/pt (unchanged shape, both difficulty AND reward scaled by the same 0.4303
+factor), Elite 15,000→22,700/pt, Legendary 15,500→26,000/pt. **Elite/Legendary's efficiency now
+overlaps Regular's almost entirely** — per-point reward efficiency stopped being what separates the
+three modes; absolute difficulty and the guild-level payout multiplier (`RaidLevel.THRESHOLDS` ×
+`GuildCompanionScaling.raidRewardBonusPercent`, evaluated at each mode's own unlock level — Elite=7,
+Legendary=9) do that job now. New break-even/peak targets, solved numerically per mode (difficulty
+scale + reward scale against both a break-even-power target and a peak-vs-Merc cap): Elite
+break-even 100 power/player @ guild level 7, peak 3.0x Merc; Legendary break-even 300 power/player @
+guild level 9, peak 7.0x Merc. Legendary's own T1 difficulty went UP (2378→3000) despite the lower
+break-even power — evaluated at level 9's much bigger payout multiplier (~10.0x vs. level 6's ~4.5x
+the old ~415 figure used), a harder curve still breaks even sooner in raw power once the guild has
+done the level-9 grind, directly matching the "levels bring EV, not raw power" goal above. See
+`balance-audit.md`'s second 2026-09-12 entry for the full new tier table, cross-mode ordering check,
+and the reasoning behind the numeric solve.
 
 `ELITE_PENALTY_INCREASE`/`LEGENDARY_PENALTY_INCREASE` **stayed in `constants.js`, values unchanged,
 as of this 2026-08-26 entry** — but their role had already narrowed to exactly one thing:
