@@ -211,6 +211,32 @@ the rest), so every pattern below `SMALL_SPIKE` keeps its exact prior odds uncha
   current buy or sell price (whichever window is active) plus the max amount the user could
   currently buy or sell.
 
-Max starch capacity is upgraded through the `starchShop` in `constants.js`: The Rickety Root Cellar
-(25,000 cap, 125,000,000 cost) → The Sturdier Starch Cellar → The Merchant Guild's Starch Exchange →
-The Ironroot Trading House → The Sovereign Starch Vault (200,000 cap, 750,000,000 cost).
+Max starch capacity is upgraded through the `starchShop` in `constants.js`. This line was stale —
+still describing the pre-2026-08-24-rescale numbers — until fixed 2026-09-12 alongside the addition
+of tiers 6-7 below; see the "Capacity" section above for the accurate, current 7-tier ladder: The
+Rickety Root Cellar (500 cap, 1,000,000 cost) → The Sturdier Starch Cellar → The Merchant Guild's
+Starch Exchange → The Ironroot Trading House → The Sovereign Starch Vault (10,000 cap, 75,000,000
+cost) → The Grand Starch Reserve → The Everlasting Starch Vault (50,000 cap, 750,000,000 cost).
+
+**Tiers 6-7 added 2026-09-12, direct instruction** — two deliberately expensive steps continuing
+the same rising potatoes-per-capacity curve the 2026-08-24 rescale preserved (4,000 → 6,000 → 6,667
+→ 12,000 → 15,000/point), now extending to 20,000 then 30,000/point:
+
+| Tier | Capacity | Cost | Potatoes/capacity |
+|---|---|---|---|
+| 6 (The Grand Starch Reserve) | 10,000→25,000 | 300,000,000 | 20,000 |
+| 7 (The Everlasting Starch Vault) | 25,000→50,000 | 750,000,000 | 30,000 |
+
+Full ladder completion now costs ~1.17B total (was ~119M) — deliberately priced below `workShop`'s
+own single most expensive tier (1.5B) so starch capacity doesn't out-cost the shop that actually
+drives power progression, while still reading as a real late-game sink instead of the ~119M ceiling
+the 5-tier ladder topped out at.
+
+**Rebirth eligibility bar raised as a direct, confirmed consequence, not an oversight**:
+`rebirthFactory.js`'s `checkRebirthEligibility` reads `getShopMax('starchShop')` — the shop's own
+last tier — dynamically, so extending the ladder to 50,000 means rebirth now requires the FULL new
+ladder, not just the old 10,000 cap. Confirmed with the player before implementing (the alternative
+— snapshotting rebirth's own requirement at the old 10,000 so the new tiers become a pure
+post-rebirth sink — was explicitly turned down in favor of raising the bar). See
+`rebirthFactory.test.js`'s own regression tests pinning both sides of this: 10,000 alone no longer
+satisfies "Starch Capacity shop", only the full 50,000 does.

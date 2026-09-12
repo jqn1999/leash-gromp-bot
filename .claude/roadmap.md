@@ -12027,3 +12027,37 @@ label text to `guild/mercenary/companion/rebirth/world buff`.
 includes the bonus when `mercenaryBuff === 'workMulti'`, confirms it's untouched for any other
 Mercenary Buff category (no false-positive bonus), and confirms `/user-stats`'s own "Live:" figure
 shows the same fix. Full suite: **1535/1535** across 84 suites. Docs: `mercenary-bounties.md`.
+
+## Buff: Starch shop extended with 2 expensive tiers, 10,000 max → 50,000 (2026-09-12, direct instruction)
+
+Player: "increase shop starch capacity increases to 50k at max, but maybe the next updates (25k and
+then 50k) fairly expensive plan out the cost and tell me what u think makes sense."
+
+Continued the existing 5-tier ladder's rising potatoes-per-capacity curve (4,000 → 6,000 → 6,667 →
+12,000 → 15,000/point) with two new, deliberately pricier steps:
+
+| Tier | Capacity | Cost | Potatoes/capacity |
+|---|---|---|---|
+| 6 (The Grand Starch Reserve) | 10,000→25,000 | 300,000,000 | 20,000 |
+| 7 (The Everlasting Starch Vault) | 25,000→50,000 | 750,000,000 | 30,000 |
+
+Full ladder completion now costs ~1.17B (was ~119M) — priced below `workShop`'s own single most
+expensive tier (1.5B) so starch capacity doesn't out-cost the shop that actually drives power
+progression, while reading as a genuine late-game sink instead of the old modest ceiling.
+
+**Flagged before implementing, not discovered after**: `rebirthFactory.js`'s
+`checkRebirthEligibility` reads `getShopMax('starchShop')` (the shop's own last tier) dynamically —
+extending the ladder to 50,000 means rebirth eligibility's Starch Capacity requirement jumped from
+10,000 to 50,000 too, a real ~1.1B-potato increase in what rebirth demands. Asked the player which
+they wanted (cap rebirth's own check at the old 10,000 so the new tiers become a pure post-rebirth
+sink, vs. let rebirth require the new max) — they chose the latter: rebirth now genuinely requires
+the full 7-tier ladder, same as every other shop it already gates on.
+
+New tests: `shopFactory.test.js` pins both new tiers' exact currentAmount/amount/cost and confirms
+potatoes-per-capacity keeps rising across the whole ladder (not just the two new tiers in
+isolation); `rebirthFactory.test.js` adds the two-sided regression the rebirth-bar change needed —
+10,000 alone no longer satisfies "Starch Capacity shop", only the full 50,000 does. Also fixed a
+pre-existing, unrelated doc-drift bug found along the way: `starch-trading.md` had a second summary
+paragraph still describing the pre-2026-08-24-rescale numbers (25,000/200,000cap figures) years
+out of sync with the accurate table earlier in the same file. Full suite: **1541/1541** across 84
+suites. Docs: `starch-trading.md`.

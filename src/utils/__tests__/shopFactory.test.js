@@ -150,3 +150,39 @@ describe('formatShopValue', () => {
         expect(formatShopValue('starchShop', 25000)).toBe('25,000 max starches');
     });
 });
+
+// Tiers 6-7 added 2026-09-12, direct instruction — extends the ladder from a 10,000 max
+// (5 tiers) to a 50,000 max (7 tiers), two deliberately expensive steps continuing the
+// rising potatoes-per-capacity curve. Pinned directly here (not just incidentally
+// exercised elsewhere) since rebirthFactory.js's own eligibility check reads this same
+// array's last tier dynamically — a wrong amount/cost here would silently move the
+// rebirth bar too.
+describe('starchShop tiers 6-7', () => {
+    const starchShop = shops.find(s => s.shopId === 'starchShop');
+
+    test('the ladder now has 7 tiers, topping out at 50,000', () => {
+        expect(starchShop.items).toHaveLength(7);
+        expect(starchShop.items[starchShop.items.length - 1].amount).toBe(50000);
+    });
+
+    test('tier 6 (10,000 -> 25,000) costs 300,000,000', () => {
+        const tier6 = starchShop.items.find(i => i.id === 6);
+        expect(tier6.currentAmount).toBe(10000);
+        expect(tier6.amount).toBe(25000);
+        expect(tier6.cost).toBe(300000000);
+    });
+
+    test('tier 7 (25,000 -> 50,000) costs 750,000,000', () => {
+        const tier7 = starchShop.items.find(i => i.id === 7);
+        expect(tier7.currentAmount).toBe(25000);
+        expect(tier7.amount).toBe(50000);
+        expect(tier7.cost).toBe(750000000);
+    });
+
+    test('potatoes-per-capacity keeps rising across every tier, including the two new ones', () => {
+        const efficiencies = starchShop.items.map(i => i.cost / (i.amount - i.currentAmount));
+        for (let i = 1; i < efficiencies.length; i++) {
+            expect(efficiencies[i]).toBeGreaterThan(efficiencies[i - 1]);
+        }
+    });
+});

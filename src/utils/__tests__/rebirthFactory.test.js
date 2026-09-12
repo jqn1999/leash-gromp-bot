@@ -75,6 +75,22 @@ describe('checkRebirthEligibility', () => {
         expect(result.missing).not.toContain('Work Multiplier shop');
         expect(result.missing).not.toContain('Work Multiplier regrade');
     });
+
+    // Starch shop grew from 5 tiers (max 10,000) to 7 (max 50,000) on 2026-09-12, direct
+    // instruction — rebirth's own eligibility check reads the shop's last tier dynamically
+    // (getShopMax('starchShop')), so this bar moved too, on purpose (confirmed with the
+    // player rather than assumed): a roster that was rebirth-ready at the old 10,000 cap
+    // is no longer ready until they've bought the new 25,000/50,000 tiers as well.
+    test('the old 5-tier max (10,000) no longer satisfies the Starch Capacity shop requirement — the new tiers raised the bar', () => {
+        const result = checkRebirthEligibility(maxedUser({ maxStarches: 10000 }));
+        expect(result.eligible).toBe(false);
+        expect(result.missing).toEqual(['Starch Capacity shop']);
+    });
+
+    test('the new 7-tier max (50,000) satisfies the Starch Capacity shop requirement', () => {
+        const result = checkRebirthEligibility(maxedUser({ maxStarches: 50000 }));
+        expect(result.eligible).toBe(true);
+    });
 });
 
 describe('getRebirthBonusPercent', () => {

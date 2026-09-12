@@ -3904,6 +3904,36 @@ const shops = [
                 id: 5,
                 name: "The Sovereign Starch Vault",
                 type: "maxStarches"
+            },
+            // Tiers 6-7 added 2026-09-12, direct instruction — continues the rising
+            // potatoes-per-capacity curve above (4,000 -> 6,000 -> 6,667 -> 12,000 ->
+            // 15,000/point) with two deliberately expensive steps (20,000 then 30,000/
+            // point), landing full completion at ~1.17B total — below workShop's own
+            // single most expensive tier (1.5B), so starch capacity doesn't out-cost the
+            // shop that actually drives power progression, while still reading as a real
+            // late-game sink rather than the ~119M ceiling the 5-tier ladder topped out
+            // at. Direct instruction confirmed maxStarches's dynamic rebirth-eligibility
+            // check (rebirthFactory.js's getShopMax('starchShop'), reads the shop's own
+            // last tier) should pick up the new 50,000 ceiling rather than staying pinned
+            // at the old 10,000 — rebirth now requires the full ladder, same as every
+            // other shop it already gates on.
+            {
+                currentAmount: 10000,
+                amount: 25000,
+                cost: 300000000,
+                description: "A stockpile so vast it rivals a small kingdom's entire treasury",
+                id: 6,
+                name: "The Grand Starch Reserve",
+                type: "maxStarches"
+            },
+            {
+                currentAmount: 25000,
+                amount: 50000,
+                cost: 750000000,
+                description: "Said to hold enough starch to outlast the Kingdom itself",
+                id: 7,
+                name: "The Everlasting Starch Vault",
+                type: "maxStarches"
             }
         ],
         title: "Starch Storage Shop (increase max starches)"
