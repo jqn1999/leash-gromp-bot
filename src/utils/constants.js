@@ -279,8 +279,9 @@ const DailyStreak = {
 // Daily rotation (3 of 5) refreshes every day; weekly rotation (2 of 6) only refreshes
 // on Mondays, both at the same 8pm ET (America/New_York, DST-safe) cron the Tower/Spud
 // Keep/Guild Contract jobs already use — see questFactory.js. (The separate daily LOGIN
-// streak, dailyStreakFactory.js, is NOT on this cron — it computes its own real
-// America/New_York midnight boundary directly, unaffected by this job's own schedule.)
+// streak, dailyStreakFactory.js, is NOT literally triggered by this cron — it's checked
+// reactively on every interaction, not on a schedule — but its own "day" boundary was
+// moved to match this same 8pm ET moment, see that file's own comment.)
 // Dailies pay potatoes scaled by the player's own
 // workMultiplierAmount (same reasoning as the daily streak — stays meaningful as the
 // economy matures); weeklies pay a flat permanent stat bonus (matching how every other

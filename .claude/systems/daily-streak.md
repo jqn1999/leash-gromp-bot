@@ -22,27 +22,43 @@ command a player invoked.
 
 ## Day boundary & streak continuation
 
+**The boundary is 8pm ET, not midnight (2026-09-13, direct instruction: "make daily login streak
+also part of the 8pm est reset")** — same moment `backgroundEvents.js`'s own Tower/Quest/Guild
+Contract/Spud Keep cron fires (moved off midnight the same day, see tower.md). A previous version
+of this section (and an earlier direct instruction, same day) had these two "day" boundaries as
+genuinely independent — the streak computed real midnight ET via `Intl`, untouched by the cron's
+own move to 8pm. That's since been reversed: the streak's own boundary was moved to match.
+
 `DailyStreakFactory.processLogin(userDetails)`:
 
 ```
-today = current date in EST (Intl handles the DST transition automatically)
+today = getStreakDayString(now)       // Eastern calendar day, +1 if already >= 8pm ET
 if userDetails.lastLoginDate == today: already claimed, return null
 
-yesterday = (now - 24h) formatted in EST
+yesterday = getPreviousStreakDayString(today)   // pure calendar subtraction, not "now - 24h"
 isConsecutive = userDetails.lastLoginDate == yesterday
-newStreak = isConsecutive ? loginStreak + 1 : 1   // any gap of 2+ days resets to 1
+newStreak = isConsecutive ? loginStreak + 1 : 1   // any gap of 2+ (streak-)days resets to 1
 ```
 
-EST/EDT is used because it's the natural real-world day boundary for a LOGIN streak — this is
-computed independently via `Intl`/`toLocaleDateString('America/New_York', ...)`, genuinely
-DST-safe midnight, not tied to any cron job at all. It no longer lines up with the Tower/Quest/
-Guild Contract/Spud Keep cron's own reset time (moved to 8pm ET 2026-09-13, see tower.md) —
-the two systems' "day" boundaries are independent and were never actually wired together, just
-described the same loose way in older comments. A brand-new account (`lastLoginDate: null` from
-`addUser`) or a pre-existing
-account that predates this feature (missing the field entirely) both naturally fall into the
-"not consecutive" branch and start a fresh streak at 1 on their next interaction — same
-lazy-backfill philosophy as achievements, no migration script needed.
+`getStreakDayString` reads the Eastern wall-clock date AND hour via `Intl` (DST-safe), then bumps
+the calendar day by one if the hour is already `>= RESET_HOUR_EST` (20). Deliberately **calendar-
+integer** (year/month/day, via `Date.UTC` as a pure calendar-math helper) rather than raw
+millisecond arithmetic throughout — a real calendar day is 23 or 25 hours on the two annual
+DST-transition days, so a naive `date.getTime() ± 24*60*60*1000` shift for "yesterday" (the old
+approach, back when the boundary really was midnight) can land a full calendar day off exactly on
+those two days. `getPreviousStreakDayString` derives "yesterday" from `today`'s own already-
+resolved Y-M-D string via calendar subtraction, never a second real-time computation — this is
+what makes a claim at, say, 9pm ET one day and another at 9pm ET the very next real day read as
+consecutive (both fall on the "streak day" immediately following their own real calendar date, one
+real day apart) even though neither literal wall-clock moment differs by exactly 24 real hours on a
+DST-transition day. `RESET_HOUR_EST` (20) must stay in sync with `backgroundEvents.js`'s own cron
+hour by hand — there's no shared constant between the two files (a single literal `20` in a cron
+string vs. a Date-math threshold aren't naturally the same kind of value to unify).
+
+A brand-new account (`lastLoginDate: null` from `addUser`) or a pre-existing account that predates
+this feature (missing the field entirely) both naturally fall into the "not consecutive" branch and
+start a fresh streak at 1 on their next interaction — same lazy-backfill philosophy as
+achievements, no migration script needed.
 
 ## Reward formula
 

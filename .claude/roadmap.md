@@ -12392,3 +12392,60 @@ in it is unit-tested today) — full suite re-run to confirm the text-only edits
 **1615/1615** across 85 suites, unchanged from before this fix. Docs: `tower.md`, `spud-keep.md`,
 `daily-streak.md`, `quests.md`, `guild-contracts.md`, `raids-and-world-events.md`,
 `reference/commands.md`, `architecture/data-model.md`.
+
+## Fix: birthday check split back to midnight ET; daily login streak folded into the 8pm ET reset (2026-09-13, same-day follow-up)
+
+Player, immediately after the above: "Birthday should still be midnight est. make daily login
+streak also part of the 8pm est reset." Two corrections to the same-day 8pm move:
+
+**Birthday check** — moved OUT of the shared 8pm ET reset bundle into its own dedicated
+`schedule.scheduleJob({ rule: '0 0 * * *', tz: 'America/New_York' }, ...)` job in
+`backgroundEvents.js`, pinned to real midnight Eastern (DST-safe) rather than riding the
+now-8pm-shifted Tower/Quest/Guild Contract/Spud Keep bundle. While extracting it, also fixed a
+latent bug the extraction exposed: the "is today someone's birthday" comparison used
+`now.getMonth()+1`/`now.getDate()` (raw `Date` getters — implicitly the HOST's own system
+timezone, not explicitly Eastern at all) rather than an Eastern-aware read. This coincidentally
+worked before purely because the old bundled cron fired at 4/5am UTC (safely inside the same
+UTC calendar day Eastern's own midnight had just started, assuming a UTC-clocked host) — riding
+along on the reset bundle's own correctness rather than having any of its own. New
+`getMonthDayEST(date)` reads the Eastern month/day explicitly via `Intl.DateTimeFormat`
+(`formatToParts`, DST-safe), matching the same pattern every other day-boundary helper in this
+codebase already uses, so the birthday check is correct on its own merits now, independent of
+whatever the host's default timezone happens to be. The dead `formatDate` helper (only ever used
+by the removed inline call) was deleted.
+
+**Daily login streak** — REVERSED the previous entry's own "deliberately untouched, still real
+midnight" decision: `dailyStreakFactory.js`'s day boundary now moves to 8pm ET too, matching
+`canEnterTower`/`towerWardUsedToday`/quest-rotation/Spud-Keep's own boundary exactly. New
+`getStreakDayString(date)` reads the Eastern date AND hour via `Intl` and bumps the calendar day
+by one once the hour is `>= RESET_HOUR_EST` (20) — deliberately **calendar-integer** (year/
+month/day via `Date.UTC` as a pure calendar-math helper) rather than the old raw-millisecond
+"`date.getTime() - 24*60*60*1000`" approach for "yesterday", since a real calendar day is 23 or
+25 hours on the two annual DST-transition days and a naive `±24h` ms shift can land a full
+calendar day off exactly on those two days. New `getPreviousStreakDayString(todayString)`
+derives "yesterday" by calendar-subtracting 1 from `today`'s own already-resolved Y-M-D string,
+never a second real-time computation, so streak continuity is judged purely on which "streak
+day" (8pm-to-8pm) two logins fall on, not on being within a literal rolling 24 hours of each
+other.
+
+New tests (`dailyStreakFactory.test.js`, +5): pinned the whole suite's system clock to a fixed
+noon-EDT moment (`jest.useFakeTimers()`) so the pre-existing tests (which build fixtures off a
+real-midnight-anchored `estDateDaysAgo` helper) stay deterministic regardless of what real
+wall-clock time the suite happens to run at — the widened 8pm-midnight-ET "risk window" (4 real
+hours/day, vs. the old boundary's effectively zero-width midnight instant) would otherwise make
+these genuinely flaky depending on when CI executes. New `describe('8pm ET streak-day boundary')`
+block: 7:59pm ET still counts as the current day; exactly 8:00pm ET already rolls to the next
+day; a 9pm-ET claim followed by a 10am-ET-next-day check reads as the SAME streak day (no
+double-claim); a 9pm-ET claim followed by a 9pm-ET-next-real-day claim extends the streak
+(consecutive across the shift); and a dedicated spring-forward-transition-day test (March 8,
+2026) claiming at 9pm EST the night before, confirming no claim at 10am EST mid-transition-day,
+then a correct streak-2 claim at 9pm EDT that same evening — proving the calendar-integer day
+math doesn't misfire across the one real calendar day of the year that's actually 23 hours long.
+
+Corrected two stale comments the earlier same-day entry introduced: `constants.js`'s quest-
+rotation comment (previously "the daily LOGIN streak... is NOT on this cron" — still literally
+true, it's checked reactively per-interaction, not scheduled, but its day BOUNDARY now matches)
+and `daily-streak.md`'s own "these two systems' boundaries are independent" note, both updated
+to reflect the streak's boundary now intentionally tracking the reset cron's own 8pm ET moment.
+
+Full suite: **1620/1620** across 85 suites. Docs: `daily-streak.md`.

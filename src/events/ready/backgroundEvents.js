@@ -11,7 +11,15 @@ const { GuildContractFactory } = require("../../utils/guildContractFactory.js");
 const { EmbedFactory } = require("../../utils/embedFactory.js");
 const spudKeepFactory = require("../../utils/spudKeepFactory.js");
 
-const formatDate = md => md.split('-').map(p => `0${p}`.slice(-2)).join('-');
+// Eastern-timezone-aware "MM-DD" (Intl, DST-safe) — used only by the birthday cron below
+// to judge "is it actually this person's birthday" in the same timezone that job's own
+// schedule fires in, rather than the host's own (implicit, possibly-UTC) Date getters.
+function getMonthDayEST(date) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit' }).formatToParts(date);
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return `${map.month}-${map.day}`;
+}
+
 let eF = new EventFactory()
 let towerLeaderboardFactory = new TowerLeaderboardFactory()
 let questFactory = new QuestFactory()
@@ -59,7 +67,7 @@ module.exports = async (client) => {
         // announcement went silently missing with no diagnosable log line). Previously
         // this whole job was one unguarded sequential await chain: if ANY earlier step
         // (Tower payout, quest rotation, guild contract rotation) threw, every step after
-        // it — including Spud Keep's own resolution/post and birthdays — silently never
+        // it — including Spud Keep's own resolution/post — silently never
         // ran, with nothing logged (the per-post .catch(err => console.log(err)) blocks
         // only ever covered the Discord channel.fetch/send calls, never the resolution
         // logic feeding them). Isolating each step means one broken step can't take the
@@ -159,16 +167,21 @@ module.exports = async (client) => {
         } catch (err) {
             console.log('daily cron: Spud Keep resolution step failed:', err)
         }
+    });
 
-        // Birthday shit
+    // Birthday check/announcement (2026-09-13, direct instruction: "Birthday should still
+    // be midnight est") — deliberately kept OUT of the 8pm ET reset bundle above, which
+    // moved off midnight; birthdays get their own dedicated job, pinned to REAL midnight
+    // America/New_York (DST-safe, same `{ rule, tz }` node-schedule form as every other
+    // fixed-Eastern-time job in this file/starchEvents.js).
+    schedule.scheduleJob({ rule: '0 0 * * *', tz: 'America/New_York' }, async function () {
         client.channels.fetch('1188539987118010408')
             .then(async channel => {
                 const jsonChannel = JSON.parse(JSON.stringify(channel));
                 const birthdaysInOrder = await getSortedBirthdays();
                 const nextBirthdayPerson = birthdaysInOrder[0];
 
-                const now = new Date();
-                const currentDateFormatted = formatDate(`${now.getMonth() + 1}-${now.getDate()}`);
+                const currentDateFormatted = getMonthDayEST(new Date());
                 if (currentDateFormatted == nextBirthdayPerson.birthday) {
                     channel.setName(`happy bday ${nextBirthdayPerson.username}`);
                     channel.send(`🎂 It is <@${nextBirthdayPerson.userId}>\'s birthday! 🥳 Congrats on surviving another year and everyone wish <@${nextBirthdayPerson.userId}> a happy birthday! 🎉`);
