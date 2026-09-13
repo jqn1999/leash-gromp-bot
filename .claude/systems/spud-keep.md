@@ -33,14 +33,31 @@ mercenaries genuinely compete for the exact same prize.
   live off each mercenary's own persistent `autoJoinSpudKeep` toggle instead, see "The Merc
   Faction" below.
 - `spud_keep_buff` — the granted passive-income buff + the SOLE canonical holder pointer +
-  `consecutiveHoldCycles` (the Attacker's Bonus streak). Dedicated wrapper:
-  `dynamoHandler.getActiveSpudKeepBuff`/`setActiveSpudKeepBuff`.
+  `consecutiveHoldCycles` (the Attacker's Bonus streak). Read via
+  `dynamoHandler.getActiveSpudKeepBuff`.
 - `spud_keep_cooldown_buff` — a structurally identical sibling doc carrying the SECOND half of the
   bundle buff (cooldown reduction). A separate doc rather than reshaping `spud_keep_buff` into a
-  `buffs: []` array, specifically so the one predicate below never needed to change shape. Dedicated
-  wrapper: `dynamoHandler.getActiveSpudKeepCooldownBuff`/`setActiveSpudKeepCooldownBuff`.
+  `buffs: []` array, specifically so the one predicate below never needed to change shape. Read via
+  `dynamoHandler.getActiveSpudKeepCooldownBuff`.
   `holderType`/`holderId`/`holderName`/`expiresAt` are mirrored from `spud_keep_buff` at every
   resolution — never independently authoritative on "who's the holder."
+
+  **Written together, atomically (2026-09-14 fix)** — `dynamoHandler.setActiveSpudKeepBundle
+  (passiveBuff, cooldownBuff)`, a single DynamoDB `transactWrite` of both docs' own Update items.
+  This replaced two independent sequential writes (`setActiveSpudKeepBuff` then
+  `setActiveSpudKeepCooldownBuff`), each with its own silently-swallowed `.catch` — this file's
+  standing convention for every stats-table write. Player-reported bug: a mercenary got credited
+  for a Spud Keep cooldown skip while a GUILD held the Keep. Root cause — a transient DynamoDB
+  failure (throttling, a network blip) on the SECOND write, after the FIRST already succeeded,
+  never threw, never retried, and left the two docs permanently disagreeing about the holder
+  until the next FULLY successful `resolveCycle()` (which could be a full day later, or never, if
+  entrant power keeps landing on 0). `isSpudKeepBuffLiveForUser` reads holderType/holderId
+  straight off whichever doc it's checking, so a stale cooldown-buff doc still saying
+  `holderType: "mercenary"` after the passive doc had already moved to a guild let any random
+  mercenary's `/work` roll the (nonzero) spudKeep skip chance and get credited for it. Since both
+  docs always carry the exact same holder fields (only `buffType`/`value` differ), a single
+  atomic transaction closes the race entirely — either both update together, or (a genuine,
+  rare AWS-side failure) neither does.
 
 Both buff docs share this shape: `{ holderType: "guild"|"mercenary"|null, holderId: <guildId>|null,
 holderName, buffType, value, expiresAt }` (`spud_keep_buff` additionally carries

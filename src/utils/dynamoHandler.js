@@ -1878,10 +1878,6 @@ const getActiveSpudKeepBuff = async function () {
     return getStatDatabase("spud_keep_buff");
 }
 
-const setActiveSpudKeepBuff = async function (buff) {
-    await updateStatFields("spud_keep_buff", buff);
-}
-
 // Structurally identical sibling doc carrying the SECOND half of Spud Keep's bundle
 // buff (the cooldown-reduction percent) — a separate doc rather than reshaping
 // spud_keep_buff into a `buffs: []` array, specifically so isSpudKeepBuffLiveForUser's own
@@ -1892,8 +1888,57 @@ const getActiveSpudKeepCooldownBuff = async function () {
     return getStatDatabase("spud_keep_cooldown_buff");
 }
 
-const setActiveSpudKeepCooldownBuff = async function (buff) {
-    await updateStatFields("spud_keep_cooldown_buff", buff);
+// Atomic dual-write for the two docs above (2026-09-14, player-reported bug: a mercenary
+// got credited for a Spud Keep cooldown skip while a GUILD held the Keep). Root cause: this
+// used to be two INDEPENDENT sequential writes (setActiveSpudKeepBuff then
+// setActiveSpudKeepCooldownBuff), each with its own silently-swallowed `.catch` — this
+// file's own standing convention for every stats-table write, so a transient DynamoDB
+// failure (throttling, a network blip) on the SECOND write after the first already
+// succeeded would never throw, never retry, and never get logged as anything more than a
+// console.debug line. That leaves spud_keep_buff and spud_keep_cooldown_buff permanently
+// disagreeing about who holds the Keep until the next FULLY successful resolveCycle() —
+// which could be a full day later, or indefinitely, if entrant power keeps landing on 0.
+// isSpudKeepBuffLiveForUser reads holderType/holderId straight off whichever doc it's
+// asked to check, so a stale cooldown-buff doc still saying "mercenary" after the passive
+// doc had already moved to a guild would let any random mercenary's /work roll the
+// (nonzero) spudKeep skip chance and get credited for it — exactly the reported symptom.
+// Both docs always carry the exact same holderType/holderId/holderName/expiresAt (only
+// buffType/value differ — see getActiveSpudKeepCooldownBuff's own comment on why this
+// stayed two docs instead of one), so a single DynamoDB `transactWrite` of both Update
+// items closes the race entirely: either both docs update together, or (a genuine,
+// rare AWS-side failure) neither does — never a partial write leaving the pair split.
+const setActiveSpudKeepBundle = async function (passiveBuff, cooldownBuff) {
+    const passive = buildUpdateExpression(passiveBuff);
+    const cooldown = buildUpdateExpression(cooldownBuff);
+    if (!passive.expression || !cooldown.expression) return;
+
+    const params = {
+        TransactItems: [
+            {
+                Update: {
+                    TableName: awsConfigurations.aws_stats_table_name,
+                    Key: { trackingId: "spud_keep_buff" },
+                    UpdateExpression: passive.expression,
+                    ExpressionAttributeNames: passive.names,
+                    ExpressionAttributeValues: passive.values,
+                }
+            },
+            {
+                Update: {
+                    TableName: awsConfigurations.aws_stats_table_name,
+                    Key: { trackingId: "spud_keep_cooldown_buff" },
+                    UpdateExpression: cooldown.expression,
+                    ExpressionAttributeNames: cooldown.names,
+                    ExpressionAttributeValues: cooldown.values,
+                }
+            }
+        ]
+    };
+
+    return docClient.transactWrite(params).promise()
+        .catch(function (err) {
+            console.debug(`setActiveSpudKeepBundle error: ${JSON.stringify(err)}`)
+        });
 }
 
 module.exports = {
@@ -1964,7 +2009,6 @@ module.exports = {
     isWorldBuffLive,
 
     getActiveSpudKeepBuff,
-    setActiveSpudKeepBuff,
     getActiveSpudKeepCooldownBuff,
-    setActiveSpudKeepCooldownBuff
+    setActiveSpudKeepBundle
 }

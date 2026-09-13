@@ -18,8 +18,7 @@ beforeEach(() => {
     dynamoHandler.findUser.mockImplementation(async (id) => user(id, { autoJoinRaids: true }));
     dynamoHandler.updateStatFields.mockResolvedValue({});
     dynamoHandler.addStatFields.mockResolvedValue({});
-    dynamoHandler.setActiveSpudKeepBuff.mockResolvedValue({});
-    dynamoHandler.setActiveSpudKeepCooldownBuff.mockResolvedValue({});
+    dynamoHandler.setActiveSpudKeepBundle.mockResolvedValue({});
     // The Merc Faction roster is now a live getUsers() scan (getLiveMercFactionRoster) —
     // default to nobody opted in; individual tests override this to exercise a nonzero
     // Merc Faction roster.
@@ -423,7 +422,7 @@ describe('resolveCycle', () => {
         const result = await spudKeepFactory.resolveCycle();
 
         expect(result).toEqual({ skipped: true });
-        expect(dynamoHandler.setActiveSpudKeepBuff).not.toHaveBeenCalled();
+        expect(dynamoHandler.setActiveSpudKeepBundle).not.toHaveBeenCalled();
         expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
     });
 
@@ -441,12 +440,14 @@ describe('resolveCycle', () => {
         expect(result.holderChanged).toBe(true);
         expect(result.consecutiveHoldCycles).toBe(0);
         expect(result.potPotatoesPaid).toBe(0); // no previous holder — nothing accrued yet
-        expect(dynamoHandler.setActiveSpudKeepBuff).toHaveBeenCalledWith(expect.objectContaining({
-            holderType: 'guild', holderId: 'g1', holderName: 'g1-name', buffType: 'passiveIncome', value: SpudKeep.PASSIVE_BUFF_VALUE, consecutiveHoldCycles: 0
-        }));
-        expect(dynamoHandler.setActiveSpudKeepCooldownBuff).toHaveBeenCalledWith(expect.objectContaining({
-            holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: SpudKeep.COOLDOWN_BUFF_VALUE
-        }));
+        expect(dynamoHandler.setActiveSpudKeepBundle).toHaveBeenCalledWith(
+            expect.objectContaining({
+                holderType: 'guild', holderId: 'g1', holderName: 'g1-name', buffType: 'passiveIncome', value: SpudKeep.PASSIVE_BUFF_VALUE, consecutiveHoldCycles: 0
+            }),
+            expect.objectContaining({
+                holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: SpudKeep.COOLDOWN_BUFF_VALUE
+            })
+        );
         expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('spud_keep', expect.objectContaining({ guildEntrants: [] }));
         expect(dynamoHandler.addStatFields).not.toHaveBeenCalled(); // nothing paid out, nothing to subtract
     });
@@ -488,8 +489,10 @@ describe('resolveCycle', () => {
         expect(result.consecutiveHoldCycles).toBe(4);
         expect(result.passiveBuffValue).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE); // 40% at cycle 4
         expect(result.cooldownBuffValue).toBeCloseTo(SpudKeep.COOLDOWN_BUFF_MAX_VALUE);
-        expect(dynamoHandler.setActiveSpudKeepBuff).toHaveBeenCalledWith(expect.objectContaining({ value: SpudKeep.PASSIVE_BUFF_MAX_VALUE }));
-        expect(dynamoHandler.setActiveSpudKeepCooldownBuff).toHaveBeenCalledWith(expect.objectContaining({ value: SpudKeep.COOLDOWN_BUFF_MAX_VALUE }));
+        expect(dynamoHandler.setActiveSpudKeepBundle).toHaveBeenCalledWith(
+            expect.objectContaining({ value: SpudKeep.PASSIVE_BUFF_MAX_VALUE }),
+            expect.objectContaining({ value: SpudKeep.COOLDOWN_BUFF_MAX_VALUE })
+        );
     });
 
     test('a multi-member roster splits the pot by each member\'s own workMultiplierAmount, not evenly', async () => {
@@ -591,6 +594,9 @@ describe('resolveCycle', () => {
         const result = await spudKeepFactory.resolveCycle();
 
         expect(result.winner).toEqual({ type: 'mercenary', id: null, name: 'The Merc Faction' });
-        expect(dynamoHandler.setActiveSpudKeepBuff).toHaveBeenCalledWith(expect.objectContaining({ holderType: 'mercenary', holderId: null, holderName: 'The Merc Faction' }));
+        expect(dynamoHandler.setActiveSpudKeepBundle).toHaveBeenCalledWith(
+            expect.objectContaining({ holderType: 'mercenary', holderId: null, holderName: 'The Merc Faction' }),
+            expect.objectContaining({ holderType: 'mercenary', holderId: null, holderName: 'The Merc Faction' })
+        );
     });
 });

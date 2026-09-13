@@ -12534,3 +12534,51 @@ win. No production code changed. Corrected the same "forced Elite" language in `
 `Companions`/`TowerCompanionDrop` comments and `tower.md`'s "Drop mechanism" section to state
 this applies to any Elite fight — the comments had been narrower than the code ever actually
 was. Full suite: **1623/1623** across 85 suites (+1 from the new test).
+
+## Fix: Spud Keep's two buff docs could silently desync, crediting the wrong holder type for a cooldown skip (2026-09-14, player report)
+
+Player: "A merc also got a msg saying spud keep skipped their work but mercs don't own keep
+right now." Investigated by tracing `isSpudKeepBuffLiveForUser`'s own logic (correct on its
+own terms — a mercenary can only match a `holderType: "mercenary"` buff) back to how the two
+buff docs (`spud_keep_buff`/`spud_keep_cooldown_buff`) actually get written.
+
+**Root cause**: `resolveCycle()` wrote the two docs via two INDEPENDENT sequential calls —
+`setActiveSpudKeepBuff(...)` then `setActiveSpudKeepCooldownBuff(...)` — each going through
+`updateStatFields`, which (this file's own standing convention for every stats-table write)
+swallows any DynamoDB failure into a `console.debug` line and never throws or retries. If the
+SECOND write ever failed transiently (throttling, a network blip) right after the FIRST
+succeeded, the two docs would end up disagreeing about who holds the Keep — one already
+updated to the new holder, one still reporting the previous one — and stay that way until the
+next FULLY successful `resolveCycle()`, which could be a full day later, or indefinitely if
+entrant power keeps landing on 0 (the "skip the lottery entirely" edge case). Since
+`isSpudKeepBuffLiveForUser` reads holderType/holderId straight off whichever doc
+`getWorkCooldownSkipSources` happens to be checking, a stale `spud_keep_cooldown_buff` still
+saying `holderType: "mercenary"` from a previous cycle — after `spud_keep_buff` had already
+moved on to a guild — would let any random mercenary's `/work` roll the (nonzero) spudKeep
+skip chance and get credited for it in the result embed, exactly matching the report.
+
+**Fix**: new `dynamoHandler.setActiveSpudKeepBundle(passiveBuff, cooldownBuff)` — a single
+DynamoDB `transactWrite` covering both docs' Update items in one all-or-nothing transaction.
+Both docs always carry the exact same `holderType`/`holderId`/`holderName`/`expiresAt` (only
+`buffType`/`value` differ), so this closes the race completely: either both update together,
+or a genuine (rare) AWS-side transaction failure leaves BOTH untouched — never a partial
+write splitting the pair. `spudKeepFactory.resolveCycle()` now calls this once instead of the
+two old sequential setters, which were removed entirely (nothing else called them).
+
+Updated tests: `dynamoHandler.test.js`'s two old direct setter tests replaced with
+`setActiveSpudKeepBundle` coverage (builds a `TransactItems` array with one `Update` per
+trackingId carrying that doc's own distinct payload; a `transactWrite` rejection resolves
+`undefined` rather than throwing, same fire-and-forget convention as every other write here).
+`spudKeepFactory.test.js`'s four `resolveCycle()` assertions on the old two-call pattern
+updated to the new single two-argument `setActiveSpudKeepBundle` call. Docs: `spud-keep.md`.
+Full suite: **1623/1623** across 85 suites (net test count unchanged — 2 removed, 2 added).
+
+Also investigated the same day, per the same report: "Look at mimic kill logic, the embed
+didn't display." Reviewed `workFactory.handleMimicPotato`'s kill branch, `embedFactory.
+createMimicPotatoEmbed`'s kill branch, `work.js`'s scenario dispatch/achievement-unlock/
+auto-chain wiring, and every DB write involved (all swallow their own errors, none can throw
+into the embed-build path) — found no code-level defect, and the existing `killedMimic: true`
+test coverage in both `workFactory.test.js` and `embedFactory.test.js` already passes and
+matches a manual reproduction. Asked the player for more detail (exact symptom — no embed at
+all vs. a blank one, any error logged, how often it reproduces) rather than shipping a
+speculative fix for an unconfirmed defect.

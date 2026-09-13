@@ -326,16 +326,22 @@ async function resolveCycle() {
     const passiveBuffValue = getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, newConsecutiveHoldCycles);
     const cooldownBuffValue = getCompoundingBuffValue(SpudKeep.COOLDOWN_BUFF_VALUE, SpudKeep.COOLDOWN_BUFF_PER_HOLD_CYCLE, SpudKeep.COOLDOWN_BUFF_MAX_VALUE, newConsecutiveHoldCycles);
 
-    await dynamoHandler.setActiveSpudKeepBuff({
-        holderType, holderId, holderName,
-        buffType: SpudKeep.PASSIVE_BUFF_TYPE, value: passiveBuffValue,
-        expiresAt, consecutiveHoldCycles: newConsecutiveHoldCycles
-    });
-    await dynamoHandler.setActiveSpudKeepCooldownBuff({
-        holderType, holderId, holderName,
-        buffType: SpudKeep.COOLDOWN_BUFF_TYPE, value: cooldownBuffValue,
-        expiresAt
-    });
+    // Written as a single atomic transaction (2026-09-14 fix — see
+    // dynamoHandler.setActiveSpudKeepBundle's own comment) — these two docs must never be
+    // allowed to disagree about who the current holder is, even under a transient
+    // DynamoDB write failure on one half.
+    await dynamoHandler.setActiveSpudKeepBundle(
+        {
+            holderType, holderId, holderName,
+            buffType: SpudKeep.PASSIVE_BUFF_TYPE, value: passiveBuffValue,
+            expiresAt, consecutiveHoldCycles: newConsecutiveHoldCycles
+        },
+        {
+            holderType, holderId, holderName,
+            buffType: SpudKeep.COOLDOWN_BUFF_TYPE, value: cooldownBuffValue,
+            expiresAt
+        }
+    );
 
     // Step 7b — split the accruing pot ONE TIME among the OUTGOING holder's own roster
     // this cycle (a guild's live raid roster, or the Merc Faction's counted top-N),

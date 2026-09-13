@@ -13,6 +13,7 @@ jest.mock('aws-sdk', () => {
         query: jest.fn(),
         update: jest.fn(),
         scan: jest.fn(),
+        transactWrite: jest.fn(),
     };
     return {
         config: { update: jest.fn() },
@@ -818,8 +819,8 @@ describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuff
 });
 
 // Spud Keep (systems/spud-keep.md) — spud_keep_buff/spud_keep_cooldown_buff mirror
-// world_buff's own get/set shape exactly.
-describe('Spud Keep buff docs (getActiveSpudKeepBuff / setActiveSpudKeepBuff / getActiveSpudKeepCooldownBuff / setActiveSpudKeepCooldownBuff)', () => {
+// world_buff's own get/set shape exactly for reads.
+describe('Spud Keep buff docs (getActiveSpudKeepBuff / getActiveSpudKeepCooldownBuff)', () => {
     test('getActiveSpudKeepBuff reads the spud_keep_buff stats doc', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_buff', holderType: 'guild', holderId: 'g1', buffType: 'passiveIncome', value: 0.06 }] }));
         const buff = await dynamoHandler.getActiveSpudKeepBuff();
@@ -827,13 +828,6 @@ describe('Spud Keep buff docs (getActiveSpudKeepBuff / setActiveSpudKeepBuff / g
             ExpressionAttributeValues: { ':trackingId': 'spud_keep_buff' }
         }));
         expect(buff.holderType).toBe('guild');
-    });
-
-    test('setActiveSpudKeepBuff writes to the spud_keep_buff stats doc', async () => {
-        docClient.update.mockReturnValue(resolved({}));
-        await dynamoHandler.setActiveSpudKeepBuff({ holderType: 'mercenary', holderId: null, buffType: 'passiveIncome', value: 0.06, expiresAt: 123, consecutiveHoldCycles: 0 });
-        const [params] = docClient.update.mock.calls[0];
-        expect(params.Key).toEqual({ trackingId: 'spud_keep_buff' });
     });
 
     test('getActiveSpudKeepCooldownBuff reads the spud_keep_cooldown_buff stats doc', async () => {
@@ -844,12 +838,43 @@ describe('Spud Keep buff docs (getActiveSpudKeepBuff / setActiveSpudKeepBuff / g
         }));
         expect(buff.buffType).toBe('cooldownReduction');
     });
+});
 
-    test('setActiveSpudKeepCooldownBuff writes to the spud_keep_cooldown_buff stats doc', async () => {
-        docClient.update.mockReturnValue(resolved({}));
-        await dynamoHandler.setActiveSpudKeepCooldownBuff({ holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.08, expiresAt: 123 });
-        const [params] = docClient.update.mock.calls[0];
-        expect(params.Key).toEqual({ trackingId: 'spud_keep_cooldown_buff' });
+// setActiveSpudKeepBundle (2026-09-14 fix) — replaces the old two-independent-writes
+// setActiveSpudKeepBuff/setActiveSpudKeepCooldownBuff pair. Root cause of the bug this
+// closes: those two were separate sequential `docClient.update` calls, each silently
+// swallowing its own failure — a transient failure on the SECOND write after the FIRST
+// already succeeded left the two docs disagreeing about who holds the Keep (one already
+// updated to the new holder, one still reporting the previous one) until the next fully
+// successful daily resolution. A single `transactWrite` makes both docs update together
+// or not at all.
+describe('setActiveSpudKeepBundle', () => {
+    test('writes both docs via a single transactWrite call, one Update item per trackingId', async () => {
+        docClient.transactWrite.mockReturnValue(resolved({}));
+        const passiveBuff = { holderType: 'guild', holderId: 'g1', holderName: 'g1-name', buffType: 'passiveIncome', value: 0.08, expiresAt: 123, consecutiveHoldCycles: 0 };
+        const cooldownBuff = { holderType: 'guild', holderId: 'g1', holderName: 'g1-name', buffType: 'cooldownReduction', value: 0.08, expiresAt: 123 };
+
+        await dynamoHandler.setActiveSpudKeepBundle(passiveBuff, cooldownBuff);
+
+        expect(docClient.transactWrite).toHaveBeenCalledTimes(1);
+        const [params] = docClient.transactWrite.mock.calls[0];
+        expect(params.TransactItems).toHaveLength(2);
+        const passiveItem = params.TransactItems.find(item => item.Update.Key.trackingId === 'spud_keep_buff');
+        const cooldownItem = params.TransactItems.find(item => item.Update.Key.trackingId === 'spud_keep_cooldown_buff');
+        expect(passiveItem).toBeDefined();
+        expect(cooldownItem).toBeDefined();
+        // Both items' own attribute values reflect the distinct object each was given —
+        // proof this isn't accidentally writing the same payload to both docs.
+        expect(Object.values(passiveItem.Update.ExpressionAttributeValues)).toContain(0.08);
+        expect(Object.values(cooldownItem.Update.ExpressionAttributeValues)).toContain('cooldownReduction');
+    });
+
+    test('a transactWrite failure is swallowed, not thrown — same fire-and-forget convention every other stats write in this file follows', async () => {
+        docClient.transactWrite.mockReturnValue(rejected(new Error('TransactionCanceledException')));
+        await expect(dynamoHandler.setActiveSpudKeepBundle(
+            { holderType: 'mercenary', holderId: null, buffType: 'passiveIncome', value: 0.06 },
+            { holderType: 'mercenary', holderId: null, buffType: 'cooldownReduction', value: 0.06 }
+        )).resolves.toBeUndefined();
     });
 });
 
