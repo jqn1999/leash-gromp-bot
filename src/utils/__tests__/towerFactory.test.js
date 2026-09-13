@@ -1015,6 +1015,38 @@ describe('execElite win branch — elitesSurvivedCount and Bastion drop roll (to
         expect(tF.towerCompanionHits).toBe(0);
         expect(tF.died).toBe(true);
     });
+
+    // 2026-09-14, player follow-up: "Should also be able to be found from any elite
+    // encounter not just every 10th floor" — a mid-chain Elite (Wandering Woods, The
+    // Wizard Lime) is resolved by this exact same execElite() call the forced path uses
+    // (see updateValue's/updateTransaction's own CHOICES.ELITE branches), with no
+    // special-casing for how the fight was reached — so a WIN there already counts toward
+    // elitesSurvivedCount and already rolls a Bastion drop, exactly like a forced Elite
+    // win. Proven end to end through the real trigger call site, at a floor that isn't
+    // even a multiple of 10, rather than assumed from the shared-function architecture.
+    test('a won mid-chain Elite (triggered by Wandering Woods, not the forced every-10th-floor check) counts toward elitesSurvivedCount and rolls a Bastion drop the same as a forced Elite win', async () => {
+        // 'continue' acks Wandering Woods' own "prepare for combat" interstitial
+        // (createEliteEncounter) before execElite's own fight/leave and post-win screens.
+        const interaction = fakeInteraction([choice('continue'), choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000);
+        tF.floor = 5; // not a multiple of 10 — this Elite is purely mid-chain
+        const wanderingWoods = tC.ENCOUNTERS.find(e => e.name === 'Wandering Woods' && e.choices.some(c => c.outcome === tC.CHOICES.ELITE));
+        const index = wanderingWoods.choices.findIndex(c => c.outcome === tC.CHOICES.ELITE);
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValueOnce(0)     // fight roll -> win
+            .mockReturnValueOnce(0.001) // drop roll: 0.001 < 0.005 (floor 5 -> N=0 -> tier 1) -> hit
+            .mockReturnValue(0);
+
+        try {
+            await tF.updateValue(wanderingWoods, index, 'Green', false);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.elitesSurvivedCount).toBe(1);
+        expect(tF.towerCompanionHits).toBe(1);
+    });
 });
 
 // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction; floor restriction

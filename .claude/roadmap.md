@@ -12515,3 +12515,22 @@ true and `died` stays false either way. No production code changed — this was 
 pass, not a fix. Docs (`tower.md`) updated to state this coverage explicitly rather than
 leaving it implicit in the shared-function architecture. Full suite: **1622/1622** across 85
 suites (+2 from the new tests).
+
+## Verify: Bastion's drop mechanism already found from any Elite fight, not just every-10th-floor (2026-09-14, same-day follow-up)
+
+Player: "Should also be able to be found from any elite encounter not just every 10th floor."
+Same investigation as the Death Ward check above, applied to the DROP roll instead: the
+`elitesSurvivedCount++`/`TowerCompanionDrop.CHANCE` roll lives in `execElite`'s own win
+branch, the exact same shared function every mid-chain Elite (Wandering Woods, The Wizard
+Lime) already resolves through — no separate win-handling path exists for a mid-chain Elite
+to have skipped this. `fl.tier` itself is computed fresh from `Math.floor(this.floor / 10)`
+at the top of `execElite` every time it runs, regardless of trigger source, so a mid-chain
+Elite reached at any floor already rolls the tier-appropriate drop odds for that depth.
+
+Added direct proof: a new `towerFactory.test.js` test drives a mid-chain Elite win through
+the real `updateValue` trigger (Wandering Woods) at floor 5 — not a multiple of 10 — and
+confirms `elitesSurvivedCount`/`towerCompanionHits` increment identically to a forced Elite
+win. No production code changed. Corrected the same "forced Elite" language in `constants.js`'s
+`Companions`/`TowerCompanionDrop` comments and `tower.md`'s "Drop mechanism" section to state
+this applies to any Elite fight — the comments had been narrower than the code ever actually
+was. Full suite: **1623/1623** across 85 suites (+1 from the new test).

@@ -1550,18 +1550,29 @@ reskinned 2026-09-13 (player ask) from an unthemed stone gargoyle to a produce-t
 matching how Cinderroot/Rootcarver's own flavor points back at their mechanic; see
 `constants.js`'s entry for the full flavor text.
 
-**Drop mechanism** — rolled on **surviving** a forced Elite fight (the win branch of
-`execElite`, right after `checkElitePayout()`), banded by that Elite's own `getEliteTier`
-content tier (`TowerCompanionDrop.CHANCE` in `constants.js`):
+**Drop mechanism** — rolled on **surviving** an Elite fight (the win branch of `execElite`,
+right after `checkElitePayout()`), banded by that Elite's own `getEliteTier` content tier
+(`TowerCompanionDrop.CHANCE` in `constants.js`). Applies to **any** Elite fight, not only the
+forced every-10th-floor one — a mid-chain Elite triggered by a REWARD/ENCOUNTER/TRANSACTION
+entry (Wandering Woods, The Wizard Lime's "keep your potatoes" choice) resolves through this
+exact same `execElite` call (see `updateValue`'s/`updateTransaction`'s own `CHOICES.ELITE`
+branches), so a win there rolls the drop identically (confirmed 2026-09-14, player follow-up
+— "should also be able to be found from any elite encounter not just every 10th floor" — with
+direct test coverage through the real trigger call site; no code change was needed, the
+shared-function architecture already covered it):
 
-| Elite tier | Forced-Elite index N | Drop chance |
+| Elite tier | N = `Math.floor(floor / 10)` | Drop chance |
 |---|---|---|
 | 1 | 1-3 | 0.5% |
 | 2 | 4-8 | 1% |
 | 3 | 9-20 | 2% |
 | 4 | 21+ | 3% |
 
-Deeper, harder Elites are more rewarding to beat, mirroring the existing tier-banding
+N is computed fresh from the CURRENT floor every time `execElite` runs, regardless of trigger
+— a mid-chain Elite at, say, floor 5 (N=0, same band as N=1-3) rolls Tier 1 odds just like a
+forced Elite at floor 10-30 would; a mid-chain Elite reached deep in a long fast-forward chain
+rolls the correspondingly higher tier for that depth, same as a forced one would at that floor.
+Deeper, harder Elites are more rewarding to beat either way, mirroring the existing tier-banding
 precedent's own "content gets harder AND better deeper in" shape. A hit awards via
 `companionFactory.resolveTowerCompanionAward` (thin wrapper around `applyCompanionAward`,
 same shape as Yukon's `resolveYukonAward`/Cinderroot's `resolveCinderrootAward`) — a genuine

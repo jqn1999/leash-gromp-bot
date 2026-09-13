@@ -1599,11 +1599,15 @@ const Companions = [
         // "guildRaid") already set: an activity-exclusive companion tied to a major
         // non-/work system sits at Legendary, not a fresh tier. dropSource "tower" mirrors
         // theirs exactly — companionFactory.getCompanionsByRarity excludes it from the normal
-        // /work roll pool for free, no code change needed there. Rolled on SURVIVING a forced
-        // Elite fight (the real "win" moment in a Tower run, parallel to "won a bounty"/"won a
-        // guild raid") — see TowerCompanionDrop.CHANCE below and towerFactory.execElite's own
-        // roll, banded by the Elite's own content tier (1-4, see towerConstants.ELITE_TIER_BANDS)
-        // so deeper, harder Elites are also more rewarding to beat.
+        // /work roll pool for free, no code change needed there. Rolled on SURVIVING an Elite
+        // fight — ANY Elite fight (the real "win" moment in a Tower run, parallel to "won a
+        // bounty"/"won a guild raid"), not only the forced every-10th-floor one: a mid-chain
+        // Elite triggered by a REWARD/ENCOUNTER/TRANSACTION entry (Wandering Woods, The Wizard
+        // Lime) resolves through this exact same towerFactory.execElite call with no
+        // special-casing (2026-09-14, player clarification — see TowerCompanionDrop.CHANCE's
+        // own comment). Banded by the Elite's own content tier (1-4, see
+        // towerConstants.ELITE_TIER_BANDS) so deeper, harder Elites are also more rewarding to
+        // beat, regardless of how the fight was reached.
         dropSource: "tower",
         thumbnailUrl: null, // TODO: needs real artwork, same placeholder precedent Yamimic's own entry uses.
         // Reskinned 2026-09-13 (player ask — "is he related to any fruit or veggie?" / "do
@@ -3528,9 +3532,11 @@ const GuildCompanionDrop = {
 };
 
 // Bastion, the Tower Warden's drop odds — see the Companions entry above (id: "bastion",
-// dropSource: "tower") for the full drop-mechanism writeup. Rolled once per forced Elite
-// SURVIVED (towerFactory.execElite), keyed by that Elite's own content tier (1-4, see
-// towerConstants.ELITE_TIER_BANDS/getEliteTier) rather than a single flat rate — mirrors
+// dropSource: "tower") for the full drop-mechanism writeup. Rolled once per Elite SURVIVED
+// (towerFactory.execElite) — forced every-10th-floor OR mid-chain (Wandering Woods, The
+// Wizard Lime), both resolve through the same execElite call with no distinction — keyed by
+// that Elite's own content tier (1-4, see towerConstants.ELITE_TIER_BANDS/getEliteTier)
+// rather than a single flat rate — mirrors
 // MercenaryCompanionDrop.YUKON_CHANCE's own band-scaled shape (deeper/harder content pays
 // off more), scaled up slightly (Tower's own once-per-day cadence means far fewer roll
 // opportunities overall than Bounty's per-attempt one) so a dedicated deep climber still has
