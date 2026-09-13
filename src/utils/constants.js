@@ -1637,9 +1637,12 @@ const Companions = [
         // cron as canEnterTower), the FIRST Elite loss is intercepted: the run ends immediately
         // as a safe forced retreat instead of a death — accumulated WORK_MULTIPLIER/
         // PASSIVE_INCOME/BANK_CAPACITY payouts are KEPT rather than wiped, but the climb still
-        // stops there (no continuing past the save). Gated to floor > TOWER_WARD_MIN_FLOOR (10)
-        // — the very first forced Elite (floor 10) is never warded, only the second onward —
-        // direct instruction, chosen instead of a companion-level gate. Deliberately NOT routed
+        // stops there (no continuing past the save). No floor restriction — usable on the very
+        // first forced Elite (floor 10) same as any later one (2026-09-14, player clarification:
+        // an earlier "above floor 10" instruction was describing where Bastion can be FOUND —
+        // the earliest a forced Elite exists at all — not a separate gate on the Ward itself; a
+        // floor-based gate had briefly shipped by misreading that as a Ward restriction). No
+        // companion-level gate either, direct instruction. Deliberately NOT routed
         // through the generic numeric getActivePerkValue pipeline (see
         // companionFactory.hasTowerDeathWard, a dedicated presence check mirroring
         // getGuineaPigRebate's own "special mechanic, special function" precedent) and

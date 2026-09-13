@@ -32,8 +32,8 @@ class towerFactory{
         // no companion/DB knowledge of its own, matching its existing "enter-tower.js persists,
         // towerFactory computes" division of labor. rewardBonus multiplies straight into
         // scaleReward (see that method's own comment); hasWard gates whether a loss THIS run is
-        // even eligible to be warded at all (still further gated per-Elite by floor >
-        // TOWER_WARD_MIN_FLOOR and !this.wardUsed inside execElite).
+        // even eligible to be warded at all (still further gated per-Elite by !this.wardUsed
+        // inside execElite — no floor restriction, see that check's own comment for why).
         this.rewardBonus = rewardBonus
         this.hasWard = hasWard
         // Consumed at most once per run (enter-tower.js persists userDetails.towerWardUsedToday
@@ -306,12 +306,15 @@ class towerFactory{
             }
             return this.createNextEmbed(fl, fl.choices[0].result, "Green")
         }
-        // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction) — the first
-        // Elite loss past floor TOWER_WARD_MIN_FLOOR is intercepted into a safe forced retreat
-        // instead of a death: this.died stays false and the WORK_MULTIPLIER/PASSIVE_INCOME/
-        // BANK_CAPACITY wipe below is skipped entirely, but the climb still ends here (no
-        // continuing past the save) — see createWardedRetreatEmbed's own comment.
-        if(this.hasWard && !this.wardUsed && this.floor > tC.TOWER_WARD_MIN_FLOOR){
+        // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction; floor
+        // restriction removed 2026-09-14 — the original "above floor 10" instruction was
+        // describing where Bastion can be FOUND (the earliest a forced Elite exists at all),
+        // not a separate gate on the Ward itself, so the very first forced Elite at floor 10
+        // is now eligible too) — the first Elite loss this run is intercepted into a safe
+        // forced retreat instead of a death: this.died stays false and the WORK_MULTIPLIER/
+        // PASSIVE_INCOME/BANK_CAPACITY wipe below is skipped entirely, but the climb still
+        // ends here (no continuing past the save) — see createWardedRetreatEmbed's own comment.
+        if(this.hasWard && !this.wardUsed){
             this.wardUsed = true
             return this.createWardedRetreatEmbed(fl.lose)
         }

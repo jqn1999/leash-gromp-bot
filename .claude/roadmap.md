@@ -12466,3 +12466,30 @@ a potato-economy game with no connection to it. Updated `description`/`dropFlavo
 `scavengeFlavor` on the `Companions` entry (`constants.js`) and the one cross-reference in
 `tower.md`. No test referenced the old flavor text verbatim, so no test changes were needed;
 full suite re-run to confirm: **1620/1620** across 85 suites, unchanged.
+
+## Fix: Bastion's Death Ward floor gate removed — misread of the original instruction (2026-09-14, player clarification)
+
+Player: "update bastion so that it can proc the death ward at all floors not just above 10.
+The above floor 10 comment earlier was saying it can only be found floor 10 and above." The
+2026-09-13 build had read "gate ward to only be available above floor 10" as a restriction on
+when the Ward can TRIGGER (never on the very first forced Elite at floor 10, only floor 20+).
+That was a misreading — the instruction was actually describing where Bastion can be FOUND at
+all: the earliest a forced Elite exists is floor 10 (Elites are forced every 10th floor), so
+"above floor 10" just meant "from the first possible drop point onward," not a further
+restriction on the Ward itself once owned.
+
+Removed the gate entirely: `towerConstants.TOWER_WARD_MIN_FLOOR` (10) deleted outright (no
+other caller), and `towerFactory.execElite`'s Ward check simplified from `this.hasWard &&
+!this.wardUsed && this.floor > tC.TOWER_WARD_MIN_FLOOR` to just `this.hasWard &&
+!this.wardUsed` — the Ward now works on floor 10 exactly like any later floor. No other part
+of the mechanic changed: still once per day, still consumed for the rest of the run on first
+use, still keeps accumulated stat rewards instead of wiping them.
+
+Updated `towerFactory.test.js`'s Death Ward describe block: removed the now-false "a loss at
+exactly TOWER_WARD_MIN_FLOOR is never warded" test, replaced with "the Ward works on floor
+10 — the very first forced Elite — exactly like any later one, no floor restriction"; the
+remaining tests (one-per-run consumption, hasWard=false never wards) had their floor values
+simplified to plain literals instead of `tC.TOWER_WARD_MIN_FLOOR + N` arithmetic, since there's
+no gate left to test relative to. Docs (`tower.md`) corrected with an explicit note on the
+misreading, rather than silently rewriting the original design paragraph. Full suite:
+**1620/1620** across 85 suites (net test count unchanged — one removed, one added).

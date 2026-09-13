@@ -1529,10 +1529,16 @@ Player-requested feature: "plan out a tower pet that users can obtain from doing
 should level with tower somehow... it would boost multi or stats gained from tower or it
 would help tank 1 death in tower each day." Confirmed design, in order: (1) the Death Ward is
 a "safe retreat, keep loot, run ends" save (the milder of two pitched options — a stronger
-"continue climbing past the save" alternative was turned down), (2) the Ward is gated by
-**floor depth**, not companion level (usable only past floor `TOWER_WARD_MIN_FLOOR`, i.e.
-never on the very first forced Elite at floor 10 — only floor 20+), (3) the proposed
-drop-chance bands (see below) were confirmed as-is.
+"continue climbing past the save" alternative was turned down), (2) no companion-level gate,
+(3) the proposed drop-chance bands (see below) were confirmed as-is.
+
+**No floor restriction on the Ward (corrected 2026-09-14)** — a floor gate (`TOWER_WARD_MIN_FLOOR`,
+usable only past floor 10, never on the very first forced Elite) briefly shipped from
+misreading "gate ward to only be available above floor 10" as a restriction on the Ward
+itself. Player clarification: that instruction was describing where Bastion can be FOUND at
+all — the earliest a forced Elite exists is floor 10 (see the drop-chance table below), not a
+separate condition on when the Ward can trigger. The gate and its constant were removed
+entirely; the Ward now works on floor 10 exactly like any later floor.
 
 **Lore/rarity**: Legendary, `dropSource: "tower"` — the same `Companions[]`/
 `getCompanionsByRarity` exclusion mechanism Yukon (`dropSource: "bounty"`, see
@@ -1594,10 +1600,9 @@ choice between them):
   doesn't retroactively revoke a ward already available for that run's own duration.
 
 **Ward mechanic** (`execElite`'s loss branch, checked BEFORE the existing
-WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe): `if (this.hasWard && !this.wardUsed &&
-this.floor > tC.TOWER_WARD_MIN_FLOOR)` — `TOWER_WARD_MIN_FLOOR` (10, `towerConstants.js`) is a
-**strict** `>`, not `>=`, so the very first forced Elite at floor 10 can never be warded, only
-floor 20+ (per the confirmed gating decision above). On a hit: `this.wardUsed = true`
+WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe): `if (this.hasWard && !this.wardUsed)` — no
+floor restriction (see the correction note above), so the very first forced Elite at floor 10
+is just as eligible as any later one. On a hit: `this.wardUsed = true`
 (consumed for the rest of THIS run, regardless of how many more forced Elites it reaches), the
 run ends via `createWardedRetreatEmbed` (Gold, Bastion-flavored) exactly like a voluntary
 Leave for every downstream purpose — `this.floor--` still happens (same attribution as a real

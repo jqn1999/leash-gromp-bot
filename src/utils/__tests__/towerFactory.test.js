@@ -1017,11 +1017,12 @@ describe('execElite win branch — elitesSurvivedCount and Bastion drop roll (to
     });
 });
 
-// Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction: "gate ward to only
-// be available above floor 10"). This is the single highest-risk, most novel piece of the
-// whole feature — the floor-gate boundary and one-per-run consumption both need exhaustive
-// direct coverage, using the same isolated tF.floor=N + execElite(tF.difficulty) pattern as
-// the "execElite's success chance is capped" test above (bypassing the full startRun() loop).
+// Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction; floor restriction
+// removed 2026-09-14 — see the dedicated test below for the full history). This is the
+// single highest-risk, most novel piece of the whole feature — one-per-run consumption
+// needs exhaustive direct coverage, using the same isolated tF.floor=N +
+// execElite(tF.difficulty) pattern as the "execElite's success chance is capped" test above
+// (bypassing the full startRun() loop).
 describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
     function choice(customId) {
         return { customId, update: jest.fn().mockResolvedValue() };
@@ -1035,11 +1036,11 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
         return { editReply, user: { id: 'u1' } };
     }
 
-    test('a loss past TOWER_WARD_MIN_FLOOR with hasWard=true is warded: no death, payouts kept, wardUsed becomes true, floor still backs off by one', async () => {
+    test('a loss with hasWard=true is warded: no death, payouts kept, wardUsed becomes true, floor still backs off by one', async () => {
         const interaction = fakeInteraction([choice('fight')]);
         // rewardBonus=0, hasWard=true — the two new trailing constructor args.
         const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
-        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 10; // safely past the gate
+        tF.floor = 40;
         tF.run[tC.PAYOUT.WORK_MULTIPLIER] = 5;
         tF.run[tC.PAYOUT.PASSIVE_INCOME] = 1000;
         tF.run[tC.PAYOUT.BANK_CAPACITY] = 2000;
@@ -1067,10 +1068,16 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
         expect(embedArg.embeds[0].data.title).toContain('Bastion Intervenes');
     });
 
-    test('a loss at exactly TOWER_WARD_MIN_FLOOR is never warded — the gate is a strict >, not >=', async () => {
+    // 2026-09-14, player clarification: an earlier "gate ward to only be available above
+    // floor 10" instruction was describing where Bastion can be FOUND (the earliest a
+    // forced Elite exists at all is floor 10 — see TowerCompanionDrop's own comment), not a
+    // separate restriction on the Ward itself. A floor-gate had briefly shipped from
+    // misreading that as "no ward on the very first forced Elite" — this test now locks in
+    // the corrected behavior: the Ward works on floor 10 exactly like any later floor.
+    test('the Ward works on floor 10 — the very first forced Elite — exactly like any later one, no floor restriction', async () => {
         const interaction = fakeInteraction([choice('fight')]);
         const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
-        tF.floor = tC.TOWER_WARD_MIN_FLOOR;
+        tF.floor = 10;
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)
             .mockReturnValue(0.999999);
@@ -1081,8 +1088,8 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
             randomSpy.mockRestore();
         }
 
-        expect(tF.died).toBe(true);
-        expect(tF.wardUsed).toBe(false);
+        expect(tF.died).toBe(false);
+        expect(tF.wardUsed).toBe(true);
     });
 
     test('the Ward is consumed at most once per run — a second loss in the same run wipes normally', async () => {
@@ -1090,7 +1097,7 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
         const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
         tF.run[tC.PAYOUT.PASSIVE_INCOME] = 1000;
 
-        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 10;
+        tF.floor = 10;
         let randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
         await tF.execElite(tF.difficulty);
         randomSpy.mockRestore();
@@ -1098,9 +1105,9 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
         expect(tF.wardUsed).toBe(true);
         expect(tF.died).toBe(false);
 
-        // A second forced Elite later in the same run, still safely past the floor gate —
-        // the Ward is already spent, so this loss wipes exactly like a player without Bastion.
-        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 20;
+        // A second forced Elite later in the same run — the Ward is already spent, so this
+        // loss wipes exactly like a player without Bastion.
+        tF.floor = 20;
         randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
         await tF.execElite(tF.difficulty);
         randomSpy.mockRestore();
@@ -1112,7 +1119,7 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
     test('hasWard=false never wards, regardless of floor depth — unchanged behavior for every player without Bastion equipped', async () => {
         const interaction = fakeInteraction([choice('fight')]);
         const tF = new towerFactory(interaction, 'tester', 1_000_000); // hasWard defaults false
-        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 50;
+        tF.floor = 60;
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
 
         try {

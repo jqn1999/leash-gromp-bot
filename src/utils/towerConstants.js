@@ -151,14 +151,6 @@ const TOWER_RUN_CAPS = {
     [PAYOUT.BANK_CAPACITY]: 50000000
 }
 
-// Bastion, the Tower Warden's Death Ward gate (2026-09-13, direct instruction: "gate ward to
-// only be available above floor 10") — the very first forced Elite (floor 10) is never
-// warded, only the second onward (floor 20+, checked as `this.floor > TOWER_WARD_MIN_FLOOR`
-// in towerFactory.execElite). Chosen instead of a companion-level gate — the ward is
-// available from Bastion's own level 1, the restriction is purely about how deep the run
-// already is. See constants.js's Companions entry (id: "bastion") for the full mechanic.
-const TOWER_WARD_MIN_FLOOR = 10
-
 // Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper
 // run survives more forced Elites along the way, each worth a fixed undecayed amount, so
 // EV_old(M) itself already creeps up with M even before any scaling is applied — applying
@@ -526,7 +518,6 @@ module.exports = {
     SCALING_ANCHOR_INVESTMENT,
     SCALED_PAYOUT_TYPES,
     SCALING_EXPONENT,
-    TOWER_RUN_CAPS,
-    TOWER_WARD_MIN_FLOOR
+    TOWER_RUN_CAPS
 }
 
