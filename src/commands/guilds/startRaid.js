@@ -1166,7 +1166,19 @@ async function runStartRaidFlow(interaction, raidSelection) {
     let guildTotalEarnings = guild.totalEarnings;
     let guildBankStored = guild.bankStored;
     let guildBankCapacity = guild.bankCapacity;
-    let remainingBankSpace = guildBankCapacity - guildBankStored;
+    // Clamped at 0 (2026-09-14, player-reported bug) — guild interest is deliberately
+    // allowed to push bankStored PAST bankCapacity (see dynamoHandler.applyGuildTreasuryInterest's
+    // own comment), so this subtraction can go negative for any guild currently sitting
+    // over capacity. addToBankOrPurse's own "excess = totalRaidSplit - remainingBankSpace"
+    // math assumes remainingBankSpace is never negative — a negative value SUBTRACTS a
+    // negative, inflating excess (and therefore the potatoes actually paid out to members)
+    // past the raid's real reward, minting potatoes from nothing. A bank already over
+    // capacity simply has ZERO remaining space, never negative space, so clamping here
+    // fixes every downstream caller (both runStartRaidFlow copies) without needing to touch
+    // addToBankOrPurse itself. removeFromBankOrPurse (penalties) is unaffected either way —
+    // it reads guildBankStored directly, never remainingBankSpace, so a loss was already
+    // calculated correctly against the true (possibly over-capacity) bank balance.
+    let remainingBankSpace = Math.max(0, guildBankCapacity - guildBankStored);
 
     if (raidList.length == 0) {
         interaction.editReply(`${userDisplayName} there are no members in the raid list. Get people to join before starting!`);
@@ -1404,7 +1416,11 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     let guildTotalEarnings = guild.totalEarnings;
     let guildBankStored = guild.bankStored;
     let guildBankCapacity = guild.bankCapacity;
-    let remainingBankSpace = guildBankCapacity - guildBankStored;
+    // Clamped at 0 (2026-09-14 fix) — see the other runStartRaidFlow's own copy of this
+    // line for the full explanation: a bank already over capacity (guild interest is
+    // deliberately allowed to push it past bankCapacity) has ZERO remaining space, never
+    // negative, or addToBankOrPurse's excess math mints potatoes from nothing on a win.
+    let remainingBankSpace = Math.max(0, guildBankCapacity - guildBankStored);
 
     if (raidList.length == 0) {
         if (!isChainedReply) {

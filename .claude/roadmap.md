@@ -12623,3 +12623,47 @@ wraps every scenario identically) tells the player plainly and never reaches the
 bookkeeping; a normal, non-crashing `/work` call is completely unaffected by the new
 try/catch. Docs: `economy-and-work.md`. Full suite: **1625/1625** across 86 suites (+1 new
 test file, +2 tests).
+
+## Fix: raid win payouts inflated once a guild's bank is already over capacity (2026-09-14, player question)
+
+Player asked: "make sure if a guild loses a raid with guild bank above the max due to interest
+that loss is calculated correctly." Guild treasury interest was deliberately allowed to push
+`bankStored` past `bankCapacity` a few days earlier (2026-09-10, direct instruction: "make it
+so guild interest can overflow the guild bank it's ok") — every other credit into `bankStored`
+(raid rewards, `/bank` deposits) still respects the cap; only interest doesn't. The question
+was specifically about whether a LOSS still computes correctly against a bank already sitting
+in that overflowed state.
+
+Traced `removeFromBankOrPurse` (`startRaid.js`, handles raid-loss penalties): it reads
+`guildBankStored` directly and never references `bankCapacity`/`remainingBankSpace` anywhere in
+its logic — `if (guildBankStored + totalRaidCost >= 0) { guildBankStored += totalRaidCost; ... }
+else { ...drain to 0, split shortfall among members... }`. A penalty is subtracted from the
+bank's true, possibly-over-capacity balance regardless, so losses were already correct with no
+code change needed.
+
+That same investigation, checking the parallel WIN-side code for symmetry, found a real bug
+instead. `runStartRaidFlow` computes `remainingBankSpace = guildBankCapacity - guildBankStored`
+once near the top of the function (both its primary-flow copy and its chained/auto-continue
+copy) and passes it into `addToBankOrPurse`. Once `bankStored` exceeds `bankCapacity` that
+subtraction goes negative, and `addToBankOrPurse`'s own overflow math — `excess =
+totalRaidSplit - remainingBankSpace` — subtracts a negative, INFLATING `excess` (and therefore
+the amount actually paid to members via `handlePotatoSplit`) past the raid's real reward, while
+the bank itself was never credited further since the "top off the remaining space" branch
+requires `remainingBankSpace > 0`. In effect, a guild sitting over capacity from interest was
+minting extra potatoes out of nothing on every raid win, scaling with how far over capacity the
+bank was — the more interest had overflowed, the bigger the free mint.
+
+**Fix**: clamped the computation at both `runStartRaidFlow` call sites: `let
+remainingBankSpace = Math.max(0, guildBankCapacity - guildBankStored);`. An over-capacity (or
+exactly-at-capacity) bank now correctly reads as "zero room left," never negative room, which
+is the only state `addToBankOrPurse`'s excess math was ever written to expect.
+`addToBankOrPurse`/`removeFromBankOrPurse` themselves needed no changes at all — clamping the
+one shared input fixed every downstream caller in one place.
+
+New tests: `startRaidBankOverflow.test.js` (3 tests) — a win with the bank 50M over a 1B cap
+asserts `handlePotatoSplit` receives the exact post-tax reward with no inflation and the bank
+is never written to; a second case with the bank sitting exactly AT capacity (zero real room)
+behaves identically; a loss against a bank 4B over its 1B cap asserts the penalty lands against
+the true `bankStored` value (`overCapacityBank + penalty`), not one clamped down to
+`bankCapacity` first. Docs: `guilds.md`. Full suite: **1628/1628** across 87 suites (+1 new
+test file, +3 tests).

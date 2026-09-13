@@ -169,6 +169,39 @@ Works against either a healed (`findGuildById`) or unhealed (`findGuildByName`) 
 `bankStored`/`raidCount` are read with `Number.isFinite` guards, mirroring
 `applyGuildTreasuryInterest`'s own `toNumber` coercion for the same raw-scan reason.
 
+**Raid payouts once the bank is already over capacity from interest overflow (2026-09-14, player
+question: "make sure if a guild loses a raid with guild bank above the max due to interest that
+loss is calculated correctly")** — since interest can leave `bankStored` sitting above
+`bankCapacity` (see above), a raid resolving against that guild needs to handle a "remaining bank
+space" that isn't just small, it's actually negative on paper. The two directions turned out to
+behave very differently:
+
+- **Losses were already correct.** `removeFromBankOrPurse` (`startRaid.js`) reads
+  `guildBankStored` directly and never references `bankCapacity`/`remainingBankSpace` at all —
+  `if (guildBankStored + totalRaidCost >= 0) { guildBankStored += totalRaidCost; ... }`. A penalty
+  is subtracted from the bank's true, possibly-over-capacity balance either way, so an overflowed
+  bank absorbs a loss exactly like any other.
+- **Wins were not.** `runStartRaidFlow` computes `remainingBankSpace = guildBankCapacity -
+  guildBankStored` once near the top of the function (in both its primary-flow copy and its
+  chained/auto-continue copy) and passes it into `addToBankOrPurse`. Once `bankStored` exceeds
+  `bankCapacity`, that subtraction goes negative. `addToBankOrPurse`'s own overflow math is
+  `excess = totalRaidSplit - remainingBankSpace` — subtracting a negative INFLATES `excess`, so
+  the amount actually split out to members via `handlePotatoSplit` came out larger than the raid's
+  real reward, while the bank itself was never credited further (the `remainingBankSpace > 0`
+  branch that tops it off doesn't fire). In effect, a guild sitting over capacity minted extra
+  potatoes on every win, scaling with how far over capacity the bank was.
+
+  Fixed by clamping the computation at both call sites: `let remainingBankSpace = Math.max(0,
+  guildBankCapacity - guildBankStored);`. A bank already at or past capacity now correctly reads
+  as "zero room left," never negative room, which is the only state `addToBankOrPurse`'s excess
+  math was ever written to expect. `addToBankOrPurse`/`removeFromBankOrPurse` themselves needed no
+  changes — clamping the shared input fixed every downstream caller in one place.
+  `startRaidBankOverflow.test.js` covers both directions: a win with the bank 50M over a 1B cap
+  (and a second case exactly at capacity) asserts the exact post-tax reward reaches members with
+  no inflation and no further bank write, and a loss against a 5B-over-capacity bank asserts the
+  penalty lands against the true `bankStored` value rather than one clamped down to `bankCapacity`
+  first.
+
 ## Guild buffs
 
 [setBuff.js](../../src/commands/guilds/setBuff.js) — Co-Leader/Leader picks **one** active
