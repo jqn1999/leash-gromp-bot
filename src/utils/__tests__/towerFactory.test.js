@@ -921,6 +921,251 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
     });
 });
 
+// Bastion, the Tower Warden (2026-09-13, direct instruction) — towerRewardBonus's multiplier
+// hook into scaleReward. See that method's own comment for why folding in here for free
+// excludes PAYOUT.WORK_MULTIPLIER/MODIFIER.WORK_MULTIPLIER without any separate check.
+describe('scaleReward — Bastion towerRewardBonus multiplier (2026-09-13)', () => {
+    test('defaults to 0 (a pure no-op) when no rewardBonus is passed — existing behavior fully unchanged', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 30000)).toBe(Math.round(30000 * tF.scalingFactor));
+    });
+
+    test('multiplies the three SCALED_PAYOUT_TYPES (potatoes/passive income/bank capacity) by (1 + rewardBonus)', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.10);
+        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 30000)).toBe(Math.round(30000 * tF.scalingFactor * 1.10));
+        expect(tF.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBe(Math.round(1000 * tF.scalingFactor * 1.10));
+        expect(tF.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBe(Math.round(1000 * tF.scalingFactor * 1.10));
+    });
+
+    test('never applies to PAYOUT.WORK_MULTIPLIER or MODIFIER.WORK_MULTIPLIER — inherited for free from the SCALED_PAYOUT_TYPES exclusion', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.50);
+        expect(tF.scaleReward(tC.PAYOUT.WORK_MULTIPLIER, 5)).toBe(5);
+        expect(tF.scaleReward(tC.MODIFIER.WORK_MULTIPLIER, 0.2)).toBe(0.2);
+    });
+});
+
+describe('execElite win branch — elitesSurvivedCount and Bastion drop roll (towerCompanionHits) (2026-09-13)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test("a won Elite always increments elitesSurvivedCount, and rolls a Bastion drop hit against TowerCompanionDrop.CHANCE banded by the Elite's own tier", async () => {
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000);
+        tF.floor = 10; // forced Elite N=1 -> getEliteTier(1)=1 -> TowerCompanionDrop.CHANCE[1]=0.005
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValueOnce(0)     // fight roll: 0 < success (capped 0.95) -> win
+            .mockReturnValueOnce(0.001) // drop roll: 0.001 < 0.005 -> hit
+            .mockReturnValue(0);        // any further calls (post-win Continue/Leave has none)
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.elitesSurvivedCount).toBe(1);
+        expect(tF.towerCompanionHits).toBe(1);
+    });
+
+    test('a won Elite that misses the drop roll still counts the survival but leaves towerCompanionHits at 0', async () => {
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000);
+        tF.floor = 10;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)        // pickElite candidate index
+            .mockReturnValueOnce(0)        // fight roll -> win
+            .mockReturnValueOnce(0.999999) // drop roll: miss (>= 0.005)
+            .mockReturnValue(0);
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.elitesSurvivedCount).toBe(1);
+        expect(tF.towerCompanionHits).toBe(0);
+    });
+
+    test('a lost Elite (no ward) never increments elitesSurvivedCount or rolls a drop', async () => {
+        const interaction = fakeInteraction([choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000);
+        tF.floor = 10;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValue(0.999999); // fight roll -> loses (>= success cap 0.95)
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.elitesSurvivedCount).toBe(0);
+        expect(tF.towerCompanionHits).toBe(0);
+        expect(tF.died).toBe(true);
+    });
+});
+
+// Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction: "gate ward to only
+// be available above floor 10"). This is the single highest-risk, most novel piece of the
+// whole feature — the floor-gate boundary and one-per-run consumption both need exhaustive
+// direct coverage, using the same isolated tF.floor=N + execElite(tF.difficulty) pattern as
+// the "execElite's success chance is capped" test above (bypassing the full startRun() loop).
+describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('a loss past TOWER_WARD_MIN_FLOOR with hasWard=true is warded: no death, payouts kept, wardUsed becomes true, floor still backs off by one', async () => {
+        const interaction = fakeInteraction([choice('fight')]);
+        // rewardBonus=0, hasWard=true — the two new trailing constructor args.
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
+        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 10; // safely past the gate
+        tF.run[tC.PAYOUT.WORK_MULTIPLIER] = 5;
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = 1000;
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = 2000;
+        const startFloor = tF.floor;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValue(0.999999); // fight roll -> loses
+
+        let cont;
+        try {
+            cont = await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(cont).toBe(false);
+        expect(tF.died).toBe(false);
+        expect(tF.wardUsed).toBe(true);
+        expect(tF.floor).toBe(startFloor - 1);
+        // The whole point of the Ward: nothing gets wiped, unlike a real death.
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(5);
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(1000);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(2000);
+        const embedArg = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+        expect(embedArg.embeds[0].data.title).toContain('Bastion Intervenes');
+    });
+
+    test('a loss at exactly TOWER_WARD_MIN_FLOOR is never warded — the gate is a strict >, not >=', async () => {
+        const interaction = fakeInteraction([choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
+        tF.floor = tC.TOWER_WARD_MIN_FLOOR;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValue(0.999999);
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.died).toBe(true);
+        expect(tF.wardUsed).toBe(false);
+    });
+
+    test('the Ward is consumed at most once per run — a second loss in the same run wipes normally', async () => {
+        const interaction = fakeInteraction([choice('fight'), choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = 1000;
+
+        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 10;
+        let randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
+        await tF.execElite(tF.difficulty);
+        randomSpy.mockRestore();
+
+        expect(tF.wardUsed).toBe(true);
+        expect(tF.died).toBe(false);
+
+        // A second forced Elite later in the same run, still safely past the floor gate —
+        // the Ward is already spent, so this loss wipes exactly like a player without Bastion.
+        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 20;
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
+        await tF.execElite(tF.difficulty);
+        randomSpy.mockRestore();
+
+        expect(tF.died).toBe(true);
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(0);
+    });
+
+    test('hasWard=false never wards, regardless of floor depth — unchanged behavior for every player without Bastion equipped', async () => {
+        const interaction = fakeInteraction([choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000); // hasWard defaults false
+        tF.floor = tC.TOWER_WARD_MIN_FLOOR + 50;
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999999);
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.died).toBe(true);
+        expect(tF.wardUsed).toBe(false);
+    });
+});
+
+describe("startRun()'s returned tuple — elitesSurvivedCount, towerCompanionHits, wardUsed (2026-09-13)", () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('a full run surviving the floor-10 forced Elite reports elitesSurvivedCount=1, towerCompanionHits=1 (Bastion drop hit), wardUsed=false', async () => {
+        // Same proven fast-forward-to-floor-10-win setup as the earlier
+        // "towerFactory Discord-interaction flows" describe block, Math.random pinned to 0
+        // throughout — which also always hits the drop-chance roll (0 < any positive chance).
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('fast_forward'),
+            choice('fight'),
+            choice('leave'),
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+
+        let elitesSurvivedCount, towerCompanionHits, wardUsed, died;
+        try {
+            [, , died, elitesSurvivedCount, towerCompanionHits, wardUsed] = await tF.startRun();
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(died).toBe(false);
+        expect(elitesSurvivedCount).toBe(1);
+        expect(towerCompanionHits).toBe(1);
+        expect(wardUsed).toBe(false);
+    });
+});
+
 // Root-caused from a live crash (2026-09-11) — see tower.md's "Auto-recovery" section. A real
 // production stack trace showed confirmation.update() throwing DiscordAPIError[10062] "Unknown
 // interaction" (the clicked button's own 3-second ack window had already elapsed, most likely

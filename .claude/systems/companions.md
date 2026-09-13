@@ -491,6 +491,17 @@ unlike Yukon it *is* reachable through this table's own `/work` roll — just ga
 below for the full mirroring mechanic — so it's deliberately left out of both the main roster
 table and the per-perk-type table that follow, which only ever show static numbers.
 
+**Bastion, the Tower Warden** (Legendary) is the roster's 15th companion (16th counting
+Cinderroot, the Hoardwarden — see [guilds.md](guilds.md) — which like Yukon and Bastion is
+excluded from `Companions.length`-based roster-count displays via its own `dropSource`),
+also **not** obtainable through this table's `/work` roll — see
+[tower.md](tower.md#bastion-the-tower-warden-2026-09-13-direct-instruction) for the full mechanism. Its `Companions` entry
+carries `dropSource: "tower"`, the same `getCompanionsByRarity` exclusion Yukon/Cinderroot
+already established, dropped from surviving a forced Tater Tower Elite fight. Its
+`towerRewardBonus` perk is one of `MimicryCompanion.PERK_TYPES` (mirrorable by Yamimic); its
+`towerDeathWard` perk is deliberately excluded (a binary once-per-day save, not a "bigger
+number is better" value Yamimic's max-comparison can meaningfully mirror).
+
 Per-perk-type progression (blank = no companion currently grants that perk at that tier):
 
 | Perk | Common | Rare | Legendary | Mythic |

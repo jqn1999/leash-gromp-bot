@@ -4,8 +4,40 @@ const { getUserInteractionDetails, requireUserDetails } = require("../../utils/h
 const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 const raidFactory = require("../../utils/raidFactory");
+const companionFactory = require("../../utils/companionFactory");
 
-async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died) {
+// Tower Pet (2026-09-13) — leveling grant + Bastion drop rolls both happen against the SAME
+// freshly re-fetched userDetails processRewardPayouts already reads (not the stale
+// pre-run snapshot), same "always credit against the latest state" precedent every other
+// field in this function already follows. Returns the last-awarded companion info (if any)
+// so the callback can show a separate drop-announcement followUp, mirroring takeBounty.js's
+// own achievement/quest followUp precedent — companions is only written back once, at the
+// end, so a run with neither a level-up nor a drop makes no extra write at all.
+async function processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed) {
+    let companions = userDetails.companions;
+    let bastionAward = null;
+
+    const grant = companionFactory.getTowerWorkCountGrant(floor, elitesSurvivedCount);
+    const leveled = companionFactory.levelActiveCompanion(companions, grant, null, "towerRewardBonus");
+    if (leveled !== companions) {
+        companions = leveled;
+    }
+
+    for (let i = 0; i < towerCompanionHits; i++) {
+        bastionAward = companionFactory.resolveTowerCompanionAward({ ...userDetails, companions });
+        companions = bastionAward.companions;
+    }
+
+    if (companions !== userDetails.companions) {
+        await dynamoHandler.updateUserDatabase(userId, "companions", companions);
+    }
+    if (wardUsed) {
+        await dynamoHandler.updateUserDatabase(userId, "towerWardUsedToday", true);
+    }
+    return bastionAward;
+}
+
+async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
         // The run's results embed has already been sent by this point (see the
@@ -61,6 +93,7 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] || rewards[tC.PAYOUT.BANK_CAPACITY]) {
         await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
     }
+    return processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed);
 }
 
 module.exports = {
@@ -90,7 +123,16 @@ module.exports = {
         }
 
         await dynamoHandler.updateUserDatabase(userId, "canEnterTower", false);
-        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue)
+        // Bastion, the Tower Warden (2026-09-13) — both resolved from the player's CURRENT
+        // equipped companion before the run starts (towerFactory itself has no companion/DB
+        // knowledge of its own — see its constructor's own comment). towerWardUsedToday is
+        // read from this same pre-run userDetails snapshot deliberately (a run started before
+        // the daily reset stays ward-eligible for its own duration even if the reset fires
+        // mid-run — the same "snapshot taken once, used for the whole run" precedent this.multi
+        // already sets).
+        const rewardBonus = companionFactory.getActivePerkValue(userDetails, 'towerRewardBonus');
+        const hasWard = companionFactory.hasTowerDeathWard(userDetails) && !userDetails.towerWardUsedToday;
+        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard)
         let tower_out;
         try {
             tower_out = await tF.startRun()
@@ -120,6 +162,12 @@ module.exports = {
         let rewards = tower_out[0];
         let floor = tower_out[1];
         let died = tower_out[2];
+        // Defaulted (|| 0 / || false) so an older or test-mocked startRun() return that only
+        // has the original 3 elements can't turn into a NaN/undefined leveling grant or a
+        // crash on the drop-award loop below.
+        let elitesSurvivedCount = tower_out[3] || 0;
+        let towerCompanionHits = tower_out[4] || 0;
+        let wardUsed = tower_out[5] || false;
 
         // embed for final results
         let embed = createResult(rewards, floor, username)
@@ -127,7 +175,14 @@ module.exports = {
             embeds: [embed]
         })
 
-        await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died);
+        const bastionAward = await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed);
+        if (bastionAward) {
+            // Mirrors takeBounty.js's own achievement/quest followUp precedent — a separate
+            // embed after the main result, not folded into it.
+            await interaction.followUp({
+                embeds: [createBastionDropEmbed(bastionAward, userDisplayName)]
+            });
+        }
 
         // "Highest floor ever reached" is a broader personal-best than the daily
         // leaderboard's survival-only eligibility below — floor already reflects the
@@ -182,4 +237,20 @@ function createResult(rewards, floor, username){
             }
         );
         return embed
+}
+
+// Bastion, the Tower Warden's drop announcement (2026-09-13) — mirrors createBountyResultEmbed's
+// own isNew-branched wording for Yukon exactly (see embedFactory.js), just as a standalone
+// followUp embed instead of a field on the main result, matching how this file has no
+// EmbedFactory-class embeds of its own to fold it into.
+function createBastionDropEmbed(bastionAward, userDisplayName){
+    const { isNew, companion } = bastionAward;
+    return new EmbedBuilder()
+        .setTitle(isNew ? '🗿 A new companion joins you!' : '🗿 Bastion, the Tower Warden (already owned)')
+        .setDescription(isNew
+            ? `${companion.dropFlavor}`
+            : `${userDisplayName} already has Bastion's loyalty — instead, this climb turns up a separate Bastion starting fresh at level 1. Check /companion to see and equip it individually, or sell it with /companion-sell or /companion-sell-npc.`)
+        .setColor('Gold')
+        .setTimestamp(Date.now())
+        .setFooter({text: `Tater Tower: ${userDisplayName}`});
 }

@@ -381,6 +381,46 @@ function getCooldownScaledWorkCountGrant(actionCooldownSeconds, discountFactor =
     return Math.max(1, Math.round((actionCooldownSeconds / Work.WORK_TIMER_SECONDS) * discountFactor));
 }
 
+// Tower Pet leveling grant (2026-09-13) — see CompanionLeveling.TOWER_WORK_COUNT_PER_FLOOR's
+// own comment for the full derivation. Scales off THIS RUN's own floors climbed and Elites
+// survived rather than a fixed cooldown length (Tower has no fixed cooldown to scale
+// against — a run's real length varies entirely by how far the player climbs). Floored at 1
+// the same defensive way getCooldownScaledWorkCountGrant is, so a very short run (left after
+// floor 1) still grants something rather than rounding to 0.
+function getTowerWorkCountGrant(floorsClimbed, elitesSurvivedCount) {
+    return Math.max(1, Math.round(
+        floorsClimbed * CompanionLeveling.TOWER_WORK_COUNT_PER_FLOOR +
+        elitesSurvivedCount * CompanionLeveling.TOWER_WORK_COUNT_PER_ELITE_SURVIVED
+    ));
+}
+
+// Bastion, the Tower Warden's Death Ward (2026-09-13) — a dedicated presence check, NOT
+// routed through the generic numeric getActivePerkValue pipeline, mirroring
+// getGuineaPigRebate's own "special mechanic, special function" precedent (towerDeathWard
+// carries no `value` field to multiply by a level scalar, and is deliberately excluded from
+// MimicryCompanion.PERK_TYPES — see the Companions entry's own comment — so this only ever
+// resolves true for an actually-owned-and-equipped Bastion, never a Yamimic mirror). Checked
+// against the ROSTER definition's perks (via getCompanionById), matching every other
+// perk-type check in this file. Does not itself check `userDetails.towerWardUsedToday` or the
+// floor gate — those are call-site/run-specific concerns (enter-tower.js and
+// towerFactory.execElite respectively), this is purely "is the ward available on the
+// currently-equipped companion at all."
+function hasTowerDeathWard(userDetails) {
+    const active = getActiveCompanion(userDetails);
+    return active?.perks?.some(p => p.type === 'towerDeathWard') ?? false;
+}
+
+// Mirrors mercenaryFactory.resolveYukonAward's exact shape for Bastion, the Tower Warden —
+// called by enter-tower.js once per Elite tier survived that rolled a hit (see
+// towerFactory.execElite's own TowerCompanionDrop.CHANCE roll). Duplicates are allowed the
+// same way Yukon's/Cinderroot's are (applyCompanionAward always appends a fresh instance
+// regardless of prior ownership) — useful as Fusion fuel once a player already owns one.
+function resolveTowerCompanionAward(userDetails) {
+    const bastion = getCompanionById('bastion');
+    const { isNew, companions } = applyCompanionAward(userDetails, bastion);
+    return { isNew, companion: bastion, companions };
+}
+
 // Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — true iff `companion`
 // (a ROSTER definition, e.g. from getActiveCompanion/getCompanionById, not an owned instance)
 // carries at least one perk type from CompanionLeveling.ACCELERANT_PERK_TYPES, i.e. it has a
@@ -891,6 +931,9 @@ module.exports = {
     applyCompanionAward,
     applyMaxLevelTracking,
     getCooldownScaledWorkCountGrant,
+    getTowerWorkCountGrant,
+    hasTowerDeathWard,
+    resolveTowerCompanionAward,
     hasAccelerantPerk,
     isWorkOnlyCompanion,
     getWorkLevelingGrant,

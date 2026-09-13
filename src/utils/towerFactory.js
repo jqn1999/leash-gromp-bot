@@ -1,5 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const tC = require("./towerConstants.js");
+const { TowerCompanionDrop } = require("./constants.js");
 const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder} = require("discord.js");
 
 // getUsers()-style external/partial data guard (dynamoHandler.js's/spudKeepFactory.js's own
@@ -12,7 +13,7 @@ function toNumber(value) {
 
 class towerFactory{
 
-    constructor(_interaction, _username, multi, autoContinue = false) {
+    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false) {
         this.floor = 0
         this.run = Object.assign({}, tC.RUN)
         this.run[tC.PAYOUT.ELITE_KILL] = new Array()
@@ -25,6 +26,27 @@ class towerFactory{
         this.scalingFactor = Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)
         this.difficulty = tC.TOWER_ELITE_DIFFICULTY_INITIAL
         this.died = false
+        // Bastion, the Tower Warden (2026-09-13) — both pre-resolved by enter-tower.js from
+        // the player's own equipped companion BEFORE the run starts (companionFactory.
+        // getActivePerkValue/hasTowerDeathWard), so this class stays a pure run simulator with
+        // no companion/DB knowledge of its own, matching its existing "enter-tower.js persists,
+        // towerFactory computes" division of labor. rewardBonus multiplies straight into
+        // scaleReward (see that method's own comment); hasWard gates whether a loss THIS run is
+        // even eligible to be warded at all (still further gated per-Elite by floor >
+        // TOWER_WARD_MIN_FLOOR and !this.wardUsed inside execElite).
+        this.rewardBonus = rewardBonus
+        this.hasWard = hasWard
+        // Consumed at most once per run (enter-tower.js persists userDetails.towerWardUsedToday
+        // afterward iff this ends up true) — a single run could otherwise die to multiple
+        // Elites in sequence, and the ward should only ever save the FIRST one.
+        this.wardUsed = false
+        // Tower Pet leveling/drop bookkeeping (2026-09-13) — populated live as forced Elites
+        // are survived, read by enter-tower.js after startRun() returns to compute the Tower
+        // leveling grant (companionFactory.getTowerWorkCountGrant) and award any Bastion drops
+        // (companionFactory.resolveTowerCompanionAward). Kept as plain instance state rather
+        // than threaded through return values at every call site, same as this.died/this.floor.
+        this.elitesSurvivedCount = 0
+        this.towerCompanionHits = 0
         // Persistent account-level toggle (see /tower-settings) — skips the dedicated
         // Continue/Leave screen after a non-Elite floor, see createFloorEmbed/resolveNext.
         this.autoContinue = autoContinue
@@ -62,7 +84,10 @@ class towerFactory{
             cont = await this.execNormalFloor(floor_type)
             floor_type = getFloor()
         }
-        return [this.run, this.floor, this.died]
+        // Tower Pet fields appended at the end (2026-09-13) — every existing caller that
+        // destructures only `[run, floor, died]` is unaffected (extra trailing elements are
+        // simply never read); enter-tower.js is the only consumer that needs the rest.
+        return [this.run, this.floor, this.died, this.elitesSurvivedCount, this.towerCompanionHits, this.wardUsed]
     }
 
     // One extra click added to every run, up front, before any floor is ever generated — sets
@@ -271,7 +296,24 @@ class towerFactory{
             this.run[tC.PAYOUT.POTATOES] += this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value)
             // handle reward payouts
             this.checkElitePayout()
+            // Tower Pet (2026-09-13) — leveling bookkeeping and Bastion's own drop roll, both
+            // keyed off surviving THIS Elite specifically (the real "win" moment, mirroring
+            // "won a bounty"/"won a guild raid"). Banded by the Elite's own content tier so
+            // deeper, harder Elites are also more rewarding to beat — see TowerCompanionDrop.
+            this.elitesSurvivedCount++
+            if(Math.random() < TowerCompanionDrop.CHANCE[fl.tier]){
+                this.towerCompanionHits++
+            }
             return this.createNextEmbed(fl, fl.choices[0].result, "Green")
+        }
+        // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction) — the first
+        // Elite loss past floor TOWER_WARD_MIN_FLOOR is intercepted into a safe forced retreat
+        // instead of a death: this.died stays false and the WORK_MULTIPLIER/PASSIVE_INCOME/
+        // BANK_CAPACITY wipe below is skipped entirely, but the climb still ends here (no
+        // continuing past the save) — see createWardedRetreatEmbed's own comment.
+        if(this.hasWard && !this.wardUsed && this.floor > tC.TOWER_WARD_MIN_FLOOR){
+            this.wardUsed = true
+            return this.createWardedRetreatEmbed(fl.lose)
         }
         this.run[tC.PAYOUT.WORK_MULTIPLIER] = 0
         this.run[tC.PAYOUT.PASSIVE_INCOME] = 0
@@ -310,11 +352,19 @@ class towerFactory{
     // actual currency balance (potatoes/passiveAmount/bankCapacity are real money, not a
     // display-only stat) never lands on a fractional value — was previously left fractional
     // and credited straight to the DB (e.g. a live run crediting 692,258.284 passive income).
+    // Bastion, the Tower Warden's towerRewardBonus (2026-09-13) folds in here as a straight
+    // multiplier alongside this.scalingFactor — since it only ever multiplies inside this
+    // same `if` branch, it automatically only ever applies to the three SCALED_PAYOUT_TYPES
+    // (potatoes/passive income/bank capacity), never PAYOUT.WORK_MULTIPLIER/MODIFIER.
+    // WORK_MULTIPLIER, for free — no separate exclusion needed, see the Companions entry's
+    // own comment for why that exclusion is deliberate. Defaults to 0 (a pure no-op,
+    // `* (1 + 0)` = `* 1`) when nothing's equipped, so this method's existing behavior is
+    // completely unchanged for every run without Bastion active.
     scaleReward(outcomeIndex, rawValue){
         if(!tC.SCALED_PAYOUT_TYPES.has(outcomeIndex)){
             return rawValue
         }
-        return Math.round(rawValue * this.scalingFactor)
+        return Math.round(rawValue * this.scalingFactor * (1 + this.rewardBonus))
     }
 
     // Per-run maximum gain cap (2026-09-04, direct instruction) — the single point every
@@ -687,6 +737,31 @@ class towerFactory{
             .setColor("NotQuiteBlack")
             .setTimestamp(Date.now())
             .setThumbnail("https://cdn.discordapp.com/attachments/1146091052781011026/1207183304286277685/skull.png?ex=65deb810&is=65cc4310&hm=51a9b329d50a101665716d8fb73b35b95a172b3de732e4f7f9e69f31d5c41980&")
+            .setFooter({text: `Tater Tower: ${this.username}`});
+
+        await this.interaction.editReply({
+            embeds: [embed],
+            components: [],
+        });
+
+        this.floor--
+        return false
+    }
+
+    // Bastion, the Tower Warden's Death Ward triggering (2026-09-13) — same no-collector,
+    // purely-informational shape createDeathEmbed uses (a warded loss is still a real ending,
+    // not a decision point), just Bastion-flavored and gold instead of the skull. Deliberately
+    // does NOT wipe this.run's WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY (the whole point of
+    // the ward) and does NOT set this.died — the run ends exactly like a voluntary Leave for
+    // every downstream purpose (highestTowerFloor still counts it via this.floor--, matching a
+    // real death's own attribution; the daily leaderboard's `!died` eligibility check also
+    // still counts it, since a warded retreat IS a genuine survival, not a loss).
+    async createWardedRetreatEmbed(description){
+        const embed = new EmbedBuilder()
+            .setTitle(`FLOOR ${this.floor.toLocaleString()}: Bastion Intervenes!`)
+            .setDescription(`${description}\n\nBastion, the Tower Warden throws itself between you and the killing blow, then carries you safely back down the tower. Everything you've earned this run is safe — but the climb ends here for today.\n\n*(Bastion's Ward is used up for the day.)*`)
+            .setColor("Gold")
+            .setTimestamp(Date.now())
             .setFooter({text: `Tater Tower: ${this.username}`});
 
         await this.interaction.editReply({

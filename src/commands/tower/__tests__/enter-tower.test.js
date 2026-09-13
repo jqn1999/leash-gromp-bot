@@ -68,7 +68,11 @@ test('a player at or above ENTRY_GATE_MULTI on raw workMultiplierAmount with no 
     await callback({}, interaction);
 
     expect(interaction.editReply).not.toHaveBeenCalled();
-    expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', rawMulti, false);
+    // Trailing 0/false (2026-09-13) — Bastion's towerRewardBonus/hasWard, both resolved from
+    // baseUser()'s own companion-less state (no `companions` field at all) to their safe
+    // "nothing equipped" defaults. See enterTowerBastion.test.js for coverage once a
+    // companion is actually involved.
+    expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', rawMulti, false, 0, false);
 });
 
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone clears the gate once their live rebirth bonus is folded in, and towerFactory is constructed with the effective (not raw) power', async () => {
@@ -86,7 +90,8 @@ test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone clears t
     await callback({}, interaction);
 
     expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringContaining('barred entry'));
-    expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', expectedEffectivePower, false);
+    // Trailing 0/false — see the previous test's own comment on Bastion's two new args.
+    expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', expectedEffectivePower, false, 0, false);
 });
 
 // Auto-recovery (2026-09-11): a run that throws partway through used to strand the player

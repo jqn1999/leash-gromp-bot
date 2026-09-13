@@ -146,7 +146,14 @@ const PERK_LABELS = {
     // for that history if a future Metal-focused companion ever needs it re-added.
     specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato & Golden Yam`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
-    rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`
+    rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`,
+    // Bastion, the Tower Warden (2026-09-13) — boosts Tower's own three value-scaled reward
+    // types (potatoes/passive income/bank capacity), never work-multiplier rewards. See the
+    // Companions entry's own comment for why that exclusion is automatic, not enforced here.
+    towerRewardBonus: value => `+${(value * 100).toFixed(1)}% Tower Potatoes/Passive Income/Bank Capacity`,
+    // Binary, no scaling numeric value — same "special mechanic, special function" shape
+    // poisonImmunity above uses (see companionFactory.hasTowerDeathWard).
+    towerDeathWard: () => `Once per day, past floor 10: the first Elite loss becomes a safe retreat instead of a death — your run's rewards are kept`
 };
 
 // Mercenary Rank titles — potato-punned, same non-load-bearing flavor status
@@ -194,7 +201,7 @@ function formatCompanionPerks(companion, level = 1, ascensionStars = 0) {
     // than a number.
     if (companion.id === MimicryCompanion.ID) {
         const scalePercent = ((getEffectiveLevelMultiplier(level, ascensionStars) - MimicryCompanion.SCALE_OFFSET) * 100).toFixed(0);
-        return `Mirrors your single best Passive Income, Rebirth Bonus, Work Multiplier, /work Cooldown Skip Chance, Regrade Success Boost, Rob Success Chance, Starch Sell Value, Bounty Reward, and Rival Confrontation Success Chance — whichever companion you already have the best of, for each — at ${scalePercent}% effectiveness (scales with its own level, excludes Prospector)`;
+        return `Mirrors your single best Passive Income, Rebirth Bonus, Work Multiplier, /work Cooldown Skip Chance, Regrade Success Boost, Rob Success Chance, Starch Sell Value, Bounty Reward, Rival Confrontation Success Chance, and Tower Reward Bonus — whichever companion you already have the best of, for each — at ${scalePercent}% effectiveness (scales with its own level, excludes Prospector)`;
     }
     const multiplier = getEffectiveLevelMultiplier(level, ascensionStars);
     return companion.perks.map(perk => {
@@ -204,6 +211,11 @@ function formatCompanionPerks(companion, level = 1, ascensionStars = 0) {
             return PERK_LABELS.poisonImmunity({
                 rebatePercent: Work.GUINEA_PIG_POISON_REBATE_PERCENT * multiplier
             });
+        }
+        // towerDeathWard is binary (no `value` to scale) — see companionFactory.
+        // hasTowerDeathWard's own comment.
+        if (perk.type === 'towerDeathWard') {
+            return PERK_LABELS.towerDeathWard();
         }
         return PERK_LABELS[perk.type](perk.value * multiplier);
     }).join(', ');
@@ -473,7 +485,7 @@ class EmbedFactory {
             title += ` 🌱Rebirth ${userDetails.rebirthCount}`;
         }
         // Full-Roster capstone (Option A, cosmetic-only) — same threshold the full_roster
-        // achievement checks (Companions.length, currently 15, includes Yukon and Cinderroot).
+        // achievement checks (Companions.length, currently 16, includes Yukon, Cinderroot, and Bastion).
         if ((userDetails.companions?.ownedCount || 0) >= Companions.length) {
             title += ` 🏆Menagerie Complete`;
         }
@@ -3035,7 +3047,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("Leash Gromp — Companions")
-            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market — except Yukon, the Highwayman, who's found only through a winning \`/take-bounty\` roll (see /help topic:mercenary), and Yamimic, the Thousand-Faced, whose already-rare roll only becomes possible once you own at least one of every Mythic. Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. Companions whose perk also matters to /rob, /sell-starch, /regrade, /confront-rival, or passive income get a second leveling path through that action too; the 7 without one (Sprout, Fieldmouse, Ladybug, Guinea Pig, Prospector, Firefly, Spudsprite) instead level TWICE as fast from /work alone, so they're never stuck behind the rest. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
+            .setDescription(`${Companions.length} companions to find. Found through the "Wandering Companion" /work encounter, or bought directly off /companion-market — except Yukon, the Highwayman, who's found only through a winning \`/take-bounty\` roll (see /help topic:mercenary), Yamimic, the Thousand-Faced, whose already-rare roll only becomes possible once you own at least one of every Mythic, and Bastion, the Tower Warden, who's found only from surviving a forced Elite fight in \`/enter-tower\` (see /help topic:tower). Only one can be active at a time — view your own and equip one with \`/companion\`.\n\nEvery companion can level up (to a cap of 10) just by staying equipped through your /work calls — each level makes its own perk stronger. Companions whose perk also matters to /rob, /sell-starch, /regrade, /confront-rival, or passive income get a second leveling path through that action too; the 7 without one (Sprout, Fieldmouse, Ladybug, Guinea Pig, Prospector, Firefly, Spudsprite) instead level TWICE as fast from /work alone, so they're never stuck behind the rest. A duplicate pull of one you already own gives it a boost too. Selling a leveled companion on the market carries its level to the buyer, so it's worth more than a fresh one. Perks below are shown at level 1 (base); use \`/companion\` to see your own at their real level.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -3130,8 +3142,8 @@ class EmbedFactory {
         // Full-Roster capstone (Option A, cosmetic-only, same direct instruction as the
         // Max-Level tag above) — a one-line flourish once every companion in the roster is
         // owned, matching the existing full_roster achievement's own threshold exactly
-        // (Companions.length, currently 15 — includes Yukon, the Highwayman and Cinderroot,
-        // the Hoardwarden). Compared against uniqueOwnedCount (distinct types currently
+        // (Companions.length, currently 16 — includes Yukon, the Highwayman, Cinderroot,
+        // the Hoardwarden, and Bastion, the Tower Warden). Compared against uniqueOwnedCount (distinct types currently
         // owned), not raw instance count — see companion.js's buildOwnedPages for why a
         // duplicate must not push this over.
         const menagerieComplete = uniqueOwnedCount >= Companions.length ? '\n🏆 Menagerie Complete — every companion, collected.' : '';

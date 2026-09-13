@@ -201,7 +201,9 @@ const Achievements = [
     // read Companions.length live (never drift), but this achievement's own threshold is a
     // static literal like every other achievement here, so it needs a manual bump on every
     // roster change — there is no way around that with this schema.
-    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 15 companions", statPath: "companions.ownedCount", threshold: 15 },
+    // Bumped again 15->16 (2026-09-13, Tower Pet): Bastion, the Tower Warden
+    // (dropSource: "tower") counts toward this the same way Yukon/Cinderroot do.
+    { id: "full_roster", name: "Every Creature Great and Small", description: "Collect all 16 companions", statPath: "companions.ownedCount", threshold: 16 },
     { id: "mythic_bond", name: "A Rare Kind of Loyal", description: "Win a Mythic-tier companion", statPath: "companions.mythicOwnedCount", threshold: 1 },
 
     // Max-Level capstone (Option A, cosmetic-only — direct instruction: "just cosmetic
@@ -1077,9 +1079,25 @@ const CompanionLeveling = {
         "starchSellBonusPercent",
         "regradeChanceBoostPercent",
         "rivalSuccessChanceFlat",
-        "passiveIncomePercent"
+        "passiveIncomePercent",
+        // Tower Pet (2026-09-13) — Bastion's towerRewardBonus perk gives it a real second
+        // leveling path (Tower runs, see TOWER_WORK_COUNT_PER_FLOOR/PER_ELITE_SURVIVED below
+        // and companionFactory.getTowerWorkCountGrant), same reasoning bountyRewardPercent
+        // would need here too if Yukon didn't already qualify via robChanceFlat.
+        "towerRewardBonus"
     ],
-    WORK_ONLY_LEVELING_MULTIPLIER: 2
+    WORK_ONLY_LEVELING_MULTIPLIER: 2,
+    // Tower Pet leveling grant (2026-09-13, direct instruction: "it should level with tower
+    // somehow") — mirrors getCooldownScaledWorkCountGrant's "real-time-effort-scaled" spirit,
+    // but Tower has no fixed cooldown length to scale against (a run's own length varies
+    // entirely by how far the player climbs before dying/leaving) — so the grant scales
+    // directly off THIS run's own floors climbed and Elites survived instead. At a realistic
+    // ~15-20 floors/day for a mid-progress climber, 3/floor + 15/Elite survived lands roughly
+    // 45-75 workCount/day — hitting CompanionLeveling's own max (3725) in ~60-80 days, in line
+    // with how long a Yukon-perk companion takes to max via Bounty/Heist grinding. See
+    // companionFactory.getTowerWorkCountGrant.
+    TOWER_WORK_COUNT_PER_FLOOR: 3,
+    TOWER_WORK_COUNT_PER_ELITE_SURVIVED: 15
 }
 
 // Companion Hunt (2026-09-08, direct instruction — "a command a user can use to scavenge
@@ -1567,6 +1585,62 @@ const Companions = [
         perks: []
     },
     {
+        id: "bastion",
+        name: "Bastion, the Tower Warden",
+        rarity: CompanionRarity.LEGENDARY,
+        // Tower Pet (2026-09-13, direct instruction — "plan out a tower pet that users can
+        // obtain from doing tower... it should level with tower somehow... boost multi or
+        // stats gained from tower or it would help tank 1 death in tower each day"). Legendary
+        // tier matches the precedent Yukon (dropSource "bounty") and Cinderroot (dropSource
+        // "guildRaid") already set: an activity-exclusive companion tied to a major
+        // non-/work system sits at Legendary, not a fresh tier. dropSource "tower" mirrors
+        // theirs exactly — companionFactory.getCompanionsByRarity excludes it from the normal
+        // /work roll pool for free, no code change needed there. Rolled on SURVIVING a forced
+        // Elite fight (the real "win" moment in a Tower run, parallel to "won a bounty"/"won a
+        // guild raid") — see TowerCompanionDrop.CHANCE below and towerFactory.execElite's own
+        // roll, banded by the Elite's own content tier (1-4, see towerConstants.ELITE_TIER_BANDS)
+        // so deeper, harder Elites are also more rewarding to beat.
+        dropSource: "tower",
+        thumbnailUrl: null, // TODO: needs real artwork, same placeholder precedent Yamimic's own entry uses.
+        description: "A stone gargoyle that's watched over the Tower since before anyone can remember — carved, so the story goes, by the first climber who reached the top and never came back down. It doesn't wake for just anyone; only a climber who's stared down an Elite and won earns a flicker of life in its eyes. Once it does, it steps off its plinth and follows them out, perching on their shoulder for the next climb.",
+        dropFlavor: "Something ancient and stone-still stirs behind you as the Elite falls — Bastion, the Tower Warden, has decided you're worth guarding. Check /companion to equip it.",
+        scavengeFlavor: "Bastion barely seemed to leave at all — gargoyles don't so much scavenge as loom nearby until something useful happens to them — but it drags back a genuine haul all the same.",
+        // Two perks, mirroring Yukon's own multi-perk Legendary shape (a single-activity
+        // companion gets more than one lever to help with, since it only ever gets to help
+        // with that one thing).
+        //
+        // towerRewardBonus (numeric, scales with level like every other percentage perk) —
+        // boosts Tower's own three VALUE-SCALED reward types (potatoes, passive income, bank
+        // capacity — see towerConstants.SCALED_PAYOUT_TYPES) by this percentage. Deliberately
+        // excludes work-multiplier rewards (PAYOUT.WORK_MULTIPLIER/MODIFIER.WORK_MULTIPLIER) —
+        // those already bypass scaleReward's own scaling multiplication entirely (they're not
+        // in SCALED_PAYOUT_TYPES), so towerFactory.scaleReward's bonus multiplier naturally
+        // never touches them, matching this codebase's own established "a percentage-type
+        // stat gain doesn't get boosted by another percentage" convention (the same reasoning
+        // Tower's own player-power scalingFactor already uses). 10% at level 1, scaling to
+        // 14.5% at level 10 via the standard +5%/level curve — anchored below Yukon's own
+        // 13.5% bountyRewardPercent since Bastion carries a second, more novel perk alongside it.
+        //
+        // towerDeathWard (binary — no `value`, same shape as Guinea Pig's own poisonImmunity
+        // entry) — once per day (userDetails.towerWardUsedToday, reset on the same 4am UTC
+        // cron as canEnterTower), the FIRST Elite loss is intercepted: the run ends immediately
+        // as a safe forced retreat instead of a death — accumulated WORK_MULTIPLIER/
+        // PASSIVE_INCOME/BANK_CAPACITY payouts are KEPT rather than wiped, but the climb still
+        // stops there (no continuing past the save). Gated to floor > TOWER_WARD_MIN_FLOOR (10)
+        // — the very first forced Elite (floor 10) is never warded, only the second onward —
+        // direct instruction, chosen instead of a companion-level gate. Deliberately NOT routed
+        // through the generic numeric getActivePerkValue pipeline (see
+        // companionFactory.hasTowerDeathWard, a dedicated presence check mirroring
+        // getGuineaPigRebate's own "special mechanic, special function" precedent) and
+        // deliberately excluded from MimicryCompanion.PERK_TYPES (same exclusion poisonImmunity
+        // already gets) — a binary "did you save a death today" charge has no numeric value to
+        // take the max of, so Yamimic can't mirror it; only an actual owned Bastion grants it.
+        perks: [
+            { type: "towerRewardBonus", value: 0.10 },
+            { type: "towerDeathWard" }
+        ]
+    },
+    {
         id: "yamimic",
         name: "Yamimic, the Thousand-Faced",
         rarity: CompanionRarity.HEIRLOOM,
@@ -1623,7 +1697,11 @@ const MimicryCompanion = {
         "robChanceFlat",
         "starchSellBonusPercent",
         "bountyRewardPercent",
-        "rivalSuccessChanceFlat"
+        "rivalSuccessChanceFlat",
+        // Tower Pet (2026-09-13) — Bastion's numeric perk. towerDeathWard is deliberately NOT
+        // included here, same exclusion poisonImmunity already gets — a binary charge has no
+        // numeric value to take the max of, so Yamimic can't mirror it.
+        "towerRewardBonus"
     ],
     // Own-level scaling reuses the EXACT same +5%/level curve every other companion's
     // companionFactory.getLevelMultiplier already applies (CompanionLeveling.
@@ -3435,6 +3513,18 @@ const GuildCompanionDrop = {
     CHANCE: { baby: 0, regular: 0.005, stat: 0.005, elite: 0.01, legendary: 0.025 }
 };
 
+// Bastion, the Tower Warden's drop odds — see the Companions entry above (id: "bastion",
+// dropSource: "tower") for the full drop-mechanism writeup. Rolled once per forced Elite
+// SURVIVED (towerFactory.execElite), keyed by that Elite's own content tier (1-4, see
+// towerConstants.ELITE_TIER_BANDS/getEliteTier) rather than a single flat rate — mirrors
+// MercenaryCompanionDrop.YUKON_CHANCE's own band-scaled shape (deeper/harder content pays
+// off more), scaled up slightly (Tower's own once-per-day cadence means far fewer roll
+// opportunities overall than Bounty's per-attempt one) so a dedicated deep climber still has
+// a realistic shot at this over time.
+const TowerCompanionDrop = {
+    CHANCE: { 1: 0.005, 2: 0.01, 3: 0.02, 4: 0.03 }
+};
+
 // Level-scaled perk values for Cinderroot's two scaling perks, mirroring GuildBuffScaling's
 // exact shape (index 0 = level 1, looked up live from guild.raidCount via RaidLevel.THRESHOLDS'
 // 10-level curve). Perk 3c (treasury interest) is ALSO level-scaled as of 2026-09-10, but as its
@@ -4259,6 +4349,7 @@ module.exports = {
     MercenaryBuff,
     BuffSwitchCooldown,
     GuildCompanionDrop,
+    TowerCompanionDrop,
     GuildCompanionScaling,
     RaidLevel,
     Rob,

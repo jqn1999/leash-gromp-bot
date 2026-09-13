@@ -74,6 +74,10 @@ module.exports = async (client) => {
 
             // Reset all user tower entries at midnight 12 AM EST
             await dynamoHandler.resetAllTowerEntries()
+            // Bastion, the Tower Warden's Death Ward (2026-09-13) — same daily cadence as
+            // canEnterTower above, so a used ward is available again the next time a player
+            // can enter the tower at all.
+            await dynamoHandler.resetTowerWard()
         } catch (err) {
             console.log('4am cron: Tower payout/reset step failed:', err)
         }

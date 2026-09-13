@@ -471,6 +471,10 @@ function getDefaultUserFields(userId, username) {
         },
         starches: 0,
         canEnterTower: true,
+        // Bastion, the Tower Warden's Death Ward (2026-09-13) — consumed at most once per day,
+        // reset on the same 4am UTC cron as canEnterTower (see dynamoHandler.resetTowerWard).
+        // See constants.js's Companions entry (id: "bastion") for the full mechanic.
+        towerWardUsedToday: false,
         workCount: 0,
         workScenarioCounts: {
             regular: 0,
@@ -1753,6 +1757,13 @@ const resetAllTowerEntries = async function () {
     return bulkUpdateAllUsers('canEnterTower', true, 'resetAllTowerEntries');
 }
 
+// Bastion, the Tower Warden's Death Ward (2026-09-13) — separate call from
+// resetAllTowerEntries above since bulkUpdateAllUsers only ever writes one field per call;
+// both are fired together on the same 4am UTC cron (see backgroundEvents.js).
+const resetTowerWard = async function () {
+    return bulkUpdateAllUsers('towerWardUsedToday', false, 'resetTowerWard');
+}
+
 // Daily Tater Tower leaderboard — a small array living in the stats table's
 // "tower_leaderboard" doc, one entry per survived run today (see towerFactory.js for how
 // "survived" vs "died" is determined). Read/appended by enter-tower.js as runs finish,
@@ -1935,6 +1946,7 @@ module.exports = {
     getSortedGuildsById,
     removeStarches,
     resetAllTowerEntries,
+    resetTowerWard,
 
     recordTowerLeaderboardEntry,
     getTowerLeaderboard,

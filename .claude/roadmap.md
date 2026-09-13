@@ -12236,3 +12236,78 @@ describe block confirming the field renders the (mocked) value and is never omit
 (`createGuildEmbed Guild Companion field`'s own `beforeEach` now also stubs
 `raidFactory.getGuildDailyInterest`, since that describe block auto-mocks the whole
 `raidFactory` module). Docs: `guilds.md`.
+
+## Feature: Bastion, the Tower Warden — a Tower-exclusive companion (2026-09-13, direct instruction)
+
+Player: "plan out a tower pet that users can obtain from doing tower. it should level with
+tower somehow, and some ideas was it would boost multi or stats gained from tower or it would
+help tank 1 death in tower each day etc. Plan out lore, benefits, leveling methods, and what
+rarity and tier it should be." Presented a full design (lore, mechanics, three open questions)
+before implementing; confirmed decisions: "i like your recommended safe retreat keep loot run
+ends / gate ward to only be available above floor 10 / chances look good / implement."
+
+**Design**: Legendary, `dropSource: "tower"` (same exclusion mechanism as Yukon/Cinderroot —
+no new code needed, just another non-null `dropSource`), dropped on surviving a forced Elite
+fight, banded by `getEliteTier` (0.5%/1%/2%/3% across tiers 1-4). Two perks: `towerRewardBonus`
+(+10% base, scaled by level, multiplies Tower's potatoes/passive/bank-capacity rewards —
+excludes the work-multiplier reward the same way `scaleReward`'s existing
+`SCALED_PAYOUT_TYPES` already excludes it, for free) and `towerDeathWard` (once per day, the
+first Elite loss past floor `TOWER_WARD_MIN_FLOOR`(10) — strict `>`, so never the very first
+forced Elite — becomes a safe forced retreat: everything earned so far is kept, the run just
+ends there instead of wiping to a death). Full design writeup, drop-chance table, and every
+mechanical detail: [tower.md#bastion-the-tower-warden-2026-09-13-direct-instruction](systems/tower.md).
+
+**Implementation, by file**:
+- `constants.js` — `Companions` entry, `TowerCompanionDrop.CHANCE`,
+  `CompanionLeveling.ACCELERANT_PERK_TYPES` gains `towerRewardBonus`,
+  `CompanionLeveling.TOWER_WORK_COUNT_PER_FLOOR`(3)/`TOWER_WORK_COUNT_PER_ELITE_SURVIVED`(15),
+  `MimicryCompanion.PERK_TYPES` gains `towerRewardBonus` (`towerDeathWard` deliberately
+  excluded — a binary save, not a "bigger number" value Yamimic's mirroring fits). Bumped
+  `full_roster`'s achievement threshold 15→16 (Bastion counts toward `ownedCount` the same way
+  every other companion does) — a static literal this schema always needs a manual bump for,
+  same as Yukon/Yamimic/Cinderroot's own additions each required.
+- `towerConstants.js` — `TOWER_WARD_MIN_FLOOR = 10`.
+- `companionFactory.js` — three new functions: `getTowerWorkCountGrant(floorsClimbed,
+  elitesSurvivedCount)`, `hasTowerDeathWard(userDetails)`, `resolveTowerCompanionAward(userDetails)`
+  (thin wrapper around `applyCompanionAward`, mirrors `resolveYukonAward`/`resolveCinderrootAward`).
+- `towerFactory.js` — constructor gains `rewardBonus`/`hasWard` params; `scaleReward` folds
+  `rewardBonus` into its existing scaling branch; `execElite`'s win branch increments
+  `elitesSurvivedCount`/rolls the drop; its loss branch checks the Ward BEFORE the existing
+  stat wipe; new `createWardedRetreatEmbed` (Gold, doesn't wipe stats, doesn't set `died`);
+  `startRun()`'s return tuple extended from 3 to 6 elements
+  (`[run, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed]`) — backward-
+  compatible, confirmed by all 72 pre-existing tests passing unchanged.
+- `enter-tower.js` — resolves `rewardBonus`/`hasWard` from the pre-run `userDetails` snapshot
+  before constructing `towerFactory`; new `processTowerCompanionRewards` (leveling grant,
+  drop-award loop, `towerWardUsedToday` persistence) called from `processRewardPayouts` after
+  the run; a new followUp embed announces a Bastion drop, mirroring Yukon's own
+  isNew-branched wording.
+- `dynamoHandler.js`/`backgroundEvents.js` — `towerWardUsedToday: false` default field,
+  `resetTowerWard()` on the same 4am UTC cron cadence as `resetAllTowerEntries()`.
+- `embedFactory.js` — `PERK_LABELS` entries for both new perk types plus a `towerDeathWard`
+  binary-perk display branch (mirroring `poisonImmunity`'s own), Yamimic's description string
+  updated, roster-count comments (15→16) refreshed, and the companions-list embed's own
+  description gets a Bastion clause alongside its existing Yukon/Yamimic exclusion mentions.
+
+**Bug caught by the full-suite discipline, not design review**: adding `towerRewardBonus` to
+`MimicryCompanion.PERK_TYPES` made Yamimic's own displayed perk manifest include it, but
+`embedFactory.js`'s `PERK_LABELS` had no formatter registered for either new perk type yet —
+crashed `/help topic:companions`'s Yamimic display (`PERK_LABELS[perk.type] is not a
+function`). Fixed directly (not a design tradeoff, just missing wiring): added both
+`PERK_LABELS` entries and the `towerDeathWard` special-case branch.
+
+**Tests**: `towerFactory.test.js` gained 11 new tests — `scaleReward` (`rewardBonus` defaults
+to a no-op, multiplies the three scaled types, never applies to either WORK_MULTIPLIER type);
+`execElite`'s win branch (`elitesSurvivedCount` always increments on a win, `towerCompanionHits`
+rolls hit/miss correctly, a loss never touches either counter); a dedicated Death Ward describe
+block (wards correctly past the floor gate with stats preserved, never wards at exactly
+`TOWER_WARD_MIN_FLOOR`, consumed at most once per run — a second same-run loss wipes normally,
+`hasWard=false` never wards regardless of depth); a `startRun()` tuple-shape test. New
+`enterTowerBastion.test.js` (7 tests) exercises the full `enter-tower.js` wiring end-to-end with
+`companionFactory` left real (only `dynamoHandler`/`towerFactory` mocked): constructor args
+reflect the equipped companion's real level-1 perk value, `towerWardUsedToday` suppresses
+`hasWard` even with Bastion equipped, Ward-used/not-used persistence, accelerant leveling
+persists the right `workCount` onto the exact equipped instance, a drop hit awards a genuine
+second independent instance and announces it via a separate followUp embed, and a
+companion-less player is completely unaffected (`rewardBonus=0`, `hasWard=false`). Full suite:
+**1607/1607** across 85 suites, no regressions. Docs: `companions.md`, `tower.md`.

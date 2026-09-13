@@ -37,7 +37,10 @@ const {
     resolveScavengeReward,
     getScavengeMultiplierBonus,
     migrateOwnedToInstances,
-    rollWorkCountMultiplierTier
+    rollWorkCountMultiplierTier,
+    getTowerWorkCountGrant,
+    hasTowerDeathWard,
+    resolveTowerCompanionAward
 } = require('../companionFactory');
 const { CompanionRarity, CompanionRarityOdds, Companions, CompanionLeveling, CompanionScavenging, MimicryCompanion, Work, Bounty, RobNpc, CompanionFusion } = require('../constants');
 
@@ -164,12 +167,20 @@ describe('getCompanionsByRarity / rollCompanion', () => {
         expect(getCompanionsByRarity(cinderroot.rarity)).not.toContainEqual(cinderroot);
     });
 
-    test('rollCompanion always returns a companion whose rarity matches what it rolled, and never Yukon or Cinderroot', () => {
+    // Tower Pet (2026-09-13) — a tower-exclusive companion (Bastion), same mechanism.
+    test('a tower-exclusive companion (Bastion) is excluded from the normal roll pool entirely', () => {
+        const bastion = Companions.find(c => c.id === 'bastion');
+        expect(bastion.dropSource).toBe('tower');
+        expect(getCompanionsByRarity(bastion.rarity)).not.toContainEqual(bastion);
+    });
+
+    test('rollCompanion always returns a companion whose rarity matches what it rolled, and never Yukon, Cinderroot, or Bastion', () => {
         for (let i = 0; i < 200; i++) {
             const companion = rollCompanion();
             expect(Companions).toContainEqual(companion);
             expect(companion.id).not.toBe('yukon');
             expect(companion.id).not.toBe('cinderroot');
+            expect(companion.id).not.toBe('bastion');
         }
     });
 });
@@ -945,6 +956,84 @@ describe('getCooldownScaledWorkCountGrant', () => {
 
     test('never rounds down to 0 even when a small discountFactor would otherwise push it there', () => {
         expect(getCooldownScaledWorkCountGrant(Work.WORK_TIMER_SECONDS, 0.1)).toBe(1);
+    });
+});
+
+// Tower Pet (2026-09-13, direct instruction: "it should level with tower somehow") — scales
+// off THIS RUN's own floors climbed and Elites survived rather than a fixed cooldown, since
+// Tower has no fixed cooldown length to scale against.
+describe('getTowerWorkCountGrant', () => {
+    test('matches the documented formula: floors * PER_FLOOR + elites * PER_ELITE_SURVIVED', () => {
+        const floors = 20;
+        const elites = 2;
+        const expected = Math.round(
+            floors * CompanionLeveling.TOWER_WORK_COUNT_PER_FLOOR +
+            elites * CompanionLeveling.TOWER_WORK_COUNT_PER_ELITE_SURVIVED
+        );
+        expect(getTowerWorkCountGrant(floors, elites)).toBe(expected);
+    });
+
+    test('never rounds down to 0 even for a very short run (left at floor 0, no Elites survived)', () => {
+        expect(getTowerWorkCountGrant(0, 0)).toBe(1);
+    });
+
+    test('a deeper run (more floors, more Elites survived) grants strictly more than a shallow one', () => {
+        expect(getTowerWorkCountGrant(30, 3)).toBeGreaterThan(getTowerWorkCountGrant(5, 0));
+    });
+});
+
+// Bastion, the Tower Warden's Death Ward (2026-09-13) — a dedicated presence check, not
+// routed through the generic numeric getActivePerkValue pipeline (towerDeathWard carries no
+// `value` to scale by level — see the Companions entry's own comment).
+describe('hasTowerDeathWard', () => {
+    function userWithActive(id, perks) {
+        return freshUser({
+            companions: {
+                owned: [{ instanceId: `${id}-a`, id, workCount: 0 }],
+                active: `${id}-a`, ownedCount: 1, mythicOwnedCount: 0
+            }
+        });
+    }
+
+    test('false when nothing is equipped', () => {
+        expect(hasTowerDeathWard(freshUser())).toBe(false);
+    });
+
+    test('false for an equipped companion that does not carry towerDeathWard', () => {
+        expect(hasTowerDeathWard(userWithActive('sprout'))).toBe(false);
+    });
+
+    test('true when the actual owner of the perk (Bastion) is equipped', () => {
+        expect(hasTowerDeathWard(userWithActive('bastion'))).toBe(true);
+    });
+
+    test('false for Yamimic — towerDeathWard is deliberately excluded from MimicryCompanion.PERK_TYPES', () => {
+        expect(hasTowerDeathWard(userWithActive(MimicryCompanion.ID))).toBe(false);
+    });
+});
+
+// Mirrors mercenaryFactory.resolveYukonAward's exact shape, for Bastion.
+describe('resolveTowerCompanionAward', () => {
+    test('grants a fresh Bastion instance and reports isNew for a player who does not own one yet', () => {
+        const user = freshUser();
+        const { isNew, companion, companions } = resolveTowerCompanionAward(user);
+        expect(isNew).toBe(true);
+        expect(companion.id).toBe('bastion');
+        expect(companions.owned.some(o => o.id === 'bastion')).toBe(true);
+        expect(companions.ownedCount).toBe(1);
+    });
+
+    test('duplicates are allowed — a second Bastion still appends a fresh instance, isNew false', () => {
+        const user = freshUser({
+            companions: {
+                owned: [{ instanceId: 'bastion-a', id: 'bastion', workCount: 0 }],
+                active: null, ownedCount: 1, mythicOwnedCount: 0
+            }
+        });
+        const { isNew, companions } = resolveTowerCompanionAward(user);
+        expect(isNew).toBe(false);
+        expect(companions.owned.filter(o => o.id === 'bastion').length).toBe(2);
+        expect(companions.ownedCount).toBe(1); // only counts distinct TYPES ever unlocked
     });
 });
 

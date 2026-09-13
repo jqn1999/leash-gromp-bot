@@ -1522,3 +1522,125 @@ and `chooseRiskPolicy` and asserts the run still returns/records the clicked cho
 throwing. This is very likely the actual cause of both the floor-13 and floor-1 incidents — a rate-
 limit-driven race that could hit any floor's own button ack, matching both reports being on
 different, unrelated floors with unrelated content.
+
+## Bastion, the Tower Warden (2026-09-13, direct instruction)
+
+Player-requested feature: "plan out a tower pet that users can obtain from doing tower. it
+should level with tower somehow... it would boost multi or stats gained from tower or it
+would help tank 1 death in tower each day." Confirmed design, in order: (1) the Death Ward is
+a "safe retreat, keep loot, run ends" save (the milder of two pitched options — a stronger
+"continue climbing past the save" alternative was turned down), (2) the Ward is gated by
+**floor depth**, not companion level (usable only past floor `TOWER_WARD_MIN_FLOOR`, i.e.
+never on the very first forced Elite at floor 10 — only floor 20+), (3) the proposed
+drop-chance bands (see below) were confirmed as-is.
+
+**Lore/rarity**: Legendary, `dropSource: "tower"` — the same `Companions[]`/
+`getCompanionsByRarity` exclusion mechanism Yukon (`dropSource: "bounty"`, see
+[mercenary-bounties.md](mercenary-bounties.md)) and Cinderroot (`dropSource: "guildRaid"`, see
+[guilds.md](guilds.md)) already established, so no new exclusion code was needed — a tower-
+exclusive companion is just another entry with a non-null `dropSource`. A stone gargoyle
+that's watched over the Tower since long before any current climber — see its `constants.js`
+entry for the full flavor text.
+
+**Drop mechanism** — rolled on **surviving** a forced Elite fight (the win branch of
+`execElite`, right after `checkElitePayout()`), banded by that Elite's own `getEliteTier`
+content tier (`TowerCompanionDrop.CHANCE` in `constants.js`):
+
+| Elite tier | Forced-Elite index N | Drop chance |
+|---|---|---|
+| 1 | 1-3 | 0.5% |
+| 2 | 4-8 | 1% |
+| 3 | 9-20 | 2% |
+| 4 | 21+ | 3% |
+
+Deeper, harder Elites are more rewarding to beat, mirroring the existing tier-banding
+precedent's own "content gets harder AND better deeper in" shape. A hit awards via
+`companionFactory.resolveTowerCompanionAward` (thin wrapper around `applyCompanionAward`,
+same shape as Yukon's `resolveYukonAward`/Cinderroot's `resolveCinderrootAward`) — a genuine
+duplicate pull, not merged into any existing copy, same "every acquisition is a new
+independent instance" rule every other companion follows (see
+[companions.md](companions.md#duplicate-companions-are-real-separate-instances)).
+`towerFactory.js` itself has no DB/companion knowledge of its own (see its constructor's own
+comment) — it only tracks `elitesSurvivedCount`/`towerCompanionHits` counters during the run;
+`enter-tower.js`'s `processTowerCompanionRewards` does the actual roll-to-award translation
+and DB write, after the run completes, against a freshly re-fetched `userDetails` (not the
+stale pre-run snapshot) — same "always credit against the latest state" precedent every other
+field in that function already follows.
+
+**Perks** (two, matching the two player-pitched ideas — a boost AND a safety net, not a
+choice between them):
+
+- **`towerRewardBonus`** (+10% base, `PERK_BONUS_PER_LEVEL`-scaled like every other perk) — a
+  straight multiplier on the three SCALED_PAYOUT_TYPES (potatoes/passive income/bank
+  capacity), folded directly into `towerFactory.scaleReward`'s existing
+  `Math.round(rawValue * this.scalingFactor * (1 + this.rewardBonus))` — since it only ever
+  multiplies inside that same branch, it automatically inherits the exact same exclusion
+  `PAYOUT.WORK_MULTIPLIER`/`MODIFIER.WORK_MULTIPLIER` already has from `scaleReward`, with
+  zero separate exclusion logic needed. `rewardBonus` defaults to `0` (a pure no-op,
+  `* (1 + 0)` = `* 1`) so a run without Bastion equipped is byte-for-byte unchanged from
+  before this feature. One of `MimicryCompanion.PERK_TYPES` (mirrorable by Yamimic) since it's
+  an ordinary "one number, bigger is better" value.
+- **`towerDeathWard`** — a binary once-per-day save, deliberately **excluded** from
+  `MimicryCompanion.PERK_TYPES` (it isn't a numeric value Yamimic's max-comparison mirroring
+  can meaningfully apply — same reasoning Guinea Pig's `poisonImmunity` is already excluded
+  for). Checked via `companionFactory.hasTowerDeathWard(userDetails)`, gated by BOTH the
+  equipped companion carrying the perk AND the player not having already used their ward
+  today (`!userDetails.towerWardUsedToday`) — resolved once, pre-run, in `enter-tower.js`
+  (`hasWard = hasTowerDeathWard(userDetails) && !userDetails.towerWardUsedToday`) and passed
+  into `towerFactory`'s constructor as a snapshot for the whole run, same "computed once,
+  used for the whole run" precedent `this.multi` already sets — a reset firing mid-run
+  doesn't retroactively revoke a ward already available for that run's own duration.
+
+**Ward mechanic** (`execElite`'s loss branch, checked BEFORE the existing
+WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe): `if (this.hasWard && !this.wardUsed &&
+this.floor > tC.TOWER_WARD_MIN_FLOOR)` — `TOWER_WARD_MIN_FLOOR` (10, `towerConstants.js`) is a
+**strict** `>`, not `>=`, so the very first forced Elite at floor 10 can never be warded, only
+floor 20+ (per the confirmed gating decision above). On a hit: `this.wardUsed = true`
+(consumed for the rest of THIS run, regardless of how many more forced Elites it reaches), the
+run ends via `createWardedRetreatEmbed` (Gold, Bastion-flavored) exactly like a voluntary
+Leave for every downstream purpose — `this.floor--` still happens (same attribution as a real
+death for `highestTowerFloor`), and the daily leaderboard's `!died` eligibility check still
+counts it (a warded retreat IS a genuine survival, not a loss) — but critically, `this.died`
+is never set and the WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe is skipped entirely:
+everything earned so far in the run is kept. `wardUsed` is persisted to
+`userDetails.towerWardUsedToday` only when `true` (`enter-tower.js`'s
+`processTowerCompanionRewards`), so a run that never needed the ward makes no extra write.
+
+**Daily reset**: `towerWardUsedToday` follows the exact same 4am UTC cadence as
+`canEnterTower` (`dynamoHandler.resetTowerWard`, called from `backgroundEvents.js`'s existing
+cron right after `resetAllTowerEntries()`) — a used ward is available again the next time a
+player can enter the tower at all, never a separate reset schedule to reason about.
+
+**Leveling**: `companionFactory.getTowerWorkCountGrant(floorsClimbed, elitesSurvivedCount) =
+max(1, round(floorsClimbed * CompanionLeveling.TOWER_WORK_COUNT_PER_FLOOR(3) +
+elitesSurvivedCount * CompanionLeveling.TOWER_WORK_COUNT_PER_ELITE_SURVIVED(15)))` — scales
+with both raw depth reached AND Elites actually survived, so a run that fast-forwards deep but
+loses its one forced Elite still grants something (floor progress alone), while surviving
+Elites grants extra on top (the harder, riskier part of a run). Routed through the existing
+`levelActiveCompanion(companions, grant, null, "towerRewardBonus")` — `towerRewardBonus` is one
+of `CompanionLeveling.ACCELERANT_PERK_TYPES`, so Bastion gets the same "second leveling path
+beyond plain `/work`" treatment every other non-`/work`-focused perk type already has (see
+[companions.md](companions.md#leveling)), rather than being stuck leveling only through
+grinding `/work` while equipped.
+
+**Return tuple** — `towerFactory.startRun()` now returns a 6-element tuple (extended from the
+original 3): `[run, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed]`.
+Backward-compatible by construction (an older/test-mocked 3-element tuple still works —
+`enter-tower.js` reads indices 3-5 with `|| 0`/`|| false` defaults) — confirmed by re-running
+all 72 pre-existing `towerFactory.test.js` tests unchanged after the extension.
+
+**Files touched**: `constants.js` (`Companions` entry, `TowerCompanionDrop`,
+`CompanionLeveling.ACCELERANT_PERK_TYPES`/`TOWER_WORK_COUNT_PER_FLOOR`/
+`TOWER_WORK_COUNT_PER_ELITE_SURVIVED`, `MimicryCompanion.PERK_TYPES`, `full_roster`
+achievement threshold 15→16); `towerConstants.js` (`TOWER_WARD_MIN_FLOOR`);
+`companionFactory.js` (`getTowerWorkCountGrant`, `hasTowerDeathWard`,
+`resolveTowerCompanionAward`); `towerFactory.js` (constructor params, `scaleReward`,
+`execElite`'s win/loss branches, `createWardedRetreatEmbed`, return tuple);
+`enter-tower.js` (`processTowerCompanionRewards`, pre-run perk resolution, drop-announcement
+followUp); `dynamoHandler.js` (`towerWardUsedToday` default field, `resetTowerWard`);
+`backgroundEvents.js` (4am cron wiring); `embedFactory.js` (`PERK_LABELS` entries for both new
+perk types, a `towerDeathWard` binary-perk display branch, Yamimic's own description string) —
+that last file was a real bug caught only by running the full suite: adding
+`towerRewardBonus` to `MimicryCompanion.PERK_TYPES` made Yamimic's own displayed perk manifest
+include it, and `PERK_LABELS` had no formatter registered yet, crashing
+`/help topic:companions`'s Yamimic display.
