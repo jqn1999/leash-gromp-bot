@@ -1131,6 +1131,55 @@ describe('Bastion, the Tower Warden — Death Ward (2026-09-13)', () => {
         expect(tF.died).toBe(true);
         expect(tF.wardUsed).toBe(false);
     });
+
+    // 2026-09-14, player follow-up: "Death ward should work on any elite encounter such as
+    // the wizard sending you to an elite" — every Elite fight, forced (every 10th floor) OR
+    // triggered mid-chain by a REWARD/ENCOUNTER/TRANSACTION entry (Wandering Woods, The
+    // Wizard Lime), already funnels through this exact same execElite() method — there is
+    // no separate death-handling path for a mid-chain Elite to slip past the Ward check
+    // through. These two tests prove that end to end via the REAL trigger call sites
+    // (updateValue/updateTransaction), not just execElite() called directly, and at a floor
+    // nowhere near a multiple of 10 — confirming the Ward has nothing to do with how the
+    // fight was reached.
+    test('the Ward also saves a mid-chain Elite triggered by an ENCOUNTER outcome (Wandering Woods), at a floor that is not even a multiple of 10', async () => {
+        const interaction = fakeInteraction([choice('continue'), choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
+        tF.floor = 3;
+        const wanderingWoods = tC.ENCOUNTERS.find(e => e.name === 'Wandering Woods' && e.choices.some(c => c.outcome === tC.CHOICES.ELITE));
+        const index = wanderingWoods.choices.findIndex(c => c.outcome === tC.CHOICES.ELITE);
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValue(0.999999); // fight roll -> loses
+
+        try {
+            await tF.updateValue(wanderingWoods, index, 'Green', false);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.died).toBe(false);
+        expect(tF.wardUsed).toBe(true);
+    });
+
+    test('the Ward also saves a mid-chain Elite triggered by a TRANSACTION outcome (The Wizard Lime\'s "keep your potatoes" choice), at a floor that is not even a multiple of 10', async () => {
+        const interaction = fakeInteraction([choice('continue'), choice('fight')]);
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true);
+        tF.floor = 7;
+        const wizardLime = tC.TRANSACTIONS.find(t => t.name === 'The Wizard Lime');
+        const index = wizardLime.choices.findIndex(c => c.outcome === tC.CHOICES.ELITE);
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValue(0.999999); // fight roll -> loses
+
+        try {
+            await tF.updateTransaction(wizardLime, index, 'Green', false);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.died).toBe(false);
+        expect(tF.wardUsed).toBe(true);
+    });
 });
 
 describe("startRun()'s returned tuple — elitesSurvivedCount, towerCompanionHits, wardUsed (2026-09-13)", () => {

@@ -1602,7 +1602,17 @@ choice between them):
 **Ward mechanic** (`execElite`'s loss branch, checked BEFORE the existing
 WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe): `if (this.hasWard && !this.wardUsed)` — no
 floor restriction (see the correction note above), so the very first forced Elite at floor 10
-is just as eligible as any later one. On a hit: `this.wardUsed = true`
+is just as eligible as any later one. Applies to **every** Elite fight, not only the forced
+every-10th-floor one — a mid-chain Elite triggered by a REWARD/ENCOUNTER/TRANSACTION entry
+(Wandering Woods, The Wizard Lime's "keep your potatoes" choice) is resolved by this exact
+same `execElite` call (`updateValue`'s and `updateTransaction`'s own `CHOICES.ELITE` branches
+both just call `this.execElite(this.difficulty)`, identically to the forced path) — there's no
+separate death-handling code a mid-chain trigger could slip past the Ward through. Confirmed
+2026-09-14 (player follow-up: "Death ward should work on any elite encounter such as the
+wizard sending you to an elite") with direct end-to-end coverage through `updateValue`/
+`updateTransaction` rather than `execElite` alone, at floors that aren't even multiples of 10 —
+required no code change, since the shared-function architecture already covered it. On a hit:
+`this.wardUsed = true`
 (consumed for the rest of THIS run, regardless of how many more forced Elites it reaches), the
 run ends via `createWardedRetreatEmbed` (Gold, Bastion-flavored) exactly like a voluntary
 Leave for every downstream purpose — `this.floor--` still happens (same attribution as a real

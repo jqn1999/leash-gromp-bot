@@ -12493,3 +12493,25 @@ simplified to plain literals instead of `tC.TOWER_WARD_MIN_FLOOR + N` arithmetic
 no gate left to test relative to. Docs (`tower.md`) corrected with an explicit note on the
 misreading, rather than silently rewriting the original design paragraph. Full suite:
 **1620/1620** across 85 suites (net test count unchanged — one removed, one added).
+
+## Verify: Death Ward already covers mid-chain Elite fights (Wandering Woods, The Wizard Lime), no code change needed (2026-09-14, player follow-up)
+
+Player: "Death ward should work on any elite encounter such as the wizard sending you to an
+elite." Investigated before changing anything: every Elite fight in the Tower — the forced
+every-10th-floor one AND any mid-chain Elite triggered by a REWARD/ENCOUNTER/TRANSACTION
+entry (Wandering Woods' `CHOICES.ELITE` outcome, The Wizard Lime's "keep your potatoes"
+choice/poor-outcome) — already funnels through the exact same single `execElite(difficulty)`
+method (`updateValue`'s and `updateTransaction`'s own `CHOICES.ELITE` branches both just call
+it directly, identical to the forced path at the top of `startRun()`'s loop). The Ward check
+lives inside `execElite` itself, not duplicated per trigger site, so there was never a
+code path where a mid-chain Elite loss could bypass it — this already worked correctly the
+moment the floor gate was removed in the previous entry.
+
+Added direct proof rather than taking that architecture argument on faith: two new
+`towerFactory.test.js` tests drive the REAL trigger call sites end to end (`updateValue` for
+Wandering Woods, `updateTransaction` for The Wizard Lime) rather than calling `execElite`
+directly, at floors that aren't even multiples of 10 (3 and 7), confirming `wardUsed` flips
+true and `died` stays false either way. No production code changed — this was a verification
+pass, not a fix. Docs (`tower.md`) updated to state this coverage explicitly rather than
+leaving it implicit in the shared-function architecture. Full suite: **1622/1622** across 85
+suites (+2 from the new tests).
