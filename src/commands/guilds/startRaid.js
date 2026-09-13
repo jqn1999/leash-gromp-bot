@@ -348,7 +348,7 @@ async function addToBankOrPurse(guildId, guildBankStored, remainingBankSpace, ra
 
 const regularRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
@@ -365,13 +365,14 @@ const regularRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                    raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                    Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
             return totalRaidSplit;
@@ -381,7 +382,7 @@ const regularRaidScenarios = [
     {
         // Ultra-late-game bracket — see Raid.T4_RAID_DIFFICULTY's comment. Its own
         // dedicated boss lives at regularRaidMobs[3].
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(regularRaidMobs[3]);
@@ -406,7 +407,8 @@ const regularRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -420,7 +422,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T4_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(regularRaidMobs[2]);
@@ -445,7 +447,8 @@ const regularRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -454,7 +457,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T3_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(regularRaidMobs[1]);
@@ -479,7 +482,8 @@ const regularRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -488,7 +492,7 @@ const regularRaidScenarios = [
         difficulty: Raid.T2_RAID_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(regularRaidMobs[0]);
@@ -513,7 +517,8 @@ const regularRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -549,7 +554,7 @@ const babyRaidScenarios = [regularRaidScenarios[regularRaidScenarios.length - 1]
 // was deleted 2026-09-12 — see Raid.ELITE_MIN_GUILD_LEVEL's own comment in constants.js).
 const eliteRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.ELITE_METAL_KING_DIFFICULTY, Raid.ELITE_MAXIMUM_RAID_SUCCESS_RATE);
@@ -569,13 +574,14 @@ const eliteRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                    Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
             return totalRaidSplit;
@@ -583,7 +589,7 @@ const eliteRaidScenarios = [
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(eliteRaidMobs[3]);
@@ -608,7 +614,8 @@ const eliteRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -618,7 +625,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(eliteRaidMobs[2]);
@@ -643,7 +650,8 @@ const eliteRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -652,7 +660,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(eliteRaidMobs[1]);
@@ -677,7 +685,8 @@ const eliteRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -686,7 +695,7 @@ const eliteRaidScenarios = [
         difficulty: Raid.ELITE_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(eliteRaidMobs[0]);
@@ -711,7 +720,8 @@ const eliteRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -729,7 +739,7 @@ const eliteRaidScenarios = [
 // own comment in constants.js).
 const legendaryRaidScenarios = [
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const successChance = calculateRaidSuccessChance(totalMultiplier, Raid.LEGENDARY_METAL_KING_DIFFICULTY, Raid.LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE);
@@ -749,13 +759,14 @@ const legendaryRaidScenarios = [
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
-                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                    raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                    Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             } else {
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
                 const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+                embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
             return totalRaidSplit;
@@ -763,7 +774,7 @@ const legendaryRaidScenarios = [
         chance: .01
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const ultimateRaidMob = chooseMobFromList(legendaryRaidMobs[3]);
@@ -788,7 +799,8 @@ const legendaryRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -798,7 +810,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const hardRaidMob = chooseMobFromList(legendaryRaidMobs[2]);
@@ -823,7 +835,8 @@ const legendaryRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -832,7 +845,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T3_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const mediumRaidMob = chooseMobFromList(legendaryRaidMobs[1]);
@@ -857,7 +870,8 @@ const legendaryRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -866,7 +880,7 @@ const legendaryRaidScenarios = [
         difficulty: Raid.LEGENDARY_T2_DIFFICULTY
     },
     {
-        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult) => {
+        action: async (guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin) => {
             let raidSplit, totalRaidSplit, raidResultDescription;
             const randomMultiplier = getRandomFromInterval(.8, 1.2);
             const regularRaidMob = chooseMobFromList(legendaryRaidMobs[0]);
@@ -891,7 +905,8 @@ const legendaryRaidScenarios = [
                 }
             }
             const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
-            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
+            embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
+                successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
             return totalRaidSplit;
         },
@@ -1482,6 +1497,17 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         remainingBankSpace = 0;
     }
 
+    // Guild Rival Warbands — precomputed once per resolution so every scenario closure
+    // below can tell (without needing to know Infamy internals itself) whether ITS OWN win
+    // would make /repel-warband ready, for the "ready now" note on the result embed
+    // (2026-09-13, direct instruction: "have guild raids and bounties/rob-npc give an extra
+    // note section on the embed when the rival event is ready so players know they should
+    // do it"). infamyGainIfWin is undefined for 'stat' (no key in INFAMY_PER_RAID_MODE) —
+    // statRaidScenarios' own closures never reference these two, since Stat Raid wins never
+    // feed Infamy at all.
+    const currentInfamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
+    const infamyGainIfWin = GuildRival.INFAMY_PER_RAID_MODE[raidSelection];
+
     const raidScenarioRoll = Math.random();
     let potatoesGained = 0;
     if (raidSelection == 'baby') {
@@ -1489,7 +1515,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         // never-gated T1 entry, so there's nothing to filter by guild level.
         for (const scenario of babyRaidScenarios) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin);
                 break;
             }
         }
@@ -1498,7 +1524,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     } else if (raidSelection == 'regular') {
         for (const scenario of getWeightedScenarios(regularRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin);
                 break;
             }
         }
@@ -1507,7 +1533,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     } else if (raidSelection == 'elite') {
         for (const scenario of getWeightedScenarios(eliteRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin);
                 break;
             }
         }
@@ -1516,7 +1542,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     } else if (raidSelection == 'legendary') {
         for (const scenario of getWeightedScenarios(legendaryRaidScenarios, guildLevel, totalMultiplier)) {
             if (raidScenarioRoll < scenario.chance) {
-                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult);
+                potatoesGained = await scenario.action(guildId, guildName, guildBankStored, remainingBankSpace, raidList, raidCount, totalMultiplier, raidRewardMultiplier, interaction, raidSplitMode, raidListByMulti, sacrificeOffer, resolveRaidCooldown, sendResult, currentInfamy, infamyGainIfWin);
                 break;
             }
         }

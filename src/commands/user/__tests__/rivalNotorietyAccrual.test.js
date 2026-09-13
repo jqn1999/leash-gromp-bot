@@ -167,6 +167,36 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
         const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(addAttributes.mercenaryNotoriety).toBe(Rival.NOTORIETY_PER_BOUNTY_TIER.I);
     });
+
+    // 2026-09-13, direct instruction: "have guild raids and bounties/rob-npc give an extra
+    // note section on the embed when the rival event is ready so players know they should
+    // do it" — end-to-end wiring check that the RESULT EMBED itself carries the note once a
+    // win's own gain pushes mercenaryNotoriety across CONFRONTATION_THRESHOLD, at Rank 2+.
+    test('a win that crosses CONFRONTATION_THRESHOLD shows the Rival Bounty Hunter note on the result embed', async () => {
+        const { MercenaryRank } = require('../../../utils/constants');
+        const rank2Wins = MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired;
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            mercenaryBountyWinCount: rank2Wins,
+            mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD - Rival.NOTORIETY_PER_BOUNTY_TIER.I,
+        }));
+        const interaction = fakeInteraction({ mode: 'baby' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback({ user: { id: 'house-account' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const embed = interaction.editReply.mock.calls[0][0].embeds[0];
+        const field = embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/confront-rival');
+    });
 });
 
 describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only', () => {
@@ -257,5 +287,30 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
 
         const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(addAttributes.mercenaryNotoriety).toBe(CORNER_STORE.notorietyPerWin);
+    });
+
+    // 2026-09-13, direct instruction — see the matching /take-bounty test above for the
+    // full rationale. Market Stall's own notorietyPerWin (1) is enough on its own to cross
+    // the gate from one below it.
+    test('a win that crosses CONFRONTATION_THRESHOLD shows the Rival Bounty Hunter note on the result embed', async () => {
+        const { MercenaryRank } = require('../../../utils/constants');
+        const rank2Wins = MercenaryRank.THRESHOLDS.find(t => t.rank === 2).winsRequired;
+        const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'market_stall');
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            mercenaryBountyWinCount: rank2Wins,
+            mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD - CORNER_STORE.notorietyPerWin,
+        }));
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const embed = interaction.editReply.mock.calls[0][0].embeds[0];
+        const field = embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/confront-rival');
     });
 });

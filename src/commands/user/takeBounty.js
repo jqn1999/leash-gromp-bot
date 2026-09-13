@@ -189,6 +189,10 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     // redirected to the house/Spud Keep pot in whichever currency this bounty paid in.
     let taxAmount = 0;
     let netRewardAmount = result.won ? result.rewardAmount : 0;
+    // Projected mercenaryNotoriety AFTER this call's own gain (if any) — null on a loss, so
+    // createBountyResultEmbed's own "ready now" note only ever fires off a real win. See
+    // that function's own comment.
+    let updatedNotoriety = null;
     if (result.won) {
         addAttributes.mercenaryBountyWinCount = 1;
         // Rival Bounty Hunters — Notoriety accrual is a one-line constant lookup, not a
@@ -201,6 +205,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
             userDetails.mercenaryNotoriety,
             Rival.NOTORIETY_PER_BOUNTY_TIER[mercenaryFactory.getBandLetter(result.tier)]
         );
+        updatedNotoriety = userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety;
 
         taxAmount = Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
         netRewardAmount = result.rewardAmount - taxAmount;
@@ -291,7 +296,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         }
     }
 
-    const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName, cooldownSkipSource, missedSkipChance);
+    const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
     await sendBountyResult(interaction, embed, isChainedReply);
 
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);

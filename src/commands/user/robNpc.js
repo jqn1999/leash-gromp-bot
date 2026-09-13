@@ -177,8 +177,12 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     // takeBounty.js uses (not a mercenaryFactory.js function), now reading the picked
     // tier's own notorietyPerWin instead of a single flat constant. See
     // systems/mercenary-bounties.md#rival-bounty-hunters.
+    // Projected mercenaryNotoriety AFTER this call's own gain (if any) — null on a whiff,
+    // so createRobNpcResultEmbed's own "ready now" note only ever fires off a real win.
+    let updatedNotoriety = null;
     if (result.won) {
         addAttributes.mercenaryNotoriety = mercenaryFactory.getNotorietyGain(userDetails.mercenaryNotoriety, tier.notorietyPerWin);
+        updatedNotoriety = userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety;
         // Durable lifetime counter (systems/quests.md#mercenary-quest) — separate from
         // mercenaryNotoriety above, which resets on /confront-rival and so can't safely
         // drive delta-based quest progress. Does NOT feed Mercenary Rank — that's
@@ -223,7 +227,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         }
     }
 
-    const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance);
+    const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
     await sendNpcRobResult(interaction, embed, isChainedReply);
 
     // Achievement check — /rob-npc never had one before at all. Re-fetches (same

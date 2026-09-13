@@ -183,6 +183,44 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
         expect(calls[0][2]).toBe(5 + GuildRival.INFAMY_PER_RAID_MODE.elite);
     });
 
+    // 2026-09-13, direct instruction: "have guild raids and bounties/rob-npc give an extra
+    // note section on the embed when the rival event is ready so players know they should
+    // do it" — end-to-end wiring check that the RESULT EMBED itself carries the note once a
+    // win's own gain pushes guildInfamy to/past INFAMY_THRESHOLD.
+    test('a win that crosses INFAMY_THRESHOLD shows the Ashclove Company note on the result embed', async () => {
+        const guild = guildFixture({ guildInfamy: GuildRival.INFAMY_THRESHOLD - GuildRival.INFAMY_PER_RAID_MODE.elite, raidCount: ELITE_MIN_WINS });
+        mockWin(guild);
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        try {
+            await runStartRaidFlow(interaction, 'elite');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        // editReply is called twice: once for the confirm preview, once for the real result
+        // (sendRaidResult) — the result is always the LAST call.
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        const field = embed.data.fields.find(f => f.name.includes('Ashclove Company'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/repel-warband');
+    });
+
+    test('a win that does NOT reach INFAMY_THRESHOLD omits the Ashclove Company note', async () => {
+        const guild = guildFixture({ guildInfamy: 0, raidCount: 0 });
+        mockWin(guild);
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        try {
+            await runStartRaidFlow(interaction, 'regular');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        expect(embed.data.fields.find(f => f.name.includes('Ashclove Company'))).toBeUndefined();
+    });
+
     test('legendary win: +3 Infamy', async () => {
         // Clears Legendary's own unlock gate (Raid.LEGENDARY_MIN_GUILD_LEVEL = 9 as of
         // 2026-09-12) exactly — T4 (unlock level 8) is actually already unlocked here too,

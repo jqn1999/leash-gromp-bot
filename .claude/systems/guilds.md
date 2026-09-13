@@ -1320,6 +1320,22 @@ between 10 and 25 Infamy is repel-eligible but still earns at full rate; the tap
 the guild has kept raiding well past being able to cash in. 25 keeps the same 2.5x-of-its-own-gate
 ratio Rival's own 20 → 50 threshold uses (`INFAMY_THRESHOLD * 2.5 = 25`).
 
+**"Ready now" note on the result embed itself (2026-09-13, direct instruction: "have guild
+raids and bounties/rob-npc give an extra note section on the embed when the rival event is
+ready so players know they should do it")** — `startRaid.js`'s win-side scenario closures each
+receive `currentInfamy`/`infamyGainIfWin` as two new trailing params (threaded through every
+`.action(...)` call site and closure signature — precomputed once per `resolveRaid` call from
+`raidSelection`/`guild.guildInfamy`, since the mode is fixed for the whole resolution but
+win/loss isn't known until each closure resolves) and pass a projected post-gain Infamy value
+(`currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin)` on a win, `null` on a loss or
+on Stat Raid, which never threads these two params at all) into `createRaidEmbed` as a new
+trailing `readyInfamy` param. `createRaidEmbed` adds a `⚔️ Ashclove Company:` field — "Ready
+now! An Elder, Co-Leader, or the Leader can run /repel-warband — which scenario you get is a
+surprise." plus the live `X/10 Infamy` count — whenever `readyInfamy >=
+GuildRival.INFAMY_THRESHOLD`. Mirrors Rival Bounty Hunters' own identical result-embed note
+exactly (see `mercenary-bounties.md`'s own "Ready now" section) — the whole point of this
+feature is the two mechanics giving matching, predictable UX.
+
 **Resets by SUBTRACTING the threshold on any resolution (win or lose), not a full reset to 0** —
 shipped this way from day one (direct instruction, 2026-09-10, after the roadmap entry's own "Open
 questions" section had recommended it), rather than repeating `mercenaryNotoriety`'s own two-step

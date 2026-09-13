@@ -522,6 +522,57 @@ describe('createBountyResultEmbed cooldown skip display', () => {
     });
 });
 
+// Rival Bounty Hunters "ready now" note (2026-09-13, direct instruction: "have guild raids
+// and bounties/rob-npc give an extra note section on the embed when the rival event is
+// ready so players know they should do it") — readyNotoriety is a new trailing optional
+// param, default null.
+describe('createBountyResultEmbed Rival Bounty Hunter (readyNotoriety) note', () => {
+    const { Rival } = require('../constants');
+    const scenario = { name: 'a rival gang', winFlavor: 'You win.', loseFlavor: 'You lose.', currency: 'potato' };
+
+    test('shows the note when Rank 2+ and readyNotoriety is at or above CONFRONTATION_THRESHOLD', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 2, rewardMultiplier: 1.15, cooldownReductionPercent: 0.06 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result, null, undefined, 0, 0, null, null, 0, Rival.CONFRONTATION_THRESHOLD);
+        const field = embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/confront-rival');
+    });
+
+    test('omits the note below Rank 2, even with enough Notoriety', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result, null, undefined, 0, 0, null, null, 0, Rival.CONFRONTATION_THRESHOLD);
+        expect(embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'))).toBeUndefined();
+    });
+
+    test('omits the note when readyNotoriety is below CONFRONTATION_THRESHOLD', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: true, successChance: 0.5, scenario,
+            rankInfo: { rank: 6, rewardMultiplier: 2.35, cooldownReductionPercent: 0.38 },
+            currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result, null, undefined, 0, 0, null, null, 0, Rival.CONFRONTATION_THRESHOLD - 1);
+        expect(embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'))).toBeUndefined();
+    });
+
+    test('omits the note when readyNotoriety is not passed (defaults to null, e.g. a loss)', () => {
+        const result = {
+            tier: 5, mode: 'regular', won: false, successChance: 0.5, scenario,
+            rankInfo: { rank: 6, rewardMultiplier: 2.35, cooldownReductionPercent: 0.38 },
+            currency: 'potato', rewardAmount: 0, penaltyAmount: 1000, statReward: null,
+        };
+        const embed = embedFactory.createBountyResultEmbed('User', result);
+        expect(embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'))).toBeUndefined();
+    });
+});
+
 describe('createRobNpcResultEmbed cooldown skip display', () => {
     const tier = { key: 'market_stall', label: 'Market Stall' };
 
@@ -559,6 +610,45 @@ describe('createRobNpcResultEmbed cooldown skip display', () => {
         const field = embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'));
         expect(field).toBeDefined();
         expect(field.value).toContain('30%');
+    });
+});
+
+// Rival Bounty Hunters "ready now" note (2026-09-13, direct instruction) — see
+// createBountyResultEmbed's own identical describe block above.
+describe('createRobNpcResultEmbed Rival Bounty Hunter (readyNotoriety) note', () => {
+    const { Rival } = require('../constants');
+    const tier = { key: 'market_stall', label: 'Market Stall' };
+
+    test('shows the note when Rank 2+ and readyNotoriety is at or above CONFRONTATION_THRESHOLD', () => {
+        const result = {
+            won: true, successChance: 0.8, amount: 5000,
+            rankInfo: { rank: 2, rewardMultiplier: 1.15, cooldownReductionPercent: 0.06 },
+            penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier, 0, null, null, 0, Rival.CONFRONTATION_THRESHOLD);
+        const field = embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/confront-rival');
+    });
+
+    test('omits the note below Rank 2, even with enough Notoriety', () => {
+        const result = {
+            won: true, successChance: 0.8, amount: 5000,
+            rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+            penaltyAmount: 0, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier, 0, null, null, 0, Rival.CONFRONTATION_THRESHOLD);
+        expect(embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'))).toBeUndefined();
+    });
+
+    test('omits the note when readyNotoriety is not passed (defaults to null, e.g. a whiff)', () => {
+        const result = {
+            won: false, successChance: 0.8, amount: 0,
+            rankInfo: { rank: 6, rewardMultiplier: 1.75, cooldownReductionPercent: 0.30 },
+            penaltyAmount: 2500, statReward: null,
+        };
+        const embed = embedFactory.createRobNpcResultEmbed('User', result, tier);
+        expect(embed.data.fields.find(f => f.name.includes('Rival Bounty Hunter'))).toBeUndefined();
     });
 });
 
@@ -949,6 +1039,36 @@ describe('createRaidEmbed next-raid cooldown field', () => {
         const nextRaidAvailableAt = Date.now() + 1_548_000;
         const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, -500, null, mob, 0.5, 'Loss!', null, null, null, nextRaidAvailableAt, null, 0);
         expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
+    });
+});
+
+// Guild Rival Warbands "ready now" note (2026-09-13, direct instruction: "have guild raids
+// and bounties/rob-npc give an extra note section on the embed when the rival event is
+// ready so players know they should do it") — readyInfamy is a new trailing optional param,
+// default null (same "default to old behavior" precedent every other trailing param here
+// already sets).
+describe('createRaidEmbed Ashclove Company (readyInfamy) note', () => {
+    const { GuildRival } = require('../constants');
+    const raidList = [{ id: 'u1', username: 'Raider' }];
+    const mob = { name: 'Test Mob', description: 'flavor', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('shows the note when readyInfamy is at or above INFAMY_THRESHOLD', () => {
+        const readyInfamy = GuildRival.INFAMY_THRESHOLD;
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!', null, null, null, null, null, 0, readyInfamy);
+        const field = embed.data.fields.find(f => f.name.includes('Ashclove Company'));
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/repel-warband');
+        expect(field.value).toContain(`${readyInfamy}/${GuildRival.INFAMY_THRESHOLD}`);
+    });
+
+    test('omits the note when readyInfamy is below INFAMY_THRESHOLD', () => {
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!', null, null, null, null, null, 0, GuildRival.INFAMY_THRESHOLD - 1);
+        expect(embed.data.fields.find(f => f.name.includes('Ashclove Company'))).toBeUndefined();
+    });
+
+    test('omits the note when readyInfamy is not passed (defaults to null, e.g. a loss or Stat Raid)', () => {
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!');
+        expect(embed.data.fields.find(f => f.name.includes('Ashclove Company'))).toBeUndefined();
     });
 });
 

@@ -12172,3 +12172,42 @@ case confirming Notoriety between 20-50 still earns full gains. `raidFactory.tes
 suite: **1557/1557** across 84 suites — no existing test broke (`startRaidInfamy.test.js`'s
 existing `guildInfamy` fixtures are all well under 25). Docs: `mercenary-bounties.md`,
 `guilds.md`.
+
+## Feature: "Ready now" note on the result embed when a rival event is available (2026-09-13, direct instruction)
+
+Player: "have guild raids and bounties/rob-npc give an extra note section on the embed when the
+rival event is ready so players know they should do it."
+
+A pure UX addition, no numeric/balance change — Rival Bounty Hunters (`/take-bounty`, `/rob-npc`)
+and Guild Rival Warbands (`/start-raid`) already had a read-only preview command each
+(`/notoriety`, `/guild-infamy`) showing whether the confrontation was available, but a player only
+found out by checking that command separately; there was no signal on the win result itself.
+
+**Bounty/Heist**: `takeBounty.js`/`robNpc.js` each compute `updatedNotoriety`
+(`userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety` on a win, `null` on a
+loss/whiff) and pass it as a new trailing param into `createBountyResultEmbed`/
+`createRobNpcResultEmbed`. Those embeds add a `⚔️ Rival Bounty Hunter:` field — "Ready now! Run
+/confront-rival..." — whenever `updatedNotoriety >= Rival.CONFRONTATION_THRESHOLD` AND
+`rankInfo.rank >= 2`, the exact same two-gate check `/notoriety`'s own `confrontable` already
+computes.
+
+**Guild Raid**: `startRaid.js` precomputes `currentInfamy`/`infamyGainIfWin` once per
+`resolveRaid` call (from `guild.guildInfamy`/`raidSelection`) and threads them through every
+win-side scenario closure's signature and `.action(...)` call site (15 closures across
+regular/elite/legendary + the shared baby-mode T1 entry; Stat Raid's own closures never receive
+them, since Stat Raid wins don't feed Infamy at all). Each win-branch computes a projected
+post-gain Infamy value and passes it into `createRaidEmbed` as a new trailing `readyInfamy` param,
+which adds a matching `⚔️ Ashclove Company:` field whenever `readyInfamy >=
+GuildRival.INFAMY_THRESHOLD`.
+
+Both notes use `Number.isFinite(...)` guards throughout (rather than `!= null`) so `undefined`
+from Stat Raid's own `INFAMY_PER_RAID_MODE` lookup and `null` from a loss both correctly suppress
+the field with no special-casing needed at the embed layer.
+
+New tests: `embedFactory.test.js` gets 3 new describe blocks (`createRaidEmbed`'s
+`readyInfamy` note, `createBountyResultEmbed`'s and `createRobNpcResultEmbed`'s `readyNotoriety`
+note) covering shown/omitted-below-threshold/omitted-below-rank/defaults-to-null cases.
+`rivalNotorietyAccrual.test.js` and `startRaidInfamy.test.js` each get one new end-to-end test
+confirming the real command's result embed carries the note when a win's own gain crosses the
+threshold. Full suite: **1571/1571** across 84 suites — no existing test broke. Docs:
+`mercenary-bounties.md`, `guilds.md`.

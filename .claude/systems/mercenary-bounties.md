@@ -1327,6 +1327,20 @@ under either threshold again) never feels the taper at all. Both call sites rout
 one shared helper (`mercenaryFactory.getNotorietyGain`) rather than duplicating the
 threshold/rounding logic inline.
 
+**"Ready now" note on the result embed itself (2026-09-13, direct instruction: "have guild
+raids and bounties/rob-npc give an extra note section on the embed when the rival event is
+ready so players know they should do it")** — `takeBounty.js`/`robNpc.js` each compute a
+`updatedNotoriety` local (`userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety`,
+or `null` on a loss/whiff) right after the accrual write above, and pass it as a new trailing
+param into `createBountyResultEmbed`/`createRobNpcResultEmbed`. Those functions add a
+`⚔️ Rival Bounty Hunter:` field — "Ready now! Run /confront-rival — which scenario you get is
+a surprise." plus the live `X/20 Notoriety` count — whenever `updatedNotoriety >=
+Rival.CONFRONTATION_THRESHOLD` AND `rankInfo.rank >= 2` (the exact same two-gate check
+`notoriety.js`'s own `confrontable` computes, so a player never sees "ready now" on the result
+embed while `/confront-rival` would still reject them for being under Rank 2). A player who's
+been over-threshold for a while and wins again still sees the note every time — it's not a
+one-shot notification, just a live reflection of "is /confront-rival available right now."
+
 `/confront-rival` is gated by, checked in order (mirroring `take-bounty.js`'s own
 layered-rejection style):
 1. `!userDetails.isMercenary` → reject.

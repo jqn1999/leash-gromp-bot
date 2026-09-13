@@ -1525,7 +1525,7 @@ class EmbedFactory {
     // roadmap's "Raid Result Embed Shows Next-Raid Cooldown" entry. Shown unconditionally
     // (win or loss) since the cooldown reset itself is unconditional.
     createRaidEmbed(guildName, raidList, raidCount, totalRaidReward, splitRaidReward, mob, successChance,
-        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
+        raidResultDescription, multiplierReward = null, passiveReward = null, capacityReward = null, nextRaidAvailableAt = null, cooldownSkipSource = null, missedCooldownSkipChance = 0, readyInfamy = null) {
         let fields = [], footerText = "Made by Beggar", statRewardMessage = '';
         const hasStatReward = multiplierReward || passiveReward || capacityReward;
         const color = totalRaidReward > 0 || hasStatReward ? 'Green' : 'Red';
@@ -1621,6 +1621,22 @@ class EmbedFactory {
         const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
         if (cooldownSkipField) {
             fields.push(cooldownSkipField);
+        }
+
+        // Guild Rival Warbands (2026-09-13, direct instruction: "have guild raids and
+        // bounties/rob-npc give an extra note section on the embed when the rival event is
+        // ready so players know they should do it") — readyInfamy is startRaid.js's own
+        // projection of what guild.guildInfamy will be AFTER this raid's own Infamy gain
+        // (null on a loss, or on any mode that doesn't feed Infamy at all — see
+        // GuildRival.INFAMY_PER_RAID_MODE). Mirrors createGuildInfamyEmbed's own "Repel
+        // Warband:" field wording exactly, so a player sees the identical message whether
+        // they check /guild-infamy proactively or get told right on a raid result.
+        if (Number.isFinite(readyInfamy) && readyInfamy >= GuildRival.INFAMY_THRESHOLD) {
+            fields.push({
+                name: '⚔️ Ashclove Company:',
+                value: `Ready now! An Elder, Co-Leader, or the Leader can run /repel-warband (${readyInfamy.toLocaleString()}/${GuildRival.INFAMY_THRESHOLD.toLocaleString()} Infamy).`,
+                inline: false,
+            });
         }
 
         if (mob.credit) {
@@ -2375,7 +2391,7 @@ class EmbedFactory {
     // untaxed"-style precedent netRewardAmount/taxAmount already set): from
     // companionFactory.getAppliedCompanionXpGain, diffed right after the Bounty's own
     // levelActiveCompanion (Yukon-restricted) call — shown only when it actually applied.
-    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
+    createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0, readyNotoriety = null) {
         const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
@@ -2458,6 +2474,21 @@ class EmbedFactory {
         const cooldownSkipField = buildCooldownSkipField(cooldownSkipSource, missedCooldownSkipChance);
         if (cooldownSkipField) {
             fields.push(cooldownSkipField);
+        }
+
+        // Rival Bounty Hunters (2026-09-13, direct instruction: "have guild raids and
+        // bounties/rob-npc give an extra note section on the embed when the rival event is
+        // ready so players know they should do it") — readyNotoriety is the caller's own
+        // projection of userDetails.mercenaryNotoriety AFTER this win's own gain (null on a
+        // loss). Gated on rankInfo.rank >= 2 here too, mirroring notoriety.js's own
+        // `confrontable` check exactly — /confront-rival needs Rank 2+ regardless of
+        // Notoriety. Mirrors createNotorietyEmbed's own "Confrontation:" field wording.
+        if (Number.isFinite(readyNotoriety) && rankInfo.rank >= 2 && readyNotoriety >= Rival.CONFRONTATION_THRESHOLD) {
+            fields.push({
+                name: '⚔️ Rival Bounty Hunter:',
+                value: `Ready now! Run /confront-rival — which scenario you get is a surprise. (${readyNotoriety.toLocaleString()}/${Rival.CONFRONTATION_THRESHOLD.toLocaleString()} Notoriety).`,
+                inline: false,
+            });
         }
 
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
@@ -2548,7 +2579,7 @@ class EmbedFactory {
     // already needs for a Bounty loss.
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
-    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
+    createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0, readyNotoriety = null) {
         const { won, successChance, amount, rankInfo, penaltyAmount, statReward } = result;
         const color = won ? 'Green' : (penaltyAmount > 0 ? 'Red' : 'Grey');
         const fields = [
@@ -2576,6 +2607,16 @@ class EmbedFactory {
             }
         } else if (penaltyAmount > 0) {
             fields.push({ name: 'Potatoes Lost:', value: `${penaltyAmount.toLocaleString()} potatoes`, inline: false });
+        }
+
+        // Rival Bounty Hunters (2026-09-13, direct instruction) — see
+        // createBountyResultEmbed's own comment on the identical field.
+        if (Number.isFinite(readyNotoriety) && rankInfo.rank >= 2 && readyNotoriety >= Rival.CONFRONTATION_THRESHOLD) {
+            fields.push({
+                name: '⚔️ Rival Bounty Hunter:',
+                value: `Ready now! Run /confront-rival — which scenario you get is a surprise. (${readyNotoriety.toLocaleString()}/${Rival.CONFRONTATION_THRESHOLD.toLocaleString()} Notoriety).`,
+                inline: false,
+            });
         }
 
         const winFlavor = {
