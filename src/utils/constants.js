@@ -1606,9 +1606,16 @@ const Companions = [
         // so deeper, harder Elites are also more rewarding to beat.
         dropSource: "tower",
         thumbnailUrl: null, // TODO: needs real artwork, same placeholder precedent Yamimic's own entry uses.
-        description: "A stone gargoyle that's watched over the Tower since before anyone can remember — carved, so the story goes, by the first climber who reached the top and never came back down. It doesn't wake for just anyone; only a climber who's stared down an Elite and won earns a flicker of life in its eyes. Once it does, it steps off its plinth and follows them out, perching on their shoulder for the next climb.",
-        dropFlavor: "Something ancient and stone-still stirs behind you as the Elite falls — Bastion, the Tower Warden, has decided you're worth guarding. Check /companion to equip it.",
-        scavengeFlavor: "Bastion barely seemed to leave at all — gargoyles don't so much scavenge as loom nearby until something useful happens to them — but it drags back a genuine haul all the same.",
+        // Reskinned 2026-09-13 (player ask — "is he related to any fruit or veggie?" / "do
+        // that") from an unthemed stone gargoyle to a petrified TATER specifically, tying
+        // directly into the system it's exclusive to (Tater Tower) rather than a generic
+        // fantasy guardian — same "flavor should point back at its own mechanic" instinct
+        // Cinderroot (root vegetable, guards a hoard) and Rootcarver (root vegetable, cellar
+        // keeper) already follow. Mechanics/perks/rarity/drop odds all untouched — flavor
+        // text only.
+        description: "An ancient tater that took root in the Tower's foundation stones so many climbs ago that it slowly calcified into part of the wall itself — moss-caked, flint-hard, and utterly still. It doesn't wake for just anyone; only a climber who's stared down an Elite and won earns a flicker of light in its stone-ringed eyes. Once it does, it pries itself loose from the wall and rides along on their shoulder for the climb ahead.",
+        dropFlavor: "A slab of the Tower's own wall cracks and crumbles behind you as the Elite falls — root-shaped and stone-still, Bastion the Tower Warden has decided you're worth guarding. Check /companion to equip it.",
+        scavengeFlavor: "Bastion barely seemed to leave at all — a fossilized tater doesn't so much scavenge as sit very still until something useful rolls underneath it — but it drags back a genuine haul all the same.",
         // Two perks, mirroring Yukon's own multi-perk Legendary shape (a single-activity
         // companion gets more than one lever to help with, since it only ever gets to help
         // with that one thing).

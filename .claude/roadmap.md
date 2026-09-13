@@ -12449,3 +12449,20 @@ and `daily-streak.md`'s own "these two systems' boundaries are independent" note
 to reflect the streak's boundary now intentionally tracking the reset cron's own 8pm ET moment.
 
 Full suite: **1620/1620** across 85 suites. Docs: `daily-streak.md`.
+
+## Flavor: Bastion reskinned from a stone gargoyle to a petrified tater (2026-09-13, player ask)
+
+Player asked "does bastion have lore? is he related to any fruit or veggie?" — Bastion had
+shipped as a generic, unthemed stone gargoyle, the one companion on the roster with no
+produce tie at all. Asked to fix it ("do that", after being offered the reskin as an option).
+
+Flavor-only change, mechanics/perks/rarity/drop odds all untouched: Bastion is now a petrified
+TATER that calcified into the Tower's own foundation stones over countless climbs, cracking
+loose and waking only for a climber who's actually won an Elite fight. Ties directly back into
+the specific system it's exclusive to (Tater Tower), the same "flavor points back at its own
+mechanic" instinct Cinderroot (a root vegetable guarding a hoard) and Rootcarver (a root
+vegetable, cellar keeper) already follow — rather than a generic fantasy guardian dropped into
+a potato-economy game with no connection to it. Updated `description`/`dropFlavor`/
+`scavengeFlavor` on the `Companions` entry (`constants.js`) and the one cross-reference in
+`tower.md`. No test referenced the old flavor text verbatim, so no test changes were needed;
+full suite re-run to confirm: **1620/1620** across 85 suites, unchanged.

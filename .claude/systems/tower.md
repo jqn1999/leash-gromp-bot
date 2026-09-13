@@ -1538,9 +1538,11 @@ drop-chance bands (see below) were confirmed as-is.
 `getCompanionsByRarity` exclusion mechanism Yukon (`dropSource: "bounty"`, see
 [mercenary-bounties.md](mercenary-bounties.md)) and Cinderroot (`dropSource: "guildRaid"`, see
 [guilds.md](guilds.md)) already established, so no new exclusion code was needed — a tower-
-exclusive companion is just another entry with a non-null `dropSource`. A stone gargoyle
-that's watched over the Tower since long before any current climber — see its `constants.js`
-entry for the full flavor text.
+exclusive companion is just another entry with a non-null `dropSource`. A petrified tater
+that calcified into the Tower's own foundation stones long before any current climber —
+reskinned 2026-09-13 (player ask) from an unthemed stone gargoyle to a produce-tied guardian,
+matching how Cinderroot/Rootcarver's own flavor points back at their mechanic; see
+`constants.js`'s entry for the full flavor text.
 
 **Drop mechanism** — rolled on **surviving** a forced Elite fight (the win branch of
 `execElite`, right after `checkElitePayout()`), banded by that Elite's own `getEliteTier`
