@@ -1333,8 +1333,7 @@ const getStatDatabase = async function (trackingId) {
 
     const response = docClient.query(params).promise()
         .then(async function (data) {
-            coinflip = data.Items[0]
-            return coinflip;
+            return data.Items[0];
         })
         .catch(function (err) {
             console.debug(`getStatDatabase error: ${JSON.stringify(err)}`)

@@ -21,6 +21,31 @@ Core loop: [src/commands/user/work.js](../../src/commands/user/work.js) +
 - Guild `workMulti` buff adds `userMultiplier * .10` to the effective multiplier for that call
   (`getGuildWorkMulti` in `workFactory.js`).
 
+### Auto-recovery on a crashed scenario (2026-09-14, player-reported: "the embed didn't display")
+
+`work.js`'s scenario-dispatch loop (the `for` loop that calls whichever matched scenario's
+`action(...)`) is wrapped in a try/catch — mirrors `enter-tower.js`'s own "Auto-recovery" fix
+exactly (see [tower.md](tower.md)). Before this, nothing wrapped the dispatch at all: if a
+scenario's own handler threw for ANY reason (the reported case was a Mimic Potato kill, but
+the fix isn't Mimic-specific — it wraps every scenario identically), the whole `/work` call
+died silently. The deferred reply was never edited, so the player saw nothing at all — not
+even an error — with no way to know their attempt didn't go through and no log entry pointing
+at why.
+
+On a catch: `console.error`s the real exception (a full stack trace, not just its message) so
+a future recurrence can actually be root-caused, then tells the player plainly ("your /work
+attempt hit an unexpected error and had to stop — sorry about that! Nothing was lost, so you
+can run /work again right away") via `editReply`/`followUp`/`reply` depending on the
+interaction's own state, matching `sendWorkResult`'s own fallback-chain pattern. Deliberately
+scoped to just the dispatch loop, not the whole `performWork` body — everything AFTER it
+(achievement/quest checks) only runs once the scenario's own result embed has already been
+sent successfully, so a crash there is a different, much less severe failure mode (a missing
+follow-up, not a missing result) that doesn't need the same treatment. No explicit "restore a
+lock" step is needed the way Tower's own fix needed to reset `canEnterTower` — `/work` never
+proactively flips a "block re-entry" flag before a scenario runs, so a crash here simply
+leaves `workTimer` wherever it already was, and the player can just run `/work` again
+immediately.
+
 ## Core gain formula
 
 `calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier)`:

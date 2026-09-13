@@ -12582,3 +12582,44 @@ test coverage in both `workFactory.test.js` and `embedFactory.test.js` already p
 matches a manual reproduction. Asked the player for more detail (exact symptom — no embed at
 all vs. a blank one, any error logged, how often it reproduces) rather than shipping a
 speculative fix for an unconfirmed defect.
+
+## Fix: /work auto-recovery on a scenario crash — the actual Mimic-embed root cause (2026-09-14, same-day follow-up)
+
+Player confirmed the exact symptom: "no embed at all appeared." That single answer changed
+the diagnosis completely — it pointed away from a logic bug INSIDE `handleMimicPotato`/
+`createMimicPotatoEmbed` (both already had passing test coverage, including the kill branch,
+and extensive manual reproduction found no defect) and toward a STRUCTURAL gap: `work.js` had
+**zero** try/catch anywhere around `performWork`'s scenario-dispatch loop or its own
+`callback`. If a scenario's own `action(...)` threw for ANY reason, the whole `/work` call
+died completely silently — the deferred reply was never edited, nothing was logged, and the
+player was left staring at "Leash Gromp is thinking..." forever. This is the exact same class
+of gap `enter-tower.js`'s own "Auto-recovery" fix (2026-09-11) closed for Tower — `/work` had
+just never received the equivalent treatment, despite being the single highest-frequency
+command in the game.
+
+**Fix**: wrapped the scenario-dispatch `for` loop in `performWork` in a try/catch, mirroring
+`enter-tower.js`'s own pattern exactly — `console.error`s the real exception (full stack
+trace, not just the message) so a future recurrence can actually be root-caused, then tells
+the player plainly via `editReply`/`followUp`/`reply` (whichever the interaction's own state
+calls for) that their attempt hit an error and nothing was lost, so they can just run `/work`
+again. Deliberately scoped to just the dispatch loop, not the whole `performWork` body —
+everything after it (achievement/quest checks) only runs once the scenario's own result embed
+has already sent successfully, a different and much less severe failure mode. Unlike Tower's
+own fix, no explicit "restore a lock" step was needed — `/work` never proactively flips a
+block-re-entry flag before a scenario runs, so a crash just leaves `workTimer` wherever it
+already was and the player can retry immediately.
+
+Also fixed a small, unrelated code smell spotted while investigating: `dynamoHandler.
+getStatDatabase` assigned to a bare `coinflip` identifier with no `let`/`const` — an
+accidental implicit global (harmless only because this file runs in non-strict mode),
+almost certainly copy-paste residue from when this function was first written for the
+`/coinflip` stats lookup specifically before being genericized for every trackingId. No
+behavior change — just returns `data.Items[0]` directly now.
+
+New tests: `workAutoRecovery.test.js` (2 tests) — a scenario handler throwing (forced via
+`dynamoHandler.updateUserFields` rejecting inside the REGULAR scenario's own handler, chosen
+for determinism rather than needing to force Mimic's 5% kill roll specifically, since the fix
+wraps every scenario identically) tells the player plainly and never reaches the post-dispatch
+bookkeeping; a normal, non-crashing `/work` call is completely unaffected by the new
+try/catch. Docs: `economy-and-work.md`. Full suite: **1625/1625** across 86 suites (+1 new
+test file, +2 tests).

@@ -296,13 +296,42 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     // per-request mutation there would race).
     const prospectorMultiplierBonus = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus");
     const effectiveChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
-    for (let i = 0; i < workScenarios.length; i++) {
-        const scenario = workScenarios[i];
-        if (workScenarioRoll < effectiveChances[i].chance) {
-            potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
-            matchedScenarioType = scenario.type;
-            break;
+    // Auto-recovery (2026-09-14, player-reported: "the embed didn't display" on a Mimic
+    // kill) — mirrors enter-tower.js's own "Auto-recovery" fix exactly. Previously nothing
+    // wrapped this dispatch at all: if a scenario's own action() threw for ANY reason
+    // (Mimic's own handleMimicPotato, or any other scenario), the whole /work call died
+    // silently — the deferred reply was never edited, so the player saw nothing at all,
+    // not even an error, and had no way to know their /work attempt didn't go through.
+    // Scoped to just this dispatch (not the whole performWork body) since everything AFTER
+    // it — achievement/quest checks — only runs once the scenario's own result embed has
+    // already been sent successfully, so a crash there is a much less severe, different
+    // failure mode (a missing follow-up, not a missing result) that doesn't match this
+    // report. Logging the real error (not just its message) captures a stack trace to
+    // actually root-cause a future recurrence, which static reading alone couldn't here.
+    try {
+        for (let i = 0; i < workScenarios.length; i++) {
+            const scenario = workScenarios[i];
+            if (workScenarioRoll < effectiveChances[i].chance) {
+                potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
+                matchedScenarioType = scenario.type;
+                break;
+            }
         }
+    } catch (e) {
+        console.error(`/work scenario crashed for ${username} (${userId}), chainDepth ${chainDepth}:`, e);
+        const recoveryMessage = `${userDisplayName}, your /work attempt hit an unexpected error and had to stop — sorry about that! Nothing was lost, so you can run /work again right away.`;
+        try {
+            if (isChainedReply) {
+                await interaction.followUp({ content: recoveryMessage });
+            } else if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
+            } else {
+                await interaction.reply({ content: recoveryMessage });
+            }
+        } catch (replyError) {
+            console.error(`Failed to notify ${username} of their /work crash:`, replyError);
+        }
+        return;
     }
     await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
     await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
