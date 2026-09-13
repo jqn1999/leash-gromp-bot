@@ -12144,3 +12144,31 @@ an at-exactly-20 boundary case for each confirming the taper does NOT apply ther
 above). Full suite: **1548/1548** across 84 suites — no existing test broke (all existing
 `baseUser()` fixtures default `mercenaryNotoriety: 0`, comfortably under the threshold). Docs:
 `mercenary-bounties.md`.
+
+## Balance: Notoriety halving threshold raised to 50, Guild Infamy gets the same taper at 25 (2026-09-13, direct instruction)
+
+Player: "make the notoriety halving start at 50 instead of 20, and do the same change for guilds
+with their respective count being 25 when it gets halved."
+
+**Mercenary side**: `Rival.CONFRONTATION_THRESHOLD` (20, the `/confront-rival` unlock gate) had
+been doubling as the notoriety-gain-halving threshold too. Split into a SEPARATE constant,
+`Rival.NOTORIETY_GAIN_HALVING_THRESHOLD: 50`, so the two ideas ("can you confront yet" vs. "have
+you kept farming way past being able to") don't have to share one number — a player between 20
+and 50 Notoriety is confront-eligible but still earns at full rate; the taper only bites past 50.
+`mercenaryFactory.getNotorietyGain` now reads the new constant.
+
+**Guild side (new mechanic)**: `GuildRival.INFAMY_THRESHOLD` (10, the `/repel-warband` gate) gets
+the identical treatment — a new `GuildRival.INFAMY_GAIN_HALVING_THRESHOLD: 25` constant (2.5x the
+gate, same ratio Rival's own 20 → 50 uses) and a new `raidFactory.getInfamyGain(currentInfamy,
+baseGain)` helper, mirroring `getNotorietyGain`'s shape exactly (own constant, own function, same
+"byte-identical shape, separate constants" split `GuildRival` already uses against `Rival`
+elsewhere). Wired into `startRaid.js`'s existing win-side Infamy accrual hook.
+
+New/updated tests: `mercenaryFactory.test.js`'s `getNotorietyGain` unit tests and
+`rivalNotorietyAccrual.test.js`'s end-to-end cases updated to the new 50 threshold, plus a new
+case confirming Notoriety between 20-50 still earns full gains. `raidFactory.test.js` gets a new
+`getInfamyGain` unit-test block (mirroring `getNotorietyGain`'s own four cases exactly) and
+`startRaidInfamy.test.js` gets two new end-to-end cases (above/at the halving threshold). Full
+suite: **1557/1557** across 84 suites — no existing test broke (`startRaidInfamy.test.js`'s
+existing `guildInfamy` fixtures are all well under 25). Docs: `mercenary-bounties.md`,
+`guilds.md`.

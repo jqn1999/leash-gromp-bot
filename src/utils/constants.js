@@ -3000,6 +3000,14 @@ const Rival = {
     // instead of a single flat constant here — removed alongside roadmap #50's Heist
     // Ladder rework, mirroring NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
     CONFRONTATION_THRESHOLD: 20,
+    // Gain-taper threshold for mercenaryFactory.getNotorietyGain (2026-09-12, direct
+    // instruction, raised 20 -> 50 on 2026-09-13: "make the notoriety halving start at 50
+    // instead of 20"). Deliberately a SEPARATE constant from CONFRONTATION_THRESHOLD above
+    // rather than reusing it — the /confront-rival unlock gate stays at 20 (unchanged), only
+    // the point past which further gains start halving moved. A player between 20 and 50
+    // Notoriety is confront-eligible but still earns at full rate; the taper only bites once
+    // they've kept farming well past being able to cash in.
+    NOTORIETY_GAIN_HALVING_THRESHOLD: 50,
     // Redesigned 2026-08-23, direct instruction — /confront-rival no longer lets the player
     // pick a tier at all (removed the old TIER_SUCCESS_CAP + player-facing `tier` option
     // entirely). The reason: the guaranteed stat bump WAS uniform across tiers at the time,
@@ -3119,6 +3127,15 @@ const GuildRival = {
     // is kept comparable by halving the threshold to compensate for the missing second
     // stream — see roadmap.md's worked derivation.
     INFAMY_THRESHOLD: 10,
+    // Infamy-gain taper, mirroring Rival.NOTORIETY_GAIN_HALVING_THRESHOLD's own shape
+    // (2026-09-13, direct instruction: "do the same change for guilds with their respective
+    // count being 25 when it gets halved"). A SEPARATE constant from INFAMY_THRESHOLD above
+    // — /repel-warband's own unlock gate stays at 10 (unchanged), only the point past which
+    // further raid-win Infamy gains start halving is new. 25 keeps the same 2.5x-of-its-own-
+    // gate ratio Rival's own 20 -> 50 halving threshold uses (INFAMY_THRESHOLD * 2.5 = 25).
+    // A guild between 10 and 25 Infamy is repel-eligible but still earns at full rate; the
+    // taper only bites once the guild has kept raiding well past being able to cash in.
+    INFAMY_GAIN_HALVING_THRESHOLD: 25,
     // Byte-identical to Rival.SCENARIO_CHANCE/SUCCESS_CHANCE_RANGE — no guild-specific
     // reason to diverge from the shape players already know from Rival Bounty Hunters.
     SCENARIO_CHANCE: { easy: 0.60, medium: 0.30, hard: 0.10 },

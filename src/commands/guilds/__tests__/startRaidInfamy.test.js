@@ -217,6 +217,40 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
         expect(infamyWriteCalls().length).toBe(0);
     });
 
+    // 2026-09-13, direct instruction ("do the same change for guilds with their respective
+    // count being 25 when it gets halved") — mirrors mercenaryFactory.getNotorietyGain via
+    // raidFactory.getInfamyGain: above GuildRival.INFAMY_GAIN_HALVING_THRESHOLD (25), a
+    // raid-win Infamy gain halves (rounded down, minimum 1).
+    test('above INFAMY_GAIN_HALVING_THRESHOLD, an elite win adds only half its Infamy gain', async () => {
+        const guild = guildFixture({ guildInfamy: GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + 1, raidCount: ELITE_MIN_WINS });
+        mockWin(guild);
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        try {
+            await runStartRaidFlow(interaction, 'elite');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const calls = infamyWriteCalls();
+        expect(calls.length).toBe(1);
+        expect(calls[0][2]).toBe(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + 1 + Math.floor(GuildRival.INFAMY_PER_RAID_MODE.elite / 2));
+    });
+
+    test('exactly at INFAMY_GAIN_HALVING_THRESHOLD, a win still adds the full Infamy gain', async () => {
+        const guild = guildFixture({ guildInfamy: GuildRival.INFAMY_GAIN_HALVING_THRESHOLD, raidCount: 0 });
+        mockWin(guild);
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+        try {
+            await runStartRaidFlow(interaction, 'regular');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const calls = infamyWriteCalls();
+        expect(calls.length).toBe(1);
+        expect(calls[0][2]).toBe(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + GuildRival.INFAMY_PER_RAID_MODE.regular);
+    });
+
     // Stat Raid wins do NOT feed Infamy at all — not present as a key in
     // INFAMY_PER_RAID_MODE, by design (a flat-cost gamble for a permanent multiplier, not a
     // combat-flavored win/loss). Forced through stat mode's own rare (1%) Metal King branch,

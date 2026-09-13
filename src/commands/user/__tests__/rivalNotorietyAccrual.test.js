@@ -3,11 +3,13 @@
 // added at two existing command call sites (take-bounty.js, rob-npc.js), run through the
 // shared mercenaryFactory.getNotorietyGain taper (2026-09-12: gains are halved, rounded
 // down, minimum 1, once a player's CURRENT mercenaryNotoriety already exceeds
-// Rival.CONFRONTATION_THRESHOLD) so both call sites can't drift on the threshold/rounding
-// rule — see that function's own comment and mercenaryFactory.test.js for its unit tests.
-// This file drives each real callback end-to-end against a minimal mocked
-// interaction/dynamoHandler, the same "mock at the boundary this command actually touches"
-// approach mercenaryMutualExclusivity.test.js already uses. See
+// Rival.NOTORIETY_GAIN_HALVING_THRESHOLD — raised 20 -> 50 on 2026-09-13, direct
+// instruction, and deliberately kept a SEPARATE constant from Rival.CONFRONTATION_THRESHOLD,
+// still 20, the actual /confront-rival unlock gate) so both call sites can't drift on the
+// threshold/rounding rule — see that function's own comment and mercenaryFactory.test.js
+// for its unit tests. This file drives each real callback end-to-end against a minimal
+// mocked interaction/dynamoHandler, the same "mock at the boundary this command actually
+// touches" approach mercenaryMutualExclusivity.test.js already uses. See
 // systems/mercenary-bounties.md#rival-bounty-hunters.
 jest.mock('../../../utils/dynamoHandler');
 
@@ -104,10 +106,12 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
         expect(addAttributes.mercenaryNotoriety).toBeUndefined();
     });
 
-    // 2026-09-12, direct instruction: above Rival.CONFRONTATION_THRESHOLD (20), gains taper
-    // to half (rounded down, minimum 1) via mercenaryFactory.getNotorietyGain.
-    test('above CONFRONTATION_THRESHOLD, a Tier I win adds only half NOTORIETY_PER_BOUNTY_TIER.I (rounded down)', async () => {
-        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: 21 }));
+    // 2026-09-13, direct instruction ("make the notoriety halving start at 50 instead of
+    // 20"): above Rival.NOTORIETY_GAIN_HALVING_THRESHOLD, gains taper to half (rounded
+    // down, minimum 1) via mercenaryFactory.getNotorietyGain. This is a SEPARATE, higher
+    // threshold than Rival.CONFRONTATION_THRESHOLD (still 20, the /confront-rival gate).
+    test('above NOTORIETY_GAIN_HALVING_THRESHOLD, a Tier I win adds only half NOTORIETY_PER_BOUNTY_TIER.I (rounded down)', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.NOTORIETY_GAIN_HALVING_THRESHOLD + 1 }));
         const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)
@@ -126,8 +130,27 @@ describe('/take-bounty accrues Notoriety on a win only, scaled by tier', () => {
         expect(addAttributes.mercenaryNotoriety).toBe(1);
     });
 
-    test('exactly at CONFRONTATION_THRESHOLD, gain is still full (taper only applies ABOVE it)', async () => {
-        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD }));
+    test('exactly at NOTORIETY_GAIN_HALVING_THRESHOLD, gain is still full (taper only applies ABOVE it)', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.NOTORIETY_GAIN_HALVING_THRESHOLD }));
+        const interaction = fakeInteraction({ mode: 'baby' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback({ user: { id: 'house-account' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addAttributes.mercenaryNotoriety).toBe(Rival.NOTORIETY_PER_BOUNTY_TIER.I);
+    });
+
+    test('confront-eligible (above CONFRONTATION_THRESHOLD) but below the halving threshold still gets a full gain', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD + 1 }));
         const interaction = fakeInteraction({ mode: 'baby' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)
@@ -178,17 +201,18 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
         expect(addAttributes.mercenaryNotoriety).toBeUndefined();
     });
 
-    // 2026-09-12, direct instruction: above Rival.CONFRONTATION_THRESHOLD (20), gains taper
-    // to half (rounded down, minimum 1). Royal Treasury's notorietyPerWin (4) demonstrates a
-    // genuine halving, distinct from Market Stall's own min-1-floor case above.
-    test('above CONFRONTATION_THRESHOLD, a Royal Treasury win adds only half its notorietyPerWin', async () => {
+    // 2026-09-13, direct instruction ("make the notoriety halving start at 50 instead of
+    // 20"): above Rival.NOTORIETY_GAIN_HALVING_THRESHOLD, gains taper to half (rounded
+    // down, minimum 1). Royal Treasury's notorietyPerWin (4) demonstrates a genuine
+    // halving, distinct from Market Stall's own min-1-floor case above.
+    test('above NOTORIETY_GAIN_HALVING_THRESHOLD, a Royal Treasury win adds only half its notorietyPerWin', async () => {
         const { MercenaryRank } = require('../../../utils/constants');
         const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
         const ROYAL_TREASURY = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
         dynamoHandler.findUser.mockResolvedValue(baseUser({
             mercenaryBountyWinCount: maxRankWins,
             workMultiplierAmount: 999,
-            mercenaryNotoriety: 21,
+            mercenaryNotoriety: Rival.NOTORIETY_GAIN_HALVING_THRESHOLD + 1,
         }));
         const interaction = fakeInteraction({ 'heist-type': 'royal_treasury' });
         // Every random() call returns 0 — guarantees a hit, and also guarantees Royal
@@ -205,9 +229,24 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
         expect(addAttributes.mercenaryNotoriety).toBe(Math.floor(ROYAL_TREASURY.notorietyPerWin / 2));
     });
 
-    test('exactly at CONFRONTATION_THRESHOLD, a win still adds the full notorietyPerWin', async () => {
+    test('exactly at NOTORIETY_GAIN_HALVING_THRESHOLD, a win still adds the full notorietyPerWin', async () => {
         const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'market_stall');
-        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD }));
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.NOTORIETY_GAIN_HALVING_THRESHOLD }));
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addAttributes.mercenaryNotoriety).toBe(CORNER_STORE.notorietyPerWin);
+    });
+
+    test('confront-eligible (above CONFRONTATION_THRESHOLD) but below the halving threshold still gets a full gain', async () => {
+        const CORNER_STORE = RobNpc.TIERS.find(t => t.key === 'market_stall');
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryNotoriety: Rival.CONFRONTATION_THRESHOLD + 1 }));
         const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit
         try {

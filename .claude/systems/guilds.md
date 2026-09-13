@@ -1292,7 +1292,7 @@ if (wonThisRaid) {
     const infamyGain = GuildRival.INFAMY_PER_RAID_MODE[raidSelection];
     if (Number.isFinite(infamyGain)) {
         const currentInfamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
-        await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + infamyGain);
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + getInfamyGain(currentInfamy, infamyGain));
     }
 }
 ```
@@ -1309,6 +1309,16 @@ gets from `NOTORIETY_PER_BOUNTY_TIER`.
 streams (Bounty + Heist, Heist's cooldown exactly half Bounty's), so the threshold is halved to keep
 real-time pacing to unlock comparable to a Bounty-only mercenary's own cadence — see the roadmap
 entry's own worked derivation.
+
+**Gain taper above a separate, higher threshold (2026-09-13, direct instruction)**: "do the same
+change for guilds with their respective count being 25 when it gets halved" — mirrors
+`mercenaryFactory.getNotorietyGain`'s shape exactly. `raidFactory.getInfamyGain(currentInfamy, baseGain)`
+returns `baseGain` unchanged at or below `GuildRival.INFAMY_GAIN_HALVING_THRESHOLD` (25), and
+`Math.max(1, Math.floor(baseGain / 2))` once strictly above it — a SEPARATE constant from
+`GuildRival.INFAMY_THRESHOLD` (still 10, the `/repel-warband` unlock gate, unchanged): a guild
+between 10 and 25 Infamy is repel-eligible but still earns at full rate; the taper only bites once
+the guild has kept raiding well past being able to cash in. 25 keeps the same 2.5x-of-its-own-gate
+ratio Rival's own 20 → 50 threshold uses (`INFAMY_THRESHOLD * 2.5 = 25`).
 
 **Resets by SUBTRACTING the threshold on any resolution (win or lose), not a full reset to 0** —
 shipped this way from day one (direct instruction, 2026-09-10, after the roadmap entry's own "Open

@@ -1308,17 +1308,22 @@ taper (see below) so both call sites can't drift on the threshold/rounding rule:
   (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor of each `RobNpc.TIERS`
   entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s own per-tier shape.
 
-**Gain taper above the confrontation threshold (2026-09-12, direct instruction)**: "if a merc is
-above 20 notoriety, their notoriety gain from bounties and rob-npc is decreased by half,
-rounding down, minimum of 1." `mercenaryFactory.getNotorietyGain(currentNotoriety, baseGain)` —
-called with `userDetails.mercenaryNotoriety` as it stood BEFORE this win's own gain — returns
-`baseGain` unchanged at or below `Rival.CONFRONTATION_THRESHOLD` (also 20, reused rather than a
-fresh constant), and `Math.max(1, Math.floor(baseGain / 2))` once strictly above it. Since
-`/confront-rival` subtracts the threshold rather than resetting to 0 (see above), a player who
-qualifies to confront but keeps farming instead sees their FURTHER Notoriety gains halved —
-direct pressure to actually cash in a confrontation rather than bank Notoriety indefinitely past
-the gate. A player who confronts promptly (dropping back to `mercenaryNotoriety - 20`, usually
-well under the threshold again) never feels the taper at all. Both call sites route through this
+**Gain taper above a halving threshold (2026-09-12, direct instruction, threshold raised
+2026-09-13)**: "if a merc is above 20 notoriety, their notoriety gain from bounties and rob-npc
+is decreased by half, rounding down, minimum of 1" — then, next day, direct instruction: "make
+the notoriety halving start at 50 instead of 20."
+`mercenaryFactory.getNotorietyGain(currentNotoriety, baseGain)` — called with
+`userDetails.mercenaryNotoriety` as it stood BEFORE this win's own gain — returns `baseGain`
+unchanged at or below `Rival.NOTORIETY_GAIN_HALVING_THRESHOLD` (50), and
+`Math.max(1, Math.floor(baseGain / 2))` once strictly above it. This is a **separate constant**
+from `Rival.CONFRONTATION_THRESHOLD` (still 20, the `/confront-rival` unlock gate, unchanged) —
+a player between 20 and 50 Notoriety is confront-eligible but still earns at full rate; the taper
+only bites once they've kept farming well past being able to cash in. Since `/confront-rival`
+subtracts `CONFRONTATION_THRESHOLD` rather than resetting to 0 (see above), a player who qualifies
+to confront but keeps farming instead (past 50, not just past 20) sees their FURTHER Notoriety
+gains halved — direct pressure to actually cash in a confrontation rather than bank Notoriety
+indefinitely. A player who confronts promptly (dropping back to `mercenaryNotoriety - 20`, well
+under either threshold again) never feels the taper at all. Both call sites route through this
 one shared helper (`mercenaryFactory.getNotorietyGain`) rather than duplicating the
 threshold/rounding logic inline.
 

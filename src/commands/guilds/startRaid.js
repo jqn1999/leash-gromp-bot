@@ -2,7 +2,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
 const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, Work } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
-const { RaidFactory, getRaidLevelInfo, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower } = require("../../utils/raidFactory");
+const { RaidFactory, getRaidLevelInfo, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower, getInfamyGain } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
@@ -1549,7 +1549,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         const infamyGain = GuildRival.INFAMY_PER_RAID_MODE[raidSelection];
         if (Number.isFinite(infamyGain)) {
             const currentInfamy = Number.isFinite(guild.guildInfamy) ? guild.guildInfamy : 0;
-            await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + infamyGain);
+            await dynamoHandler.updateGuildDatabase(guildId, 'guildInfamy', currentInfamy + getInfamyGain(currentInfamy, infamyGain));
         }
     }
 

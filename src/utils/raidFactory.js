@@ -1,5 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
-const { RaidLevel, Raid } = require("../utils/constants");
+const { RaidLevel, Raid, GuildRival } = require("../utils/constants");
 const rebirthFactory = require("../utils/rebirthFactory");
 const companionFactory = require("../utils/companionFactory");
 
@@ -128,6 +128,22 @@ function getGuildLevelClosestToWins(targetWins) {
     return RaidLevel.THRESHOLDS.reduce((closest, tier) =>
         Math.abs(tier.winsRequired - targetWins) < Math.abs(closest.winsRequired - targetWins) ? tier : closest
     ).level;
+}
+
+// Guild Rival Warbands' own Infamy-gain taper — mirrors mercenaryFactory.getNotorietyGain's
+// shape exactly (2026-09-13, direct instruction: "do the same change for guilds with their
+// respective count being 25 when it gets halved"), each domain keeping its own threshold
+// constant rather than sharing one, same "byte-identical shape, separate constants" split
+// GuildRival's own SCENARIO_CHANCE/SUCCESS_CHANCE_RANGE already use against Rival's. Called
+// from startRaid.js's own win-side Infamy accrual with guild.guildInfamy as it stood BEFORE
+// this raid's own gain is added (guildInfamy subtracts INFAMY_THRESHOLD on a /repel-warband
+// resolution rather than resetting to 0, so this only tapers while a guild is deliberately
+// over-threshold, not once Infamy's been cashed in).
+function getInfamyGain(currentInfamy, baseGain) {
+    if (currentInfamy > GuildRival.INFAMY_GAIN_HALVING_THRESHOLD) {
+        return Math.max(1, Math.floor(baseGain / 2));
+    }
+    return baseGain;
 }
 
 // Rebuilds a scenario table's cumulative `chance` thresholds with any bracket the guild
@@ -319,6 +335,7 @@ module.exports = {
     getUnlockedRaidModes,
     getLiveRaidRoster,
     getGuildLevelClosestToWins,
+    getInfamyGain,
     getEligibleScenarios,
     getDynamicTierWeights,
     getWeightedScenarios,

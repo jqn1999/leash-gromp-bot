@@ -1,8 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
-const { RaidLevel, Raid } = require('../constants');
+const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getInfamyGain, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
+const { RaidLevel, Raid, GuildRival } = require('../constants');
 
 const raidFactory = new RaidFactory();
 
@@ -90,6 +90,30 @@ describe('getGuildLevelClosestToWins', () => {
     test('clamps to the top level for a target beyond the curve', () => {
         const maxTier = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1];
         expect(getGuildLevelClosestToWins(maxTier.winsRequired + 999999)).toBe(maxTier.level);
+    });
+});
+
+// 2026-09-13, direct instruction: "do the same change for guilds with their respective
+// count being 25 when it gets halved" — mirrors mercenaryFactory.getNotorietyGain's shape,
+// keyed off GuildRival.INFAMY_GAIN_HALVING_THRESHOLD, a SEPARATE constant from
+// GuildRival.INFAMY_THRESHOLD (still 10, the /repel-warband unlock gate).
+describe('getInfamyGain', () => {
+    test('at or below the threshold, gain is untouched', () => {
+        expect(getInfamyGain(0, 3)).toBe(3);
+        expect(getInfamyGain(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD, 3)).toBe(3);
+    });
+
+    test('above the threshold, gain is halved and rounded down', () => {
+        expect(getInfamyGain(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + 1, 4)).toBe(2);
+        expect(getInfamyGain(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + 1, 3)).toBe(1); // floor(1.5) = 1
+    });
+
+    test('above the threshold, a halved gain is floored at a minimum of 1, never 0', () => {
+        expect(getInfamyGain(GuildRival.INFAMY_GAIN_HALVING_THRESHOLD + 1, 1)).toBe(1);
+    });
+
+    test('above INFAMY_THRESHOLD but at/below the (higher) halving threshold, gain is still full', () => {
+        expect(getInfamyGain(GuildRival.INFAMY_THRESHOLD + 1, 3)).toBe(3);
     });
 });
 

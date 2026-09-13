@@ -380,17 +380,19 @@ function resolveGuaranteedStatBump(userDetails, scenario) {
 
 // Notoriety-gain taper (2026-09-12, direct instruction: "if a merc is above 20 notoriety,
 // their notoriety gain from bounties and rob-npc is decreased by half, rounding down,
-// minimum of 1") — shared by takeBounty.js and robNpc.js's own win-side Notoriety accrual
-// (see Rival.NOTORIETY_PER_BOUNTY_TIER / RobNpc.TIERS' own notorietyPerWin), so the two
-// call sites can't drift out of sync on the threshold or the rounding rule. Deliberately
-// keyed off Rival.CONFRONTATION_THRESHOLD (also 20) rather than a fresh constant — once a
-// player has enough Notoriety to /confront-rival, further stacking past that gate (instead
-// of actually confronting) grows half as fast, discouraging sitting on a banked
-// confrontation indefinitely. currentNotoriety is the value BEFORE this win's own gain is
-// added (mercenaryNotoriety resets on confrontation, so this only tapers while a player is
+// minimum of 1"; threshold raised 20 -> 50 on 2026-09-13, direct instruction) — shared by
+// takeBounty.js and robNpc.js's own win-side Notoriety accrual (see
+// Rival.NOTORIETY_PER_BOUNTY_TIER / RobNpc.TIERS' own notorietyPerWin), so the two call
+// sites can't drift out of sync on the threshold or the rounding rule. Keyed off
+// Rival.NOTORIETY_GAIN_HALVING_THRESHOLD — a SEPARATE constant from
+// Rival.CONFRONTATION_THRESHOLD (still 20, the actual /confront-rival unlock gate) since
+// the 2026-09-13 change — a player between 20 and 50 Notoriety is confront-eligible but
+// still earns at full rate; the taper only bites once they've kept farming well past being
+// able to cash in. currentNotoriety is the value BEFORE this win's own gain is added
+// (mercenaryNotoriety resets on confrontation, so this only tapers while a player is
 // deliberately over-threshold, not once they've cashed it in).
 function getNotorietyGain(currentNotoriety, baseGain) {
-    if (currentNotoriety > Rival.CONFRONTATION_THRESHOLD) {
+    if (currentNotoriety > Rival.NOTORIETY_GAIN_HALVING_THRESHOLD) {
         return Math.max(1, Math.floor(baseGain / 2));
     }
     return baseGain;
