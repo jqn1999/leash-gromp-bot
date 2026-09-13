@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getInfamyGain, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getInfamyGain, getGuildDailyInterest, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
 const { RaidLevel, Raid, GuildRival } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -114,6 +114,59 @@ describe('getInfamyGain', () => {
 
     test('above INFAMY_THRESHOLD but at/below the (higher) halving threshold, gain is still full', () => {
         expect(getInfamyGain(GuildRival.INFAMY_THRESHOLD + 1, 3)).toBe(3);
+    });
+});
+
+// 2026-09-13, direct instruction: "add something in the guild tab that has the current
+// daily interest calculation's amount so users can see how much interest guild is getting"
+// — mirrors dynamoHandler.applyGuildTreasuryInterest's own formula (see that function's own
+// comment for why this is an independent implementation rather than a shared code path).
+describe('getGuildDailyInterest', () => {
+    const { TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require('../constants');
+
+    function baseGuild(overrides = {}) {
+        return {
+            bankStored: 1000000,
+            memberList: [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }, { id: 'u4' }],
+            raidCount: 0, // level 1
+            guildCompanion: null,
+            ...overrides,
+        };
+    }
+
+    test('computes level 1 rate * member count * bankStored, no Cinderroot', () => {
+        const guild = baseGuild();
+        const expected = Math.round(1000000 * TreasuryInterestScaling.dailyRatePerMember[0] * 4);
+        expect(getGuildDailyInterest(guild)).toBe(expected);
+    });
+
+    test('applies Cinderroot\'s multiplier on top when the guild possesses it', () => {
+        const guild = baseGuild({ guildCompanion: { id: 'cinderroot' } });
+        const base = 1000000 * TreasuryInterestScaling.dailyRatePerMember[0] * 4;
+        const expected = Math.round(base * (1 + CinderrootTreasuryBonusPercent[0]));
+        expect(getGuildDailyInterest(guild)).toBe(expected);
+    });
+
+    test('scales with guild level via the same live raidCount->level lookup other formulas use', () => {
+        const maxLevelWins = RaidLevel.THRESHOLDS[RaidLevel.THRESHOLDS.length - 1].winsRequired;
+        const guild = baseGuild({ raidCount: maxLevelWins });
+        const expected = Math.round(1000000 * TreasuryInterestScaling.dailyRatePerMember[9] * 4);
+        expect(getGuildDailyInterest(guild)).toBe(expected);
+    });
+
+    test('returns 0 for an empty or negative treasury, without dividing by anything odd', () => {
+        expect(getGuildDailyInterest(baseGuild({ bankStored: 0 }))).toBe(0);
+        expect(getGuildDailyInterest(baseGuild({ bankStored: -500 }))).toBe(0);
+    });
+
+    test('treats an unhealed/undefined guildCompanion the same as an explicit null (no bonus)', () => {
+        const guild = baseGuild({ guildCompanion: undefined });
+        const expected = Math.round(1000000 * TreasuryInterestScaling.dailyRatePerMember[0] * 4);
+        expect(getGuildDailyInterest(guild)).toBe(expected);
+    });
+
+    test('defensively coerces a missing/non-finite bankStored or raidCount instead of throwing', () => {
+        expect(getGuildDailyInterest({ memberList: [{ id: 'u1' }], guildCompanion: null })).toBe(0);
     });
 });
 

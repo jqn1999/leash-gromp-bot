@@ -8,7 +8,7 @@ const guildBuffFactory = require("../utils/guildBuffFactory");
 const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const guildCompanionFactory = require("../utils/guildCompanionFactory");
 const { EventFactory } = require("../utils/eventFactory");
-const { getRaidLevelInfo } = require("../utils/raidFactory");
+const { getRaidLevelInfo, getGuildDailyInterest } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
 const cooldownFactory = require("../utils/cooldownFactory");
 const safehouseFactory = require("../utils/safehouseFactory");
@@ -1197,6 +1197,18 @@ class EmbedFactory {
         fields.push({
             name: `Bank Capacity:`,
             value: `${guild.bankCapacity.toLocaleString()}`,
+            inline: true
+        })
+        // Guild treasury interest preview (2026-09-13, direct instruction: "add something in
+        // the guild tab that has the current daily interest calculation's amount so users
+        // can see how much interest guild is getting") — see raidFactory.getGuildDailyInterest's
+        // own comment for why this mirrors, rather than reuses, dynamoHandler's real
+        // interest-crediting formula. Always shown, even when it's currently 0 (an empty
+        // treasury genuinely earns nothing) — a missing field would read as "this doesn't
+        // exist" rather than "this is temporarily zero."
+        fields.push({
+            name: `Daily Treasury Interest:`,
+            value: `${getGuildDailyInterest(guild).toLocaleString()} potatoes/day`,
             inline: true
         })
         fields.push({

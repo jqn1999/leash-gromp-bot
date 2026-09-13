@@ -12211,3 +12211,28 @@ note) covering shown/omitted-below-threshold/omitted-below-rank/defaults-to-null
 confirming the real command's result embed carries the note when a win's own gain crosses the
 threshold. Full suite: **1571/1571** across 84 suites — no existing test broke. Docs:
 `mercenary-bounties.md`, `guilds.md`.
+
+## Feature: show current daily treasury interest on /guild (2026-09-13, direct instruction)
+
+Player: "add something in the guild tab that has the current daily interest calculation's amount
+so users can see how much interest guild is getting."
+
+Added `raidFactory.getGuildDailyInterest(guild)` — mirrors `dynamoHandler.
+applyGuildTreasuryInterest`'s own formula (level-scaled `TreasuryInterestScaling.
+dailyRatePerMember` × member count × `bankStored`, then Cinderroot's own
+`CinderrootTreasuryBonusPercent` multiplier if owned) but returns the full DAILY figure rather
+than the fractional per-5-minute-tick amount that function actually credits, since that's the
+number a player actually wants to see. Deliberately kept as an independent implementation rather
+than having the real crediting function call it — `applyGuildTreasuryInterest`'s own rounding
+order is precision-sensitive real-currency logic that a pure display feature shouldn't touch.
+Wired into `embedFactory.createGuildEmbed` as a new `Daily Treasury Interest:` field, always
+shown (even at 0 for an empty treasury) right after `Bank Capacity:`.
+
+New tests: `raidFactory.test.js` unit-tests `getGuildDailyInterest` directly (base formula,
+Cinderroot multiplier, level scaling, zero/negative treasury, unhealed `guildCompanion`
+tolerance, defensive coercion on a bare-minimum guild object). `embedFactory.test.js` gets a new
+describe block confirming the field renders the (mocked) value and is never omitted. Full suite:
+**1579/1579** across 84 suites — one pre-existing test needed a mock addition
+(`createGuildEmbed Guild Companion field`'s own `beforeEach` now also stubs
+`raidFactory.getGuildDailyInterest`, since that describe block auto-mocks the whole
+`raidFactory` module). Docs: `guilds.md`.

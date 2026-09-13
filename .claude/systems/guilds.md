@@ -153,6 +153,22 @@ Interest is now the ONE exception — every other write into `bankStored` (raid 
 `/bank` deposits) still respects `bankCapacity` exactly as before, only the treasury-interest
 tick doesn't.
 
+**Displayed on `/guild` (2026-09-13, direct instruction: "add something in the guild tab that
+has the current daily interest calculation's amount so users can see how much interest guild is
+getting")** — a new `Daily Treasury Interest:` field on `createGuildEmbed`, right after `Bank
+Capacity:`, always shown (even at 0 for an empty treasury, same "0 reads as temporarily-zero,
+not as absent" precedent the Guild Companion field already set). Computed by a new
+`raidFactory.getGuildDailyInterest(guild)` — same formula as `applyGuildTreasuryInterest`
+above (level-scaled rate × member count × bankStored, then Cinderroot's own multiplier if
+owned) but returning the full DAILY figure rather than the fractional per-5-minute-tick amount
+that function actually credits. Deliberately an INDEPENDENT implementation, not a shared code
+path — `applyGuildTreasuryInterest`'s own order of operations (divide by `timesInADay`, then
+round exactly once) is precision-sensitive real-currency logic that a display feature shouldn't
+risk perturbing, so both simply implement the same formula rather than one calling the other.
+Works against either a healed (`findGuildById`) or unhealed (`findGuildByName`) guild record —
+`bankStored`/`raidCount` are read with `Number.isFinite` guards, mirroring
+`applyGuildTreasuryInterest`'s own `toNumber` coercion for the same raw-scan reason.
+
 ## Guild buffs
 
 [setBuff.js](../../src/commands/guilds/setBuff.js) — Co-Leader/Leader picks **one** active

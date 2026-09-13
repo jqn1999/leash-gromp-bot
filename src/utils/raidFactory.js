@@ -1,5 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
-const { RaidLevel, Raid, GuildRival } = require("../utils/constants");
+const { RaidLevel, Raid, GuildRival, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require("../utils/constants");
 const rebirthFactory = require("../utils/rebirthFactory");
 const companionFactory = require("../utils/companionFactory");
 
@@ -144,6 +144,41 @@ function getInfamyGain(currentInfamy, baseGain) {
         return Math.max(1, Math.floor(baseGain / 2));
     }
     return baseGain;
+}
+
+// Read-only preview of a guild's own current DAILY treasury interest amount (2026-09-13,
+// direct instruction: "add something in the guild tab that has the current daily interest
+// calculation's amount so users can see how much interest guild is getting") — mirrors
+// dynamoHandler.applyGuildTreasuryInterest's own formula (level-scaled
+// TreasuryInterestScaling.dailyRatePerMember * member count * bankStored, then Cinderroot's
+// own CinderrootTreasuryBonusPercent multiplier if owned) so the displayed number matches
+// what the guild is actually earning. Deliberately kept as an INDEPENDENT function rather
+// than having that real crediting code call this one — applyGuildTreasuryInterest's own
+// order of operations (divide by timesInADay, THEN round exactly once) is precision-
+// sensitive real-currency logic that shouldn't be touched just to add a display feature, so
+// both simply implement the same formula rather than sharing a code path. Returns the full
+// DAILY figure (not the fractional per-5-minute-tick amount that function actually credits
+// each cycle), since "daily interest" is the number a player actually wants to see.
+// guild.bankStored/raidCount are read defensively (Number.isFinite guards, mirroring
+// applyGuildTreasuryInterest's own toNumber coercion) since this can be called against a
+// findGuildByName-sourced guild (raw scan, unhealed) as well as a healed findGuildById one.
+function getGuildDailyInterest(guild) {
+    const bankStored = Number.isFinite(guild.bankStored) ? guild.bankStored : 0;
+    if (bankStored <= 0) return 0;
+
+    const memberCount = Array.isArray(guild.memberList) ? guild.memberList.length : 0;
+    const level = getRaidLevelInfo(Number.isFinite(guild.raidCount) ? guild.raidCount : 0).level;
+    const baseRate = TreasuryInterestScaling.dailyRatePerMember[level - 1];
+    let interestRaw = bankStored * baseRate * memberCount;
+
+    // See applyGuildTreasuryInterest's own comment — guild.guildCompanion can be undefined
+    // (never healed) as well as null (healed, never won one), so this must use the loose
+    // `!= null` check, not `!== null`.
+    if (guild.guildCompanion != null) {
+        interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
+    }
+
+    return Math.round(interestRaw);
 }
 
 // Rebuilds a scenario table's cumulative `chance` thresholds with any bracket the guild
@@ -336,6 +371,7 @@ module.exports = {
     getLiveRaidRoster,
     getGuildLevelClosestToWins,
     getInfamyGain,
+    getGuildDailyInterest,
     getEligibleScenarios,
     getDynamicTierWeights,
     getWeightedScenarios,

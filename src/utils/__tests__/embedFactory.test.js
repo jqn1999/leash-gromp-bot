@@ -1468,6 +1468,7 @@ describe('createGuildEmbed Guild Companion field', () => {
 
     beforeEach(() => {
         raidFactory.getRaidLevelInfo.mockReturnValue({ level: 1, winsToNextLevel: 6, multiplier: 1 });
+        raidFactory.getGuildDailyInterest.mockReturnValue(0);
         companionFactory.getCompanionById.mockReturnValue({ id: 'cinderroot', name: 'Cinderroot, the Hoardwarden' });
     });
 
@@ -1486,6 +1487,52 @@ describe('createGuildEmbed Guild Companion field', () => {
         expect(field).toBeDefined();
         expect(field.value).toContain('Cinderroot, the Hoardwarden');
         expect(field.value).toMatch(/chance to skip raid cooldown/i);
+    });
+});
+
+// Daily Treasury Interest field (2026-09-13, direct instruction: "add something in the guild
+// tab that has the current daily interest calculation's amount so users can see how much
+// interest guild is getting") — createGuildEmbed delegates the actual formula to
+// raidFactory.getGuildDailyInterest (mocked here, unit-tested on its own in
+// raidFactory.test.js), so this only needs to check the field renders that value correctly.
+describe('createGuildEmbed Daily Treasury Interest field', () => {
+    const raidFactory = require('../raidFactory');
+    const companionFactory = require('../companionFactory');
+
+    function baseGuild(overrides = {}) {
+        return {
+            guildName: 'Some Guild',
+            memberList: [{ id: 'u1', username: 'Leader', role: 'Leader' }],
+            memberCap: 5,
+            raidCount: 0,
+            bankStored: 1000000,
+            bankCapacity: 2000000,
+            totalEarnings: 0,
+            guildBuff: 'workMulti',
+            guildCompanion: null,
+            ...overrides,
+        };
+    }
+
+    beforeEach(() => {
+        raidFactory.getRaidLevelInfo.mockReturnValue({ level: 1, winsToNextLevel: 6, multiplier: 1 });
+        companionFactory.getCompanionById.mockReturnValue({ id: 'cinderroot', name: 'Cinderroot, the Hoardwarden' });
+    });
+
+    test('shows the live daily interest amount from getGuildDailyInterest', () => {
+        raidFactory.getGuildDailyInterest.mockReturnValue(12345);
+        const embed = embedFactory.createGuildEmbed(baseGuild());
+        const field = embed.data.fields.find(f => f.name === 'Daily Treasury Interest:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('12,345');
+    });
+
+    test('still shows the field (as 0) when the treasury is empty, not omitted', () => {
+        raidFactory.getGuildDailyInterest.mockReturnValue(0);
+        const embed = embedFactory.createGuildEmbed(baseGuild({ bankStored: 0 }));
+        const field = embed.data.fields.find(f => f.name === 'Daily Treasury Interest:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('0');
     });
 });
 
