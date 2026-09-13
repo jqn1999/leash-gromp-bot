@@ -204,15 +204,33 @@ describe('getLiveMercFactionRoster', () => {
 });
 
 describe('selectTopNMercenaries', () => {
-    test('ranks by full computed power (getMemberRaidPower), not raw workMultiplierAmount', () => {
+    test('ranks by getSpudKeepMemberPower (rebirth-adjusted, companion-excluded), not raw workMultiplierAmount', () => {
         const weak = user('weak', { workMultiplierAmount: 10 });
         const strong = user('strong', { workMultiplierAmount: 5, rebirthCount: 0 });
-        // Fake a higher effective power for "strong" via a companion-style perk isn't
-        // trivial without mocking companionFactory — instead just confirm plain
-        // descending-by-workMultiplierAmount ordering here (rebirth/companion percent
-        // both default to 0 for a plain userDetails object).
+        // rebirth/companion percent both default to 0 for a plain userDetails object, so
+        // this only confirms plain descending-by-workMultiplierAmount ordering here — see
+        // "ignores an equipped companion's workMultiplierPercent perk entirely" below for
+        // the actual companion-exclusion coverage.
         const result = spudKeepFactory.selectTopNMercenaries([weak, strong], 5);
         expect(result.map(u => u.userId)).toEqual(['weak', 'strong']);
+    });
+
+    // 2026-09-13, direct instruction — the whole reason this ranks by
+    // getSpudKeepMemberPower instead of getMemberRaidPower: without this, a player could
+    // still win one of the N counted Merc Faction slots by swapping into a work-multiplier
+    // companion right before the 4am reset, even though the final scoring wouldn't count
+    // it once selected — this closes that half of the exploit too.
+    test('ignores an equipped companion\'s workMultiplierPercent perk entirely when ranking', () => {
+        const noCompanion = user('noCompanion', { workMultiplierAmount: 100, rebirthCount: 0 });
+        const withCompanion = user('withCompanion', {
+            workMultiplierAmount: 90,
+            rebirthCount: 0,
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
+        });
+        // Sprout's +5% would put withCompanion (94.5) ahead of noCompanion (100)... if it
+        // counted. It doesn't, so raw workMultiplierAmount decides: noCompanion wins.
+        const result = spudKeepFactory.selectTopNMercenaries([withCompanion, noCompanion], 1);
+        expect(result.map(u => u.userId)).toEqual(['noCompanion']);
     });
 
     test('drops falsy/missing entries rather than throwing', () => {
@@ -367,6 +385,28 @@ describe('buildEntrantPreview', () => {
         const mercWithout = withoutBuff.entrants.find(e => e.type === 'mercenary');
         const mercWith = withBuff.entrants.find(e => e.type === 'mercenary');
         expect(mercWith.power).toBeCloseTo(mercWithout.power * 1.2);
+    });
+
+    // 2026-09-13, direct instruction: "Update spud keep to not include companion work
+    // multipliers or buffs so players don't have to play with those before each reset to
+    // minmax odds." Both the guild-side and Merc-Faction-side breakdowns route through
+    // getSpudKeepMemberPower (raidFactory.js) instead of getMemberRaidPower — this proves
+    // it end to end through buildEntrantPreview, not just at the raidFactory unit level.
+    test('a guild member\'s equipped companion workMultiplierPercent perk does not move the guild\'s power at all', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
+        dynamoHandler.findUser.mockImplementation(async (id) => user(id, {
+            autoJoinRaids: true,
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
+        }));
+
+        const preview = await spudKeepFactory.buildEntrantPreview();
+
+        // workMultiplierAmount defaults to 1 (see the user() fixture above) — Sprout's own
+        // +5% would move this to 1.05 if it counted, so an exact 1 proves it was excluded.
+        expect(preview.entrants.find(e => e.id === 'g1').power).toBeCloseTo(1);
     });
 });
 

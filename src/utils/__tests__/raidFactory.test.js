@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getInfamyGain, getGuildDailyInterest, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
+const { RaidFactory, getRaidLevelInfo, getUnlockedRaidModes, getLiveRaidRoster, getGuildLevelClosestToWins, getInfamyGain, getGuildDailyInterest, getEligibleScenarios, getDynamicTierWeights, getWeightedScenarios, getMemberRaidPower, getSpudKeepMemberPower, getEffectiveRaidPower, getEffectiveRaidPowerBreakdown } = require('../raidFactory');
 const { RaidLevel, Raid, GuildRival } = require('../constants');
 
 const raidFactory = new RaidFactory();
@@ -426,6 +426,42 @@ describe('getMemberRaidPower', () => {
     });
 });
 
+// Spud Keep's own power basis (2026-09-13, direct instruction: "Update spud keep to not
+// include companion work multipliers or buffs so players don't have to play with those
+// before each reset to minmax odds"). Byte-identical to getMemberRaidPower except the
+// companion workMultiplierPercent term is dropped entirely — real raids/Bounty/Heist/
+// Tower are all player-INITIATED, so swapping in a work-multiplier companion right before
+// acting is a real strategic choice; Spud Keep instead resolves on a fixed, predictable
+// clock (the 4am UTC cron) with zero player action, so companion inclusion only ever
+// rewarded alarm-clock-swapping into a work-multi companion right before the reset and
+// back out afterward.
+describe('getSpudKeepMemberPower', () => {
+    test('matches raw workMultiplierAmount with no rebirth/companion', () => {
+        expect(getSpudKeepMemberPower({ workMultiplierAmount: 50, rebirthCount: 0 })).toBeCloseTo(50);
+    });
+
+    test('still folds in live rebirth bonus — not swappable, nothing to game', () => {
+        expect(getSpudKeepMemberPower({ workMultiplierAmount: 100, rebirthCount: 1 })).toBeCloseTo(105);
+    });
+
+    test('completely ignores the active companion\'s workMultiplierPercent perk, unlike getMemberRaidPower on the exact same user', () => {
+        const user = {
+            workMultiplierAmount: 100,
+            rebirthCount: 0,
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
+        };
+        // Sprout's workMultiplierPercent (0.05 at level 1) moves getMemberRaidPower...
+        expect(getMemberRaidPower(user)).toBeCloseTo(105);
+        // ...but getSpudKeepMemberPower on the identical user object is untouched by it.
+        expect(getSpudKeepMemberPower(user)).toBeCloseTo(100);
+    });
+
+    test('0 for a missing/malformed record, same guard as getMemberRaidPower', () => {
+        expect(getSpudKeepMemberPower(undefined)).toBe(0);
+        expect(getSpudKeepMemberPower({ workMultiplierAmount: undefined })).toBe(0);
+    });
+});
+
 // 2026-08-26 rework: replaces the arithmetic-mean averagePower with a rank-weighted
 // teamPower (sort descending, weight each rank by RAID_TEAM_DECAY^rank) — see
 // raidFactory.js's getEffectiveRaidPowerBreakdown comment for the full proof. This fixes
@@ -580,6 +616,20 @@ describe('getEffectiveRaidPowerBreakdown', () => {
 
     test('an empty roster returns all zeros, not NaN', () => {
         expect(getEffectiveRaidPowerBreakdown([])).toEqual({ teamPower: 0, headcountBonus: 0, effectivePower: 0 });
+    });
+
+    // 2026-09-13 — the optional powerFn param spudKeepFactory.js passes
+    // getSpudKeepMemberPower through. Defaults to getMemberRaidPower so every
+    // pre-existing caller (real raids, currentRaid.js, Bounty) is byte-identical to
+    // before this param existed.
+    test('an explicit powerFn overrides the default getMemberRaidPower per-member scoring', () => {
+        const user = {
+            workMultiplierAmount: 100,
+            rebirthCount: 0,
+            companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
+        };
+        expect(getEffectiveRaidPowerBreakdown([user]).teamPower).toBeCloseTo(105); // default includes Sprout's +5%
+        expect(getEffectiveRaidPowerBreakdown([user], getSpudKeepMemberPower).teamPower).toBeCloseTo(100); // excludes it
     });
 });
 

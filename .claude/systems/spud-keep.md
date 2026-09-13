@@ -213,13 +213,14 @@ resolution and required a fresh `/spud-keep-signup` every single cycle just to k
   other 0-power entrant, rather than always guaranteeing at least 5 mercenaries a lottery line.
   In practice this means the Merc Faction can only ever have real odds in a cycle where at least
   one guild has also entered.
-- Opted-in mercenaries are ranked by `raidFactory.getMemberRaidPower` (full computed power, not the
-  bare stat) and the top N are kept (`selectTopNMercenaries`, no padding if fewer than N are
-  opted in).
-- The top-N `userDetails` are fed into `raidFactory.getEffectiveRaidPowerBreakdown` — literally the
-  same function a guild's own live roster runs through, giving the Faction the identical
-  rank-decayed `teamPower` curve and headcount bonus (and the same ~3x-of-top-member ceiling) any
-  guild entrant already has.
+- Opted-in mercenaries are ranked by `raidFactory.getSpudKeepMemberPower` (workMultiplierAmount with
+  live rebirth folded in — **not** `getMemberRaidPower`, and not the bare stat either) and the top
+  N are kept (`selectTopNMercenaries`, no padding if fewer than N are opted in). See "Companion
+  work multipliers excluded" below for why this differs from every other raid-power ranking.
+- The top-N `userDetails` are fed into `raidFactory.getEffectiveRaidPowerBreakdown(countedMercs,
+  getSpudKeepMemberPower)` — the same rank-decayed `teamPower`/headcount-bonus function a guild's
+  own live roster runs through (and every other raid power computation in the codebase uses), just
+  with the companion-excluding power function passed in instead of the default.
 - Re-ranked live at resolution time, never snapshotted at opt-in — a mercenary who buys a
   work-multiplier upgrade an hour before resolution is counted at their new power.
 - Zero mercenaries opted in (or N computes to 0) → the Faction's power is
@@ -228,6 +229,46 @@ resolution and required a fresh `/spud-keep-signup` every single cycle just to k
   opt-in entry), just at 0% odds.
 - The free participation counter (`spudKeepAttemptCount`) is credited ONLY to the counted top-N —
   narrower than the buff grant above, which is server-wide by design.
+
+## Companion work multipliers excluded (2026-09-13, direct instruction)
+
+Player: "Update spud keep to not include companion work multipliers or buffs so players don't
+have to play with those before each reset to minmax odds."
+
+Every other raid-power computation in the codebase (real Guild Raids, `/take-bounty`, `/rob-npc`,
+Tower's entry gate) is **player-initiated** — a player who swaps to a work-multiplier companion
+(Sprout/Firefly/Spudsprite/Mochi) right before acting is making a real, in-the-moment strategic
+choice, the same kind of choice equipping any other perk for the task at hand already is. Spud
+Keep is different: it resolves on a fixed, predictable clock (the 4am UTC cron), with **zero**
+player action required to participate — a guild's roster is scored automatically off whoever's
+currently equipped, whenever the cron happens to fire. The only thing companion inclusion here
+ever actually rewarded was remembering to alarm-clock-swap into a work-multiplier companion right
+before 4am UTC and swap back to whatever you actually wanted equipped once the resolution had
+fired — pure busywork with no meaningful decision behind it, not real strategy.
+
+The World Boss `workMulti` buff (see "buildEntrantPreview" above) was considered too, but doesn't
+actually need excluding: it's applied UNIFORMLY to every entrant's power before the Attacker's
+Bonus split, so it's already mathematically a no-op on relative odds (scaling every entrant's
+power by the same constant leaves every ratio in `chancePercent`'s numerator/denominator
+unchanged) — nothing to game there regardless, since a player can't trigger a World Boss buff on
+demand anyway.
+
+**Fix**: `raidFactory.getSpudKeepMemberPower(userDetails)` — byte-identical to
+`getMemberRaidPower` except it drops the companion `workMultiplierPercent` term entirely,
+keeping live rebirth bonus (not swappable, nothing to game there). `getEffectiveRaidPowerBreakdown`
+gained an optional second `powerFn` parameter (defaults to `getMemberRaidPower`, so every other
+caller — real raids, `currentRaid.js`, Bounty — is completely unaffected), and `spudKeepFactory.js`
+passes `getSpudKeepMemberPower` at its two call sites (a guild's own roster in
+`getGuildEntrantBreakdown`, and the Merc Faction's counted top-N in `buildEntrantPreview`).
+`selectTopNMercenaries` (which DECIDES who the counted top-N even are, before that breakdown ever
+runs) was switched to rank by the same `getSpudKeepMemberPower` too — ranking by the full
+companion-inflated power while scoring without it would have left half the exploit standing (a
+player could still swap in a work-multi companion just to win one of the N counted slots, even
+though it wouldn't move the final `chancePercent` once selected).
+
+`splitPotByWorkMulti`'s own pot-split weighting (raw `workMultiplierAmount`, no rebirth or
+companion at all — see that function's own comment) was already unaffected either way, since it
+never routed through `getMemberRaidPower` in the first place.
 
 ## Resolution flow (`spudKeepFactory.resolveCycle()`, called from the 4am UTC cron)
 
@@ -336,9 +377,11 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
 
 ## Cross-cutting notes
 
-- Guild power/roster reuse `raidFactory.getLiveRaidRoster`/`getMemberRaidPower`/
-  `getEffectiveRaidPowerBreakdown` completely unchanged — no Spud-Keep-specific wrapper around any of
-  Guild Raid's own formulas.
+- Guild power/roster reuse `raidFactory.getLiveRaidRoster`/`getEffectiveRaidPowerBreakdown`
+  unchanged — no Spud-Keep-specific wrapper around either of Guild Raid's own mechanics. The one
+  exception is the PER-MEMBER power function fed into that breakdown: Spud Keep passes
+  `getSpudKeepMemberPower` instead of the default `getMemberRaidPower` — see "Companion work
+  multipliers excluded" above.
 - `dynamoHandler.js`'s two Spud Keep consumer sites (`passivePotatoHandler`,
   `calculateWorkTimerValue`) `require("../utils/spudKeepFactory")` LAZILY, inside the function body
   — spudKeepFactory.js itself requires dynamoHandler.js at its own top level, and a top-level

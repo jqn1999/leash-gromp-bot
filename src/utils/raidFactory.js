@@ -70,6 +70,23 @@ function getMemberRaidPower(userDetails) {
     return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails) + companionWorkMultiplierPercent);
 }
 
+// Spud Keep's own power basis (2026-09-13, direct instruction) — identical to
+// getMemberRaidPower EXCEPT it drops the companion workMultiplierPercent term entirely.
+// Real raids/Bounty/Heist/Tower are all player-INITIATED — a player who swaps to a
+// work-multiplier companion before starting one is making a real, in-the-moment
+// strategic choice. Spud Keep instead resolves on a fixed, predictable clock (the 4am UTC
+// cron) with zero player action required, so the only thing companion inclusion actually
+// rewarded was remembering to alarm-clock-swap into a work-multiplier companion right
+// before the reset and swap back to whatever you actually wanted equipped afterward —
+// pure busywork, not a meaningful decision. Live rebirth bonus stays included (it isn't
+// swappable at all, so there's nothing to game). Only used by spudKeepFactory.js — every
+// other getEffectiveRaidPowerBreakdown/getEffectiveRaidPower caller keeps using
+// getMemberRaidPower (the default) unchanged.
+function getSpudKeepMemberPower(userDetails) {
+    if (!userDetails || !Number.isFinite(userDetails.workMultiplierAmount)) return 0;
+    return userDetails.workMultiplierAmount * (1 + rebirthFactory.getLiveRebirthPercent(userDetails));
+}
+
 // The effective raid power a roster rolls against, broken into its two components — a
 // rank-weighted teamPower (see getMemberRaidPower, which folds in each member's own
 // workMultiplierPercent companion perk alongside rebirth) and a headcount bonus for
@@ -98,11 +115,17 @@ function getMemberRaidPower(userDetails) {
 // balance knob. n=1 is an exact identity with the old formula: teamPower = power_0 * r^0
 // = power_0, headcountBonus = 0 — so getEffectiveRaidPower([single]) (Bounty's solo
 // "roster" in mercenaryFactory.js) is byte-identical to before.
-function getEffectiveRaidPowerBreakdown(memberDetailsList) {
+//
+// powerFn (2026-09-13, added for Spud Keep) — optional, defaults to getMemberRaidPower so
+// every pre-existing caller (real raids, currentRaid.js, Bounty) is completely unchanged.
+// spudKeepFactory.js is the one caller that passes getSpudKeepMemberPower instead, so its
+// own entrant power excludes companion boosts without duplicating this whole
+// rank-weighted/headcount-bonus formula a second time.
+function getEffectiveRaidPowerBreakdown(memberDetailsList, powerFn = getMemberRaidPower) {
     if (memberDetailsList.length === 0) {
         return { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
     }
-    const powers = memberDetailsList.map(getMemberRaidPower).sort((a, b) => b - a);
+    const powers = memberDetailsList.map(powerFn).sort((a, b) => b - a);
     const teamPower = powers.reduce((sum, power, rank) => sum + power * Math.pow(Raid.RAID_TEAM_DECAY, rank), 0);
     const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
     return { teamPower, headcountBonus, effectivePower: teamPower * (1 + headcountBonus) };
@@ -377,6 +400,7 @@ module.exports = {
     getWeightedScenarios,
     rollWeightedTier,
     getMemberRaidPower,
+    getSpudKeepMemberPower,
     getEffectiveRaidPower,
     getEffectiveRaidPowerBreakdown
 }

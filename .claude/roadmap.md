@@ -12320,3 +12320,34 @@ ephemeral (`interaction.deferReply({ ephemeral: true })`) — a personal power/g
 lookup, not something worth broadcasting to the channel. `raidOdds.js`'s `deferReply()` call
 now passes `{ ephemeral: true }`, matching that precedent. New regression test in
 `raidOdds.test.js` asserts the flag directly. Full suite: **1608/1608** across 85 suites.
+
+## Balance: Spud Keep excludes companion work multipliers from entrant power (2026-09-13, direct instruction)
+
+Player: "Update spud keep to not include companion work multipliers or buffs so players don't
+have to play with those before each reset to minmax odds." Asked whether this was appropriate
+before implementing — assessed and agreed: every other raid-power computation (real Guild
+Raids, Bounty, Heist, Tower's entry gate) is player-INITIATED, so swapping to a work-multiplier
+companion before acting is a real strategic choice; Spud Keep instead resolves automatically on
+a fixed clock (the 4am UTC cron) with zero player action, so companion inclusion there only ever
+rewarded alarm-clock-swapping into a work-multi companion right before the reset and back out
+afterward — busywork, not a meaningful decision. The World Boss `workMulti` buff was checked too
+but needs no change: it scales every entrant uniformly, so it's already mathematically a no-op
+on relative odds.
+
+New `raidFactory.getSpudKeepMemberPower(userDetails)` — identical to the existing
+`getMemberRaidPower` except it drops the companion `workMultiplierPercent` term (keeps live
+rebirth bonus, which isn't swappable). `getEffectiveRaidPowerBreakdown` gained an optional
+`powerFn` parameter (defaults to `getMemberRaidPower`, so every other caller — real raids,
+`currentRaid.js`, Bounty — is byte-identical to before). `spudKeepFactory.js` passes
+`getSpudKeepMemberPower` at both call sites (a guild's own roster, and the Merc Faction's
+counted top-N) and also switched `selectTopNMercenaries`'s own ranking to the same function —
+otherwise a player could still win one of the Faction's N counted slots by swapping in a
+work-multi companion, even though it wouldn't move the final odds once selected.
+
+New tests: `raidFactory.test.js` unit-tests `getSpudKeepMemberPower` directly (matches raw
+`workMultiplierAmount`, still folds in rebirth, ignores an equipped companion's perk entirely on
+the exact same user object `getMemberRaidPower` DOES move) and confirms
+`getEffectiveRaidPowerBreakdown`'s new `powerFn` param overrides the default. `spudKeepFactory.test.js`
+gets a `selectTopNMercenaries` companion-exclusion test and an end-to-end `buildEntrantPreview`
+test confirming a guild member's equipped companion doesn't move the guild's own power at all.
+Full suite: **1615/1615** across 85 suites. Docs: `spud-keep.md`.

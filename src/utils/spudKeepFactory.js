@@ -1,5 +1,5 @@
 const dynamoHandler = require("../utils/dynamoHandler");
-const { RaidFactory, getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPowerBreakdown } = require("../utils/raidFactory");
+const { RaidFactory, getLiveRaidRoster, getSpudKeepMemberPower, getEffectiveRaidPowerBreakdown } = require("../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
 const { SpudKeep } = require("../utils/constants");
 
@@ -126,15 +126,19 @@ async function getLiveMercFactionRoster() {
         .map(u => ({ id: u.userId, username: u.username }));
 }
 
-// Ranked by full computed power (getMemberRaidPower — workMultiplierAmount * (1 +
-// rebirth% + companion%)), not the bare stat — the exact same per-member figure a guild
-// roster's own members are ranked/weighted by. Missing/malformed entries (a lookup
+// Ranked by getSpudKeepMemberPower (workMultiplierAmount * (1 + rebirth%) — deliberately
+// excludes companion workMultiplierPercent, see that function's own comment), not the
+// bare stat, and the SAME power basis mercBreakdown below actually scores the selected
+// roster against — ranking by the full companion-inflated getMemberRaidPower here while
+// scoring without it would still let a player swap into a work-multiplier companion right
+// before the 4am reset just to win one of the N counted slots, even though it wouldn't
+// move the final chancePercent once selected. Missing/malformed entries (a lookup
 // failure) are dropped, mirroring getLiveRaidRoster's own "excluded, not a throw"
 // precedent. No padding if fewer than N signed up — however many actually did.
 function selectTopNMercenaries(mercUserDetailsList, n) {
     return mercUserDetailsList
         .filter(Boolean)
-        .sort((a, b) => getMemberRaidPower(b) - getMemberRaidPower(a))
+        .sort((a, b) => getSpudKeepMemberPower(b) - getSpudKeepMemberPower(a))
         .slice(0, n);
 }
 
@@ -185,13 +189,15 @@ function isCurrentHolderEntrant(buff, entrantType, entrantId) {
 
 // One entrant per guildEntrants row, live at read time (never snapshotted) — a guild
 // whose live roster is now empty (autoJoinRaids all toggled off, or the guild disbanded)
-// naturally computes to 0 power, no special-casing needed.
+// naturally computes to 0 power, no special-casing needed. Scored via
+// getSpudKeepMemberPower (excludes companion workMultiplierPercent — see that function's
+// own comment), not the shared getMemberRaidPower every other raid-power caller uses.
 async function getGuildEntrantBreakdown(guildId) {
     const guild = await dynamoHandler.findGuildById(guildId);
     if (!guild) return null;
     const roster = await getLiveRaidRoster(guild);
     const memberDetailsList = await Promise.all(roster.map(m => dynamoHandler.findUser(m.id, m.username)));
-    const breakdown = getEffectiveRaidPowerBreakdown(memberDetailsList);
+    const breakdown = getEffectiveRaidPowerBreakdown(memberDetailsList, getSpudKeepMemberPower);
     return { guildId: guild.guildId, guildName: guild.guildName, roster, breakdown };
 }
 
@@ -239,7 +245,7 @@ async function buildEntrantPreview() {
     const mercenaryEntrants = await getLiveMercFactionRoster();
     const mercUserDetails = await Promise.all(mercenaryEntrants.map(m => dynamoHandler.findUser(m.id, m.username)));
     const countedMercs = selectTopNMercenaries(mercUserDetails, mercFactionN);
-    const mercBreakdown = getEffectiveRaidPowerBreakdown(countedMercs);
+    const mercBreakdown = getEffectiveRaidPowerBreakdown(countedMercs, getSpudKeepMemberPower);
 
     const entrants = [
         ...guildEntries.map(g => ({
