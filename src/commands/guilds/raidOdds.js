@@ -33,7 +33,7 @@ module.exports = {
     deleted: false,
     options: [],
     callback: async (client, interaction) => {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral: true });
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);

@@ -57,6 +57,18 @@ beforeEach(() => {
 });
 
 describe('/raid-odds', () => {
+    // 2026-09-13, direct instruction: made ephemeral (only the requester sees it), same
+    // "personal lookup" precedent /bounty-board (the command this one was explicitly
+    // modeled on) already sets.
+    test('replies ephemerally, matching /bounty-board\'s own precedent', async () => {
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    });
+
     test('shows odds even while the guild raid is on cooldown — the whole point of this command', async () => {
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture());
         const interaction = fakeInteraction();

@@ -12311,3 +12311,12 @@ persists the right `workCount` onto the exact equipped instance, a drop hit awar
 second independent instance and announces it via a separate followUp embed, and a
 companion-less player is completely unaffected (`rewardBonus=0`, `hasWard=false`). Full suite:
 **1607/1607** across 85 suites, no regressions. Docs: `companions.md`, `tower.md`.
+
+## Fix: `/raid-odds` made ephemeral (2026-09-13, direct instruction)
+
+Player: "u make raid odds ephemeral." `/raid-odds` shipped 2026-09-12 as a public reply even
+though it was explicitly modeled on `/bounty-board` (see that entry above), which is itself
+ephemeral (`interaction.deferReply({ ephemeral: true })`) — a personal power/gear-dependent
+lookup, not something worth broadcasting to the channel. `raidOdds.js`'s `deferReply()` call
+now passes `{ ephemeral: true }`, matching that precedent. New regression test in
+`raidOdds.test.js` asserts the flag directly. Full suite: **1608/1608** across 85 suites.
