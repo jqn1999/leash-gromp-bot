@@ -472,7 +472,7 @@ function getDefaultUserFields(userId, username) {
         starches: 0,
         canEnterTower: true,
         // Bastion, the Tower Warden's Death Ward (2026-09-13) — consumed at most once per day,
-        // reset on the same 4am UTC cron as canEnterTower (see dynamoHandler.resetTowerWard).
+        // reset on the same 8pm ET (America/New_York, DST-safe) cron as canEnterTower (see dynamoHandler.resetTowerWard).
         // See constants.js's Companions entry (id: "bastion") for the full mechanic.
         towerWardUsedToday: false,
         workCount: 0,
@@ -1759,7 +1759,7 @@ const resetAllTowerEntries = async function () {
 
 // Bastion, the Tower Warden's Death Ward (2026-09-13) — separate call from
 // resetAllTowerEntries above since bulkUpdateAllUsers only ever writes one field per call;
-// both are fired together on the same 4am UTC cron (see backgroundEvents.js).
+// both are fired together on the same 8pm ET (America/New_York, DST-safe) cron (see backgroundEvents.js).
 const resetTowerWard = async function () {
     return bulkUpdateAllUsers('towerWardUsedToday', false, 'resetTowerWard');
 }

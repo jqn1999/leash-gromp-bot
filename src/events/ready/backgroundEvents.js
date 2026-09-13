@@ -45,7 +45,16 @@ module.exports = async (client) => {
         await dynamoHandler.applyGuildTreasuryInterest(288);
     }, 300000);
 
-    schedule.scheduleJob('0 4 * * *', async function () {
+    // 8pm America/New_York, DST-safe (2026-09-13, direct instruction: move the daily
+    // reset from midnight to 8pm EST). Previously a bare '0 4 * * *' UTC cron string,
+    // hand-picked to land on midnight EDT — the exact same latent bug starchEvents.js's
+    // own jobs had before their 2026-08-24 fix (see that file's comment): a raw UTC cron
+    // doesn't shift with DST, so the real Eastern-time firing moment silently drifts by an
+    // hour across the year (this one would have fired at 11pm EST, not midnight, for the
+    // ~4 winter months outside daylight saving). Pinning `tz: 'America/New_York'` here —
+    // same node-schedule object-form precedent starchEvents.js already established — makes
+    // this fire at the exact same real-world Eastern moment year-round, DST included.
+    schedule.scheduleJob({ rule: '0 20 * * *', tz: 'America/New_York' }, async function () {
         // Each step below is independently try/caught (2026-08-31 — a Spud Keep
         // announcement went silently missing with no diagnosable log line). Previously
         // this whole job was one unguarded sequential await chain: if ANY earlier step
@@ -72,14 +81,14 @@ module.exports = async (client) => {
                     });
             }
 
-            // Reset all user tower entries at midnight 12 AM EST
+            // Reset all user tower entries at 8pm EST/EDT (see this job's own schedule comment)
             await dynamoHandler.resetAllTowerEntries()
             // Bastion, the Tower Warden's Death Ward (2026-09-13) — same daily cadence as
             // canEnterTower above, so a used ward is available again the next time a player
             // can enter the tower at all.
             await dynamoHandler.resetTowerWard()
         } catch (err) {
-            console.log('4am cron: Tower payout/reset step failed:', err)
+            console.log('daily cron: Tower payout/reset step failed:', err)
         }
 
         // Rotate the daily quest set (always) and the weekly set (Mondays only) — see
@@ -95,7 +104,7 @@ module.exports = async (client) => {
                     console.log(err)
                 });
         } catch (err) {
-            console.log('4am cron: quest rotation step failed:', err)
+            console.log('daily cron: quest rotation step failed:', err)
         }
 
         // Rotate the active Guild Contract — Mondays only, same weekly-only cadence as
@@ -117,11 +126,11 @@ module.exports = async (client) => {
                     });
             }
         } catch (err) {
-            console.log('4am cron: guild contract rotation step failed:', err)
+            console.log('daily cron: guild contract rotation step failed:', err)
         }
 
-        // Spud Keep's own daily resolution (systems/spud-keep.md) — reuses this same 4am
-        // UTC cron bundle rather than a separately-timed announcement, same cadence
+        // Spud Keep's own daily resolution (systems/spud-keep.md) — reuses this same daily
+        // cron bundle rather than a separately-timed announcement, same cadence
         // reasoning Tower/Quest/Guild Contract rotation above already established.
         // Posted only on an actual resolution (winner drawn); a skipped cycle (nobody
         // signed up at all) still gets its own announcement so a quiet cycle doesn't
@@ -145,10 +154,10 @@ module.exports = async (client) => {
                     }
                 })
                 .catch(err => {
-                    console.log('4am cron: Spud Keep post failed:', err)
+                    console.log('daily cron: Spud Keep post failed:', err)
                 });
         } catch (err) {
-            console.log('4am cron: Spud Keep resolution step failed:', err)
+            console.log('daily cron: Spud Keep resolution step failed:', err)
         }
 
         // Birthday shit

@@ -5,7 +5,7 @@
 [src/commands/tower/enter-tower.js](../../src/commands/tower/enter-tower.js).
 
 A floor-by-floor roguelike run driven by Discord button interactions. One run per day per user —
-`canEnterTower` is reset to `true` for everyone at 4am UTC (see
+`canEnterTower` is reset to `true` for everyone at 8pm ET (America/New_York, DST-safe; see
 [systems/raids-and-world-events.md](raids-and-world-events.md)).
 
 ## Run state
@@ -146,7 +146,7 @@ immediately — there's no way to "undo" a leave and keep playing that day.
 ## Daily leaderboard
 
 [src/utils/towerLeaderboardFactory.js](../../src/utils/towerLeaderboardFactory.js), reset alongside
-the same 4am UTC `canEnterTower` reset — see [systems/raids-and-world-events.md](raids-and-world-events.md).
+the same 8pm ET `canEnterTower` reset — see [systems/raids-and-world-events.md](raids-and-world-events.md).
 
 **Survival-only eligibility.** `towerFactory.js` tracks a `this.died` flag, set `true` only in
 `execElite`'s actual loss branch (failed the `Math.random() < success` roll) — declining to fight an
@@ -1440,7 +1440,7 @@ an `editReply`, an expired/invalidated interaction token on a long multi-floor c
 exception anywhere in `towerFactory.js` — `handleCommands.js`'s top-level catch reports a generic
 "Something went wrong" error, but `canEnterTower` is already permanently `false` for the rest of the
 day, with no in-progress state to roll back (there isn't any) and no way for the player to retry
-until the next 4am UTC reset.
+until the next 8pm ET reset.
 
 `/admin-reset-tower player:<mention>` (`adminResetTower.js`, `devOnly` + Administrator) is the fix:
 force-sets that one player's `canEnterTower` back to `true`, unconditionally and idempotently — safe
@@ -1606,7 +1606,7 @@ everything earned so far in the run is kept. `wardUsed` is persisted to
 `userDetails.towerWardUsedToday` only when `true` (`enter-tower.js`'s
 `processTowerCompanionRewards`), so a run that never needed the ward makes no extra write.
 
-**Daily reset**: `towerWardUsedToday` follows the exact same 4am UTC cadence as
+**Daily reset**: `towerWardUsedToday` follows the exact same 8pm ET (America/New_York, DST-safe) cadence as
 `canEnterTower` (`dynamoHandler.resetTowerWard`, called from `backgroundEvents.js`'s existing
 cron right after `resetAllTowerEntries()`) — a used ward is available again the next time a
 player can enter the tower at all, never a separate reset schedule to reason about.

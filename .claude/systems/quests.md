@@ -4,7 +4,7 @@
 `Quests`/`DailyQuest`/`WeeklyQuest`/`MercenaryQuest` constants in
 [constants.js](../../src/utils/constants.js), checked from
 [work.js](../../src/commands/user/work.js) (daily/weekly) and
-[take-bounty.js](../../src/commands/user/takeBounty.js) (mercenary), rotated by the same 4am UTC
+[take-bounty.js](../../src/commands/user/takeBounty.js) (mercenary), rotated by the same 8pm ET (America/New_York, DST-safe)
 cron that already resets `canEnterTower` and pays out the Tower leaderboard, viewed via `/quests`.
 
 ## Pool and rotation

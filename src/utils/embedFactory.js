@@ -4234,7 +4234,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle("🗼 Tater Tower Leaderboard (Today)")
-            .setDescription("Only survived runs count — die to an Elite and your run won't rank, no matter how deep you got. Resets daily at 4am UTC.")
+            .setDescription("Only survived runs count — die to an Elite and your run won't rank, no matter how deep you got. Resets daily at 8pm EST/EDT.")
             .setColor("Purple")
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
@@ -4299,7 +4299,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Quests`)
-            .setDescription(`${completedCount} / ${totalCount} completed — dailies reset 4am UTC, weeklies reset Mondays\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setDescription(`${completedCount} / ${totalCount} completed — dailies reset 8pm EST/EDT, weeklies reset Mondays\nPage ${pageIndex + 1} / ${totalPages}`)
             .setColor("Blue")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -4760,7 +4760,7 @@ class EmbedFactory {
         return embed;
     }
 
-    // Daily 4am UTC cron announcement — `result` is spudKeepFactory.resolveCycle's own
+    // Daily 8pm ET (America/New_York, DST-safe) cron announcement — `result` is spudKeepFactory.resolveCycle's own
     // return shape (either { skipped: true } or the full resolution result).
     // How many pages of 5 the payout breakdown needs — backgroundEvents.js calls this
     // BEFORE the first send so it knows whether to attach pagination buttons at all.

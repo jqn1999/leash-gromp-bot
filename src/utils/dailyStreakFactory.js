@@ -1,8 +1,10 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { DailyStreak } = require("../utils/constants");
 
-// "Day" boundaries are computed in EST/EDT (Intl handles the DST transition), matching
-// the rest of the game's day-based resets (e.g. the 4am UTC / midnight EST tower reset).
+// "Day" boundaries are computed in EST/EDT (Intl handles the DST transition) — this is its
+// own independent real-midnight-Eastern boundary, not tied to backgroundEvents.js's own
+// Tower/Quest/Guild Contract/Spud Keep cron (which fires at 8pm ET, not midnight — see
+// daily-streak.md's own note on why these two "day" boundaries aren't the same thing).
 function getDateStringEST(date) {
     return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }

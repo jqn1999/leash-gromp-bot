@@ -277,8 +277,11 @@ const DailyStreak = {
 }
 
 // Daily rotation (3 of 5) refreshes every day; weekly rotation (2 of 6) only refreshes
-// on Mondays, both at the same 4am UTC cron the Tower/streak/economy jobs already use —
-// see questFactory.js. Dailies pay potatoes scaled by the player's own
+// on Mondays, both at the same 8pm ET (America/New_York, DST-safe) cron the Tower/Spud
+// Keep/Guild Contract jobs already use — see questFactory.js. (The separate daily LOGIN
+// streak, dailyStreakFactory.js, is NOT on this cron — it computes its own real
+// America/New_York midnight boundary directly, unaffected by this job's own schedule.)
+// Dailies pay potatoes scaled by the player's own
 // workMultiplierAmount (same reasoning as the daily streak — stays meaningful as the
 // economy matures); weeklies pay a flat permanent stat bonus (matching how every other
 // stat bonus in this game already works — Metal Potato, Sweet Potato, Tower rewards are
@@ -1622,7 +1625,7 @@ const Companions = [
         // 13.5% bountyRewardPercent since Bastion carries a second, more novel perk alongside it.
         //
         // towerDeathWard (binary — no `value`, same shape as Guinea Pig's own poisonImmunity
-        // entry) — once per day (userDetails.towerWardUsedToday, reset on the same 4am UTC
+        // entry) — once per day (userDetails.towerWardUsedToday, reset on the same 8pm ET
         // cron as canEnterTower), the FIRST Elite loss is intercepted: the run ends immediately
         // as a safe forced retreat instead of a death — accumulated WORK_MULTIPLIER/
         // PASSIVE_INCOME/BANK_CAPACITY payouts are KEPT rather than wiped, but the climb still
@@ -1773,7 +1776,7 @@ const HelpTopics = [
         id: "spud-keep",
         label: "Spud Keep",
         description: "The daily Guild-vs-Merc-Faction territory contest",
-        content: "Spud Keep is a daily, server-wide contest — exactly one holder (a guild, or the whole Merc Faction combined) at a time, resolved every day at 4am UTC.\n\n**The lottery**: every signed-up guild (`/join-spud-keep`, Elder+) and the Merc Faction (every mercenary with `/spud-keep-signup` toggled on) get one weighted lottery line each, sized by their own effective raid power (the same rank-weighted formula Guild Raid uses). The current holder auto-re-enters with no action needed. Every entrant that ISN'T the current holder gets an Attacker's Bonus to their power — +6% flat, plus +15%/consecutive day the SAME holder has kept the Keep (capped at +60% at day 5+) — so an unbroken reign gets progressively easier to topple.\n\n**Merc Faction sizing**: the whole mercenary pool collapses into ONE combined entrant, capped to the top N mercenaries by power, where N = the largest currently-signed-up GUILD's own live raid roster headcount that cycle (no floor) — if no guild is signed up that cycle, N is 0 and the Faction can't win.\n\n**Rewards**: the holder gets a bundle buff — +8% passive income and +8% chance to skip `/work`/raid/Bounty/Heist cooldowns — that compounds +8%/consecutive successful defense up to +40% at day 5+. Separately, while ANY holder is live, 75% of nearly every house tax in the game (bank, give, companion market, starch, raid, bounty) is redirected into a shared, ever-growing pot instead of the house. When the Keep changes hands, that pot splits among the OUTGOING holder's own roster by each member's raw work multiplier, credited to a pending balance you move into spendable potatoes with `/spud-keep-collect`. `/current-spud-keep` shows the live pot, current holder, and every entrant's odds."
+        content: "Spud Keep is a daily, server-wide contest — exactly one holder (a guild, or the whole Merc Faction combined) at a time, resolved every day at 8pm EST/EDT.\n\n**The lottery**: every signed-up guild (`/join-spud-keep`, Elder+) and the Merc Faction (every mercenary with `/spud-keep-signup` toggled on) get one weighted lottery line each, sized by their own effective raid power (the same rank-weighted formula Guild Raid uses). The current holder auto-re-enters with no action needed. Every entrant that ISN'T the current holder gets an Attacker's Bonus to their power — +6% flat, plus +15%/consecutive day the SAME holder has kept the Keep (capped at +60% at day 5+) — so an unbroken reign gets progressively easier to topple.\n\n**Merc Faction sizing**: the whole mercenary pool collapses into ONE combined entrant, capped to the top N mercenaries by power, where N = the largest currently-signed-up GUILD's own live raid roster headcount that cycle (no floor) — if no guild is signed up that cycle, N is 0 and the Faction can't win.\n\n**Rewards**: the holder gets a bundle buff — +8% passive income and +8% chance to skip `/work`/raid/Bounty/Heist cooldowns — that compounds +8%/consecutive successful defense up to +40% at day 5+. Separately, while ANY holder is live, 75% of nearly every house tax in the game (bank, give, companion market, starch, raid, bounty) is redirected into a shared, ever-growing pot instead of the house. When the Keep changes hands, that pot splits among the OUTGOING holder's own roster by each member's raw work multiplier, credited to a pending balance you move into spendable potatoes with `/spud-keep-collect`. `/current-spud-keep` shows the live pot, current holder, and every entrant's odds."
     },
     {
         id: "safehouses",
@@ -1815,7 +1818,7 @@ const HelpTopics = [
         id: "tower",
         label: "Tater Tower",
         description: "The once-daily climb: difficulty curve and Elite odds",
-        content: "`/enter-tower` — one climb per account per day (resets 4am UTC). Floors are mostly COMBAT (guaranteed-win)/ENCOUNTER/TRANSACTION/REWARD picks, with a forced ELITE fight every 10th floor.\n\nElite difficulty climbs geometrically each time you face one: `4.0 × 1.45^(N-1)`, where N counts which forced Elite you're on (1st, 2nd, 3rd...) — the relative jump between Elites 1→2 is the same size as 9→10, so it never flattens out. Success chance is your effective work multiplier divided by (that difficulty × the Elite's own ≈10.0 difficulty), capped at 95% — even a very over-leveled climber keeps a real 5% death chance on every single Elite, forever. Losing an Elite wipes your run's accumulated stat rewards (potatoes already earned are kept) and ends the run.\n\nNon-Elite floor rewards decay past floor 100: each floor past that point pays 95% of the previous floor's value, so the total extra reward available from everything past floor 100 — no matter how deep you push — caps out around 19 floors' worth. `/tower-settings` toggles auto-continue (skips the extra Continue/Leave click after each floor); a Fast-Forward button auto-resolves floors — using a Safe or Greedy risk policy you pick once per run — until the next Elite. `/tower-leaderboard` shows the day's top survivors — dying (not just retreating) forfeits leaderboard eligibility."
+        content: "`/enter-tower` — one climb per account per day (resets 8pm EST/EDT). Floors are mostly COMBAT (guaranteed-win)/ENCOUNTER/TRANSACTION/REWARD picks, with a forced ELITE fight every 10th floor.\n\nElite difficulty climbs geometrically each time you face one: `4.0 × 1.45^(N-1)`, where N counts which forced Elite you're on (1st, 2nd, 3rd...) — the relative jump between Elites 1→2 is the same size as 9→10, so it never flattens out. Success chance is your effective work multiplier divided by (that difficulty × the Elite's own ≈10.0 difficulty), capped at 95% — even a very over-leveled climber keeps a real 5% death chance on every single Elite, forever. Losing an Elite wipes your run's accumulated stat rewards (potatoes already earned are kept) and ends the run.\n\nNon-Elite floor rewards decay past floor 100: each floor past that point pays 95% of the previous floor's value, so the total extra reward available from everything past floor 100 — no matter how deep you push — caps out around 19 floors' worth. `/tower-settings` toggles auto-continue (skips the extra Continue/Leave click after each floor); a Fast-Forward button auto-resolves floors — using a Safe or Greedy risk policy you pick once per run — until the next Elite. `/tower-leaderboard` shows the day's top survivors — dying (not just retreating) forfeits leaderboard eligibility."
     },
     {
         id: "quests-achievements",
@@ -2270,8 +2273,8 @@ const Raid = {
 // grounded there against an existing comparable constant rather than picked freeform.
 // spudKeepFactory.js is the single consumer of every field here.
 const SpudKeep = {
-    // Resolved daily inside the same 4am UTC cron Tower/Quest/Guild Contract rotation
-    // already uses (backgroundEvents.js) — also the exact duration both granted buffs'
+    // Resolved daily inside the same 8pm ET (America/New_York, DST-safe) cron Tower/Quest/
+    // Guild Contract rotation already uses (backgroundEvents.js) — also the exact duration both granted buffs'
     // own expiresAt uses, so a successful defense has zero coverage gap.
     CONTEST_INTERVAL_SECONDS: 86400,
 

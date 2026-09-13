@@ -134,7 +134,7 @@ Created by `addUser` in `dynamoHandler.js`:
     bankCapacity: 0
   },
   starches: 0,
-  canEnterTower: true,        // reset daily at 4am UTC
+  canEnterTower: true,        // reset daily at 8pm ET, DST-safe
   workCount: 0,
   workScenarioCounts: {       // lifetime encounter counters, see systems/economy-and-work.md
     regular: 0, large: 0, sweet: 0, taro: 0,

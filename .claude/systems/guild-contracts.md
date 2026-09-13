@@ -2,7 +2,7 @@
 
 [src/utils/guildContractFactory.js](../../src/utils/guildContractFactory.js) +
 `GuildContracts`/`GuildContract` constants in [constants.js](../../src/utils/constants.js), checked
-from [work.js](../../src/commands/user/work.js), rotated by the same 4am UTC cron that already
+from [work.js](../../src/commands/user/work.js), rotated by the same 8pm ET (America/New_York, DST-safe) cron that already
 resets `canEnterTower` and rotates Quests, viewed via `/guild-contract`. Departure freezing is
 hooked into [leave.js](../../src/commands/guilds/leave.js) and
 [kick.js](../../src/commands/guilds/kick.js).

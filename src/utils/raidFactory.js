@@ -74,8 +74,8 @@ function getMemberRaidPower(userDetails) {
 // getMemberRaidPower EXCEPT it drops the companion workMultiplierPercent term entirely.
 // Real raids/Bounty/Heist/Tower are all player-INITIATED — a player who swaps to a
 // work-multiplier companion before starting one is making a real, in-the-moment
-// strategic choice. Spud Keep instead resolves on a fixed, predictable clock (the 4am UTC
-// cron) with zero player action required, so the only thing companion inclusion actually
+// strategic choice. Spud Keep instead resolves on a fixed, predictable clock (the 8pm ET,
+// DST-safe cron) with zero player action required, so the only thing companion inclusion actually
 // rewarded was remembering to alarm-clock-swap into a work-multiplier companion right
 // before the reset and swap back to whatever you actually wanted equipped afterward —
 // pure busywork, not a meaningful decision. Live rebirth bonus stays included (it isn't

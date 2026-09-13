@@ -432,7 +432,7 @@ describe('getMemberRaidPower', () => {
 // companion workMultiplierPercent term is dropped entirely — real raids/Bounty/Heist/
 // Tower are all player-INITIATED, so swapping in a work-multiplier companion right before
 // acting is a real strategic choice; Spud Keep instead resolves on a fixed, predictable
-// clock (the 4am UTC cron) with zero player action, so companion inclusion only ever
+// clock (the 8pm ET, DST-safe cron) with zero player action, so companion inclusion only ever
 // rewarded alarm-clock-swapping into a work-multi companion right before the reset and
 // back out afterward.
 describe('getSpudKeepMemberPower', () => {

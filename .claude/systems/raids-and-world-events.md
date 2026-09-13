@@ -1093,7 +1093,7 @@ All via `node-schedule` unless noted, registered on `ready` in `backgroundEvents
 | Schedule | Job |
 |---|---|
 | `setInterval` every 300,000ms (5 min) | `dynamoHandler.passivePotatoHandler(288)` — passive income tick; 288 = number of 5-min intervals/day, used to divide each user's daily `passiveAmount` into a per-tick chunk |
-| Cron `0 4 * * *` (4am UTC / midnight EST) | Resets all users' `canEnterTower` to `true`; checks/announces birthdays in channel `1188539987118010408`, renaming the channel to reflect the next upcoming birthday or announcing today's |
+| Cron `{ rule: '0 20 * * *', tz: 'America/New_York' }` (8pm ET, DST-safe) | Resets all users' `canEnterTower` to `true`; checks/announces birthdays in channel `1188539987118010408`, renaming the channel to reflect the next upcoming birthday or announcing today's |
 | Cron `0 * * * *` (hourly) | 20% chance (`Math.random() >= .8`) to trigger a special work-scenario event — announces in channel `1188525931346792498`, pings role `1207117686526582865`, applies new odds via `work.js`'s exported `setWorkScenarios(wC)` for that hour, then immediately resets `EventFactory` back to base probabilities. If no event triggers, explicitly resets work scenarios to base anyway |
 | Cron `30 * * * *` (hourly, on the half hour) | World raid resolve/spawn logic above; posts result/announcement to channel `1188525931346792498`, pinging the same role |
 

@@ -33,8 +33,13 @@ isConsecutive = userDetails.lastLoginDate == yesterday
 newStreak = isConsecutive ? loginStreak + 1 : 1   // any gap of 2+ days resets to 1
 ```
 
-EST is used to match the rest of the game's day-based resets (the Tower's midnight-EST /
-4am-UTC reset). A brand-new account (`lastLoginDate: null` from `addUser`) or a pre-existing
+EST/EDT is used because it's the natural real-world day boundary for a LOGIN streak — this is
+computed independently via `Intl`/`toLocaleDateString('America/New_York', ...)`, genuinely
+DST-safe midnight, not tied to any cron job at all. It no longer lines up with the Tower/Quest/
+Guild Contract/Spud Keep cron's own reset time (moved to 8pm ET 2026-09-13, see tower.md) —
+the two systems' "day" boundaries are independent and were never actually wired together, just
+described the same loose way in older comments. A brand-new account (`lastLoginDate: null` from
+`addUser`) or a pre-existing
 account that predates this feature (missing the field entirely) both naturally fall into the
 "not consecutive" branch and start a fresh streak at 1 on their next interaction — same
 lazy-backfill philosophy as achievements, no migration script needed.

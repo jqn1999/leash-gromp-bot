@@ -96,7 +96,7 @@ test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone clears t
 
 // Auto-recovery (2026-09-11): a run that throws partway through used to strand the player
 // (canEnterTower already flipped false, no other write to ever restore it) until the next
-// day's 4am UTC reset — see tower.md's "/admin-reset-tower" section. Now the entry is
+// day's 8pm ET reset — see tower.md's "/admin-reset-tower" section. Now the entry is
 // restored automatically and the player is told plainly what happened.
 test('a run that throws mid-climb restores canEnterTower and tells the player, instead of leaving them stuck', async () => {
     dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));

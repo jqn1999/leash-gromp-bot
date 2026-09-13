@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType, PermissionFlagsBits } = require("discord.j
 const dynamoHandler = require("../../utils/dynamoHandler");
 
 // Support tool for the class of bug where a player gets stuck unable to run /enter-tower
-// again until the next day's 4am UTC reset. enter-tower.js flips canEnterTower to false
+// again until the next day's 8pm ET reset. enter-tower.js flips canEnterTower to false
 // BEFORE the run itself starts (see enter-tower.js's own comment) and nothing ever flips
 // it back except that daily cron or a fully-completed run — so any crash partway through a
 // run (a thrown error, a stale/expired interaction token, Discord itself dropping a

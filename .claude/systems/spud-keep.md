@@ -5,8 +5,8 @@
 [src/commands/user/spudKeepSignup.js](../../src/commands/user/spudKeepSignup.js) +
 [src/commands/misc/currentSpudKeep.js](../../src/commands/misc/currentSpudKeep.js) +
 [src/commands/user/spudKeepCollect.js](../../src/commands/user/spudKeepCollect.js). Scheduling:
-[src/events/ready/backgroundEvents.js](../../src/events/ready/backgroundEvents.js) (same 4am UTC
-cron Tower/Quest/Guild Contract rotation already uses). Constants:
+[src/events/ready/backgroundEvents.js](../../src/events/ready/backgroundEvents.js) (same 8pm ET,
+America/New_York, DST-safe cron Tower/Quest/Guild Contract rotation already uses). Constants:
 [constants.js](../../src/utils/constants.js) `SpudKeep`. Full design derivation:
 `.claude/roadmap.md`'s "Spud Keep" entry.
 
@@ -239,11 +239,11 @@ Every other raid-power computation in the codebase (real Guild Raids, `/take-bou
 Tower's entry gate) is **player-initiated** — a player who swaps to a work-multiplier companion
 (Sprout/Firefly/Spudsprite/Mochi) right before acting is making a real, in-the-moment strategic
 choice, the same kind of choice equipping any other perk for the task at hand already is. Spud
-Keep is different: it resolves on a fixed, predictable clock (the 4am UTC cron), with **zero**
+Keep is different: it resolves on a fixed, predictable clock (the 8pm ET cron), with **zero**
 player action required to participate — a guild's roster is scored automatically off whoever's
 currently equipped, whenever the cron happens to fire. The only thing companion inclusion here
 ever actually rewarded was remembering to alarm-clock-swap into a work-multiplier companion right
-before 4am UTC and swap back to whatever you actually wanted equipped once the resolution had
+before 8pm ET and swap back to whatever you actually wanted equipped once the resolution had
 fired — pure busywork with no meaningful decision behind it, not real strategy.
 
 The World Boss `workMulti` buff (see "buildEntrantPreview" above) was considered too, but doesn't
@@ -270,7 +270,7 @@ though it wouldn't move the final `chancePercent` once selected).
 companion at all — see that function's own comment) was already unaffected either way, since it
 never routed through `getMemberRaidPower` in the first place.
 
-## Resolution flow (`spudKeepFactory.resolveCycle()`, called from the 4am UTC cron)
+## Resolution flow (`spudKeepFactory.resolveCycle()`, called from the 8pm ET cron)
 
 1. `buildEntrantPreview()` — the SAME side-effect-free computation `/current-spud-keep` reads live:
    reads `spud_keep`/`spud_keep_buff`/`spud_keep_cooldown_buff`, builds every guild entrant's power

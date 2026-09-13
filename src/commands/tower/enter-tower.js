@@ -140,7 +140,7 @@ module.exports = {
             // Auto-recovery (2026-09-11) — startRun() keeps the whole climb in memory and
             // only ever restores canEnterTower via a full, successful completion (see
             // tower.md's "/admin-reset-tower" section), so ANY uncaught exception mid-run
-            // used to strand the player until the next day's 4am UTC reset with no way to
+            // used to strand the player until the next day's 8pm ET reset with no way to
             // recover on their own. Restoring the flag here means a crash costs the player
             // this run's progress, not their whole day. Logging e (not just its message —
             // see the matching fix in handleCommands.js) finally captures a real stack trace

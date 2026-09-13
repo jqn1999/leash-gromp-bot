@@ -12351,3 +12351,44 @@ the exact same user object `getMemberRaidPower` DOES move) and confirms
 gets a `selectTopNMercenaries` companion-exclusion test and an end-to-end `buildEntrantPreview`
 test confirming a guild member's equipped companion doesn't move the guild's own power at all.
 Full suite: **1615/1615** across 85 suites. Docs: `spud-keep.md`.
+
+## Fix: daily reset cron moved from midnight to 8pm ET, and made DST-safe (2026-09-13, direct instruction)
+
+Player: "Can we also update daily reset to happen at 8pm est instead of 12am?" This is
+`backgroundEvents.js`'s single bundled daily cron — Tower's `canEnterTower`/`towerWardUsedToday`
+reset, the Tower leaderboard payout, quest rotation (daily + Monday's weekly set), Guild
+Contract rotation (Mondays), Spud Keep's own resolution, and the birthday channel check all
+fire from this one job.
+
+While moving it, found and fixed the exact same latent bug `starchEvents.js`'s own jobs had
+before their 2026-08-24 fix (see that entry): this cron was a bare `'0 4 * * *'` UTC string,
+hand-picked to land on midnight only during EDT — a raw UTC cron doesn't shift with Daylight
+Saving, so the real Eastern-time firing moment silently drifted by an hour across the year (it
+would have fired at 11pm EST, not midnight, for the ~4 winter months outside DST). Switched to
+node-schedule's object form with an explicit timezone — `{ rule: '0 20 * * *', tz:
+'America/New_York' }` — the exact same DST-safe pattern `starchEvents.js` already established,
+so this now fires at the real 8pm Eastern moment year-round, DST included, rather than just
+picking a new UTC hour that would eventually drift the same way.
+
+Renamed the per-step error log labels from `'4am cron: ...'` to `'daily cron: ...'` so they
+don't go stale the next time this job's clock time changes. Swept every "4am UTC"/"midnight
+EST"/"12 AM EST" reference across the codebase to "8pm ET"/"8pm EST/EDT" — comments
+(`dynamoHandler.js`, `raidFactory.js`, `spudKeepFactory.js`, `constants.js`,
+`adminResetTower.js`, `enter-tower.js`, test files) and **user-facing text**: `/help
+topic:tower`'s "resets 4am UTC" line, `/help topic:spud-keep`'s "resolved every day at 4am
+UTC" line, `/start`'s Tower field ("resetting at midnight EST"), the Tower leaderboard embed's
+footer, and the quest-progress embed's footer.
+
+**The daily LOGIN streak (`dailyStreakFactory.js`) is deliberately untouched** — it was never
+actually wired to this cron at all, despite an old comment implying they matched. It computes
+its own real `America/New_York` midnight boundary directly via `Intl`/`toLocaleDateString`
+(genuinely DST-safe already, unlike the old bare-UTC cron), independent of any scheduled job.
+Fixed that stale comment (and `daily-streak.md`'s own cross-reference) to stop claiming the two
+systems share a reset moment, now that they visibly don't (8pm ET vs. real midnight ET) —
+flagged to the user as a system they may separately want moved, since it wasn't what was asked.
+
+No test file exists for `backgroundEvents.js` (a pre-existing gap, not introduced here — nothing
+in it is unit-tested today) — full suite re-run to confirm the text-only edits broke nothing:
+**1615/1615** across 85 suites, unchanged from before this fix. Docs: `tower.md`, `spud-keep.md`,
+`daily-streak.md`, `quests.md`, `guild-contracts.md`, `raids-and-world-events.md`,
+`reference/commands.md`, `architecture/data-model.md`.

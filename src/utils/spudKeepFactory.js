@@ -295,8 +295,8 @@ async function buildEntrantPreview() {
 }
 
 // The full daily resolution (`spudKeepFactory.resolveCycle()`, called from
-// backgroundEvents.js's existing 4am UTC cron) — see roadmap.md's own numbered
-// resolution flow for the derivation of every step below.
+// backgroundEvents.js's existing 8pm ET (America/New_York, DST-safe) cron) — see
+// roadmap.md's own numbered resolution flow for the derivation of every step below.
 async function resolveCycle() {
     const preview = await buildEntrantPreview();
     const { spudKeep, currentBuff, entrants, consecutiveHoldCycles } = preview;
