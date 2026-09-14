@@ -3547,9 +3547,29 @@ and needs its own balance pass.
   of what the bot has" formula has one place to point to). Full suite: 758/758 (up from
   755/755 — 3 new tests, zero regressions).
 
-- [ ] **92. Companion Shop — Daily/Weekly Rotating Companion Store** — M (design fully locked
-  2026-09-14, ready to build — every open question below was raised and resolved directly, not
-  left for a developer to guess at).
+- [x] **92. Companion Shop — Daily/Weekly Rotating Companion Store** — M — **Built 2026-09-14**,
+  exactly per the locked design below with one clarification made at implementation time (spent
+  currency is a pure sink, deducted and never credited anywhere — mirrors `shopFactory.
+  attemptShopBuy`'s existing workShop/bankShop/starchShop purchases, the closest existing analog
+  for an NPC storefront rather than a P2P trade). `constants.js`'s `CompanionShop` block, new
+  `src/utils/companionShopFactory.js` (day/week 8pm-ET tags mirrored from `dailyStreakFactory.js`/
+  `workFactory.js`, xmur3+mulberry32 seeded roll, `resolveShopState`/`buildShopView`/
+  `attemptPurchaseSlot`), `dynamoHandler.js`'s new `companionShop` default field (self-heals onto
+  existing accounts, no migration needed), new `src/commands/user/companionShop.js`
+  (`/companion-shop`, ephemeral since stock is personal, Daily row + two Weekly rows of buy
+  buttons chunked under Discord's 5-per-row cap, disabled for an already-purchased or unaffordable
+  slot), and `embedFactory.createCompanionShopEmbed`. Verified the seeded roll never produces
+  Heirloom and always resolves to a real roster entry, and that `potatoPrice` lands within
+  `PRICE_MULTIPLIER × PRICE_VARIANCE` of `CompanionMarket.MINIMUM_PRICE` for every rarity. New
+  `companionShopFactory.test.js` (19 tests: boundary tags, rarity-table walk, determinism, live
+  starch-price conversion, every purchase rejection case). Docs: `.claude/systems/companions.md`
+  (new Companion Shop section), `.claude/README.md`, `.claude/reference/commands.md`. Same session
+  also moved `/companion-sell` off its old autocomplete `companion` option onto an embed/button
+  flow (direct instruction, unrelated to the shop's own design but shipped alongside it) — see
+  that change's own dated entry below. Full suite: **1658/1658** across 89 suites (+26 tests: 19
+  new `companionShopFactory.test.js` + 7 new `companionSell.test.js`).
+
+  Original locked design follows, kept verbatim for reference:
 
   **What**: a fourth companion-acquisition path alongside `/work`'s Wandering Companion roll,
   `/companion-hunt`, and the P2P `/companion-market` — a personal, per-player storefront
@@ -12883,3 +12903,40 @@ Docs: `economy-and-work.md`, plus the stale `dynamoHandler.js` comment claiming 
 mitigation was fully "self-contained" from Quests'/Guild Contracts' rotation (true before this fix,
 no longer accurate — the week BOUNDARY is now deliberately kept in sync, only the write path stays
 independent). Full suite: **1632/1632** across 87 suites (+3 tests).
+
+## Feature: `/companion-sell` moved off an autocomplete `companion` option onto an embed/button flow (2026-09-14, direct instruction)
+
+Asked mid-session, alongside the Companion Shop build below: "make the companion sell command not
+take an id anymore, it opens an embed now." `/companion-sell` previously took two slash options,
+`companion` (an autocomplete dropdown, one choice per owned instance, value = `instanceId`) and
+`price` — functionally fine, but every other companion-selection command in this codebase
+(`/companion`'s equip row, `/companion-cancel`'s cancel row, `/companion-market`'s numbered buy
+row) had already moved to "browse a paginated embed, click a button for the one you want," making
+`/companion-sell`'s autocomplete the odd one out.
+
+**Change**: `companion` option removed entirely; `price` stays as the only slash option (Discord
+has no numeric-input component a button click could collect afterward, so the asking price still
+has to be typed up front). The command now opens a paginated embed
+(`embedFactory.createCompanionSellEmbed`, 5 owned instances/page) listing every companion the
+invoker owns, each with a sell button labeled `"<Companion> (Lv. N)"` — same labeling convention
+`/companion-cancel`'s cancel row already uses. A button is disabled, with the reason spelled out in
+that row's own status line, for either of `companionMarketFactory.validateListingRequest`'s two
+real rejection cases: the instance is currently out scavenging, or the given price doesn't clear
+that rarity's own `CompanionMarket.MINIMUM_PRICE` floor — both previously only surfaced as an
+error message after autocomplete let you pick (scavenging) or after submitting the command
+(below-floor price); now visible on the button itself before it's even clicked. Clicking an
+enabled button still goes through the exact same confirm/cancel prompt
+(`helperCommands.buildConfirmCancelRow`) and fresh-refetch-then-revalidate-then-escrow write the
+old id-based flow used (pulled into a standalone `attemptListCompanion`, mirroring
+`companionMarket.js`'s `attemptBuy` / `companionCancel.js`'s `attemptCancelListing`) — nothing
+about the actual listing mechanics changed, only how the companion is chosen. No changes needed to
+`companionMarketFactory.js`: `validateListingRequest`/`buildListing`/`removeFromOwned` were already
+keyed by `instanceId`, not by how that id got collected.
+
+Docs: `.claude/systems/companions.md` (Selling section + the dedicated `/companion-sell` writeup
+under Companion Market) and `.claude/reference/commands.md` updated to describe the new flow.
+Tests: new `companionSell.test.js` — `attemptListCompanion` (successful listing, below-floor
+rejection, scavenging rejection, market-write-lock-conflict rejection), `buildOwnedPages` (flags
+the scavenging instance distinctly from an idle one), `buildSellRow` (disables for scavenging and
+for a sub-floor price, returns `null` for an empty page). Full suite: run below alongside the
+Companion Shop feature.

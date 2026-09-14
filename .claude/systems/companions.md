@@ -168,10 +168,13 @@ instruction:
   a `companionId`, for the same reason: only one specific owned copy can be the one out scavenging.
 - **Selling** (`companionMarketFactory.validateListingRequest`/`validateNpcSaleRequest`/
   `removeFromOwned`, `/companion-sell`/`/companion-sell-npc`) — every function is keyed by
-  `instanceId`, not companion id. Autocomplete lists one choice per owned instance
-  (`"<Companion> (Lv. N)"`), so the player picks the exact copy to sell directly — no more
+  `instanceId`, not companion id, so the player always picks the exact copy to sell directly — no
   "spare"-vs-"main copy" distinction to reason about, and no quantity-aware branching in
   `removeFromOwned`: selling/listing an instance always just removes that one entry from `owned`.
+  `/companion-sell-npc` still resolves which instance via autocomplete (one choice per owned
+  instance, `"<Companion> (Lv. N)"`); `/companion-sell` moved off autocomplete entirely on
+  2026-09-14 — see its own writeup under Companion Market below for the embed/button flow that
+  replaced it.
 - **Cancelling a listing** (`companionCancel.js`'s `attemptCancelListing`) — simplified back down
   from the quantity-system's two-branch merge to always pushing the restored companion back as a
   brand-new instance (a freshly generated `instanceId`) at the listing's own `workCount`. There's
@@ -944,23 +947,31 @@ guarded by `dynamoHandler.updateStatFieldsWithLock` — a generic optimistic-con
 `version`-field-conditioned shape as `updateGuildFieldsWithLock`) since list/buy/cancel can all race
 on the same `listings` array.
 
-- **`/companion-sell <companion> <price>`** — `companion` is an autocomplete option (not a static
-  `choices` list, which would show all 13 companions to everyone regardless of ownership): one
-  choice per owned **instance** (`"<Companion> (Lv. N)"`, value = `instanceId`), filtered
-  per-keystroke, per-invoking-user to what they actually own and isn't out scavenging. No
-  "already listed" filter needed anymore (unlike before the instance rework) — listing escrows
-  (removes) the instance from `owned` immediately, so a listed instance simply stops appearing in
-  autocomplete on its own. Rejected server-side too (autocomplete only narrows the dropdown, the
-  callback still re-validates) if `price` is below that rarity's floor
-  (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare 250,000 / Legendary 1,000,000 /
-  Mythic 5,000,000 / Heirloom 25,000,000 (continues the same ~5x-per-tier progression) — cut
-  another 10x from the original post-launch floors, since even the reduced Common floor was still
-  ~500 `/work` calls for a fresh account). Confirm/cancel button flow, then
-  **escrow removal**: the exact instance is pulled out of `owned` entirely (unequipped first if it
-  was active) rather than just balance-checked at purchase time — there's no window where it could
-  be equipped, re-listed, or duplicated while for sale. Escrow removal deliberately does **not**
-  decrement `ownedCount`/`mythicOwnedCount` — those are lifetime achievement counters, and selling a
-  companion you already earned credit for shouldn't claw the achievement back.
+- **`/companion-sell <price>`** — `price` is the only slash option now. 2026-09-14 (direct
+  instruction): this used to take `companion` as a second option resolved through per-keystroke
+  autocomplete (one choice per owned instance, `"<Companion> (Lv. N)"`, value = `instanceId`);
+  replaced with the same "browse an embed, click a button" shape `/companion`'s equip row and
+  `/companion-cancel`'s cancel row already use, since typing a price is still unavoidable (Discord
+  has no numeric-input component to collect it after a button click) but picking WHICH owned
+  instance no longer needs to be. `companionSell.js`'s `buildOwnedPages` paginates every owned
+  instance (5/page, one sell button each, labeled `"<Companion> (Lv. N)"`) and
+  `embedFactory.createCompanionSellEmbed` shows the given price once in the header plus a per-row
+  status line — `🧭 Out scavenging` or `⚠️ Below this tier's floor` — for whichever of the two
+  listing-blockers applies, with the matching button disabled for the same reason rather than just
+  failing silently after a click. No "already listed" filter needed (unlike before the instance
+  rework) — listing escrows (removes) the instance from `owned` immediately, so a listed instance
+  simply stops appearing on the next render. Still rejected server-side too
+  (`companionMarketFactory.validateListingRequest`, re-run fresh right before the final write) if
+  `price` is below that rarity's floor (`CompanionMarket.MINIMUM_PRICE`: Common 50,000 / Rare
+  250,000 / Legendary 1,000,000 / Mythic 5,000,000 / Heirloom 25,000,000 (continues the same
+  ~5x-per-tier progression) — cut another 10x from the original post-launch floors, since even the
+  reduced Common floor was still ~500 `/work` calls for a fresh account). Confirm/cancel button flow
+  exactly as before, then **escrow removal**: the exact instance is pulled out of `owned` entirely
+  (unequipped first if it was active) rather than just balance-checked at purchase time — there's no
+  window where it could be equipped, re-listed, or duplicated while for sale. Escrow removal
+  deliberately does **not** decrement `ownedCount`/`mythicOwnedCount` — those are lifetime
+  achievement counters, and selling a companion you already earned credit for shouldn't claw the
+  achievement back.
 - **`/companion-market`** — **not ephemeral**, so other players in the channel can see current
   listings without running the command themselves, but the buttons stay **invoker-only**: paginated
   (5/page) browser of active listings (companion, level, tier, price, seller). Each page also renders
@@ -1020,6 +1031,88 @@ on the same `listings` array.
   Confirm/cancel button flow shows the exact `[min, max]` range before the player commits — the
   actual sale price isn't rolled (`companionMarketFactory.rollNpcSalePrice`) until they confirm, so
   nobody agrees to a blind number. No fee — the below-market price is already the sink.
+
+## Companion Shop
+
+A fourth acquisition path (roadmap.md item 92, 2026-09-14, direct instruction), alongside `/work`'s
+Wandering Companion roll, `/companion-hunt`, and the P2P `/companion-market` above — a **personal**
+(not shared/global), rotating NPC storefront: `/companion-shop` offers each player their own
+independent 3-slot daily stock and 6-slot weekly stock, each slot buyable once per rotation for a
+fixed potato-or-starch price. No luck on whether a slot is available to buy at all — only on which
+companion/rarity/price it turns out to be.
+
+- **Rotation timing** — the same Monday-8pm-ET/daily-8pm-ET boundaries Quests/Guild Contracts/
+  Mercenary weekly quests and Poison/Mimic mitigation already share (see the "8pm ET Monday
+  boundary" fix earlier the same day). Computed **lazily**, not cron-broadcast — this is personal
+  state with no shared pool, so `companionShopFactory.js`'s `getDailyTag`/`getWeeklyTag` (mirrored,
+  not shared, from `dailyStreakFactory.js`'s `getStreakDayString` and `workFactory.js`'s
+  `getCurrentWeekTag` respectively — same "tiny pure date helper, duplicated per file" convention
+  this codebase already established) derive the current boundary fresh on every read.
+- **Deterministic, seeded offerings — nothing is pre-rolled or stored.** Each slot's full offering
+  (rarity, which companion, its price, whether it's starch-priced) is derived on demand from a seed
+  of `(userId, tag, slotIndex)` via a small xmur3-hash-into-mulberry32 PRNG
+  (`companionShopFactory.getShopOffering`) — genuinely new infrastructure for this codebase (nothing
+  else does seeded per-player-per-day rolls). Only which slot INDICES have been purchased ever
+  persists (`companionShop.dailyPurchasedSlots`/`weeklyPurchasedSlots`), so re-rendering the shop
+  a hundred times a day always shows the exact same offerings until the next real rotation.
+- **Shop-specific rarity odds — its own cumulative table, `CompanionShop.RARITY_ODDS`, NOT a reuse
+  of the real `CompanionRarityOdds`.** The player asked for Mythic to be "very very rare" here
+  specifically and for Heirloom to be excluded outright:
+
+  | Rarity | Real `/work` odds | Shop odds |
+  |---|---|---|
+  | Common | 65% | **66.1%** |
+  | Rare | 25% | 25% (unchanged) |
+  | Legendary | 8% | 8% (unchanged) |
+  | Mythic | 1.8% | **0.9%** |
+  | Heirloom | 0.2% | **excluded entirely** |
+
+  Heirloom's 0.2% and half of Mythic's own 1.8 points both fold into Common, a direct instruction
+  rather than a balance-derived split. Since the table itself diverges, the shop's own
+  `rollShopRarity` walks `CompanionShop.RARITY_ODDS` directly rather than reusing
+  `companionFactory.rollRarity`/`rollCompanion` at all — but it DOES still reuse the already-
+  exported, pure `companionFactory.getCompanionsByRarity(rarity)` for the uniform pick within
+  whichever rarity it lands on, which already excludes any `dropSource`-tagged companion
+  (Yukon/Cinderroot/Bastion stay unpurchasable here too, with zero new exclusion logic needed).
+  Heirloom never appearing in this table also makes Yamimic's `hasAllMythics` ownership gate moot
+  here — there's nothing to gate. **Net effect: zero changes were needed to `companionFactory.js`.**
+- **Pricing** — `CompanionMarket.MINIMUM_PRICE[rarity] × CompanionShop.PRICE_MULTIPLIER[rarity] ×
+  (1 ± 20% seeded variance)`, priced well above the P2P floor deliberately (Common 2x → 80k-120k,
+  Rare 5x → 1M-1.5M, Legendary 10x → 8M-12M, Mythic 20x → 80M-120M) so a real `/companion-market`
+  listing stays the better deal whenever a seller exists — the same "convenience, not a
+  strictly-better replacement" discipline Companion Hunt's own pricing already set, and the mirror
+  image of `NPC_SELL_RATIO_MIN`/`MAX` protecting the same relationship in the opposite direction.
+- **Currency** — each slot has a seeded 20% chance (`CompanionShop.STARCH_CHANCE`) of being
+  starch-priced instead of potato-priced. A starch slot stores its **potato-equivalent value**
+  (the same formula above) as the single source of truth for the slot's real worth, and converts it
+  to a live starch amount only at view/purchase time (`companionShopFactory.getLiveStarchPrice`,
+  `Math.ceil(potatoValue / starch_sell)`) — the exact inverse of
+  `spudKeepFactory.convertStarchesToPotatoesForPot`'s own live-conversion pattern. A missing/
+  malformed starch-market doc fails the purchase with a clear "try again shortly" rather than
+  dividing by zero or silently mispricing the slot.
+- **No reroll** — confirmed explicitly out of scope. Today's/this week's offering is what it is
+  until the next rotation; a purchased slot's own field in the embed just shows it's gone.
+- **Purchasing is a pure NPC sink, not a P2P trade** — `companionShopFactory.attemptPurchaseSlot`
+  re-fetches userDetails fresh and re-derives the offering/rotation state from scratch (same
+  discipline every other confirm-button flow in this codebase uses) rather than trusting the
+  browse embed, then deducts the price and calls `companionFactory.applyCompanionAward` — the same
+  single acquisition choke-point every other path already funnels through, so duplicate-handling
+  and the `ownedCount`/`mythicOwnedCount` achievement counters need zero new code. The spent
+  currency is simply deducted, never credited anywhere (mirrors `shopFactory.attemptShopBuy`'s
+  existing workShop/bankShop/starchShop purchases — the closest existing analog for an NPC
+  storefront, as opposed to `/companion-market`'s buyer-pays-seller P2P flow).
+- **`/companion-shop`** — ephemeral (stock is personal, no reason for onlookers to see it), one
+  embed listing all 3 daily + 6 weekly slots (`embedFactory.createCompanionShopEmbed`) with a buy
+  button per slot, disabled for an already-purchased or currently-unaffordable slot with the reason
+  spelled out in that slot's own status line. Discord's 5-components-per-`ActionRow` cap means the
+  3 daily buttons fit one row but the 6 weekly buttons need two rows (5 + 1) — `companionShop.js`'s
+  `buildRows` chunks them accordingly.
+- **Data model** — `companionShop: { dailyTag, dailyPurchasedSlots: [], weeklyTag,
+  weeklyPurchasedSlots: [] }` on the user record, self-healed onto every existing account by
+  `dynamoHandler.js`'s standard missing-field backfill (no migration script needed) — a mismatched
+  or freshly-backfilled `null` tag reads identically to a genuine rotation reset
+  (`companionShopFactory.resolveShopState`), so a brand-new field behaves exactly like showing up
+  right after an 8pm ET rollover.
 
 ## Scavenging
 

@@ -654,6 +654,21 @@ function getDefaultUserFields(userId, username) {
         // reduction math, which stays capped at MILESTONE_REDUCTION from hit 10 onward.
         totalPoisonMilestones20Reached: 0,
         totalMimicMilestones20Reached: 0,
+        // Companion Shop (systems/companions.md#companion-shop) — a personal, rotating NPC
+        // storefront, lazily reset on tag mismatch exactly like poisonMitigation/
+        // mimicMitigation above (no cron of its own — see companionShopFactory.js's
+        // getDailyTag/getWeeklyTag). dailyTag/weeklyTag are the last-seen rotation boundary
+        // strings; a mismatch means the rotation has moved on and that purchased-slot list
+        // resets to empty. Only WHICH slot indices were purchased is ever stored — the
+        // offerings themselves are deterministically re-derived (seeded off
+        // userId+tag+slotIndex) on every read, never persisted, so there's nothing to heal
+        // or invalidate if the shop's own constants ever get rebalanced.
+        companionShop: {
+            dailyTag: null,
+            dailyPurchasedSlots: [],
+            weeklyTag: null,
+            weeklyPurchasedSlots: []
+        },
         // Persistent opt-in toggled by /spud-keep-signup (2026-09-03, direct instruction:
         // "mercs can either sign up or not as a toggle similar to guilds just being in or
         // out") — replaces the old per-cycle spud_keep.mercenaryEntrants list (push on

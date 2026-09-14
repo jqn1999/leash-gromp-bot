@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -3158,6 +3158,46 @@ class EmbedFactory {
         return embed;
     }
 
+    // The invoking user's OWN owned companions, shown to power /companion-sell's
+    // button-driven flow (2026-09-14, direct instruction — that command used to take a
+    // raw instanceId via autocomplete; replaced with the same "browse an embed, click a
+    // button" shape every other companion-selection command already uses). `price` is
+    // the asking price the player supplied as the command's own option, shown once in the
+    // header rather than repeated per field; each field's own status line says whether
+    // THAT companion's rarity tier actually clears CompanionMarket.MINIMUM_PRICE at that
+    // price (a listing below the floor fails outright — see
+    // companionMarketFactory.validateListingRequest) or is currently out scavenging, so a
+    // doomed button is visibly explained before it's clicked, not just disabled with no
+    // reason given (companionSell.js's buildSellRow disables exactly these two cases).
+    createCompanionSellEmbed(userDisplayName, pageItems, pageIndex, totalPages, price) {
+        const fields = pageItems.length > 0 ? pageItems.map(companion => {
+            const level = companionFactory.getCompanionLevel(companion.workCount || 0);
+            const minimumPrice = CompanionMarket.MINIMUM_PRICE[companion.rarity];
+            let status;
+            if (companion.isScavenging) {
+                status = '🧭 Out scavenging — not listable until it returns';
+            } else if (price < minimumPrice) {
+                status = `⚠️ Below this tier's ${minimumPrice.toLocaleString()}-potato minimum — raise your asking price to list it`;
+            } else {
+                status = `Lists for ${price.toLocaleString()} potatoes`;
+            }
+            return {
+                name: `${companion.name} (${COMPANION_RARITY_LABEL[companion.rarity]}) — Lv. ${level}`,
+                value: `${formatCompanionPerks(companion, level)}\n${status}`,
+                inline: false,
+            };
+        }) : [{ name: 'No companions to sell', value: "You don't own any companions right now!", inline: false }];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Companions — List for Sale`)
+            .setDescription(`Asking price: ${price.toLocaleString()} potatoes\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the buttons below to list a companion shown on this page at that price.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // pageItems: { listing, companion } pairs for this page (listing from the shared
     // companion_market doc, companion resolved from the roster). listing.workCount is
     // the seller's level at listing time (companionMarketFactory.buildListing) — shown
@@ -3204,6 +3244,50 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Market Listings`)
             .setDescription(`${totalListings} active listing${totalListings === 1 ? '' : 's'}\nPage ${pageIndex + 1} / ${totalPages}\n\nUse the buttons below to cancel a listing on this page.`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Companion Shop (roadmap.md item 92, 2026-09-14) — a personal, rotating NPC
+    // storefront distinct from the player-to-player market above. dailySlots/weeklySlots
+    // come from companionShopFactory.buildShopView, each entry already carrying its
+    // resolved { offering, companion, purchased, price, currencyField, affordable } —
+    // this embed only ever formats what it's handed, all the seeded-roll/live-starch-price
+    // logic lives in the factory. No reroll exists (direct instruction) so a purchased
+    // slot's own field just shows it's gone until the next daily/weekly rotation, same
+    // "already gone, nothing left to click" feel /companion-market's disabled-listing
+    // buttons have for the seller's own posts.
+    createCompanionShopEmbed(userDisplayName, dailySlots, weeklySlots, dailyTag, weeklyTag) {
+        const formatSlot = (period, slot, index) => {
+            const { companion, offering, purchased, price, currencyField, affordable } = slot;
+            const level = 1; // shop offerings are always fresh level-1 instances (workCount 0)
+            let status;
+            if (purchased) {
+                status = '✅ Already bought this rotation';
+            } else if (price == null) {
+                status = '⚠️ Starch market unavailable right now — try again shortly';
+            } else {
+                const priceLine = `${price.toLocaleString()} ${currencyField}`;
+                status = affordable ? priceLine : `${priceLine} — you can't afford this yet`;
+            }
+            return {
+                name: `${period} ${index + 1}) ${companion.name} (${COMPANION_RARITY_LABEL[offering.rarity]})`,
+                value: `${formatCompanionPerks(companion, level)}\n${status}`,
+                inline: false,
+            };
+        };
+
+        const fields = [
+            ...dailySlots.map((slot, i) => formatSlot('Daily', slot, i)),
+            ...weeklySlots.map((slot, i) => formatSlot('Weekly', slot, i))
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Companion Shop`)
+            .setDescription(`Daily stock rotates every day at 8pm ET, weekly stock every Monday at 8pm ET — no rerolls, so buy before it's gone.\nDaily rotation: ${dailyTag} — Weekly rotation: ${weeklyTag}\n\nUse the buttons below to buy a companion from this rotation.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

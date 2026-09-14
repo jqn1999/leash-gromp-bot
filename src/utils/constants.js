@@ -854,6 +854,55 @@ const CompanionMarket = {
     NPC_SELL_RATIO_MAX: 0.50
 }
 
+// Companion Shop — a personal (not shared/global), rotating NPC storefront, distinct from
+// the player-to-player CompanionMarket above (2026-09-14, direct instruction — "a daily
+// and/or weekly rotating companion shop that allows users to buy companions for either
+// potatoes or other things... similar chances as normal companion work for each
+// rarity/companion type"). Design locked across a multi-round confirm loop — see
+// roadmap.md item 92 for the full writeup — before any code was written.
+//
+// RARITY_ODDS is deliberately its OWN cumulative table, NOT CompanionRarityOdds — the
+// player asked for Mythic to be "very very rare" here specifically and for Heirloom to be
+// excluded entirely ("dont include heirloom just increase the common chance. Also lower
+// the mythic chance to .9% and give that to common as well"), so this shop's odds
+// genuinely diverge from /work's roll table rather than just reusing it. Heirloom's
+// absence means rollRarity()/rollCompanion() themselves needed zero changes — this shop
+// never calls them, it rolls against RARITY_ODDS directly and then reuses
+// companionFactory.getCompanionsByRarity(rarity) (already exported, already excludes
+// dropSource-tagged companions like Yukon/Cinderroot/Bastion) for the uniform per-rarity
+// pick, same as every other roll path in this codebase.
+const CompanionShop = {
+    DAILY_SLOT_COUNT: 3,
+    WEEKLY_SLOT_COUNT: 6,
+    RARITY_ODDS: {
+        [CompanionRarity.COMMON]: 0.661,
+        [CompanionRarity.RARE]: 0.911,
+        [CompanionRarity.LEGENDARY]: 0.991,
+        [CompanionRarity.MYTHIC]: 1.0
+    },
+    // "common 2x the floor, rare 5x, legendary 10x, mythic 20x with 20% variance above and
+    // below" — multiplies CompanionMarket.MINIMUM_PRICE, then PRICE_VARIANCE below is
+    // applied on top of that (seeded, not rolled fresh per view — see
+    // companionShopFactory.js). Priced well above the P2P market floor deliberately, so a
+    // real /companion-market listing stays the better deal whenever one exists — same
+    // "convenience, not a strictly-better replacement" discipline Companion Hunt's own
+    // pricing already set.
+    PRICE_MULTIPLIER: {
+        [CompanionRarity.COMMON]: 2,
+        [CompanionRarity.RARE]: 5,
+        [CompanionRarity.LEGENDARY]: 10,
+        [CompanionRarity.MYTHIC]: 20
+    },
+    PRICE_VARIANCE: 0.20,
+    // "I like the variance of potato vs starch lets do that" — a seeded 20% chance a given
+    // slot is priced in starches instead of potatoes. Starch-priced slots still store the
+    // potato-equivalent value (so PRICE_MULTIPLIER/PRICE_VARIANCE above stay the single
+    // source of truth for a slot's real worth) and convert it to a live starch amount only
+    // at view/purchase time, mirroring spudKeepFactory.convertStarchesToPotatoesForPot's own
+    // "read the live starch_sell rate, never cache it" pattern but inverted.
+    STARCH_CHANCE: 0.20
+}
+
 // Companion Fusion (2026-09-07, direct instruction — "a lot of people are using
 // prospector to find the mythic companions however they also end up with a lot of other
 // common/rare and even legendary companions... what would be an interesting way of
@@ -4377,6 +4426,7 @@ module.exports = {
     CompanionRarity,
     CompanionRarityOdds,
     CompanionMarket,
+    CompanionShop,
     CompanionFusion,
     CompanionHunt,
     PoisonMitigation,
