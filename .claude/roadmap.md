@@ -12996,3 +12996,70 @@ No other code changes — `getShopOffering` in `companionShopFactory.js` already
 `PRICE_MULTIPLIER` live off the constant, same as `RARITY_ODDS` above. Docs:
 `.claude/systems/companions.md`'s Companion Shop pricing bullet updated with the new ranges. Full
 suite: **1658/1658** across 89 suites, unchanged — another pure constant retune.
+
+## Balance: Solo Merc's Bounty ladder buffed ×4.3, and a real inaccuracy found in the published "Raid EV Curves" chart (2026-09-14, direct instruction)
+
+Player: "can you see how we should raise solo merc slightly across the board so that solo merc
+ends up at about 75% as effective as elite for maxed doing royal treasury with solo merc noble
+vault R5 being at about 25% of elite past 140 power? late stage merc may have been nerfed a bit
+too much last time. Look to increase bounty maybe if bounty side is giving a lot less than the
+rob-npc side" — prompted directly by the same-day Rank-5/Noble's-Vault EV chart column (this
+file's own earlier entries, same day).
+
+**Investigation, not a straight implementation** — per this repo's own standing rule to
+investigate root cause before touching balance numbers:
+
+1. **A balance-auditor pass first tried to compute the needed scale factors and correctly refused**
+   — "solve for exact constants to hit a target ratio" is `architect`/design work with an agreed
+   concept behind it, not a standing audit finding, and Mercenary Bounty/Heist isn't in that
+   agent's declared scope (Shops/Regrades/Rebirth/Companions/Guilds/Raids) anyway. Routed to doing
+   the numeric work directly instead, reading `mercenaryFactory.js`/`raidFactory.js`/
+   `startRaid.js`/`constants.js` firsthand rather than trusting either the published chart or a
+   prior agent's un-reproducible numbers.
+2. **The published "Raid EV Curves" chart's own Elite/Legendary numbers didn't reproduce from the
+   live formula** — a real, independently-confirmed arithmetic gap in how a PRIOR version of that
+   chart was built (Elite off by 20-95% depending on power; Regular's own numbers reproduced within
+   ~6-7%, ruling out a systemic method error and isolating the anomaly to Elite/Legendary
+   specifically). Nothing in `constants.js` relevant to Elite/Legendary changed since that chart
+   was last built, so this isn't stale data — it's a real, still only partially explained bug in
+   however that chart's Elite/Legendary columns were originally computed. Full re-derivation (one
+   consistent script covering all six curves — Regular pre-T4/w-T4, Elite, Legendary, both Merc
+   lines) replaced the entire chart; see the chart's own in-page notes for the corrected numbers
+   and the exact methodology (dynamic tier weighting, win-only cooldown-skip expectation,
+   per-player-hour renewal-reward-rate, N=4 team-power factor 2.044x).
+3. **Confirmed the player's Bounty-vs-Heist hypothesis directly**: Heist was 56-79% of total Solo
+   Merc income across power 140-600 (79% at 140, shrinking to ~57% by 600 as `RobNpc.
+   MAX_REWARD_MULTIPLIER`'s cap flattens Heist's own growth while Bounty's uncapped 12-tier ladder
+   keeps climbing) — Bounty really was the smaller half.
+4. **The two stated targets turned out not achievable together with one Bounty scale factor** —
+   Rank 5's own reward multiplier (1.90x) vs. Rank 6's (2.35x) fixes the two Merc lines' ratio to
+   each other at ~55% regardless of scale, not the ~33% implied by 25%/75%; and the Merc-vs-Elite
+   ratio itself is a decaying hump (very high right at the power-140 crossover, low by power 600)
+   that a uniform scale shifts up/down but structurally cannot flatten. Presented this tradeoff to
+   the player explicitly rather than picking silently — see the chart's own note for the exact
+   numbers at each candidate scale.
+
+**Decision, from the player**: anchor on maxed Solo Merc ≈75% of Elite (accepting Rank 5/Noble's
+Vault lands around ~45-55% instead of the originally-requested 25%, a direct consequence of the
+fixed ~55% ratio above); defer a matching `RobNpc.TIERS` payout-cap cut (which would tame the
+resulting 140-190 power overshoot) to a later pass — implement the Bounty buff alone for now.
+
+**Change**: every `Bounty.TIERS` reward AND penalty scaled ×4.3 (chosen against the ORIGINAL,
+since-corrected Elite reference to land maxed Merc at 75% of Elite at power 600 — this session's
+own freshly-corrected Elite curve lands the resulting ratio closer to ~63-68% at power 300-600,
+still a large, intentional jump from the pre-buff ~30-42%). Difficulty and the existing 1.0x→2.0x
+penalty:reward ratio both untouched, same "magnitude-only" shape the 2026-09-12 fifth-retune cut
+used — see `.claude/systems/mercenary-bounties.md`'s own "Sixth pass" section for the full
+tier-by-tier table and derivation. `RobNpc.TIERS` (Heist) is completely untouched this pass.
+
+**Tests**: `mercenaryFactory.test.js`'s Bounty-ladder-shape regression band widened again (20%-120%,
+live range ~28%-104% — expected test-maintenance per the fifth pass's own note, not a dead zone;
+the separate EV-sweep dead-zone test is unaffected since a uniform scale can't change success-
+chance/weighting math). B12's penalty set to exactly `reward × 2` rather than independently
+rounding both to the nearest 1,000 (which would've landed the pair 1,000 potatoes off the exact
+ratio invariant). Full suite: **1658/1658** across 89 suites.
+
+Docs: `.claude/systems/mercenary-bounties.md` (new tier table + "Sixth pass" writeup), the "Raid EV
+Curves" artifact (full six-curve re-derivation + the buff's own before/after). Not yet done, by
+explicit request: the `RobNpc` payout-cap cut that would tame the 140-190 power overshoot — flagged
+for a follow-up pass, not forgotten.

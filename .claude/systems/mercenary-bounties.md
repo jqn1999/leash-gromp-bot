@@ -533,22 +533,22 @@ penalty(tier) = round(reward(tier) * ratio(tier) / 1000) * 1000
 
 | Tier | Reward | Penalty | Ratio |
 |---|---|---|---|
-| B1 | 18,000 | -18,000 | 1.00x |
-| B2 | 32,000 | -34,000 | 1.06x |
-| B3 | 56,000 | -66,000 | 1.18x |
-| B4 | 98,000 | -126,000 | 1.29x |
-| B5 | 175,000 | -239,000 | 1.37x |
-| B6 | 302,000 | -440,000 | 1.46x |
-| B7 | 524,000 | -809,000 | 1.54x |
-| B8 | 901,000 | -1,474,000 | 1.64x |
-| B9 | 1,545,000 | -2,669,000 | 1.73x |
-| B10 | 2,646,000 | -4,811,000 | 1.82x |
-| B11 | 4,581,000 | -8,745,000 | 1.91x |
-| B12 | 10,718,000 | -21,436,000 | 2.00x |
+| B1 | 77,000 | -77,000 | 1.00x |
+| B2 | 138,000 | -146,000 | 1.06x |
+| B3 | 241,000 | -284,000 | 1.18x |
+| B4 | 421,000 | -542,000 | 1.29x |
+| B5 | 753,000 | -1,028,000 | 1.37x |
+| B6 | 1,299,000 | -1,892,000 | 1.46x |
+| B7 | 2,253,000 | -3,479,000 | 1.54x |
+| B8 | 3,874,000 | -6,338,000 | 1.64x |
+| B9 | 6,644,000 | -11,477,000 | 1.73x |
+| B10 | 11,378,000 | -20,687,000 | 1.82x |
+| B11 | 19,698,000 | -37,604,000 | 1.91x |
+| B12 | 46,087,000 | -92,174,000 | 2.00x |
 
-**Reward/penalty values above reflect the 2026-09-12 fifth-retune cut (×0.4580, see that update's
-own section below) — the original 2026-08-29 third-pass values (B1 39,000 → B12 23,400,000) are
-superseded.**
+**Reward/penalty values above reflect the 2026-09-14 sixth-retune buff (×4.3, see that update's own
+section below) — the 2026-09-12 fifth-retune cut (×0.4580) values (B1 18,000 → B12 10,718,000) and
+the original 2026-08-29 third-pass values (B1 39,000 → B12 23,400,000) are both superseded.**
 
 **Reward is completely untouched** — only the loss side moved, so the earlier "~30% of a
 realistic guild's total reward" reward calibration (see the third-pass table above) still
@@ -599,6 +599,45 @@ progression instead of a loss always mirroring a win at a worse rate. This has b
 since before the 15%-share retirement and is unchanged by it — only the constant lookup
 (`tierEntry.penalty` instead of `Bounty.BOUNTY_T{n}_PENALTY * SOLO_BOUNTY_REWARD_SHARE`)
 simplified.
+
+**Sixth pass, 2026-09-14, direct instruction** ("solo merc may have been nerfed a bit too much
+last time... look to increase bounty maybe if bounty side is giving a lot less than the rob-npc
+side"). Prompted by a request to re-derive the "Raid EV Curves" chart with an additional
+Rank-5/Noble's-Vault reference line — which surfaced that the chart's own published Guild Elite
+numbers don't actually reproduce from the live formula (a real, still only partially explained
+arithmetic gap in how that chart was built, unrelated to anything Mercenary-side — see
+`roadmap.md`'s own entry for the full derivation and the corrected, source-verified Elite numbers).
+Re-deriving Solo Merc's own EV directly from live source (not the chart) confirmed the player's
+instinct: Heist (`/rob-npc`) was **56-79% of total Solo Merc income** across power 140-600 (79% at
+140, shrinking to ~57% by 600 as `RobNpc.MAX_REWARD_MULTIPLIER`'s power-140-worth-250 cap flattens
+Heist's own growth while Bounty's uncapped 12-tier ladder keeps climbing) — Bounty really was the
+smaller half, confirming "increase bounty" as the right lever.
+
+The player's original two targets (maxed Rank 6/Royal Treasury Solo Merc ≈75% of Guild Elite,
+Rank 5/Noble's Vault Solo Merc ≈25% of Elite, both "past power 140") turned out **not achievable
+together** with a single Bounty scale factor: Rank 5's own reward multiplier (1.90x) vs. Rank 6's
+(2.35x) fixes the two Merc lines' ratio to each other at ~55% regardless of scale, not the ~33%
+implied by 25%/75% — and the Merc-vs-Elite ratio itself is a decaying hump (very high right at the
+crossover near power 140, low by power 600), which a uniform scale shifts up/down but can't
+flatten. Given the choice, the player anchored on the **maxed = 75% of Elite (at power 600)**
+target and explicitly deferred a matching `RobNpc.TIERS` payout-cap cut (which would have tamed
+the resulting 140-190 power overshoot) to a later pass — this change touches `Bounty.TIERS` only.
+
+**Change**: every `Bounty.TIERS` reward AND penalty scaled ×4.3 (difficulty and the existing
+1.0x→2.0x penalty:reward ratio both untouched — same "magnitude-only" shape the fifth pass used),
+rounded to the nearest 1,000 per this table's own convention, with B12 set to exactly
+`reward × 2` (independent rounding of reward and penalty at that tier's own size would have landed
+the two 1,000 potatoes off the exact ratio invariant `mercenaryFactory.test.js` locks in).
+Resulting Solo-Merc-vs-Elite ratios at a few power points (Heist untouched, so these move only
+via Bounty's own growing share): maxed Merc ≈274% of Elite at power 140 (was ≈161%, `RobNpc`'s
+own deferred cap cut is what the next pass would use to tame this), ≈80% at 300, **75% at 600**
+(the target); Rank 5/Noble's Vault correspondingly lands at ≈47% of Elite at power 600, not the
+originally-requested 25% — an accepted, explicitly-flagged consequence of the 55%-fixed ratio
+above, not an oversight. `mercenaryFactory.test.js`'s "~30% of guild-equivalent reward" ladder-
+shape regression band was widened again (now 20%-120%, live range ~28%-104%) — expected test-
+maintenance per the fifth pass's own note, not a sign of a new dead zone (the EV-sweep dead-zone
+test itself is unaffected, since a uniform reward/penalty scale can't change success-chance/
+weighting math at all).
 
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 

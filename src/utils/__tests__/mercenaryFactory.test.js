@@ -617,11 +617,21 @@ describe('Bounty.TIERS ladder shape', () => {
         // comments), so bounty-vs-matching-difficulty-guild-reward ratios dropped from a
         // ~0.10-0.65 range to ~0.07-0.24 — a direct, intended consequence of making Solo
         // Merc fall further behind guild raiding, not a regression.
+        //
+        // Band raised again 2026-09-14 (sixth retune pass, Bounty.TIERS' own "Fifth pass"
+        // comment) — reward+penalty scaled x4.3 to bring maxed Solo Merc back up toward
+        // ~75% of Guild Elite's own EV/hour, after live-formula verification found the
+        // 2026-09-12 nerf had gone further than the original 3x/7x design intent actually
+        // needed. Live range is now ~0.28-1.04 (computed directly, printed above this
+        // comment during the retune) — this is again a direct, intended consequence of the
+        // buff, not a regression; the band below is deliberately loose (same "wide enough
+        // to only catch a genuine collapse or runaway, not calibrate a shape" reasoning the
+        // prior widening already established) rather than tracking the exact live range.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            expect(ratio).toBeGreaterThan(0.05);
-            expect(ratio).toBeLessThan(0.30);
+            expect(ratio).toBeGreaterThan(0.20);
+            expect(ratio).toBeLessThan(1.20);
         });
     });
 });

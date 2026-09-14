@@ -2610,19 +2610,37 @@ const Bounty = {
     // the full derivation. Difficulty (odds side) and each tier's own penalty:reward
     // ratio (climbing 1.0x -> 2.0x, see the comment above) are both untouched — this is a
     // reward-magnitude-only cut, applied uniformly across all 12 tiers.
+    //
+    // Fifth pass, 2026-09-14, direct instruction — "solo merc may have been nerfed a bit
+    // too much last time... look to increase bounty maybe if bounty side is giving a lot
+    // less than the rob-npc side." Verified directly against live source (not the
+    // published EV chart, which turned out to have its own unreproducible Elite-side
+    // arithmetic gap — see roadmap.md's own entry for the full derivation): Heist was
+    // 56-79% of total Solo Merc income across power 140-600, confirming the "Bounty is
+    // giving a lot less" read. Reward+penalty scaled x4.3 (RobNpc's Heist side left
+    // untouched — a same-day follow-up instruction deferred the RobNpc payout-cap cut
+    // that would otherwise tame the low-power (140-190) overshoot), chosen so a fully
+    // maxed Rank 6/Royal Treasury/Yukon-maxed player reaches ~75% of Guild Elite's own
+    // EV/hour at power 600 — the target the player explicitly anchored on once told the
+    // two stated targets (maxed=75%, Rank-5-Noble's-Vault=25%) couldn't both be hit with
+    // a single Bounty scale (Rank 5's own reward multiplier vs. Rank 6's fixes their
+    // ratio at ~55%, not the ~33% the two targets implied). Difficulty and the 1.0x-2.0x
+    // penalty:reward ratio are both untouched, same "magnitude-only" shape as the fourth
+    // pass — only reward/penalty scaled, rounded to the nearest 1,000 per this table's
+    // own existing convention.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 18000,    penalty: -18000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 32000,    penalty: -34000 },       // 1.06x
-        { tier: 3,  difficulty: 26,   reward: 56000,    penalty: -66000 },       // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 98000,    penalty: -126000 },      // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 175000,   penalty: -239000 },      // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 302000,   penalty: -440000 },      // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 524000,   penalty: -809000 },      // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 901000,   penalty: -1474000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 1545000,  penalty: -2669000 },     // 1.73x
-        { tier: 10, difficulty: 763,  reward: 2646000,  penalty: -4811000 },     // 1.82x
-        { tier: 11, difficulty: 1236, reward: 4581000,  penalty: -8745000 },     // 1.91x
-        { tier: 12, difficulty: 2000, reward: 10718000, penalty: -21436000 },    // 2.00x
+        { tier: 1,  difficulty: 10,   reward: 77000,    penalty: -77000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 138000,   penalty: -146000 },      // 1.06x
+        { tier: 3,  difficulty: 26,   reward: 241000,   penalty: -284000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 421000,   penalty: -542000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 753000,   penalty: -1028000 },     // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 1299000,  penalty: -1892000 },     // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 2253000,  penalty: -3479000 },     // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 3874000,  penalty: -6338000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 6644000,  penalty: -11477000 },    // 1.73x
+        { tier: 10, difficulty: 763,  reward: 11378000, penalty: -20687000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 19698000, penalty: -37604000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 46087000, penalty: -92174000 },    // 2.00x — set to exactly reward*2 (independent nearest-1000 rounding of reward/penalty would've landed 1,000 off that exact invariant)
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
