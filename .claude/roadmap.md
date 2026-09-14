@@ -12974,3 +12974,25 @@ against the new table. Docs updated: `.claude/systems/companions.md`'s Companion
 (now shows launch vs. current side by side) and item 92's own launch-day table above (left
 verbatim as the historical record, with a pointer added to this entry). Full suite: **1658/1658**
 across 89 suites, unchanged — a pure constant retune, no new test surface.
+
+## Balance: Companion Shop Legendary/Mythic pricing raised further (2026-09-14, same day, direct instruction)
+
+Direct instruction, immediately following the odds cut above: "bump legendary pricing to 20x and
+mythic pricing to 50x for the companion shop." A pricing-side follow-up to the same odds retune —
+now that Legendary/Mythic slots roll far less often (1%/0.1%, down from launch's 8%/0.9%), the
+player wanted their price premium over `/companion-market`'s own floor pushed up to match, rather
+than leaving a much-rarer slot at its old, comparatively cheap price.
+
+**`CompanionShop.PRICE_MULTIPLIER`** (`constants.js`), Common/Rare untouched:
+
+| Rarity | Launch multiplier | Now | Price range (±20% `PRICE_VARIANCE`) |
+|---|---|---|---|
+| Common | 2x | 2x (unchanged) | 80,000 – 120,000 |
+| Rare | 5x | 5x (unchanged) | 1,000,000 – 1,500,000 |
+| Legendary | 10x | **20x** | **16,000,000 – 24,000,000** (was 8M-12M) |
+| Mythic | 20x | **50x** | **200,000,000 – 300,000,000** (was 80M-120M) |
+
+No other code changes — `getShopOffering` in `companionShopFactory.js` already reads
+`PRICE_MULTIPLIER` live off the constant, same as `RARITY_ODDS` above. Docs:
+`.claude/systems/companions.md`'s Companion Shop pricing bullet updated with the new ranges. Full
+suite: **1658/1658** across 89 suites, unchanged — another pure constant retune.

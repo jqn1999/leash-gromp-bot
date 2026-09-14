@@ -892,11 +892,18 @@ const CompanionShop = {
     // real /companion-market listing stays the better deal whenever one exists — same
     // "convenience, not a strictly-better replacement" discipline Companion Hunt's own
     // pricing already set.
+    //
+    // Legendary/Mythic bumped further the same day (direct instruction: "bump legendary
+    // pricing to 20x and mythic pricing to 50x") — 10x->20x and 20x->50x respectively,
+    // Common/Rare untouched. New price ranges (±20% PRICE_VARIANCE, off CompanionMarket.
+    // MINIMUM_PRICE): Legendary 16M-24M potatoes (was 8M-12M), Mythic 200M-300M (was
+    // 80M-120M) — a steeper premium over /companion-market's own floor now that Legendary/
+    // Mythic slots are also drawing much less often (see RARITY_ODDS' own same-day cut).
     PRICE_MULTIPLIER: {
         [CompanionRarity.COMMON]: 2,
         [CompanionRarity.RARE]: 5,
-        [CompanionRarity.LEGENDARY]: 10,
-        [CompanionRarity.MYTHIC]: 20
+        [CompanionRarity.LEGENDARY]: 20,
+        [CompanionRarity.MYTHIC]: 50
     },
     PRICE_VARIANCE: 0.20,
     // "I like the variance of potato vs starch lets do that" — a seeded 20% chance a given

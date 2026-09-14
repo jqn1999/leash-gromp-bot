@@ -1081,10 +1081,12 @@ companion/rarity/price it turns out to be.
   here — there's nothing to gate. **Net effect: zero changes were needed to `companionFactory.js`.**
 - **Pricing** — `CompanionMarket.MINIMUM_PRICE[rarity] × CompanionShop.PRICE_MULTIPLIER[rarity] ×
   (1 ± 20% seeded variance)`, priced well above the P2P floor deliberately (Common 2x → 80k-120k,
-  Rare 5x → 1M-1.5M, Legendary 10x → 8M-12M, Mythic 20x → 80M-120M) so a real `/companion-market`
+  Rare 5x → 1M-1.5M, Legendary 20x → 16M-24M, Mythic 50x → 200M-300M) so a real `/companion-market`
   listing stays the better deal whenever a seller exists — the same "convenience, not a
   strictly-better replacement" discipline Companion Hunt's own pricing already set, and the mirror
   image of `NPC_SELL_RATIO_MIN`/`MAX` protecting the same relationship in the opposite direction.
+  Legendary/Mythic multipliers bumped further the same day (10x→20x, 20x→50x) alongside their own
+  odds cut (see the odds table above) — a steeper premium now that those slots draw much less often.
 - **Currency** — each slot has a seeded 20% chance (`CompanionShop.STARCH_CHANCE`) of being
   starch-priced instead of potato-priced. A starch slot stores its **potato-equivalent value**
   (the same formula above) as the single source of truth for the slot's real worth, and converts it
