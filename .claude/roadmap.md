@@ -3547,6 +3547,126 @@ and needs its own balance pass.
   of what the bot has" formula has one place to point to). Full suite: 758/758 (up from
   755/755 — 3 new tests, zero regressions).
 
+- [ ] **92. Companion Shop — Daily/Weekly Rotating Companion Store** — M (design fully locked
+  2026-09-14, ready to build — every open question below was raised and resolved directly, not
+  left for a developer to guess at).
+
+  **What**: a fourth companion-acquisition path alongside `/work`'s Wandering Companion roll,
+  `/companion-hunt`, and the P2P `/companion-market` — a personal, per-player storefront
+  (`/companion-shop`) offering a small rotating set of specific companions for direct purchase, no
+  luck involved on whether one's available, only on which ones are. 3 daily slots + 6 weekly
+  slots, each independently purchasable once per rotation, priced in potatoes or starches.
+
+  **Why this shape, not a shared/global shop**: raised explicitly as an open question — personal
+  stock (everyone gets their own independent roll, like a fresh hand of cards) vs. shared/global
+  stock (one server-wide inventory, first-come-first-served). Confirmed personal — matches "buy
+  each day" reading as belonging to the player, and avoids needing race-safe claim logic on a
+  contested shared resource. The core balance risk a shop like this runs is quietly making rarity
+  — the axis every other companion system revolves around — stop mattering; guarded against via
+  price (a real premium over the P2P floor, so `/companion-market` stays the better deal whenever
+  a seller exists) and via shop-specific odds skewed even further toward Common than the real
+  system (below), not by making the shop cheap or generous.
+
+  **Rotation timing** — reuses the same 8pm ET boundary Quests/Guild Contracts/Mercenary weekly
+  quests (and Poison/Mimic mitigation, as of the fix earlier the same day) already share, rather
+  than introducing a fifth independent clock. Computed **lazily**, not cron-broadcast — this is
+  personal state with no shared pool, so there's nothing for a cron to pre-roll; same
+  self-contained, no-cron-dependency shape `poisonMitigation`/`mimicMitigation` already use.
+
+  **Deterministic, seeded offerings — new infrastructure, confirmed over the simpler
+  roll-once-and-store alternative**: rather than rolling a real result and persisting it, each
+  slot is derived on demand from a seed of `(userId, dateTag, slotIndex)`, so nothing needs
+  writing until an actual purchase happens — only which slots have already been bought needs to
+  persist. This is a genuinely new pattern for this codebase (nothing else does seeded
+  per-player-per-day rolls yet): a small deterministic PRNG (mulberry32 or equivalent) seeded via
+  a string hash of the tag, entirely self-contained in the new factory file below.
+
+  **Shop-specific rarity odds — NOT a reuse of the real `CompanionRarityOdds`, confirmed
+  deliberately narrower**:
+
+  | Rarity | Real `/work` odds | Shop odds |
+  |---|---|---|
+  | Common | 65% | **66.1%** |
+  | Rare | 25% | 25% (unchanged) |
+  | Legendary | 8% | 8% (unchanged) |
+  | Mythic | 1.8% | **0.9%** |
+  | Heirloom | 0.2% | **excluded entirely** |
+
+  Heirloom's 0.2% and half of Mythic's own share (0.9 of its 1.8 points) both fold into Common
+  rather than Rare/Legendary — a direct instruction, not a balance-derived split. Since this
+  diverges from the real table, the shop does **not** reuse `companionFactory.rollRarity`/
+  `rollCompanion` at all (an earlier draft of this design proposed adding an injectable `rng`
+  parameter to those specifically to reuse the real odds verbatim — moot now that the odds
+  themselves need to differ). It still reuses the already-exported, pure
+  `companionFactory.getCompanionsByRarity(rarity)` for the uniform pick within whichever rarity
+  the shop's own table rolls — which already excludes any `dropSource`-tagged companion
+  (Yukon/Cinderroot/Bastion stay unpurchasable here, same as everywhere else, with zero new
+  exclusion logic needed), and since Heirloom is simply never in the shop's own table, Yamimic's
+  `hasAllMythics` gate is moot here too — nothing to gate. **Net effect: zero changes needed to
+  `companionFactory.js`.**
+
+  **Pricing** — `CompanionMarket.MINIMUM_PRICE[rarity] × multiplier × (1 ± 20% seeded variance)`:
+
+  | Rarity | P2P floor | Shop multiplier | Shop price range |
+  |---|---|---|---|
+  | Common | 50,000 | 2x | 80,000 – 120,000 |
+  | Rare | 250,000 | 5x | 1,000,000 – 1,500,000 |
+  | Legendary | 1,000,000 | 10x | 8,000,000 – 12,000,000 |
+  | Mythic | 5,000,000 | 20x | 80,000,000 – 120,000,000 |
+
+  Multiplier and variance are both direct instructions, not independently derived — priced well
+  above the P2P floor specifically so the marketplace stays the better deal whenever a real seller
+  exists, the same relationship `NPC_SELL_RATIO_MIN`/`MAX` already protects in the opposite
+  direction (NPC-selling a companion is deliberately worse than listing it).
+
+  **Currency**: confirmed potatoes AND starches, not potatoes-only — each slot has a 20% chance
+  (seeded, same draw stream as the rarity/price rolls) of being starch-priced instead of
+  potato-priced. A starch-priced slot stores its **potato-equivalent value** (the same formula
+  above), not a fixed starch count — the actual starch amount charged is computed live at
+  view/purchase time by converting through the current `starch_sell` price, mirroring
+  `spudKeepFactory.convertStarchesToPotatoesForPot`'s existing live-conversion pattern. Keeps the
+  slot's real value fixed and reproducible (the seed never changes) while the exact starch number
+  naturally tracks the live market, same as paying in any other currency would.
+
+  **No reroll** — confirmed explicitly out of scope, not an oversight. Today's/this week's
+  offering is what it is until the next rotation.
+
+  **Data model** — new personal-only user field, lazily reset on a tag mismatch exactly like
+  `poisonMitigation`/`mimicMitigation` already are:
+  ```js
+  companionShop: {
+      dailyTag: null,          // this rotation's day tag; a mismatch means "reroll lazily"
+      dailyPurchasedSlots: [], // slot indices already bought this rotation
+      weeklyTag: null,
+      weeklyPurchasedSlots: []
+  }
+  ```
+
+  **Touches**:
+  - `constants.js` — new `CompanionShop` block (`DAILY_SLOT_COUNT: 3`, `WEEKLY_SLOT_COUNT: 6`,
+    `RARITY_ODDS` cumulative table per above, `PRICE_MULTIPLIER` per rarity, `PRICE_VARIANCE: 0.20`,
+    `STARCH_CHANCE: 0.20`).
+  - New `src/utils/companionShopFactory.js` — mirrored day-tag/week-tag boundary functions (same
+    "mirrored, not shared" convention every other file with these already follows — copies from
+    `dailyStreakFactory.js`'s/`workFactory.js`'s just-fixed 8pm-ET versions, not a shared import),
+    the seeded PRNG + hash, `rollShopOffering(userId, tag, slotCount)`, `getShopPrice(...)`, and the
+    live starch-conversion helper.
+  - `dynamoHandler.js` — `companionShop` default field on `getDefaultUserFields`, healed in for
+    existing accounts the same way every other field addition already is.
+  - New `src/commands/user/companionShop.js` — `/companion-shop`, one embed with "🗓️ Daily Stock"/
+    "📅 Weekly Stock" sections (rarity/name/perks via the existing `formatCompanionPerks`
+    helper/price/currency per slot) and a Buy button per unpurchased slot (disabled/marked "SOLD"
+    once bought), styled like `/companion-market`'s listing embeds. Buy re-fetches fresh state at
+    click time before writing (same discipline `attemptEquip`/the market's own buy button already
+    use), checks the slot isn't already purchased and the buyer can afford it, debits potatoes or
+    starches, then calls `companionFactory.applyCompanionAward` — the same single acquisition
+    choke-point every other path already goes through, so duplicate-handling and achievement
+    counters need zero new code.
+  - `embedFactory.js` — new `createCompanionShopEmbed`.
+  - Docs: new `.claude/systems/companion-shop.md` (or folded into `companions.md` as a new
+    section — pick whichever reads better once written), `.claude/README.md`'s contents list,
+    `.claude/reference/commands.md`.
+
 ## Needs more design discussion before it can be scoped
 
 - [ ] **Guild Raid: T2/T3/`stat`-Mode Eligibility Gating + Negative-Balance Clamp** — S/M once a
