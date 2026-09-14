@@ -871,13 +871,18 @@ const CompanionMarket = {
 // companionFactory.getCompanionsByRarity(rarity) (already exported, already excludes
 // dropSource-tagged companions like Yukon/Cinderroot/Bastion) for the uniform per-rarity
 // pick, same as every other roll path in this codebase.
+//
+// Cut further the same day (direct instruction: "lower the companion shop mythic chance
+// to .1% and legendary to 1%, fold the extra into common") — Legendary 8% -> 1% (-7pts)
+// and Mythic 0.9% -> 0.1% (-0.8pts), the freed 7.8pts folded entirely into Common (Rare
+// left untouched at 25%, same as the first pass above), pushing Common up to 73.9%.
 const CompanionShop = {
     DAILY_SLOT_COUNT: 3,
     WEEKLY_SLOT_COUNT: 6,
     RARITY_ODDS: {
-        [CompanionRarity.COMMON]: 0.661,
-        [CompanionRarity.RARE]: 0.911,
-        [CompanionRarity.LEGENDARY]: 0.991,
+        [CompanionRarity.COMMON]: 0.739,
+        [CompanionRarity.RARE]: 0.989,
+        [CompanionRarity.LEGENDARY]: 0.999,
         [CompanionRarity.MYTHIC]: 1.0
     },
     // "common 2x the floor, rare 5x, legendary 10x, mythic 20x with 20% variance above and

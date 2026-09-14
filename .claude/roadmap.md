@@ -3612,6 +3612,10 @@ and needs its own balance pass.
   | Mythic | 1.8% | **0.9%** |
   | Heirloom | 0.2% | **excluded entirely** |
 
+  *(Superseded the same day — see "Balance: Companion Shop Mythic/Legendary chances cut further"
+  entry near the end of this file. Legendary and Mythic were both cut again post-launch, with the
+  difference folded into Common a second time; this table is kept as the launch-day record.)*
+
   Heirloom's 0.2% and half of Mythic's own share (0.9 of its 1.8 points) both fold into Common
   rather than Rare/Legendary — a direct instruction, not a balance-derived split. Since this
   diverges from the real table, the shop does **not** reuse `companionFactory.rollRarity`/
@@ -12940,3 +12944,33 @@ rejection, scavenging rejection, market-write-lock-conflict rejection), `buildOw
 the scavenging instance distinctly from an idle one), `buildSellRow` (disables for scavenging and
 for a sub-floor price, returns `null` for an empty page). Full suite: run below alongside the
 Companion Shop feature.
+
+## Balance: Companion Shop Mythic/Legendary chances cut further, folded into Common (2026-09-14, same day, direct instruction)
+
+Direct instruction, same day the shop shipped: "lower the companion shop mythic chance to .1% and
+legendary to 1%, fold the extra into common." A second retune on top of the shop's own launch-day
+odds (item 92 above) — Legendary drops from its launch value of 8% (unchanged from the real `/work`
+table) down to 1%, and Mythic drops from 0.9% down to 0.1%, for a combined 7.8 points freed up. Per
+the explicit instruction, all 7.8 points go to Common (not Rare, which was the first pass's own
+fold-in target and stays untouched at 25% through both passes).
+
+**`CompanionShop.RARITY_ODDS`** (`constants.js`), cumulative:
+
+| Rarity | Launch (item 92) | Now |
+|---|---|---|
+| Common | 66.1% | **73.9%** |
+| Rare | 25% | 25% (unchanged both passes) |
+| Legendary | 8% | **1%** |
+| Mythic | 0.9% | **0.1%** |
+| Heirloom | excluded | excluded (unchanged) |
+
+No code changes beyond the constant itself — `rollShopRarity`/`getShopOffering` in
+`companionShopFactory.js` both read `CompanionShop.RARITY_ODDS` live rather than hardcoding any
+percentage, so the roll logic, the seeded-determinism guarantee, and every other part of the shop
+(pricing, currency split, slot counts, rotation timing) are completely unaffected. `companionShopFactory.test.js`'s existing assertions (`rollShopRarity`'s cumulative-threshold walk,
+the "never rolls Heirloom" sweep, the price-anchoring check) are all parameterized off the live
+constant rather than hardcoded to the old percentages, so they needed no changes and still pass
+against the new table. Docs updated: `.claude/systems/companions.md`'s Companion Shop odds table
+(now shows launch vs. current side by side) and item 92's own launch-day table above (left
+verbatim as the historical record, with a pointer added to this entry). Full suite: **1658/1658**
+across 89 suites, unchanged — a pure constant retune, no new test surface.

@@ -1059,16 +1059,19 @@ companion/rarity/price it turns out to be.
   of the real `CompanionRarityOdds`.** The player asked for Mythic to be "very very rare" here
   specifically and for Heirloom to be excluded outright:
 
-  | Rarity | Real `/work` odds | Shop odds |
-  |---|---|---|
-  | Common | 65% | **66.1%** |
-  | Rare | 25% | 25% (unchanged) |
-  | Legendary | 8% | 8% (unchanged) |
-  | Mythic | 1.8% | **0.9%** |
-  | Heirloom | 0.2% | **excluded entirely** |
+  | Rarity | Real `/work` odds | Shop odds (launch) | Shop odds (current, same-day retune) |
+  |---|---|---|---|
+  | Common | 65% | 66.1% | **73.9%** |
+  | Rare | 25% | 25% (unchanged) | 25% (still unchanged) |
+  | Legendary | 8% | 8% (unchanged) | **1%** |
+  | Mythic | 1.8% | 0.9% | **0.1%** |
+  | Heirloom | 0.2% | excluded entirely | excluded entirely |
 
-  Heirloom's 0.2% and half of Mythic's own 1.8 points both fold into Common, a direct instruction
-  rather than a balance-derived split. Since the table itself diverges, the shop's own
+  Heirloom's 0.2% and half of Mythic's own 1.8 points folded into Common at launch. Cut further the
+  same day (direct instruction: "lower the companion shop mythic chance to .1% and legendary to
+  1%, fold the extra into common") — Legendary's 8%→1% (-7pts) and Mythic's 0.9%→0.1% (-0.8pts)
+  both folded into Common again (Rare untouched both times), landing Common at 73.9%. Since the
+  table itself diverges from the real roll table entirely, the shop's own
   `rollShopRarity` walks `CompanionShop.RARITY_ODDS` directly rather than reusing
   `companionFactory.rollRarity`/`rollCompanion` at all — but it DOES still reuse the already-
   exported, pure `companionFactory.getCompanionsByRarity(rarity)` for the uniform pick within
