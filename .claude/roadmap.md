@@ -13063,3 +13063,40 @@ Docs: `.claude/systems/mercenary-bounties.md` (new tier table + "Sixth pass" wri
 Curves" artifact (full six-curve re-derivation + the buff's own before/after). Not yet done, by
 explicit request: the `RobNpc` payout-cap cut that would tame the 140-190 power overshoot — flagged
 for a follow-up pass, not forgotten.
+
+## Balance: RobNpc's Heist power cap raised 250 -> 600 (2026-09-14, same day, direct instruction)
+
+The Raid EV Curves chart (this file's own entries above) was extended out to power 1000 and given
+a "what-if" comparison: Solo Merc's EV if `RobNpc.MAX_REWARD_MULTIPLIER` (Heist's hard cap on
+`developedMultiplier`, both win and loss sides, added 2026-09-12 at 250) were raised to 600
+instead. That exercise, plus the same-day discovery that a max-level guild with Cinderroot (Elite
+lvl 10) beats even Legendary at every power point by a wide margin, prompted: "Let's do that since
+the max guild is going to fully outscale it hard anyway later."
+
+**Reasoning**: even completely uncapped, Solo Merc was always going to fall behind a maxed guild
+eventually — Bounty's own 12-tier ladder tops out around B12's own difficulty (~2000), and Guild
+Raid's reward multiplier scales off guild LEVEL (a separate axis from power, compounding well past
+anything a Heist-side power cap alone could protect against). The 250 cap was opening that gap far
+earlier (~power 250) than necessary for any real protection at the high end — it made Heist go
+dead flat for the entire 250-1000+ power range shown on the chart, while Guild Raid kept climbing
+the whole way. Verified the cap still does real work at the new value: even at 600, a maxed guild
+(Elite lvl 10 w/ Cinderroot) still comprehensively outscales Solo Merc at every power point tested.
+
+**Change**: `RobNpc.MAX_REWARD_MULTIPLIER: 250 -> 600`. Below 600, behavior is unchanged from
+before (this was already true of the 250 cap for anything below 250 — the cap only ever affects
+power at or above its own value). Heist still flatlines completely past 600, same mechanism as
+before, just at a higher threshold — this doesn't remove the ceiling, it moves it.
+
+**Tests**: `mercenaryFactory.test.js`'s `RobNpc.MAX_REWARD_MULTIPLIER caps win AND loss scaling`
+describe block updated — the "at and above the cap" test's sample powers moved from `[250, 500,
+10000]` to `[600, 750, 10000]` (500 is now BELOW the new cap and would have failed the "capped"
+assertion), and the catch-up test's sample power moved from 500 to 700 for the same reason. The
+"below the cap" test (power 150) needed no change — still comfortably under 600. Full suite:
+**1658/1658** across 89 suites.
+
+Docs: `.claude/systems/mercenary-bounties.md`'s `RobNpc.MAX_REWARD_MULTIPLIER` section (new
+"Raised 250 → 600" entry, plus a note on the now-stale "250" figure in the same-day Bounty-buff
+writeup above it, marked as accurate to when it was measured). Chart already reflects this — see
+the "extended to power 1000 + Heist-cap what-if" note on the artifact itself, which this change
+turns from a hypothetical into the shipped reality (the dashed "cap→600" lines are now what
+`/rob-npc` actually does).

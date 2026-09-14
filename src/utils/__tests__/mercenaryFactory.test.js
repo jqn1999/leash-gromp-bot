@@ -977,12 +977,14 @@ describe('resolveNpcRob', () => {
     // so that it caps around the 250 power range of guilds") — Heist was the one reward
     // stream in the whole economy with no ceiling on its win-side scaling (every other
     // system — Bounty's own 12-tier ladder, Rival's MAX_RIVAL_REWARD_BASE, every Guild Raid
-    // tier — caps out somewhere). Caps developedMultiplier at 250 for BOTH the win-side
-    // reward and the loss-side lossScale, so risk and reward flatten together rather than a
-    // player's downside continuing to grow after their upside stopped.
-    describe('RobNpc.MAX_REWARD_MULTIPLIER caps win AND loss scaling at 250', () => {
+    // tier — caps out somewhere). Caps developedMultiplier for BOTH the win-side reward and
+    // the loss-side lossScale, so risk and reward flatten together rather than a player's
+    // downside continuing to grow after their upside stopped. Raised 250 -> 600 (2026-09-14,
+    // direct instruction) — see the constant's own comment for the full derivation; the
+    // capping MECHANISM this describe block tests is unchanged, only the threshold moved.
+    describe('RobNpc.MAX_REWARD_MULTIPLIER caps win AND loss scaling at 600', () => {
         test('below the cap, reward and loss scale with real power exactly as before (no regression)', async () => {
-            const power = 150; // well under the 250 cap
+            const power = 150; // well under the 600 cap
             const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
 
             const winSpy = jest.spyOn(Math, 'random')
@@ -1010,13 +1012,13 @@ describe('resolveNpcRob', () => {
             expect(lossResult.penaltyAmount).toBe(Math.round(nobleVault.payoutCap * nobleVault.penaltyPercentOfCap * 0.8 * lossScale));
         });
 
-        test('at and above the cap, reward and loss both use 250 instead of the real (higher) power', async () => {
+        test('at and above the cap, reward and loss both use 600 instead of the real (higher) power', async () => {
             const nobleVault = RobNpc.TIERS.find(t => t.key === 'noble_vault');
             const cappedReward = Math.round(nobleVault.payoutCap * RobNpc.MAX_REWARD_MULTIPLIER * 0.95);
             const cappedLossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (RobNpc.MAX_REWARD_MULTIPLIER - 1);
             const cappedLoss = Math.round(nobleVault.payoutCap * nobleVault.penaltyPercentOfCap * 0.8 * cappedLossScale);
 
-            for (const power of [250, 500, 10000]) {
+            for (const power of [600, 750, 10000]) {
                 const winSpy = jest.spyOn(Math, 'random')
                     .mockReturnValueOnce(MIDPOINT_REWARD_ROLL)
                     .mockReturnValueOnce(0);
@@ -1050,12 +1052,12 @@ describe('resolveNpcRob', () => {
                 .mockReturnValueOnce(0);
             let winResult;
             try {
-                winResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 500 }), 1_000_000, catchUpBonus, 'noble_vault');
+                winResult = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 700 }), 1_000_000, catchUpBonus, 'noble_vault');
             } finally {
                 winSpy.mockRestore();
             }
-            // effectiveMultiplier = applyCatchUp(250, 5) -- catch-up is applied to the ALREADY-
-            // capped 250, not the real 500, but still genuinely adds on top of it.
+            // effectiveMultiplier = applyCatchUp(600, 5) -- catch-up is applied to the ALREADY-
+            // capped 600, not the real 700, but still genuinely adds on top of it.
             const expectedEffectiveMultiplier = applyCatchUp(RobNpc.MAX_REWARD_MULTIPLIER, catchUpBonus);
             expect(winResult.amount).toBe(Math.round(nobleVault.payoutCap * expectedEffectiveMultiplier * 0.95));
             expect(expectedEffectiveMultiplier).toBeGreaterThan(RobNpc.MAX_REWARD_MULTIPLIER);

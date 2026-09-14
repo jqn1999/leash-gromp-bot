@@ -2899,13 +2899,23 @@ const RobNpc = {
     // instead of leveling off the way every other system does. Caps `developedMultiplier`
     // itself (both the win-side reward term AND the loss-side `lossScale`, so risk and reward
     // flatten TOGETHER rather than a player's downside continuing to grow past the point
-    // their upside stopped — see mercenaryFactory.js's own comment at the cap's use site) at
-    // 250, matching Guild Elite's own effective power reference from the same day's balance
-    // audit: below 250 nothing changes at all (same curve as before), above it Heist income
-    // (the dominant driver of Mercenary's own growth) flatlines outright while Bounty keeps
-    // inching up on its own separate, much-higher-power asymptote — see balance-audit.md's
-    // 2026-09-12 entry for the full before/after comparison against Guild Regular/Elite.
-    MAX_REWARD_MULTIPLIER: 250,
+    // their upside stopped — see mercenaryFactory.js's own comment at the cap's use site).
+    //
+    // Raised 250 -> 600 (2026-09-14, direct instruction: "the max guild is going to fully
+    // outscale [Solo Merc] hard anyway later [so let's raise the cap]"), prompted by the
+    // Raid EV Curves chart extended out to power 1000: even completely uncapped, Solo Merc's
+    // own Bounty-side ceiling (its 12-tier ladder tops out around B12's own difficulty,
+    // ~2000) plus Guild Raid's own reward-multiplier axis (scales with guild LEVEL, not
+    // power, and keeps compounding past any power a Heist cap alone could protect against)
+    // mean a maxed guild was always going to pull far ahead of Solo Merc eventually — the
+    // 250 cap was making that gap open far earlier (~power 250) than it needed to for no
+    // extra protection at the high end. 600 still leaves a real, working cap (Heist flatlines
+    // past this point exactly like before, just later), it just gives Solo Merc room to keep
+    // growing through the 250-600 power band instead of going dead flat there. Verified this
+    // doesn't remove the ceiling's own purpose: even at 600, a max-level guild with Cinderroot
+    // (Elite lvl 10) still comprehensively outscales Solo Merc at every power point tested —
+    // see the chart's own "what-if" comparison and roadmap.md's dated entry for the numbers.
+    MAX_REWARD_MULTIPLIER: 600,
     // Failure penalty for any tier with hasPenalty: true — a per-tier fraction of that
     // tier's own payoutCap (see each TIERS entry's own penaltyPercentOfCap below), scaled by
     // the same +/-20% variance roll every other reward/penalty pair in this game uses

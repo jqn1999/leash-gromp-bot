@@ -609,9 +609,12 @@ arithmetic gap in how that chart was built, unrelated to anything Mercenary-side
 `roadmap.md`'s own entry for the full derivation and the corrected, source-verified Elite numbers).
 Re-deriving Solo Merc's own EV directly from live source (not the chart) confirmed the player's
 instinct: Heist (`/rob-npc`) was **56-79% of total Solo Merc income** across power 140-600 (79% at
-140, shrinking to ~57% by 600 as `RobNpc.MAX_REWARD_MULTIPLIER`'s power-140-worth-250 cap flattens
-Heist's own growth while Bounty's uncapped 12-tier ladder keeps climbing) — Bounty really was the
-smaller half, confirming "increase bounty" as the right lever.
+140, shrinking to ~57% by 600 as `RobNpc.MAX_REWARD_MULTIPLIER`'s then-250 cap flattened Heist's
+own growth while Bounty's uncapped 12-tier ladder keeps climbing) — Bounty really was the smaller
+half, confirming "increase bounty" as the right lever. (This measurement used the cap's ORIGINAL
+250 value — the cap itself was raised to 600 later the same day, see this section's own entry
+below; the 56-79% split and the Heist-plateaus-at-250 shape were both still true and correct
+descriptions of the state at the moment this measurement was taken.)
 
 The player's original two targets (maxed Rank 6/Royal Treasury Solo Merc ≈75% of Guild Elite,
 Rank 5/Noble's Vault Solo Merc ≈25% of Elite, both "past power 140") turned out **not achievable
@@ -1034,7 +1037,8 @@ uses — catch-up exists to help an underperforming player keep pace with a matu
 so a catch-up-boosted player shouldn't also take a bigger loss because of the same boost
 meant to help them.
 
-**`RobNpc.MAX_REWARD_MULTIPLIER` (250), added 2026-09-12** — direct instruction, prompted by a
+**`RobNpc.MAX_REWARD_MULTIPLIER` (600, raised from its original 250 on 2026-09-14 — see below),
+added 2026-09-12** — direct instruction, prompted by a
 same-day balance audit finding that combined solo Mercenary income (Bounty + Heist) eventually
 outpaced Guild Regular AND Guild Elite, purely because Heist's win-side reward multiplied its
 capped base directly by the player's own raw `developedMultiplier` with **no ceiling at all** —
@@ -1044,13 +1048,28 @@ all plateau somewhere; Heist didn't). "How should i adjust merc so that it caps 
 power range of guilds" — `developedMultiplier` is now clamped at `RobNpc.MAX_REWARD_MULTIPLIER`
 **before** either the loss-side `lossScale` formula above or the win-side `effectiveMultiplier`
 (`applyCatchUp(cappedDevelopedMultiplier, catchUpBonus)`) read it, so risk and reward flatten
-TOGETHER past 250 rather than a player's downside continuing to grow after their upside stopped
-(the alternative — cap the win side only and let losses keep scaling — was considered and
-rejected, direct instruction, in favor of symmetry). Below 250 nothing changes at all; catch-up's
-own bonus still applies genuinely on top of the already-capped value (a catch-up-boosted player
-past the cap can still exceed 250x effective, just starting from 250 rather than from their real,
-higher `developedMultiplier`). See `balance-audit.md`'s 2026-09-12 entries for the full
-before/after EV comparison against Guild Regular/Elite/Legendary that motivated this.
+TOGETHER past the cap rather than a player's downside continuing to grow after their upside
+stopped (the alternative — cap the win side only and let losses keep scaling — was considered and
+rejected, direct instruction, in favor of symmetry). Below the cap nothing changes at all;
+catch-up's own bonus still applies genuinely on top of the already-capped value (a catch-up-boosted
+player past the cap can still exceed the cap's own multiplier effective, just starting from the
+cap rather than from their real, higher `developedMultiplier`). See `balance-audit.md`'s
+2026-09-12 entries for the full before/after EV comparison against Guild Regular/Elite/Legendary
+that motivated the original 250 cap.
+
+**Raised 250 → 600 (2026-09-14, direct instruction: "the max guild is going to fully outscale
+[Solo Merc] hard anyway later [so let's raise the cap]")** — prompted by the Raid EV Curves chart
+being extended out to power 1000 the same day, which showed that even completely uncapped, a
+maxed guild was always going to pull far ahead of Solo Merc eventually anyway: Bounty's own
+12-tier ladder tops out around B12's own difficulty (~2000), and Guild Raid's reward multiplier
+scales off guild LEVEL (a separate axis from power that keeps compounding well past anything a
+Heist cap alone could protect against — see the same day's dominance-inversion finding on Elite
+lvl 10 with Cinderroot). The 250 cap was opening that gap far earlier (~power 250) than it needed
+to for any extra protection at the high end — 600 still leaves a real, working ceiling (Heist
+flatlines past this point exactly like before, just later), it just gives Solo Merc room to keep
+growing through the 250-600 power band instead of going dead flat there. Verified this doesn't
+remove the cap's own purpose: even at 600, a max-level guild with Cinderroot (Elite lvl 10) still
+comprehensively outscales Solo Merc at every power point tested on the chart.
 
 `PAYOUT_MULTIPLIER` stays **shared** across every tier rather than scaling per-tier — only
 the cap differs. Verified at implementation against a live reported server total
