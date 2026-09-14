@@ -623,8 +623,10 @@ function getDefaultUserFields(userId, username) {
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
         // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh
-        // on each poison hit, not cron-driven) so this is self-contained from Quests'/Guild
-        // Contracts' own weekly rotation.
+        // on each poison hit, not cron-driven), but its own Monday-8pm-ET boundary is
+        // deliberately kept in sync with Quests'/Guild Contracts'/Mercenary weekly quests'
+        // shared cron-driven rotation (2026-09-14 fix — see getCurrentWeekTag's own
+        // comment for the drift this closed).
         poisonMitigation: {
             weekTag: null,
             weeklyHitCount: 0

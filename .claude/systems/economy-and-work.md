@@ -105,13 +105,29 @@ of the loss). Two changes, both in `workFactory.js`:
    | 5th–9th | -60% (capped) |
    | 10th+ | -90% (milestone — see below) |
 
-   `workFactory.getCurrentWeekTag()` computes the current week lazily (most recent Monday, EST) on
-   every poison hit rather than depending on a cron to roll it over — self-contained from Quests'/
-   Guild Contracts' own shared weekly rotation, since poison mitigation is purely personal and there's
-   no shared pool to reset. `workFactory.computePoisonMitigation(poisonMitigation, now)` is the pure
-   function that reads the user's `poisonMitigation: { weekTag, weeklyHitCount }` field, treats a
-   `weekTag` mismatch as a fresh week (same tag-compare staleness pattern Quests uses for its own
-   per-user baselines), and returns the reduction to apply plus the object to persist.
+   `workFactory.getCurrentWeekTag()` computes the current week lazily on every poison hit rather than
+   depending on a cron to roll it over — self-contained from Quests'/Guild Contracts' own shared
+   weekly rotation, since poison mitigation is purely personal and there's no shared pool to reset.
+   `workFactory.computePoisonMitigation(poisonMitigation, now)` is the pure function that reads the
+   user's `poisonMitigation: { weekTag, weeklyHitCount }` field, treats a `weekTag` mismatch as a fresh
+   week (same tag-compare staleness pattern Quests uses for its own per-user baselines), and returns
+   the reduction to apply plus the object to persist.
+
+   **The week boundary is 8pm ET Monday, matching Quests/Guild Contracts/Mercenary weekly quests
+   (fixed 2026-09-14, player reports things "looked off" between systems)** — those three only ever
+   actually rotate once the shared 8pm ET cron fires and finds the calendar day is Monday (see
+   [tower.md](tower.md)/`backgroundEvents.js`), so their week runs [Monday 8pm ET, next Monday 8pm ET),
+   not [Monday 12am ET, ...). `getCurrentWeekTag` used to walk backward one raw millisecond-day at a
+   time to the most recent REAL-MIDNIGHT Eastern Monday — a boundary a full ~20 hours earlier than the
+   other three systems, so for most of every Monday a player's poison/mimic weekly counter had already
+   reset to the new week while Quests/Guild Contracts/Mercenary weekly quests were still serving last
+   week's content. Rewritten with the same calendar-integer arithmetic (Eastern date parts via `Intl`,
+   `Date.UTC` purely as a calendar-math helper, never raw ms) `dailyStreakFactory.js`'s own
+   `getStreakDayString` uses, for the same DST-safety reason. Deliberately still formatted via
+   `toLocaleDateString` (not a zero-padded ISO string) so the fix only actually changes the computed
+   tag during the specific Monday-before-8pm window it targets — every other moment of the week
+   produces a byte-identical tag to before, so no unrelated player's stored `weekTag` goes stale just
+   from this fix shipping.
 
    Reaching the 10th hit in one week (a real stretch of bad luck) unlocks the `toxic_tolerance`
    achievement — a **lifetime** `totalPoisonMilestonesReached` counter (distinct from the

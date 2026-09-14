@@ -100,25 +100,68 @@ function getNextShopTier(shopId, currentBaseAmount) {
     return shop.items.find(item => Math.abs(item.currentAmount - currentBaseAmount) < SHOP_TIER_MATCH_TOLERANCE);
 }
 
-// True if `date` falls on a Monday in US Eastern time — same locale-based check
-// questFactory.js's own isMondayEST uses, duplicated here rather than shared since it's a
-// 1-line pure function (same "mirrored, not shared" convention getNextShopTier's own
-// comment above already documents for this file).
-function isMondayEST(date) {
-    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Monday';
+// Eastern-local calendar parts for `date`, read via Intl (never raw ms arithmetic) —
+// same helper shape as dailyStreakFactory.js's own getEasternDateParts, duplicated here
+// rather than shared per this file's "mirrored, not shared" convention (see
+// getNextShopTier's own comment above). Date.UTC below is used purely as a calendar-math
+// helper (correctly rolling month/year/weekday boundaries) — no timezone conversion
+// happens through it; the actual Eastern-time reading is Intl's job here.
+function getEasternDateParts(date) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23'
+    }).formatToParts(date);
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return { year: Number(map.year), month: Number(map.month), day: Number(map.day), hour: Number(map.hour) };
 }
 
-// The most recent Monday's EST calendar date as a locale string — a stable "which week is
-// this" tag, computed fresh every time rather than depending on a cron to roll it over.
-// Poison mitigation is purely personal (unlike Quests'/Guild Contracts' shared weekly
-// rotation), so there's no shared pool that needs a scheduled reset — a lazy tag compare
-// is enough, same staleness-detection idea Quests uses, just self-contained here instead.
+// The 8pm ET boundary Quests/Guild Contracts/Mercenary weekly quests all actually roll
+// over at — must stay in sync with backgroundEvents.js's own cron hour and
+// dailyStreakFactory.js's RESET_HOUR_EST.
+const WEEK_RESET_HOUR_EST = 20;
+
+// The current week's tag — the most recent Monday-8pm-ET boundary that's already
+// passed, as a stable "which week is this" string. Poison/Mimic mitigation has no cron
+// of its own (this is computed lazily on every hit, not on a schedule, since it's purely
+// personal state — unlike Quests'/Guild Contracts' shared weekly rotation), so it has to
+// derive the SAME boundary independently rather than piggyback on a scheduled job.
+//
+// Fixed 2026-09-14 (player reports that things "looked off" between systems after the
+// 8pm ET reset move) — this used to walk backward one raw millisecond-day at a time to
+// the most recent REAL-MIDNIGHT Eastern Monday (isMondayEST, removed), a boundary a full
+// ~20 hours earlier than Quests/Guild Contracts/Mercenary weekly quests: those three only
+// actually rotate once the shared 8pm ET cron fires and finds the calendar day is Monday,
+// so their "week" runs [Monday 8pm ET, next Monday 8pm ET) — not [Monday 12am ET, ...).
+// For roughly 20 hours every Monday, a player's poison/mimic weekly counter had already
+// reset to the new week while the other three systems were still serving last week's
+// content. Also fixes the same raw-ms DST-drift risk dailyStreakFactory.js's own
+// getStreakDayString/getPreviousStreakDayString were fixed for — a real calendar day is
+// 23 or 25 hours on the two annual DST-transition days, so the old day-at-a-time ms walk
+// could land a day off exactly on those two days even setting the 8pm issue aside.
+//
+// Deliberately still formatted via toLocaleDateString (not a zero-padded YYYY-MM-DD
+// string) — this is a stored, compared-by-equality field on live player records
+// (poisonMitigation.weekTag/mimicMitigation.weekTag), so keeping the exact same output
+// format means this fix only actually changes the computed tag during the specific
+// Monday-before-8pm window it's meant to fix; every other moment of the week still
+// produces a byte-identical tag to before, so no unrelated player's stored tag suddenly
+// goes stale just from this fix shipping.
 function getCurrentWeekTag(now = new Date()) {
-    let cursor = now;
-    while (!isMondayEST(cursor)) {
-        cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000);
-    }
-    return cursor.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+    const { year, month, day, hour } = getEasternDateParts(now);
+    // 0 = Sunday ... 1 = Monday ... 6 = Saturday, via Date.UTC's own proleptic-Gregorian
+    // weekday math — safe here since year/month/day were already read out of Eastern
+    // local time above, so this lookup itself doesn't care about UTC vs Eastern.
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const daysSinceMonday = (weekday + 6) % 7;
+
+    // If `now` is on Monday itself but before 8pm ET, this week's own cron-equivalent
+    // boundary hasn't happened yet — Quests/Guild Contracts haven't rotated either, so
+    // step back one more full week. Any other day of the week, this week's Monday-8pm
+    // boundary is necessarily already in the past.
+    const pastThisWeeksBoundary = daysSinceMonday > 0 || hour >= WEEK_RESET_HOUR_EST;
+    const mondayOffset = daysSinceMonday + (pastThisWeeksBoundary ? 0 : 7);
+    const effectiveMonday = new Date(Date.UTC(year, month - 1, day - mondayOffset));
+
+    return effectiveMonday.toLocaleDateString('en-US', { timeZone: 'UTC' });
 }
 
 // How much a Poison Potato hit's loss/lockout should be reduced this time, based on how

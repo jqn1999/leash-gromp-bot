@@ -12713,3 +12713,53 @@ was replaced with two tests — one confirming every `autoJoinSpudKeep`-on guild
 excluded rather than force-re-entered. Docs: `spud-keep.md` (new "Guild entry" section mirroring
 "The Merc Faction," resolution-flow steps and data-model doc updated). Full suite: **1629/1629**
 across 87 suites (+1 test).
+
+## Fix: Poison/Mimic weekly mitigation reset ~20 hours earlier than Quests/Guild Contracts/Mercenary weekly quests (2026-09-14, player report: "things look off")
+
+Player asked for an audit of every weekly reset (Poison/Mimic mitigation, Quests, Guild Contracts,
+Mercenary weekly) after the earlier 8pm ET daily-reset move, since players said things looked off.
+Traced all four: Quests' weekly set, Guild Contracts' rotation, and Mercenary's weekly quest set
+are all driven by the same bundled 8pm ET cron (`backgroundEvents.js`) and check `isMondayEST(now)`
+at the moment that cron actually fires — so all three only roll over once the cron runs on a real
+Monday, at 8pm ET, and stay on that week's content until the following Monday's 8pm firing. Those
+three are consistent with each other and with the 8pm move.
+
+Poison/Mimic mitigation (`workFactory.js`'s `computePoisonMitigation`/`computeMimicMitigation`,
+via `getCurrentWeekTag`) is not cron-driven at all — it's personal, per-player state computed
+lazily on every hit, with no shared pool to reset. Its OLD implementation walked backward one raw
+millisecond-day at a time to the most recent Eastern calendar-day Monday at REAL MIDNIGHT — a
+boundary that was never touched when the 8pm move shipped (the login streak got an explicit fix at
+the time; Poison/Mimic mitigation didn't). The result: for roughly a 20-hour window every Monday
+(12:00am–8:00pm ET), a player's poison/mimic weekly hit counter had already reset to the new week
+while Quests/Guild Contracts/Mercenary weekly quests were all still serving last week's content —
+two visibly different "which week is it" answers for most of every Monday, which is very likely
+what players were noticing.
+
+**Fix**: rewrote `getCurrentWeekTag` to derive the exact same Monday-8pm-ET boundary the other
+three systems roll over at, independently (no cron to piggyback on): compute Eastern calendar date
+parts via `Intl` (never raw ms — `Date.UTC` used purely as calendar-math, same DST-safety approach
+`dailyStreakFactory.js`'s `getStreakDayString` already uses), find the current calendar week's own
+Monday via weekday arithmetic, then check whether `now` has passed that Monday's own 8pm-ET
+instant — if not (Monday before 8pm), step back one more full week, matching what Quests/Guild
+Contracts/Mercenary weekly quests would still show at that same moment. Old `isMondayEST` helper in
+`workFactory.js` removed (only ever used inside the old `getCurrentWeekTag`).
+
+Deliberately kept the exact same `toLocaleDateString` output format (not switched to a zero-padded
+ISO string) specifically so this fix doesn't do what the streak's own day-boundary migration did —
+verified directly (old vs. new implementation compared across a range of real timestamps) that the
+computed tag is byte-identical to before at every moment of the week EXCEPT the specific
+Monday-before-8pm window this targets, where it now correctly stays on the previous week's tag
+instead of prematurely rolling over. No unrelated player's stored `weekTag` goes stale just from
+this shipping, unlike the streak fix which unavoidably shifted every stored value's format.
+
+Updated tests: `workFactory.test.js`'s `getCurrentWeekTag` describe block's own boundary-straddling
+sample dates were shifted off Monday (the old "every day in the same week" test literally began
+its sample range ON a Monday at noon, which the fix now legitimately treats as a *different* week
+than the rest of that block — updated to start sampling from Tuesday instead). Added a new
+dedicated "8pm ET Monday boundary" describe block (mirrors `dailyStreakFactory.test.js`'s own 8pm
+boundary tests): Monday before 8pm ET still belongs to last week, Monday at/after 8pm ET belongs to
+the new week, and a hit at 7:59pm vs. 8:00pm on the same real Monday lands in different weeks.
+Docs: `economy-and-work.md`, plus the stale `dynamoHandler.js` comment claiming poison/mimic
+mitigation was fully "self-contained" from Quests'/Guild Contracts' rotation (true before this fix,
+no longer accurate — the week BOUNDARY is now deliberately kept in sync, only the write path stays
+independent). Full suite: **1632/1632** across 87 suites (+3 tests).
