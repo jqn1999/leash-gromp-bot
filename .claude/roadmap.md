@@ -12667,3 +12667,49 @@ behaves identically; a loss against a bank 4B over its 1B cap asserts the penalt
 the true `bankStored` value (`overCapacityBank + penalty`), not one clamped down to
 `bankCapacity` first. Docs: `guilds.md`. Full suite: **1628/1628** across 87 suites (+1 new
 test file, +3 tests).
+
+## Fix: guilds had to re-run /join-spud-keep every cycle whenever a mercenary won (2026-09-14, player report)
+
+Player asked: "when mercs win, guilds have to resign up? they should just be auto signed up
+regardless." Traced `/join-spud-keep`: it pushed a one-time `{guildId, guildName}` entry into a
+per-cycle `spud_keep.guildEntrants` list, which `resolveCycle` wiped completely at every
+resolution (`updateStatFields("spud_keep", { guildEntrants: [] })`). The only thing carrying a
+guild forward automatically was a narrow special case in `buildEntrantPreview` — whoever
+currently holds the buff gets auto-re-entered next cycle **if it's a guild**. The moment a
+mercenary wins instead, that carve-out doesn't apply to anyone, so every guild — even ones that
+had been signing up every single day — fell back to needing a fresh `/join-spud-keep` call.
+
+This turned out to be a genuinely unfinished migration, not a new feature request: when
+mercenaries were moved to a persistent `autoJoinSpudKeep` toggle (2026-09-03, `/spud-keep-signup`),
+that change's own commit comment says "mercs can either sign up or not as a toggle **similar to
+guilds just being in or out**" — guilds were already assumed to work this way, but never actually
+were.
+
+**Fix**: gave guilds the same persistent flag mercenaries already have. Added
+`guild.autoJoinSpudKeep` (defaults `false`, healed into existing guilds by `findGuildById`'s
+generic missing-field backfill same as every other guild schema addition). `/join-spud-keep` is
+now a toggle (mirrors `/spud-keep-signup`'s own on/off messaging) instead of a one-way idempotent
+add. Added `spudKeepFactory.getLiveGuildSpudKeepRoster()` — a live `dynamoHandler.getGuilds()`
+scan filtered to `autoJoinSpudKeep === true`, the guild-side mirror of
+`getLiveMercFactionRoster()`'s own `getUsers()` scan — and `buildEntrantPreview` now reads the
+guild entrant list from it instead of `spud_keep.guildEntrants`. This also made the old "auto
+re-enter the current holder if it's a guild" special case unnecessary and it was removed: a guild
+holding the buff got there by having the flag on, so it's already included same as any other
+opted-in guild; a guild that toggles the flag off after winning simply isn't an entrant next
+cycle, and its pot share is forfeited at resolution exactly like a Merc Faction holder whose live
+roster comes up empty — deliberately symmetric with how mercenaries already worked. `resolveCycle`
+no longer writes `guildEntrants: []` at resolution (nothing left to clear on either side).
+
+Also caught and fixed in passing: `dynamoHandler.getGuilds` was never actually exported from
+`dynamoHandler.js`'s `module.exports` — every existing internal caller (`applyGuildTreasuryInterest`,
+`getSortedGuildsByLevelAndRaidCount`, etc.) only ever called it as a same-file local function, so
+this had never surfaced before `getLiveGuildSpudKeepRoster` became the first EXTERNAL caller.
+
+Updated tests: `spudKeepFactory.test.js`'s entire `buildEntrantPreview`/`resolveCycle` suite
+switched from mocking `spud_keep.guildEntrants` to mocking `dynamoHandler.getGuilds` with
+`{guildId, autoJoinSpudKeep}` fixtures; the old "auto-re-enters the current guild holder" test
+was replaced with two tests — one confirming every `autoJoinSpudKeep`-on guild is an entrant
+(holder included, not double-counted), one confirming a holder with the flag OFF is correctly
+excluded rather than force-re-entered. Docs: `spud-keep.md` (new "Guild entry" section mirroring
+"The Merc Faction," resolution-flow steps and data-model doc updated). Full suite: **1629/1629**
+across 87 suites (+1 test).

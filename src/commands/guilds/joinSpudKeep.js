@@ -3,14 +3,18 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { GuildRoles } = require("../../utils/constants");
 
 // Officer-gated (Elder/Co-Leader/Leader, same permission tier /start-raid already uses)
-// idempotent entry into the current Spud Keep cycle — this command only registers the
-// GUILD itself as a participant. The guild's own roster composition is still entirely
-// controlled by each member's own persistent /join-raid autoJoinRaids toggle, so this is
-// "zero new membership state," same framing systems/spud-keep.md opens with. See
-// spudKeepFactory.resolveCycle for how the roster is actually computed at resolution.
+// persistent opt-in toggle (2026-09-14 fix) — mirrors /spud-keep-signup's own
+// autoJoinSpudKeep toggle for mercenaries exactly. Used to be a one-time push into
+// spud_keep.guildEntrants, which resolveCycle wiped every single cycle, forcing a fresh
+// /join-spud-keep every day just to keep participating — the 2026-09-03 mercenary
+// migration was explicitly described as "similar to guilds just being in or out," but
+// guilds were never actually converted until now. The guild's own roster composition is
+// still entirely controlled by each member's own persistent /join-raid autoJoinRaids
+// toggle, so this remains "zero new membership state" beyond the guild-level flag itself
+// — see spudKeepFactory.getLiveGuildSpudKeepRoster for how entrants are computed live.
 module.exports = {
     name: "join-spud-keep",
-    description: "Enter your guild into today's Spud Keep contest (Elder/Co-Leader/Leader only)",
+    description: "Toggle whether your guild automatically enters Spud Keep from now on (Elder/Co-Leader/Leader only)",
     devOnly: false,
     deleted: false,
     callback: async (client, interaction) => {
@@ -30,16 +34,11 @@ module.exports = {
             return;
         }
 
-        const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || {};
-        const guildEntrants = spudKeep.guildEntrants || [];
-        if (guildEntrants.some(g => g.guildId === guild.guildId)) {
-            interaction.editReply(`${userDisplayName}, '${guild.guildName}' has already entered this cycle's Spud Keep contest — check /current-spud-keep for the live standings.`);
-            return;
-        }
+        const newState = !guild.autoJoinSpudKeep;
+        await dynamoHandler.updateGuildDatabase(guild.guildId, "autoJoinSpudKeep", newState);
 
-        guildEntrants.push({ guildId: guild.guildId, guildName: guild.guildName });
-        await dynamoHandler.updateStatFields("spud_keep", { guildEntrants });
-
-        interaction.editReply(`${userDisplayName}, '${guild.guildName}' has entered today's Spud Keep contest! Your guild's live raid roster (/join-raid opt-ins) is counted fresh at resolution time — check /current-spud-keep for a live preview.`);
+        interaction.editReply(newState
+            ? `${userDisplayName}, '${guild.guildName}' will now automatically enter every Spud Keep cycle from now on. Your guild's live raid roster (/join-raid opt-ins) is counted fresh at resolution time — check /current-spud-keep for a live preview. Run /join-spud-keep again anytime to opt back out.`
+            : `${userDisplayName}, '${guild.guildName}' will no longer automatically enter Spud Keep. Run /join-spud-keep again anytime to opt back in.`);
     }
 }

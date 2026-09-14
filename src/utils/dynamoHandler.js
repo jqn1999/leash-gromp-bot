@@ -1622,7 +1622,16 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         // subtract-the-threshold-on-any-resolution shape (win OR lose) directly, not a full
         // reset to 0 — any Infamy banked past GuildRival.INFAMY_THRESHOLD before a guild
         // chooses to fight carries into the next cycle instead of being discarded.
-        guildInfamy: 0
+        guildInfamy: 0,
+        // Spud Keep entry (2026-09-14 fix) — persistent opt-in toggle, mirrors the
+        // user-level autoJoinSpudKeep mercenaries already have (see spudKeepSignup.js).
+        // /join-spud-keep used to push a one-time entry into spud_keep.guildEntrants,
+        // which resolveCycle wiped every single cycle — the 2026-09-03 mercenary migration
+        // was explicitly described as "similar to guilds just being in or out," but guilds
+        // were never actually converted, so any guild not currently holding the buff had to
+        // re-run /join-spud-keep every day. This field replaces that per-cycle list
+        // entirely — see spudKeepFactory.getLiveGuildSpudKeepRoster.
+        autoJoinSpudKeep: false
     };
 }
 
@@ -1954,6 +1963,7 @@ module.exports = {
     addUser,
     findUser,
     getUsers,
+    getGuilds,
     passivePotatoHandler,
     applyGuildTreasuryInterest,
     getCatchUpBonus,

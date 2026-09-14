@@ -18,20 +18,19 @@ mercenaries genuinely compete for the exact same prize.
 
 ## Data model — three stats-table docs
 
-- `spud_keep` — the per-cycle entrant lists + the accruing pot, read/written directly via
-  `getStatDatabase`/`updateStatFields`/`addStatFields` (no dedicated wrapper, mirrors
-  `active_quests`/`world.world_list`):
+- `spud_keep` — the accruing pot, read/written directly via `getStatDatabase`/`updateStatFields`/
+  `addStatFields` (no dedicated wrapper, mirrors `active_quests`/`world.world_list`):
   ```js
   {
       trackingId: "spud_keep",
-      guildEntrants: [],       // [{ guildId, guildName }], this cycle's signed-up guilds only
       lastResolvedAt: 0,       // epoch ms, informational only
       potPotatoes: 0           // atomic-ADD-only counter — POTATO-ONLY, see "The pot" below
   }
   ```
-  No `mercenaryEntrants` field anymore (removed 2026-09-03) — the Merc Faction roster is read
-  live off each mercenary's own persistent `autoJoinSpudKeep` toggle instead, see "The Merc
-  Faction" below.
+  No `mercenaryEntrants` field anymore (removed 2026-09-03), and no `guildEntrants` field anymore
+  either (removed 2026-09-14, see "Guild entry" below) — both the Merc Faction roster and the
+  guild entrant list are read live off each mercenary's/guild's own persistent `autoJoinSpudKeep`
+  toggle instead.
 - `spud_keep_buff` — the granted passive-income buff + the SOLE canonical holder pointer +
   `consecutiveHoldCycles` (the Attacker's Bonus streak). Read via
   `dynamoHandler.getActiveSpudKeepBuff`.
@@ -194,8 +193,8 @@ their own pending balance into spendable/robbable potatoes whenever THEY choose,
 balance; the loser of that race is simply told to try again, mirroring `resolveScavenge`'s own
 double-collect guard.
 
-`/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc it
-already reads for `guildEntrants`. The daily resolution announcement
+`/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc
+`buildEntrantPreview` already reads `potPotatoes` from. The daily resolution announcement
 (`createSpudKeepResultEmbed`) shows a per-player breakdown of who got what
 (`buildSpudKeepPayoutShareField`, sorted by amount descending) alongside the aggregate total.
 
@@ -207,6 +206,27 @@ in this codebase), so it's driven by a NEW `helperCommands.runPaginatedBroadcast
 interaction-scoped `runPaginatedReply` — same Previous/Next loop shape, just filtered to nothing (any
 channel viewer can page it) and built directly off the `Message` `channel.send()` returns, since a
 plain sent message supports the same `awaitMessageComponent`/`edit` API an interaction reply does.
+
+## Guild entry
+
+Every guild whose persistent `guild.autoJoinSpudKeep` toggle (`/join-spud-keep`, officer-gated —
+Elder/Co-Leader/Leader) is on is a live entrant every cycle, no re-signup required
+(`getLiveGuildSpudKeepRoster()`, a whole-table `dynamoHandler.getGuilds()` scan filtered to
+`autoJoinSpudKeep === true`, mirroring the Merc Faction's own `getUsers()` scan below). **Fixed
+2026-09-14** — `/join-spud-keep` used to push a one-time `{guildId, guildName}` entry into a
+per-cycle `spud_keep.guildEntrants` list that `resolveCycle` wiped completely every resolution,
+so any guild not currently holding the buff had to re-run `/join-spud-keep` every single day or
+silently drop out. The 2026-09-03 mercenary migration (below) was explicitly described at the
+time as "similar to guilds just being in or out," but guilds were never actually converted to
+match — this closes that gap. `buildEntrantPreview`'s old "auto re-enter the current holder if
+it's a guild" special case is gone too — a guild holding the buff got there by having the flag
+on, so it's already included here same as every other opted-in guild; a guild that toggles the
+flag off after winning simply isn't an entrant next cycle, and its outgoing pot share is
+forfeited at resolution exactly like a Merc Faction holder whose live roster comes up empty (see
+"An empty outgoing roster forfeits the pot" in the resolution flow below) — deliberately
+symmetric with how mercenaries already worked. The guild's own RAID roster composition (who
+actually counts toward its power) is still entirely separate — controlled by each member's own
+persistent `/join-raid` `autoJoinRaids` toggle, exactly as before.
 
 ## The Merc Faction
 
@@ -291,13 +311,13 @@ never routed through `getMemberRaidPower` in the first place.
 
 1. `buildEntrantPreview()` — the SAME side-effect-free computation `/current-spud-keep` reads live:
    reads `spud_keep`/`spud_keep_buff`/`spud_keep_cooldown_buff`, builds every guild entrant's power
-   breakdown (`getGuildEntrantBreakdown`, live roster fetched fresh), **auto-re-enters the current
-   holder if it's a guild not already in `guildEntrants`** ("no action required to defend" — computed
-   for this cycle only, never persisted back), computes the Merc Faction's breakdown, then applies
-   the Attacker's Bonus (below) to every entrant that ISN'T the current holder.
-2. If every entrant's RAW power is 0 (nobody signed up at all, including no live holder roster) —
-   **skip the lottery entirely**: no resolution, no buff write, `consecutiveHoldCycles` untouched,
-   entrant lists NOT cleared either. The Keep's state simply carries over to a future nonzero cycle.
+   breakdown off the live `getLiveGuildSpudKeepRoster()` scan (`getGuildEntrantBreakdown`, live
+   roster fetched fresh for each), computes the Merc Faction's breakdown, then applies the
+   Attacker's Bonus (below) to every entrant that ISN'T the current holder. No more "auto re-enter
+   the current holder" special case (2026-09-14 fix) — see "Guild entry" above.
+2. If every entrant's RAW power is 0 (nobody's opted in at all, including no live holder roster) —
+   **skip the lottery entirely**: no resolution, no buff write, `consecutiveHoldCycles` untouched.
+   The Keep's state simply carries over to a future nonzero cycle.
 3. `rollLottery(entrants)` — a cumulative-chance draw over each entrant's (bonus-adjusted)
    `effectivePower`, mathematically identical to a two-sided weighted coin flip whenever exactly two
    entrants exist.
@@ -308,11 +328,12 @@ never routed through `getMemberRaidPower` in the first place.
    (`splitPotByWorkMulti`) and credited to `spudKeepPendingPotatoes` (an atomic ADD per person), not
    directly to `potatoes`. Players collect their own share into liquid potatoes whenever they choose
    via `/spud-keep-collect`.
-6. Clear `guildEntrants`, set `lastResolvedAt`, and `addStatFields` a subtraction of exactly what
-   was paid/forfeited — never a blind reset. Nothing to clear on the mercenary side — the Merc
-   Faction roster is read live off each mercenary's own persistent toggle, not a per-cycle list.
-7. Increment `spudKeepAttemptCount` for every guild entrant's own roster (auto-re-entered holder
-   included) and the Merc Faction's counted top-N.
+6. Set `lastResolvedAt` and `addStatFields` a subtraction of exactly what was paid/forfeited from
+   `potPotatoes` — never a blind reset. Nothing else to clear on either side (2026-09-14 fix) — both
+   the Merc Faction roster and the guild entrant list are read live off each mercenary's/guild's own
+   persistent toggle, not a per-cycle list.
+7. Increment `spudKeepAttemptCount` for every guild entrant's own roster and the Merc Faction's
+   counted top-N.
 8. Return a result object; `backgroundEvents.js` turns it into `embedFactory.createSpudKeepResultEmbed`,
    posted to the same events channel every other daily-cron announcement uses (including an explicit
    "cycle skipped" embed rather than silence).
@@ -362,8 +383,10 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
 ## Commands
 
 - `/join-spud-keep` (guilds) — officer-gated (Elder/Co-Leader/Leader, same tier `/start-raid` uses),
-  idempotent add of `{guildId, guildName}` to `spud_keep.guildEntrants`. Does NOT touch roster
-  composition — that's still entirely each member's own `/join-raid` `autoJoinRaids` toggle.
+  persistent opt-in toggle (`guild.autoJoinSpudKeep`, 2026-09-14 fix) — mirrors `/spud-keep-signup`'s
+  own `autoJoinSpudKeep` toggle for mercenaries exactly, rather than requiring a fresh sign-up every
+  cycle. Does NOT touch roster composition — that's still entirely each member's own `/join-raid`
+  `autoJoinRaids` toggle.
 - `/spud-keep-signup` (user) — any `isMercenary` user, persistent opt-in toggle
   (`autoJoinSpudKeep`), mirrors `/join-raid`'s `autoJoinRaids` exactly rather than requiring a
   fresh signup every cycle.

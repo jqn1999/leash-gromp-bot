@@ -126,6 +126,24 @@ async function getLiveMercFactionRoster() {
         .map(u => ({ id: u.userId, username: u.username }));
 }
 
+// The live guild entrant list: every guild whose persistent autoJoinSpudKeep toggle
+// (/join-spud-keep) is on, fetched fresh on every call — the guild-side mirror of
+// getLiveMercFactionRoster above. Replaces the old push-once-per-cycle spud_keep.
+// guildEntrants array, which resolveCycle wiped every single resolution (2026-09-14
+// fix — the 2026-09-03 mercenary migration was explicitly described as "similar to
+// guilds just being in or out," but guilds were never actually converted, so any guild
+// not currently holding the buff had to re-run /join-spud-keep every day). Also makes
+// buildEntrantPreview's old "auto re-enter the current holder if it's a guild" special
+// case unnecessary — a guild holding the buff got there by having this flag on, so it's
+// already included here same as every other opted-in guild. dynamoHandler.getGuilds()
+// is a raw, whole-table scan (same precedent as getLiveMercFactionRoster's own getUsers()
+// call) — a pre-existing guild that predates this field simply reads undefined, which
+// fails the === true check exactly like an explicit false would.
+async function getLiveGuildSpudKeepRoster() {
+    const allGuilds = await dynamoHandler.getGuilds();
+    return allGuilds.filter(g => g.autoJoinSpudKeep === true).map(g => g.guildId);
+}
+
 // Ranked by getSpudKeepMemberPower (workMultiplierAmount * (1 + rebirth%) — deliberately
 // excludes companion workMultiplierPercent, see that function's own comment), not the
 // bare stat, and the SAME power basis mercBreakdown below actually scores the selected
@@ -187,9 +205,9 @@ function isCurrentHolderEntrant(buff, entrantType, entrantId) {
     return entrantType === 'mercenary' ? true : buff.holderId === entrantId;
 }
 
-// One entrant per guildEntrants row, live at read time (never snapshotted) — a guild
-// whose live roster is now empty (autoJoinRaids all toggled off, or the guild disbanded)
-// naturally computes to 0 power, no special-casing needed. Scored via
+// One entrant per guild ID from getLiveGuildSpudKeepRoster, live at read time (never
+// snapshotted) — a guild whose live roster is now empty (autoJoinRaids all toggled off,
+// or the guild disbanded) naturally computes to 0 power, no special-casing needed. Scored via
 // getSpudKeepMemberPower (excludes companion workMultiplierPercent — see that function's
 // own comment), not the shared getMemberRaidPower every other raid-power caller uses.
 async function getGuildEntrantBreakdown(guildId) {
@@ -223,23 +241,19 @@ function rollLottery(weightedEntrants) {
 // "always read the roster fresh" precedent Guild Raid/guild buffs already follow) —
 // nothing here is snapshotted at signup time.
 async function buildEntrantPreview() {
-    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { guildEntrants: [], potPotatoes: 0 };
+    const spudKeep = await dynamoHandler.getStatDatabase("spud_keep") || { potPotatoes: 0 };
     const currentBuff = await dynamoHandler.getActiveSpudKeepBuff();
     const cooldownBuff = await dynamoHandler.getActiveSpudKeepCooldownBuff();
 
-    const guildEntrantIds = (spudKeep.guildEntrants || []).map(g => g.guildId);
+    // Live off each guild's own persistent autoJoinSpudKeep toggle (2026-09-14 fix) —
+    // no more per-cycle guildEntrants list, and no more "auto re-enter the current
+    // holder" special case: a guild holding the buff got there by having this flag on,
+    // so it's already included here same as every other opted-in guild. A guild that
+    // toggles off after winning simply isn't an entrant next cycle (its pot share is
+    // forfeited at resolution, same as a Merc Faction holder whose roster is empty) —
+    // deliberately symmetric with how mercenaries already worked.
+    const guildEntrantIds = await getLiveGuildSpudKeepRoster();
     const guildEntries = (await Promise.all(guildEntrantIds.map(id => getGuildEntrantBreakdown(id)))).filter(Boolean);
-
-    // Auto-re-enter the current holder if it's a guild not already in this cycle's
-    // guildEntrants — "no action required to defend." Computed for this preview/
-    // resolution only, never persisted back into guildEntrants (which is cleared
-    // regardless at resolution). The Merc Faction needs no equivalent branch — it's a
-    // structurally always-present pseudo-entrant every cycle, nothing to "forget."
-    if (currentBuff && currentBuff.holderType === "guild" && currentBuff.holderId
-        && !guildEntries.some(g => g.guildId === currentBuff.holderId)) {
-        const holderEntry = await getGuildEntrantBreakdown(currentBuff.holderId);
-        if (holderEntry) guildEntries.push(holderEntry);
-    }
 
     const mercFactionN = getMercFactionN(guildEntries.map(g => g.roster.length));
     const mercenaryEntrants = await getLiveMercFactionRoster();
@@ -369,15 +383,15 @@ async function resolveCycle() {
         potPotatoesPaid = potPotatoes;
     }
 
-    // Step 8 — clear the per-cycle guild entrant list AND subtract exactly what was just
-    // paid out (or forfeited) from the pot — never a blind `set potPotatoes = 0`. A
-    // concurrent tax event's own addStatFields ADD landing between buildEntrantPreview's
-    // own read and this write is NOT destroyed, since subtracting a known exact amount
-    // commutes with a concurrent ADD regardless of ordering. Nothing to clear on the
-    // mercenary side anymore — the Merc Faction roster is read live off each mercenary's
-    // own persistent autoJoinSpudKeep toggle (getLiveMercFactionRoster), not a per-cycle
-    // list that needs wiping.
-    await dynamoHandler.updateStatFields("spud_keep", { guildEntrants: [], lastResolvedAt: Date.now() });
+    // Step 8 — subtract exactly what was just paid out (or forfeited) from the pot —
+    // never a blind `set potPotatoes = 0`. A concurrent tax event's own addStatFields ADD
+    // landing between buildEntrantPreview's own read and this write is NOT destroyed,
+    // since subtracting a known exact amount commutes with a concurrent ADD regardless of
+    // ordering. Nothing to clear on either side anymore (2026-09-14 fix) — both the Merc
+    // Faction roster and the guild entrant list are read live off each mercenary's/guild's
+    // own persistent autoJoinSpudKeep toggle (getLiveMercFactionRoster/
+    // getLiveGuildSpudKeepRoster), not a per-cycle list that needs wiping.
+    await dynamoHandler.updateStatFields("spud_keep", { lastResolvedAt: Date.now() });
     if (potPotatoesPaid > 0) {
         await dynamoHandler.addStatFields("spud_keep", { potPotatoes: -potPotatoesPaid });
     }

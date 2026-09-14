@@ -23,6 +23,10 @@ beforeEach(() => {
     // default to nobody opted in; individual tests override this to exercise a nonzero
     // Merc Faction roster.
     dynamoHandler.getUsers.mockResolvedValue([]);
+    // The guild entrant list is now a live getGuilds() scan (getLiveGuildSpudKeepRoster,
+    // 2026-09-14 fix) — default to no guild opted in; individual tests override this to
+    // exercise a nonzero guild entrant list.
+    dynamoHandler.getGuilds.mockResolvedValue([]);
     // World Boss's workMulti buff (2026-09-04) — default to no buff live; individual
     // tests override this to exercise the buff's effect on entrant power.
     dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
@@ -313,11 +317,17 @@ describe('rollLottery', () => {
 });
 
 describe('buildEntrantPreview', () => {
-    test('auto-re-enters the current guild holder even when absent from guildEntrants, without double-counting an explicit sign-up', async () => {
-        dynamoHandler.getStatDatabase.mockImplementation(async (trackingId) => {
-            if (trackingId === 'spud_keep') return { guildEntrants: [{ guildId: 'g2', guildName: 'g2-name' }], potPotatoes: 0 };
-            return undefined;
-        });
+    // 2026-09-14 fix — guild entry is now a live getGuilds() scan off each guild's own
+    // persistent autoJoinSpudKeep toggle (mirrors the Merc Faction's own getUsers() scan),
+    // replacing the old per-cycle guildEntrants list. A guild currently holding the buff
+    // is included here for the same reason any other opted-in guild is — there's no more
+    // special "auto re-enter the holder" case to test separately.
+    test('every guild with autoJoinSpudKeep on is an entrant, holder included, without double-counting', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([
+            { guildId: 'g1', autoJoinSpudKeep: true },
+            { guildId: 'g2', autoJoinSpudKeep: true }
+        ]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 2 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -331,8 +341,26 @@ describe('buildEntrantPreview', () => {
         expect(preview.entrants.find(e => e.id === 'g2').isHolder).toBe(false);
     });
 
+    // The old "auto re-enter the holder" special case used to paper over exactly this: a
+    // guild that never (or no longer) has autoJoinSpudKeep on is simply not an entrant,
+    // even if it's still the CURRENT holder — deliberately symmetric with how a Merc
+    // Faction holder with zero mercenaries currently opted in also just contributes 0
+    // power, not a forced re-entry.
+    test('a guild currently holding the buff but with autoJoinSpudKeep off is NOT an entrant', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g2', autoJoinSpudKeep: true }]);
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 2 });
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+        dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
+
+        const preview = await spudKeepFactory.buildEntrantPreview();
+
+        const guildIds = preview.entrants.filter(e => e.type === 'guild').map(e => e.id);
+        expect(guildIds).toEqual(['g2']);
+    });
+
     test('the Merc Faction is always present, even with zero mercenaries opted in (0 power, not a crash)', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
 
@@ -345,10 +373,11 @@ describe('buildEntrantPreview', () => {
     });
 
     test('the attacker bonus is applied to every non-holder entrant, never to the holder', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({
-            guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }, { guildId: 'g2', guildName: 'g2-name' }],
-            potPotatoes: 0
-        });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([
+            { guildId: 'g1', autoJoinSpudKeep: true },
+            { guildId: 'g2', autoJoinSpudKeep: true }
+        ]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 0 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: `${guildId}-m1`, username: `${guildId}-m1` }]));
@@ -365,7 +394,8 @@ describe('buildEntrantPreview', () => {
     // but missing here, understating everyone's real odds whenever a workMulti buff was
     // active.
     test('World Boss workMulti buff scales every entrant\'s power uniformly, applied to holder and challenger alike', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -392,7 +422,8 @@ describe('buildEntrantPreview', () => {
     // getSpudKeepMemberPower (raidFactory.js) instead of getMemberRaidPower — this proves
     // it end to end through buildEntrantPreview, not just at the raidFactory unit level.
     test('a guild member\'s equipped companion workMultiplierPercent perk does not move the guild\'s power at all', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -415,7 +446,7 @@ describe('resolveCycle', () => {
     });
 
     test('skips the lottery entirely when every entrant has 0 power — no writes at all', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
 
@@ -426,8 +457,9 @@ describe('resolveCycle', () => {
         expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
     });
 
-    test('a guild win with no previous holder grants the bundle buff, skips the pot payout (nothing could have accrued), and clears the entrant lists', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 500 });
+    test('a guild win with no previous holder grants the bundle buff, skips the pot payout (nothing could have accrued), and never touches the now-removed guildEntrants field', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 500 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -448,12 +480,15 @@ describe('resolveCycle', () => {
                 holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: SpudKeep.COOLDOWN_BUFF_VALUE
             })
         );
-        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('spud_keep', expect.objectContaining({ guildEntrants: [] }));
+        // Guild entry is now a live getGuilds() scan (2026-09-14 fix) — there's no more
+        // per-cycle guildEntrants field to clear at resolution.
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('spud_keep', { lastResolvedAt: expect.any(Number) });
         expect(dynamoHandler.addStatFields).not.toHaveBeenCalled(); // nothing paid out, nothing to subtract
     });
 
     test('a successful defense pays the accrued pot to the SAME guild\'s own roster (credited to their pending balance, not straight to potatoes), increments consecutiveHoldCycles, and subtracts exactly what was paid', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 900 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 900 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 1 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -477,7 +512,8 @@ describe('resolveCycle', () => {
     // Proves the compounding wiring is live end-to-end through resolveCycle itself, not
     // just correct in isolation as a pure function (getCompoundingBuffValue above).
     test('a successful defense grants the COMPOUNDED buff value, not the flat base', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         // Already 3 consecutive holds going in -> this defense makes it 4 (day 5, the cap).
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 3 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
@@ -496,7 +532,8 @@ describe('resolveCycle', () => {
     });
 
     test('a multi-member roster splits the pot by each member\'s own workMultiplierAmount, not evenly', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 1000 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 1000 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 0 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'strong', username: 'strong' }, { id: 'weak', username: 'weak' }]));
@@ -517,9 +554,14 @@ describe('resolveCycle', () => {
     });
 
     test('an empty outgoing roster forfeits the pot instead of paying it to anyone, and still zeroes it out', async () => {
-        // g1 is the current holder but its own roster is now empty (disbanded/opted out);
-        // g2 is the only real entrant this cycle and wins by construction.
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g2', guildName: 'g2-name' }], potPotatoes: 400 });
+        // g1 is the current holder, still opted in, but its own live roster is now empty
+        // (every member toggled autoJoinRaids off); g2 is the only entrant with real
+        // power this cycle and wins by construction.
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 400 });
+        dynamoHandler.getGuilds.mockResolvedValue([
+            { guildId: 'g1', autoJoinSpudKeep: true },
+            { guildId: 'g2', autoJoinSpudKeep: true }
+        ]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 3 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guildId === 'g1' ? guild('g1', []) : guild('g2', [{ id: 'm2', username: 'm2' }]));
@@ -535,10 +577,8 @@ describe('resolveCycle', () => {
     });
 
     test('participation counter is credited to every guild entrant\'s own roster and the Merc Faction\'s counted top-N only', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({
-            guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }],
-            potPotatoes: 0
-        });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
@@ -561,7 +601,8 @@ describe('resolveCycle', () => {
     // dropped `roster` — only this trimmed resolveCycle copy did, which is why the crash
     // was specific to the 4am announcement and never showed up in the live status command.
     test('each returned entrant still carries its own roster, not just the mercenary-only summary fields', async () => {
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }, { id: 'm2', username: 'm2' }]));
@@ -581,7 +622,8 @@ describe('resolveCycle', () => {
         // signed-up guild's own roster size) — so g1 is present here purely to set N=1, its
         // own single member deliberately given 0 power so the Merc Faction (mc1, nonzero
         // power) is the only real contender and wins deterministically at roll 0.
-        dynamoHandler.getStatDatabase.mockResolvedValue({ guildEntrants: [{ guildId: 'g1', guildName: 'g1-name' }], potPotatoes: 0 });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
+        dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue(undefined);
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'g1m1', username: 'g1m1' }]));
