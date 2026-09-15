@@ -622,16 +622,21 @@ describe('Bounty.TIERS ladder shape', () => {
         // comment) — reward+penalty scaled x4.3 to bring maxed Solo Merc back up toward
         // ~75% of Guild Elite's own EV/hour, after live-formula verification found the
         // 2026-09-12 nerf had gone further than the original 3x/7x design intent actually
-        // needed. Live range is now ~0.28-1.04 (computed directly, printed above this
-        // comment during the retune) — this is again a direct, intended consequence of the
-        // buff, not a regression; the band below is deliberately loose (same "wide enough
-        // to only catch a genuine collapse or runaway, not calibrate a shape" reasoning the
-        // prior widening already established) rather than tracking the exact live range.
+        // needed. Live range was ~0.28-1.04 at x4.3.
+        //
+        // Band lowered again same day (seventh retune pass, Bounty.TIERS' own "Sixth pass"
+        // comment) — "instead of the x4.3, lets start with a smaller 2.3," dialing the
+        // buff back to a more conservative starting point off the same fourth-pass base.
+        // Live range is now ~0.15-0.56 (computed directly, printed above this comment
+        // during the retune) — again a direct, intended consequence of the smaller scale,
+        // not a regression; the band below is deliberately loose (same "wide enough to
+        // only catch a genuine collapse or runaway, not calibrate a shape" reasoning the
+        // prior widenings already established) rather than tracking the exact live range.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            expect(ratio).toBeGreaterThan(0.20);
-            expect(ratio).toBeLessThan(1.20);
+            expect(ratio).toBeGreaterThan(0.10);
+            expect(ratio).toBeLessThan(0.65);
         });
     });
 });

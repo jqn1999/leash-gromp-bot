@@ -13100,3 +13100,55 @@ writeup above it, marked as accurate to when it was measured). Chart already ref
 the "extended to power 1000 + Heist-cap what-if" note on the artifact itself, which this change
 turns from a hypothetical into the shipped reality (the dashed "cap→600" lines are now what
 `/rob-npc` actually does).
+
+## Balance: Bounty's ×4.3 buff dialed back to ×2.3 (2026-09-14, same day, direct instruction)
+
+Immediately following the ×4.3 Bounty buff and the `RobNpc` Heist-cap raise above, direct
+instruction: "instead of the x4.3, lets start with a smaller 2.3, and regenerate the raid ev
+chart." The ×4.3 figure had been solved for a specific target (maxed Solo Merc ≈75% of Guild
+Elite at power 600) using the player's own explicitly-stated anchor from the same session — but
+before living with it, the player opted to start from a smaller, more conservative buff instead of
+committing straight to that target.
+
+**Change**: `Bounty.TIERS`' reward AND penalty rescaled to ×2.3 off the SAME 2026-09-12
+fifth-retune base that the ×4.3 pass itself started from — not ×2.3 applied on top of the already-
+shipped ×4.3 numbers (that would have compounded to ×9.89 of the original fifth-pass base, clearly
+not the intent). B1 goes from 18,000 (fifth-pass base) → 41,000 (was 77,000 under ×4.3); B12 goes
+from 10,718,000 → 24,651,000 (was 46,087,000 under ×4.3). Difficulty and the existing 1.0x→2.0x
+penalty:reward ratio are both untouched, same "magnitude-only" shape every prior Bounty retune has
+used — only reward/penalty rescaled, rounded to the nearest 1,000, B12 forced to exactly
+`reward × 2` (independent rounding at that tier's size would land 1,000 potatoes off the exact
+invariant `mercenaryFactory.test.js` locks in — the same rounding quirk every prior pass hit).
+
+**Resulting Solo-Merc-vs-Elite ratios**, re-derived directly from live source: maxed Merc (Rank 6,
+Royal Treasury, Yukon maxed) lands at ≈161% of Elite at power 140 (down from ≈274% under ×4.3),
+≈53% at 300 (was ≈80%), ≈60% at 600 (was ≈75%, the ×4.3 pass' own target) — noticeably more
+conservative than the ×4.3 anchor across the board, an intended consequence of choosing the
+smaller starting scale, not a miscalibration. Rank 5/Noble's Vault correspondingly lands at ≈35%
+of Elite at power 600 (was ≈47%).
+
+**Tests**: `mercenaryFactory.test.js`'s "reward sits within a bounded band of ~30% of a realistic
+guild's total reward" test — the ×4.3 pass had widened this band to (0.20, 1.20) to fit its own
+~28-104% live range; re-measuring against the new ×2.3 values found a lower ~15-56% range, so the
+band was tightened back down to (0.10, 0.65) to match (still deliberately loose — "wide enough to
+catch a genuine collapse or runaway, not to calibrate a shape," the same philosophy every prior
+widening/narrowing of this band has used). Full suite: **1658/1658** across 89 suites.
+
+**Chart**: the "Raid EV Curves" artifact was regenerated end to end against the new live values
+(Version 14). While regenerating, also retired the chart's two dashed "Heist-cap what-if" lines
+(`merc600`/`r5nv600`) — those existed to preview what Merc's EV would look like if
+`RobNpc.MAX_REWARD_MULTIPLIER` were raised from its then-250 value to 600; since that cap really
+was raised to 600 in the very next same-day change (this file's own entry above), the what-if and
+the real Merc/R5 lines are now numerically identical, so the dashed lines were dropped rather than
+left drawing exactly on top of their solid counterparts. Crossover callouts recomputed against the
+new data: "Elite crosses maxed Solo Merc" moved from ≈202 to ≈171 power, "Legendary overtakes
+maxed Solo Merc" moved from ≈466 to ≈445 — both callouts that depended on Merc's own smaller
+income under the new scale. The "What-if Merc overtakes flat Elite ≈702" / "Real Merc overtakes
+flat Elite ≈952" callout pair was removed outright: under ×2.3, Solo Merc no longer climbs high
+enough to overtake Guild Elite's own flat, saturated ceiling anywhere in the charted power-1000
+range (it only did so briefly under the larger ×4.3 buff).
+
+Docs: `.claude/systems/mercenary-bounties.md`'s Bounty section got a new "Seventh pass" writeup
+alongside the "Sixth pass" ×4.3 entry (both kept — the sixth pass' own numbers are historical
+record of what was tried and superseded, not deleted), and its tier table updated to the new ×2.3
+values.

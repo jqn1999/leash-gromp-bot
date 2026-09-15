@@ -533,22 +533,24 @@ penalty(tier) = round(reward(tier) * ratio(tier) / 1000) * 1000
 
 | Tier | Reward | Penalty | Ratio |
 |---|---|---|---|
-| B1 | 77,000 | -77,000 | 1.00x |
-| B2 | 138,000 | -146,000 | 1.06x |
-| B3 | 241,000 | -284,000 | 1.18x |
-| B4 | 421,000 | -542,000 | 1.29x |
-| B5 | 753,000 | -1,028,000 | 1.37x |
-| B6 | 1,299,000 | -1,892,000 | 1.46x |
-| B7 | 2,253,000 | -3,479,000 | 1.54x |
-| B8 | 3,874,000 | -6,338,000 | 1.64x |
-| B9 | 6,644,000 | -11,477,000 | 1.73x |
-| B10 | 11,378,000 | -20,687,000 | 1.82x |
-| B11 | 19,698,000 | -37,604,000 | 1.91x |
-| B12 | 46,087,000 | -92,174,000 | 2.00x |
+| B1 | 41,000 | -41,000 | 1.00x |
+| B2 | 74,000 | -78,000 | 1.05x |
+| B3 | 129,000 | -152,000 | 1.18x |
+| B4 | 225,000 | -290,000 | 1.29x |
+| B5 | 402,000 | -550,000 | 1.37x |
+| B6 | 695,000 | -1,012,000 | 1.46x |
+| B7 | 1,205,000 | -1,861,000 | 1.54x |
+| B8 | 2,072,000 | -3,390,000 | 1.64x |
+| B9 | 3,553,000 | -6,139,000 | 1.73x |
+| B10 | 6,086,000 | -11,065,000 | 1.82x |
+| B11 | 10,536,000 | -20,114,000 | 1.91x |
+| B12 | 24,651,000 | -49,302,000 | 2.00x |
 
-**Reward/penalty values above reflect the 2026-09-14 sixth-retune buff (×4.3, see that update's own
-section below) — the 2026-09-12 fifth-retune cut (×0.4580) values (B1 18,000 → B12 10,718,000) and
-the original 2026-08-29 third-pass values (B1 39,000 → B12 23,400,000) are both superseded.**
+**Reward/penalty values above reflect the 2026-09-14 seventh-retune dial-back (×2.3, see that
+update's own section below) off the same 2026-09-12 fifth-retune (×0.4580) base — the sixth-retune
+×4.3 values (B1 77,000 → B12 46,087,000), the fifth-retune ×0.4580 values (B1 18,000 → B12
+10,718,000), and the original 2026-08-29 third-pass values (B1 39,000 → B12 23,400,000) are all
+superseded.**
 
 **Reward is completely untouched** — only the loss side moved, so the earlier "~30% of a
 realistic guild's total reward" reward calibration (see the third-pass table above) still
@@ -641,6 +643,27 @@ shape regression band was widened again (now 20%-120%, live range ~28%-104%) —
 maintenance per the fifth pass's own note, not a sign of a new dead zone (the EV-sweep dead-zone
 test itself is unaffected, since a uniform reward/penalty scale can't change success-chance/
 weighting math at all).
+
+**Seventh pass, same day (2026-09-14), direct instruction** ("instead of the x4.3, lets start with
+a smaller 2.3, and regenerate the raid ev chart"). A same-day dial-back before the ×4.3 buff had
+been evaluated against anything beyond its own initial target-fitting exercise — the player opted
+to start more conservative rather than commit immediately to the full 75%-of-Elite anchor above.
+**Change**: every `Bounty.TIERS` reward AND penalty rescaled to ×2.3 off the SAME 2026-09-12
+fifth-retune base (not ×2.3 further off the ×4.3 numbers — i.e. this replaces the sixth pass'
+scale factor rather than compounding on it), same rounding convention (nearest 1,000, B12 forced
+to exactly `reward × 2`). Resulting Solo-Merc-vs-Elite ratios, re-derived directly from live
+source (`raidFactory.js`/`mercenaryFactory.js`, real Elite numbers, not the sixth pass' target-
+fitting reference): maxed Merc ≈161% of Elite at power 140 (down from ≈274% under ×4.3, back in
+line with the ORIGINAL pre-buff-target read of the crossover hump), ≈53% at 300, ≈60% at 600 —
+noticeably below the sixth pass' 75%-at-600 anchor, an accepted, explicit consequence of choosing
+the smaller starting scale rather than a miscalibration. Rank 5/Noble's Vault correspondingly
+lands at ≈35% of Elite at power 600. `mercenaryFactory.test.js`'s ladder-shape band was tightened
+back down to 10%-65% (live range ~15%-56%) to match — this dial-back moves the same direction as
+the original fifth-pass nerf, just less far than the sixth pass' ×4.3 had gone. The "Raid EV
+Curves" chart was regenerated against these live values in the same pass; its own stale
+"Heist-cap what-if" dashed lines (from when `RobNpc.MAX_REWARD_MULTIPLIER` was still 250) were
+also retired, since that cap has since been raised to 600 for real (see `RobNpc`'s own section
+below), collapsing the what-if into the real Merc/R5 lines.
 
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 

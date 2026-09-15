@@ -2617,30 +2617,35 @@ const Bounty = {
     // published EV chart, which turned out to have its own unreproducible Elite-side
     // arithmetic gap — see roadmap.md's own entry for the full derivation): Heist was
     // 56-79% of total Solo Merc income across power 140-600, confirming the "Bounty is
-    // giving a lot less" read. Reward+penalty scaled x4.3 (RobNpc's Heist side left
-    // untouched — a same-day follow-up instruction deferred the RobNpc payout-cap cut
-    // that would otherwise tame the low-power (140-190) overshoot), chosen so a fully
+    // giving a lot less" read. Reward+penalty originally scaled x4.3 (RobNpc's Heist side
+    // left untouched — a same-day follow-up instruction deferred the RobNpc payout-cap
+    // cut that would otherwise tame the low-power (140-190) overshoot), chosen so a fully
     // maxed Rank 6/Royal Treasury/Yukon-maxed player reaches ~75% of Guild Elite's own
     // EV/hour at power 600 — the target the player explicitly anchored on once told the
     // two stated targets (maxed=75%, Rank-5-Noble's-Vault=25%) couldn't both be hit with
     // a single Bounty scale (Rank 5's own reward multiplier vs. Rank 6's fixes their
-    // ratio at ~55%, not the ~33% the two targets implied). Difficulty and the 1.0x-2.0x
-    // penalty:reward ratio are both untouched, same "magnitude-only" shape as the fourth
-    // pass — only reward/penalty scaled, rounded to the nearest 1,000 per this table's
-    // own existing convention.
+    // ratio at ~55%, not the ~33% the two targets implied).
+    //
+    // Sixth pass, same day (2026-09-14), direct instruction — "instead of the x4.3, lets
+    // start with a smaller 2.3" — dials the same fifth-pass buff back to a smaller,
+    // more conservative starting point off the SAME fourth-pass (x0.4580-cut) base rather
+    // than compounding on top of x4.3. Difficulty and the 1.0x-2.0x penalty:reward ratio
+    // remain untouched, same "magnitude-only" shape as every prior pass — only reward/
+    // penalty rescaled, rounded to the nearest 1,000 per this table's own existing
+    // convention.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 77000,    penalty: -77000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 138000,   penalty: -146000 },      // 1.06x
-        { tier: 3,  difficulty: 26,   reward: 241000,   penalty: -284000 },      // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 421000,   penalty: -542000 },      // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 753000,   penalty: -1028000 },     // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 1299000,  penalty: -1892000 },     // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 2253000,  penalty: -3479000 },     // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 3874000,  penalty: -6338000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 6644000,  penalty: -11477000 },    // 1.73x
-        { tier: 10, difficulty: 763,  reward: 11378000, penalty: -20687000 },    // 1.82x
-        { tier: 11, difficulty: 1236, reward: 19698000, penalty: -37604000 },    // 1.91x
-        { tier: 12, difficulty: 2000, reward: 46087000, penalty: -92174000 },    // 2.00x — set to exactly reward*2 (independent nearest-1000 rounding of reward/penalty would've landed 1,000 off that exact invariant)
+        { tier: 1,  difficulty: 10,   reward: 41000,    penalty: -41000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000 },       // 1.05x
+        { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000 },      // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000 },     // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000 },     // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000 },     // 1.73x
+        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000 },    // 2.00x — set to exactly reward*2 (independent nearest-1000 rounding of reward/penalty would've landed it off that exact invariant)
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
