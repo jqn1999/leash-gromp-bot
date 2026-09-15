@@ -13152,3 +13152,23 @@ Docs: `.claude/systems/mercenary-bounties.md`'s Bounty section got a new "Sevent
 alongside the "Sixth pass" ×4.3 entry (both kept — the sixth pass' own numbers are historical
 record of what was tried and superseded, not deleted), and its tier table updated to the new ×2.3
 values.
+
+## Balance: Companion Shop's Legendary/Mythic odds cut a third time (2026-09-14, same day, direct instruction)
+
+Direct instruction: "can we make it so mythic is .01% and legendary is .1% and give rest to
+common." A same-day third pass on `CompanionShop.RARITY_ODDS` — the shop's own launch odds had
+already been cut once the same day (Legendary 8%→1%, Mythic 0.9%→0.1%), this goes one order of
+magnitude further on both.
+
+**Change**: Legendary 1% → 0.1% (-0.9pts), Mythic 0.1% → 0.01% (-0.09pts), the freed 0.99pts
+folded entirely into Common (Rare untouched at 25% across all three passes, same as every prior
+retune). Common lands at 74.89% (cumulative table: `{ common: 0.7489, rare: 0.9989, legendary:
+0.9999, mythic: 1.0 }`).
+
+**Tests**: `companionShopFactory.test.js`'s `rollShopRarity` boundary-walk test reads
+`CompanionShop.RARITY_ODDS` directly off the live constant rather than hardcoding thresholds, so
+it needed zero changes and still passed unmodified. Full suite: **1658/1658** across 89 suites.
+
+Docs: `.claude/systems/companions.md`'s Companion Shop odds table extended with a third "current"
+column; the second-retune 73.9%/1%/0.1% figures kept as a historical column rather than
+overwritten, matching every other multi-pass retune table in this file.

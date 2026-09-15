@@ -876,13 +876,18 @@ const CompanionMarket = {
 // to .1% and legendary to 1%, fold the extra into common") — Legendary 8% -> 1% (-7pts)
 // and Mythic 0.9% -> 0.1% (-0.8pts), the freed 7.8pts folded entirely into Common (Rare
 // left untouched at 25%, same as the first pass above), pushing Common up to 73.9%.
+//
+// Cut a third time, same day (direct instruction: "can we make it so mythic is .01% and
+// legendary is .1% and give rest to common") — Legendary 1% -> 0.1% (-0.9pts) and Mythic
+// 0.1% -> 0.01% (-0.09pts), the freed 0.99pts again folded entirely into Common (Rare
+// still untouched at 25% across all three passes), pushing Common up to 74.89%.
 const CompanionShop = {
     DAILY_SLOT_COUNT: 3,
     WEEKLY_SLOT_COUNT: 6,
     RARITY_ODDS: {
-        [CompanionRarity.COMMON]: 0.739,
-        [CompanionRarity.RARE]: 0.989,
-        [CompanionRarity.LEGENDARY]: 0.999,
+        [CompanionRarity.COMMON]: 0.7489,
+        [CompanionRarity.RARE]: 0.9989,
+        [CompanionRarity.LEGENDARY]: 0.9999,
         [CompanionRarity.MYTHIC]: 1.0
     },
     // "common 2x the floor, rare 5x, legendary 10x, mythic 20x with 20% variance above and
