@@ -13256,3 +13256,69 @@ special case. Full suite: **1675/1675** across 89 suites.
 Docs: `.claude/systems/companions.md`'s Work-Only Companion Leveling Bonus section updated (6 not
 7 work-only companions, Ladybug's move noted) and a new "Bank Pet leveling" section added
 immediately after "Passive-pet leveling," matching that section's own depth/derivation style.
+
+## New feature: Server Activity Channel — website activity posted into Discord (2026-09-16, direct instruction)
+
+Asked: "Is there a way to get website activity tracked in a new channel in the discord? I want to
+be able to admin use a command to set a server activity channel and have it include things like
+website actions users are doing that normally display from the bot to other users like work and
+raids and bounties but not ephemeral commands." Since the website (financial-project) is a
+separate AWS Lambda process, not this bot, the two can't just "call each other" directly —
+presented a plan first: a Discord **webhook** (a channel-specific URL accepting a plain HTTP POST,
+no bot process involved at request time) rather than a bot-side poller watching for web-written
+"event" rows (more latency, more cron load, breaks if the bot's offline). Confirmed before
+building: which actions to include (deposits/withdrawals: yes), and scope ("For now it will be a
+single server wide value but in the future I may want to be able to set multiple for different
+servers for different users" — built as one global doc for now, in a shape that extends to
+per-server/per-user keys later without a migration, not built now).
+
+**Bot side (this repo)**: new `src/commands/moderation/setActivityChannel.js`
+(`/set-activity-channel`), `devOnly: true` + `PermissionFlagsBits.Administrator`, same double-gate
+every other admin command in this codebase already uses. Takes an optional `channel` (Channel
+type — first use of this option type in the whole codebase) and an optional `disable` boolean.
+Creates a Discord webhook in the target channel via `channel.createWebhook(...)`, stores
+`{ channelId, webhookId, webhookUrl }` under a new `"server_activity_channel"` stats-table doc via
+the existing `dynamoHandler.updateStatFields`, and deletes any previously-created webhook first
+(re-pointing or disabling both mean the old one shouldn't linger orphaned in its old channel).
+
+**Scope decided by checking each bot command's own real ephemeral flag** (the website has no
+"ephemeral" concept of its own — every page is private regardless, so this can't be computed
+generically, only hand-picked): Work, Take Bounty, Rob-NPC/Heist, Rob, Start Raid, and (confirmed)
+Bank + Safehouse deposit/withdraw are all genuinely public `deferReply()`s on the bot side.
+`/companion-shop` was the concrete example of a genuinely ephemeral command staying excluded.
+Every `onLoad*`-style read action on the web page is excluded outright (not an "action" at all).
+
+**Web side (financial-project, separate repo)**: `postServerActivity(message)` added to all three
+relevant Lambda `handler.ts` files (`gromp-economy`, `gromp-mercenary`, `gromp-guilds`) — mirrored,
+not shared, matching that port's own established per-file duplication convention. Reads
+`server_activity_channel`'s `webhookUrl` via each file's own existing `getStatDoc` helper (already
+reading other stats docs like `economy`/`spud_keep_cooldown_buff` from the same cross-region
+table) and `fetch()`s it directly — no new AWS infrastructure needed, these Lambdas already have
+plain outbound internet access (no VPC). Wired in at each handler's own switch-statement tail
+(after the real action's `result.success` is known, before the final `return`), gated by `action`,
+so only the 7 signed-off actions post — everything else (shop, regrade, coinflip, betting, guild
+management, account linking, etc.) is untouched. `doBank`'s own success return needed a small
+addition (`bankAction`, `netAmount` — previously computed internally but never exposed past the
+function) since nothing else already carried that; every other action's existing return shape
+already had everything needed (`doWork`'s `encounterType`/`amount`, `doRob`'s
+`outcome`/`amount`/`targetUsername`, `doTakeBounty`'s `won`/`rewardAmount`/`penaltyAmount`/
+`currency`, `doRobNpc`'s `won`/`amount`/`penaltyAmount`/`tierLabel`, both Safehouse actions'
+`allocations`, `doStartRaid`'s `won`/`potatoDelta`). Every `postServerActivity` call is wrapped in
+its own try/catch that only logs — a missing/deleted webhook or a Discord outage must never fail
+or slow the real game action being reported on.
+
+**Message format**: plain content strings (not rich embeds), prefixed `🌐` and suffixed "— via the
+website" so they read as visibly distinct from a real Discord command's own result at a glance —
+deliberately simpler than replicating every nuance of the bot's own per-scenario embeds.
+
+**Tests**: `src/commands/moderation/__tests__/setActivityChannel.test.js` (new, 9 cases) covers
+the bot-side command end to end — rejection with neither `channel` nor `disable`, setting a new
+channel, replacing an existing webhook, a missing old webhook not blocking a new set, `disable:
+true` (with and without a prior webhook), a channel that can't be fetched, a non-text channel, and
+a webhook-creation failure. Full suite: **1684/1684** across 90 suites. The web-side
+`postServerActivity` additions were verified via `tsc --noEmit` type-checking of each touched
+`handler.ts` only — financial-project has no equivalent Jest harness for its Lambda handlers.
+
+Docs: new `.claude/systems/server-activity-channel.md` (the full architecture/scope/format
+derivation); financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry
+on that side.
