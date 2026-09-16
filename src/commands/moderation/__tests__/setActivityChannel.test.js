@@ -7,7 +7,7 @@ jest.mock('../../../utils/dynamoHandler');
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { callback } = require('../setActivityChannel');
 
-function fakeInteraction({ channelId, disable } = {}) {
+function fakeInteraction({ channelId, disable, type } = {}) {
     return {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
@@ -16,6 +16,7 @@ function fakeInteraction({ channelId, disable } = {}) {
             get: (name) => {
                 if (name === 'channel' && channelId !== undefined) return { value: channelId };
                 if (name === 'disable' && disable !== undefined) return { value: disable };
+                if (name === 'type' && type !== undefined) return { value: type };
                 return undefined;
             },
         },
@@ -144,5 +145,81 @@ describe('/set-activity-channel', () => {
 
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/couldn't create a webhook/i));
         expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
+    });
+
+    describe('type: "big" (Big Events channel)', () => {
+        test('sets a new big events channel under its own trackingId/webhook name', async () => {
+            const interaction = fakeInteraction({ channelId: 'chan-1', type: 'big' });
+            const client = fakeClient();
+
+            await callback(client, interaction);
+
+            expect(dynamoHandler.getStatDatabase).toHaveBeenCalledWith('server_big_events_channel');
+            expect(client.channels.fetch).toHaveBeenCalledWith('chan-1');
+            expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('server_big_events_channel', {
+                channelId: 'chan-1',
+                webhookId: 'wh-new',
+                webhookUrl: 'https://discord.com/api/webhooks/wh-new/token',
+            });
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('<#chan-1>'));
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/golden potatoes/i));
+        });
+
+        test('creates the webhook with the "Gromp Big Events" name', async () => {
+            const interaction = fakeInteraction({ channelId: 'chan-1', type: 'big' });
+            const client = fakeClient();
+
+            await callback(client, interaction);
+
+            const channel = await client.channels.fetch.mock.results[0].value;
+            expect(channel.createWebhook).toHaveBeenCalledWith(expect.objectContaining({ name: 'Gromp Big Events' }));
+        });
+
+        test('does not touch the normal activity channel config when setting the big events channel', async () => {
+            const interaction = fakeInteraction({ channelId: 'chan-1', type: 'big' });
+            const client = fakeClient();
+
+            await callback(client, interaction);
+
+            expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalledWith('server_activity_channel');
+            expect(dynamoHandler.updateStatFields).not.toHaveBeenCalledWith('server_activity_channel', expect.anything());
+        });
+
+        test('deletes the previously-configured big events webhook before creating a new one', async () => {
+            dynamoHandler.getStatDatabase.mockResolvedValue({ channelId: 'chan-old', webhookId: 'wh-old', webhookUrl: 'https://old' });
+            const oldWebhook = { delete: jest.fn().mockResolvedValue() };
+            const interaction = fakeInteraction({ channelId: 'chan-new', type: 'big' });
+            const client = fakeClient({ fetchWebhookResult: oldWebhook });
+
+            await callback(client, interaction);
+
+            expect(client.fetchWebhook).toHaveBeenCalledWith('wh-old');
+            expect(oldWebhook.delete).toHaveBeenCalled();
+            expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('server_big_events_channel', expect.objectContaining({ channelId: 'chan-new' }));
+        });
+
+        test('disable:true clears the big events config and deletes its webhook', async () => {
+            dynamoHandler.getStatDatabase.mockResolvedValue({ channelId: 'chan-old', webhookId: 'wh-old', webhookUrl: 'https://old' });
+            const oldWebhook = { delete: jest.fn().mockResolvedValue() };
+            const interaction = fakeInteraction({ disable: true, type: 'big' });
+            const client = fakeClient({ fetchWebhookResult: oldWebhook });
+
+            await callback(client, interaction);
+
+            expect(oldWebhook.delete).toHaveBeenCalled();
+            expect(client.channels.fetch).not.toHaveBeenCalled();
+            expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('server_big_events_channel', { channelId: null, webhookId: null, webhookUrl: null });
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/big events channel disabled/i));
+        });
+
+        test('omitting type defaults to the normal channel, not big events', async () => {
+            const interaction = fakeInteraction({ channelId: 'chan-1' });
+            const client = fakeClient();
+
+            await callback(client, interaction);
+
+            expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('server_activity_channel', expect.objectContaining({ channelId: 'chan-1' }));
+            expect(dynamoHandler.updateStatFields).not.toHaveBeenCalledWith('server_big_events_channel', expect.anything());
+        });
     });
 });

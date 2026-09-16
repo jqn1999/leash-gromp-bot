@@ -17,25 +17,49 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 // webhook's URL is stored in the SAME stats table this bot already exposes cross-region to
 // financial-project's Lambdas (see NOTES_GROMP_WEB_INTEGRATION.md) — see
 // systems/server-activity-channel.md for the full read-side (web) half of this feature.
-const TRACKING_ID = "server_activity_channel";
-const WEBHOOK_NAME = "Gromp Server Activity";
+//
+// Big Events Channel (same day, direct instruction — "I also want to add a more fun version
+// of this which is another channel for bigger events... with a more colorful obvious embed
+// color and message") — a SECOND, independently-configurable channel/webhook for standout
+// moments (Golden Potato, Metal kill, Ancient Potato, and a successful Raid/Bounty/Heist
+// that had under a 30% chance to win). Same command, same flow, just a second `type` this
+// command can target — one shared TRACKING_IDS map rather than a second near-duplicate
+// command file.
+const TRACKING_IDS = {
+    normal: "server_activity_channel",
+    big: "server_big_events_channel",
+};
+const WEBHOOK_NAMES = {
+    normal: "Gromp Server Activity",
+    big: "Gromp Big Events",
+};
 
 module.exports = {
     name: "set-activity-channel",
-    description: "Set (or clear) the channel website activity (work/raids/bounties/bank/etc.) gets posted to",
+    description: "Set (or clear) a channel website activity gets posted to (normal, or big/rare events)",
     devOnly: true,
     deleted: false,
     permissionsRequired: [PermissionFlagsBits.Administrator],
     options: [
         {
+            name: 'type',
+            description: 'Which channel to configure — defaults to the normal activity channel',
+            required: false,
+            type: ApplicationCommandOptionType.String,
+            choices: [
+                { name: 'Normal activity (work/raids/bounties/bank/etc.)', value: 'normal' },
+                { name: 'Big/rare events (Golden Potato, Metal kills, Ancient Potatoes, long-shot wins)', value: 'big' },
+            ],
+        },
+        {
             name: 'channel',
-            description: 'The channel to post website activity into — omit along with disable:true to clear it',
+            description: 'The channel to post into — omit along with disable:true to clear it',
             required: false,
             type: ApplicationCommandOptionType.Channel,
         },
         {
             name: 'disable',
-            description: 'Turn off the server activity channel entirely (deletes the webhook)',
+            description: 'Turn off this channel entirely (deletes its webhook)',
             required: false,
             type: ApplicationCommandOptionType.Boolean,
         }
@@ -43,28 +67,32 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
+        const type = interaction.options.get('type')?.value ?? 'normal';
         const channelId = interaction.options.get('channel')?.value;
         const disable = interaction.options.get('disable')?.value ?? false;
+        const trackingId = TRACKING_IDS[type];
+        const webhookName = WEBHOOK_NAMES[type];
+        const label = type === 'big' ? 'Big events' : 'Server activity';
 
         if (!disable && !channelId) {
-            interaction.editReply(`Pass \`channel\` to set the activity channel, or \`disable: true\` to turn it off.`);
+            interaction.editReply(`Pass \`channel\` to set the ${label.toLowerCase()} channel, or \`disable: true\` to turn it off.`);
             return;
         }
 
         // Clean up any previously-created webhook regardless of which branch runs below —
         // re-pointing to a new channel or disabling both mean the old one should stop
         // existing rather than being silently orphaned in its old channel forever.
-        const existing = await dynamoHandler.getStatDatabase(TRACKING_ID);
+        const existing = await dynamoHandler.getStatDatabase(trackingId);
         if (existing?.webhookId) {
             const oldWebhook = await client.fetchWebhook(existing.webhookId).catch(() => null);
             if (oldWebhook) {
-                await oldWebhook.delete('Server activity channel changed via /set-activity-channel').catch(() => {});
+                await oldWebhook.delete('Activity channel changed via /set-activity-channel').catch(() => {});
             }
         }
 
         if (disable) {
-            await dynamoHandler.updateStatFields(TRACKING_ID, { channelId: null, webhookId: null, webhookUrl: null });
-            interaction.editReply(`Server activity channel disabled — website activity will no longer be posted anywhere.`);
+            await dynamoHandler.updateStatFields(trackingId, { channelId: null, webhookId: null, webhookUrl: null });
+            interaction.editReply(`${label} channel disabled — nothing will post there anymore.`);
             return;
         }
 
@@ -77,21 +105,23 @@ module.exports = {
         let webhook;
         try {
             webhook = await channel.createWebhook({
-                name: WEBHOOK_NAME,
-                reason: `Server activity channel set via /set-activity-channel by ${interaction.user.tag}`,
+                name: webhookName,
+                reason: `${label} channel set via /set-activity-channel by ${interaction.user.tag}`,
             });
         } catch (err) {
-            console.error('Failed to create server activity webhook:', err);
+            console.error('Failed to create activity webhook:', err);
             interaction.editReply(`Couldn't create a webhook in <#${channelId}> — I likely need Manage Webhooks permission there.`);
             return;
         }
 
-        await dynamoHandler.updateStatFields(TRACKING_ID, {
+        await dynamoHandler.updateStatFields(trackingId, {
             channelId,
             webhookId: webhook.id,
             webhookUrl: webhook.url,
         });
 
-        interaction.editReply(`Server activity channel set to <#${channelId}> — website Work/Bounty/Heist/Raid/Rob/Bank/Safehouse activity will start posting there.`);
+        interaction.editReply(type === 'big'
+            ? `Big events channel set to <#${channelId}> — Golden Potatoes, Metal kills, Ancient Potatoes, and long-shot Raid/Bounty/Heist wins will post there.`
+            : `Server activity channel set to <#${channelId}> — website Work/Bounty/Heist/Raid/Rob/Bank/Safehouse activity will start posting there.`);
     }
 }

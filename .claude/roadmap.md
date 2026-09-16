@@ -13333,3 +13333,69 @@ handler.ts` now calls its own existing atomic `addStatField('work', 'workCount'/
 hook above was just added, gated on `action === 'work' && result.success`. No bot-side code
 changed — see financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` "#37" entry for the full
 derivation.
+
+## Server Activity Channel: embeds + new Big Events channel (2026-09-16, same day, direct instruction)
+
+Two follow-up requests on the Server Activity Channel feature above, same session, same day.
+First, a question: "Is each activity a little embed that will post to the channel" — no, it was a
+plain `{content: message}` webhook POST, confirmed by reading `postServerActivity` directly rather
+than guessing. Then two asks in one message: "Can we choose some neutral color for embeds for
+normal events I also want to add a more fun version of this which is another channel for bigger
+events like golden potatoes, metal kills, ancient potatoes, things like < 30% chances to win
+raid/bounties/rob npc and such that succeeded with a more colorful obvious embed color and
+message."
+
+**Normal channel → real embeds.** `postServerActivity` in all three Lambda `handler.ts` files
+(`gromp-economy`, `gromp-mercenary`, `gromp-guilds`) now posts `{ embeds: [{ description: message,
+color: 0x99AAB5 }] }` instead of plain `content` — Greyple, Discord's own built-in "neutral" role
+color, chosen specifically so it reads as calm background chatter next to the new channel's loud
+gold. Message wording/prefix (`🌐`, "— via the website") unchanged.
+
+**New Big Events channel, one Gold color for every subtype.** A second, independently-configurable
+channel/webhook — same `/set-activity-channel` command, extended with a `type` option
+(`normal`/`big`, default `normal`) rather than a second near-duplicate command file. `type: 'big'`
+targets a separate stats-table doc (`server_big_events_channel`, webhook named "Gromp Big Events")
+through the same create/delete/disable flow the normal channel already used, via two parallel
+`TRACKING_IDS`/`WEBHOOK_NAMES` maps keyed by `type` in `setActivityChannel.js` — configuring one
+channel never touches the other's stored config (covered explicitly by a new test case). Went with
+a single Gold (`0xFFD700`) color for every Big Events post rather than a color per event subtype —
+the request said "a more colorful **obvious** embed color," singular, so which subtype fired is
+carried by message text/emoji (`✨` for work, `🔥` for a long-shot win) not by hue; flagged this
+reading to the player rather than deciding it silently.
+
+**Triggers**, wired into each Lambda's existing post-`result.success` dispatch block, right after
+the existing normal-activity post:
+- `gromp-economy`: `doWork`'s `encounterType` is `golden`, `metalSuccess`, `ancient`, or
+  `goldenYam`. `goldenYam` wasn't named verbatim by the player, but per `constants.js` it shares
+  Golden Potato's exact 0.1% base encounter chance (`BASE_SCENARIO_CHANCE.goldenYam` sits right
+  next to `.golden`) — equally rare, so it was folded into the same tier rather than left out;
+  flagged this addition rather than deciding it silently. Its message unit is "starches" not
+  "potatoes" (goldenYam pays out `starches`, not `potatoes`, in `doWork`'s own return) — got this
+  right up front rather than copying the normal-channel message's "potatoes" wording blind, which
+  would have been silently wrong for this one scenario.
+- `gromp-mercenary`: a **won** `doTakeBounty` or `doRobNpc` call whose own `successChance` (already
+  present on both functions' result objects — zero signature changes needed, confirmed by reading
+  the code) is under 30% (`BIG_EVENT_WIN_CHANCE_THRESHOLD = 0.30`).
+- `gromp-guilds`: a **won** `doStartRaid` call whose `successChance` (already spread through from
+  `resolveRaid`/`resolveStatRaid`/`resolveBabyRaid` into `doStartRaid`'s own `{ success: true,
+  ...result, cinderrootFound }` return — again zero signature changes needed) is under 30%.
+- **`/rob` (player-vs-player robbery) is deliberately excluded** from Big Events even though it's
+  part of the normal channel's own trigger set — the player's wording named "raid/bounties/rob
+  npc" specifically, not `/rob`; kept that scope boundary explicit rather than assuming it was an
+  oversight to "complete."
+
+**Bot side**: `setActivityChannel.js` fully rewritten around the `TRACKING_IDS`/`WEBHOOK_NAMES`
+maps described above; its reply messages now name which channel (`Big events`/`Server activity`)
+was set/disabled. **Tests**: `setActivityChannel.test.js` gained 6 new cases under a `type: "big"`
+describe block (set-new-channel under its own trackingId/webhook name, webhook-name check, config
+isolation from the normal channel, replacing an existing big-events webhook, `disable: true`, and
+confirming an omitted `type` still defaults to `normal`) — **15/15** in that file, full suite
+**1690/1690** across 90 suites. `node -c` clean on `setActivityChannel.js` before running tests.
+
+**Web side**: all three touched `handler.ts` files verified via `tsc --noEmit` type-checking only
+(financial-project has no Jest harness for its Lambda handlers, same as the base feature above) —
+zero new errors in any of the three.
+
+Docs: `.claude/systems/server-activity-channel.md` updated in place (new "Two channels" section,
+message-format/testing sections revised for embeds); financial-project's own
+`NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry on that side.
