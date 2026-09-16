@@ -425,9 +425,10 @@ function resolveTowerCompanionAward(userDetails) {
 // (a ROSTER definition, e.g. from getActiveCompanion/getCompanionById, not an owned instance)
 // carries at least one perk type from CompanionLeveling.ACCELERANT_PERK_TYPES, i.e. it has a
 // second leveling path beyond ordinary /work through /rob, /sell-starch, /regrade,
-// /confront-rival, or passive ticking (see levelActiveCompanion's own restrictToPerkType gate
-// and applyPassiveCompanionTick below, which check these same perk types). Guards against a
-// missing companion/perks array the same defensive way getActivePerkValue does.
+// /confront-rival, or passive/bank ticking (see levelActiveCompanion's own restrictToPerkType
+// gate and applyPassiveCompanionTick/applyBankCompanionTick below, which check these same
+// perk types). Guards against a missing companion/perks array the same defensive way
+// getActivePerkValue does.
 function hasAccelerantPerk(companion) {
     return (companion?.perks ?? []).some(p => CompanionLeveling.ACCELERANT_PERK_TYPES.includes(p.type));
 }
@@ -591,6 +592,51 @@ function applyPassiveCompanionTick(companions, tickSeconds) {
     const leveledOwned = companions.owned.map(o =>
         o.instanceId === activeInstanceId
             ? { ...o, workCount: clampWorkCountGain(o.workCount, workCountGained), passiveLevelAccumulatorSeconds: accumulator, lastUsedAt: now }
+            : o
+    );
+    return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
+}
+
+// Bank Pet leveling (2026-09-16, direct instruction — see CompanionLeveling.
+// BANK_LEVEL_SECONDS_PER_WORK_COUNT's own comment in constants.js for the full design
+// derivation). Same tickSeconds-accumulator shape as applyPassiveCompanionTick immediately
+// above — a separate function/field rather than folding into that one, since the gating
+// perk (bankCapacityPercent, not passiveIncomePercent) and the per-tick contribution
+// (tickSeconds SCALED by fillRatio, not the flat tickSeconds passive pets use) both differ.
+// `fillRatio` is computed entirely by the caller (dynamoHandler.passivePotatoHandler, which
+// already has this user's post-tick bankStored and Main Safehouse capacity on hand) — this
+// function stays agnostic of bank/safehouse mechanics entirely, same "given raw already-
+// computed inputs" shape every other companion XP-grant function in this file already uses
+// (getTowerWorkCountGrant, getStarchSellWorkCountGrant, etc.), and avoids a companionFactory
+// -> safehouseFactory require that isn't needed anywhere else in this file.
+function applyBankCompanionTick(companions, tickSeconds, fillRatio) {
+    const activeInstanceId = companions?.active;
+    if (!activeInstanceId) {
+        return companions;
+    }
+    const activeEntry = (companions.owned ?? []).find(c => c.instanceId === activeInstanceId);
+    const activeCompanion = activeEntry ? getCompanionById(activeEntry.id) : null;
+    const hasBankPerk = activeCompanion?.perks?.some(p => p.type === "bankCapacityPercent") ?? false;
+    if (!hasBankPerk) {
+        return companions;
+    }
+
+    // Below the floor, this tick contributes nothing at all (not even a partial-second
+    // trickle into the accumulator) — a near-empty bank isn't meaningfully "banking"
+    // behavior worth tracking toward a future grant.
+    const effectiveFillRatio = fillRatio < CompanionLeveling.BANK_LEVEL_MIN_FILL_RATIO ? 0 : Math.min(1, fillRatio);
+
+    let accumulator = (activeEntry.bankLevelAccumulatorSeconds || 0) + tickSeconds * effectiveFillRatio;
+    let workCountGained = 0;
+    while (accumulator >= CompanionLeveling.BANK_LEVEL_SECONDS_PER_WORK_COUNT) {
+        workCountGained += 1;
+        accumulator -= CompanionLeveling.BANK_LEVEL_SECONDS_PER_WORK_COUNT;
+    }
+
+    const now = Date.now();
+    const leveledOwned = companions.owned.map(o =>
+        o.instanceId === activeInstanceId
+            ? { ...o, workCount: clampWorkCountGain(o.workCount, workCountGained), bankLevelAccumulatorSeconds: accumulator, lastUsedAt: now }
             : o
     );
     return applyMaxLevelTracking({ ...companions, owned: leveledOwned }, activeInstanceId);
@@ -940,6 +986,7 @@ module.exports = {
     levelActiveCompanion,
     getAppliedCompanionXpGain,
     applyPassiveCompanionTick,
+    applyBankCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     getRivalConfrontationWorkCountGrant,

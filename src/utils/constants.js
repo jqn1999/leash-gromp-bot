@@ -1154,7 +1154,12 @@ const CompanionLeveling = {
         // leveling path (Tower runs, see TOWER_WORK_COUNT_PER_FLOOR/PER_ELITE_SURVIVED below
         // and companionFactory.getTowerWorkCountGrant), same reasoning bountyRewardPercent
         // would need here too if Yukon didn't already qualify via robChanceFlat.
-        "towerRewardBonus"
+        "towerRewardBonus",
+        // Bank Pet (2026-09-16, direct instruction) — bankCapacityPercent (Ladybug, the only
+        // companion still carrying it after Mole/Elder Rootbeard were rebalanced off it) gets
+        // both a real second leveling path (BANK_LEVEL_SECONDS_PER_WORK_COUNT below) AND this
+        // 2x work-grant multiplier, same as every other accelerant perk.
+        "bankCapacityPercent"
     ],
     WORK_ONLY_LEVELING_MULTIPLIER: 2,
     // Tower Pet leveling grant (2026-09-13, direct instruction: "it should level with tower
@@ -1167,7 +1172,42 @@ const CompanionLeveling = {
     // with how long a Yukon-perk companion takes to max via Bounty/Heist grinding. See
     // companionFactory.getTowerWorkCountGrant.
     TOWER_WORK_COUNT_PER_FLOOR: 3,
-    TOWER_WORK_COUNT_PER_ELITE_SURVIVED: 15
+    TOWER_WORK_COUNT_PER_ELITE_SURVIVED: 15,
+    // Bank Pet leveling (2026-09-16, direct instruction — planned out, then locked in across
+    // a short design exchange: linear fill-ratio, 10% floor, Main-Safehouse-only fill %).
+    // bankCapacityPercent's sole carrier (Ladybug) previously had zero second leveling path
+    // (not even in ACCELERANT_PERK_TYPES until this same change) — this grants workCount off
+    // how FULL the player's bank is, ticked from the same 5-minute passivePotatoHandler loop
+    // passiveIncomePercent already uses (see PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT above),
+    // via the same tickSeconds-accumulator pattern (companionFactory.applyBankCompanionTick,
+    // its own new `bankLevelAccumulatorSeconds` field).
+    //
+    // Chose fill RATIO over an absolute "XP per million banked" alternative: potato balances
+    // span orders of magnitude across a maxed-rebirth veteran vs. a fresh player, so any fixed
+    // absolute threshold either trivializes leveling for the veteran or is meaningless for the
+    // newcomer. A ratio self-normalizes — 80% full is 80% full at any capacity. Deliberately
+    // scoped to MAIN SAFEHOUSE'S OWN fill % only (safehouseFactory.getMainSafehouseCapacity /
+    // userDetails.bankStored), never the pooled Safehouse total — direct instruction: "for
+    // mercs only use main safehouse % since that's essentially their 'bank', which would
+    // match for people in guilds with just their personal bank as well." A numbered
+    // safehouse's own balance never factors in, so a mercenary who's stashed money away in
+    // Safehouse #1-6 isn't penalized OR rewarded for it here — Main Safehouse is the one
+    // account every player (mercenary or not) actually has, so this stays one formula, no
+    // mercenary-vs-non-mercenary branch needed.
+    //
+    // At 100% fill, rate matches passiveIncomePercent's own 450s/workCount exactly — parity,
+    // not a strictly-better or strictly-worse passive path. Below 100% the effective seconds-
+    // per-tick scale DOWN linearly with fill ratio (accumulator grows slower, not the required
+    // total), floored at BANK_LEVEL_MIN_FILL_RATIO (10%) below which a tick contributes
+    // nothing at all — a near-empty bank isn't meaningfully "banking" behavior worth a
+    // token drip. getMainSafehouseCapacity already returns Infinity once the bankCapacity
+    // regrade is fully maxed (every other caller already treats that as a normal, never-
+    // binding upper bound) — dividing by Infinity would silently zero this mechanic out for
+    // the most-progressed players, the opposite of intent, so applyBankCompanionTick's own
+    // caller (dynamoHandler.passivePotatoHandler) special-cases a maxed capacity as fill
+    // ratio 1.0 rather than computing bankStored/Infinity.
+    BANK_LEVEL_SECONDS_PER_WORK_COUNT: 450,
+    BANK_LEVEL_MIN_FILL_RATIO: 0.10
 }
 
 // Companion Hunt (2026-09-08, direct instruction — "a command a user can use to scavenge

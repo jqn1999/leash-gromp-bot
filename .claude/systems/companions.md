@@ -319,16 +319,19 @@ workCount }`) — mirrors `getActivePerkValue`'s own lookup idiom. Takes a back 
   marginal, single-attempt investment of the confrontation itself. Unconditional on win/loss.
 
 **Work-Only Companion Leveling Bonus (2026-09-11, direct instruction)** — every companion
-above that carries one of the five accelerant-eligible perk types (`robChanceFlat`,
+above that carries one of the accelerant-eligible perk types (`robChanceFlat`,
 `starchSellBonusPercent`, `regradeChanceBoostPercent`, `rivalSuccessChanceFlat`,
-`passiveIncomePercent`) gets a second leveling path on top of ordinary `/work`. 7 of the 15
-roster companions carry NONE of these — Sprout, Fieldmouse, Ladybug, Guinea Pig, Prospector,
-Firefly, Spudsprite — and only ever level through `/work`, at the same flat baseline every
-other companion also gets from `/work` alone, leaving them stuck slower overall purely
-because of which perk they happen to carry (player-reported, framed around Guinea Pig/
-Prospector specifically — their perks, poison protection and better special-encounter odds,
-are exactly the kind you'd want equipped WHILE actively grinding, unlike Companion
-Scavenging's own perk-agnostic leveling path, which only works on a benched companion).
+`passiveIncomePercent`, `towerRewardBonus`, `bankCapacityPercent`) gets a second leveling path
+on top of ordinary `/work`. 6 of the 15 roster companions carry NONE of these — Sprout,
+Fieldmouse, Guinea Pig, Prospector, Firefly, Spudsprite — and only ever level through `/work`,
+at the same flat baseline every other companion also gets from `/work` alone, leaving them
+stuck slower overall purely because of which perk they happen to carry (player-reported,
+framed around Guinea Pig/Prospector specifically — their perks, poison protection and better
+special-encounter odds, are exactly the kind you'd want equipped WHILE actively grinding,
+unlike Companion Scavenging's own perk-agnostic leveling path, which only works on a benched
+companion). Ladybug moved OUT of this list 2026-09-16 when `bankCapacityPercent` joined
+`ACCELERANT_PERK_TYPES` alongside Bank Pet leveling (see below) — it now has both the 2x
+work-grant multiplier AND a dedicated tick, same bundle Bastion got from Tower Pet.
 Fixed by doubling `/work`'s own baseline grant (1 → `CompanionLeveling.
 WORK_ONLY_LEVELING_MULTIPLIER`, 2) while one of these 7 is the active/equipped companion — no
 other action's grant changes, and no companion outside this list of 7 is affected.
@@ -427,6 +430,49 @@ level (1-10) via `CompanionLeveling.THRESHOLDS`, the exact same shape/lookup pat
 `guildBuffFactory.getGuildLevel` already uses off `RaidLevel.THRESHOLDS`. Levels climb slowly on
 purpose — full details and the actual threshold table are on the roadmap entry (see
 [roadmap.md](../roadmap.md)).
+
+**Bank Pet leveling (2026-09-16, direct instruction, planned out then locked in across a short
+design exchange)** — `bankCapacityPercent` (Ladybug, the only current carrier after Mole/Elder
+Rootbeard were rebalanced off it) had zero second leveling path at all before this — not even the
+Work-Only 2x multiplier above, since `bankCapacityPercent` wasn't in `ACCELERANT_PERK_TYPES`
+either. Fixed with two changes together: `bankCapacityPercent` joined
+`ACCELERANT_PERK_TYPES` (the 2x work-grant multiplier), AND it gets a genuine second path,
+`companionFactory.applyBankCompanionTick(companions, tickSeconds, fillRatio)` — same
+tickSeconds-accumulator shape as `applyPassiveCompanionTick` above (its own new
+`bankLevelAccumulatorSeconds` field), additive on top of ordinary action-based leveling, ticked
+from the same `passivePotatoHandler` 5-minute loop.
+
+The grant scales with how FULL the player's Main Safehouse is, not a flat per-tick amount and
+not an absolute "XP per million banked" — a fixed absolute threshold would either trivialize
+leveling for a heavily-rebirthed veteran's huge balance or be meaningless for a fresh player's
+tiny one, while a fill ratio self-normalizes (80% full is 80% full at any capacity). Deliberately
+**Main Safehouse's own fill % only** — never the pooled Safehouse total across numbered houses —
+per direct instruction: "for mercs only use main safehouse % since that's essentially their
+'bank', which would match for people in guilds with just their personal bank as well." One
+formula, no mercenary-vs-non-mercenary branch: everyone's Main Safehouse is the same
+`bankStored`/`bankCapacity` pair either way, a numbered safehouse balance never factors in.
+
+At 100% fill, the rate matches `passiveIncomePercent`'s own 450s/workCount exactly (parity, not
+a strictly-better or -worse passive path); below 100% the effective seconds-per-tick scale down
+**linearly** with fill ratio (`CompanionLeveling.BANK_LEVEL_SECONDS_PER_WORK_COUNT`, still 450 —
+the accumulator grows slower, not the required total). Floored at
+`CompanionLeveling.BANK_LEVEL_MIN_FILL_RATIO` (10%): below that, a tick contributes 0 seconds to
+the accumulator outright (not a token trickle) — a near-empty bank isn't meaningfully "banking"
+behavior worth tracking toward a future grant. `bankLevelAccumulatorSeconds` and `lastUsedAt`
+still update every tick the perk matches regardless (same "still being used" convention the
+passive tick already sets), even on a below-floor tick where nothing else moved.
+
+`getMainSafehouseCapacity` already returns `Infinity` once the bank-capacity regrade is fully
+maxed (every other caller already treats that as a normal, never-binding upper bound) —
+dividing `bankStored` by `Infinity` would silently zero this mechanic out for the MOST
+progressed players, the opposite of intent. Fixed by special-casing a maxed regrade as fill
+ratio **1.0** (always "100% full") rather than ever computing the ratio in that case. The fill
+ratio itself is computed inline in `dynamoHandler.passivePotatoHandler` (mirroring
+`safehouseFactory.getMainSafehouseCapacity`'s formula defensively with `toNumber`-wrapped reads,
+since this loop's `user` comes from a raw `getUsers()` scan, not `findUser`'s self-healed path)
+rather than calling that function directly, keeping `companionFactory.js` itself agnostic of
+bank/safehouse mechanics — same "given raw already-computed inputs" shape every other companion
+XP-grant function in that file already uses.
 
 **What a level grants**: `companionFactory.getLevelMultiplier(level)` = `1 + (level-1) *
 CompanionLeveling.PERK_BONUS_PER_LEVEL` (5% per level, so level 10 = 1.45x). `getActivePerkValue` —

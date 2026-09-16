@@ -13198,3 +13198,61 @@ unmodified. Full suite: **1660/1660** across 89 suites.
 
 Docs: `.claude/systems/safehouses.md`'s withdraw-allocation bullet updated to describe the new
 numbered-first, Main-Safehouse-last priority instead of a flat random order across every house.
+
+## New feature: Bank Pet leveling for bankCapacityPercent (Ladybug) (2026-09-16, planned then implemented, direct instruction)
+
+Asked to "plan out the pet bank and how it could gain xp besides work," with two candidate
+formula shapes floated: XP per million banked (absolute amount), or a fill-ratio-based rate (100%
+bank capacity = some amount/5min, 50% = less, etc.). Investigated first: `bankCapacityPercent` is
+carried by exactly one roster companion today (Ladybug — Mole and Elder Rootbeard were rebalanced
+off it in an earlier pass), and it wasn't even in `ACCELERANT_PERK_TYPES`, so it had ZERO second
+leveling path at all — the same class of gap Tower Pet/passive-pet leveling already closed for
+`towerRewardBonus`/`passiveIncomePercent`.
+
+**Plan presented, then locked in across a short exchange**: recommended fill-ratio over absolute-
+amount (potato balances span orders of magnitude across the game's own economic range — a fixed
+threshold either trivializes leveling for a rebirthed veteran or is meaningless for a newcomer,
+while a ratio self-normalizes), linear scaling (vs. discrete tiers), and flagged the
+`getMainSafehouseCapacity` `Infinity`-once-maxed edge case as a required special case (dividing by
+Infinity would silently zero the mechanic out for the most-progressed players). Direct answers to
+the three open questions: "It can have the 2x work multi with it" (bankCapacityPercent joins
+`ACCELERANT_PERK_TYPES` too), "Linear is fine," "10% floor is good," and "For mercs only use main
+safehouse % since that's essentially their 'bank', which would match for people in guilds with
+just their personal bank as well" (pooled Safehouse total across numbered houses explicitly
+rejected — Main Safehouse only, one formula for everyone).
+
+**Implementation**:
+- `constants.js` — `bankCapacityPercent` added to `ACCELERANT_PERK_TYPES`; new
+  `CompanionLeveling.BANK_LEVEL_SECONDS_PER_WORK_COUNT` (450, matching
+  `PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT` exactly — parity with the passive-pet path at 100% fill,
+  not strictly better or worse) and `BANK_LEVEL_MIN_FILL_RATIO` (0.10).
+- `companionFactory.js` — new `applyBankCompanionTick(companions, tickSeconds, fillRatio)`, same
+  tickSeconds-accumulator shape as `applyPassiveCompanionTick` (its own new
+  `bankLevelAccumulatorSeconds` field per owned instance), gated on `bankCapacityPercent` instead
+  of `passiveIncomePercent`. Below `BANK_LEVEL_MIN_FILL_RATIO`, `effectiveFillRatio` is forced to
+  0 (the tick contributes nothing to the accumulator) rather than a token trickle; above 1 it's
+  clamped to 1 defensively (should never happen from a real caller). `hasAccelerantPerk`'s own
+  `ACCELERANT_PERK_TYPES`-membership lookup needed zero changes to pick up the new perk type.
+- `dynamoHandler.js` — `passivePotatoHandler`'s existing per-user 5-minute loop now also computes
+  `bankFillRatio` inline (mirroring `getMainSafehouseCapacity`'s formula with `toNumber`-defended
+  reads, since this loop's `user` comes from a raw `getUsers()` scan rather than `findUser`'s
+  self-healed path — every other field in this function already defends the same way) and calls
+  `applyBankCompanionTick` chained after `applyPassiveCompanionTick` on the same `updatedCompanions`
+  variable (composable: each only touches the active companion when its own gating perk matches).
+  A maxed bank-capacity regrade (`regrades.bankCapacity.regradeAmount >= REGRADE_CAPS.bankCapacity`)
+  forces fill ratio to exactly 1.0 rather than computing `bankStored / Infinity`. `REGRADE_CAPS`
+  added to this file's existing constants destructure.
+
+**Tests**: `companionFactory.test.js` gained a full `applyBankCompanionTick` describe block (no-op
+cases, 100%-fill parity with the passive rate, partial-fill scaling, the 10% floor — both at and
+just below it, clamping above 1, zero-drift over many ticks, independence from the passive
+accumulator field, leaving other instances untouched, composing with action-based leveling); the
+existing `WORK_ONLY_IDS` regression list moved Ladybug out (now 6 companions, not 7) and
+`ACCELERATED_IDS` gained it. `dynamoHandler.test.js` gained a `passivePotatoHandler Bank Pet
+leveling` describe block covering a 100%-fill grant, a 50%-fill partial accumulation, the below-
+floor case (still writes for `lastUsedAt`, grants nothing), and the maxed-regrade-forces-100%
+special case. Full suite: **1675/1675** across 89 suites.
+
+Docs: `.claude/systems/companions.md`'s Work-Only Companion Leveling Bonus section updated (6 not
+7 work-only companions, Ladybug's move noted) and a new "Bank Pet leveling" section added
+immediately after "Passive-pet leveling," matching that section's own depth/derivation style.

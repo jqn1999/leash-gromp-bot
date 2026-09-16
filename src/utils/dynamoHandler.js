@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent, REGRADE_CAPS } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -935,11 +935,30 @@ const passivePotatoHandler = async function (timesInADay) {
             activeTotalEarnings.push(userTotalEarnings);
         }
 
+        // Bank Pet leveling (CompanionLeveling.BANK_LEVEL_SECONDS_PER_WORK_COUNT's own
+        // comment) — Main Safehouse's own fill ratio, mirroring safehouseFactory.
+        // getMainSafehouseCapacity's formula directly rather than calling it, since this
+        // loop's `user` comes from the raw getUsers() scan (not findUser's self-healed
+        // path) and every other field read in this function already defends with toNumber
+        // for exactly that reason. A maxed bank-capacity regrade reads as fill ratio 1.0,
+        // never bankStored/Infinity (which every other Infinity-capacity caller can treat
+        // as "never-binding" safely, but a ratio would silently zero out instead).
+        const isBankCapacityMaxed = toNumber(user.regrades?.bankCapacity?.regradeAmount) >= REGRADE_CAPS.bankCapacity;
+        const mainSafehouseCapacity = isBankCapacityMaxed
+            ? Infinity
+            : Math.round(toNumber(user.bankCapacity) * (1 + companionFactory.getActivePerkValue(user, "bankCapacityPercent") + rebirthPercent));
+        const bankFillRatio = mainSafehouseCapacity === Infinity
+            ? 1
+            : (mainSafehouseCapacity > 0 ? Math.min(1, userBankStored / mainSafehouseCapacity) : 0);
+
         // A separate, conditional write — a no-op (same reference back) for the vast
-        // majority of users who either have nothing equipped or have a non-passive
+        // majority of users who either have nothing equipped or have a non-passive/non-bank
         // companion active, so this never touches updateBankStoredPotatoesAndTotalEarnings's
-        // own well-tested write shape above.
-        const updatedCompanions = companionFactory.applyPassiveCompanionTick(user.companions, tickSeconds);
+        // own well-tested write shape above. Chained (not two separate writes) since a
+        // single companion could in principle carry both gating perks — each function only
+        // touches the active companion when ITS OWN perk matches, so composing them is safe.
+        let updatedCompanions = companionFactory.applyPassiveCompanionTick(user.companions, tickSeconds);
+        updatedCompanions = companionFactory.applyBankCompanionTick(updatedCompanions, tickSeconds, bankFillRatio);
         if (updatedCompanions !== user.companions) {
             await updateUserFields(user.userId, { companions: updatedCompanions });
         }

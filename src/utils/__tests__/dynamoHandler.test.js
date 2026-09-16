@@ -1197,6 +1197,96 @@ describe('passivePotatoHandler passive-pet leveling', () => {
     });
 });
 
+// Bank Pet leveling (2026-09-16) — companionFactory.applyBankCompanionTick ticked once per
+// user per 5-minute cycle for whoever has a bankCapacityPercent companion equipped (Ladybug,
+// the only current carrier). The fill ratio is computed inline in passivePotatoHandler itself
+// (mirroring safehouseFactory.getMainSafehouseCapacity's formula defensively, since this loop
+// reads raw getUsers() records rather than findUser's self-healed ones).
+describe('passivePotatoHandler Bank Pet leveling', () => {
+    test('a live Ladybug (bankCapacityPercent) at 100% fill gains workCount via a second write', async () => {
+        // Ladybug's own +12% perk applies to the ACTIVE companion's bank capacity too —
+        // capacity = round(1000 * 1.12) = 1120, matched exactly by bankStored below.
+        const user = {
+            userId: 'u1', passiveAmount: 0, bankStored: 1120, bankCapacity: 1000, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            regrades: { bankCapacity: { regradeAmount: 0 } },
+            companions: { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10, bankLevelAccumulatorSeconds: 300 }], active: 'ladybug-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        expect(docClient.update).toHaveBeenCalledTimes(3);
+        const [companionsParams] = docClient.update.mock.calls[1];
+        const updatedCompanions = companionsParams.ExpressionAttributeValues[':s0'];
+        // 300 (existing accumulator) + 300*1.0 (this tick, 100% fill) = 600 >= 450 -> +1, 150 remainder.
+        expect(updatedCompanions.owned[0].workCount).toBe(11);
+        expect(updatedCompanions.owned[0].bankLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('a half-full bank only accumulates half the tick toward the grant', async () => {
+        const user = {
+            userId: 'u1', passiveAmount: 0, bankStored: 560, bankCapacity: 1000, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            regrades: { bankCapacity: { regradeAmount: 0 } },
+            companions: { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 }], active: 'ladybug-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const [companionsParams] = docClient.update.mock.calls[1];
+        const updatedCompanions = companionsParams.ExpressionAttributeValues[':s0'];
+        // 560 / 1120 = 0.5 fill ratio -> 300 * 0.5 = 150s accumulated, no grant yet.
+        expect(updatedCompanions.owned[0].workCount).toBe(10);
+        expect(updatedCompanions.owned[0].bankLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('a near-empty bank below the 10% floor still writes (lastUsedAt), but grants nothing', async () => {
+        const user = {
+            userId: 'u1', passiveAmount: 0, bankStored: 50, bankCapacity: 1000, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            regrades: { bankCapacity: { regradeAmount: 0 } },
+            companions: { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10, bankLevelAccumulatorSeconds: 200 }], active: 'ladybug-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        // 50 / 1120 ≈ 4.5% fill, below BANK_LEVEL_MIN_FILL_RATIO (10%) -> this tick
+        // contributes 0 seconds, so the accumulator stays exactly where it was — but a write
+        // still happens (lastUsedAt refreshes every tick the perk matches, same convention
+        // applyPassiveCompanionTick already uses, regardless of whether anything else moved).
+        expect(docClient.update).toHaveBeenCalledTimes(3);
+        const [companionsParams] = docClient.update.mock.calls[1];
+        const updatedCompanions = companionsParams.ExpressionAttributeValues[':s0'];
+        expect(updatedCompanions.owned[0].workCount).toBe(10);
+        expect(updatedCompanions.owned[0].bankLevelAccumulatorSeconds).toBe(200);
+    });
+
+    test('a fully-maxed bank-capacity regrade counts as 100% fill regardless of bankStored', async () => {
+        const user = {
+            userId: 'u1', passiveAmount: 0, bankStored: 0, bankCapacity: 1000, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1,
+            regrades: { bankCapacity: { regradeAmount: 103000000000 } }, // REGRADE_CAPS.bankCapacity
+            companions: { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 }], active: 'ladybug-a' }
+        };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const [companionsParams] = docClient.update.mock.calls[1];
+        const updatedCompanions = companionsParams.ExpressionAttributeValues[':s0'];
+        // A maxed regrade forces fill ratio 1.0 (never bankStored/Infinity), so the full
+        // 300s tick counts even though bankStored itself is 0.
+        expect(updatedCompanions.owned[0].bankLevelAccumulatorSeconds).toBe(300);
+    });
+});
+
 // Mercenary Leaderboard (2026-08-31) — live full-scan + sort, exact mirror of
 // getSortedGuildsByLevelAndRaidCount's own shape. Filtered to mercenaryBountyWinCount > 0
 // (not isMercenary === true) since /retire-mercenary leaves the win count untouched while

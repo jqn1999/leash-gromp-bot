@@ -28,6 +28,7 @@ const {
     levelActiveCompanion,
     getAppliedCompanionXpGain,
     applyPassiveCompanionTick,
+    applyBankCompanionTick,
     getStarchSellWorkCountGrant,
     getRegradeWorkCountGrant,
     getRivalConfrontationWorkCountGrant,
@@ -1144,14 +1145,17 @@ describe('levelActiveCompanion', () => {
 
 // Work-Only Companion Leveling Bonus (2026-09-11, direct instruction) — companions with NO
 // accelerant-eligible perk (robChanceFlat/starchSellBonusPercent/regradeChanceBoostPercent/
-// rivalSuccessChanceFlat/passiveIncomePercent) only ever level through /work, so /work's own
-// grant doubles for exactly those. Classification is by exclusion (perk TYPE membership), not
-// a hardcoded id list — this locks in the full roster classification as a regression test.
+// rivalSuccessChanceFlat/passiveIncomePercent/towerRewardBonus/bankCapacityPercent) only ever
+// level through /work, so /work's own grant doubles for exactly those. Classification is by
+// exclusion (perk TYPE membership), not a hardcoded id list — this locks in the full roster
+// classification as a regression test.
 describe('hasAccelerantPerk / isWorkOnlyCompanion / getWorkLevelingGrant', () => {
-    // The 7 roster companions with no accelerant-eligible perk at all, as of this writing.
-    const WORK_ONLY_IDS = ['sprout', 'fieldmouse', 'ladybug', 'guinea_pig', 'prospector', 'firefly', 'spudsprite'];
+    // The 6 roster companions with no accelerant-eligible perk at all, as of this writing.
+    // Ladybug moved OUT of this list 2026-09-16 (Bank Pet leveling — bankCapacityPercent
+    // joined ACCELERANT_PERK_TYPES).
+    const WORK_ONLY_IDS = ['sprout', 'fieldmouse', 'guinea_pig', 'prospector', 'firefly', 'spudsprite'];
     // A representative sample of accelerated companions — one per accelerant perk type.
-    const ACCELERATED_IDS = ['barn_owl', 'mole', 'elder_rootbeard', 'yukon', 'rootcarver'];
+    const ACCELERATED_IDS = ['barn_owl', 'mole', 'elder_rootbeard', 'yukon', 'rootcarver', 'ladybug'];
 
     test.each(WORK_ONLY_IDS)('%s has no accelerant perk and is classified work-only', (id) => {
         const companion = getCompanionById(id);
@@ -1305,6 +1309,98 @@ describe('applyPassiveCompanionTick', () => {
     test('composes additively with ordinary action-based leveling', () => {
         let companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: 'rootcarver-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
         companions = applyPassiveCompanionTick(companions, 450); // +1 from time equipped
+        companions = levelActiveCompanion(companions, 1);        // +1 from an ordinary /work call
+        expect(companions.owned[0].workCount).toBe(2);
+    });
+});
+
+// Bank Pet leveling (2026-09-16) — same tickSeconds-accumulator shape as
+// applyPassiveCompanionTick above, gated on bankCapacityPercent (Ladybug) instead of
+// passiveIncomePercent, and scaled by the caller-supplied fill ratio rather than a flat tick.
+describe('applyBankCompanionTick', () => {
+    test('is a no-op (same reference back) when nothing is equipped', () => {
+        const companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 0 }], active: null };
+        expect(applyBankCompanionTick(companions, 300, 1)).toBe(companions);
+    });
+
+    test('is a no-op when the active companion does not carry bankCapacityPercent', () => {
+        // Rootcarver carries passiveIncomePercent, not bankCapacityPercent.
+        const companions = { owned: [{ instanceId: 'rootcarver-a', id: 'rootcarver', workCount: 0 }], active: 'rootcarver-a' };
+        expect(applyBankCompanionTick(companions, 300, 1)).toBe(companions);
+    });
+
+    test('grants at the same 450s rate as passive leveling when the bank is 100% full', () => {
+        const companions = {
+            owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10, bankLevelAccumulatorSeconds: 300 }],
+            active: 'ladybug-a'
+        };
+        const result = applyBankCompanionTick(companions, 300, 1); // 300 + 300*1 = 600 >= 450 -> 1 grant, 150 remainder
+        expect(result.owned[0].workCount).toBe(11);
+        expect(result.owned[0].bankLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('accumulates proportionally slower at a partial fill ratio', () => {
+        const companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 }], active: 'ladybug-a' };
+        const result = applyBankCompanionTick(companions, 300, 0.5); // only 150 of 300s counts
+        expect(result.owned[0].workCount).toBe(10);
+        expect(result.owned[0].bankLevelAccumulatorSeconds).toBe(150);
+    });
+
+    test('grants nothing at all below the 10% fill floor, not even a partial accumulation', () => {
+        const companions = {
+            owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10, bankLevelAccumulatorSeconds: 200 }],
+            active: 'ladybug-a'
+        };
+        const result = applyBankCompanionTick(companions, 300, 0.05); // below BANK_LEVEL_MIN_FILL_RATIO (0.10)
+        expect(result.owned[0].workCount).toBe(10);
+        expect(result.owned[0].bankLevelAccumulatorSeconds).toBe(200); // unchanged — this tick contributed 0
+    });
+
+    test('a fill ratio of exactly the 10% floor still counts (floor is exclusive)', () => {
+        const companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 }], active: 'ladybug-a' };
+        const result = applyBankCompanionTick(companions, 300, 0.10);
+        expect(result.owned[0].bankLevelAccumulatorSeconds).toBe(30); // 300 * 0.10
+    });
+
+    test('clamps a fill ratio above 1 down to 1 (defensive, should never happen from a real caller)', () => {
+        const companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 }], active: 'ladybug-a' };
+        const result = applyBankCompanionTick(companions, 300, 1.5);
+        expect(result.owned[0].bankLevelAccumulatorSeconds).toBe(300);
+    });
+
+    test('the 300s tick and 450s grant period compose with zero long-run drift at 100% fill', () => {
+        let companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 0 }], active: 'ladybug-a' };
+        for (let i = 0; i < 30; i++) {
+            companions = applyBankCompanionTick(companions, 300, 1);
+        }
+        expect(companions.owned[0].workCount).toBe(20); // 9,000s / 450s
+    });
+
+    test('does not touch the passive-leveling accumulator field, and vice versa', () => {
+        let companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 0 }], active: 'ladybug-a' };
+        companions = applyPassiveCompanionTick(companions, 300); // no-op — ladybug has no passiveIncomePercent
+        companions = applyBankCompanionTick(companions, 300, 1);
+        expect(companions.owned[0].passiveLevelAccumulatorSeconds).toBeUndefined();
+        expect(companions.owned[0].bankLevelAccumulatorSeconds).toBe(300);
+    });
+
+    test('leaves every other owned instance untouched', () => {
+        const companions = {
+            owned: [
+                { instanceId: 'ladybug-a', id: 'ladybug', workCount: 10 },
+                { instanceId: 'sprout-a', id: 'sprout', workCount: 5 }
+            ],
+            active: 'ladybug-a'
+        };
+        const result = applyBankCompanionTick(companions, 300, 1);
+        expect(result.owned[1]).toEqual({ instanceId: 'sprout-a', id: 'sprout', workCount: 5 });
+    });
+
+    // Ladybug also joined ACCELERANT_PERK_TYPES the same day (bankCapacityPercent) — this
+    // dedicated tick is ADDITIVE on top of that 2x work-grant multiplier, not a replacement.
+    test('composes additively with ordinary action-based leveling', () => {
+        let companions = { owned: [{ instanceId: 'ladybug-a', id: 'ladybug', workCount: 0 }], active: 'ladybug-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+        companions = applyBankCompanionTick(companions, 450, 1); // +1 from a fully-full bank
         companions = levelActiveCompanion(companions, 1);        // +1 from an ordinary /work call
         expect(companions.owned[0].workCount).toBe(2);
     });
