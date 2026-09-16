@@ -13554,3 +13554,58 @@ nothing.
 Docs: `.claude/systems/server-activity-channel.md`'s Big Events trigger list and companion-pull
 call-site list both updated to drop Companion Shop/Hunt, with a note recording that they were
 wired in and then explicitly removed same-day rather than silently never having existed.
+
+## New feature: per-guild command channel allowlist, replacing a hardcoded 5-channel array (2026-09-16, direct instruction)
+
+Started from a player question: "'This channel is not registered to run commands!' — Is this
+message from my bot due to not using a certain command to register the channel or a permissions
+thing?" Traced the exact string to `handleCommands.js`'s own `validChannels` — a literal array of
+5 channel IDs, hardcoded, with no admin command anywhere in the codebase to change it. Neither of
+the player's two guesses: not a missing registration command (none existed) and not a Discord
+permissions check (this ran BEFORE the `permissionsRequired`/`botPermissions` checks, unconditional
+of anyone's role). Follow-up instruction: "make it a per guild admin-configurable setting that
+stores valid channels in the dynamodb or something."
+
+**Flagged before building**: making this per-guild-configurable with "no config = unrestricted"
+(the natural default, matching `/set-activity-channel`'s own "off until configured" convention)
+would silently loosen the bot's own live server from "5 specific channels" to "everywhere" the
+moment this shipped, with no way to know that server's real Discord guild ID from source alone to
+seed it automatically. Asked the player directly (`AskUserQuestion`) rather than picking a default
+unilaterally; they chose to supply the real guild ID (`168379467931058176`) for seeding rather than
+accept the loosened default.
+
+**Storage**: reuses the stats table's existing "single doc per `trackingId`" shape
+(`spud_keep_buff`/`world_buff`/`server_activity_channel`), scoped per Discord server this time —
+`command_channels_<guildId>` storing `{ channelIds: [...] }` — since this is genuinely a
+per-server setting (unlike Server Activity Channel/Big Events, which assume the bot runs in one
+server). Empty/unset = unrestricted.
+
+**New `/set-command-channels`** (`add`/`remove`/`list`/`clear`) — `devOnly: false` +
+`PermissionFlagsBits.Administrator` ONLY, a deliberate departure from `/set-activity-channel`'s
+`devOnly: true` double-gate: the whole point is letting each server's own admins manage their own
+restriction without the bot owner's involvement, so gating it to the hardcoded `devs` list would
+defeat the feature outright.
+
+**Self-lockout exemption**: `/set-command-channels` is exempt from the very restriction it manages
+(checked by command name in `handleCommands.js`). Without this, a server that restricts commands to
+a channel that later gets deleted — or that just never happens to run this command from an
+allowlisted channel — would have no way back in. Found and fixed this during design, before it
+could ship as a real bug.
+
+**Rollout seed**: `src/events/ready/seedCommandChannels.js` (new, in the same auto-loaded
+`events/ready/` folder as `starchEvents.js`/`backgroundEvents.js`) seeds
+`command_channels_168379467931058176` with the previous hardcoded channel IDs, but only if that
+doc doesn't already exist — a genuine no-op after the first real deploy, safe to delete once
+confirmed seeded.
+
+**Tests**: `setCommandChannels.test.js` (new, 12 cases — all 4 actions plus edge cases: duplicate
+add, removing something unlisted, add/remove with no `channel`, clearing a populated list, guild
+scoping). `handleCommands.test.js` (new — this file had **zero** test coverage before) covers the
+channel-restriction gate specifically: unrestricted-by-default, blocks an unlisted channel, allows
+a listed one, the self-lockout exemption, and that a DM interaction stays blocked (matching the old
+hardcoded check's exact behavior, since a DM channel ID could never have matched it either).
+`seedCommandChannels.test.js` (new, 3 cases) covers seed/no-op/error-swallowed. Full suite:
+**1725/1725** across 94 suites. `node -c` clean on every new/touched file.
+
+Docs: new `.claude/systems/command-channels.md` (the full storage/command/gate/rollout
+derivation).

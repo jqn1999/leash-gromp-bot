@@ -144,13 +144,31 @@ module.exports = async (client, interaction) => {
             }
         }
 
-        const validChannels = ['1187561420406136843', '796873375632195605', '1188525931346792498', '1188539987118010408','1203822914437124188'];
-        if (!validChannels.includes(interaction.channel.id)) {
-            interaction.reply({
-                content: 'This channel is not registered to run commands!',
-                ephemeral: true,
-            })
-            return;
+        // Per-guild channel allowlist (2026-09-16, direct instruction — see
+        // setCommandChannels.js's own comment for the full derivation). Replaces the old
+        // hardcoded 5-channel array with a per-Discord-server DynamoDB doc
+        // (`command_channels_<guildId>`) — empty/unset means unrestricted, so a fresh
+        // server (or one that's cleared its allowlist) never needs to be blocked pending
+        // configuration. /set-command-channels itself is exempt by name, so an admin can
+        // always reconfigure it even from a channel that isn't (or isn't yet) allowlisted
+        // — otherwise there'd be no way back in once any channel was ever restricted. DM
+        // interactions (no interaction.guildId) stay blocked, matching this check's exact
+        // prior behavior — a DM channel ID could never have matched the old hardcoded list
+        // either.
+        if (commandObject.name !== 'set-command-channels') {
+            let isAllowedChannel = false;
+            if (interaction.guildId) {
+                const channelConfig = await dynamoHandler.getStatDatabase(`command_channels_${interaction.guildId}`);
+                const allowedChannelIds = Array.isArray(channelConfig?.channelIds) ? channelConfig.channelIds : [];
+                isAllowedChannel = allowedChannelIds.length === 0 || allowedChannelIds.includes(interaction.channel.id);
+            }
+            if (!isAllowedChannel) {
+                interaction.reply({
+                    content: 'This channel is not registered to run commands!',
+                    ephemeral: true,
+                })
+                return;
+            }
         }
 
         const streakResultPromise = processDailyStreak(interaction);
