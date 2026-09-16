@@ -8,6 +8,7 @@ const { QuestFactory } = require("../../utils/questFactory");
 const { GuildContractFactory } = require("../../utils/guildContractFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 const achievementFactory = new AchievementFactory();
@@ -151,6 +152,9 @@ var workScenarios = [
             const companionResult = await workFactory.handleCompanionEncounter(userDetails, forcedCompanionId);
             embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
+            if (bigEventsChannel.isBigEventCompanion(companionResult.companion)) {
+                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** found ${bigEventsChannel.describeCompanion(companionResult.companion)} while working!`);
+            }
             // A companion encounter (new or duplicate) never pays potatoes anymore — a
             // duplicate grants a spare instead (see handleCompanionEncounter) — so this
             // always returns 0 rather than an undefined companionResult.potatoesGained,

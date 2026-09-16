@@ -12,6 +12,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
 const spudKeepFactory = require("../../utils/spudKeepFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 // Cinderroot's sacrifice flavor, looked up once at module load — its roster entry now
 // lives in Companions[] (see guildCompanionFactory.js/constants.js's Guild Companion
@@ -1626,6 +1627,9 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
         const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
         await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, userDisplayName, def)] }).catch(() => {});
+        if (bigEventsChannel.isBigEventCompanion(def)) {
+            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** brought back ${bigEventsChannel.describeCompanion(def)} for **${guildName}**!`);
+        }
     }
 
     // finalNextRaidAvailableAt is set by whichever resolveRaidCooldown call the winning

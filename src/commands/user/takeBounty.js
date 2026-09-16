@@ -13,6 +13,7 @@ const { QuestFactory } = require("../../utils/questFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 const questFactory = new QuestFactory();
 
 // isChainedReply distinguishes the original /take-bounty invocation (edits the deferred
@@ -280,6 +281,10 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     setAttributes.companions = leveledCompanions;
 
     await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
+
+    if (yukonAward && bigEventsChannel.isBigEventCompanion(yukonAward.companion)) {
+        await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** won ${bigEventsChannel.describeCompanion(yukonAward.companion)} off a Bounty!`);
+    }
 
     if (result.won && result.currency === 'potato' && netRewardAmount > 0) {
         await dynamoHandler.updateIfNewRecord(userId, 'largestBountyReward', netRewardAmount);

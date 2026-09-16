@@ -256,7 +256,7 @@ async function attemptPurchaseSlot(userId, username, period, slotIndex, now = ne
         companionShop: updatedCompanionShop
     });
 
-    return { ok: true, message: `you bought ${companion.name} for ${cost.toLocaleString()} ${currencyField}! Use /companion to equip it.` };
+    return { ok: true, message: `you bought ${companion.name} for ${cost.toLocaleString()} ${currencyField}! Use /companion to equip it.`, companion };
 }
 
 module.exports = {

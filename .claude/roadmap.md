@@ -13399,3 +13399,57 @@ zero new errors in any of the three.
 Docs: `.claude/systems/server-activity-channel.md` updated in place (new "Two channels" section,
 message-format/testing sections revised for embeds); financial-project's own
 `NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry on that side.
+
+## Big Events: Mythic+/Yukon/Cinderroot/Bastion companion pulls (2026-09-16, same-day follow-up, direct instruction)
+
+"Can we also add mythic and above companions or the tower/yukon/guild companions to the big
+events." Every prior Big Events trigger only ever fires website-side — that's this whole
+channel's premise. Companion pulls are different: they happen on BOTH the bot (Discord commands)
+and the website, and Tower's own companion (Bastion) has no website equivalent at all (Tower was
+never ported to financial-project). Rather than silently pick a scope, asked the player directly
+(`AskUserQuestion`): should this fire from bot-side Discord commands too, given Tower could
+otherwise never trigger it? Confirmed yes — "Both bot and website."
+
+**Condition** (either qualifies): rarity is Mythic or Heirloom (the two tiers above Legendary), OR
+the companion is one of the three activity-exclusive companions — Yukon (`dropSource: "bounty"`),
+Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity, since
+they're gated behind a specific rare outcome rather than pure RNG.
+
+**Bot side (new architecture — the bot itself now posts to a webhook, not just the website)**: new
+`src/utils/bigEventsChannel.js` — `postBigEvent(message)` fetches `server_big_events_channel`'s
+`webhookUrl` via the existing `dynamoHandler.getStatDatabase` and POSTs a Gold embed directly (no
+Discord client/token needed for a webhook POST), plus shared `isBigEventCompanion(companion)`/
+`describeCompanion(companion)` helpers. Wired into every companion-AWARD call site that's a
+genuine "pull" (not a trade): `work.js`'s Wandering Companion encounter, `takeBounty.js`'s Yukon
+hit, `enter-tower.js`'s Bastion drop, `startRaid.js`'s Cinderroot find, `companionShop.js`'s
+purchase (can roll Mythic; Heirloom is excluded from the shop's own odds entirely), and
+`companionHuntCollect.js`'s expedition result. Deliberately NOT wired into `companionBuy.js`/
+`companionMarket.js` — those move an already-known, already-leveled instance between two players,
+not a lucky roll.
+
+**Web side**: the same condition mirrored inline in each Lambda. `gromp-economy`'s `/work`
+`'companion'` encounter checks rarity only (its `rollCompanion` already excludes dropSource-tagged
+companions, same as the bot). `gromp-mercenary` reads `result.yukonHit` and `gromp-guilds` reads
+`result.cinderrootFound` directly off each action's own final return — both already told you
+whether the special companion was actually awarded, no need to re-derive rarity/dropSource.
+`gromp-companions` needed its `postBigEvent`/`isBigEventCompanion`/`describeCompanion` helpers
+added from scratch (this file had zero Server Activity Channel wiring before now — Companion
+Shop/Hunt were outside the original feature's signed-off scope) and got wired into `doShopBuy` and
+`doCompanionHuntCollect`. No web equivalent exists for Tower, so Bastion can only ever announce
+from the bot side — exactly the gap the player's question above was about.
+
+**Tests**: `src/utils/__tests__/bigEventsChannel.test.js` (new, 12 cases) — `isBigEventCompanion`
+(Mythic/Heirloom true; Common/Legendary-without-dropSource false; Yukon/Cinderroot/Bastion all
+true despite being Legendary), `describeCompanion`'s formatting, and `postBigEvent` (no-op when
+unconfigured, correct payload when configured, swallows a `fetch` failure and a `getStatDatabase`
+failure alike without throwing). Every touched command file's own existing test suite still passes
+unchanged — `dynamoHandler.getStatDatabase` is already mocked everywhere these run, so
+`postBigEvent` resolves as a same-tick no-op under test, nothing to update. Full suite:
+**1702/1702** across 91 suites. `node -c` clean on every touched file. Web side verified via `tsc
+--noEmit` on all four touched `handler.ts` files (`gromp-economy`, `gromp-mercenary`,
+`gromp-guilds`, `gromp-companions`) — zero new errors.
+
+Docs: `.claude/systems/server-activity-channel.md` gained a new "Companion pulls fire from BOTH
+sides" section plus an updated Big Events trigger list and a clarified Scope note (the normal
+channel's `/companion-shop` exclusion is about routine noise, not the separate Big Events
+channel); financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry.

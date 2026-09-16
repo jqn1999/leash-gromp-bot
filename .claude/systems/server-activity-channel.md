@@ -70,10 +70,71 @@ existing normal-activity post):
 - **`/rob` (player-vs-player robbery) is deliberately excluded** from Big Events even though it's
   part of the normal activity channel's trigger set — the player named "raid/bounties/rob npc"
   specifically, not `/rob`.
+- A companion pull that is **Mythic or Heirloom rarity** (the two tiers above Legendary), or that
+  is one of the three **activity-exclusive companions** — Yukon (`dropSource: "bounty"`),
+  Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity. See
+  "Companion pulls fire from BOTH sides" below — this is the one Big Events condition the BOT
+  itself also posts, not just the website.
 
 One single Gold color covers every Big Events subtype (not a color per subtype) — the request was
 "a more colorful **obvious embed color**" (singular), so which kind of big event happened is
 carried by the message text/emoji, not by hue.
+
+## Companion pulls fire from BOTH sides (2026-09-16, same-day follow-up, direct instruction)
+
+"Can we also add mythic and above companions or the tower/yukon/guild companions to the big
+events." Every other Big Events trigger only ever happens website-side (the whole channel's
+original premise), but companion pulls are the one category that happens on **both** the bot
+(Discord commands) and the website — and Tower's companion (Bastion) has **no website
+equivalent at all** (Tower was never ported to financial-project), so restricting this trigger to
+the website would mean it could never fire for Tower. Confirmed with the player before building
+(`AskUserQuestion`) rather than assuming: the bot itself now posts directly to the SAME stored
+webhook URL for this one condition.
+
+**Bot side** — new `src/utils/bigEventsChannel.js`: `postBigEvent(message)` (fetches
+`server_big_events_channel`'s `webhookUrl` via `dynamoHandler.getStatDatabase` and POSTs a Gold
+embed directly, no `client`/token needed — a webhook accepts a plain HTTP POST from anywhere) plus
+`isBigEventCompanion(companion)`/`describeCompanion(companion)` shared by every call site. Wired
+into every companion-AWARD call site that represents a genuine "pull" (not a trade):
+- `work.js` — the Wandering Companion `/work` encounter (`workFactory.handleCompanionEncounter`).
+- `takeBounty.js` — a Yukon hit (`mercenaryFactory.resolveYukonAward`).
+- `enter-tower.js` — a Bastion drop (`companionFactory.resolveTowerCompanionAward`).
+- `startRaid.js` — a Cinderroot find (`guildCompanionFactory.resolveCinderrootAward`).
+- `companionShop.js` — a Companion Shop purchase that happened to roll Mythic (Heirloom is
+  excluded from the shop's own odds table entirely, so only the Mythic half of the condition can
+  ever fire here).
+- `companionHuntCollect.js` — a Companion Hunt expedition result.
+
+**Deliberately NOT wired**: `companionBuy.js`/`companionMarket.js` (`applyCompanionAward` there
+moves an already-known, already-leveled instance between two players — a trade, not a lucky roll,
+nothing to celebrate as a "pull").
+
+**Web side** — the same condition, checked in each Lambda's own dispatch, mirroring the bot's
+`isBigEventCompanion`/`describeCompanion` helpers inline (rarity Mythic/Heirloom, or `dropSource`
+`bounty`/`guildRaid`/`tower`):
+- `gromp-economy`: the `/work` `'companion'` encounter — rarity-only check, since `rollCompanion`
+  excludes dropSource-tagged companions the same way the bot's own roll does, so Yukon/
+  Cinderroot/Bastion can never come out of this path.
+- `gromp-mercenary`: `result.yukonHit` on a won Bounty (the mode's own final return already tells
+  you whether Yukon was actually awarded — no need to re-derive rarity/dropSource).
+- `gromp-guilds`: `result.cinderrootFound` on a won raid (same reasoning).
+- `gromp-companions` (new — this file had **no** Server Activity Channel wiring at all before
+  this, since Companion Shop/Hunt were outside the original feature's signed-off scope): its own
+  `postBigEvent`/`isBigEventCompanion`/`describeCompanion` copies, wired into `doShopBuy` (a
+  Mythic-tier shop purchase) and `doCompanionHuntCollect` (a Mythic+/dropSource-tagged expedition
+  result — though the dropSource half is unreachable here too, same exclusion as the shop). No
+  web equivalent exists for Tower at all, so Bastion can only ever announce from the bot side.
+
+**Tests**: `src/utils/__tests__/bigEventsChannel.test.js` (new, 12 cases) covers
+`isBigEventCompanion` (Mythic/Heirloom true, Common/Legendary-no-dropSource false, Yukon/
+Cinderroot/Bastion all true despite being Legendary), `describeCompanion`'s formatting, and
+`postBigEvent` (no-op when unconfigured, posts the right payload when configured, swallows both a
+`fetch` failure and a `getStatDatabase` failure without throwing). The companion-award call sites
+themselves are exercised indirectly by each command's own existing test suite (no test broke —
+`dynamoHandler.getStatDatabase` is already mocked in every one of them, so `postBigEvent` becomes
+a same-tick no-op under test). Full suite: **1702/1702** across 91 suites. Web-side changes
+verified via `tsc --noEmit` only, same as every other web-side change in this feature — no Jest
+harness exists for financial-project's Lambda handlers.
 
 ## Scope: which actions post, and why "ephemeral" doesn't map 1:1
 
@@ -98,7 +159,11 @@ Checked directly against each bot command's own `deferReply({ ephemeral: ... })`
 worth announcing), `/companion-shop` (genuinely ephemeral on the bot — personal stock, no reason
 for onlookers, per that command's own design), account linking, birthdays, and every other web
 action not explicitly named above (shop tier buys, regrades, coinflip, betting, guild management,
-etc.) — not evaluated one-by-one, left out by default rather than guessed at.
+etc.) — not evaluated one-by-one, left out by default rather than guessed at. This exclusion is
+specifically about the **normal** activity channel's routine "you bought X" noise — a Companion
+Shop pull that happens to roll Mythic still fires into the separate **Big Events** channel (see
+below), same as a `/companion-hunt-collect` expedition result; that channel is opt-in and exists
+precisely for moments worth surfacing regardless of how ephemeral the action itself is.
 
 ## Message format
 

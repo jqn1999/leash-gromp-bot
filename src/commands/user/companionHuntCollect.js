@@ -5,6 +5,7 @@ const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 module.exports = {
     name: "companion-hunt-collect",
@@ -48,6 +49,10 @@ module.exports = {
 
         const embed = embedFactory.createCompanionHuntResultEmbed(userDisplayName, tier, result);
         interaction.editReply({ embeds: [embed] });
+
+        if (result.found && bigEventsChannel.isBigEventCompanion(result.companion)) {
+            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}**'s expedition brought back ${bigEventsChannel.describeCompanion(result.companion)}!`);
+        }
 
         if (result.found) {
             const newlyUnlocked = await achievementFactory.checkAndUnlock({

@@ -5,6 +5,7 @@ const { EmbedBuilder } = require("discord.js")
 const tC = require("../../utils/towerConstants.js");
 const raidFactory = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 // Tower Pet (2026-09-13) — leveling grant + Bastion drop rolls both happen against the SAME
 // freshly re-fetched userDetails processRewardPayouts already reads (not the stale
@@ -182,6 +183,9 @@ module.exports = {
             await interaction.followUp({
                 embeds: [createBastionDropEmbed(bastionAward, userDisplayName)]
             });
+            if (bigEventsChannel.isBigEventCompanion(bastionAward.companion)) {
+                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** earned ${bigEventsChannel.describeCompanion(bastionAward.companion)} in the Tower!`);
+            }
         }
 
         // "Highest floor ever reached" is a broader personal-best than the daily
