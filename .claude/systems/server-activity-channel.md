@@ -221,15 +221,26 @@ files, matching this port's own established per-file duplication convention) wra
 POST in a try/catch that only logs, never throws. An unset channel, a deleted webhook, or a Discord
 outage must never fail or slow down the actual game action being reported on.
 
+## `channel` defaults to the invoking channel (2026-09-16, same-day follow-up, direct instruction)
+
+"Make same channel optional change for the activity channel command" — the same fix
+`/set-command-channels` got the same day (see systems/command-channels.md): Discord's own Channel
+option picker doesn't reliably surface every channel client-side on a large/busy server, so
+`channel` on `/set-activity-channel` is now optional and defaults to `interaction.channel.id`
+(wherever the command was actually run) whenever it's omitted — for either `type`, unless
+`disable: true` is also passed (which never reads `channelId` at all). This retired the old
+"pass `channel` to set the channel, or `disable: true`" rejection entirely, since there's no
+longer a case where neither is available.
+
 ## Testing
 
 `src/commands/moderation/__tests__/setActivityChannel.test.js` covers the bot-side command for
-both `type: 'normal'` (default) and `type: 'big'`: the no-args-and-no-disable rejection, setting a
-channel (webhook created under that type's own trackingId/webhook name, config stored), replacing
-an existing webhook (old one deleted first), a missing old webhook not blocking a new set,
-`disable: true` (webhook deleted, config cleared), a non-existent/non-text channel rejection, a
-webhook-creation failure (likely missing Manage Webhooks) surfaced clearly, and that setting one
-channel's config never touches the other's. The web-side `postServerActivity`/`postBigEvent` calls
-are not covered by this repo's own test suite (financial-project has no equivalent Jest harness for
-its Lambda handlers as of this writing) — verified via direct `tsc` type-checking of each touched
-`handler.ts` only.
+both `type: 'normal'` (default) and `type: 'big'`: defaulting to the invoking channel when
+`channel` is omitted, setting an explicit channel (webhook created under that type's own
+trackingId/webhook name, config stored), replacing an existing webhook (old one deleted first), a
+missing old webhook not blocking a new set, `disable: true` (webhook deleted, config cleared), a
+non-existent/non-text channel rejection, a webhook-creation failure (likely missing Manage
+Webhooks) surfaced clearly, and that setting one channel's config never touches the other's. The
+web-side `postServerActivity`/`postBigEvent` calls are not covered by this repo's own test suite
+(financial-project has no equivalent Jest harness for its Lambda handlers as of this writing) —
+verified via direct `tsc` type-checking of each touched `handler.ts` only.

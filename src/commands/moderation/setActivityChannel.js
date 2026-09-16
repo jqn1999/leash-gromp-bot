@@ -53,7 +53,7 @@ module.exports = {
         },
         {
             name: 'channel',
-            description: 'The channel to post into — omit along with disable:true to clear it',
+            description: 'The channel to post into — defaults to the channel this command is run in; ignored with disable:true',
             required: false,
             type: ApplicationCommandOptionType.Channel,
         },
@@ -68,16 +68,16 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         const type = interaction.options.get('type')?.value ?? 'normal';
-        const channelId = interaction.options.get('channel')?.value;
+        // Defaults to wherever the command was actually run (2026-09-16, same follow-up as
+        // /set-command-channels' own — "make same channel optional change for the activity
+        // channel command"). Discord's own Channel option picker doesn't reliably surface
+        // every channel client-side on a large/busy server — running this FROM the target
+        // channel sidesteps that entirely rather than fighting the picker.
+        const channelId = interaction.options.get('channel')?.value ?? interaction.channel.id;
         const disable = interaction.options.get('disable')?.value ?? false;
         const trackingId = TRACKING_IDS[type];
         const webhookName = WEBHOOK_NAMES[type];
         const label = type === 'big' ? 'Big events' : 'Server activity';
-
-        if (!disable && !channelId) {
-            interaction.editReply(`Pass \`channel\` to set the ${label.toLowerCase()} channel, or \`disable: true\` to turn it off.`);
-            return;
-        }
 
         // Clean up any previously-created webhook regardless of which branch runs below —
         // re-pointing to a new channel or disabling both mean the old one should stop

@@ -7,11 +7,12 @@ jest.mock('../../../utils/dynamoHandler');
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { callback } = require('../setActivityChannel');
 
-function fakeInteraction({ channelId, disable, type } = {}) {
+function fakeInteraction({ channelId, disable, type, currentChannelId = 'current-chan' } = {}) {
     return {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
         user: { id: 'admin-1', tag: 'Admin#0001', username: 'Admin' },
+        channel: { id: currentChannelId },
         options: {
             get: (name) => {
                 if (name === 'channel' && channelId !== undefined) return { value: channelId };
@@ -44,14 +45,15 @@ beforeEach(() => {
 });
 
 describe('/set-activity-channel', () => {
-    test('rejects with neither a channel nor disable:true', async () => {
-        const interaction = fakeInteraction({});
+    test('with no channel and no disable, defaults to the channel the command was run in', async () => {
+        const interaction = fakeInteraction({ currentChannelId: 'chan-here' });
         const client = fakeClient();
 
         await callback(client, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/pass `channel`/i));
-        expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
+        expect(client.channels.fetch).toHaveBeenCalledWith('chan-here');
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('server_activity_channel', expect.objectContaining({ channelId: 'chan-here' }));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('<#chan-here>'));
     });
 
     test('sets a new activity channel and creates a webhook in it', async () => {

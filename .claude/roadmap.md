@@ -13631,3 +13631,25 @@ added — two rewritten). `node -c` clean on `setCommandChannels.js`.
 
 Docs: `.claude/systems/command-channels.md`'s command-actions section and testing bullet updated
 to describe the default-to-current-channel behavior.
+
+## Server Activity Channel: `channel` also defaults to the invoking channel (2026-09-16, same-day follow-up, direct instruction)
+
+"Make same channel optional change for the activity channel command" — applies the exact same fix
+`/set-command-channels` just got to `/set-activity-channel`. `channel` is now optional for either
+`type` (`normal`/`big`) and defaults to `interaction.channel.id` whenever omitted, so an admin can
+just run the command from the channel they want instead of finding it in Discord's own
+not-always-complete Channel picker. `disable: true` is unaffected — that branch never reads
+`channelId` regardless. Retired the old "pass `channel` to set the channel, or `disable: true`"
+rejection entirely, same reasoning as the command-channels version: there's no longer a case where
+neither a channel nor `disable` is available.
+
+**Tests**: the one `setActivityChannel.test.js` case that asserted the old rejection message was
+rewritten to assert the new default-to-invoking-channel behavior instead (`fakeInteraction`
+extended with a `currentChannelId`, defaulted to a value distinct from any explicit `channelId` so
+the two paths can't accidentally pass for the wrong reason) — **15/15** in that file, unchanged
+count (one rewritten, not added). Full suite: **1725/1725** across 94 suites. `node -c` clean on
+`setActivityChannel.js`.
+
+Docs: `.claude/systems/server-activity-channel.md` gained a new section recording this change
+(cross-referencing `command-channels.md`'s identical fix) and its Testing section updated to
+describe the default-to-invoking-channel behavior instead of the retired rejection case.
