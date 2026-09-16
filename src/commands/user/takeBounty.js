@@ -304,6 +304,10 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     const embed = embedFactory.createBountyResultEmbed(userDisplayName, result, yukonAward, netRewardAmount, taxAmount, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
     await sendBountyResult(interaction, embed, isChainedReply);
 
+    if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot Bounty win (${Math.round(result.successChance * 100)}% chance!) and earned ${netRewardAmount.toLocaleString()} ${result.currency}!`);
+    }
+
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);
     if (updatedUserDetails) {
         const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
@@ -400,6 +404,15 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
 
     const embed = embedFactory.createStatBountyResultEmbed(userDisplayName, result, rankInfo, companionXpGained, companionName, cooldownSkipSource, missedSkipChance);
     await sendBountyResult(interaction, embed, isChainedReply);
+
+    // STAT_BOUNTY_SUCCESS_CHANCE is a flat 0.5 today, well above the threshold, so this
+    // never actually fires yet — kept here anyway for symmetry with runBountyAttempt's own
+    // check above (and the website's identical `action === 'takeBounty'` dispatch, which
+    // covers both modes the same way) rather than silently omitting the one Bounty mode
+    // that doesn't currently trigger it.
+    if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot Stat Bounty win (${Math.round(result.successChance * 100)}% chance!)!`);
+    }
 
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);
     if (updatedUserDetails) {

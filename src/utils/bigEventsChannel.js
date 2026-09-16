@@ -2,14 +2,35 @@ const dynamoHandler = require("./dynamoHandler");
 const { CompanionRarity } = require("./constants");
 
 // Big Events Channel (2026-09-16) — bot-side counterpart to financial-project's own
-// postBigEvent (gromp-economy/gromp-mercenary/gromp-guilds' handler.ts). The website
-// Lambdas post directly to the stored webhook for their own triggers (work-encounter type,
-// <30%-chance Raid/Bounty/Heist wins), but companion pulls happen on BOTH sides — and
-// Tower's Bastion has no website equivalent at all (Tower isn't ported there) — so this
-// bot-side helper posts to the exact same webhook URL/stats-table doc directly, the same
-// way the website does: a Discord webhook accepts a plain POST from anywhere, bot process
-// or not, no client/token needed.
+// postBigEvent (gromp-economy/gromp-mercenary/gromp-guilds' handler.ts). Originally
+// website-only for the work-encounter-type/<30%-chance-win triggers (companion pulls were
+// the sole bot-side exception, added the same day — see isBigEventCompanion's own comment).
+// Widened same day, direct instruction ("I also wanted the big events to generally include
+// normal discord bot commands too for the golden and metals and such"): every trigger this
+// channel has is now checked bot-side too, at the real Discord command that produces it,
+// posting to the exact same stored webhook URL/stats-table doc the website Lambdas use — a
+// Discord webhook accepts a plain POST from anywhere, bot process or not, no client/token
+// needed.
 const BIG_EVENT_EMBED_COLOR = 0xFFD700;
+
+// <30%-chance Raid/Bounty/Heist win threshold — shared with financial-project's own
+// BIG_EVENT_WIN_CHANCE_THRESHOLD (gromp-mercenary/gromp-guilds' handler.ts). Kept as one
+// named constant here rather than a bare 0.30 literal at each of the (several) bot-side
+// call sites this now applies to.
+const BIG_EVENT_WIN_CHANCE_THRESHOLD = 0.30;
+
+// /work encounter types that count as a Big Event — mirrors financial-project's own
+// BIG_EVENT_WORK_ENCOUNTERS/BIG_EVENT_WORK_LABELS (gromp-economy/handler.ts) exactly.
+// Golden Yam wasn't named verbatim by the player but shares Golden Potato's exact 0.1%
+// base encounter chance (see constants.js's workScenarios chance table), so it was folded
+// into the same tier there and stays folded in here for consistency.
+const BIG_EVENT_WORK_ENCOUNTERS = new Set(["golden", "metalSuccess", "ancient", "goldenYam"]);
+const BIG_EVENT_WORK_LABELS = {
+    golden: "a Golden Potato",
+    metalSuccess: "a Metal Potato",
+    ancient: "an Ancient Potato",
+    goldenYam: "a Golden Yam",
+};
 
 async function postBigEvent(message) {
     try {
@@ -61,4 +82,11 @@ function describeCompanion(companion) {
     return `${companion.name} (${RARITY_LABEL[companion.rarity] ?? companion.rarity})`;
 }
 
-module.exports = { postBigEvent, isBigEventCompanion, describeCompanion };
+module.exports = {
+    postBigEvent,
+    isBigEventCompanion,
+    describeCompanion,
+    BIG_EVENT_WIN_CHANCE_THRESHOLD,
+    BIG_EVENT_WORK_ENCOUNTERS,
+    BIG_EVENT_WORK_LABELS,
+};

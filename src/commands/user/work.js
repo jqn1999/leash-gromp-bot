@@ -78,6 +78,7 @@ var workScenarios = [
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
+            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working and earned ${potatoesGained.toLocaleString()} potatoes!`);
             return potatoesGained;
         },
         chance: .001,
@@ -114,6 +115,7 @@ var workScenarios = [
                 const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 potatoesGained = metalResult.potatoesGained;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working and earned ${potatoesGained.toLocaleString()} potatoes!`);
             } else {
                 potatoesGained = 0;
 
@@ -179,6 +181,16 @@ var workScenarios = [
             const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
+            // Ancient Potato has 3 mutually-exclusive outcomes (regrade / shop upgrade /
+            // straight potato payout, see handleAncientPotato) — potatoesGained is only
+            // ever nonzero on the third, so the announcement has to branch the same way
+            // the embed already does rather than always quoting a potato amount.
+            const ancientPrize = ancientResult.regradedStatName
+                ? `a free ${ancientResult.regradedStatName} regrade`
+                : ancientResult.shopUpgradedStatName
+                    ? `a free ${ancientResult.shopUpgradedStatName} shop upgrade`
+                    : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
+            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working and got ${ancientPrize}!`);
             return ancientResult.potatoesGained;
         },
         // Halved again 2026-08-29 — direct instruction ("lower ancient potato odds under
@@ -205,6 +217,7 @@ var workScenarios = [
             starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
+            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working and earned ${starchesGained.toLocaleString()} starches!`);
             return starchesGained;
         },
         chance: .1275, // shifted down to match — own slice width unchanged

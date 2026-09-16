@@ -13,6 +13,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
 const questFactory = new QuestFactory();
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 // isChainedReply distinguishes the original /rob-npc invocation (edits the deferred reply)
 // from an auto-chained extra attempt triggered by a cooldown skip (see runNpcRobAttempt
@@ -229,6 +230,10 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
 
     const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
     await sendNpcRobResult(interaction, embed, isChainedReply);
+
+    if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot ${tier.label} Heist (${Math.round(result.successChance * 100)}% chance!) and earned ${result.amount.toLocaleString()} potatoes!`);
+    }
 
     // Achievement check — /rob-npc never had one before at all. Re-fetches (same
     // "don't trust in-memory state after other writes just landed" discipline

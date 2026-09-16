@@ -13453,3 +13453,65 @@ Docs: `.claude/systems/server-activity-channel.md` gained a new "Companion pulls
 sides" section plus an updated Big Events trigger list and a clarified Scope note (the normal
 channel's `/companion-shop` exclusion is about routine noise, not the separate Big Events
 channel); financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry.
+
+## Big Events: every trigger now fires from real Discord commands too (2026-09-16, same-day follow-up, direct instruction)
+
+"I also wanted the big events to generally include normal discord bot commands too for the golden
+and metals and such." The Big Events channel's ORIGINAL two triggers — a `/work` encounter type of
+golden/metalSuccess/ancient/goldenYam, and a successful Bounty/Heist/Raid under a 30% win chance —
+were checked website-side only (companion pulls, added earlier the same day, were already the one
+exception firing bot-side too). This widens both original triggers to the real Discord commands
+that produce them, using `src/utils/bigEventsChannel.js`'s existing `postBigEvent` plus three new
+shared exports: `BIG_EVENT_WIN_CHANCE_THRESHOLD` (0.30), `BIG_EVENT_WORK_ENCOUNTERS`, and
+`BIG_EVENT_WORK_LABELS`.
+
+**`work.js`**: all 4 relevant scenario closures (`GOLDEN`, the success branch of `METAL`,
+`ANCIENT`, `GOLDEN_YAM`) post right after their own `sendWorkResult`. Ancient Potato needed its
+own branch rather than a flat "earned X potatoes" message — `handleAncientPotato` has 3
+mutually-exclusive outcomes (a free regrade, a free shop upgrade, or a straight potato payout;
+`potatoesGained` is only ever nonzero on the third), so the announcement now mirrors the same
+3-way branch the result embed already uses instead of ever quoting a misleading "0 potatoes."
+
+**`takeBounty.js`**: both `runBountyAttempt` (the tiered ladder) and `runStatBounty` check
+`result.won && result.successChance < BIG_EVENT_WIN_CHANCE_THRESHOLD` after their own
+`sendBountyResult`. Stat Bounty's `STAT_BOUNTY_SUCCESS_CHANCE` is a flat 0.5 today, well above the
+threshold, so that check never actually fires yet — kept anyway for symmetry with the website's
+own single `action === 'takeBounty'` dispatch (which already covers both modes identically) and in
+case that odds value is ever rebalanced down.
+
+**`robNpc.js`**: same check after `sendNpcRobResult`, using the picked tier's own `label` and
+`result.amount`.
+
+**`startRaid.js`** needed a genuinely different approach from the other three, worth recording in
+detail: raid resolution is spread across **14 separate scenario closures**
+(regular/elite/legendary × metal-king/T1-T4, plus 2 stat-raid closures), each with its own local
+`successChance`/`successfulRaid`. Unlike `work.js`/`takeBounty.js`/`robNpc.js`, there's no single
+post-resolution point where these values are already available — the file's OWN later
+`wonThisRaid` variable (used by the Cinderroot check added in the previous entry) is deliberately
+RE-DERIVED from a `raidCount` before/after diff specifically because the raw win boolean was never
+threaded out of these closures, so that pattern couldn't be reused here either. Threading a value
+out of 14 near-identical closures meant either changing all 14 return shapes (and all 4 outer
+dispatch call sites consuming them) or unsafe shared module-scope mutable state (would race across
+concurrent raids from different users). Instead: `resolveRaidCooldown(won, successChance)` — a
+REAL per-invocation closure, defined once per `/start-raid` call and already capturing that call's
+own `userDisplayName`/`guildName` — already gets called by name from all 14 scenario closures with
+their own local `successfulRaid` as argument #1. Added `successChance` as an optional/defaulted
+argument #2, and used ONE `replace_all` across the 22 identical
+`resolveRaidCooldown(successfulRaid)` call-site occurrences (some closures call it from both their
+win and loss branches, both reading the same two locals) to also pass it through. The function's
+pre-existing `if (!won) return early` means the value is silently unused whenever a loss branch
+passes it. Net result: the entire trigger lives in ONE function body, zero scenario closures'
+return shapes changed, zero of the 4 dispatch call sites touched.
+
+**`/rob` stays excluded** from every Big Events trigger, bot and web alike, consistent with the
+original scope decision.
+
+**Tests**: `bigEventsChannel.test.js` grew from 12 to 15 cases, adding coverage for the three new
+exports (threshold value, the encounter set's exact membership with no `regular`/`metalFailure`
+leakage, every encounter having a label). Full suite: **1705/1705** across 91 suites, including all
+8 `startRaid*.test.js` files that exercise `resolveRaidCooldown` heavily — none broke, confirming
+the added optional parameter is fully backward compatible. `node -c` clean on every touched file.
+
+Docs: `.claude/systems/server-activity-channel.md`'s "Companion pulls fire from BOTH sides"
+section renamed/expanded to "Every Big Events trigger fires from BOTH sides," covering both
+same-day follow-ups together and recording the `startRaid.js` design reasoning above in full.

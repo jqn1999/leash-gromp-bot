@@ -4,7 +4,14 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { postBigEvent, isBigEventCompanion, describeCompanion } = require('../bigEventsChannel');
+const {
+    postBigEvent,
+    isBigEventCompanion,
+    describeCompanion,
+    BIG_EVENT_WIN_CHANCE_THRESHOLD,
+    BIG_EVENT_WORK_ENCOUNTERS,
+    BIG_EVENT_WORK_LABELS,
+} = require('../bigEventsChannel');
 
 const mythic = { id: 'mochi', name: 'Mochi', rarity: 'mythic' };
 const heirloom = { id: 'yamimic', name: 'Yamimic, the Thousand-Faced', rarity: 'heirloom' };
@@ -46,6 +53,28 @@ describe('describeCompanion', () => {
         expect(describeCompanion(mythic)).toBe('Mochi (Mythic)');
         expect(describeCompanion(heirloom)).toBe('Yamimic, the Thousand-Faced (Heirloom)');
         expect(describeCompanion(yukon)).toBe('Yukon, the Highwayman (Legendary)');
+    });
+});
+
+// Widened same day (direct instruction — "I also wanted the big events to generally
+// include normal discord bot commands too for the golden and metals and such") to also
+// cover real Discord commands, not just the website — see work.js/takeBounty.js/
+// robNpc.js/startRaid.js's own call sites. These constants are what those files share.
+describe('BIG_EVENT_WIN_CHANCE_THRESHOLD / BIG_EVENT_WORK_ENCOUNTERS / BIG_EVENT_WORK_LABELS', () => {
+    test('win-chance threshold is 30%, matching financial-project\'s own constant', () => {
+        expect(BIG_EVENT_WIN_CHANCE_THRESHOLD).toBe(0.30);
+    });
+
+    test('encounter set covers exactly golden/metalSuccess/ancient/goldenYam', () => {
+        expect([...BIG_EVENT_WORK_ENCOUNTERS].sort()).toEqual(['ancient', 'golden', 'goldenYam', 'metalSuccess'].sort());
+        expect(BIG_EVENT_WORK_ENCOUNTERS.has('regular')).toBe(false);
+        expect(BIG_EVENT_WORK_ENCOUNTERS.has('metalFailure')).toBe(false);
+    });
+
+    test('every encounter in the set has a matching label', () => {
+        for (const type of BIG_EVENT_WORK_ENCOUNTERS) {
+            expect(typeof BIG_EVENT_WORK_LABELS[type]).toBe('string');
+        }
     });
 });
 

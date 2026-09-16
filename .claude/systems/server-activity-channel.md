@@ -54,8 +54,9 @@ Both channels share the exact same webhook-create/delete/disable flow in `setAct
 (`TRACKING_IDS`/`WEBHOOK_NAMES` maps keyed by `type`) — configuring one never touches the other's
 stored config.
 
-**Big Events triggers** (checked web-side, in each Lambda's own action dispatch, right after the
-existing normal-activity post):
+**Big Events triggers** (checked in each Lambda's own action dispatch on the website, right after
+the existing normal-activity post, AND at the real Discord command on the bot — see "Every Big
+Events trigger fires from BOTH sides" below for the bot-side half):
 
 - `doWork` encounter type is `golden` (Golden Potato), `metalSuccess` (Metal Potato kill),
   `ancient` (Ancient Potato), or `goldenYam` (Golden Yam — not named verbatim by the player, but
@@ -72,30 +73,36 @@ existing normal-activity post):
   specifically, not `/rob`.
 - A companion pull that is **Mythic or Heirloom rarity** (the two tiers above Legendary), or that
   is one of the three **activity-exclusive companions** — Yukon (`dropSource: "bounty"`),
-  Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity. See
-  "Companion pulls fire from BOTH sides" below — this is the one Big Events condition the BOT
-  itself also posts, not just the website.
+  Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity.
 
 One single Gold color covers every Big Events subtype (not a color per subtype) — the request was
 "a more colorful **obvious embed color**" (singular), so which kind of big event happened is
 carried by the message text/emoji, not by hue.
 
-## Companion pulls fire from BOTH sides (2026-09-16, same-day follow-up, direct instruction)
+## Every Big Events trigger fires from BOTH sides (2026-09-16, two same-day follow-ups, direct instructions)
 
-"Can we also add mythic and above companions or the tower/yukon/guild companions to the big
-events." Every other Big Events trigger only ever happens website-side (the whole channel's
-original premise), but companion pulls are the one category that happens on **both** the bot
-(Discord commands) and the website — and Tower's companion (Bastion) has **no website
-equivalent at all** (Tower was never ported to financial-project), so restricting this trigger to
-the website would mean it could never fire for Tower. Confirmed with the player before building
-(`AskUserQuestion`) rather than assuming: the bot itself now posts directly to the SAME stored
-webhook URL for this one condition.
+Two follow-up requests, same day, that together mean this channel is no longer website-only:
 
-**Bot side** — new `src/utils/bigEventsChannel.js`: `postBigEvent(message)` (fetches
-`server_big_events_channel`'s `webhookUrl` via `dynamoHandler.getStatDatabase` and POSTs a Gold
-embed directly, no `client`/token needed — a webhook accepts a plain HTTP POST from anywhere) plus
-`isBigEventCompanion(companion)`/`describeCompanion(companion)` shared by every call site. Wired
-into every companion-AWARD call site that represents a genuine "pull" (not a trade):
+1. "Can we also add mythic and above companions or the tower/yukon/guild companions to the big
+   events." Companion pulls happen on both the bot (Discord commands) and the website — and
+   Tower's companion (Bastion) has **no website equivalent at all** (Tower was never ported to
+   financial-project), so a website-only trigger could never fire for it. Confirmed scope with the
+   player before building (`AskUserQuestion`) rather than assuming.
+2. "I also wanted the big events to generally include normal discord bot commands too for the
+   golden and metals and such." Widens this further: the ORIGINAL two Big Events conditions
+   (work-encounter type, <30%-chance win) were checked website-side only — now every real Discord
+   command that can produce one of these outcomes checks it too, posting to the exact same stored
+   webhook.
+
+**Bot side** — `src/utils/bigEventsChannel.js` (new for the companion-pull follow-up, extended for
+the second): `postBigEvent(message)` (fetches `server_big_events_channel`'s `webhookUrl` via
+`dynamoHandler.getStatDatabase` and POSTs a Gold embed directly, no `client`/token needed — a
+webhook accepts a plain HTTP POST from anywhere) plus shared helpers/constants every call site
+below uses: `isBigEventCompanion`/`describeCompanion` (companion pulls),
+`BIG_EVENT_WIN_CHANCE_THRESHOLD = 0.30` (long-shot wins), `BIG_EVENT_WORK_ENCOUNTERS`/
+`BIG_EVENT_WORK_LABELS` (golden/metalSuccess/ancient/goldenYam).
+
+Companion-pull call sites (a genuine "pull," not a trade):
 - `work.js` — the Wandering Companion `/work` encounter (`workFactory.handleCompanionEncounter`).
 - `takeBounty.js` — a Yukon hit (`mercenaryFactory.resolveYukonAward`).
 - `enter-tower.js` — a Bastion drop (`companionFactory.resolveTowerCompanionAward`).
@@ -109,32 +116,54 @@ into every companion-AWARD call site that represents a genuine "pull" (not a tra
 moves an already-known, already-leveled instance between two players — a trade, not a lucky roll,
 nothing to celebrate as a "pull").
 
-**Web side** — the same condition, checked in each Lambda's own dispatch, mirroring the bot's
-`isBigEventCompanion`/`describeCompanion` helpers inline (rarity Mythic/Heirloom, or `dropSource`
-`bounty`/`guildRaid`/`tower`):
-- `gromp-economy`: the `/work` `'companion'` encounter — rarity-only check, since `rollCompanion`
-  excludes dropSource-tagged companions the same way the bot's own roll does, so Yukon/
-  Cinderroot/Bastion can never come out of this path.
-- `gromp-mercenary`: `result.yukonHit` on a won Bounty (the mode's own final return already tells
-  you whether Yukon was actually awarded — no need to re-derive rarity/dropSource).
-- `gromp-guilds`: `result.cinderrootFound` on a won raid (same reasoning).
-- `gromp-companions` (new — this file had **no** Server Activity Channel wiring at all before
-  this, since Companion Shop/Hunt were outside the original feature's signed-off scope): its own
-  `postBigEvent`/`isBigEventCompanion`/`describeCompanion` copies, wired into `doShopBuy` (a
-  Mythic-tier shop purchase) and `doCompanionHuntCollect` (a Mythic+/dropSource-tagged expedition
-  result — though the dropSource half is unreachable here too, same exclusion as the shop). No
-  web equivalent exists for Tower at all, so Bastion can only ever announce from the bot side.
+Work-encounter-type / long-shot-win call sites (the second follow-up):
+- `work.js` — all 4 relevant scenario closures (`GOLDEN`, the success branch of `METAL`,
+  `ANCIENT`, `GOLDEN_YAM`) post right after their own `sendWorkResult`. Ancient Potato has 3
+  mutually-exclusive outcomes (regrade / shop upgrade / straight potato payout — see
+  `handleAncientPotato`); the message branches the same way the embed already does rather than
+  always quoting a (sometimes-zero) potato amount.
+- `takeBounty.js` — both `runBountyAttempt` (the tiered ladder) and `runStatBounty` check
+  `result.won && result.successChance < BIG_EVENT_WIN_CHANCE_THRESHOLD` after their own
+  `sendBountyResult`. `STAT_BOUNTY_SUCCESS_CHANCE` is a flat 0.5 today so the stat-mode check never
+  actually fires yet — kept for symmetry with the website's own single `action === 'takeBounty'`
+  dispatch, which covers both modes identically, and in case that odds value ever changes.
+- `robNpc.js` — same check after `sendNpcRobResult`, using the tier's own `label` and
+  `result.amount`.
+- `startRaid.js` — this one needed a different shape than the other three. Raid resolution is
+  spread across **14 separate scenario closures** (regular/elite/legendary × metal-king/T1-T4,
+  plus 2 stat-raid closures), each with its own local `successChance`/`successfulRaid` — unlike
+  the other commands, there's no single post-resolution point where these are already available,
+  and the file's own `wonThisRaid` (used later, e.g. by the Cinderroot check) is deliberately
+  RE-DERIVED from a `raidCount` before/after diff rather than threaded out of the closures, so it
+  can't help here either. Threading a raw win boolean or success chance out of 14 near-identical
+  static functions (not per-call closures — they're defined once at module scope and reused
+  across every invocation) would mean either changing every one of their return shapes (touching
+  every one of the 4 outer dispatch call sites too) or resorting to shared mutable module state
+  (unsafe — concurrent raids from different users would race on it). Instead, the check lives
+  in `resolveRaidCooldown(won, successChance)` — an actual **per-invocation** closure already
+  defined once per `/start-raid` call (it captures that call's own `userDisplayName`/`guildName`)
+  and already called by name from all 14 scenario closures with their own local `successfulRaid`
+  as its first argument. Added `successChance` as its second (optional/defaulted) parameter and a
+  `replace_all` on the one identical `resolveRaidCooldown(successfulRaid)` call-site string (22
+  occurrences — some closures call it once per branch, both reading the same locals) to also pass
+  it; the function's own existing `if (!won) return early` means passing it on a loss branch is
+  simply never read. Zero closures' return shapes changed, zero dispatch call sites touched.
 
-**Tests**: `src/utils/__tests__/bigEventsChannel.test.js` (new, 12 cases) covers
-`isBigEventCompanion` (Mythic/Heirloom true, Common/Legendary-no-dropSource false, Yukon/
-Cinderroot/Bastion all true despite being Legendary), `describeCompanion`'s formatting, and
-`postBigEvent` (no-op when unconfigured, posts the right payload when configured, swallows both a
-`fetch` failure and a `getStatDatabase` failure without throwing). The companion-award call sites
-themselves are exercised indirectly by each command's own existing test suite (no test broke —
-`dynamoHandler.getStatDatabase` is already mocked in every one of them, so `postBigEvent` becomes
-a same-tick no-op under test). Full suite: **1702/1702** across 91 suites. Web-side changes
-verified via `tsc --noEmit` only, same as every other web-side change in this feature — no Jest
-harness exists for financial-project's Lambda handlers.
+**`/rob` (player-vs-player robbery) stays excluded** from every Big Events trigger, bot and web
+alike — consistent with the original scope decision above.
+
+**Tests**: `src/utils/__tests__/bigEventsChannel.test.js` (grew from 12 to 15 cases) covers
+`isBigEventCompanion`/`describeCompanion`, `postBigEvent`'s webhook behavior, and the shape of the
+work-encounter/win-chance constants (`BIG_EVENT_WIN_CHANCE_THRESHOLD` is 0.30, the encounter set is
+exactly the 4 expected types with no overlap into `regular`/`metalFailure`, every entry has a
+label). The command-level call sites are exercised indirectly by each file's own existing test
+suite (no test broke, including all 8 `startRaid*.test.js` files exercising
+`resolveRaidCooldown` heavily — `dynamoHandler.getStatDatabase` is already mocked everywhere,
+so `postBigEvent` becomes a same-tick no-op under test). Full suite: **1705/1705** across 91
+suites. `node -c` clean on every touched file. The website side of this feature (work-encounter
+type, win-chance, companion pulls) was already built in earlier same-day passes — no web-side
+changes were needed for this widening, since the request was specifically about the bot's own
+commands catching up to what the website already had.
 
 ## Scope: which actions post, and why "ephemeral" doesn't map 1:1
 

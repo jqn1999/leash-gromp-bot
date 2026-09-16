@@ -364,7 +364,7 @@ const regularRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, Raid.METAL_KING_MULTIPLIER_REWARD, Raid.METAL_KING_PASSIVE_REWARD, Raid.METAL_KING_CAPACITY_REWARD, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                     Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
@@ -372,7 +372,7 @@ const regularRaidScenarios = [
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
@@ -407,7 +407,7 @@ const regularRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -447,7 +447,7 @@ const regularRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -482,7 +482,7 @@ const regularRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -517,7 +517,7 @@ const regularRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -573,7 +573,7 @@ const eliteRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                     Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
@@ -581,7 +581,7 @@ const eliteRaidScenarios = [
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
@@ -614,7 +614,7 @@ const eliteRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -650,7 +650,7 @@ const eliteRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -685,7 +685,7 @@ const eliteRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -720,7 +720,7 @@ const eliteRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -758,7 +758,7 @@ const legendaryRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, workMultiReward, passiveReward, capacityReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                     Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
@@ -766,7 +766,7 @@ const legendaryRaidScenarios = [
                 totalRaidSplit = 0;
                 raidSplit = 0;
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance, null);
             }
             await sendResult(embed);
@@ -799,7 +799,7 @@ const legendaryRaidScenarios = [
                     raidResultDescription = ultimateRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, ultimateRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -835,7 +835,7 @@ const legendaryRaidScenarios = [
                     raidResultDescription = hardRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, hardRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -870,7 +870,7 @@ const legendaryRaidScenarios = [
                     raidResultDescription = mediumRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, mediumRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -905,7 +905,7 @@ const legendaryRaidScenarios = [
                     raidResultDescription = regularRaidMob.failureDescription;
                 }
             }
-            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+            const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
             embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, regularRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance,
                 successfulRaid && Number.isFinite(infamyGainIfWin) ? currentInfamy + getInfamyGain(currentInfamy, infamyGainIfWin) : null);
             await sendResult(embed);
@@ -934,12 +934,12 @@ const statRaidScenarios = [
                 raidCount += 1;
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance,
                     raidResultDescription, workMultiReward, passiveReward, bankReward, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
             } else {
                 raidResultDescription = metalKingRaidBoss.failureDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidSplit, raidSplit, metalKingRaidBoss, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
             }
             await sendResult(embed);
@@ -965,11 +965,11 @@ const statRaidScenarios = [
                 await dynamoHandler.updateGuildDatabase(guildId, 'raidCount', raidCount);
                 await raidFactory.incrementCounter(raidList, 'guildRaidWinCount');
                 raidResultDescription = regularStatRaidMob.successDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, Raid.REGULAR_STAT_RAID_REWARD, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
             } else {
                 raidResultDescription = regularStatRaidMob.failureDescription;
-                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid);
+                const { nextRaidAvailableAt, cooldownSkipSource, missedSkipChance } = resolveRaidCooldown(successfulRaid, successChance);
                 embed = embedFactory.createRaidEmbed(guildName, raidList, raidCount, totalRaidCost, raidSplit, regularStatRaidMob, successChance, raidResultDescription, null, null, null, nextRaidAvailableAt, cooldownSkipSource, missedSkipChance);
             }
             await sendResult(embed);
@@ -1357,10 +1357,22 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // skip to whichever source won the weighted pick (cosmetic only — see
     // cooldownFactory.pickSkipSource), and flags this call to chain another attempt once
     // resolution finishes below.
-    function resolveRaidCooldown(won) {
+    // successChance is optional/defaulted so any pre-existing call this file's own tests
+    // don't happen to touch keeps working unchanged — only the winning branch below ever
+    // reads it, and only to decide whether THIS win was a genuine long-shot worth
+    // announcing (2026-09-16, same-day follow-up, direct instruction: "I also wanted the
+    // big events to generally include normal discord bot commands too for the golden and
+    // metals and such" — extends Big Events' <30%-chance-raid-win trigger, previously
+    // website-only, to real Discord /start-raid wins too). Fire-and-forget (never awaited)
+    // since this function stays synchronous — postBigEvent already swallows its own errors
+    // and never rejects, so there's nothing to catch here either.
+    function resolveRaidCooldown(won, successChance = null) {
         if (!won) {
             finalNextRaidAvailableAt = Date.now() + Raid.RAID_TIMER_SECONDS * 1000;
             return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource: null, missedSkipChance: 0 };
+        }
+        if (typeof successChance === 'number' && successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+            bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot raid win for **${guildName}** (${Math.round(successChance * 100)}% chance!)`);
         }
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
