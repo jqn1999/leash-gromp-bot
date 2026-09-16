@@ -167,11 +167,13 @@ any numbered slot:
   This is what actually sells "safely storing money around" rather than it reading as an invisible
   implementation detail — the confirmation embed shows a per-house breakdown line
   (`Safehouse #2: +1,204,331`, etc.), not just a single total.
-- **Withdraw** — `safehouseFactory.autoWithdrawAllocation` drains owned houses with balance in a
-  random order until the amount is covered. Unlike deposits, WHICH house a withdrawal draws from has
-  no effect on the compartmentalized-risk story at all — withdrawn potatoes are equally liquid (and
-  equally `/rob`-exposed) no matter which house they came from — so this is pure flavor, a simple
-  greedy drain, not a proportional split.
+- **Withdraw** — `safehouseFactory.autoWithdrawAllocation` drains owned houses with balance until
+  the amount is covered, numbered safehouses first (in a random order among themselves), Main
+  Safehouse (slot 0) only touched once every numbered house is already empty (2026-09-16, direct
+  instruction). Unlike deposits, WHICH numbered house a withdrawal draws from has no effect on the
+  compartmentalized-risk story at all — withdrawn potatoes are equally liquid (and equally
+  `/rob`-exposed) no matter which numbered house they came from — so that part stays pure flavor,
+  a simple greedy drain, not a proportional split; only the numbered-vs-Main priority is meaningful.
 
 A player who *does* want to pick can still pass `house:<n>` explicitly on either action — nothing
 about the explicit-house path changed; it's the same single-house deposit/withdraw the command

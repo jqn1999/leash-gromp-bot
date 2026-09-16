@@ -281,6 +281,25 @@ describe('autoWithdrawAllocation', () => {
         const allocations = safehouseFactory.autoWithdrawAllocation(user, 500000);
         expect(allocations.every(a => a.slot !== 1)).toBe(true);
     });
+
+    // 2026-09-16, direct instruction — numbered safehouses drain before Main Safehouse
+    // (slot 0) whenever the amount can be covered by numbered balances alone, so Main
+    // Safehouse only gets touched as a last resort once every numbered house is empty.
+    test('drains numbered safehouses before ever touching Main Safehouse', () => {
+        const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 1000000 }, { slot: 2, balance: 500000 }], bankStored: 2000000, bankCapacity: 5000000 });
+        const allocations = safehouseFactory.autoWithdrawAllocation(user, 1200000);
+        expect(allocations.every(a => a.slot !== 0)).toBe(true);
+        expect(allocations.reduce((sum, a) => sum + a.amount, 0)).toBe(1200000);
+    });
+
+    test('only spills into Main Safehouse once numbered safehouses are fully drained', () => {
+        const user = baseUser({ isMercenary: true, safehouses: [{ slot: 1, balance: 1000000 }, { slot: 2, balance: 500000 }], bankStored: 2000000, bankCapacity: 5000000 });
+        const allocations = safehouseFactory.autoWithdrawAllocation(user, 2000000);
+        const bySlot = Object.fromEntries(allocations.map(a => [a.slot, a.amount]));
+        expect(bySlot[1]).toBe(1000000);
+        expect(bySlot[2]).toBe(500000);
+        expect(bySlot[0]).toBe(500000);
+    });
 });
 
 describe('applyMultiDeposit / applyMultiWithdraw', () => {

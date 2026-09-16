@@ -212,17 +212,20 @@ function splitDepositRandomly(userDetails, netAmount) {
     return Array.from(allocations, ([slot, amount]) => ({ slot, amount }));
 }
 
-// Drains owned houses in a random order until `amount` is covered — used when the player
-// withdraws without picking a house. Unlike deposits, WHICH house a withdrawal comes from
-// has no effect on the compartmentalized-risk story (withdrawn potatoes are equally liquid
-// — and equally /rob-exposed — no matter which house they came from), so this is pure
-// flavor, not a balance-relevant choice: a simple greedy drain, no proportional split
-// needed. Assumes the caller already validated amount <= getTotalStored(userDetails).
+// Drains owned houses until `amount` is covered — used when the player withdraws without
+// picking a house. Numbered safehouses are drained first (in a random order among
+// themselves, same "which specific numbered house" flavor-only randomness as before), and
+// Main Safehouse (slot 0, the personal bank) is only touched once every numbered house is
+// already empty — direct instruction, 2026-09-16. A simple greedy drain within each group,
+// no proportional split needed. Assumes the caller already validated amount <=
+// getTotalStored(userDetails).
 function autoWithdrawAllocation(userDetails, amount) {
-    const houses = getAllOwnedHouses(userDetails)
+    const owned = getAllOwnedHouses(userDetails)
         .filter(s => s.balance > 0)
-        .map(s => ({ slot: s.slot, balance: s.balance }))
-        .sort(() => Math.random() - 0.5);
+        .map(s => ({ slot: s.slot, balance: s.balance }));
+    const numbered = owned.filter(s => s.slot !== MAIN_SAFEHOUSE_SLOT).sort(() => Math.random() - 0.5);
+    const main = owned.filter(s => s.slot === MAIN_SAFEHOUSE_SLOT);
+    const houses = [...numbered, ...main];
 
     const allocations = [];
     let remaining = amount;

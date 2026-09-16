@@ -13172,3 +13172,29 @@ it needed zero changes and still passed unmodified. Full suite: **1658/1658** ac
 Docs: `.claude/systems/companions.md`'s Companion Shop odds table extended with a third "current"
 column; the second-retune 73.9%/1%/0.1% figures kept as a historical column rather than
 overwritten, matching every other multi-pass retune table in this file.
+
+## Safehouse: auto-withdraw drains numbered safehouses before Main Safehouse (2026-09-16, direct instruction)
+
+Direct instruction: "Have safe house withdraw, without a house selected, prioritize numbered safe
+houses first before the main safe house." `/safehouse withdraw` without an explicit `house` option
+routes through `safehouseFactory.autoWithdrawAllocation`, which previously shuffled every owned
+house with balance — Main Safehouse (slot 0, the personal bank) included — into one random drain
+order, on the stated reasoning that withdrawn potatoes are equally liquid no matter which house
+they came from (see the function's own prior comment). That's still true for numbered-vs-numbered,
+but the player wants Main Safehouse specifically treated as a last resort.
+
+**Change**: `autoWithdrawAllocation` now partitions owned houses with balance into two groups —
+numbered safehouses (still randomized among themselves, same "don't always drain the same slot
+first" spirit as before) and Main Safehouse — and drains the numbered group completely before ever
+touching Main Safehouse. If the requested amount is fully covered by numbered balances, Main
+Safehouse isn't touched at all; it only appears in the allocation once every numbered house is
+already at zero.
+
+**Tests**: two new cases in `safehouseFactory.test.js`'s `autoWithdrawAllocation` describe block —
+one confirming a numbered-coverable amount never allocates to slot 0, another confirming Main
+Safehouse only picks up the remainder once both numbered houses are fully drained. All existing
+cases (including the ones exercising Main-Safehouse-only pools) needed no changes and still passed
+unmodified. Full suite: **1660/1660** across 89 suites.
+
+Docs: `.claude/systems/safehouses.md`'s withdraw-allocation bullet updated to describe the new
+numbered-first, Main-Safehouse-last priority instead of a flat random order across every house.
