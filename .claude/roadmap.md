@@ -13322,3 +13322,14 @@ a webhook-creation failure. Full suite: **1684/1684** across 90 suites. The web-
 Docs: new `.claude/systems/server-activity-channel.md` (the full architecture/scope/format
 derivation); financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` gained the matching entry
 on that side.
+
+**Same-day follow-up, web-only**: "make working from the web increment the global work count if
+it doesn't already" — it didn't. This bot's own `work.js` bumps a server-wide stats-table doc
+(`workCount`/`totalPayout`, shown in `/work`'s own result embed and `/admin-stats`) on every real
+`/work` call; the web port's `doWork` never touched it at all, silently under-counting both
+figures relative to this bot's real total. Fixed entirely on the web side — `gromp-economy/
+handler.ts` now calls its own existing atomic `addStatField('work', 'workCount'/'totalPayout', …)`
+(the same helper the Mimic Slaying hoard already uses) right where the Server Activity Channel
+hook above was just added, gated on `action === 'work' && result.success`. No bot-side code
+changed — see financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` "#37" entry for the full
+derivation.
