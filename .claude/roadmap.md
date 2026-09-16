@@ -13515,3 +13515,42 @@ the added optional parameter is fully backward compatible. `node -c` clean on ev
 Docs: `.claude/systems/server-activity-channel.md`'s "Companion pulls fire from BOTH sides"
 section renamed/expanded to "Every Big Events trigger fires from BOTH sides," covering both
 same-day follow-ups together and recording the `startRaid.js` design reasoning above in full.
+
+## Big Events: Companion Shop/Hunt triggers removed (2026-09-16, same-day follow-up, direct instruction)
+
+"Big events channel doesn't need companion shop purchases or companion hunt results." A direct
+walk-back of two of the six companion-pull call sites added earlier the same day — the other four
+(`/work`'s Wandering Companion encounter, Yukon via Bounty, Bastion via Tower, Cinderroot via
+Guild Raid) stay exactly as they were; only Companion Shop and Companion Hunt come back out.
+
+**Bot side**: `companionShop.js` and `companionHuntCollect.js` both lost their `bigEventsChannel`
+import and post call. `companionShopFactory.attemptPurchaseSlot`'s return gained a `companion`
+field earlier the same day specifically so `companionShop.js` could check it — with that call site
+gone, nothing else consumed it, so the field itself was removed too rather than left as
+dead-but-harmless surface area.
+
+**Web side** (financial-project): `gromp-companions/handler.ts` had ZERO Server Activity
+Channel/Big Events wiring before this whole feature touched it earlier the same day (Companion
+Shop/Hunt were never in the original Server Activity Channel's signed-off scope either — see
+`NOTES_GROMP_WEB_INTEGRATION.md` "#36"). Rather than leave an unused `postBigEvent`/
+`isBigEventCompanion`/`describeCompanion` block behind, deleted the entire addition — both helper
+functions and both call sites (`doShopBuy`, `doCompanionHuntCollect`) — so the file is back to
+having no Big Events wiring at all, matching its state before today.
+
+**`src/utils/bigEventsChannel.js` itself is untouched** — `isBigEventCompanion`/`describeCompanion`
+still back the 4 remaining companion-pull call sites (work/bounty/tower/raid), and
+`BIG_EVENT_WIN_CHANCE_THRESHOLD`/`BIG_EVENT_WORK_ENCOUNTERS`/`BIG_EVENT_WORK_LABELS` still back
+the work-encounter/long-shot-win call sites from the previous entry — none of that was Shop/Hunt
+-specific.
+
+**Tests**: no test asserted on `attemptPurchaseSlot`'s now-removed `companion` field, and
+`bigEventsChannel.test.js`'s existing 15 cases don't reference Shop/Hunt at all (they test the
+shared helpers generically), so nothing needed updating there. Full suite: **1705/1705** across 91
+suites, unchanged from the previous entry. `node -c` clean on every touched file. Web side
+re-verified via `tsc --noEmit` on `gromp-companions/handler.ts` — zero errors, and a grep for
+`isBigEventCompanion`/`postBigEvent`/`describeCompanion`/`BIG_EVENT` in that file now returns
+nothing.
+
+Docs: `.claude/systems/server-activity-channel.md`'s Big Events trigger list and companion-pull
+call-site list both updated to drop Companion Shop/Hunt, with a note recording that they were
+wired in and then explicitly removed same-day rather than silently never having existed.

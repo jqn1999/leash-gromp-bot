@@ -4,7 +4,6 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const companionShopFactory = require("../../utils/companionShopFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
-const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 const DAILY_PREFIX = 'companion_shop_daily_';
 const WEEKLY_PREFIX = 'companion_shop_weekly_';
@@ -95,10 +94,6 @@ module.exports = {
 
             await clicked.deferUpdate();
             const result = await companionShopFactory.attemptPurchaseSlot(userId, username, period, slotIndex);
-
-            if (result.ok && bigEventsChannel.isBigEventCompanion(result.companion)) {
-                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** bought ${bigEventsChannel.describeCompanion(result.companion)} from the Companion Shop!`);
-            }
 
             // Re-fetch — the purchase (or attempted purchase) may have changed potatoes/
             // starches/companions/companionShop, and the embed needs the fresh state to

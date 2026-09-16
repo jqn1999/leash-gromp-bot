@@ -74,6 +74,10 @@ Events trigger fires from BOTH sides" below for the bot-side half):
 - A companion pull that is **Mythic or Heirloom rarity** (the two tiers above Legendary), or that
   is one of the three **activity-exclusive companions** — Yukon (`dropSource: "bounty"`),
   Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity.
+  Scoped to `/work`, Bounty, Tower, and Guild Raid pulls only — **Companion Shop purchases and
+  Companion Hunt results are deliberately excluded** (removed 2026-09-16, same-day, direct
+  instruction: "Big events channel doesn't need companion shop purchases or companion hunt
+  results" — see "Every Big Events trigger fires from BOTH sides" below for what that reverted).
 
 One single Gold color covers every Big Events subtype (not a color per subtype) — the request was
 "a more colorful **obvious embed color**" (singular), so which kind of big event happened is
@@ -107,14 +111,18 @@ Companion-pull call sites (a genuine "pull," not a trade):
 - `takeBounty.js` — a Yukon hit (`mercenaryFactory.resolveYukonAward`).
 - `enter-tower.js` — a Bastion drop (`companionFactory.resolveTowerCompanionAward`).
 - `startRaid.js` — a Cinderroot find (`guildCompanionFactory.resolveCinderrootAward`).
-- `companionShop.js` — a Companion Shop purchase that happened to roll Mythic (Heirloom is
-  excluded from the shop's own odds table entirely, so only the Mythic half of the condition can
-  ever fire here).
-- `companionHuntCollect.js` — a Companion Hunt expedition result.
 
 **Deliberately NOT wired**: `companionBuy.js`/`companionMarket.js` (`applyCompanionAward` there
 moves an already-known, already-leveled instance between two players — a trade, not a lucky roll,
-nothing to celebrate as a "pull").
+nothing to celebrate as a "pull"). **Companion Shop (`companionShop.js`) and Companion Hunt
+(`companionHuntCollect.js`) were wired in initially, then explicitly removed same-day** (direct
+instruction: "Big events channel doesn't need companion shop purchases or companion hunt
+results") — reverted entirely on both sides: `companionShop.js`/`companionHuntCollect.js` lost
+their `bigEventsChannel` calls, `companionShopFactory.attemptPurchaseSlot`'s added `companion`
+return field was removed (nothing else consumed it), and `gromp-companions/handler.ts`
+(financial-project) had its `postBigEvent`/`isBigEventCompanion`/`describeCompanion` block and
+both call sites deleted outright — that file is back to having ZERO Server Activity Channel/Big
+Events wiring, same as before this whole feature touched it.
 
 Work-encounter-type / long-shot-win call sites (the second follow-up):
 - `work.js` — all 4 relevant scenario closures (`GOLDEN`, the success branch of `METAL`,
