@@ -13609,3 +13609,25 @@ hardcoded check's exact behavior, since a DM channel ID could never have matched
 
 Docs: new `.claude/systems/command-channels.md` (the full storage/command/gate/rollout
 derivation).
+
+## Command channels: `channel` defaults to the invoking channel (2026-09-16, same-day follow-up, direct instruction)
+
+"The channel i want isnt in the channel list for the command. Can you make it so it can just do it
+for the current channel the command is being used in." Discord's own Channel option picker doesn't
+reliably surface every channel client-side on a busy/large server — rather than fight that,
+`channel` on `/set-command-channels add`/`remove` now defaults to `interaction.channel.id` (the
+channel the command was actually run in) whenever it's omitted, so an admin can just run the
+command from the channel they want to add/remove instead of finding it in a dropdown.
+
+This also retired the old "pass `channel` to add/remove it" rejection branch entirely —
+`channelId` is never falsy anymore, so there's nothing left to reject.
+
+**Tests**: the two `setCommandChannels.test.js` cases that asserted the old rejection message
+were rewritten to assert the new default-to-current-channel behavior instead (extended
+`fakeInteraction` with a `currentChannelId`, defaulted to a value distinct from any explicit
+`channelId` so the two paths can't accidentally pass for the wrong reason). Full suite:
+**1725/1725** across 94 suites, unchanged count from the previous entry (same file, no new cases
+added — two rewritten). `node -c` clean on `setCommandChannels.js`.
+
+Docs: `.claude/systems/command-channels.md`'s command-actions section and testing bullet updated
+to describe the default-to-current-channel behavior.

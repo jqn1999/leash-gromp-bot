@@ -6,9 +6,10 @@ jest.mock('../../../utils/dynamoHandler');
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { callback } = require('../setCommandChannels');
 
-function fakeInteraction({ action, channelId, guildId = 'guild-1' } = {}) {
+function fakeInteraction({ action, channelId, guildId = 'guild-1', currentChannelId = 'current-chan' } = {}) {
     return {
         guildId,
+        channel: { id: currentChannelId },
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
         options: {
@@ -76,13 +77,13 @@ describe('/set-command-channels', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/already in the allowlist/i));
     });
 
-    test('add without a channel asks for one', async () => {
-        const interaction = fakeInteraction({ action: 'add' });
+    test('add without a channel option defaults to the channel the command was run in', async () => {
+        const interaction = fakeInteraction({ action: 'add', currentChannelId: 'chan-here' });
 
         await callback(null, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/pass `channel`/i));
-        expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('command_channels_guild-1', { channelIds: ['chan-here'] });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('<#chan-here>'));
     });
 
     test('remove drops the channel from the allowlist', async () => {
@@ -115,13 +116,14 @@ describe('/set-command-channels', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/isn't in the allowlist/i));
     });
 
-    test('remove without a channel asks for one', async () => {
-        const interaction = fakeInteraction({ action: 'remove' });
+    test('remove without a channel option defaults to the channel the command was run in', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ channelIds: ['chan-here'] });
+        const interaction = fakeInteraction({ action: 'remove', currentChannelId: 'chan-here' });
 
         await callback(null, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/pass `channel`/i));
-        expect(dynamoHandler.updateStatFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('command_channels_guild-1', { channelIds: [] });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('<#chan-here>'));
     });
 
     test('clear wipes the allowlist regardless of what was there before', async () => {

@@ -41,7 +41,7 @@ module.exports = {
         },
         {
             name: 'channel',
-            description: 'The channel to add or remove — required for add/remove',
+            description: 'The channel to add or remove — defaults to the channel this command is run in',
             required: false,
             type: ApplicationCommandOptionType.Channel,
         },
@@ -50,7 +50,14 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         const action = interaction.options.get('action')?.value;
-        const channelId = interaction.options.get('channel')?.value;
+        // Defaults to wherever the command was actually run (2026-09-16, direct
+        // instruction — "the channel i want isnt in the channel list for the command...
+        // can you make it so it can just do it for the current channel"). Discord's own
+        // Channel option picker doesn't always surface every channel (older/less-active
+        // channels can fall out of its client-side suggestion list on a large server) —
+        // running this FROM the target channel sidesteps that entirely rather than
+        // fighting Discord's own picker.
+        const channelId = interaction.options.get('channel')?.value ?? interaction.channel.id;
         const trackingId = `command_channels_${interaction.guildId}`;
 
         const existing = await dynamoHandler.getStatDatabase(trackingId);
@@ -68,11 +75,6 @@ module.exports = {
         if (action === 'clear') {
             await dynamoHandler.updateStatFields(trackingId, { channelIds: [] });
             interaction.editReply('Channel restriction cleared — commands now work in any channel on this server.');
-            return;
-        }
-
-        if (!channelId) {
-            interaction.editReply(`Pass \`channel\` to ${action} it.`);
             return;
         }
 

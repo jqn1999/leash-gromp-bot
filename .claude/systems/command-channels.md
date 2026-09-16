@@ -33,6 +33,14 @@ Four actions:
 - **`list`** — shows the current allowlist, or says "no restriction" when empty.
 - **`clear`** — wipes the allowlist outright (equivalent to removing every channel at once).
 
+`channel` is optional on `add`/`remove` — **omitting it defaults to whichever channel the command
+was actually run in** (2026-09-16, same-day follow-up, direct instruction: "the channel i want
+isnt in the channel list for the command... can you make it so it can just do it for the current
+channel"). Discord's own Channel option picker doesn't reliably surface every channel client-side
+on a large/busy server, so running `/set-command-channels action:add` directly from the target
+channel — with no `channel` argument at all — sidesteps that picker limitation entirely instead of
+fighting it.
+
 ## `handleCommands.js`'s gate, and the self-lockout exemption
 
 Replaces the old:
@@ -78,10 +86,10 @@ Safe to delete once confirmed seeded (`/set-command-channels action:list` in tha
 
 ## Testing
 
-- `src/commands/moderation/__tests__/setCommandChannels.test.js` (new, 12 cases) — all 4 actions,
+- `src/commands/moderation/__tests__/setCommandChannels.test.js` (12 cases) — all 4 actions,
   including edge cases (adding a duplicate, removing something not listed, add/remove with no
-  `channel` passed, clearing an already-populated list, and that the trackingId is scoped to the
-  invoking guild rather than shared).
+  `channel` passed defaulting to the invoking channel, clearing an already-populated list, and
+  that the trackingId is scoped to the invoking guild rather than shared).
 - `src/events/interactionCreate/__tests__/handleCommands.test.js` (new — this file had no test
   coverage at all before) — the channel-restriction gate specifically: unrestricted-by-default,
   blocks an unlisted channel, allows a listed one, `/set-command-channels` bypasses its own check,
