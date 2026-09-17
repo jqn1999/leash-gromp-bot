@@ -25,15 +25,15 @@ describe('getDailyTag — 8pm ET boundary', () => {
     });
 });
 
-describe('getWeeklyTag — 8pm ET Monday boundary', () => {
-    test('Monday before 8pm ET still belongs to last week', () => {
-        // Monday 2026-09-14, 7:59pm ET = 2026-09-14T23:59:00Z.
-        expect(companionShopFactory.getWeeklyTag(new Date('2026-09-14T23:59:00Z'))).toBe('9/7/2026');
+describe('getWeeklyTag — 8pm ET Sunday boundary (reset day moved Monday -> Sunday, 2026-09-17)', () => {
+    test('Sunday before 8pm ET still belongs to last week', () => {
+        // Sunday 2026-09-13, 7:59pm ET = 2026-09-13T23:59:00Z.
+        expect(companionShopFactory.getWeeklyTag(new Date('2026-09-13T23:59:00Z'))).toBe('9/6/2026');
     });
 
-    test('Monday at/after 8pm ET belongs to the new week', () => {
-        // Monday 2026-09-14, 8:00pm ET = 2026-09-15T00:00:00Z.
-        expect(companionShopFactory.getWeeklyTag(new Date('2026-09-15T00:00:00Z'))).toBe('9/14/2026');
+    test('Sunday at/after 8pm ET belongs to the new week', () => {
+        // Sunday 2026-09-13, 8:00pm ET = 2026-09-14T00:00:00Z.
+        expect(companionShopFactory.getWeeklyTag(new Date('2026-09-14T00:00:00Z'))).toBe('9/13/2026');
     });
 });
 

@@ -13810,3 +13810,63 @@ all. It only reads Tower-derived stats the bot already wrote (`highestTowerFloor
 `towerChampionCount` for the "Tater Tower Titan" achievement); there's no `creditRunPayout`
 equivalent, no run economy, no cap logic on the web side for this change to affect. No port
 needed.
+
+## Weekly reset day moved Monday -> Sunday (2026-09-17, direct instruction)
+
+"Can we make Sunday the weekly reset" — a bot-wide change, since every weekly-scoped system keys
+off the same underlying "is today the reset day" check evaluated inside the shared 8pm ET daily
+cron (`backgroundEvents.js`'s `schedule.scheduleJob({ rule: '0 20 * * *', ... })`): Weekly/
+Mercenary quests (`questFactory.js`), Guild Contract (`guildContractFactory.js`), Companion
+Shop's weekly slots (`companionShopFactory.js`'s `getWeeklyTag`), and Poison/Mimic mitigation's
+weekly bad-luck counters (`workFactory.js`'s `getCurrentWeekTag`). Only the day-of-week itself
+moved — the cron's own 8pm ET fire time, and the daily-vs-weekly rotation shape, are unchanged.
+
+**Scope check first**: confirmed this is genuinely separate from starch trading's own Monday/
+Thursday buying-window mechanic (`starchFactory.js`'s `isStarchBuyingWindow`) — a different,
+unrelated market-hours gate that happens to also reference "Monday" in its code, not a weekly
+reset. Left that mechanic's actual days untouched; only fixed its comment's cross-reference to
+the renamed function name.
+
+**Change, mechanical but wide (this exact day-boundary shape is deliberately duplicated, not
+shared, across 4 files — this codebase's own established "mirrored, not shared" convention for
+tiny pure date helpers)**:
+- `questFactory.js`/`guildContractFactory.js`: `isMondayEST` renamed to `isSundayEST`, string
+  literal changed from `'Monday'` to `'Sunday'`.
+- `workFactory.js`'s `getCurrentWeekTag` and `companionShopFactory.js`'s `getWeeklyTag`: the
+  internal `daysSinceMonday = (weekday + 6) % 7` / `mondayOffset` / `effectiveMonday` variables
+  renamed to their Sunday equivalents — since Sunday is JS's own weekday `0`, "days since Sunday"
+  is just `weekday` directly, no modulo shift needed the way Monday's calculation required.
+- Every comment and player-facing string referencing the old day was swept and updated in the
+  same pass — not just the functions themselves: `/help topic:poison-mimic`'s "resetting Monday"
+  line, `/quests`' embed footer ("weeklies reset Mondays"), the Companion Shop embed's "weekly
+  stock every Monday at 8pm ET" line, and every internal comment across `constants.js`,
+  `dynamoHandler.js`, `embedFactory.js`, and `backgroundEvents.js` that named the day or the old
+  function name. Two other pre-existing stale comments (referencing a "4am cron" that hasn't
+  existed since an earlier, unrelated 8pm-ET-move fix) were corrected in the same pass since they
+  sat directly next to lines already being edited for this change.
+
+**Tests**: `workFactory.test.js`'s `getCurrentWeekTag` boundary tests and
+`companionShopFactory.test.js`'s `getWeeklyTag` boundary tests both had every reference date
+shifted back by exactly one day (verified day-of-week for each via `node -e` before committing,
+not assumed) — a Monday-boundary test becomes the equivalent Sunday-boundary test one calendar
+day earlier, preserving the exact same relative-offset shape (e.g. "the day after the boundary
+day, 7 days through the next boundary day" still spans the same real week-length window).
+`questFactory.test.js`'s one Monday-referencing test description was reworded (its actual
+assertions never depended on which day it runs, so no logic changed there). Full suite:
+**1726/1726** across 94 suites. `node -c` clean on every edited file.
+
+Docs: `.claude/systems/quests.md`, `guild-contracts.md`, and `companions.md` all updated to
+describe the Sunday cadence in place of Monday, including two more of the same stale "4am cron"
+references caught in the same sweep.
+
+**financial-project sync**: two Lambdas mirror this exact day-boundary logic and needed the same
+swap — `gromp-companions/handler.ts`'s `getShopWeeklyTag` and `gromp-economy/handler.ts`'s
+`getCurrentWeekTag` (Guild Contract has no web implementation at all, nothing to update there).
+Porting `gromp-economy`'s version surfaced a real, separate, already-fixed-bot-side bug: that
+port had never picked up this exact function's own 2026-09-14 fix and was still walking back to
+real-midnight Monday with a raw day-at-a-time loop — silently never caught since the web side has
+no cron-driven weekly rotation to visibly drift against. Rewrote it to match the bot's current
+implementation exactly instead of just swapping the day name on top of the stale logic. Full
+writeup, including the exact boundary values checked, in `NOTES_GROMP_WEB_INTEGRATION.md`'s
+"Bot caught up #42" entry — committed and pushed to that repo's own
+`claude/weekly-reset-sunday` branch (not `master`, per that repo's own git workflow).

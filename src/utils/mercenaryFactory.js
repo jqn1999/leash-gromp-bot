@@ -43,7 +43,7 @@ function getMercenaryRankInfo(winCount) {
 // there (only WorkFactory, getCurrentWeekTag, computePoisonMitigation,
 // getEffectiveScenarioChance, and the four reward-formula helpers this file actually
 // needs are exported — see workFactory.js's own module.exports comment). This is the same
-// "mirrored, not shared" convention that file's own getNextShopTier/isMondayEST already
+// "mirrored, not shared" convention that file's own getNextShopTier/isSundayEST already
 // establish for small pure functions duplicated across files in this codebase.
 // roundIncrement is 10000 for passiveAmount, 50000 for bankCapacity (workFactory.js's own
 // hardcoded increments) — parameterized here since this one helper covers both.

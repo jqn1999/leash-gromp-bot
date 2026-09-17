@@ -12,13 +12,17 @@ function getRotationDate(template, activeQuests) {
 }
 
 // "Day"/"week" boundaries computed in EST, matching every other day-based reset in this
-// game (Tower, daily streak, the 4am cron itself).
+// game (Tower, daily streak, the 8pm ET cron itself).
 function getDateStringEST(date) {
     return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
-function isMondayEST(date) {
-    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Monday';
+// Weekly reset day moved Monday -> Sunday (2026-09-17, direct instruction) — every caller
+// below already keys off "is today the weekly reset day," so this rename plus the string
+// swap is the whole change; nothing about the 8pm ET cron time or the daily-vs-weekly
+// rotation shape moved.
+function isSundayEST(date) {
+    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Sunday';
 }
 
 function pickRandomIds(pool, count) {
@@ -69,8 +73,8 @@ function calculateWeeklyStatReward(userDetails, reward) {
 
 class QuestFactory {
     // Refreshes the daily quest set every time this runs, and the weekly + mercenary sets
-    // only on Mondays (otherwise keeps whatever's already active). Mercenary shares the
-    // Monday cadence but rotates independently of Weekly — its own pool/active-count/
+    // only on Sundays (otherwise keeps whatever's already active). Mercenary shares the
+    // Sunday cadence but rotates independently of Weekly — its own pool/active-count/
     // rotation-date so it can never collide with or crowd out the shared Weekly slots.
     // Returns the new active set, plus which categories actually rotated this call (for
     // the announcement).
@@ -82,7 +86,7 @@ class QuestFactory {
         const mercenaryPool = Quests.filter(quest => quest.category === 'mercenary');
 
         const current = await dynamoHandler.getActiveQuests();
-        const weeklyDue = isMondayEST(now) || !current;
+        const weeklyDue = isSundayEST(now) || !current;
 
         const activeQuests = {
             dailyQuestIds: pickRandomIds(dailyPool, DailyQuest.ACTIVE_COUNT),

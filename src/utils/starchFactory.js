@@ -11,9 +11,13 @@ function getESTWeekdayAndHour(date) {
 // into Friday morning; moved to match Monday's shape exactly for simplicity. All 3 starch
 // commands previously checked bare date.getDay()/date.getHours() — the host machine's own
 // local time, not EST — which is silently wrong unless the host happens to be running in
-// America/New_York. Every other day-boundary check in this codebase (isMondayEST in
+// America/New_York. Every other day-boundary check in this codebase (isSundayEST in
 // questFactory.js/guildContractFactory.js, the Tower reset, etc.) already guards against
 // exactly this by converting explicitly, so this closes the one place starch trading didn't.
+//
+// This window itself stays Monday/Thursday — it's an unrelated market-hours mechanic, not
+// part of the weekly reset cadence isSundayEST governs (2026-09-17 direct instruction only
+// moved the weekly reset day, not starch trading's own buying-window days).
 function isStarchBuyingWindow(date = new Date()) {
     const { weekday, hour } = getESTWeekdayAndHour(date);
     if (weekday === 'Monday' || weekday === 'Thursday') return hour >= 10 && hour <= 21;

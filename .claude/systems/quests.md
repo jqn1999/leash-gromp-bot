@@ -13,8 +13,9 @@ cron that already resets `canEnterTower` and pays out the Tower leaderboard, vie
 in) — **every one of the 13 now uses a 3-tier `tiers` ladder** (see "Daily/Weekly Quest scaling"
 below; Mercenary Quest's own 5-tier ladder predates this and is documented separately further
 down). The **daily** set refreshes every day; the **weekly** and **mercenary** sets share the same
-Monday-only cadence (`isMondayEST`) but rotate independently of each other — any other day of the
-week, `rotateQuests()` leaves both untouched. All three categories are shared server-wide (the
+Sunday-only cadence (`isSundayEST`, moved from Monday 2026-09-17 — direct instruction) but rotate
+independently of each other — any other day of the week, `rotateQuests()` leaves both untouched.
+All three categories are shared server-wide (the
 same quests for everyone who's eligible), not personalized per user — stored in the stats table's
 `active_quests` doc: `{ dailyQuestIds, dailyRotationDate, weeklyQuestIds, weeklyRotationDate,
 mercenaryQuestIds, mercenaryRotationDate }`.
@@ -137,7 +138,7 @@ uncapped, so this can never dead-end a veteran's quest slot again. Given a **new
 reusing `weekly_achievement`'s — a live per-user baseline already snapshotted against the old
 `statPath` mid-week would produce a meaningless delta if silently reinterpreted against a different
 one; retiring the old id instead lets any currently-active instance simply drop out of a player's
-active set (the id no longer matches anything in `Quests`) until the next Monday rotation redraws
+active set (the id no longer matches anything in `Quests`) until the next Sunday rotation redraws
 from the corrected pool. `work.js`'s achievements-array in-memory merge (originally added so this
 quest saw a same-call unlock immediately) is kept regardless, as ordinary in-memory correctness —
 see that file's own comment.
@@ -309,8 +310,8 @@ bug).
   (5-6) rarely needs more than one page, but the infrastructure is there if `DailyQuest.ACTIVE_COUNT`/
   `WeeklyQuest.ACTIVE_COUNT`/`MercenaryQuest.ACTIVE_COUNT` ever grow. Each entry's category label
   reads Daily/Weekly/Mercenary off `quest.category`.
-- **On rotation**: the 4am cron posts `createQuestRotationEmbed` to the events channel — always
-  shows the day's 3 daily quests, plus the week's 2 weekly and 1 mercenary quest only on the Monday
+- **On rotation**: the 8pm ET cron posts `createQuestRotationEmbed` to the events channel — always
+  shows the day's 3 daily quests, plus the week's 2 weekly and 1 mercenary quest only on the Sunday
   they actually changed (mercenary shares `weeklyRotated`'s own flag since they rotate on the same
   cadence — announced to everyone same as weekly, even though only mercenaries see progress toward
   it in `/quests`).

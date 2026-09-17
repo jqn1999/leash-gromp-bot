@@ -119,7 +119,7 @@ function getEasternDateParts(date) {
 // dailyStreakFactory.js's RESET_HOUR_EST.
 const WEEK_RESET_HOUR_EST = 20;
 
-// The current week's tag — the most recent Monday-8pm-ET boundary that's already
+// The current week's tag — the most recent Sunday-8pm-ET boundary that's already
 // passed, as a stable "which week is this" string. Poison/Mimic mitigation has no cron
 // of its own (this is computed lazily on every hit, not on a schedule, since it's purely
 // personal state — unlike Quests'/Guild Contracts' shared weekly rotation), so it has to
@@ -127,41 +127,50 @@ const WEEK_RESET_HOUR_EST = 20;
 //
 // Fixed 2026-09-14 (player reports that things "looked off" between systems after the
 // 8pm ET reset move) — this used to walk backward one raw millisecond-day at a time to
-// the most recent REAL-MIDNIGHT Eastern Monday (isMondayEST, removed), a boundary a full
-// ~20 hours earlier than Quests/Guild Contracts/Mercenary weekly quests: those three only
-// actually rotate once the shared 8pm ET cron fires and finds the calendar day is Monday,
-// so their "week" runs [Monday 8pm ET, next Monday 8pm ET) — not [Monday 12am ET, ...).
-// For roughly 20 hours every Monday, a player's poison/mimic weekly counter had already
-// reset to the new week while the other three systems were still serving last week's
-// content. Also fixes the same raw-ms DST-drift risk dailyStreakFactory.js's own
-// getStreakDayString/getPreviousStreakDayString were fixed for — a real calendar day is
-// 23 or 25 hours on the two annual DST-transition days, so the old day-at-a-time ms walk
-// could land a day off exactly on those two days even setting the 8pm issue aside.
+// the most recent REAL-MIDNIGHT Eastern boundary day (isMondayEST at the time, since
+// renamed — see below), a boundary a full ~20 hours earlier than Quests/Guild Contracts/
+// Mercenary weekly quests: those three only actually rotate once the shared 8pm ET cron
+// fires and finds the calendar day is the reset day, so their "week" runs [reset day 8pm
+// ET, next reset day 8pm ET) — not [reset day 12am ET, ...). For roughly 20 hours every
+// reset day, a player's poison/mimic weekly counter had already reset to the new week
+// while the other three systems were still serving last week's content. Also fixes the
+// same raw-ms DST-drift risk dailyStreakFactory.js's own getStreakDayString/
+// getPreviousStreakDayString were fixed for — a real calendar day is 23 or 25 hours on
+// the two annual DST-transition days, so the old day-at-a-time ms walk could land a day
+// off exactly on those two days even setting the 8pm issue aside.
+//
+// Weekly reset day moved Monday -> Sunday (2026-09-17, direct instruction) — the boundary
+// day changed, nothing about the 8pm-ET-cron/DST-safety mechanics above did. Renamed the
+// internal "days since/effective [day]" math below from Monday- to Sunday-relative
+// (isMondayEST itself, in questFactory.js/guildContractFactory.js, was renamed the same
+// way — see those files).
 //
 // Deliberately still formatted via toLocaleDateString (not a zero-padded YYYY-MM-DD
 // string) — this is a stored, compared-by-equality field on live player records
 // (poisonMitigation.weekTag/mimicMitigation.weekTag), so keeping the exact same output
-// format means this fix only actually changes the computed tag during the specific
-// Monday-before-8pm window it's meant to fix; every other moment of the week still
+// format means a boundary-day change only actually changes the computed tag during the
+// specific pre-8pm window on the old/new reset days; every other moment of the week still
 // produces a byte-identical tag to before, so no unrelated player's stored tag suddenly
-// goes stale just from this fix shipping.
+// goes stale just from this shipping.
 function getCurrentWeekTag(now = new Date()) {
     const { year, month, day, hour } = getEasternDateParts(now);
     // 0 = Sunday ... 1 = Monday ... 6 = Saturday, via Date.UTC's own proleptic-Gregorian
     // weekday math — safe here since year/month/day were already read out of Eastern
-    // local time above, so this lookup itself doesn't care about UTC vs Eastern.
+    // local time above, so this lookup itself doesn't care about UTC vs Eastern. Sunday
+    // being weekday 0 means "days since Sunday" is just the weekday number directly, no
+    // modulo-shift needed the way the old Monday-relative math required.
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    const daysSinceMonday = (weekday + 6) % 7;
+    const daysSinceSunday = weekday;
 
-    // If `now` is on Monday itself but before 8pm ET, this week's own cron-equivalent
+    // If `now` is on Sunday itself but before 8pm ET, this week's own cron-equivalent
     // boundary hasn't happened yet — Quests/Guild Contracts haven't rotated either, so
-    // step back one more full week. Any other day of the week, this week's Monday-8pm
+    // step back one more full week. Any other day of the week, this week's Sunday-8pm
     // boundary is necessarily already in the past.
-    const pastThisWeeksBoundary = daysSinceMonday > 0 || hour >= WEEK_RESET_HOUR_EST;
-    const mondayOffset = daysSinceMonday + (pastThisWeeksBoundary ? 0 : 7);
-    const effectiveMonday = new Date(Date.UTC(year, month - 1, day - mondayOffset));
+    const pastThisWeeksBoundary = daysSinceSunday > 0 || hour >= WEEK_RESET_HOUR_EST;
+    const sundayOffset = daysSinceSunday + (pastThisWeeksBoundary ? 0 : 7);
+    const effectiveSunday = new Date(Date.UTC(year, month - 1, day - sundayOffset));
 
-    return effectiveMonday.toLocaleDateString('en-US', { timeZone: 'UTC' });
+    return effectiveSunday.toLocaleDateString('en-US', { timeZone: 'UTC' });
 }
 
 // How much a Poison Potato hit's loss/lockout should be reduced this time, based on how
@@ -196,7 +205,7 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
 // Same weekly bad-luck mitigation as computePoisonMitigation above, mirrored onto Mimic
 // Potato's bank-percentage loss (2026-09-05, direct instruction — see MimicMitigation's
 // own comment in constants.js). Kept as its own copy rather than a shared helper for the
-// same "mirrored, not shared" reason isMondayEST's comment gives — these are tiny pure
+// same "mirrored, not shared" reason isSundayEST's comment gives — these are tiny pure
 // functions, not worth a generic abstraction over two callers.
 function computeMimicMitigation(mimicMitigation, now = new Date()) {
     const weekTag = getCurrentWeekTag(now);
@@ -611,7 +620,7 @@ class WorkFactory {
         let userTotalLosses = userDetails.totalLosses;
         let userTotalEarnings = userDetails.totalEarnings;
         // Bad-luck protection — the more times poison has already hit this same player
-        // THIS week, the less painful this hit is, resetting every Monday. See
+        // THIS week, the less painful this hit is, resetting every Sunday. See
         // computePoisonMitigation above. Still computed (and its weekly counter still
         // written) even for Guinea Pig — see the comment above on why that matters — but
         // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see

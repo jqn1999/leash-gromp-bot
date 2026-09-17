@@ -358,7 +358,7 @@ describe('Mercenary Quest (scaling tiers)', () => {
 });
 
 describe('rotateQuests', () => {
-    test('rotates mercenary alongside weekly on the same Monday-only cadence', async () => {
+    test('rotates mercenary alongside weekly on the same Sunday-only cadence', async () => {
         dynamoHandler.getActiveQuests.mockResolvedValue(null); // no current set -> due regardless of day
         dynamoHandler.setActiveQuests.mockResolvedValue({});
 

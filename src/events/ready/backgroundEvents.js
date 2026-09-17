@@ -99,7 +99,7 @@ module.exports = async (client) => {
             console.log('daily cron: Tower payout/reset step failed:', err)
         }
 
-        // Rotate the daily quest set (always) and the weekly set (Mondays only) — see
+        // Rotate the daily quest set (always) and the weekly set (Sundays only) — see
         // questFactory.js.
         try {
             const { activeQuests, weeklyRotated } = await questFactory.rotateQuests()
@@ -115,7 +115,7 @@ module.exports = async (client) => {
             console.log('daily cron: quest rotation step failed:', err)
         }
 
-        // Rotate the active Guild Contract — Mondays only, same weekly-only cadence as
+        // Rotate the active Guild Contract — Sundays only, same weekly-only cadence as
         // the quest system's weekly set, reusing this same daily cron — see
         // guildContractFactory.js. Per-guild progress snapshots aren't touched here;
         // each guild lazily establishes its own baseline the first time a member's

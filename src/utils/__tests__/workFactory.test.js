@@ -110,48 +110,51 @@ describe('getEffectiveScenarioChances', () => {
 });
 
 describe('getCurrentWeekTag', () => {
-    test('Tuesday through the following Monday at 8pm+ ET all resolve to the same tag', () => {
-        // A known Monday (Jan 5, 2026) at noon (already past that Monday's own 8pm-ET
-        // boundary from the WEEK before) through the following Monday at 9pm ET (already
-        // past THIS week's own boundary too) — see the dedicated boundary describe block
-        // below for the Monday-before-8pm case this deliberately excludes.
-        const tuesday = new Date('2026-01-06T12:00:00-05:00');
+    test('Monday through the following Sunday at 8pm+ ET all resolve to the same tag', () => {
+        // A known Monday (Jan 5, 2026) at noon (already past that week's own Sunday-8pm-ET
+        // boundary) through the following Sunday at noon (already past THIS week's own
+        // boundary too) — see the dedicated boundary describe block below for the
+        // Sunday-before-8pm case this deliberately excludes.
+        const monday = new Date('2026-01-05T12:00:00-05:00');
         const tags = [0, 1, 2, 3, 4, 5, 6].map(offset =>
-            getCurrentWeekTag(new Date(tuesday.getTime() + offset * 24 * 60 * 60 * 1000))
+            getCurrentWeekTag(new Date(monday.getTime() + offset * 24 * 60 * 60 * 1000))
         );
         expect(new Set(tags).size).toBe(1);
     });
 
-    test('the following Tuesday resolves to a different tag', () => {
-        const week1 = getCurrentWeekTag(new Date('2026-01-06T12:00:00-05:00'));
-        const week2 = getCurrentWeekTag(new Date('2026-01-13T12:00:00-05:00'));
+    test('the following Monday resolves to a different tag', () => {
+        const week1 = getCurrentWeekTag(new Date('2026-01-05T12:00:00-05:00'));
+        const week2 = getCurrentWeekTag(new Date('2026-01-12T12:00:00-05:00'));
         expect(week2).not.toBe(week1);
     });
 });
 
 // 2026-09-14 fix — Poison/Mimic mitigation has no cron of its own (computed lazily on
 // every hit, see getCurrentWeekTag's own comment), so it has to independently derive the
-// SAME Monday-8pm-ET boundary Quests/Guild Contracts/Mercenary weekly quests actually
-// roll over at (their own isMondayEST(now) check only ever runs at the moment the shared
-// 8pm ET cron fires). Before this fix, getCurrentWeekTag walked back to the most recent
-// REAL-MIDNIGHT Eastern Monday instead — a boundary ~20 hours earlier that left Poison/
-// Mimic's weekly counters "ahead" of the other three systems for most of every Monday.
-describe('getCurrentWeekTag — 8pm ET Monday boundary (2026-09-14 fix)', () => {
-    test('Monday before 8pm ET still belongs to the PREVIOUS week (matches Quests/Guild Contracts not having rotated yet)', () => {
-        const beforeBoundary = getCurrentWeekTag(new Date('2026-01-05T19:59:00-05:00')); // Mon 7:59pm EST
-        const lastWeek = getCurrentWeekTag(new Date('2025-12-30T12:00:00-05:00')); // the prior Tuesday
+// SAME 8pm-ET boundary Quests/Guild Contracts/Mercenary weekly quests actually roll over
+// at (their own isSundayEST(now) check only ever runs at the moment the shared 8pm ET
+// cron fires). Before this fix, getCurrentWeekTag walked back to the most recent
+// REAL-MIDNIGHT Eastern boundary day instead — a boundary ~20 hours earlier that left
+// Poison/Mimic's weekly counters "ahead" of the other three systems for most of every
+// reset day. Reset day itself moved Monday -> Sunday on 2026-09-17 (direct instruction,
+// unrelated to this fix) — dates below were shifted a day earlier to keep testing the
+// same boundary shape against the new reset day.
+describe('getCurrentWeekTag — 8pm ET Sunday boundary (2026-09-14 fix, reset day moved 2026-09-17)', () => {
+    test('Sunday before 8pm ET still belongs to the PREVIOUS week (matches Quests/Guild Contracts not having rotated yet)', () => {
+        const beforeBoundary = getCurrentWeekTag(new Date('2026-01-04T19:59:00-05:00')); // Sun 7:59pm EST
+        const lastWeek = getCurrentWeekTag(new Date('2025-12-29T12:00:00-05:00')); // the prior Monday
         expect(beforeBoundary).toBe(lastWeek);
     });
 
-    test('Monday at exactly 8pm ET onward belongs to the NEW week', () => {
-        const atBoundary = getCurrentWeekTag(new Date('2026-01-05T20:00:00-05:00')); // Mon 8:00pm EST
-        const laterThatWeek = getCurrentWeekTag(new Date('2026-01-07T12:00:00-05:00')); // that Wednesday
+    test('Sunday at exactly 8pm ET onward belongs to the NEW week', () => {
+        const atBoundary = getCurrentWeekTag(new Date('2026-01-04T20:00:00-05:00')); // Sun 8:00pm EST
+        const laterThatWeek = getCurrentWeekTag(new Date('2026-01-06T12:00:00-05:00')); // that Tuesday
         expect(atBoundary).toBe(laterThatWeek);
     });
 
-    test('a hit at 7:59pm and a hit at 8:00pm on the same real Monday land in different weeks', () => {
-        const justBefore = getCurrentWeekTag(new Date('2026-01-05T19:59:00-05:00'));
-        const justAfter = getCurrentWeekTag(new Date('2026-01-05T20:00:00-05:00'));
+    test('a hit at 7:59pm and a hit at 8:00pm on the same real Sunday land in different weeks', () => {
+        const justBefore = getCurrentWeekTag(new Date('2026-01-04T19:59:00-05:00'));
+        const justAfter = getCurrentWeekTag(new Date('2026-01-04T20:00:00-05:00'));
         expect(justBefore).not.toBe(justAfter);
     });
 });

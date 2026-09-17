@@ -3287,7 +3287,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Companion Shop`)
-            .setDescription(`Daily stock rotates every day at 8pm ET, weekly stock every Monday at 8pm ET — no rerolls, so buy before it's gone.\nDaily rotation: ${dailyTag} — Weekly rotation: ${weeklyTag}\n\nUse the buttons below to buy a companion from this rotation.`)
+            .setDescription(`Daily stock rotates every day at 8pm ET, weekly stock every Sunday at 8pm ET — no rerolls, so buy before it's gone.\nDaily rotation: ${dailyTag} — Weekly rotation: ${weeklyTag}\n\nUse the buttons below to buy a companion from this rotation.`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -4383,7 +4383,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Quests`)
-            .setDescription(`${completedCount} / ${totalCount} completed — dailies reset 8pm EST/EDT, weeklies reset Mondays\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setDescription(`${completedCount} / ${totalCount} completed — dailies reset 8pm EST/EDT, weeklies reset Sundays\nPage ${pageIndex + 1} / ${totalPages}`)
             .setColor("Blue")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -4493,7 +4493,7 @@ class EmbedFactory {
                 });
             });
 
-            // Mercenary Quest shares the same Monday cadence as Weekly (see
+            // Mercenary Quest shares the same Sunday cadence as Weekly (see
             // questFactory.js's rotateQuests), so weeklyRotated also covers it — no
             // separate mercenaryRotated flag needed here. Announced to everyone same as
             // Weekly/Daily; only mercenaries actually see progress toward it in /quests.
@@ -4604,9 +4604,9 @@ class EmbedFactory {
         return embed;
     }
 
-    // Posted to the events channel by the 4am cron on the Mondays a new Guild Contract
+    // Posted to the events channel by the 8pm ET cron on the Sundays a new Guild Contract
     // actually rotates in (mirrors createQuestRotationEmbed, which only posts weekly
-    // quest changes on the Mondays they actually happen).
+    // quest changes on the Sundays they actually happen).
     createGuildContractRotationEmbed(activeContract, template) {
         const embed = new EmbedBuilder()
             .setTitle("🤝 New Guild Contract Available!")

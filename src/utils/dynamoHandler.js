@@ -623,10 +623,10 @@ function getDefaultUserFields(userId, username) {
         },
         // Bad-luck protection for repeated Poison Potato hits in the same week — see
         // workFactory.js's computePoisonMitigation. weekTag resets lazily (computed fresh
-        // on each poison hit, not cron-driven), but its own Monday-8pm-ET boundary is
-        // deliberately kept in sync with Quests'/Guild Contracts'/Mercenary weekly quests'
-        // shared cron-driven rotation (2026-09-14 fix — see getCurrentWeekTag's own
-        // comment for the drift this closed).
+        // on each poison hit, not cron-driven), but its own Sunday-8pm-ET boundary
+        // (Monday until the 2026-09-17 reset-day change) is deliberately kept in sync with
+        // Quests'/Guild Contracts'/Mercenary weekly quests' shared cron-driven rotation
+        // (2026-09-14 fix — see getCurrentWeekTag's own comment for the drift this closed).
         poisonMitigation: {
             weekTag: null,
             weeklyHitCount: 0
@@ -640,7 +640,7 @@ function getDefaultUserFields(userId, username) {
         // Lifetime, never resets — increments the one time per qualifying week a player's
         // weeklyHitCount first reaches PoisonMitigation.MILESTONE_HIT_THRESHOLD, powering
         // the toxic_tolerance achievement. Distinct from poisonMitigation.weeklyHitCount,
-        // which resets every Monday and can't be used for a lifetime achievement threshold.
+        // which resets every Sunday and can't be used for a lifetime achievement threshold.
         totalPoisonMilestonesReached: 0,
         // Mimic parallel to totalPoisonMilestonesReached above (2026-09-10 — Mimic had the
         // same weekly milestone with no lifetime counter/achievement behind it until now),

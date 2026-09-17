@@ -8,8 +8,10 @@ function getDateStringEST(date) {
     return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
-function isMondayEST(date) {
-    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Monday';
+// Weekly reset day moved Monday -> Sunday (2026-09-17, direct instruction) — mirrors
+// questFactory.js's own isSundayEST rename/swap exactly.
+function isSundayEST(date) {
+    return date.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' }) === 'Sunday';
 }
 
 // Sums each tracked member's own delta (current stat value minus their snapshotted
@@ -58,15 +60,15 @@ function computeGuildLevelDelta(guild, contractState, statPath) {
 }
 
 class GuildContractFactory {
-    // Refreshes the active Guild Contract, but only on Mondays — same weekly-only
-    // cadence as Quests' own weekly set (isMondayEST), since this is a weekly guild
-    // objective sharing the same daily 4am cron Quests/Tower already use. Any other day
+    // Refreshes the active Guild Contract, but only on Sundays — same weekly-only
+    // cadence as Quests' own weekly set (isSundayEST), since this is a weekly guild
+    // objective sharing the same daily 8pm ET cron Quests/Tower already use. Any other day
     // of the week this is a no-op that just returns the still-active contract.
     async rotateContract() {
         const now = new Date();
         const today = getDateStringEST(now);
 
-        if (!isMondayEST(now)) {
+        if (!isSundayEST(now)) {
             const current = await dynamoHandler.getActiveGuildContract();
             return { activeContract: current, rotated: false };
         }

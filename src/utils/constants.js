@@ -277,7 +277,8 @@ const DailyStreak = {
 }
 
 // Daily rotation (3 of 5) refreshes every day; weekly rotation (2 of 6) only refreshes
-// on Mondays, both at the same 8pm ET (America/New_York, DST-safe) cron the Tower/Spud
+// on Sundays (moved from Monday 2026-09-17, direct instruction), both at the same 8pm ET
+// (America/New_York, DST-safe) cron the Tower/Spud
 // Keep/Guild Contract jobs already use — see questFactory.js. (The separate daily LOGIN
 // streak, dailyStreakFactory.js, is NOT literally triggered by this cron — it's checked
 // reactively on every interaction, not on a schedule — but its own "day" boundary was
@@ -302,7 +303,7 @@ const WeeklyQuest = {
 // Mercenary Quest — a THIRD, separate rotation from Daily/Weekly, exclusive to
 // mercenaries (gated in questFactory.js's checkAndClaimQuests/getProgress on
 // userDetails.isMercenary, never shown or baselined for anyone else). Rotates on the same
-// Monday cadence as Weekly (questFactory.js's rotateQuests), just its own pool/active
+// Sunday cadence as Weekly (questFactory.js's rotateQuests), just its own pool/active
 // count/rotation-date pair in the active_quests doc (mercenaryQuestIds/
 // mercenaryRotationDate) so it can't collide with or get crowded out of the shared
 // Weekly slots. Direct instruction: "Weekly quest for merc to increase safe house
@@ -489,7 +490,7 @@ const Quests = [
     // snapshotted against the OLD statPath mid-week would produce a meaningless delta if
     // silently reinterpreted against a different one; retiring the old id lets any
     // currently-active instance just gracefully drop out of a player's active set
-    // (Quests.filter(id) simply stops matching it) until the next Monday rotation
+    // (Quests.filter(id) simply stops matching it) until the next Sunday rotation
     // redraws from the corrected pool.
     {
         id: "weekly_companion_3", name: "Wandering Friends",
@@ -964,7 +965,8 @@ const CompanionFusion = {
 // Bad-luck protection for repeated Poison Potato hits within the same week (see
 // workFactory.js's getCurrentWeekTag/computePoisonMitigation) — both the loss and the
 // (already-cut) lockout get progressively less painful the more times poison lands on the
-// same player in one week, resetting fully every Monday. Reduction applies to both the
+// same player in one week, resetting fully every Sunday (moved from Monday 2026-09-17,
+// direct instruction). Reduction applies to both the
 // potato loss and the lockout duration identically.
 const PoisonMitigation = {
     REDUCTION_PER_HIT: 0.15, // 2nd hit -15%, 3rd -30%, 4th -45%...
@@ -983,7 +985,7 @@ const PoisonMitigation = {
 }
 
 // Same weekly bad-luck mitigation as Poison Potato, mirrored (not shared — see
-// isMondayEST's own comment for why this codebase duplicates rather than shares these
+// isSundayEST's own comment for why this codebase duplicates rather than shares these
 // tiny pure functions) onto Mimic Potato's bank-percentage loss — direct instruction
 // 2026-09-05 ("implement the metal potato weekly penalty decay up to a max of -90%
 // penalty similar to poison", corrected to Mimic Potato). Values kept identical to
@@ -1856,7 +1858,7 @@ const HelpTopics = [
         id: "work",
         label: "Work",
         description: "The core /work loop and its bonus encounters, with real odds",
-        content: "`/work` runs on a 5-minute cooldown that some companion perks, guild buffs, and Mercenary Buffs give a *chance* to skip entirely (never a guaranteed shortening — a hit resets it to ready-now and auto-chains another `/work` for free). Every call rolls one encounter from this table:\n\n**Golden Potato** — 0.10% — pure potato payout, capped 500,000 (pre-multiplier).\n**Poison Potato** — 1.00% — a loss (same formula x10, capped 10,000) plus a 30-minute lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting Monday — see `/help topic:poison-mimic`.\n**Large Potato** — 4.00% — formula x10, capped 10,000.\n**Metal Potato** — 1.00% roll, then its own separate 10% success check (≈0.10% overall hit rate). Success: formula x20 capped 100,000, plus a permanent +0.6 work multiplier and scaled passive/bank boosts. A miss pays nothing and just resets the timer.\n**Sweet Potato** — 2.00% — no potatoes, one of three permanent stat buffs instead (+0.2 work multi, or a scaled passive/bank boost).\n**Wandering Companion** — 1.50% — a chance at a new companion.\n**Taro Trader** — 2.00% — starches instead of potatoes.\n**Ancient Potato** — 0.05% (the rarest roll in the game) — always fully refreshes your guild's raid cooldown, then either a 25% shot at a straight potato payout (formula x60, capped 300,000) or a partial free regrade/shop-tier grant on whichever track still has room.\n**Mimic Potato** — 1.00% — steals 1.5% of your BANKED potatoes (capped 2,500,000), mitigated the same way as Poison — but also carries a flat 5% chance to kill it instead of losing anything; see `/help topic:poison-mimic`.\n**Golden Yam** — 0.10% — Taro's rare starch jackpot, priced to match Golden Potato's payout around a 13,000-potato starch price.\n**Regular** — the remaining ≈87.25% — a plain payout capped 1,000 (pre-multiplier), scaled by your full effective multiplier.\n\nSee `/help topic:companions` for which companions change these odds or outcomes."
+        content: "`/work` runs on a 5-minute cooldown that some companion perks, guild buffs, and Mercenary Buffs give a *chance* to skip entirely (never a guaranteed shortening — a hit resets it to ready-now and auto-chains another `/work` for free). Every call rolls one encounter from this table:\n\n**Golden Potato** — 0.10% — pure potato payout, capped 500,000 (pre-multiplier).\n**Poison Potato** — 1.00% — a loss (same formula x10, capped 10,000) plus a 30-minute lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting Sunday — see `/help topic:poison-mimic`.\n**Large Potato** — 4.00% — formula x10, capped 10,000.\n**Metal Potato** — 1.00% roll, then its own separate 10% success check (≈0.10% overall hit rate). Success: formula x20 capped 100,000, plus a permanent +0.6 work multiplier and scaled passive/bank boosts. A miss pays nothing and just resets the timer.\n**Sweet Potato** — 2.00% — no potatoes, one of three permanent stat buffs instead (+0.2 work multi, or a scaled passive/bank boost).\n**Wandering Companion** — 1.50% — a chance at a new companion.\n**Taro Trader** — 2.00% — starches instead of potatoes.\n**Ancient Potato** — 0.05% (the rarest roll in the game) — always fully refreshes your guild's raid cooldown, then either a 25% shot at a straight potato payout (formula x60, capped 300,000) or a partial free regrade/shop-tier grant on whichever track still has room.\n**Mimic Potato** — 1.00% — steals 1.5% of your BANKED potatoes (capped 2,500,000), mitigated the same way as Poison — but also carries a flat 5% chance to kill it instead of losing anything; see `/help topic:poison-mimic`.\n**Golden Yam** — 0.10% — Taro's rare starch jackpot, priced to match Golden Potato's payout around a 13,000-potato starch price.\n**Regular** — the remaining ≈87.25% — a plain payout capped 1,000 (pre-multiplier), scaled by your full effective multiplier.\n\nSee `/help topic:companions` for which companions change these odds or outcomes."
     },
     {
         id: "companions",
@@ -1927,7 +1929,7 @@ const HelpTopics = [
         id: "poison-mimic",
         label: "Poison & Mimic Potato",
         description: "Full loss/mitigation math for /work's two loss encounters",
-        content: "**Poison Potato** (1.00% of `/work` rolls) — a loss (same reward formula x10, capped 10,000) plus a 30-minute cooldown lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting every Monday: 0% on hit 1, -15%/-30%/-45% on hits 2-4, capped -60% through hit 9, then a -90% break from hit 10 on (hitting 10 or 20 in a week each unlock their own achievement). Guinea Pig grants full immunity to both the loss AND the lockout, and converts a chunk of what you WOULD'VE lost into a gain instead — 50% base, scaling up with Guinea Pig's own level, and escalating further the more times poison's hit you that week (same milestone cap as everyone else's mitigation).\n\n**Mimic Potato** (1.00% of `/work` rolls) — steals 1.5% of your BANKED potatoes (not liquid — the bank doesn't protect from this one), capped at 2,500,000, mitigated by the exact same weekly escalating curve as Poison above (no companion immunity exists for Mimic). Every Mimic encounter also rolls a flat, ungated 5% chance to kill it instead of losing anything — a kill claims 20% of a shared, server-wide hoard that grows every time ANY other player's Mimic loss lands, so the more the server loses collectively, the bigger the next kill pays out."
+        content: "**Poison Potato** (1.00% of `/work` rolls) — a loss (same reward formula x10, capped 10,000) plus a 30-minute cooldown lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting every Sunday: 0% on hit 1, -15%/-30%/-45% on hits 2-4, capped -60% through hit 9, then a -90% break from hit 10 on (hitting 10 or 20 in a week each unlock their own achievement). Guinea Pig grants full immunity to both the loss AND the lockout, and converts a chunk of what you WOULD'VE lost into a gain instead — 50% base, scaling up with Guinea Pig's own level, and escalating further the more times poison's hit you that week (same milestone cap as everyone else's mitigation).\n\n**Mimic Potato** (1.00% of `/work` rolls) — steals 1.5% of your BANKED potatoes (not liquid — the bank doesn't protect from this one), capped at 2,500,000, mitigated by the exact same weekly escalating curve as Poison above (no companion immunity exists for Mimic). Every Mimic encounter also rolls a flat, ungated 5% chance to kill it instead of losing anything — a kill claims 20% of a shared, server-wide hoard that grows every time ANY other player's Mimic loss lands, so the more the server loses collectively, the bigger the next kill pays out."
     },
     {
         id: "rob-betting",
@@ -1945,7 +1947,7 @@ const HelpTopics = [
         id: "quests-achievements",
         label: "Quests & Achievements",
         description: "Rotating objectives and permanent milestones",
-        content: "`/quests` shows your active daily (3, refresh every day) and weekly (2, refresh Monday) quests, plus a Mercenary-only quest (1, also Monday) if you're a mercenary — every quest now has 3 scaling tiers (5x, then 25x the base requirement), each paying its own reward on top of the last as you clear it. `/achievements` shows your permanent milestones — there are 59 in the game today, covering everything from your first `/work` to maxing every regrade track. Both track progress automatically across most commands, not just `/work`."
+        content: "`/quests` shows your active daily (3, refresh every day) and weekly (2, refresh Sunday) quests, plus a Mercenary-only quest (1, also Sunday) if you're a mercenary — every quest now has 3 scaling tiers (5x, then 25x the base requirement), each paying its own reward on top of the last as you clear it. `/achievements` shows your permanent milestones — there are 59 in the game today, covering everything from your first `/work` to maxing every regrade track. Both track progress automatically across most commands, not just `/work`."
     },
     {
         id: "commands",

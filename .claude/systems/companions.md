@@ -1087,9 +1087,10 @@ independent 3-slot daily stock and 6-slot weekly stock, each slot buyable once p
 fixed potato-or-starch price. No luck on whether a slot is available to buy at all — only on which
 companion/rarity/price it turns out to be.
 
-- **Rotation timing** — the same Monday-8pm-ET/daily-8pm-ET boundaries Quests/Guild Contracts/
-  Mercenary weekly quests and Poison/Mimic mitigation already share (see the "8pm ET Monday
-  boundary" fix earlier the same day). Computed **lazily**, not cron-broadcast — this is personal
+- **Rotation timing** — the same Sunday-8pm-ET/daily-8pm-ET boundaries Quests/Guild Contracts/
+  Mercenary weekly quests and Poison/Mimic mitigation already share (weekly reset day moved
+  Monday -> Sunday 2026-09-17, direct instruction; see the "8pm ET Monday boundary" fix earlier
+  the same day the boundary time itself was introduced). Computed **lazily**, not cron-broadcast — this is personal
   state with no shared pool, so `companionShopFactory.js`'s `getDailyTag`/`getWeeklyTag` (mirrored,
   not shared, from `dailyStreakFactory.js`'s `getStreakDayString` and `workFactory.js`'s
   `getCurrentWeekTag` respectively — same "tiny pure date helper, duplicated per file" convention

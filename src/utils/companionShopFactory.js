@@ -42,15 +42,16 @@ function getDailyTag(now = new Date()) {
 }
 
 // The effective "shop week" — same shape as workFactory.js's getCurrentWeekTag: the most
-// recent Monday-8pm-ET boundary that's already passed.
+// recent Sunday-8pm-ET boundary that's already passed. Reset day moved Monday -> Sunday
+// (2026-09-17, direct instruction) alongside every other weekly boundary in this codebase.
 function getWeeklyTag(now = new Date()) {
     const { year, month, day, hour } = getEasternDateParts(now);
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    const daysSinceMonday = (weekday + 6) % 7;
-    const pastThisWeeksBoundary = daysSinceMonday > 0 || hour >= RESET_HOUR_EST;
-    const mondayOffset = daysSinceMonday + (pastThisWeeksBoundary ? 0 : 7);
-    const effectiveMonday = new Date(Date.UTC(year, month - 1, day - mondayOffset));
-    return effectiveMonday.toLocaleDateString('en-US', { timeZone: 'UTC' });
+    const daysSinceSunday = weekday;
+    const pastThisWeeksBoundary = daysSinceSunday > 0 || hour >= RESET_HOUR_EST;
+    const sundayOffset = daysSinceSunday + (pastThisWeeksBoundary ? 0 : 7);
+    const effectiveSunday = new Date(Date.UTC(year, month - 1, day - sundayOffset));
+    return effectiveSunday.toLocaleDateString('en-US', { timeZone: 'UTC' });
 }
 
 // getUsers()-style external/partial data guard (dynamoHandler.js's own toNumber

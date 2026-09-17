@@ -14,7 +14,8 @@ independently and earns its own copy of the reward on completion.
 
 ## Pool, rotation, and the templates
 
-`rotateContract()` picks uniformly at random from the `GuildContracts` array each Monday. Four
+`rotateContract()` picks uniformly at random from the `GuildContracts` array each Sunday (moved
+from Monday 2026-09-17, direct instruction). Four
 templates exist today (thresholds retuned twice — 2026-08-29 direct instruction, a flat
 across-the-board raise from the original 500/20/10/8, and again 2026-09-07 direct instruction to
 the current numbers below; ids left unchanged both times, still encoding an ORIGINAL threshold as
@@ -88,9 +89,9 @@ Adding a second `guildLevelStat` template in the future means picking any field 
 `guild` record itself (not a per-member user record) and setting `guildLevelStat: true` — no
 further code changes needed beyond the constants entry.
 
-Rotation only happens on Mondays (`isMondayEST`, a private copy in `guildContractFactory.js` —
+Rotation only happens on Sundays (`isSundayEST`, a private copy in `guildContractFactory.js` —
 matches `dailyStreakFactory.js`'s own precedent of each factory keeping its own EST-boundary helpers
-rather than sharing one), reusing the same daily 4am cron Quests/Tower already run on. Any other day,
+rather than sharing one), reusing the same daily 8pm ET cron Quests/Tower already run on. Any other day,
 `rotateContract()` is a no-op that returns the still-active contract. The rotation itself only
 flips a global pointer — `{templateId, rotationDate}` in the stats table's `active_guild_contract`
 doc (`dynamoHandler.getActiveGuildContract`/`setActiveGuildContract`) — it does **not** touch any
@@ -277,6 +278,6 @@ but it would have silently broken the heal loop's `if (healed)` success check. F
 - **On completion**: `work.js` sends a follow-up (`embedFactory.createGuildContractCompleteEmbed`,
   🤝) naming the guild and the reward — mirrors `createQuestCompleteEmbed`'s shape, one level up
   (guild-wide instead of per-user).
-- **On rotation**: the 4am cron posts `createGuildContractRotationEmbed` to the events channel, but
-  only on the Mondays a new contract actually rotates in — mirrors how the quest rotation embed only
-  announces the weekly set on the Mondays it actually changes.
+- **On rotation**: the 8pm ET cron posts `createGuildContractRotationEmbed` to the events channel, but
+  only on the Sundays a new contract actually rotates in — mirrors how the quest rotation embed only
+  announces the weekly set on the Sundays it actually changes.
