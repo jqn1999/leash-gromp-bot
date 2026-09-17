@@ -163,9 +163,53 @@ const SCALED_PAYOUT_TYPES = new Set([PAYOUT.POTATOES, PAYOUT.PASSIVE_INCOME, PAY
 // 5-9 (20M-1.5B+ cost) as jumps only real potato investment can reach, restoring a reason to
 // actually buy the ladder rather than just running Tower daily.
 const TOWER_RUN_CAPS = {
-    [PAYOUT.WORK_MULTIPLIER]: 10,
-    [PAYOUT.PASSIVE_INCOME]: 3000000,
-    [PAYOUT.BANK_CAPACITY]: 15000000
+    [PAYOUT.WORK_MULTIPLIER]: 10
+}
+
+// Floor-banded PASSIVE_INCOME/BANK_CAPACITY run caps (2026-09-17, direct instruction) —
+// supersedes the flat 15,000,000/3,000,000 values the block above once held (WORK_MULTIPLIER's
+// own flat cap is untouched and still lives in TOWER_RUN_CAPS itself, above). The flat cap's
+// problem wasn't its size, it was that it paid a run that barely started (floor 10) the exact
+// same ceiling as a run that survived deep into the forced-Elite gauntlet (floor 90+) — no
+// reason left to keep pushing once the (single, floor-independent) cap was hit.
+//
+// Reachability was re-checked against multi 600 rather than the ~35-100 range the flat cap was
+// originally sized against — 600 is this file's own established reference for a normal,
+// well-progressed multi (see SCALING_EXPONENT's comment above), not a fringe outlier. Elite
+// survival chance is (multi + workMultiplierModifier) / (difficulty * ~10), capped at
+// ELITE_SUCCESS_CAP per fight (see towerFactory.js's execElite), and difficulty grows
+// TOWER_ELITE_DIFFICULTY_INITIAL * TOWER_ELITE_DIFFICULTY_RATIO^(N-1) per forced Elite (N = how
+// many of the every-10th-floor Elites have been survived so far). At multi 600 that's ~82% to
+// survive all 4 Elites up to floor 40 (all still sitting at the 0.95 cap), and a genuine,
+// non-trivial ~27% to survive all 10 Elites up to floor 100 (elite 9 and 10 finally drop below
+// the cap, to ~0.77 and ~0.53) — floor 100 is a real, reachable-but-risky tier for an endgame
+// player, not a theoretical one, so it's worth rewarding proportionally to how far a run got
+// instead of flattening every run to the same ceiling.
+//
+// Banded every 10 floors, aligned to the game's own forced-Elite-every-10th-floor checkpoints
+// (fastForwardToNextElite's `while (this.floor % 10 !== 0)`): floors 1-9 are band 0, 10-19 band
+// 1, 20-29 band 2, and so on with no ceiling on how high the band climbs. Each band raises
+// PASSIVE_INCOME's cap by a flat +500,000 and BANK_CAPACITY's by +2,500,000 — a fixed 5:1
+// bank:passive ratio, direct instruction ("lets do 5:1"), matching the old flat caps' own
+// 15M:3M ratio. Floor 1-9 (band 0, 500K/2.5M) and floor 10-19 (band 1, 1M/5M) were specified
+// directly; the resulting +500K/+2.5M-per-band step also lands floor 90-99 (band 9) at exactly
+// 5M passive, the same passive figure the original 3-point pitch aimed for at "floor 100" —
+// just reached by a stepped band instead of a continuous line. Use getTowerRunCap(type, floor)
+// rather than indexing TOWER_RUN_CAPS directly for these two types — see towerFactory.js's
+// creditRunPayout, the only caller.
+const TOWER_FLOOR_CAP_BAND_SIZE = 10
+const TOWER_FLOOR_CAP_STEP = {
+    [PAYOUT.PASSIVE_INCOME]: 500000,
+    [PAYOUT.BANK_CAPACITY]: 2500000
+}
+
+function getTowerRunCap(type, floor) {
+    const step = TOWER_FLOOR_CAP_STEP[type]
+    if (step === undefined) {
+        return TOWER_RUN_CAPS[type]
+    }
+    const band = Math.floor(floor / TOWER_FLOOR_CAP_BAND_SIZE)
+    return step * (band + 1)
 }
 
 // Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper
@@ -535,6 +579,8 @@ module.exports = {
     SCALING_ANCHOR_INVESTMENT,
     SCALED_PAYOUT_TYPES,
     SCALING_EXPONENT,
-    TOWER_RUN_CAPS
+    TOWER_RUN_CAPS,
+    TOWER_FLOOR_CAP_BAND_SIZE,
+    getTowerRunCap
 }
 

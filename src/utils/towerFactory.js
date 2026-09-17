@@ -373,24 +373,31 @@ class towerFactory{
     // Per-run maximum gain cap (2026-09-04, direct instruction) — the single point every
     // WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY credit in this file funnels through (the
     // immediate REWARD/TRANSACTION branch in updateValue/updateTransaction, and King Kiwi's
-    // deferred payout in checkElitePayout). Once this.run[type] would exceed
-    // tC.TOWER_RUN_CAPS[type], only the remaining room is credited to that type; for
-    // PASSIVE_INCOME/BANK_CAPACITY the leftover converts 1:1 into POTATOES instead of being
-    // lost outright (both are already potato-denominated — a bank capacity/passive income
-    // amount IS a count of potatoes, just held in a different bucket — so this isn't an
-    // invented exchange rate). WORK_MULTIPLIER has no natural potato equivalent, so its
-    // overflow is simply not granted; the 10x cap is generous enough (real runs top out well
-    // under 2x, see tower.md) that this almost never engages. PAYOUT.POTATOES itself has no
-    // entry in TOWER_RUN_CAPS and is credited in full, uncapped, same as before. Returns the
-    // amount actually applied to `type` (not the raw pre-cap amount) so callers that report a
-    // per-floor delta (updateValue/updateTransaction's silent outcome, read by the Fast
-    // Forward summary embed) can't claim more than what actually landed in this.run[type] —
-    // the same "displayed number must match what's credited" principle the REWARD wording
-    // fix above applies to. The potatoes overflow itself isn't threaded back through that
-    // return value — it would only under-report the summary's potatoes delta in the same rare
-    // case a cap engages, a much smaller and more forgivable gap than over-promising.
+    // deferred payout in checkElitePayout). Once this.run[type] would exceed the cap, only the
+    // remaining room is credited to that type; for PASSIVE_INCOME/BANK_CAPACITY the leftover
+    // converts 1:1 into POTATOES instead of being lost outright (both are already
+    // potato-denominated — a bank capacity/passive income amount IS a count of potatoes, just
+    // held in a different bucket — so this isn't an invented exchange rate). WORK_MULTIPLIER
+    // has no natural potato equivalent, so its overflow is simply not granted; the 10x cap is
+    // generous enough (real runs top out well under 2x, see tower.md) that this almost never
+    // engages. PAYOUT.POTATOES itself has no cap and is credited in full, uncapped, same as
+    // before. Returns the amount actually applied to `type` (not the raw pre-cap amount) so
+    // callers that report a per-floor delta (updateValue/updateTransaction's silent outcome,
+    // read by the Fast Forward summary embed) can't claim more than what actually landed in
+    // this.run[type] — the same "displayed number must match what's credited" principle the
+    // REWARD wording fix above applies to. The potatoes overflow itself isn't threaded back
+    // through that return value — it would only under-report the summary's potatoes delta in
+    // the same rare case a cap engages, a much smaller and more forgivable gap than
+    // over-promising.
+    //
+    // The cap itself is read via getTowerRunCap(type, this.floor) rather than a flat
+    // TOWER_RUN_CAPS[type] lookup (2026-09-17, direct instruction) — PASSIVE_INCOME/
+    // BANK_CAPACITY now scale up every 10 floors (aligned to the forced-Elite checkpoints), so
+    // a run that survives deeper into the Tower earns real headroom instead of hitting the
+    // exact same ceiling a floor-10 run would. WORK_MULTIPLIER stays a flat lookup (unaffected
+    // by floor). See towerConstants.js's getTowerRunCap for the full derivation.
     creditRunPayout(type, amount){
-        const cap = tC.TOWER_RUN_CAPS[type]
+        const cap = tC.getTowerRunCap(type, this.floor)
         if(cap === undefined){
             this.run[type] += amount
             return amount

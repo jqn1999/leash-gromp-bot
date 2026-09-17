@@ -1467,6 +1467,119 @@ mechanism applies to the new value automatically. `towerFactory.test.js`'s 7
 needed updating — full suite (1725/1725 across 94 suites) passed unchanged. `node -c` clean on
 `towerConstants.js`.
 
+#### PASSIVE_INCOME/BANK_CAPACITY caps rebuilt as a floor-banded ladder (2026-09-17, direct instruction)
+
+Same day as the flat re-cut immediately above, superseding it before it had even been live for a
+full cycle. Design conversation started as a genuine planning question ("can you plan out a change
+to tower caps? ... would this be an interesting new design?") rather than a bug report — the flat
+cap fixed the "out-earns the shop ladder" problem, but it also meant a run that barely started
+(floor 10) got the exact same ceiling as one that survived deep into the forced-Elite gauntlet
+(floor 90+), with nothing left to play for once that single number was hit regardless of how far
+the run actually got.
+
+**Reachability check, corrected mid-conversation.** The first pass sized "is floor 40/100 even
+reachable" against multi ~35-100 and concluded floor 100 was effectively unreachable — the user
+pushed back directly: "these are not hard to reach players eventually go above 600 work multi did
+u forget that?" 600 is in fact this codebase's own established reference for a well-progressed
+multi (see `SCALING_EXPONENT`'s comment in `towerConstants.js`, which calibrates against the same
+number), so the original framing was checked against too conservative a range. Elite survival
+chance is `(multi + workMultiplierModifier) / (difficulty * ~10)`, capped at `ELITE_SUCCESS_CAP`
+(0.95) per fight; `difficulty` grows `TOWER_ELITE_DIFFICULTY_INITIAL * TOWER_ELITE_DIFFICULTY_RATIO
+^ (N-1)` per forced Elite survived (N = 1st, 2nd, 3rd... every-10th-floor Elite). Redone at multi
+600:
+
+| Elite N (floor) | difficulty | success chance |
+|---|---|---|
+| 1-8 (10-80) | 4.0 - 19.5 | capped at 0.95 |
+| 9 (90) | 19.5 | ~0.767 |
+| 10 (100) | 28.3 | ~0.529 |
+
+Cumulative chance to survive all the way to floor 40 (elites 1-4, all still at the 0.95 cap):
+`0.95^4 ≈ 82%`. Cumulative chance to survive all the way to floor 100 (elites 1-10):
+`0.95^8 * 0.767 * 0.529 ≈ 27%`. Floor 100 is genuinely reachable — not a rare fluke — for an
+endgame player, which is the corrected premise the banded design below is built on: these floors
+are real risk/reward checkpoints worth rewarding, not decorative numbers nobody will ever see.
+
+**Ratio.** The flat caps' own 15,000,000:3,000,000 bank:passive ratio was 5:1; direct instruction
+("lets do 5:1") kept that same ratio rather than the 10:1 first floated in the original 3-anchor
+pitch.
+
+**Band shape.** Specified directly, two points: floors 1-9 give 500,000 passive / 2,500,000 bank;
+floors 10-19 give 1,000,000 passive / 5,000,000 bank ("etc etc" for the continuation). Banded every
+10 floors — aligned to the game's own forced-Elite-every-10th-floor structure
+(`fastForwardToNextElite`'s `while (this.floor % 10 !== 0)`) rather than an arbitrary width — with
+each band adding a flat +500,000 passive / +2,500,000 bank over the previous one and no ceiling on
+how high the band index climbs:
+
+| Floors | Band | Passive cap | Bank cap |
+|---|---|---|---|
+| 1-9 | 0 | 500,000 | 2,500,000 |
+| 10-19 | 1 | 1,000,000 | 5,000,000 |
+| 20-29 | 2 | 1,500,000 | 7,500,000 |
+| 30-39 | 3 | 2,000,000 | 10,000,000 |
+| 40-49 | 4 | 2,500,000 | 12,500,000 |
+| 50-59 | 5 | 3,000,000 | 15,000,000 |
+| 60-69 | 6 | 3,500,000 | 17,500,000 |
+| 70-79 | 7 | 4,000,000 | 20,000,000 |
+| 80-89 | 8 | 4,500,000 | 22,500,000 |
+| 90-99 | 9 | 5,000,000 | 25,000,000 |
+| 100-109 | 10 | 5,500,000 | 27,500,000 |
+| ... | ... | +500,000/band | +2,500,000/band |
+
+Notably this step size, derived purely from the two given anchor points, independently lands
+floors 90-99 at exactly 5,000,000 passive — the same passive figure the original 3-point pitch
+aimed for "by floor 100," just reached by a stepped ladder instead of a continuous line.
+
+**Implementation.** `towerConstants.js`:
+
+```js
+const TOWER_RUN_CAPS = {
+    [PAYOUT.WORK_MULTIPLIER]: 10
+}
+
+const TOWER_FLOOR_CAP_BAND_SIZE = 10
+const TOWER_FLOOR_CAP_STEP = {
+    [PAYOUT.PASSIVE_INCOME]: 500000,
+    [PAYOUT.BANK_CAPACITY]: 2500000
+}
+
+function getTowerRunCap(type, floor) {
+    const step = TOWER_FLOOR_CAP_STEP[type]
+    if (step === undefined) {
+        return TOWER_RUN_CAPS[type]
+    }
+    const band = Math.floor(floor / TOWER_FLOOR_CAP_BAND_SIZE)
+    return step * (band + 1)
+}
+```
+
+WORK_MULTIPLIER stays a flat lookup in `TOWER_RUN_CAPS` (untouched by floor — same 10x cap as
+before); PASSIVE_INCOME/BANK_CAPACITY move to the new floor-aware `getTowerRunCap`, which also
+transparently preserves POTATOES' "no cap" behavior (`TOWER_FLOOR_CAP_STEP[POTATOES]` is
+`undefined`, so it falls through to the also-`undefined` `TOWER_RUN_CAPS[POTATOES]`).
+`towerFactory.js`'s `creditRunPayout` is the only caller and needed one line changed:
+
+```js
+creditRunPayout(type, amount){
+    const cap = tC.getTowerRunCap(type, this.floor)
+    // ...unchanged below
+}
+```
+
+Since `this.floor` is already tracked on the instance and updated before every credit
+(`checkElitePayout` reads it at actual payout time, not promise time, matching the existing King
+Kiwi "decayed once, at the floor the promise is made; credited/capped at the floor it actually
+pays out" behavior), no other call site needed to change.
+
+**Tests.** The 7 existing `creditRunPayout`/King-Kiwi/Golden-Ginger tests in
+`towerFactory.test.js` were rewritten to set an explicit `tF.floor` and read
+`tC.getTowerRunCap(type, tF.floor)` instead of the now-removed flat
+`tC.TOWER_RUN_CAPS[PASSIVE_INCOME/BANK_CAPACITY]` lookups (WORK_MULTIPLIER's own test needed no
+change, since it's still a flat `TOWER_RUN_CAPS` entry). Added a new dedicated
+`getTowerRunCap`-bands-correctly test covering floor 1, 9, 10, 19, and 95 against the table above.
+Full suite (1726/1726 across 94 suites) passed. `node -c` clean on both `towerConstants.js` and
+`towerFactory.js`.
+
 ### `/admin-reset-tower`
 
 `enter-tower.js`'s callback flips `userDetails.canEnterTower` to `false` (`updateUserDatabase`)

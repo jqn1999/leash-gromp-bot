@@ -13711,3 +13711,102 @@ tuning change. `node -c` clean on `towerConstants.js`.
 Docs: `.claude/systems/tower.md` gained a new "BANK_CAPACITY re-cut" subsection appended directly
 after the original 2026-09-04 cap-adding writeup, recording the live complaint, the ruled-out
 theories, and the full derivation of the new value.
+
+## Design: Tower's PASSIVE_INCOME/BANK_CAPACITY caps rebuilt as a floor-banded ladder (2026-09-17, direct instruction)
+
+Same day as the flat re-cut immediately above, and it supersedes that value before it had even
+been live for a full cycle. Started as an actual design question this time — "can you plan out a
+change to tower caps? im thinking of making caps for passive/bank that change every 10th floor...
+Would this be an interesting new design?" — not a bug report, so the first response was a design
+assessment and an explicit "haven't implemented anything yet, confirm the open questions first,"
+per this repo's own convention for exploratory asks.
+
+**What was asked**: replace the single flat PASSIVE_INCOME/BANK_CAPACITY cap with one that steps
+up as a run survives deeper floors, so a run that makes it past several forced Elites earns a
+bigger ceiling than one that barely started — turning the existing "wipe stat gains on death, keep
+potatoes" mechanic into an actual escalating stakes ladder instead of a flat pass/fail against one
+number.
+
+**A wrong assumption in my own first pass, corrected by the user.** The initial reachability
+read sized "is floor 40, is floor 100 actually reachable" against multi ~35-100 (the range the
+original flat-cap simulation used) and concluded floor 100 was "effectively unreachable" — the
+user pushed back directly: "these are not hard to reach players eventually go above 600 work
+multi did u forget that?" That's correct, and independently confirmable from this codebase's own
+existing commentary — `towerConstants.js`'s `SCALING_EXPONENT` comment already calibrates against
+multi 600 as its own reference "well-progressed" value, so the first pass had quietly anchored an
+important design decision (is floor 100 worth building for at all) to the wrong player population.
+Redid the math with the real formula (`success = (multi + workMultiplierModifier) /
+(difficulty * ~10)`, capped at `ELITE_SUCCESS_CAP` 0.95 per Elite; `difficulty` grows
+`TOWER_ELITE_DIFFICULTY_INITIAL * TOWER_ELITE_DIFFICULTY_RATIO^(N-1)` per forced Elite survived)
+at multi 600: **~82% chance to reach floor 40** (elites 1-4 still all sitting at the 0.95 cap), and
+a genuine **~27% chance to reach floor 100** (elites 9 and 10 finally drop below the cap, to ~0.77
+and ~0.53). Floor 100 is a real, reachable-but-risky endgame tier, not a decorative number nobody
+will ever see — which matters, because it means the top of this ladder is actually worth building
+carefully rather than an afterthought.
+
+**Decisions, made directly by the user over the course of the conversation** (not inferred or
+guessed at):
+- **Ratio**: 5:1 bank:passive (matching the flat caps' own 15M:3M ratio), not the 10:1 first
+  floated in the original 3-anchor pitch.
+- **Band width**: every 10 floors, which — not coincidentally — lines up exactly with the game's
+  existing forced-Elite-every-10th-floor structure (`fastForwardToNextElite`'s
+  `while (this.floor % 10 !== 0)`), so the new cap ladder rides the same checkpoints the "wipe on
+  death" risk already uses instead of introducing an unrelated third rhythm.
+- **Anchors**: floors 1-9 give 500,000 passive / 2,500,000 bank; floors 10-19 give 1,000,000
+  passive / 5,000,000 bank ("etc etc" for the rest) — which resolves to a flat +500,000 passive /
+  +2,500,000 bank step per band, with no ceiling on how high the band index climbs. That step,
+  derived purely from the two given points, independently lands floors 90-99 at exactly 5,000,000
+  passive — the same passive number the original 3-point pitch aimed for "by floor 100," just
+  reached by a stepped ladder instead of a continuous line, which was a good sign the two framings
+  of the idea actually agreed with each other.
+
+Full resulting table (floors / band / passive cap / bank cap): 1-9 / 0 / 500K / 2.5M — 10-19 / 1 /
+1M / 5M — 20-29 / 2 / 1.5M / 7.5M — 30-39 / 3 / 2M / 10M — 40-49 / 4 / 2.5M / 12.5M — 50-59 / 5 /
+3M / 15M — 60-69 / 6 / 3.5M / 17.5M — 70-79 / 7 / 4M / 20M — 80-89 / 8 / 4.5M / 22.5M — 90-99 / 9 /
+5M / 25M — 100-109 / 10 / 5.5M / 27.5M — continuing indefinitely at the same +500K/+2.5M-per-band
+step beyond that.
+
+**Change**: `towerConstants.js`'s `TOWER_RUN_CAPS` now holds only `WORK_MULTIPLIER` (unaffected by
+floor, still flat at 10) — `PASSIVE_INCOME`/`BANK_CAPACITY` moved to a new
+`getTowerRunCap(type, floor)` function built on two new constants,
+`TOWER_FLOOR_CAP_BAND_SIZE` (10) and `TOWER_FLOOR_CAP_STEP` (`{PASSIVE_INCOME: 500000,
+BANK_CAPACITY: 2500000}`):
+
+```js
+function getTowerRunCap(type, floor) {
+    const step = TOWER_FLOOR_CAP_STEP[type]
+    if (step === undefined) {
+        return TOWER_RUN_CAPS[type]
+    }
+    const band = Math.floor(floor / TOWER_FLOOR_CAP_BAND_SIZE)
+    return step * (band + 1)
+}
+```
+
+`towerFactory.js`'s `creditRunPayout` — the single funnel point every economy-facing Tower credit
+already passes through — changed one line, from `tC.TOWER_RUN_CAPS[type]` to
+`tC.getTowerRunCap(type, this.floor)`; `this.floor` is already tracked live on the run instance and
+up to date at every call site (including `checkElitePayout`'s deferred King Kiwi payout, which
+correctly reads the floor at actual payout time, not promise time — matching the existing "decayed
+once at the promise floor, credited/capped at the payout floor" behavior already documented for
+that path), so no other call site needed to change. POTATOES' "no cap at all" behavior is preserved
+transparently, since `TOWER_FLOOR_CAP_STEP[POTATOES]` is `undefined` and falls through to the
+also-`undefined` `TOWER_RUN_CAPS[POTATOES]`.
+
+**Tests**: rewrote the 7 existing `creditRunPayout`/King-Kiwi/Golden-Ginger tests in
+`towerFactory.test.js` to set an explicit `tF.floor` and read the new
+`tC.getTowerRunCap(type, tF.floor)` instead of the now-removed flat `TOWER_RUN_CAPS[PASSIVE_INCOME
+/BANK_CAPACITY]` lookups (`WORK_MULTIPLIER`'s own test was untouched, since it's still a flat
+`TOWER_RUN_CAPS` entry). Added one new test asserting the band math directly at floors 1, 9, 10,
+19, and 95 against the table above. Full suite: **1726/1726** across 94 suites. `node -c` clean on
+`towerConstants.js` and `towerFactory.js`.
+
+Docs: `.claude/systems/tower.md` gained a new subsection directly after the BANK_CAPACITY re-cut
+writeup, covering the corrected reachability math, the ratio/band/anchor decisions as given, the
+full table, and the implementation.
+
+**financial-project sync**: checked — the web side has no Tower run mechanic to keep in sync at
+all. It only reads Tower-derived stats the bot already wrote (`highestTowerFloor` in `records`,
+`towerChampionCount` for the "Tater Tower Titan" achievement); there's no `creditRunPayout`
+equivalent, no run economy, no cap logic on the web side for this change to affect. No port
+needed.

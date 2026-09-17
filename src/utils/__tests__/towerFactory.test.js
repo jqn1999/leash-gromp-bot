@@ -847,24 +847,39 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(999999999);
     });
 
-    test('PASSIVE_INCOME is clamped at TOWER_RUN_CAPS, overflow converts 1:1 into POTATOES', () => {
+    test('PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.PASSIVE_INCOME];
+        tF.floor = 35;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, tF.floor);
         const applied = tF.creditRunPayout(tC.PAYOUT.PASSIVE_INCOME, cap + 500000);
 
+        expect(cap).toBe(2000000);
         expect(applied).toBe(cap);
         expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(cap);
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(500000);
     });
 
-    test('BANK_CAPACITY is clamped at TOWER_RUN_CAPS, overflow converts 1:1 into POTATOES', () => {
+    test('BANK_CAPACITY is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        tF.floor = 35;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
         const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, cap + 20000000);
 
+        expect(cap).toBe(10000000);
         expect(applied).toBe(cap);
         expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(20000000);
+    });
+
+    test('getTowerRunCap bands PASSIVE_INCOME/BANK_CAPACITY every 10 floors at a fixed 5:1 ratio', () => {
+        expect(tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 1)).toBe(500000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, 1)).toBe(2500000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 9)).toBe(500000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 10)).toBe(1000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, 10)).toBe(5000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 19)).toBe(1000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 95)).toBe(5000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, 95)).toBe(25000000);
     });
 
     test('WORK_MULTIPLIER is clamped at TOWER_RUN_CAPS with the overflow simply dropped (no potato equivalent)', () => {
@@ -879,7 +894,8 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
 
     test('repeated credits stop adding once the cap is already reached', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        tF.floor = 35;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
         tF.run[tC.PAYOUT.BANK_CAPACITY] = cap;
 
         const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, 1000000);
@@ -891,9 +907,9 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
 
     test('a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time', async () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.PASSIVE_INCOME];
-        tF.run[tC.PAYOUT.PASSIVE_INCOME] = cap - 100000;
         tF.floor = 20;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, tF.floor);
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = cap - 100000;
         tF.run[tC.PAYOUT.ELITE_KILL].push([20, tC.PAYOUT.PASSIVE_INCOME, 5000000]);
 
         await tF.checkElitePayout();
@@ -908,7 +924,7 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
             awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'Bank capacity boost', update: jest.fn().mockResolvedValue() }),
         }));
         const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        const cap = tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY];
+        const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
         tF.run[tC.PAYOUT.BANK_CAPACITY] = cap - 200000;
         const fl = tC.REWARDS.find(r => r.name === 'Golden Ginger');
         const index = fl.choices.findIndex(c => c.name === 'Bank capacity boost');
