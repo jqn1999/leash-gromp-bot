@@ -145,10 +145,27 @@ const SCALED_PAYOUT_TYPES = new Set([PAYOUT.POTATOES, PAYOUT.PASSIVE_INCOME, PAY
 // constants.js (workRegradeTiers/passiveRegradeTiers/bankRegradeTiers). PAYOUT.POTATOES is
 // deliberately not capped here — only untradeable PERMANENT stat currencies are. See
 // towerFactory.js's creditRunPayout and tower.md.
+//
+// BANK_CAPACITY re-cut 50,000,000 -> 15,000,000 (2026-09-17, direct instruction, live
+// complaint: "players arent even upgrading their bank capacity anymore since they dont need
+// to"). The original 50M cap let a single free daily Tower run out-gain the ENTIRE paid
+// bankShop ladder's tiers 1-6 combined (constants.js's shops.bankShop: 50K->100K->500K->
+// 2.5M->10M->25M->50M, a cumulative +49.95M gain for ~76.25M potatoes spent) — the shop's
+// own tier 6 alone (cost 50,000,000 for +25,000,000 capacity) was worth LESS than one Tower
+// run's ceiling, for real potatoes, against a source that costs nothing but a daily action.
+// 15,000,000 was picked to match the game's own cross-track cost ratio rather than an
+// arbitrary cut: balance-audit.md's Monte Carlo found bankRegradeTiers is ~5.5x cheaper to
+// fully clear than workRegradeTiers/passiveRegradeTiers (avg ~83.35B potatoes vs. ~457.7B) —
+// applying that same ~5.5x ratio to PASSIVE_INCOME's own 3,000,000 cap lands at ~16.5M,
+// rounded down slightly to a clean 15,000,000 to err toward the side that actually fixed the
+// live complaint. Now sits between bankShop tier 4 (+7.5M, cost 5M) and tier 5 (+15M, cost
+// 20M) — a single Tower run at its ceiling roughly matches tier 5's own gain, leaving tiers
+// 5-9 (20M-1.5B+ cost) as jumps only real potato investment can reach, restoring a reason to
+// actually buy the ladder rather than just running Tower daily.
 const TOWER_RUN_CAPS = {
     [PAYOUT.WORK_MULTIPLIER]: 10,
     [PAYOUT.PASSIVE_INCOME]: 3000000,
-    [PAYOUT.BANK_CAPACITY]: 50000000
+    [PAYOUT.BANK_CAPACITY]: 15000000
 }
 
 // Dampens scalingFactor's raw growth against EV_old's own mild secondary growth (a deeper

@@ -1429,6 +1429,44 @@ credits once already at cap, King Kiwi's deferred payout capped at actual payout
 `checkElitePayout`, and a full interactive Golden Ginger pick reporting the applied — not raw —
 amount). Full suite re-run clean.
 
+#### BANK_CAPACITY re-cut 50,000,000 -> 15,000,000 (2026-09-17)
+
+Live complaint, direct instruction: "its essentially at the point where players arent even
+upgrading their bank capacity anymore since they dont need to." Traced to the same cap this
+section just documented — the ORIGINAL 50M value, while a real improvement over "no cap at all,"
+was still high enough to let one free daily Tower run out-earn real potato investment in the
+bankShop ladder (`constants.js`'s `shops.bankShop`):
+
+| Tier | Cost | Capacity gained |
+|---|---|---|
+| 4 | 5,000,000 | +7,500,000 |
+| 5 | 20,000,000 | +15,000,000 |
+| 6 | 50,000,000 | +25,000,000 |
+
+A single Tower run at the old 50M ceiling could out-gain **tiers 1 through 6 combined**
+(cumulative +49.95M gain for ~76.25M potatoes spent across those six tiers) — tier 6 alone, a
+50,000,000-potato purchase, was worth LESS capacity than one free daily action. No wonder the
+shop ladder stopped feeling worth buying.
+
+**New value derivation** — rather than an arbitrary cut, sized off this system's own established
+cross-track cost ratio: the "dead bank bonus" balance-audit (`.claude/balance-audit.md`) ran a
+Monte Carlo on the regrade tracks and found `bankRegradeTiers` costs ~5.5x less to fully clear
+than `workRegradeTiers`/`passiveRegradeTiers` (avg ~83.35B potatoes vs. ~457.7B). Applying that
+same ~5.5x ratio to `TOWER_RUN_CAPS[PAYOUT.PASSIVE_INCOME]`'s own 3,000,000 lands at ~16.5M,
+rounded down to a clean 15,000,000 — erring toward the smaller number since undershooting is the
+safer direction for a change specifically meant to restore a reason to spend potatoes. The new
+cap sits between bankShop tier 4 (+7.5M) and tier 5 (+15M) — a maxed-out Tower run now roughly
+matches what tier 5 alone gives, leaving tiers 5-9 (20M-1.5B+ cost) as jumps only real potato
+investment reaches.
+
+No code changes beyond the constant itself and its comment — `towerFactory.js`'s
+`creditRunPayout` reads `TOWER_RUN_CAPS` live, so the existing clamp/overflow-to-potatoes
+mechanism applies to the new value automatically. `towerFactory.test.js`'s 7
+`creditRunPayout`/King-Kiwi/Golden-Ginger tests all compute their own expected values off
+`tC.TOWER_RUN_CAPS[tC.PAYOUT.BANK_CAPACITY]` rather than a hardcoded `50000000` literal, so none
+needed updating — full suite (1725/1725 across 94 suites) passed unchanged. `node -c` clean on
+`towerConstants.js`.
+
 ### `/admin-reset-tower`
 
 `enter-tower.js`'s callback flips `userDetails.canEnterTower` to `false` (`updateUserDatabase`)

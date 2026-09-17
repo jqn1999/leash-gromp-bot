@@ -13653,3 +13653,61 @@ count (one rewritten, not added). Full suite: **1725/1725** across 94 suites. `n
 Docs: `.claude/systems/server-activity-channel.md` gained a new section recording this change
 (cross-referencing `command-channels.md`'s identical fix) and its Testing section updated to
 describe the default-to-invoking-channel behavior instead of the retired rejection case.
+
+## Balance: Tower's BANK_CAPACITY run cap re-cut 50M -> 15M (2026-09-17, live complaint, direct instruction)
+
+Started as a question — "should i lower the tower bank capacity daily gain cap" — that turned into
+a confirmed live problem once traced through: "its essentially at the point where players arent
+even upgrading their bank capacity anymore since they dont need to."
+
+**Root cause, not just the symptom**: `towerConstants.js`'s `TOWER_RUN_CAPS[PAYOUT.BANK_CAPACITY]`
+was set to 50,000,000 back on 2026-09-04 (see that section's own writeup just above this one) —
+already a real improvement over "no cap at all," but still high enough that a single FREE daily
+Tower run could out-earn the entire PAID `bankShop` ladder's tiers 1-6 combined
+(50K->100K->500K->2.5M->10M->25M->50M, a cumulative +49.95M gain for ~76.25M potatoes spent).
+Tier 6 alone — a 50,000,000-potato purchase — was worth less capacity than one free daily action.
+That's a direct, mechanical explanation for "players aren't upgrading anymore": the paid ladder
+had been quietly out-competed by a free source.
+
+Ruled out two adjacent theories before landing on this one:
+- **Not the mercenary weekly Safehouse quests** ("Bounty Sweep"/"Heist Sweep", capped at
+  +25,000,000/week) — real disparity (Tower's daily ceiling alone beats a whole week's hardest
+  mercenary grind), but those are a *different* stat pool (`additionalSafehouseStorage`, mercenary-
+  only) from `bankCapacity` (universal), and Tower is currently the *only* real bankCapacity lever
+  left for guild players since `weekly_work_50`/`weekly_poison_5` were swapped away from
+  `bankCapacity` entirely on 2026-08-22 for the same "goes dead once regrade-maxed" reason (see
+  balance-audit.md). Lowering Tower's cap to fix a mercenary-specific quest gap would've nerfed
+  every player, including the ones with no alternative source — flagged this asymmetry to the
+  player rather than assuming the weekly-quest comparison was the actionable one.
+- **Not the "dead once bank-regrade-maxed" finding either** — that's a real, separate, already-
+  documented issue (balance-audit.md's "six sources feed the same dead branch"), but it only
+  explains why late-game maxed players get zero value from ANY bankCapacity source; it doesn't
+  explain non-maxed players skipping the shop ladder specifically in favor of Tower, which is a
+  pure magnitude/cost-efficiency comparison, not a "goes to zero" one.
+
+**New value, derived rather than picked**: sized off this system's own established cross-track
+ratio instead of an arbitrary number. The original 2026-09-04 cap-adding pass's own balance-audit
+found `bankRegradeTiers` costs ~5.5x less to fully clear than `workRegradeTiers`/
+`passiveRegradeTiers` (Monte Carlo: ~83.35B potatoes avg vs. ~457.7B). Applying that same ~5.5x
+ratio to `TOWER_RUN_CAPS[PAYOUT.PASSIVE_INCOME]`'s own 3,000,000 lands at ~16.5M, rounded down to
+a clean **15,000,000** — erring toward the smaller number since undershooting is the safer
+direction for a fix specifically meant to restore a reason to spend potatoes. Lands the cap
+between bankShop tier 4 (+7.5M, cost 5M) and tier 5 (+15M, cost 20M) — a maxed Tower run now
+roughly matches tier 5's own gain alone, leaving tiers 5-9 (20M-1.5B+ cost) as jumps only real
+potato investment reaches.
+
+**Change**: one constant, `towerConstants.js`'s `TOWER_RUN_CAPS[PAYOUT.BANK_CAPACITY]`,
+50000000 -> 15000000, plus a comment recording the full derivation above (kept the original
+2026-09-04 comment intact rather than rewriting history, per this codebase's own convention).
+`towerFactory.js`'s `creditRunPayout` reads the constant live, so the existing clamp/
+overflow-to-potatoes mechanism applies automatically — no other code touched.
+
+**Tests**: zero changes needed. `towerFactory.test.js`'s 7 `creditRunPayout`/King-Kiwi/
+Golden-Ginger tests all compute their expected values off `tC.TOWER_RUN_CAPS[tC.PAYOUT.
+BANK_CAPACITY]` rather than a hardcoded `50000000` literal — full suite **1725/1725** across 94
+suites, unchanged pass count, confirming the tests were already robust to this exact kind of
+tuning change. `node -c` clean on `towerConstants.js`.
+
+Docs: `.claude/systems/tower.md` gained a new "BANK_CAPACITY re-cut" subsection appended directly
+after the original 2026-09-04 cap-adding writeup, recording the live complaint, the ruled-out
+theories, and the full derivation of the new value.
