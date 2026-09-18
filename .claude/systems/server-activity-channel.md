@@ -71,6 +71,9 @@ Events trigger fires from BOTH sides" below for the bot-side half):
 - **`/rob` (player-vs-player robbery) is deliberately excluded** from Big Events even though it's
   part of the normal activity channel's trigger set — the player named "raid/bounties/rob npc"
   specifically, not `/rob`.
+- A **won** Rival Bounty Hunter confrontation (`/confront-rival`) or Guild Rival Warband repel
+  (`/repel-warband`) whose internally-rolled `scenario` came up `'hard'` — added 2026-09-18, bot
+  side only so far (see that section below for why website parity is still open).
 - A companion pull that is **Mythic or Heirloom rarity** (the two tiers above Legendary), or that
   is one of the three **activity-exclusive companions** — Yukon (`dropSource: "bounty"`),
   Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity.
@@ -387,3 +390,48 @@ Webhooks) surfaced clearly, and that setting one channel's config never touches 
 web-side `postServerActivity`/`postBigEvent` calls are not covered by this repo's own test suite
 (financial-project has no equivalent Jest harness for its Lambda handlers as of this writing) —
 verified via direct `tsc` type-checking of each touched `handler.ts` only.
+
+## Hard Rival wins join Big Events (2026-09-18, direct instruction — "include hard rival for guild
+and merc in big events")
+
+`/confront-rival` (merc, solo) and `/repel-warband` (guild) both roll a `scenario` internally
+(`'easy'`/`'medium'`/`'hard'`, weighted `Rival.SCENARIO_CHANCE`/`GuildRival.SCENARIO_CHANCE` — 60/30/10)
+that the player never picks — see systems/mercenary-bounties.md#rival-bounty-hunters and
+systems/guilds.md#guild-rival-warbands. Neither command had ANY Big Events wiring before this pass
+(confirmed via grep — zero `bigEventsChannel` references in either file).
+
+**Gate chosen: `result.won && result.scenario === 'hard'`**, not a re-derived
+`successChance < BIG_EVENT_WIN_CHANCE_THRESHOLD` check (the pattern every other long-shot-win
+trigger above uses). Two reasons this is the better fit here rather than just reusing the existing
+threshold check verbatim:
+- It's the more literal reading of "include **hard rival**" — the player named the scenario tier,
+  not an odds cutoff.
+- It's never actually looser in practice: Hard's own `SUCCESS_CHANCE_RANGE` is `[0.10, 0.20]` before
+  any rank/level bonus, so every Hard win already clears the 30% threshold on its own — gating on
+  `scenario === 'hard'` and gating on `successChance < 0.30` agree on every Hard win. They'd diverge
+  on Medium (`[0.20, 0.40]`, which can occasionally roll under 30% too) — scenario-gating is what
+  keeps Medium wins OUT, matching "hard rival" and not "any long-shot rival."
+
+**Bot side only, wired 2026-09-18**:
+- `src/commands/user/confrontRival.js` — right after its own `editReply`, posts title
+  `⚔️ Hard Rival Bounty Hunter Defeated!`, naming the rolled rival (`result.rival.name`) and the
+  reward, colored `LONG_SHOT_WIN_COLOR` (fire orange-red — Hard is definitionally a long shot, same
+  color family as the existing `<30%` raid/bounty/heist triggers, not a new color).
+- `src/commands/guilds/repelWarband.js` — same shape, right after its own `editReply`, title
+  `⚔️ Hard Warband Repelled!`, adds a `guildField` since this is a guild-wide result rather than a
+  solo one.
+
+**Website parity not yet ported.** `financial-project`'s `gromp-mercenary`/`gromp-guilds` Lambdas do
+implement the same Rival Bounty Hunter/Guild Rival Warband actions (confirmed via grep — both
+`handler.ts` files reference the rival/warband confrontation logic) per the cross-repo mirroring
+convention this doc's header describes, but this pass only touched the bot. Flagged here rather
+than silently left to drift — the next session touching either repo's Big Events wiring should
+port this trigger into `gromp-mercenary/handler.ts` and `gromp-guilds/handler.ts` and add the
+matching `NOTES_GROMP_WEB_INTEGRATION.md` entry, the same way every other bot-side Big Events
+trigger already has a website counterpart.
+
+**Tests**: full suite re-run after this change (**1764/1764** passed, no new test file added — the
+condition is a straight boolean gate on already-tested `resolveRivalConfrontation`/
+`resolveWarbandConfrontation` output, and `postBigEvent` itself is already covered by
+`bigEventsChannel.test.js`; no existing test asserted on `confrontRival.js`/`repelWarband.js` NOT
+calling `bigEventsChannel`, so nothing needed updating). `node -c` clean on both touched files.

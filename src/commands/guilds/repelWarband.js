@@ -5,6 +5,7 @@ const { RaidFactory, getLiveRaidRoster, getMemberRaidPower, getRaidLevelInfo } =
 const { addToBankOrPurse, removeFromBankOrPurse } = require("./startRaid");
 const guildRivalFactory = require("../../utils/guildRivalFactory");
 const guildCompanionFactory = require("../../utils/guildCompanionFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -123,5 +124,25 @@ module.exports = {
 
         const embed = embedFactory.createWarbandConfrontationResultEmbed(guildName, result, newInfamy);
         await interaction.editReply({ embeds: [embed] });
+
+        // Big Events (2026-09-18, direct instruction — "include hard rival for guild and
+        // merc in big events"). Mirrors confrontRival.js's own reasoning exactly: gate on
+        // the scenario roll itself (Hard is GuildRival's rarest tier, 10% roll chance, with
+        // the lowest 10-20% success-chance range of the three), not a re-derived <30%
+        // successChance check — every Hard win already clears BIG_EVENT_WIN_CHANCE_THRESHOLD
+        // anyway, so this is never looser than that existing pattern.
+        if (result.won && result.scenario === 'hard') {
+            await bigEventsChannel.postBigEvent({
+                title: '⚔️ Hard Warband Repelled!',
+                description: `**${guildName}** repelled ${result.rival.name}'s warband on the hardest Guild Rival Warband tier!`,
+                fields: [
+                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.guildField(guildName),
+                    bigEventsChannel.oddsField(result.successChance),
+                    bigEventsChannel.rewardField(result.rewardAmount),
+                ],
+                color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
+            });
+        }
     }
 }

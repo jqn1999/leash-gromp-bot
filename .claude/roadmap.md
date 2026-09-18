@@ -14202,3 +14202,85 @@ Docs: `.claude/systems/server-activity-channel.md` gained a new dated section pl
 in the "which actions post" table, and a clarifying note that this doesn't reopen the separate
 2026-09-16 decision to exclude Companion Hunt/Shop results from the **Big Events** channel
 specifically (routine Activity and Big Events have independent inclusion lists).
+
+## Hard Rival wins (merc + guild) join Big Events (2026-09-18, direct instruction: "include hard rival for guild and merc in big events")
+
+Asked alongside a separate cooldown-skip investigation (below) and an unrelated merc-buff-scaling
+design decision that's still pending its own implementation — this was the first of the two
+requests to actually ship this pass.
+
+**What was found**: `/confront-rival` (merc, solo — `src/commands/user/confrontRival.js`) and
+`/repel-warband` (guild — `src/commands/guilds/repelWarband.js`) had **zero** Big Events wiring at
+all, confirmed via grep for `postBigEvent`/`bigEventsChannel` in both files (no matches). Both
+commands already roll a `scenario` internally (`'easy'`/`'medium'`/`'hard'`, weighted 60/30/10 —
+`Rival.SCENARIO_CHANCE`/`GuildRival.SCENARIO_CHANCE` in `constants.js`) that the player never
+picks — the scenario decides both the success-chance range (`SUCCESS_CHANCE_RANGE`, Hard is the
+tightest and lowest at `[0.10, 0.20]`) and the reward/stat-grant scope, so a Hard win is already
+both rare (10% to even get offered the fight) and low-odds (10-20% to then win it) by construction
+— exactly the "genuine long-shot that paid off" spirit the existing Big Events triggers (Golden
+Potato, <30%-chance Raid/Bounty/Heist wins, rare companion pulls) already cover.
+
+**What changed**: added a `bigEventsChannel.postBigEvent(...)` call right after each command's own
+`editReply`, gated on `result.won && result.scenario === 'hard'`. Deliberately gated on the
+scenario itself rather than reusing the existing `successChance < BIG_EVENT_WIN_CHANCE_THRESHOLD`
+(0.30) pattern verbatim — it's the more literal reading of "hard rival" (the player named the tier,
+not an odds cutoff), and it's never actually looser: every Hard win's `successChance` is already
+under 0.30 by construction (its range tops out at 0.20 before bonuses), so scenario-gating and
+threshold-gating agree on every Hard win and only diverge on Medium (`[0.20, 0.40]`, which can
+occasionally dip under 30% too) — scenario-gating correctly keeps those out.
+`confrontRival.js`'s embed titles `⚔️ Hard Rival Bounty Hunter Defeated!`, names the rolled rival
+(`result.rival.name`) and the reward; `repelWarband.js`'s mirrors that shape with an added
+`guildField` since it's a guild-wide result. Both use `LONG_SHOT_WIN_COLOR` (already-established
+fire orange-red for "against the odds" wins), not a new color — a Hard rival win is exactly that
+category, not a new one.
+
+**Flagged, not silently decided**: this pass only touched the bot. `financial-project`'s
+`gromp-mercenary`/`gromp-guilds` Lambdas do implement the same Rival Bounty Hunter/Guild Rival
+Warband actions (confirmed via grep), so per this repo's own cross-repo mirroring convention the
+website side still needs the equivalent trigger ported in a follow-up session, with a matching
+`NOTES_GROMP_WEB_INTEGRATION.md` entry on that side.
+
+**Tests**: full suite re-run, **1764/1764** passed across 95 suites — no new test file added since
+the change is a boolean gate on already-tested `resolveRivalConfrontation`/
+`resolveWarbandConfrontation` output feeding an already-tested `postBigEvent`, and no existing test
+asserted on either command NOT calling `bigEventsChannel`. `node -c` clean on both touched files.
+
+Docs: `.claude/systems/server-activity-channel.md` gained a new dated section plus a bullet in the
+Big Events trigger list.
+
+## Cooldown-skip "lumped with Spud Keep" report — investigated, no mislabeling bug found (2026-09-18, direct instruction: "see if merc buff for skip cooldown is accidentally getting lumped in with the spud keep skip chance message")
+
+Root-cause investigation, not a fix — traced the actual attribution path rather than guessing from
+the symptom, per this doc's own standing convention.
+
+Checked every place a cooldown-skip source gets attributed or displayed:
+`mercenaryFactory.getMercenaryCooldownSkipSources` (3 distinct `{key, chance, label}` entries:
+`mercenaryRank`, `spudKeep`, `mercenaryBuff`), `dynamoHandler.getWorkCooldownSkipSources` (5
+distinct sources for `/work` — `companion`, `worldBuff`, `guildBuff`, `spudKeep`,
+`mercenaryBuff`), `dynamoHandler.calculateWorkTimerValue`'s explicit `if/else if` attribution
+chain, `takeBounty.js`'s `resolveBountyCooldownSkip` (correctly branches
+`mercenaryRank`/`mercenaryBuff`/`spudKeep` on a win), `mercenaryBuffFactory.getMercenaryBuffLabel`
+(builds its own label from `MercenaryBuffDescriptions`, no copy-paste from Spud Keep's text), and
+`embedFactory.buildCooldownSkipField`'s per-source branches (separate flavor text for
+`mercenaryBuff` — "🗡️ Mercenary Buff: Your own hard-won edge...", — and `spudKeep` — "👑 Spud
+Keep: Holding the Keep pays off..." — never sharing a branch). **No mislabeling bug found** —
+every source that produces a skip is correctly attributed to itself, on the bot side, everywhere
+checked.
+
+Two real (but different) gaps did turn up, neither of which is "getting lumped in," reported back
+rather than assumed to be what was meant:
+1. **Bot-side MISS message has no per-source breakdown.** When the combined roll misses,
+   `buildCooldownSkipField`'s `missedSkipChance` branch shows one generic combined percentage
+   ("🎲 Cooldown Skip Chance: X%...") with no line-by-line source breakdown — unlike the WIN case,
+   which always names the specific source. Could read as "lumped together" even though it isn't a
+   mislabeling; it's a missing breakdown on the miss path specifically.
+2. **Website's Bounty/Heist flow has no skip-source attribution at all.**
+   `gromp-mercenary/handler.ts`'s `doTakeBounty` computes a single combined `bountySkipChance` via
+   `combineSkipChance(sources.map(s => s.chance))` and rolls once against it, but never calls a
+   `pickSkipSource` equivalent — there's no way to tell which source caused a skip on the website,
+   and the frontend (`gromp.component.ts`) shows no cooldown-skip message for Bounty/Heist results
+   at all, on a hit or a miss. This is a missing feature relative to the bot, not a mislabeling bug.
+
+No code changed for this investigation — reported findings, no fix applied yet pending
+confirmation of which (if either) matches what was actually observed, since neither is a clean
+match for "lumped in with the spud keep skip chance message" as literally described.
