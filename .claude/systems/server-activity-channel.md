@@ -278,6 +278,34 @@ type has an entry, `regular` is grey, `metalSuccess`/`metalFailure` deliberately
 the Gold default. Full suite: **1764/1764** across 95 suites (8 new tests). `node -c` clean on
 every touched file.
 
+## Scavenge / Companion Hunt join the Activity channel (2026-09-18, direct instruction, website-only)
+
+Direct instruction: "make things like companion hunt and scavenge from website show up on the web
+activity channel for sending out and collecting." Website-only change — `gromp-companions/
+handler.ts` (financial-project) previously had **zero** Server Activity/Big Events wiring at all.
+A prior Companion Hunt/Shop wiring existed briefly and was explicitly reverted same-day back on
+2026-09-16 ("Big events channel doesn't need companion shop purchases or companion hunt
+results") — that was about the **Big Events** channel specifically (a hunt/scavenge result isn't
+a rare enough moment to interrupt that channel for); this is a new, separate ask for the
+**routine Activity** channel, the same "🌐 someone did X" feed Work/Bank/Rob/Raid already post to.
+The two channels' inclusion lists are independent, not layered — this doesn't reopen the 2026-09-16
+decision.
+
+Confirmed against each bot command's own `deferReply()` call (this repo's own "ephemeral flag is
+the source of truth" rule, from "Scope" below): `/companion-scavenge`, `/companion-scavenge-collect`,
+`/companion-hunt`, and `/companion-hunt-collect` are all public. `/companion-scavenge-cancel` and
+`/companion-hunt-cancel` were deliberately left out — a cancel is a no-op retreat with no reward,
+nothing worth announcing.
+
+Website side (see financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` for the full writeup):
+`gromp-companions/handler.ts` gained its own `postServerActivity` (mirrored from the other three
+Lambdas' identical copies — this file simply never had one before). The switch statement's
+`scavenge`/`scavengeCollect`/`companionHunt`/`companionHuntCollect` cases were changed from
+`return await fn(...)` to `result = await fn(...); break;` so a shared post-switch block can fire
+the activity post on success, matching the exact `if (result.success) { if (action === ...) }`
+shape the other three Lambdas already use — every other action in this file (market/sell/buy/
+fuse/favorites/shop/etc.) was left as a direct `return`, untouched.
+
 ## Scope: which actions post, and why "ephemeral" doesn't map 1:1
 
 The website has no "ephemeral" concept of its own — every page is private to the logged-in user
@@ -296,16 +324,22 @@ Checked directly against each bot command's own `deferReply({ ephemeral: ... })`
 | Start Raid | `/start-raid` (public result) |
 | Bank deposit/withdraw | `/bank` (public — included on direct instruction, "include deposits and withdrawals") |
 | Safehouse deposit/withdraw | `/safehouse` (public — included on direct instruction) |
+| Scavenge (send + collect) | `/companion-scavenge`, `/companion-scavenge-collect` (both public — added 2026-09-18, direct instruction) |
+| Companion Hunt (send + collect) | `/companion-hunt`, `/companion-hunt-collect` (both public — added 2026-09-18, direct instruction) |
 
 **Deliberately excluded**: every `onLoad*` web method (pure reads, not actions — nothing "happens"
 worth announcing), `/companion-shop` (genuinely ephemeral on the bot — personal stock, no reason
-for onlookers, per that command's own design), account linking, birthdays, and every other web
-action not explicitly named above (shop tier buys, regrades, coinflip, betting, guild management,
-etc.) — not evaluated one-by-one, left out by default rather than guessed at. This exclusion is
-specifically about the **normal** activity channel's routine "you bought X" noise — a Companion
-Shop pull that happens to roll Mythic still fires into the separate **Big Events** channel (see
-below), same as a `/companion-hunt-collect` expedition result; that channel is opt-in and exists
-precisely for moments worth surfacing regardless of how ephemeral the action itself is.
+for onlookers, per that command's own design), account linking, birthdays, Scavenge/Companion
+Hunt's own `Cancel` variants (a no-op retreat with no reward, nothing worth announcing — only the
+send-out and the real collect fire), and every other web action not explicitly named above (shop
+tier buys, regrades, coinflip, betting, guild management, etc.) — not evaluated one-by-one, left
+out by default rather than guessed at. This exclusion is specifically about the **normal**
+activity channel's routine "you bought X" noise — a Companion Shop pull that happens to roll
+Mythic still fires into the separate **Big Events** channel (see below); Big Events' own
+2026-09-16 exclusion of Companion Hunt/Shop results was a SEPARATE, narrower decision (about
+that channel specifically, since a hunt/shop result isn't a rare enough moment to interrupt
+Big Events for) and is untouched by Scavenge/Companion Hunt joining the routine Activity channel
+here — the two channels' inclusion lists are independent, not layered.
 
 ## Message format
 

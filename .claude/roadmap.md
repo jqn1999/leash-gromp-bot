@@ -14186,3 +14186,19 @@ updating there. Full suite: **1764/1764** across 95 suites. `node -c` clean on e
 get the equivalent color pass in the same session — see that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md` — so both channels stay visually consistent regardless of which
 side posted the embed.
+
+## Scavenge/Companion Hunt join the website's Activity channel (2026-09-18, direct instruction, website-only)
+
+Direct instruction: "make things like companion hunt and scavenge from website show up on the web
+activity channel for sending out and collecting." **No bot-side code change** — this repo's own
+`/companion-scavenge`, `/companion-scavenge-collect`, `/companion-hunt`, `/companion-hunt-collect`
+already existed and are all public (non-ephemeral); confirming that was the only bot-side work
+needed, since this file's own convention treats each bot command's real ephemeral flag as the
+source of truth for what the website should mirror. The actual implementation is entirely in
+financial-project's `gromp-companions/handler.ts` — see that repo's own roadmap-equivalent
+(`NOTES_GROMP_WEB_INTEGRATION.md`) for the full writeup.
+
+Docs: `.claude/systems/server-activity-channel.md` gained a new dated section plus two new rows
+in the "which actions post" table, and a clarifying note that this doesn't reopen the separate
+2026-09-16 decision to exclude Companion Hunt/Shop results from the **Big Events** channel
+specifically (routine Activity and Big Events have independent inclusion lists).
