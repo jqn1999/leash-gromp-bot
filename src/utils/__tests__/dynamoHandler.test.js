@@ -449,6 +449,34 @@ describe('updateGuildFieldsWithLock', () => {
     });
 });
 
+// Guild Raid race guard (2026-09-18, direct instruction) — two members racing to click
+// "Start the raid" for the same guild could both pass startRaid.js's own raidTimer freshness
+// recheck (both reading the same expired value) before either's real cooldown write landed,
+// since raid resolution does several awaits of real work in between. Same
+// ConditionExpression-on-the-write shape as resolveScavenge/collectSpudKeepReward above.
+describe('claimGuildRaidSlot', () => {
+    test('conditions the write on raidTimer still matching what was just read', async () => {
+        docClient.update.mockReturnValue(resolved({}));
+        const result = await dynamoHandler.claimGuildRaidSlot('g1', 0, 1234567890);
+
+        expect(result).toBe(true);
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.Key).toEqual({ guildId: 'g1' });
+        expect(params.UpdateExpression).toBe('set raidTimer = :provisionalRaidTimer');
+        expect(params.ConditionExpression).toBe('raidTimer = :expectedRaidTimer');
+        expect(params.ExpressionAttributeValues).toEqual({ ':provisionalRaidTimer': 1234567890, ':expectedRaidTimer': 0 });
+    });
+
+    test('returns false (not a throw) when a concurrent raid attempt already claimed the slot', async () => {
+        const conditionalFailure = new Error('The conditional request failed');
+        conditionalFailure.code = 'ConditionalCheckFailedException';
+        docClient.update.mockReturnValue(rejected(conditionalFailure));
+
+        const result = await dynamoHandler.claimGuildRaidSlot('g1', 0, 1234567890);
+        expect(result).toBe(false);
+    });
+});
+
 // Regression coverage for guild bank capacity's tier-alignment bug: a fresh guild's
 // starting bankCapacity (1,000,000) doesn't match any guildShops bankCapacity tier's
 // currentAmount, and guildBuy.js's getNextItemFromShop is an exact-match lookup — so

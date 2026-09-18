@@ -14041,3 +14041,53 @@ suite: **1742/1742** across 94 suites (4 new tests). `node -c` clean on `eventFa
 Docs: `.claude/systems/raids-and-world-events.md`'s `eventFactory.js` section gained a new
 "Shared active-event record" subsection, and its background-scheduled-jobs table entry for the
 hourly cron was updated to mention the new persistence step.
+
+## Guild Raid: race guard closes a real double-raid window (2026-09-18, direct instruction)
+
+Direct instruction: "add a check for the guild raid embed so that it checks raid time again as
+the actual start raid button is pressed... so that two people racing to start the raid dont cause
+the embed to accidentally still work after the other person already raided." Investigated the
+actual code path rather than assuming the ask described a missing check from scratch:
+`resolveRaid` (the function `runStartRaidFlow`'s "Start the raid" confirm button hands off to)
+ALREADY rechecked `guild.raidTimer` fresh at that exact moment — a real `requireUserGuild` fetch,
+not the stale value from when the preview embed was first shown. So the recheck itself wasn't
+missing. The real gap, one layer away from the literal ask (per this file's own standing
+investigate-root-cause convention): that recheck and the eventual `raidTimer` write
+(`finalNextRaidAvailableAt`, written near the very end of resolution) are separated by several
+real `await`s — `raidMemberDetails` fetch, the scenario roll, bank/stats/history/companion writes.
+Two members clicking confirm within that window both read the same expired `raidTimer`, both pass
+the recheck, and without an atomic claim in between, both would proceed to roll and pay out before
+either's real cooldown write landed — a genuine TOCTOU race, not something a second `if` statement
+alone could close.
+
+**Fix**: added `dynamoHandler.claimGuildRaidSlot(guildId, expectedRaidTimer, provisionalRaidTimer)`
+— a `ConditionExpression`-guarded write (same shape as the existing `resolveScavenge`/
+`collectSpudKeepReward` race guards) that only lands if `raidTimer` still equals what was just
+read. Wired into `resolveRaid` immediately after the existing recheck, before any of the expensive
+resolution work: on a win, claims the slot with a provisional value `Raid.RAID_CLAIM_LOCK_MS`
+(30s, new constant) in the future; the function's own existing final `raidTimer` write (unchanged)
+overwrites that provisional value with the real computed cooldown a few lines later. A lost claim
+bails out immediately with "someone else in your guild just started a raid — try again once it
+resolves" (or a console.log for a chained cooldown-skip continuation, matching every other guard in
+this function's own established style). Applies uniformly to every entry point that funnels through
+`resolveRaid` — the original `/start-raid` confirm click, `/current-raid`'s own button, and chained
+cooldown-skip continuations — since it's one shared function all three already call.
+
+**Compatibility note**: `dynamoHandler` is automocked (`jest.mock('../../../utils/dynamoHandler')`)
+across all 8 `startRaid*.test.js` files, so the new `claimGuildRaidSlot` export defaulted to
+`undefined` (falsy) in every existing test's mock — without updating them, every single existing
+raid-resolution test would have hit the new "lost the race" branch immediately and failed. Added
+`dynamoHandler.claimGuildRaidSlot.mockResolvedValue(true)` to each file's own `beforeEach`,
+matching the exact line already there for `updateGuildDatabase`/`updateUserFields`.
+
+**Tests**: new `dynamoHandler.test.js` "claimGuildRaidSlot" block (conditions-on-read-value
+success case, `ConditionalCheckFailedException` → `false` not a throw). New dedicated
+`startRaidRaceGuard.test.js` — asserts the claim is called with the exact guild `raidTimer` just
+read and `Date.now() + Raid.RAID_CLAIM_LOCK_MS`; asserts a lost claim shows the friendly message
+and that none of the downstream reward-split/counter/history work ever runs; asserts a won claim
+proceeds exactly as before (no happy-path behavior change). Full suite: **1747/1747** across 95
+suites (5 new tests, 1 new file). `node -c` clean on `startRaid.js`, `dynamoHandler.js`,
+`constants.js`.
+
+Docs: `.claude/systems/guilds.md`'s "Next-raid cooldown shown in the result embed" section gained
+a new dated "Raid-slot race guard" paragraph immediately after it.

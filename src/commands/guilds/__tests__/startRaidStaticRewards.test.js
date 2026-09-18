@@ -110,6 +110,7 @@ function userFixture(id, workMultiplierAmount) {
 beforeEach(() => {
     jest.clearAllMocks();
     dynamoHandler.updateGuildDatabase.mockResolvedValue({});
+    dynamoHandler.claimGuildRaidSlot.mockResolvedValue(true);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     const leader = userFixture('leader', 10);
     const m2 = userFixture('m2', 5);

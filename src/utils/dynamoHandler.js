@@ -1407,6 +1407,40 @@ const updateGuildDatabase = async function (guildId, attributeName, attributeVal
     return response;
 }
 
+// Guild Raid race guard (2026-09-18, direct instruction) — startRaid.js's resolveRaid
+// rechecks guild.raidTimer fresh right when the "Start the raid" confirm button lands, but
+// that check alone doesn't close the race: two near-simultaneous raid attempts for the same
+// guild can both read the same expired raidTimer and both pass, since the real cooldown
+// isn't written back until AFTER the (multi-step, multi-await) roll/reward resolution
+// finishes. Same ConditionExpression-on-the-write shape as resolveScavenge/
+// collectSpudKeepReward above — conditions the claim on raidTimer still being exactly what
+// was just read, so whichever caller writes first wins and the loser's write is rejected
+// instead of both proceeding. Returns true if this call won the claim, false if it lost the
+// race (or hit any other error).
+const claimGuildRaidSlot = async function (guildId, expectedRaidTimer, provisionalRaidTimer) {
+    const params = {
+        TableName: awsConfigurations.aws_guilds_table_name,
+        Key: {
+            guildId: guildId,
+        },
+        UpdateExpression: "set raidTimer = :provisionalRaidTimer",
+        ConditionExpression: "raidTimer = :expectedRaidTimer",
+        ExpressionAttributeValues: {
+            ":provisionalRaidTimer": provisionalRaidTimer,
+            ":expectedRaidTimer": expectedRaidTimer,
+        },
+    };
+
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`claimGuildRaidSlot error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 // Optimistic-concurrency write for guild attributes that get read-modify-written by
 // several commands (memberList, inviteList) — invite/join-guild/kick/promote/demote/
 // pass-leadership all read the whole guild, mutate a list locally, then write the whole
@@ -2022,6 +2056,7 @@ module.exports = {
 
     updateGuildDatabase,
     updateGuildFieldsWithLock,
+    claimGuildRaidSlot,
     findGuildById,
     findGuildByName,
     createGuild,

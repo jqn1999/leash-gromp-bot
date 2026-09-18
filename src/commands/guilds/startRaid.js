@@ -1474,6 +1474,24 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         return;
     }
 
+    // Race guard (2026-09-18, direct instruction) — the recheck above alone doesn't close the
+    // race: two members clicking "Start the raid" for the same guild within moments of each
+    // other can both read this same expired raidTimer and both reach this point, since the
+    // real cooldown isn't written back until AFTER the roll/reward resolution below (several
+    // awaits away). Atomically claims the slot with a short-lived provisional value BEFORE any
+    // of that expensive work — whichever call's write lands first wins; the loser's
+    // conditional write is rejected and it bails out here instead of silently double-raiding.
+    // See dynamoHandler.claimGuildRaidSlot's own comment and Raid.RAID_CLAIM_LOCK_MS.
+    const claimedRaidSlot = await dynamoHandler.claimGuildRaidSlot(guildId, guild.raidTimer, Date.now() + Raid.RAID_CLAIM_LOCK_MS);
+    if (!claimedRaidSlot) {
+        if (!isChainedReply) {
+            interaction.editReply(`${userDisplayName}, someone else in your guild just started a raid — try again once it resolves.`);
+        } else {
+            console.log(`startRaid.js chain link ${chainDepth} aborted: lost the raid-slot claim race for guild ${guildId}`);
+        }
+        return;
+    }
+
     const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
     // Rank-weighted teamPower (top raider full weight, each next-strongest at
     // RAID_TEAM_DECAY of the rank above them) plus a headcount bonus for roster size —

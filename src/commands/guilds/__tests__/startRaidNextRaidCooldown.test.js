@@ -90,6 +90,7 @@ function weakRosterSetup() {
 beforeEach(() => {
     jest.clearAllMocks();
     dynamoHandler.updateGuildDatabase.mockResolvedValue({});
+    dynamoHandler.claimGuildRaidSlot.mockResolvedValue(true);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(null);
 });

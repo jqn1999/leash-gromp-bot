@@ -417,6 +417,27 @@ shown unconditionally on win OR loss since the cooldown reset itself is uncondit
 `cooldownSkipSource` field (via `embedFactory.buildCooldownSkipField`) is conditional on a skip
 having actually happened.
 
+**Raid-slot race guard (2026-09-18, direct instruction)** — `resolveRaid` already rechecked
+`guild.raidTimer` fresh right when the "Start the raid" confirm button lands (a fresh
+`requireUserGuild` fetch, not the stale preview-time value), but that recheck alone didn't close
+the race: two members clicking confirm for the same guild within moments of each other could both
+read the same expired `raidTimer` and both pass, since the real cooldown write (`finalNextRaidAvailableAt`,
+above) doesn't land until AFTER the full roll/reward resolution — several awaits later
+(`raidMemberDetails` fetch, the scenario roll itself, bank/stats/history/companion writes). Right
+after the recheck, before any of that work, `resolveRaid` now atomically claims the slot via
+`dynamoHandler.claimGuildRaidSlot(guildId, guild.raidTimer, Date.now() + Raid.RAID_CLAIM_LOCK_MS)`
+— a `ConditionExpression`-guarded write (same shape as `resolveScavenge`/`collectSpudKeepReward`)
+conditioned on `raidTimer` still equaling what was just read. Whichever caller's write lands first
+wins; the loser's conditional write is rejected and it bails out with "someone else in your guild
+just started a raid — try again once it resolves" (or a console.log for a chained cooldown-skip
+continuation, matching every other guard in this function). The provisional value only ever exists
+for the brief window between the claim and the function's own later, unconditional `raidTimer`
+overwrite with the real computed value — `Raid.RAID_CLAIM_LOCK_MS` (30s) is generous headroom for
+that window and is never player-visible on the happy path. Applies uniformly to every entry point
+into `resolveRaid` (the original `/start-raid` confirm click, `/current-raid`'s own button — see
+`currentRaid.js` — and chained cooldown-skip continuations), since it's inside the shared function
+all three funnel through.
+
 ## Guild Contracts
 
 A shared, weekly, guild-wide objective tracked in aggregate across the member roster — the same

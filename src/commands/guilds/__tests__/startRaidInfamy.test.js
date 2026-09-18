@@ -113,6 +113,7 @@ function mockLoss(guild) {
 beforeEach(() => {
     jest.clearAllMocks();
     dynamoHandler.updateGuildDatabase.mockResolvedValue({});
+    dynamoHandler.claimGuildRaidSlot.mockResolvedValue(true);
     dynamoHandler.updateUserFields.mockResolvedValue({});
     strongRosterSetup();
 });

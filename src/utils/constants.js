@@ -2047,6 +2047,18 @@ const Raid = {
     LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE: .6,
     MAXIMUM_STAT_RAID_SUCCESS_RATE: .5,
     RAID_TIMER_SECONDS: 3600,
+    // Guild Raid race-condition fix (2026-09-18, direct instruction) — two elders/leaders
+    // racing to click "Start the raid" on separate /start-raid invocations could both pass
+    // resolveRaid's own raidTimer freshness recheck (both reading the same expired value)
+    // before either's real cooldown write landed at the end of raid resolution — a real
+    // TOCTOU gap, not just "the check only happens once at command invocation." Claiming the
+    // slot atomically (dynamoHandler.claimGuildRaidSlot) right after the recheck, BEFORE any
+    // of the expensive roll/reward work, closes it: the loser's conditional write fails and
+    // it bails out instead of silently double-raiding. This provisional value only ever
+    // exists for the brief window between the claim and resolveRaid's own final,
+    // real-cooldown write a few lines later (which always overwrites it unconditionally) —
+    // 30s is generous headroom for that window, never player-visible on the happy path.
+    RAID_CLAIM_LOCK_MS: 30000,
     // New 2026-08-30, direct instruction — a real sink on guild raid rewards, same "taken
     // off the top, recipients net less" shape Bank/Give/CompanionMarket/Starch's own taxes
     // already use. Applied once, inside startRaid.js's shared addToBankOrPurse, to every
