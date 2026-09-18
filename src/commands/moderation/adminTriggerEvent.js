@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { EventFactory } = require("../../utils/eventFactory");
+const { EventFactory, buildActiveEventPayload } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
+const dynamoHandler = require("../../utils/dynamoHandler");
 
 // Same channel/role backgroundEvents.js's own hourly roll posts to — this command is a
 // manual trigger for the exact same event, not a separate/quieter path.
@@ -52,6 +53,11 @@ module.exports = {
         if (event === 'CLEAR') {
             eF.setEmptyCurrentEvent();
             setWorkScenarios(eF.getWorkChances());
+            // Keeps financial-project's /gromp in sync with this manual clear too — otherwise
+            // an admin-cleared event would keep boosting the website's own odds until the next
+            // natural hourly roll overwrote it.
+            dynamoHandler.updateStatFields('active_work_event', buildActiveEventPayload(null))
+                .catch(err => console.log('admin-trigger-event: active work event clear failed:', err));
             interaction.editReply(`Cleared the current event — /work odds are back to normal.`);
             return;
         }
@@ -64,6 +70,10 @@ module.exports = {
         setWorkScenarios(eF.getWorkChances());
         eF.setBaseWorkChances();
         eF.setBaseWorkProbability();
+        // Same mirror as backgroundEvents.js's natural roll — a manually triggered event should
+        // show up on the website too, not just Discord.
+        await dynamoHandler.updateStatFields('active_work_event', buildActiveEventPayload(event, eventName))
+            .catch(err => console.log('admin-trigger-event: active work event persist failed:', err));
 
         if (announce) {
             const channel = await client.channels.fetch(EVENT_CHANNEL_ID);

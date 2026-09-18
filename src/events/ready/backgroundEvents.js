@@ -1,7 +1,7 @@
 const { getSortedBirthdays, buildPaginationRow, runPaginatedBroadcast } = require("../../utils/helperCommands");
 const schedule = require('node-schedule');
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { EventFactory } = require("../../utils/eventFactory");
+const { EventFactory, buildActiveEventPayload } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
 var { worldFactory } = require("../../utils/worldFactory.js");
 const { TowerLeaderboardFactory } = require("../../utils/towerLeaderboardFactory.js");
@@ -203,7 +203,7 @@ module.exports = async (client) => {
             client.channels.fetch('1188525931346792498')
             .then(async channel => {
                 // SEND TO THE EVENTS!
-                eF.setSpecialEvent()
+                const event = eF.setSpecialEvent()
                 var eventName = eF.getCurrentEvent();
                 channel.send(`<@&1207117686526582865> Special event on the way this hour! ${eventName}`);
                 let wC = eF.getWorkChances()
@@ -211,10 +211,18 @@ module.exports = async (client) => {
                 setWorkScenarios(wC)
                 eF.setBaseWorkChances();
                 eF.setBaseWorkProbability();
+                // Mirrors this same roll to financial-project's /gromp so a player working from
+                // the website during this hour gets the same boosted odds (2026-09-18, direct
+                // instruction — "does 5x poison impact website at all"). Purely additive: never
+                // let a Dynamo hiccup here take down the bot's own in-memory event/announcement.
+                await dynamoHandler.updateStatFields('active_work_event', buildActiveEventPayload(event, eventName))
+                    .catch(err => console.log('background events: active work event persist failed:', err));
             })
         } else {
             eF.setEmptyCurrentEvent();
             setWorkScenarios(eF.getWorkChances())
+            dynamoHandler.updateStatFields('active_work_event', buildActiveEventPayload(null))
+                .catch(err => console.log('background events: active work event clear failed:', err));
         }
     });
 

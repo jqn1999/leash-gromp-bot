@@ -1094,7 +1094,7 @@ All via `node-schedule` unless noted, registered on `ready` in `backgroundEvents
 |---|---|
 | `setInterval` every 300,000ms (5 min) | `dynamoHandler.passivePotatoHandler(288)` — passive income tick; 288 = number of 5-min intervals/day, used to divide each user's daily `passiveAmount` into a per-tick chunk |
 | Cron `{ rule: '0 20 * * *', tz: 'America/New_York' }` (8pm ET, DST-safe) | Resets all users' `canEnterTower` to `true`; checks/announces birthdays in channel `1188539987118010408`, renaming the channel to reflect the next upcoming birthday or announcing today's |
-| Cron `0 * * * *` (hourly) | 20% chance (`Math.random() >= .8`) to trigger a special work-scenario event — announces in channel `1188525931346792498`, pings role `1207117686526582865`, applies new odds via `work.js`'s exported `setWorkScenarios(wC)` for that hour, then immediately resets `EventFactory` back to base probabilities. If no event triggers, explicitly resets work scenarios to base anyway |
+| Cron `0 * * * *` (hourly) | 20% chance (`Math.random() >= .8`) to trigger a special work-scenario event — announces in channel `1188525931346792498`, pings role `1207117686526582865`, applies new odds via `work.js`'s exported `setWorkScenarios(wC)` for that hour, then immediately resets `EventFactory` back to base probabilities. If no event triggers, explicitly resets work scenarios to base anyway. Either branch also writes the resolved outcome to the shared stats-table record (`buildActiveEventPayload`, below) so financial-project's `/gromp` sees the same odds |
 | Cron `30 * * * *` (hourly, on the half hour) | World raid resolve/spawn logic above; posts result/announcement to channel `1188525931346792498`, pinging the same role |
 
 ## `eventFactory.js` — special work events
@@ -1109,3 +1109,25 @@ Singleton (`EventFactory._instance`). Base `workProbability` array (indexed by
 `["LARGEX2","SWEETX2","METALX2","POISONX2","TAROX2","GOLDENX5","METALX5","POISONX5"]` with weights
 `[3,3,3,3,3,1,1,1]` (each ×2 event is 3× as likely as each ×5 event), then doubles or 5×s the
 corresponding scenario's probability and recomputes cumulative `workChances` for that hour.
+Returns the picked event key (2026-09-18 — previously void) so callers can persist it without
+re-deriving which event a roll landed on from `getCurrentEvent()`'s flavor-text string alone.
+
+### Shared active-event record (2026-09-18, direct instruction — "does 5x poison impact website
+### at all")
+
+Previously this whole mechanic lived only in this process's memory (`EventFactory` is an
+in-memory singleton, never persisted) — financial-project's own independently-reimplemented
+`doWork` had no way to know an hourly event was live, so a player working from the website
+during a "5x Poison" hour got plain odds with no indication anything was different.
+
+`EVENT_SCENARIO_MAP` (in `eventFactory.js`) translates each of `this.events`' bot-only names into
+the repo-agnostic `{scenario, multiplier}` shape financial-project's own `WORK_SCENARIO_ORDER`
+naming already uses (e.g. `POISONX5 → {scenario: 'poison', multiplier: 5}`). `buildActiveEventPayload(eventKey, eventLabel)`
+builds the record written to the stats table (`aws_stats_table_name`, `trackingId:
+"active_work_event"`) — expiry is always the next top-of-hour tick, matching what players are
+already told ("holds until the next hourly event roll"). This is the ONE place both the natural
+hourly cron above AND `/admin-trigger-event`'s manual trigger/clear go through, so the two paths
+can't drift out of sync with each other. Every write is wrapped in `.catch()` — a Dynamo hiccup
+here must never affect the bot's own in-memory event or its Discord announcement. The bot remains
+the sole decision-maker; the website only ever reads this record, never rolls its own event (see
+financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md`, "Bot caught up #48").

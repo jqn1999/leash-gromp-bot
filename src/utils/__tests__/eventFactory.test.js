@@ -1,4 +1,4 @@
-const { EventFactory, WORK_SCENARIO_INDICES } = require('../eventFactory');
+const { EventFactory, WORK_SCENARIO_INDICES, EVENT_SCENARIO_MAP, buildActiveEventPayload } = require('../eventFactory');
 
 const eventFactory = new EventFactory();
 
@@ -56,5 +56,51 @@ describe('Ancient Potato encounter chance', () => {
         const goldenYamWidth = chances[WORK_SCENARIO_INDICES.GOLDEN_YAM] - chances[WORK_SCENARIO_INDICES.MIMIC];
         expect(mimicWidth).toBeCloseTo(0.010);
         expect(goldenYamWidth).toBeCloseTo(0.001);
+    });
+});
+
+// 2026-09-18, direct instruction ("does 5x poison impact website at all") — the shared
+// active-event record persisted to the stats table so financial-project's gromp-economy Lambda
+// can mirror the bot's own hourly event onto the website. Regression coverage for the
+// cross-repo contract itself (EVENT_SCENARIO_MAP/buildActiveEventPayload), not the DynamoDB
+// write, which backgroundEvents.js/adminTriggerEvent.js own and isn't unit-tested directly
+// (same as this repo's other thin cron/command wiring).
+describe('shared active-event record (EVENT_SCENARIO_MAP / buildActiveEventPayload)', () => {
+    test('every entry in EventFactory.events has a matching EVENT_SCENARIO_MAP entry', () => {
+        eventFactory.events.forEach(eventKey => {
+            expect(EVENT_SCENARIO_MAP[eventKey]).toBeDefined();
+            expect(typeof EVENT_SCENARIO_MAP[eventKey].scenario).toBe('string');
+            expect(typeof EVENT_SCENARIO_MAP[eventKey].multiplier).toBe('number');
+        });
+    });
+
+    test('setSpecialEvent returns the exact event key it applied', () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // lands on the last-weighted entry
+        try {
+            const event = eventFactory.setSpecialEvent();
+            expect(eventFactory.events).toContain(event);
+            expect(eventFactory.getCurrentEvent()).toBeTruthy();
+        } finally {
+            randomSpy.mockRestore();
+            eventFactory.setEmptyCurrentEvent();
+            eventFactory.setBaseWorkProbability();
+            eventFactory.setBaseWorkChances();
+        }
+    });
+
+    test('buildActiveEventPayload resolves a real event to its {scenario, multiplier} pair, with an expiry in the future', () => {
+        const payload = buildActiveEventPayload('POISONX5', 'Poison Potato Chances Multiplied by 5! >:)');
+        expect(payload.scenario).toBe('poison');
+        expect(payload.multiplier).toBe(5);
+        expect(payload.eventLabel).toBe('Poison Potato Chances Multiplied by 5! >:)');
+        expect(payload.expiresAt).toBeGreaterThan(Date.now());
+    });
+
+    test('buildActiveEventPayload(null) clears every field but still carries a future expiry', () => {
+        const payload = buildActiveEventPayload(null);
+        expect(payload.scenario).toBeNull();
+        expect(payload.multiplier).toBeNull();
+        expect(payload.eventLabel).toBeNull();
+        expect(payload.expiresAt).toBeGreaterThan(Date.now());
     });
 });

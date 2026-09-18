@@ -13981,3 +13981,63 @@ Docs: `.claude/systems/tower.md` gained a new dated root-cause entry (mirroring 
 2026-09-11 `DiscordAPIError[10062]` entry's own structure and level of detail) right after it,
 since both are the same underlying class of Discord interaction-timing bug surfacing in different
 call sites.
+
+## Hourly special work event now mirrored to financial-project's website (2026-09-18, direct instruction)
+
+Player question that surfaced a real gap: "do work events like 5x poison impact website at all or
+is it only from the bot." Investigated the actual mechanism rather than guessing: `EventFactory`
+(`eventFactory.js`) is an in-memory singleton mutated by `backgroundEvents.js`'s hourly
+`node-schedule` cron (20% chance/hour to roll one of `LARGEX2`/`SWEETX2`/`METALX2`/`POISONX2`/
+`TAROX2`/`GOLDENX5`/`METALX5`/`POISONX5`, pushed into `work.js`'s module-level `workScenarios` via
+`setWorkScenarios`) — never persisted to DynamoDB anywhere. financial-project's `gromp-economy`
+Lambda reimplements `/work` independently ("mirrored, not shared") with its own fixed, never-
+boosted chance table, so a player working from the website during a bot-announced "5x Poison"
+hour got plain odds with no indication anything was different. Answer: **bot-only, by omission,
+not by design** — closed the gap rather than leaving it, since the player-facing effect (Discord
+announces an event; the website silently doesn't honor it) is confusing regardless of intent.
+
+**Design, confirmed before implementing**: the bot stays the sole decision-maker — it already
+owns the hourly roll, the Discord announcement, and the role ping (same division of labor as
+quest/guild-contract rotation, which the bot also owns and the website has no equivalent of).
+The website only ever *reads* the resolved outcome; it never rolls its own event. No new
+DynamoDB table needed — both repos already read/write `aws_stats_table_name`
+(`GROMP_STATS_TABLE_NAME` on the web side), a generic trackingId-keyed table already used for
+other singleton records like `spud_keep_buff`. Added one more row: `trackingId:
+"active_work_event"`.
+
+**Changes** (`eventFactory.js`):
+- `EVENT_SCENARIO_MAP` — translates each of `this.events`' own bot-only names into the
+  repo-agnostic `{scenario, multiplier}` shape financial-project's own `WORK_SCENARIO_ORDER`
+  naming already uses (e.g. `POISONX5 → {scenario: 'poison', multiplier: 5}`), so the website
+  never needs a second copy of this table — it only reads the already-resolved fields.
+- `buildActiveEventPayload(eventKey, eventLabel)` — the single place both `backgroundEvents.js`'s
+  natural hourly roll and `/admin-trigger-event`'s manual trigger/clear go through to build the
+  Dynamo record, so the two paths can't drift out of sync with each other (this was flagged
+  mid-implementation by direct instruction — "make sure the admin set buff still works after the
+  changes" — and led to wiring `/admin-trigger-event` into the same shared helper rather than
+  leaving it to independently persist its own copy). Expiry is always the next top-of-hour tick,
+  matching what players are already told ("holds until the next hourly event roll").
+- `setSpecialEvent()` now returns the picked event key (previously void) so
+  `backgroundEvents.js` doesn't have to re-derive it from `getCurrentEvent()`'s flavor-text
+  string alone.
+- Both write sites (`backgroundEvents.js`'s cron, `/admin-trigger-event`'s trigger/CLEAR) wrap
+  the Dynamo call in `.catch()` — a persistence hiccup must never affect the bot's own in-memory
+  event or its Discord announcement.
+
+**Website side** (financial-project, not this repo — see its own `NOTES_GROMP_WEB_INTEGRATION.md`
+"Bot caught up #48" for the full derivation): `gromp-economy/handler.ts` reads the shared record
+and applies its multiplier to the matching scenario's raw probability width before Prospector's
+own widening runs on top (same order the bot itself uses), and surfaces it as a `🔥` banner on
+`/gromp`.
+
+**Tests**: new `eventFactory.test.js` describe block "shared active-event record" — asserts every
+entry in `EventFactory.events` has a matching `EVENT_SCENARIO_MAP` entry (the same
+fragile-invariant-lock pattern this file's `workProbability`/`workChances` sync test already
+uses), that `setSpecialEvent()` returns a key actually in `events`, and that
+`buildActiveEventPayload` resolves a real event correctly and clears every field for `null`. Full
+suite: **1742/1742** across 94 suites (4 new tests). `node -c` clean on `eventFactory.js`,
+`backgroundEvents.js`, `adminTriggerEvent.js`.
+
+Docs: `.claude/systems/raids-and-world-events.md`'s `eventFactory.js` section gained a new
+"Shared active-event record" subsection, and its background-scheduled-jobs table entry for the
+hourly cron was updated to mention the new persistence step.

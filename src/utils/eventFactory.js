@@ -40,8 +40,13 @@ class EventFactory {
         return this.workChances
     }
 
+    // Returns the picked event key (2026-09-18 — previously void) so callers can persist it to
+    // the shared active-event record (buildActiveEventPayload below) without re-deriving which
+    // event this roll landed on from `getCurrentEvent()`'s flavor-text string alone.
     setSpecialEvent() {
-        this.applyEvent(this.getRandomEvent(this.events, this.eventWeights));
+        const event = this.getRandomEvent(this.events, this.eventWeights);
+        this.applyEvent(event);
+        return event;
     }
 
     // Split out of setSpecialEvent so admin-trigger-event.js can force a specific event
@@ -174,8 +179,57 @@ const WORK_SCENARIO_INDICES = {
     REGULAR: -1
 };
 
+// Cross-repo contract for the shared active-event record persisted to the stats table
+// (2026-09-18 — "does 5x poison impact website at all," direct instruction to close the gap).
+// Translates each of `this.events`' bot-only names into the repo-agnostic {scenario, multiplier}
+// shape financial-project's own WORK_SCENARIO_ORDER already uses, so the website never needs a
+// second copy of this table — it only ever reads the already-resolved fields off the shared
+// record, never the bot-only event name itself. `scenario` values are intentionally lowercase,
+// matching WORK_SCENARIO_ORDER's own naming exactly (gromp-economy/handler.ts).
+const EVENT_SCENARIO_MAP = {
+    LARGEX2: { scenario: 'large', multiplier: 2 },
+    SWEETX2: { scenario: 'sweet', multiplier: 2 },
+    METALX2: { scenario: 'metal', multiplier: 2 },
+    POISONX2: { scenario: 'poison', multiplier: 2 },
+    TAROX2: { scenario: 'taro', multiplier: 2 },
+    GOLDENX5: { scenario: 'golden', multiplier: 5 },
+    METALX5: { scenario: 'metal', multiplier: 5 },
+    POISONX5: { scenario: 'poison', multiplier: 5 },
+};
+
+// The epoch-ms timestamp of the next top-of-hour tick — both the natural hourly cron
+// (backgroundEvents.js) and a manual /admin-trigger-event already tell players a triggered
+// event "holds until the next hourly event roll," so this is the correct expiry either way,
+// regardless of which minute within the hour it was actually written.
+function nextHourBoundary(now = new Date()) {
+    const next = new Date(now);
+    next.setMinutes(0, 0, 0);
+    next.setHours(next.getHours() + 1);
+    return next.getTime();
+}
+
+// Builds the shared active-event record written to the stats table (trackingId
+// "active_work_event") for financial-project's gromp-economy Lambda to read — the single
+// place both backgroundEvents.js's natural roll AND /admin-trigger-event's manual
+// trigger/clear go through, so the two paths can't drift out of sync with each other. See
+// EVENT_SCENARIO_MAP's own comment for why only the resolved {scenario, multiplier} fields
+// cross the repo boundary, never the bot-only event key. `eventKey` is one of `this.events`'
+// own strings, or null/undefined for the "no event active" state (the natural 20%-miss branch
+// and /admin-trigger-event's CLEAR option both pass this).
+function buildActiveEventPayload(eventKey, eventLabel = null) {
+    const mapped = eventKey ? EVENT_SCENARIO_MAP[eventKey] : null;
+    return {
+        scenario: mapped ? mapped.scenario : null,
+        multiplier: mapped ? mapped.multiplier : null,
+        eventLabel: mapped ? eventLabel : null,
+        expiresAt: nextHourBoundary(),
+    };
+}
+
 module.exports = {
     EventFactory,
-    WORK_SCENARIO_INDICES
+    WORK_SCENARIO_INDICES,
+    EVENT_SCENARIO_MAP,
+    buildActiveEventPayload
 }
 
