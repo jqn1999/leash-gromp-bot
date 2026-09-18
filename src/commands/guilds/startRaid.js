@@ -1380,6 +1380,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
                     bigEventsChannel.oddsField(successChance),
                     bigEventsChannel.guildField(guildName),
                 ],
+                color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
             });
         }
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
@@ -1675,6 +1676,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
                     bigEventsChannel.guildField(guildName),
                     bigEventsChannel.sourceField('Guild Raid Reward'),
                 ],
+                color: bigEventsChannel.RARE_COMPANION_COLOR,
             });
         }
     }

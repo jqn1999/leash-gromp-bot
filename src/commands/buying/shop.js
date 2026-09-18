@@ -76,7 +76,11 @@ module.exports = {
         const shopId = SHOP_ID_BY_SELECT[shopSelect];
         const shopDetails = shops.find((currentShop) => currentShop.shopId == shopId);
 
-        await interaction.deferReply({ ephemeral: true });
+        // Non-ephemeral (2026-09-18, direct instruction) — was ephemeral, previously relying
+        // on that (rather than the collector filter below) to guarantee only the invoker
+        // could click. The collectorFilter already restricts clicks to interaction.user.id
+        // regardless, so this is purely a visibility change — no new race to guard.
+        await interaction.deferReply();
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
@@ -96,9 +100,11 @@ module.exports = {
         // Custom collector loop — not the generic prev/next-only runPaginatedReply helper —
         // since this page also needs to react to the "Buy Next Tier" button and refresh
         // progress/pages in place afterward. Same shape as companionMarket.js's own
-        // buy+pagination loop. Ephemeral replies are only ever visible/clickable to the
-        // original invoker, so unlike companionMarket.js's non-ephemeral browse there's no
-        // need to separately handle a stray click from someone else.
+        // buy+pagination loop. Now that this reply is non-ephemeral, a stray click from
+        // someone other than the invoker is a real possibility — collectorFilter already
+        // restricts to interaction.user.id, same as companionMarket.js's own non-ephemeral
+        // browse, so a bystander's click is silently ignored rather than buying on someone
+        // else's behalf.
         const collectorFilter = i => i.user.id === interaction.user.id;
         while (true) {
             const clicked = await reply.awaitMessageComponent({ filter: collectorFilter, time: 60_000 }).catch(() => null);

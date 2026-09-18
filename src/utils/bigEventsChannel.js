@@ -14,6 +14,39 @@ const { CompanionRarity } = require("./constants");
 const BIG_EVENT_EMBED_COLOR = 0xFFD700;
 const BIG_EVENT_FOOTER = { text: "Gromp Big Events" };
 
+// Per-scenario colors (2026-09-18, direct instruction — "mess with the web events and big
+// events colors... assign different colors to scenarios and grey for normal work"). Color
+// follows the scenario's own flavor (what it IS), not win/loss — Poison is green because
+// that's a poison color, not because a poison hit is good (it's still a loss; the
+// title/description carry that, not the hue). metalSuccess/metalFailure share one color for
+// the same reason: Metal Potato is still "a metal potato" whether or not it was felled.
+// Mirrored — not shared — into financial-project's own gromp-economy/handler.ts, keyed by
+// the exact same encounterType strings both repos already agree on (doWork's own literals).
+// This bot only ever exercises 4 of these 11 (golden/metalSuccess/ancient/goldenYam — the
+// only work encounters that reach THIS channel; the other 7 only ever post to the website's
+// normal Activity channel, which the bot has no equivalent of) plus the two non-work
+// categories below — kept as one complete map anyway so it stays the single source of truth
+// financial-project's own copy is checked against.
+const SCENARIO_COLOR = {
+    regular: 0x99AAB5,      // Grey — plain, unremarkable work
+    golden: 0xFFD700,       // Gold — unchanged
+    goldenYam: 0xF1C40F,    // Warm amber-gold — same rarity tier as Golden Potato, distinct enough
+    metalSuccess: 0x5B7C99, // Steel blue-grey — metallic
+    metalFailure: 0x5B7C99,
+    ancient: 0xA9744F,      // Aged bronze
+    poison: 0x2ECC71,       // Toxic green
+    sweet: 0xE67E22,        // Orange — real sweet-potato flesh color
+    large: 0x7B4B2A,        // Earthy russet brown
+    taro: 0x8E44AD,         // Purple — real taro color
+    mimic: 0x2C2F33,        // Near-black — shadowy/deceptive
+    companion: 0xE91E8C,    // Magenta — rare/exciting, distinct from every potato-earth-tone
+};
+// Non-work Big Event categories, same palette family.
+const LONG_SHOT_WIN_COLOR = 0xFF4500;  // Fire orange-red — matches "🔥 Against All Odds!"
+const RARE_COMPANION_COLOR = 0xE91E8C; // Same magenta as the `companion` work scenario above —
+                                        // unifies "companion" as one color regardless of source
+                                        // (Wandering Companion / Yukon / Cinderroot / Bastion).
+
 // <30%-chance Raid/Bounty/Heist win threshold — shared with financial-project's own
 // BIG_EVENT_WIN_CHANCE_THRESHOLD (gromp-mercenary/gromp-guilds' handler.ts). Kept as one
 // named constant here rather than a bare 0.30 literal at each of the (several) bot-side
@@ -50,12 +83,13 @@ const BIG_EVENT_WORK_TITLES = {
 // crammed into one sentence — supersedes server-activity-channel.md's earlier "kept
 // deliberately simple, description only" decision, which this instruction explicitly asks to
 // move past. postBigEvent's own signature changed from a flat message string to a structured
-// {title, description, fields} object so title/fields render as real embed structure instead
-// of more inline text — every call site below was updated to match. Gold stays the one fixed
-// color for every subtype (server-activity-channel.md's own still-standing decision, "a more
-// colorful obvious embed color" was singular, not per-subtype) — this pass is about
-// structure/detail, not reopening that one.
-async function postBigEvent({ title, description, fields = [] }) {
+// {title, description, fields, color} object so title/fields render as real embed structure
+// instead of more inline text. `color` defaults to Gold (BIG_EVENT_EMBED_COLOR) but every
+// call site below now passes its own SCENARIO_COLOR/LONG_SHOT_WIN_COLOR/RARE_COMPANION_COLOR
+// entry — same-day follow-up, direct instruction ("assign different colors to scenarios and
+// grey for normal work"), which explicitly reopens the earlier "one single Gold color for
+// every subtype" decision this same file used to document as settled.
+async function postBigEvent({ title, description, fields = [], color = BIG_EVENT_EMBED_COLOR }) {
     try {
         const config = await dynamoHandler.getStatDatabase("server_big_events_channel");
         if (!config?.webhookUrl) return;
@@ -66,7 +100,7 @@ async function postBigEvent({ title, description, fields = [] }) {
                 embeds: [{
                     title,
                     description,
-                    color: BIG_EVENT_EMBED_COLOR,
+                    color,
                     fields,
                     footer: BIG_EVENT_FOOTER,
                     timestamp: new Date().toISOString(),
@@ -150,4 +184,7 @@ module.exports = {
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,
     BIG_EVENT_WORK_TITLES,
+    SCENARIO_COLOR,
+    LONG_SHOT_WIN_COLOR,
+    RARE_COMPANION_COLOR,
 };

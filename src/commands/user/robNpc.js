@@ -240,6 +240,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
                 bigEventsChannel.oddsField(result.successChance),
                 bigEventsChannel.rewardField(result.amount),
             ],
+            color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
         });
     }
 

@@ -180,9 +180,9 @@ Direct instruction: "the channels for big events/activity dont show anything but
 channels so they feel better and more alive." This explicitly supersedes the "Message format"
 section's own earlier "kept deliberately simple, one embed field, `description` only" decision —
 that was itself a deliberate past call, not an oversight, but this instruction asks to move past
-it. **Gold stays the one fixed Big Events color for every subtype** (the "One single Gold color…"
-decision above is untouched — this pass is about structure/detail, not reopening which colors
-exist).
+it. **Gold stayed the one fixed Big Events color for every subtype as of this pass** (the "One
+single Gold color…" decision above was left untouched here) — **but see "Per-scenario colors"
+below, a same-day follow-up that explicitly reopens it.**
 
 **Bot side** (`bigEventsChannel.js`): `postBigEvent(message)` → `postBigEvent({title, description,
 fields})`. Every embed now gets a real `title` (e.g. `✨ Golden Potato!`, `🔥 Against All Odds!`,
@@ -223,6 +223,60 @@ old call shape, so nothing outside `bigEventsChannel.test.js` needed updating.
 `gromp-mercenary`/`gromp-guilds` handler.ts (see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`
 for the exact same structure pass applied to `postBigEvent`/`postServerActivity` there, keeping
 both channels' embeds visually consistent regardless of which side posted them).
+
+## Per-scenario colors (2026-09-18, same-day follow-up, direct instruction)
+
+Direct instruction: "mess with the web events and big events colors a bit and assign different
+colors to scenarios and grey for normal work? Like poison can be green sweet potato can be orange
+etc." **Explicitly reopens** the "One single Gold color…" decision this file documented as settled
+twice already (the original Big Events build, and the Structure pass section right above) — a
+deliberate reversal this time, not an oversight, asked for directly.
+
+**Design principle**: color follows the scenario's own flavor (what it *is*), not win/loss —
+Poison is green despite being a loss (poison-colored, not "bad"-colored); Metal Potato is the same
+steel-blue whether it succeeds or fails. Win/loss stays conveyed by the title/description text.
+
+`bigEventsChannel.js` gained `SCENARIO_COLOR` (keyed by the same 12 `encounterType` strings
+`doWork` itself produces — `regular`/`golden`/`goldenYam`/`metalSuccess`/`metalFailure`/`ancient`/
+`poison`/`sweet`/`large`/`taro`/`mimic`/`companion` — the exact contract financial-project's own
+`doWork` already uses), plus `LONG_SHOT_WIN_COLOR` (fire orange-red, for Heist/Bounty/Stat
+Bounty/Raid long-shot wins) and `RARE_COMPANION_COLOR` (magenta, matching `SCENARIO_COLOR.companion`
+— unifies "a rare companion was found" as one hue regardless of source: Wandering Companion,
+Yukon, Cinderroot, or Bastion). `postBigEvent` gained an optional `color` param (defaults to Gold,
+`BIG_EVENT_EMBED_COLOR`, if omitted) — every one of the 12 call sites across `work.js`/
+`takeBounty.js`/`robNpc.js`/`startRaid.js`/`enter-tower.js` now passes its own color explicitly.
+
+| Scenario | Hex | Flavor reasoning |
+|---|---|---|
+| Regular (no rare mob) | `#99AAB5` | Grey — plain, unremarkable |
+| Golden Potato | `#FFD700` | Unchanged |
+| Golden Yam | `#F1C40F` | Warm amber-gold — same rarity tier as Golden, stays distinct |
+| Metal Potato (success or failure) | `#5B7C99` | Steel blue-grey — metallic |
+| Ancient Potato | `#A9744F` | Aged bronze |
+| Poison Potato | `#2ECC71` | Toxic green (as named directly) |
+| Sweet Potato | `#E67E22` | Orange (as named directly) — real sweet-potato flesh color |
+| Large Potato | `#7B4B2A` | Earthy russet brown |
+| Taro Trader | `#8E44AD` | Purple — real taro color |
+| Mimic Potato | `#2C2F33` | Near-black — shadowy/deceptive |
+| Wandering Companion pull | `#E91E8C` | Magenta — rare/exciting |
+| Long-shot win (Heist/Bounty/Stat Bounty/Raid) | `#FF4500` | Fire orange-red, matches `🔥 Against All Odds!` |
+| Rare Companion drop (Yukon/Cinderroot/Bastion) | `#E91E8C` | Same magenta as Wandering Companion — one "companion" hue |
+| Bank/Rob/Raid win-loss/Safehouse (Normal Activity, non-work) | `#99AAB5` | Left grey — no flavor to color by, not asked for |
+
+**Scope note**: this bot only ever exercises 4 of the 11 work colors (golden/metalSuccess/
+ancient/goldenYam — the only work encounters that reach Big Events at all) plus the 2 non-work
+categories, since it has no normal-activity channel of its own. The other 7 work colors
+(poison/sweet/large/taro/mimic/companion/regular) only ever render on the **website's** normal
+Activity channel, which posts every work outcome, not just the Big Events subset — see
+financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` for that side.
+
+**Tests**: `bigEventsChannel.test.js` gained a `SCENARIO_COLOR` describe block (every encounter
+type has an entry, `regular` is grey, `metalSuccess`/`metalFailure` deliberately share one color,
+`golden` is unchanged Gold, every other color is distinct, `LONG_SHOT_WIN_COLOR`/
+`RARE_COMPANION_COLOR` are defined and distinct from Gold, `RARE_COMPANION_COLOR` matches
+`SCENARIO_COLOR.companion`) plus a `postBigEvent` test confirming an explicit `color` overrides
+the Gold default. Full suite: **1764/1764** across 95 suites (8 new tests). `node -c` clean on
+every touched file.
 
 ## Scope: which actions post, and why "ephemeral" doesn't map 1:1
 

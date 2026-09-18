@@ -18,6 +18,9 @@ const {
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,
     BIG_EVENT_WORK_TITLES,
+    SCENARIO_COLOR,
+    LONG_SHOT_WIN_COLOR,
+    RARE_COMPANION_COLOR,
 } = require('../bigEventsChannel');
 
 const mythic = { id: 'mochi', name: 'Mochi', rarity: 'mythic' };
@@ -91,6 +94,49 @@ describe('BIG_EVENT_WIN_CHANCE_THRESHOLD / BIG_EVENT_WORK_ENCOUNTERS / BIG_EVENT
     });
 });
 
+// Per-scenario colors (2026-09-18, direct instruction — "mess with the web events and big
+// events colors... assign different colors to scenarios and grey for normal work"). Color
+// follows the scenario's own flavor, not win/loss — e.g. Poison is green despite being a
+// loss, Metal Potato is the same steel color whether it succeeds or fails.
+describe('SCENARIO_COLOR', () => {
+    const ALL_ENCOUNTER_TYPES = ['regular', 'golden', 'goldenYam', 'metalSuccess', 'metalFailure', 'ancient', 'poison', 'sweet', 'large', 'taro', 'mimic', 'companion'];
+
+    test('has an entry for every work encounter type', () => {
+        for (const type of ALL_ENCOUNTER_TYPES) {
+            expect(typeof SCENARIO_COLOR[type]).toBe('number');
+        }
+    });
+
+    test('regular (plain work, no rare mob) is grey', () => {
+        expect(SCENARIO_COLOR.regular).toBe(0x99AAB5);
+    });
+
+    test('metalSuccess and metalFailure share the same color (outcome does not drive color)', () => {
+        expect(SCENARIO_COLOR.metalSuccess).toBe(SCENARIO_COLOR.metalFailure);
+    });
+
+    test('golden keeps the original Gold used everywhere else in this file', () => {
+        expect(SCENARIO_COLOR.golden).toBe(0xFFD700);
+    });
+
+    test('every scenario color is distinct (no accidental collisions) except the deliberate metalSuccess/metalFailure pair', () => {
+        const { metalFailure, ...rest } = SCENARIO_COLOR;
+        const values = Object.values(rest);
+        expect(new Set(values).size).toBe(values.length);
+    });
+
+    test('LONG_SHOT_WIN_COLOR and RARE_COMPANION_COLOR are defined and distinct from Gold', () => {
+        expect(typeof LONG_SHOT_WIN_COLOR).toBe('number');
+        expect(typeof RARE_COMPANION_COLOR).toBe('number');
+        expect(LONG_SHOT_WIN_COLOR).not.toBe(0xFFD700);
+        expect(RARE_COMPANION_COLOR).not.toBe(0xFFD700);
+    });
+
+    test('RARE_COMPANION_COLOR matches the companion work-scenario color (one unified "companion" hue)', () => {
+        expect(RARE_COMPANION_COLOR).toBe(SCENARIO_COLOR.companion);
+    });
+});
+
 // Structure pass (2026-09-18, direct instruction — "give them more details and
 // structure... so they feel better and more alive"). postBigEvent's signature changed from
 // a flat pre-formatted message string to a structured {title, description, fields} object —
@@ -156,6 +202,19 @@ describe('postBigEvent', () => {
 
         const body = JSON.parse(global.fetch.mock.calls[0][1].body);
         expect(body.embeds[0].fields).toEqual([]);
+    });
+
+    // Per-scenario colors (2026-09-18, direct instruction — "assign different colors to
+    // scenarios and grey for normal work") — postBigEvent now takes an explicit `color`
+    // per call, falling back to Gold only when the caller doesn't pass one.
+    test('uses an explicit color when passed, instead of the Gold default', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ webhookUrl: 'https://discord.com/api/webhooks/big/token' });
+
+        await postBigEvent({ title: 'Poison Potato', description: 'test message', color: SCENARIO_COLOR.poison });
+
+        const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+        expect(body.embeds[0].color).toBe(SCENARIO_COLOR.poison);
+        expect(body.embeds[0].color).not.toBe(0xFFD700);
     });
 
     test('a fetch failure is swallowed, never thrown back to the caller', async () => {

@@ -14136,3 +14136,53 @@ stay visually consistent regardless of which side posted them.
 Docs: `.claude/systems/server-activity-channel.md` gained a new dated "Structure pass" section
 right after "Every Big Events trigger fires from BOTH sides," documenting the shape change and
 explicitly noting which earlier decision it supersedes vs. leaves standing.
+
+## Per-scenario colors for Big Events/Server Activity, plus /shop made non-ephemeral (2026-09-18, direct instruction)
+
+Two separate direct instructions in one turn.
+
+**Per-scenario colors**: "mess with the web events and big events colors a bit and assign
+different colors to scenarios and grey for normal work? Like poison can be green sweet potato can
+be orange etc." Presented a plan first (color list + which scenarios map to which channel) before
+implementing, per this file's own "flag before implementing" convention — confirmed, then built.
+Explicitly reopens the "one single Gold color for every subtype" decision this same file
+documented as settled twice already (original Big Events build, same-day Structure pass) — a
+deliberate reversal this time, asked for directly, not an oversight.
+
+`bigEventsChannel.js` gained `SCENARIO_COLOR` (keyed by the same 12 `encounterType` strings
+`doWork` itself already produces on the website side — `regular`/`golden`/`goldenYam`/
+`metalSuccess`/`metalFailure`/`ancient`/`poison`/`sweet`/`large`/`taro`/`mimic`/`companion`),
+`LONG_SHOT_WIN_COLOR` (fire orange-red, long-shot Heist/Bounty/Stat Bounty/Raid wins), and
+`RARE_COMPANION_COLOR` (magenta, matches `SCENARIO_COLOR.companion` — unifies "a rare companion
+was found" as one hue regardless of source). Color follows the scenario's own flavor, not
+win/loss — Poison is green despite being a loss, Metal Potato is the same steel-blue whether it
+succeeds or fails; the title/description already carry win/loss, the hue doesn't need to.
+`postBigEvent` gained an optional `color` param (defaults to Gold if omitted); all 12 call sites
+across `work.js`/`takeBounty.js`/`robNpc.js`/`startRaid.js`/`enter-tower.js` now pass one
+explicitly. See `.claude/systems/server-activity-channel.md`'s new "Per-scenario colors" section
+for the full 14-row color table and the scope note on which colors this bot can actually reach
+(only 4 of 11 work colors, since Big Events' own trigger list didn't change — the rest only ever
+render on the website's normal Activity channel, which posts every work outcome).
+
+**`/shop` made non-ephemeral**: "make shop command non ephemeral." Changed
+`buying/shop.js`'s `deferReply({ ephemeral: true })` to a plain `deferReply()`. The existing
+`collectorFilter` (`i.user.id === interaction.user.id`) already restricts the pagination/buy
+button clicks to the original invoker — that filter was previously redundant (an ephemeral
+reply is only ever visible/clickable to its own invoker anyway) and is now the thing actually
+doing the restricting, so no new race was introduced by the visibility change. Updated the
+stale comment that used to explain why the filter was "unnecessary" for an ephemeral reply.
+`/companion-shop` (a different, separate command) was untouched — its own ephemeral design
+("personal stock, no reason for onlookers") wasn't part of this ask.
+
+**Tests**: `bigEventsChannel.test.js` gained a `SCENARIO_COLOR` describe block (8 new tests —
+every encounter type has an entry, `regular` is grey, `metalSuccess`/`metalFailure` deliberately
+share one color, `golden` stays unchanged Gold, every other color is distinct, both new
+non-work colors are defined/distinct from Gold, `RARE_COMPANION_COLOR` matches
+`SCENARIO_COLOR.companion`) plus a `postBigEvent` test confirming an explicit `color` overrides
+the Gold default. `/shop` has no dedicated test file (unchanged by this pass) so nothing needed
+updating there. Full suite: **1764/1764** across 95 suites. `node -c` clean on every touched file.
+
+**Cross-repo**: financial-project's own `gromp-economy`/`gromp-mercenary`/`gromp-guilds`
+get the equivalent color pass in the same session — see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` — so both channels stay visually consistent regardless of which
+side posted the embed.

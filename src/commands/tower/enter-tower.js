@@ -192,6 +192,7 @@ module.exports = {
                         bigEventsChannel.companionField(bastionAward.companion),
                         bigEventsChannel.sourceField('Tower Reward'),
                     ],
+                    color: bigEventsChannel.RARE_COMPANION_COLOR,
                 });
             }
         }

@@ -82,6 +82,7 @@ var workScenarios = [
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.golden,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working!`,
                 fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+                color: bigEventsChannel.SCENARIO_COLOR.golden,
             });
             return potatoesGained;
         },
@@ -123,6 +124,7 @@ var workScenarios = [
                     title: bigEventsChannel.BIG_EVENT_WORK_TITLES.metalSuccess,
                     description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working!`,
                     fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+                    color: bigEventsChannel.SCENARIO_COLOR.metalSuccess,
                 });
             } else {
                 potatoesGained = 0;
@@ -172,6 +174,7 @@ var workScenarios = [
                         bigEventsChannel.companionField(companionResult.companion),
                         bigEventsChannel.sourceField('Found while Working'),
                     ],
+                    color: bigEventsChannel.RARE_COMPANION_COLOR,
                 });
             }
             // A companion encounter (new or duplicate) never pays potatoes anymore — a
@@ -219,6 +222,7 @@ var workScenarios = [
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.ancient,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working!`,
                 fields: [bigEventsChannel.playerField(userDisplayName), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
+                color: bigEventsChannel.SCENARIO_COLOR.ancient,
             });
             return ancientResult.potatoesGained;
         },
@@ -250,6 +254,7 @@ var workScenarios = [
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.goldenYam,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working!`,
                 fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(starchesGained, 'starches')],
+                color: bigEventsChannel.SCENARIO_COLOR.goldenYam,
             });
             return starchesGained;
         },

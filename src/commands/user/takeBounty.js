@@ -291,6 +291,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
                 bigEventsChannel.companionField(yukonAward.companion),
                 bigEventsChannel.sourceField('Bounty Reward'),
             ],
+            color: bigEventsChannel.RARE_COMPANION_COLOR,
         });
     }
 
@@ -321,6 +322,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
                 bigEventsChannel.oddsField(result.successChance),
                 bigEventsChannel.rewardField(netRewardAmount, result.currency),
             ],
+            color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
         });
     }
 
@@ -431,6 +433,7 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
             title: '🔥 Against All Odds!',
             description: `**${userDisplayName}** pulled off a daring Stat Bounty win against the odds!`,
             fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.oddsField(result.successChance)],
+            color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
         });
     }
 
