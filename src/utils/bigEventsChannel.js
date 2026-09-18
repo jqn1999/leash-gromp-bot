@@ -12,6 +12,7 @@ const { CompanionRarity } = require("./constants");
 // Discord webhook accepts a plain POST from anywhere, bot process or not, no client/token
 // needed.
 const BIG_EVENT_EMBED_COLOR = 0xFFD700;
+const BIG_EVENT_FOOTER = { text: "Gromp Big Events" };
 
 // <30%-chance Raid/Bounty/Heist win threshold — shared with financial-project's own
 // BIG_EVENT_WIN_CHANCE_THRESHOLD (gromp-mercenary/gromp-guilds' handler.ts). Kept as one
@@ -32,18 +33,71 @@ const BIG_EVENT_WORK_LABELS = {
     goldenYam: "a Golden Yam",
 };
 
-async function postBigEvent(message) {
+// Embed titles for the same 4 encounter types, above — kept as their own map rather than
+// derived from BIG_EVENT_WORK_LABELS (whose "a/an Golden Potato" phrasing reads naturally
+// mid-sentence in a description, but not as a standalone title).
+const BIG_EVENT_WORK_TITLES = {
+    golden: "✨ Golden Potato!",
+    metalSuccess: "✨ Metal Potato Felled!",
+    ancient: "✨ Ancient Potato Unearthed!",
+    goldenYam: "✨ Golden Yam!",
+};
+
+// Structure pass (2026-09-18, direct instruction — "the channels for big events/activity
+// dont show anything but the potato count (which some things dont give)... give them more
+// details and structure... so they feel better and more alive"). Previously every embed was
+// a single bare `description` string with every detail (player, reward, odds, companion)
+// crammed into one sentence — supersedes server-activity-channel.md's earlier "kept
+// deliberately simple, description only" decision, which this instruction explicitly asks to
+// move past. postBigEvent's own signature changed from a flat message string to a structured
+// {title, description, fields} object so title/fields render as real embed structure instead
+// of more inline text — every call site below was updated to match. Gold stays the one fixed
+// color for every subtype (server-activity-channel.md's own still-standing decision, "a more
+// colorful obvious embed color" was singular, not per-subtype) — this pass is about
+// structure/detail, not reopening that one.
+async function postBigEvent({ title, description, fields = [] }) {
     try {
         const config = await dynamoHandler.getStatDatabase("server_big_events_channel");
         if (!config?.webhookUrl) return;
         await fetch(config.webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ embeds: [{ description: message, color: BIG_EVENT_EMBED_COLOR }] }),
+            body: JSON.stringify({
+                embeds: [{
+                    title,
+                    description,
+                    color: BIG_EVENT_EMBED_COLOR,
+                    fields,
+                    footer: BIG_EVENT_FOOTER,
+                    timestamp: new Date().toISOString(),
+                }],
+            }),
         });
     } catch (error) {
         console.error("postBigEvent (bot-side) failed (non-fatal):", error);
     }
+}
+
+// Small field builders shared by every call site below, so the exact wording/shape (field
+// name, inline-ness) can't drift between work.js/takeBounty.js/robNpc.js/startRaid.js/
+// enter-tower.js's own calls into a half-dozen slightly different versions of "who did this."
+function playerField(userDisplayName) {
+    return { name: "Adventurer", value: userDisplayName, inline: true };
+}
+function rewardField(amount, currency = "potatoes") {
+    return { name: "Reward", value: `${amount.toLocaleString()} ${currency}`, inline: true };
+}
+function oddsField(successChance) {
+    return { name: "Odds", value: `${Math.round(successChance * 100)}%`, inline: true };
+}
+function guildField(guildName) {
+    return { name: "Guild", value: guildName, inline: true };
+}
+function companionField(companion) {
+    return { name: "Companion", value: describeCompanion(companion), inline: true };
+}
+function sourceField(label) {
+    return { name: "Found", value: label, inline: true };
 }
 
 // Companion-pull Big Event condition (2026-09-16, direct instruction — "add mythic and
@@ -86,7 +140,14 @@ module.exports = {
     postBigEvent,
     isBigEventCompanion,
     describeCompanion,
+    playerField,
+    rewardField,
+    oddsField,
+    guildField,
+    companionField,
+    sourceField,
     BIG_EVENT_WIN_CHANCE_THRESHOLD,
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,
+    BIG_EVENT_WORK_TITLES,
 };

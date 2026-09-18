@@ -173,6 +173,57 @@ type, win-chance, companion pulls) was already built in earlier same-day passes 
 changes were needed for this widening, since the request was specifically about the bot's own
 commands catching up to what the website already had.
 
+## Structure pass: real embed fields, not one bare description (2026-09-18, direct instruction)
+
+Direct instruction: "the channels for big events/activity dont show anything but the potato count
+(which some things dont give). Give them more details and structure in the embed messages for the
+channels so they feel better and more alive." This explicitly supersedes the "Message format"
+section's own earlier "kept deliberately simple, one embed field, `description` only" decision —
+that was itself a deliberate past call, not an oversight, but this instruction asks to move past
+it. **Gold stays the one fixed Big Events color for every subtype** (the "One single Gold color…"
+decision above is untouched — this pass is about structure/detail, not reopening which colors
+exist).
+
+**Bot side** (`bigEventsChannel.js`): `postBigEvent(message)` → `postBigEvent({title, description,
+fields})`. Every embed now gets a real `title` (e.g. `✨ Golden Potato!`, `🔥 Against All Odds!`,
+`🎉 Rare Companion!` — one consistent title per category rather than per exact source, so a Yukon
+Bounty pull and a Cinderroot Guild Raid pull both read `🎉 Rare Companion!` with the specific
+source called out in a field instead), a trimmed `description` flavor sentence (the specific
+numbers move out of the sentence and into fields), and structured `fields` built from shared
+helpers so wording/shape can't drift between the 12 call sites: `playerField` (Adventurer),
+`rewardField(amount, currency = 'potatoes')` (Reward), `oddsField(successChance)` (Odds, rounded
+%), `guildField` (Guild), `companionField` (Companion, reuses `describeCompanion`), `sourceField`
+(Found — e.g. "Bounty Reward", "Tower Reward", "Found while Working"). Every embed also gets a
+footer (`Gromp Big Events`) and a `timestamp` (`new Date().toISOString()`) so Discord renders a
+real "when this happened" clock, neither of which existed before.
+
+Per-category shape (not every field applies to every event — Stat Bounty's long-shot win has no
+reward amount to show, same as before this pass; the fields present are just the ones that were
+already available at that call site, not new data manufactured to fill a slot):
+- **Rare work encounter** (Golden/Metal/Ancient/Golden Yam): title from the new
+  `BIG_EVENT_WORK_TITLES` map (parallel to the existing `BIG_EVENT_WORK_LABELS`, which stays as
+  the description's own mid-sentence phrasing — "hit a Golden Potato" reads naturally in a
+  sentence, "a Golden Potato!" doesn't work as a title). Fields: Adventurer, Reward. Ancient
+  Potato's Reward field branches the same 3-way (regrade / shop upgrade / potatoes) its own
+  description already does — nothing here forces a potato number where the actual reward isn't one.
+- **Long-shot win** (Heist/Bounty/Stat Bounty/Raid): title `🔥 Against All Odds!`. Fields:
+  Adventurer, Odds, Reward (when one exists — Raid's own long-shot trigger never had a reward
+  amount available at that call site even before this pass, see the 14-closures explanation
+  above; Stat Bounty has no reward amount either), Guild (Raid only).
+- **Companion pull** (Work/Bounty/Tower/Guild Raid): title `🎉 Rare Companion!`. Fields:
+  Adventurer, Companion, Guild (Guild Raid only), Found (the specific source label).
+
+**Tests**: `bigEventsChannel.test.js` grew to cover the new structured shape end-to-end (title,
+fields, footer, timestamp all asserted on the actual webhook POST body, not just `description`)
+plus one dedicated test per field-builder helper. Full suite: **1756/1756** across 95 suites (9
+new tests). `node -c` clean on every touched file. No other test file asserted on `postBigEvent`'s
+old call shape, so nothing outside `bigEventsChannel.test.js` needed updating.
+
+**Website side**: mirrored — not shared — into financial-project's own `gromp-economy`/
+`gromp-mercenary`/`gromp-guilds` handler.ts (see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`
+for the exact same structure pass applied to `postBigEvent`/`postServerActivity` there, keeping
+both channels' embeds visually consistent regardless of which side posted them).
+
 ## Scope: which actions post, and why "ephemeral" doesn't map 1:1
 
 The website has no "ephemeral" concept of its own — every page is private to the logged-in user

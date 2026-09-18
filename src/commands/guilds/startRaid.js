@@ -1372,7 +1372,15 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
             return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource: null, missedSkipChance: 0 };
         }
         if (typeof successChance === 'number' && successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-            bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot raid win for **${guildName}** (${Math.round(successChance * 100)}% chance!)`);
+            bigEventsChannel.postBigEvent({
+                title: '🔥 Against All Odds!',
+                description: `**${userDisplayName}** pulled off a daring raid win for **${guildName}** against the odds!`,
+                fields: [
+                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.oddsField(successChance),
+                    bigEventsChannel.guildField(guildName),
+                ],
+            });
         }
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
@@ -1658,7 +1666,16 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
         await interaction.followUp({ embeds: [embedFactory.createGuildCompanionDropEmbed(guildName, userDisplayName, def)] }).catch(() => {});
         if (bigEventsChannel.isBigEventCompanion(def)) {
-            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** brought back ${bigEventsChannel.describeCompanion(def)} for **${guildName}**!`);
+            await bigEventsChannel.postBigEvent({
+                title: '🎉 Rare Companion!',
+                description: `**${userDisplayName}** brought back a rare companion for **${guildName}**!`,
+                fields: [
+                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.companionField(def),
+                    bigEventsChannel.guildField(guildName),
+                    bigEventsChannel.sourceField('Guild Raid Reward'),
+                ],
+            });
         }
     }
 

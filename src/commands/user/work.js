@@ -78,7 +78,11 @@ var workScenarios = [
             potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
-            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working and earned ${potatoesGained.toLocaleString()} potatoes!`);
+            await bigEventsChannel.postBigEvent({
+                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.golden,
+                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working!`,
+                fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+            });
             return potatoesGained;
         },
         chance: .001,
@@ -115,7 +119,11 @@ var workScenarios = [
                 const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 potatoesGained = metalResult.potatoesGained;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, metalResult.statGrant);
-                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working and earned ${potatoesGained.toLocaleString()} potatoes!`);
+                await bigEventsChannel.postBigEvent({
+                    title: bigEventsChannel.BIG_EVENT_WORK_TITLES.metalSuccess,
+                    description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working!`,
+                    fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+                });
             } else {
                 potatoesGained = 0;
 
@@ -156,7 +164,15 @@ var workScenarios = [
             embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
             if (bigEventsChannel.isBigEventCompanion(companionResult.companion)) {
-                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** found ${bigEventsChannel.describeCompanion(companionResult.companion)} while working!`);
+                await bigEventsChannel.postBigEvent({
+                    title: '🎉 Rare Companion!',
+                    description: `**${userDisplayName}** crossed paths with a rare companion while working!`,
+                    fields: [
+                        bigEventsChannel.playerField(userDisplayName),
+                        bigEventsChannel.companionField(companionResult.companion),
+                        bigEventsChannel.sourceField('Found while Working'),
+                    ],
+                });
             }
             // A companion encounter (new or duplicate) never pays potatoes anymore — a
             // duplicate grants a spare instead (see handleCompanionEncounter) — so this
@@ -191,7 +207,19 @@ var workScenarios = [
                 : ancientResult.shopUpgradedStatName
                     ? `a free ${ancientResult.shopUpgradedStatName} shop upgrade`
                     : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
-            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working and got ${ancientPrize}!`);
+            // Ancient Potato's own reward is 3 mutually-exclusive outcomes, not always a
+            // potato amount (see the comment above) — the Reward field branches the same way
+            // rather than reusing ancientPrize's own mid-sentence "a free..." phrasing as-is.
+            const ancientRewardFieldValue = ancientResult.regradedStatName
+                ? `Free ${ancientResult.regradedStatName} Regrade`
+                : ancientResult.shopUpgradedStatName
+                    ? `Free ${ancientResult.shopUpgradedStatName} Shop Upgrade`
+                    : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
+            await bigEventsChannel.postBigEvent({
+                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.ancient,
+                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working!`,
+                fields: [bigEventsChannel.playerField(userDisplayName), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
+            });
             return ancientResult.potatoesGained;
         },
         // Halved again 2026-08-29 — direct instruction ("lower ancient potato odds under
@@ -218,7 +246,11 @@ var workScenarios = [
             starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
             embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
             await sendWorkResult(interaction, embed, isChainedReply);
-            await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working and earned ${starchesGained.toLocaleString()} starches!`);
+            await bigEventsChannel.postBigEvent({
+                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.goldenYam,
+                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working!`,
+                fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(starchesGained, 'starches')],
+            });
             return starchesGained;
         },
         chance: .1275, // shifted down to match — own slice width unchanged

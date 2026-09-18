@@ -283,7 +283,15 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
 
     if (yukonAward && bigEventsChannel.isBigEventCompanion(yukonAward.companion)) {
-        await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** won ${bigEventsChannel.describeCompanion(yukonAward.companion)} off a Bounty!`);
+        await bigEventsChannel.postBigEvent({
+            title: '🎉 Rare Companion!',
+            description: `**${userDisplayName}** won a rare companion off a Bounty!`,
+            fields: [
+                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.companionField(yukonAward.companion),
+                bigEventsChannel.sourceField('Bounty Reward'),
+            ],
+        });
     }
 
     if (result.won && result.currency === 'potato' && netRewardAmount > 0) {
@@ -305,7 +313,15 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     await sendBountyResult(interaction, embed, isChainedReply);
 
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot Bounty win (${Math.round(result.successChance * 100)}% chance!) and earned ${netRewardAmount.toLocaleString()} ${result.currency}!`);
+        await bigEventsChannel.postBigEvent({
+            title: '🔥 Against All Odds!',
+            description: `**${userDisplayName}** pulled off a daring Bounty win against the odds!`,
+            fields: [
+                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.oddsField(result.successChance),
+                bigEventsChannel.rewardField(netRewardAmount, result.currency),
+            ],
+        });
     }
 
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);
@@ -411,7 +427,11 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
     // covers both modes the same way) rather than silently omitting the one Bounty mode
     // that doesn't currently trigger it.
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot Stat Bounty win (${Math.round(result.successChance * 100)}% chance!)!`);
+        await bigEventsChannel.postBigEvent({
+            title: '🔥 Against All Odds!',
+            description: `**${userDisplayName}** pulled off a daring Stat Bounty win against the odds!`,
+            fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.oddsField(result.successChance)],
+        });
     }
 
     const updatedUserDetails = await dynamoHandler.findUser(userId, username);

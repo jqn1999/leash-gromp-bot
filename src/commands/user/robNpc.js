@@ -232,7 +232,15 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     await sendNpcRobResult(interaction, embed, isChainedReply);
 
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-        await bigEventsChannel.postBigEvent(`🔥 **${userDisplayName}** pulled off a long-shot ${tier.label} Heist (${Math.round(result.successChance * 100)}% chance!) and earned ${result.amount.toLocaleString()} potatoes!`);
+        await bigEventsChannel.postBigEvent({
+            title: '🔥 Against All Odds!',
+            description: `**${userDisplayName}** pulled off a daring ${tier.label} Heist against the odds!`,
+            fields: [
+                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.oddsField(result.successChance),
+                bigEventsChannel.rewardField(result.amount),
+            ],
+        });
     }
 
     // Achievement check — /rob-npc never had one before at all. Re-fetches (same

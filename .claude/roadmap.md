@@ -14091,3 +14091,48 @@ suites (5 new tests, 1 new file). `node -c` clean on `startRaid.js`, `dynamoHand
 
 Docs: `.claude/systems/guilds.md`'s "Next-raid cooldown shown in the result embed" section gained
 a new dated "Raid-slot race guard" paragraph immediately after it.
+
+## Big Events channel: structured embeds instead of one bare description (2026-09-18, direct instruction)
+
+Direct instruction: "the channels for big events/activity dont show anything but the potato count
+(which some things dont give). Give them more details and structure in the embed messages for the
+channels so they feel better and more alive." Explicitly supersedes
+`server-activity-channel.md`'s own earlier "kept deliberately simple, description only" decision
+— a deliberate past call, not a bug, but this instruction asks to move past it. The "single Gold
+color for every Big Events subtype" decision from that same earlier pass was left untouched (this
+is about structure/detail, not reopening which colors exist).
+
+**Change**: `bigEventsChannel.js`'s `postBigEvent(message)` → `postBigEvent({title, description,
+fields})`. Every embed now gets a real title (one per category — `✨ Golden Potato!`, `🔥 Against
+All Odds!`, `🎉 Rare Companion!` — rather than per exact source, so e.g. a Yukon Bounty pull and a
+Cinderroot Guild Raid pull both read the same companion-pull title with the specific source in a
+field instead), a trimmed description (the numbers move out of the sentence into fields), and
+structured fields built from new shared helpers so wording/shape can't drift across the 12 call
+sites: `playerField`/`rewardField`/`oddsField`/`guildField`/`companionField`/`sourceField`. Also
+added a footer (`Gromp Big Events`) and a real `timestamp` — neither existed before. Updated all
+12 call sites: `work.js` (Golden/Metal/Ancient/Golden Yam/Wandering Companion — 5), `takeBounty.js`
+(Yukon pull/Bounty long-shot/Stat Bounty long-shot — 3), `robNpc.js` (Heist long-shot — 1),
+`enter-tower.js` (Bastion pull — 1), `startRaid.js` (Raid long-shot/Cinderroot pull — 2).
+
+Deliberately did NOT manufacture data that wasn't already available at a call site just to fill a
+field slot — Raid's own long-shot trigger never had a reward amount available there (see
+`server-activity-channel.md`'s own explanation of why raid's 14 scenario closures can't cheaply
+thread one out) and Stat Bounty's long-shot win has no reward amount either; both still just show
+Adventurer + Odds (+ Guild for Raid), same information as before this pass, just structured.
+Ancient Potato's Reward field branches the same 3-way (regrade / shop upgrade / potatoes) its
+description already did.
+
+**Tests**: `bigEventsChannel.test.js` rewritten to assert the full structured embed shape (title,
+fields, footer, timestamp) on the actual webhook POST body instead of just a `description` string,
+plus one new test per field-builder helper. No other test file asserted on `postBigEvent`'s old
+call shape, so nothing else needed updating. Full suite: **1756/1756** across 95 suites (9 new
+tests). `node -c` clean on every touched file.
+
+**Cross-repo**: financial-project's own `postBigEvent`/`postServerActivity` (mirrored, not shared,
+across `gromp-economy`/`gromp-mercenary`/`gromp-guilds`) get the equivalent structure pass in the
+same session — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` — so both channels' embeds
+stay visually consistent regardless of which side posted them.
+
+Docs: `.claude/systems/server-activity-channel.md` gained a new dated "Structure pass" section
+right after "Every Big Events trigger fires from BOTH sides," documenting the shape change and
+explicitly noting which earlier decision it supersedes vs. leaves standing.

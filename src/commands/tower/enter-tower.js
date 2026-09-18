@@ -184,7 +184,15 @@ module.exports = {
                 embeds: [createBastionDropEmbed(bastionAward, userDisplayName)]
             });
             if (bigEventsChannel.isBigEventCompanion(bastionAward.companion)) {
-                await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** earned ${bigEventsChannel.describeCompanion(bastionAward.companion)} in the Tower!`);
+                await bigEventsChannel.postBigEvent({
+                    title: '🎉 Rare Companion!',
+                    description: `**${userDisplayName}** earned a rare companion in the Tower!`,
+                    fields: [
+                        bigEventsChannel.playerField(userDisplayName),
+                        bigEventsChannel.companionField(bastionAward.companion),
+                        bigEventsChannel.sourceField('Tower Reward'),
+                    ],
+                });
             }
         }
 

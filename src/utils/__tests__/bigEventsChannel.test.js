@@ -8,9 +8,16 @@ const {
     postBigEvent,
     isBigEventCompanion,
     describeCompanion,
+    playerField,
+    rewardField,
+    oddsField,
+    guildField,
+    companionField,
+    sourceField,
     BIG_EVENT_WIN_CHANCE_THRESHOLD,
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,
+    BIG_EVENT_WORK_TITLES,
 } = require('../bigEventsChannel');
 
 const mythic = { id: 'mochi', name: 'Mochi', rarity: 'mythic' };
@@ -76,8 +83,19 @@ describe('BIG_EVENT_WIN_CHANCE_THRESHOLD / BIG_EVENT_WORK_ENCOUNTERS / BIG_EVENT
             expect(typeof BIG_EVENT_WORK_LABELS[type]).toBe('string');
         }
     });
+
+    test('every encounter in the set has a matching embed title', () => {
+        for (const type of BIG_EVENT_WORK_ENCOUNTERS) {
+            expect(typeof BIG_EVENT_WORK_TITLES[type]).toBe('string');
+        }
+    });
 });
 
+// Structure pass (2026-09-18, direct instruction — "give them more details and
+// structure... so they feel better and more alive"). postBigEvent's signature changed from
+// a flat pre-formatted message string to a structured {title, description, fields} object —
+// every assertion below checks the real embed shape (title/fields/footer/timestamp), not
+// just a description string.
 describe('postBigEvent', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -91,7 +109,7 @@ describe('postBigEvent', () => {
     test('does nothing when no big events channel is configured', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue(undefined);
 
-        await postBigEvent('test message');
+        await postBigEvent({ title: 'Test', description: 'test message' });
 
         expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -99,35 +117,90 @@ describe('postBigEvent', () => {
     test('does nothing when the stored doc has no webhookUrl', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue({ channelId: 'chan-1' });
 
-        await postBigEvent('test message');
+        await postBigEvent({ title: 'Test', description: 'test message' });
 
         expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    test('posts a Gold embed to the configured webhook', async () => {
+    test('posts a structured Gold embed (title, description, fields, footer, timestamp) to the configured webhook', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue({ webhookUrl: 'https://discord.com/api/webhooks/big/token' });
+        const fixedNow = new Date('2026-09-18T00:00:00.000Z');
+        const dateSpy = jest.spyOn(global, 'Date').mockImplementation((...args) => args.length ? new (jest.requireActual('Date'))(...args) : fixedNow);
 
-        await postBigEvent('✨ **Someone** found something amazing!');
+        const fields = [{ name: 'Adventurer', value: 'Someone', inline: true }];
+        await postBigEvent({ title: '✨ Golden Potato!', description: '**Someone** found something amazing!', fields });
+
+        dateSpy.mockRestore();
 
         expect(dynamoHandler.getStatDatabase).toHaveBeenCalledWith('server_big_events_channel');
         expect(global.fetch).toHaveBeenCalledWith('https://discord.com/api/webhooks/big/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ embeds: [{ description: '✨ **Someone** found something amazing!', color: 0xFFD700 }] }),
+            body: JSON.stringify({
+                embeds: [{
+                    title: '✨ Golden Potato!',
+                    description: '**Someone** found something amazing!',
+                    color: 0xFFD700,
+                    fields,
+                    footer: { text: 'Gromp Big Events' },
+                    timestamp: fixedNow.toISOString(),
+                }],
+            }),
         });
+    });
+
+    test('defaults fields to an empty array when omitted', async () => {
+        dynamoHandler.getStatDatabase.mockResolvedValue({ webhookUrl: 'https://discord.com/api/webhooks/big/token' });
+
+        await postBigEvent({ title: 'Test', description: 'test message' });
+
+        const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+        expect(body.embeds[0].fields).toEqual([]);
     });
 
     test('a fetch failure is swallowed, never thrown back to the caller', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue({ webhookUrl: 'https://discord.com/api/webhooks/big/token' });
         global.fetch.mockRejectedValue(new Error('network blip'));
 
-        await expect(postBigEvent('test message')).resolves.toBeUndefined();
+        await expect(postBigEvent({ title: 'Test', description: 'test message' })).resolves.toBeUndefined();
     });
 
     test('a getStatDatabase failure is also swallowed', async () => {
         dynamoHandler.getStatDatabase.mockRejectedValue(new Error('dynamo blip'));
 
-        await expect(postBigEvent('test message')).resolves.toBeUndefined();
+        await expect(postBigEvent({ title: 'Test', description: 'test message' })).resolves.toBeUndefined();
         expect(global.fetch).not.toHaveBeenCalled();
+    });
+});
+
+// Field builders (2026-09-18) — shared by every real call site (work.js/takeBounty.js/
+// robNpc.js/startRaid.js/enter-tower.js) so the exact wording/shape can't drift between them.
+describe('field builders', () => {
+    test('playerField', () => {
+        expect(playerField('Someone')).toEqual({ name: 'Adventurer', value: 'Someone', inline: true });
+    });
+
+    test('rewardField defaults currency to potatoes', () => {
+        expect(rewardField(12345)).toEqual({ name: 'Reward', value: '12,345 potatoes', inline: true });
+    });
+
+    test('rewardField accepts an explicit currency', () => {
+        expect(rewardField(500, 'starches')).toEqual({ name: 'Reward', value: '500 starches', inline: true });
+    });
+
+    test('oddsField rounds to the nearest percent', () => {
+        expect(oddsField(0.184)).toEqual({ name: 'Odds', value: '18%', inline: true });
+    });
+
+    test('guildField', () => {
+        expect(guildField('Some Guild')).toEqual({ name: 'Guild', value: 'Some Guild', inline: true });
+    });
+
+    test('companionField reuses describeCompanion', () => {
+        expect(companionField(mythic)).toEqual({ name: 'Companion', value: 'Mochi (Mythic)', inline: true });
+    });
+
+    test('sourceField', () => {
+        expect(sourceField('Bounty Reward')).toEqual({ name: 'Found', value: 'Bounty Reward', inline: true });
     });
 });
