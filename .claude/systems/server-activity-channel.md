@@ -255,15 +255,19 @@ precisely for moments worth surfacing regardless of how ephemeral the action its
 
 ## Message format
 
-Real Discord embeds (`{ embeds: [{ description: message, color }] }`), not plain content strings —
-changed same day as the Big Events channel, direct instruction: "Can we choose some neutral color
-for embeds for normal events." Every message still opens with `🌐` and ends "— via the website" so
-players can tell these apart from a real Discord command's own result embed at a glance; Big
-Events messages instead open with `✨`/`🔥` for extra visual distinction from routine activity.
-Kept deliberately simple (one embed field, `description` only — not matching every nuance of the
-bot's own richer per-scenario embeds) — see each Lambda's own `postServerActivity`/`postBigEvent`
-call sites in `gromp-economy`/`gromp-mercenary`/`gromp-guilds`' `handler.ts` (financial-project)
-for the exact wording per action.
+Real Discord embeds, not plain content strings — changed same day as the Big Events channel,
+direct instruction: "Can we choose some neutral color for embeds for normal events." Every
+description still ends "— via the website" so players can tell these apart from a real Discord
+command's own result embed at a glance.
+
+**Structured since the 2026-09-18 pass** (see that section above) — no longer just
+`{ description, color }`. Every embed now carries a real `title` (e.g. `🌐 Work`, `🌐 Bounty Won`,
+`✨ Golden Potato!`, `🔥 Against All Odds!`, `🎉 Rare Companion!`), a trimmed `description`, and
+structured `fields` (Adventurer, Reward/Result/Loss, Odds, Guild, Companion, Found) built from
+shared per-file helpers (`playerField`/`rewardField`/`deltaField`/`oddsField`/`guildField`/
+`companionField`/`sourceField`), plus a footer and a real `timestamp`. See each Lambda's own
+`postServerActivity`/`postBigEvent` call sites in `gromp-economy`/`gromp-mercenary`/
+`gromp-guilds`' `handler.ts` (financial-project) for the exact title/field breakdown per action.
 
 ## Failure mode: best-effort, never blocks the real action
 
