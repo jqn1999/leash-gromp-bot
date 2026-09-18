@@ -294,7 +294,16 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return { potatoesGained };
+        // statGrant (2026-09-18, direct instruction) — see handleSweetPotato's own comment;
+        // Metal Potato grants all three permanent stats at once, so this is always length 3.
+        return {
+            potatoesGained,
+            statGrant: [
+                { type: 'workMultiplierAmount', amount: workMultiplierGrant },
+                { type: 'passiveAmount', amount: actualPassiveRewardAmount },
+                { type: 'bankCapacity', amount: actualBankRewardAmount },
+            ],
+        };
     }
 
     async handleSweetPotato(userDetails) {
@@ -310,8 +319,9 @@ class WorkFactory {
         const setAttributes = {};
         switch (reward.type) {
             case "workMultiplierAmount":
-                sweetPotatoBuffs.workMultiplierAmount += reward.amount;
-                userMultiplier += reward.amount;
+                actualRewardAmount = reward.amount;
+                sweetPotatoBuffs.workMultiplierAmount += actualRewardAmount;
+                userMultiplier += actualRewardAmount;
                 setAttributes.workMultiplierAmount = userMultiplier;
                 break;
             case "passiveAmount":
@@ -342,7 +352,13 @@ class WorkFactory {
             workTimer: workTimer
         }, { workCount: 1 });
 
-        return random;
+        // statGrant (2026-09-18, direct instruction — "make sweet and metal show the numbers
+        // on the bot too", matching the website's own gromp-economy port of the same fix)
+        // replaces the old bare reward-type index this used to return: createWorkEmbed
+        // previously only showed a "(Work Multiplier)"-style label with no actual amount,
+        // same "check /profile" gap the website had until now. `random` is kept for any
+        // caller still relying on the index (none currently do, but costs nothing to leave).
+        return { random, statGrant: [{ type: reward.type, amount: actualRewardAmount }] };
     }
 
     // Wandering Companion encounter — rolls a companion by rarity (see

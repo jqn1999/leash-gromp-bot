@@ -561,6 +561,75 @@ describe('handleMetalPotato', () => {
         const result = await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
         expect(result.potatoesGained).toBe(38000); // floor(min(100000, 20000) * 1 * 2 * .95)
     });
+
+    // statGrant (2026-09-18, direct instruction — "make sweet and metal show the numbers on
+    // the bot too") — Metal Potato always grants all three permanent stats in one hit, so
+    // this is always length 3, matching what createWorkEmbed now renders as its own
+    // "🏅 Permanent Stat Reward" field.
+    test('returns statGrant with all three real granted amounts', async () => {
+        const userDetails = baseUser({ workMultiplierAmount: 2, passiveAmount: 100000, bankCapacity: 200000 });
+        const result = await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
+        expect(result.statGrant).toEqual([
+            { type: 'workMultiplierAmount', amount: 0.6 },
+            { type: 'passiveAmount', amount: 50000 },
+            { type: 'bankCapacity', amount: 100000 },
+        ]);
+    });
+});
+
+describe('handleSweetPotato', () => {
+    // Math.random controls which of the 3 reward types (constants.js's sweetPotatoRewards,
+    // indices 0/1/2) gets picked — restored after each test so it doesn't leak into others
+    // (this file doesn't mock Math.random globally, see handleAncientPotato's own tests).
+    test('workMultiplierAmount reward: returns statGrant with the flat 0.2 amount', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        let result;
+        try {
+            result = await workFactory.handleSweetPotato(baseUser({ workMultiplierAmount: 1 }));
+        } finally {
+            randomSpy.mockRestore();
+        }
+        expect(result.statGrant).toEqual([{ type: 'workMultiplierAmount', amount: 0.2 }]);
+    });
+
+    test('passiveAmount reward: returns statGrant with the real calculated amount, not the raw multiplier', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.4); // floor(0.4*3) = index 1
+        let result;
+        try {
+            result = await workFactory.handleSweetPotato(baseUser({ passiveAmount: 100000 }));
+        } finally {
+            randomSpy.mockRestore();
+        }
+        // rawReward = 100000 * 1.15 = 114999.99999999999 (floating point) -> rounds to
+        // nearest 10000 = 110000, only +10000 over previous, which doesn't clear the
+        // function's own >10000 floor — falls back to the flat 10000 minimum grant.
+        expect(result.statGrant).toEqual([{ type: 'passiveAmount', amount: 10000 }]);
+    });
+
+    test('bankCapacity reward: returns statGrant with the real calculated amount', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.7); // floor(0.7*3) = index 2
+        let result;
+        try {
+            result = await workFactory.handleSweetPotato(baseUser({ bankCapacity: 1000000 }));
+        } finally {
+            randomSpy.mockRestore();
+        }
+        // rawReward = 1000000 * 1.15 = 1150000 -> rounds to nearest 50000 = 1150000, +150000
+        // over previous, under the 1000000-per-hit cap.
+        expect(result.statGrant).toEqual([{ type: 'bankCapacity', amount: 150000 }]);
+    });
+
+    test('persists the granted amount into sweetPotatoBuffs and the live stat field', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            await workFactory.handleSweetPotato(baseUser({ workMultiplierAmount: 1 }));
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workMultiplierAmount).toBeCloseTo(1.2);
+        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.2);
+    });
 });
 
 describe('getGuildWorkMulti (via handleRegularWork)', () => {

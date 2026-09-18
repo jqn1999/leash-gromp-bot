@@ -1133,6 +1133,36 @@ describe('companion XP display gating on companion equipped', () => {
             expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
         });
     });
+
+    // statGrant (2026-09-18, direct instruction — "make sweet and metal show the numbers on
+    // the bot too") — replaces the old bare "(Work Multiplier)"-style suffix on Sweet
+    // Potato's description (no amount shown at all) and Metal Potato's total silence on its
+    // own stat grants, both of which previously just told the player to "check /profile."
+    describe('createWorkEmbed statGrant field', () => {
+        const mob = { name: 'Sweet Potato', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
+
+        test('renders a single-stat grant (Sweet Potato) with the real amount, not a bare label', () => {
+            const embed = embedFactory.createWorkEmbed('User', 10, 0, mob, null, 0, null, 0, [{ type: 'passiveAmount', amount: 10000 }]);
+            const field = embed.data.fields.find(f => f.name === '🏅 Permanent Stat Reward');
+            expect(field.value).toBe('+10,000 Passive Income');
+            expect(embed.data.description).not.toMatch(/Passive Amount|Work Multiplier|Bank Capacity/);
+        });
+
+        test('renders all three stats (Metal Potato) on separate lines', () => {
+            const embed = embedFactory.createWorkEmbed('User', 10, 5000, mob, null, 0, null, 0, [
+                { type: 'workMultiplierAmount', amount: 0.6 },
+                { type: 'passiveAmount', amount: 50000 },
+                { type: 'bankCapacity', amount: 100000 },
+            ]);
+            const field = embed.data.fields.find(f => f.name === '🏅 Permanent Stat Reward');
+            expect(field.value).toBe('+0.6 Work Multiplier\n+50,000 Passive Income\n+100,000 Bank Capacity');
+        });
+
+        test('adds no stat field at all when statGrant is omitted (every other /work encounter)', () => {
+            const embed = embedFactory.createWorkEmbed('User', 10, 100, mob);
+            expect(embed.data.fields.find(f => f.name === '🏅 Permanent Stat Reward')).toBeUndefined();
+        });
+    });
 });
 
 // Golden/dirt pocket icons no longer reuse goldenPotato/largePotato's own /work-encounter

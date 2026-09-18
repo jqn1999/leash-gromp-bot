@@ -114,7 +114,7 @@ var workScenarios = [
             if (metalSuccessRoll < BASE_METAL_SUCCESS_CHANCE) {
                 const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 potatoesGained = metalResult.potatoesGained;
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, metalResult.statGrant);
                 await bigEventsChannel.postBigEvent(`✨ **${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working and earned ${potatoesGained.toLocaleString()} potatoes!`);
             } else {
                 potatoesGained = 0;
@@ -135,8 +135,9 @@ var workScenarios = [
     },
     {
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            potatoesGained = await workFactory.handleSweetPotato(userDetails);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+            const sweetResult = await workFactory.handleSweetPotato(userDetails);
+            potatoesGained = 0;
+            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, sweetResult.statGrant);
             await sendWorkResult(interaction, embed, isChainedReply);
             return potatoesGained;
         },

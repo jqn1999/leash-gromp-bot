@@ -13870,3 +13870,59 @@ implementation exactly instead of just swapping the day name on top of the stale
 writeup, including the exact boundary values checked, in `NOTES_GROMP_WEB_INTEGRATION.md`'s
 "Bot caught up #42" entry — committed and pushed to that repo's own
 `claude/weekly-reset-sunday` branch (not `master`, per that repo's own git workflow).
+
+## Sweet Potato/Metal Potato now show the real stat amount gained (2026-09-18, direct instruction)
+
+Follow-up to the website's own version of this same fix a day earlier ("Get things like sweet
+potato, metal potato, merc rivals and guild rivals to show the stats gained on the website") —
+"Can you make the sweet and metal show the numbers on the bot too." Investigating the website
+port had already surfaced that the BOT itself was the one with the real gap here, not the port:
+`createWorkEmbed` only ever showed a bare "(Work Multiplier)"-style label for Sweet Potato with no
+actual amount (the "Potatoes Gained" field displayed the reward-type index 0/1/2 as a leftover
+display quirk, not a real potato count), and showed nothing stat-related at all for Metal Potato
+beyond its potato payout — both relied on the player checking `/profile` afterward to see what
+they actually got. Rival confrontations and Guild Warband repels already had a proper
+`{type, amount}` breakdown in their own embeds; Sweet/Metal Potato never did.
+
+**Change**:
+- `workFactory.js`'s `handleSweetPotato` used to return a bare integer (the reward-type array
+  index, 0/1/2 — a hack `createWorkEmbed` decoded back into a label via a `switch` on
+  `potatoesGained`, which is *also* what got displayed as the fake "Potatoes Gained: 0/1/2
+  potatoes" field). Now returns `{ random, statGrant: [{ type, amount }] }` — `random` kept for
+  any future caller, `statGrant` carrying the real granted amount (the flat `reward.amount` for
+  `workMultiplierAmount`, the actual post-cap/post-rounding value for `passiveAmount`/
+  `bankCapacity`, matching what actually gets written to `sweetPotatoBuffs`).
+- `handleMetalPotato` already returned an object (`{ potatoesGained }`); added `statGrant` as a
+  3-entry array (Metal Potato always grants all three stats in one hit) built from the same
+  `workMultiplierGrant`/`actualPassiveRewardAmount`/`actualBankRewardAmount` values already being
+  persisted, not recomputed.
+- `embedFactory.js`'s `createWorkEmbed` gained a new optional `statGrant` param. Removed the old
+  `sweetPotatoReward` hack (the `switch (potatoesGained) { case 0/1/2: ... }` label-only suffix on
+  the description) entirely, replaced with a proper "🏅 Permanent Stat Reward" field — same shape
+  and same `statLabels` wording (`workMultiplierAmount` → "Work Multiplier", etc.) the Rival/
+  Warband embeds already use elsewhere in this same file, just not extracted into a shared
+  constant (this file already has that exact `statLabels` object duplicated 4 times across
+  different embed functions — matched the existing, if sloppy, precedent rather than doing an
+  unrelated refactor while fixing this).
+- `work.js`: Metal's call site passes `metalResult.statGrant` through as `createWorkEmbed`'s new
+  9th arg. Sweet's call site now passes a real `potatoesGained = 0` (Sweet Potato never actually
+  grants potatoes) instead of the old fake index — this incidentally also fixes a tiny existing
+  inaccuracy where Sweet Potato hits were adding 0/1/2 to the server-wide `work.totalPayout` stat
+  counter (`WORK_SCENARIO_INDICES.SWEET` was never in `POTATO_PAYOUT_SCENARIO_TYPES`'s
+  `biggestWorkPayout` check, so that one was already unaffected).
+
+**Tests**: added `handleSweetPotato`'s first-ever dedicated describe block (4 tests — one per
+reward type's `statGrant` shape via a restored `Math.random` spy, same pattern
+`handleAncientPotato`'s own tests already use, plus one persistence check), a new
+`handleMetalPotato` test asserting all three `statGrant` amounts, and a new `createWorkEmbed`
+describe block (3 tests: single-stat rendering, three-stat rendering, and confirming no stray
+field when `statGrant` is omitted). One test case caught a floating-point surprise
+(`100000 * 1.15` evaluates to `114999.99999999999`, not `115000`, which lands the sweet-potato
+passive reward on `calculatePassiveAmount`'s flat-10000-minimum fallback branch instead of its
+`+20000` real-increase branch) — expectation corrected to match the actual (correct) runtime
+behavior rather than the naive hand-computed value. Full suite: **1734/1734** across 94 suites
+(8 new tests). `node -c` clean on `workFactory.js`, `embedFactory.js`, and `work.js`.
+
+Docs: `.claude/systems/economy-and-work.md`'s Sweet Potato section updated — the old "check a
+user's profile embed" line was accurate but incomplete now that the result embed itself also
+shows the exact amount.

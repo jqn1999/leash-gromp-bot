@@ -497,8 +497,13 @@ Picks one of three equal-weight rewards (no potatoes granted):
 - `passiveAmount +=` 1.15× current, min +10000 rounding, capped +100000
 - `bankCapacity +=` 1.15× current, min +50000 rounding, capped +1,000,000
 
-All Sweet/Metal-success buffs accumulate in `sweetPotatoBuffs` — check a user's profile embed to
-see the cumulative total.
+All Sweet/Metal-success buffs accumulate in `sweetPotatoBuffs` — a user's profile embed shows the
+cumulative total. The exact amount just granted is also shown directly on the result embed itself
+(`createWorkEmbed`'s `statGrant` param, a `{type, amount}[]` — 2026-09-18, direct instruction:
+"make sweet and metal show the numbers"; previously the description only carried a bare
+"(Work Multiplier)"-style label for Sweet Potato with no number at all, and Metal Potato showed
+nothing stat-related beyond its potato payout — both relied on the player checking `/profile`
+afterward to see what they actually got).
 
 ### Taro Trader
 

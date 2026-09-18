@@ -1778,7 +1778,7 @@ class EmbedFactory {
         return embed;
     }
 
-    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
+    createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, mob, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0, statGrant = null) {
         let fields = [], footerText = "Made by Beggar";
 
         fields.push({
@@ -1813,19 +1813,18 @@ class EmbedFactory {
             footerText += ` • 🎉 ${activeEvent}`;
         }
 
-        let sweetPotatoReward = '';
-        if (mob.name == sweetPotato.name) {
-            switch (potatoesGained) {
-                case 0:
-                    sweetPotatoReward = ' (Work Multiplier)';
-                    break;
-                case 1:
-                    sweetPotatoReward = ' (Passive Amount)';
-                    break;
-                case 2:
-                    sweetPotatoReward = ' (Bank Capacity)';
-                    break;
-            }
+        // Real amount shown instead of the old bare "(Work Multiplier)"-style label with no
+        // number (2026-09-18, direct instruction — "make sweet and metal show the numbers on
+        // the bot too", matching the website's own port of this same fix). Sweet Potato
+        // always grants exactly one stat; Metal Potato grants all three at once.
+        if (statGrant && statGrant.length) {
+            const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            const statText = statGrant.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
+            fields.push({
+                name: '🏅 Permanent Stat Reward',
+                value: statText,
+                inline: false,
+            });
         }
 
         // TODO: Remove in future this is mostly for memes
@@ -1838,7 +1837,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName} encountered a(n) ${mob.name}!`)
-            .setDescription(`${mobDescription}${sweetPotatoReward}`)
+            .setDescription(`${mobDescription}`)
             .setColor(color)
             .setThumbnail(mob.thumbnailUrl)
             .setFooter({ text: footerText })
