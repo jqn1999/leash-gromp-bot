@@ -2,6 +2,7 @@ const dynamoHandler = require("./dynamoHandler");
 const { RaidFactory, getMemberRaidPower } = require("./raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("./workFactory");
 const { EmbedFactory } = require("./embedFactory");
+const bigEventsChannel = require("./bigEventsChannel");
 const { Raid } = require("../utils/constants")
 const { getRandomFromInterval } = require("../utils/helperCommands")
 const embedFactory = new EmbedFactory();
@@ -115,6 +116,26 @@ async function startWorldBoss(world, mob){
             };
             await dynamoHandler.setActiveWorldBuff(worldBuff);
         }
+
+        // Big Events (2026-09-19, direct instruction — "the world boss kill didn't go in
+        // big events"). This channel already covers Golden/Metal/Ancient Potatoes and
+        // <30%-chance Raid/Bounty/Heist wins, but a World Boss kill — the single biggest
+        // event this game has (Griseous alone pays out 150,000,000 potatoes on a win) — was
+        // never wired to it at all. Posted on EVERY win rather than gated behind a re-derived
+        // successChance < 30% check like the Raid/Bounty/Heist pattern: a World Boss fight
+        // only happens at all when the hourly cron rolls a new one (backgroundEvents.js), so
+        // the scarcity here is in the OPPORTUNITY to fight one, not in this particular
+        // attempt's odds — the same reasoning the Hard Rival trigger uses (gate on the rare
+        // event itself, not a re-derived odds threshold).
+        await bigEventsChannel.postBigEvent({
+            title: `🌍 ${mob.name} Defeated!`,
+            description: `${raidList.length.toLocaleString()} adventurers brought down the World Boss and split the spoils!`,
+            fields: [
+                { name: "Participants", value: `${raidList.length}`, inline: true },
+                bigEventsChannel.oddsField(successChance),
+                bigEventsChannel.rewardField(totalRaidReward),
+            ],
+        });
     } else {
         totalRaidReward = Math.round(mob.potatoPenalty * randomMultiplier);
         raidListByMulti = await raidFactory.handlePotatoSplitByShare(raidListByMulti, totalRaidReward);

@@ -968,6 +968,24 @@ share** (`handlePotatoSplitByShare`), and there is currently no penalty on failu
 `join-world-raid` / `current-world-raid` mirror the guild raid join/status commands but operate
 against the `world` stats doc instead of a guild record.
 
+**Big Events (2026-09-19, direct instruction — "the world boss kill didn't go in big events")**:
+`worldFactory.startWorldBoss` had zero `bigEventsChannel` wiring at all despite being the single
+biggest event this game has (Griseous alone pays 150,000,000 potatoes on a win) — confirmed via
+grep before this fix, same "confirm before assuming" step every other Big Events audit in this doc
+follows. Now posts on **every win**, not gated behind a re-derived `successChance < 30%` check like
+the Raid/Bounty/Heist Big Events pattern (see systems/server-activity-channel.md) — a World Boss
+fight only exists at all when the hourly cron rolls one (5% chance per idle tick, `setWorldBoss`),
+so the scarcity is in the opportunity to fight one at all, not in this particular attempt's odds
+(same "gate on the rare event itself" reasoning the same-day Hard Rival Big Events trigger uses).
+Wired directly inside `startWorldBoss` (utils-layer, not the command/cron layer) since that's where
+`mob`/`totalRaidReward`/`successChance`/`raidList` are already all in scope — posts participant
+count, odds, and total reward, title `🌍 {mob.name} Defeated!`. No dedicated test added, matching
+this repo's own established Big Events convention (`confront-rival`/`repel-warband`'s same-day
+entry above notes the same choice) — `postBigEvent` itself is already covered by
+`bigEventsChannel.test.js`, and `worldFactory.test.js` already mocks `dynamoHandler` wholesale so
+the added call resolves as a safe no-op (`getStatDatabase` returns `undefined`) in every existing
+test. Full suite re-run clean: **1764/1764**.
+
 ### Server-wide buff
 
 Added 2026-08-29 — product-owner scoped, then implemented by direct instruction ("implement"). A
