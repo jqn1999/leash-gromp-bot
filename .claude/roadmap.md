@@ -13926,3 +13926,58 @@ behavior rather than the naive hand-computed value. Full suite: **1734/1734** ac
 Docs: `.claude/systems/economy-and-work.md`'s Sweet Potato section updated — the old "check a
 user's profile embed" line was accurate but incomplete now that the result embed itself also
 shows the exact amount.
+
+## Tower: stale-click crash at floor 19, root-caused and fixed (2026-09-18, live crash report)
+
+A player (digbaron) reported a run crashing at floor 19: `TypeError: Cannot read properties of
+undefined (reading 'outcome')` at `towerFactory.updateValue`, called from `execNormalFloor`,
+called from `startRun`. Investigated by reading the actual code path rather than guessing from
+the symptom (per this file's own standing convention — see the Spud Keep dual-write race and
+`/work` auto-recovery gap entries for why that's mandatory here).
+
+**Root cause**: `updateValue`'s `const choice = fl.choices[index]` came back `undefined`, meaning
+`index` itself was `undefined`. Traced to `createFloorEmbed`'s choice-matching loop:
+
+```js
+for (var i in fl.choices){
+    if(confirmation.customId == fl.choices[i].name){
+        ...
+        return i
+    }
+}
+// fell through here with NO explicit return if nothing matched — implicitly returns undefined
+```
+
+Every floor screen reuses the *same* Discord message across a whole run (`this.interaction.
+editReply` edits it in place, floor after floor) with a fresh `awaitMessageComponent` collector
+per floor. The 2026-09-11 root-cause entry in `tower.md` already established Discord's click-ack
+timing isn't fully reliable under bot load (`DiscordAPIError[10062]`, "Unknown interaction");
+the same class of timing quirk explains this crash too — a click carrying the *previous* floor's
+customId can still be delivered after the next floor's own collector is already listening. Unlike
+the timeout branch a few lines above it (which safely defaults to `return 0`), this loop had no
+fallback for "a confirmation exists but matches none of this floor's current choices" — it just
+fell off the end of the async function.
+
+Three other collector methods in this same file share the identical shape (fixed `if`/`else if`
+option chains, no fallback branch) and were vulnerable to the same class of stale click, just with
+a quieter failure mode (the run silently ends early instead of crashing, since `undefined` is
+falsy and unwinds `startRun`'s `while(cont)` loop): `createNextEmbed` (Continue/Leave),
+`createEliteEmbed` (Fight/Leave), `createEliteEncounter` (single Continue button).
+
+**Fix**: all four now fall back to the exact same safe default their own timeout branch already
+declares, instead of implicitly returning `undefined`, when a real confirmation exists but matches
+none of the current screen's options — `createFloorEmbed` → choice index `0`, `createNextEmbed`/
+`createEliteEmbed` → `false` (Leave/decline), `createEliteEncounter` → `true` (its only real
+option). This doesn't change behavior on the happy path at all — it only closes the gap for a
+click that was never going to match anything on the current screen anyway.
+
+**Tests**: new `towerFactory.test.js` describe block "a stale click whose customId matches
+nothing on the CURRENT screen defaults safely" — one test per method, each mocking a
+`confirmation` whose `customId` matches none of the screen's real choices and asserting the safe
+default comes back instead of `undefined`. Full suite: **1738/1738** across 94 suites (4 new
+tests). `node -c` clean on `towerFactory.js`.
+
+Docs: `.claude/systems/tower.md` gained a new dated root-cause entry (mirroring the existing
+2026-09-11 `DiscordAPIError[10062]` entry's own structure and level of detail) right after it,
+since both are the same underlying class of Discord interaction-timing bug surfacing in different
+call sites.

@@ -1306,3 +1306,61 @@ describe('confirmation.update() acks are best-effort, not fatal', () => {
         expect(tF.policy).toBe(tC.POLICY.GREEDY);
     });
 });
+
+// Root-caused from a live crash (2026-09-18): digbaron's run threw "Cannot read properties of
+// undefined (reading 'outcome')" at floor 19. Every floor reuses the same message via editReply,
+// so a Discord-delayed/retried click carrying a PREVIOUS floor's customId can still land after
+// the next floor's own collector is already up (same interaction-timing quirk the 10062 crash
+// above already documents). createFloorEmbed's choice-matching loop had no fallback for a
+// customId matching none of the current floor's choices, silently returning undefined —
+// which then flowed into updateValue as `fl.choices[undefined]` and crashed reading `.outcome`
+// off it. Each collector method below got the same safe-default fallback its own timeout branch
+// already uses.
+describe('a stale click whose customId matches nothing on the CURRENT screen defaults safely', () => {
+    test('createFloorEmbed falls back to choice index 0 instead of returning undefined', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'some_other_floors_choice', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = { name: 'Test Floor', thumbnailUrl: 'https://example.com/x.png', choices: [{ name: 'Fight', outcome: tC.PAYOUT.POTATOES, value: 100, result: 'ok' }] };
+
+        const index = await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', 'desc');
+
+        expect(index).toBe(0);
+    });
+
+    test('createNextEmbed falls back to LEAVE (false) instead of returning undefined', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'stale_choice_name', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+
+        const cont = await tF.createNextEmbed({ name: 'Test Floor' }, 'desc');
+
+        expect(cont).toBe(false);
+    });
+
+    test('createEliteEmbed falls back to declining the fight (false) instead of returning undefined', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'stale_choice_name', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = { name: 'Test Elite', thumbnailUrl: 'https://example.com/x.png', description: 'desc' };
+
+        const fight = await tF.createEliteEmbed(fl, 0.5);
+
+        expect(fight).toBe(false);
+    });
+
+    test('createEliteEncounter falls back to continuing (true) instead of returning undefined', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'stale_choice_name', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = { name: 'Test Elite', thumbnailUrl: 'https://example.com/x.png' };
+
+        const cont = await tF.createEliteEncounter(fl, 'desc');
+
+        expect(cont).toBe(true);
+    });
+});

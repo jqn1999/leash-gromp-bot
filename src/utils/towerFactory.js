@@ -584,6 +584,15 @@ class towerFactory{
                 return i
             }
         }
+        // No choice on THIS floor matched the click's customId (live crash, 2026-09-18,
+        // floor 19: fl.choices[undefined] fell through to updateValue and crashed reading
+        // .outcome off it). Every floor here reuses the same message via editReply, so a
+        // Discord-delayed/retried interaction from the PREVIOUS floor's now-replaced buttons
+        // can still land after this floor's collector is already up — same class of Discord
+        // interaction-timing quirk chooseRiskPolicy's own confirmation.update() comment already
+        // documents elsewhere in this file. Same safe default the timeout branch above uses.
+        await confirmation.update({content: '', components: []}).catch(() => {})
+        return 0
     }
 
     async createNextEmbed(fl, description, color = 'Green'){
@@ -641,6 +650,11 @@ class towerFactory{
         await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
+        // Same stale-click fallback as createFloorEmbed's own fix (2026-09-18) — a delayed
+        // click whose customId is neither of this screen's two options otherwise fell through
+        // returning undefined. Defaults to the same LEAVE-equivalent the timeout branch above uses.
+        await confirmation.update({content: '', components: []}).catch(() => {})
+        return false
     }
 
     async createEliteEmbed(fl, success){
@@ -674,6 +688,10 @@ class towerFactory{
         await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
+        // Same stale-click fallback as createFloorEmbed's own fix (2026-09-18) — defaults to
+        // the same fight-decline the timeout branch above uses.
+        await confirmation.update({content: '', components: []}).catch(() => {})
+        return false
     }
 
     async createEliteEncounter(fl, description){
@@ -704,6 +722,10 @@ class towerFactory{
         await confirmation.update({content: '', components: []}).catch(() => {})
             return true
         }
+        // Same stale-click fallback as createFloorEmbed's own fix — only one real option
+        // here anyway, same default the timeout branch above already uses.
+        await confirmation.update({content: '', components: []}).catch(() => {})
+        return true
     }
 
     // No collector here — purely informational, matches createDeathEmbed's no-click

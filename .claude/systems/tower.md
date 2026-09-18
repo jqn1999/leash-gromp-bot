@@ -1823,3 +1823,55 @@ that last file was a real bug caught only by running the full suite: adding
 `towerRewardBonus` to `MimicryCompanion.PERK_TYPES` made Yamimic's own displayed perk manifest
 include it, and `PERK_LABELS` had no formatter registered yet, crashing
 `/help topic:companions`'s Yamimic display.
+
+## Root cause found: choice-matching loop had no fallback for a stale click (2026-09-18, live crash)
+
+A real production stack trace, reported directly by a player:
+
+```
+Tower run crashed for digbaron (146103910170361858) at floor 19: TypeError: Cannot read properties of undefined (reading 'outcome')
+    at towerFactory.updateValue (.../src/utils/towerFactory.js:430:23)
+    at towerFactory.execNormalFloor (.../src/utils/towerFactory.js:212:21)
+    ...
+    at async towerFactory.startRun (.../src/utils/towerFactory.js:84:20)
+```
+
+`updateValue`'s `const choice = fl.choices[index]` returned `undefined`, then crashed reading
+`.outcome` off it — meaning `index` itself was `undefined` coming in. Traced to
+`createFloorEmbed`'s own choice-matching loop:
+
+```js
+for (var i in fl.choices){
+    if(confirmation.customId == fl.choices[i].name){
+        ...
+        return i
+    }
+}
+// fell through here with no return at all if nothing matched
+```
+
+Every floor screen reuses the *same* message across the whole run (`this.interaction.editReply`
+edits in place, floor after floor) with a fresh `awaitMessageComponent` collector set up per
+floor. The 2026-09-11 root-cause above already established that Discord's own click-ack timing
+is not fully reliable under load (`DiscordAPIError[10062]`); the same class of timing quirk
+explains this one too — a click whose `customId` belonged to the *previous* floor's now-replaced
+buttons can still be delivered after the next floor's own collector is already listening. Unlike
+the timeout branch a few lines above it (which safely defaults to `return 0`), the matching loop
+had no equivalent fallback for "a confirmation exists but matches none of this floor's current
+choices" — it just fell off the end of the function, implicitly returning `undefined`.
+
+Three other collector methods in this file share the exact same shape (fixed-option `if`/`else if`
+chains with no fallback branch) and were vulnerable to the identical class of stale click, just
+with a quieter failure mode (an early, silent run-end instead of a crash, since `undefined` is
+falsy and unwinds `startRun`'s own `while(cont)` loop) rather than a thrown exception:
+`createNextEmbed` (Continue/Leave), `createEliteEmbed` (Fight/Leave), `createEliteEncounter`
+(single Continue button).
+
+Fix: all four now fall back to the same safe default their own timeout branch already declares,
+instead of implicitly returning `undefined`, on a non-matching customId — `createFloorEmbed`
+defaults to choice index `0`, `createNextEmbed`/`createEliteEmbed` default to `false` (Leave/
+decline), `createEliteEncounter` defaults to `true` (its only real option). Regression coverage
+added to `towerFactory.test.js`'s new "a stale click whose customId matches nothing on the
+CURRENT screen defaults safely" block — one test per method, each mocking a `confirmation` with a
+customId that matches none of the current screen's real choices and asserting the safe default is
+returned instead of `undefined`.
