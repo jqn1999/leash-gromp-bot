@@ -5,6 +5,7 @@ const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const companionFactory = require("../../utils/companionFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -98,6 +99,26 @@ module.exports = {
 
         const embed = embedFactory.createRivalConfrontationResultEmbed(userDisplayName, result, setAttributes.mercenaryNotoriety, companionXpGained, companionName);
         await interaction.editReply({ embeds: [embed] });
+
+        // Big Events (2026-09-18, direct instruction — "include hard rival for guild and
+        // merc in big events"). Hard is the rarest scenario roll (10%, Rival.SCENARIO_CHANCE)
+        // AND the lowest success-chance range (10-20%, SUCCESS_CHANCE_RANGE.hard) of the
+        // three tiers, so gating on the scenario itself rather than re-deriving a <30%
+        // successChance check (the pattern takeBounty.js/startRaid.js use) is both simpler
+        // and the more literal reading of what was asked — every Hard win already clears
+        // BIG_EVENT_WIN_CHANCE_THRESHOLD anyway, so this is never looser than that pattern.
+        if (result.won && result.scenario === 'hard') {
+            await bigEventsChannel.postBigEvent({
+                title: '⚔️ Hard Rival Bounty Hunter Defeated!',
+                description: `**${userDisplayName}** took down ${result.rival.name} on the hardest Rival Bounty Hunter tier!`,
+                fields: [
+                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.oddsField(result.successChance),
+                    bigEventsChannel.rewardField(result.rewardAmount),
+                ],
+                color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
+            });
+        }
 
         const updatedUserDetails = await dynamoHandler.findUser(userId, username);
         if (updatedUserDetails) {
