@@ -14685,3 +14685,38 @@ new/touched block, per this repo's own "run everything" convention.
 port needed); `TRANSACTIONS`' missing `usedRewards`-style de-dupe (Baron's Beet re-rolling) left
 alone, exactly as the scoping pass flagged it as a related-but-separate, out-of-scope issue.
 
+## Website-only: Guild Bank/Buff switches/Shop/Regrade join the Web Activity channel (2026-09-19, three direct instructions)
+
+"Have guild deposit/withdraw from web show up in web activity channel" / "Have guild buff switched
+and merc buff switches from web show up on web activity channel" / "Add shop buys and regrades from
+website to web activity channel." Widens the routine **Activity** channel's included-action set
+(not Big Events — none of these five is a rare/lucky moment). All five (Guild Bank deposit/
+withdraw, Guild Buff switch, Mercenary Buff switch, Shop tier buy, Regrade attempt) were previously
+named explicitly in `systems/server-activity-channel.md`'s "Scope" section as deliberately excluded
+("shop tier buys, regrades... guild management, etc.") — reopened here specifically, on direct
+instruction, same as every prior addition to that channel's inclusion table.
+
+**Website-only, no bot code touched** — see `financial-project`'s `NOTES_GROMP_WEB_INTEGRATION.md`
+`#56` for the exact diffs. Summary: `gromp-guilds/handler.ts` (Guild Bank — required hoisting a
+`netAmountForActivity` out of `doGuildBank`'s two branches, since neither exposed its own local
+`netAmount` past the function before, same fix pattern `gromp-economy`'s own `doBank` already
+needed for the personal-bank equivalent; Guild Buff switch), `gromp-mercenary/handler.ts`
+(Mercenary Buff switch), `gromp-economy/handler.ts` (Shop tier buy — `doBuyShopTier` now also
+returns `shopSelect`/`cost`; Regrade attempt, success AND failure both post — `doRegrade` now also
+returns `regradeSelect`, reusing the existing `AncientRegradeTracks` array's own `label` field for
+a human-readable category name instead of adding a second regrade-label map). All five stay on the
+plain Greyple default activity color, matching every other non-work-flavor post.
+
+**Why this is bot-doc-only, not bot-code**: this channel only ever tracks WEBSITE actions by
+design (see `systems/server-activity-channel.md`'s "Architecture" section — the original ask was
+specifically "website actions users are doing that normally display from the bot to other users"),
+so there's no bot-side command producing an equivalent post to check parity against, unlike
+Scavenge/Companion Hunt's earlier addition (which DID confirm parity against real, public bot
+commands first). `systems/server-activity-channel.md` updated: the inclusion table gained all five
+rows, the "Deliberately excluded" paragraph's wording adjusted to stop naming them as excluded, and
+a new dated section added with the full writeup.
+
+Verified via `tsc --noEmit --skipLibCheck --target es2022 --module esnext --moduleResolution
+bundler` on all three touched `handler.ts` files in `financial-project` — clean aside from each
+file's own expected missing `$amplify/env/*` module. No bot-side test changes (nothing in this
+repo's own `src/` was touched).
