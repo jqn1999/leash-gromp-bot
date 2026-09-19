@@ -329,20 +329,35 @@ Checked directly against each bot command's own `deferReply({ ephemeral: ... })`
 | Safehouse deposit/withdraw | `/safehouse` (public — included on direct instruction) |
 | Scavenge (send + collect) | `/companion-scavenge`, `/companion-scavenge-collect` (both public — added 2026-09-18, direct instruction) |
 | Companion Hunt (send + collect) | `/companion-hunt`, `/companion-hunt-collect` (both public — added 2026-09-18, direct instruction) |
+| Guild Bank deposit/withdraw | web-only — no bot-side equivalent post exists (bot has no normal-Activity poster of its own, see "Architecture" above); added 2026-09-19, direct instruction |
+| Guild Buff switch | web-only, added 2026-09-19, direct instruction |
+| Mercenary Buff switch | web-only, added 2026-09-19, direct instruction |
+| Shop tier buy | web-only, added 2026-09-19, direct instruction |
+| Regrade attempt (success or failure) | web-only, added 2026-09-19, direct instruction |
 
 **Deliberately excluded**: every `onLoad*` web method (pure reads, not actions — nothing "happens"
 worth announcing), `/companion-shop` (genuinely ephemeral on the bot — personal stock, no reason
 for onlookers, per that command's own design), account linking, birthdays, Scavenge/Companion
 Hunt's own `Cancel` variants (a no-op retreat with no reward, nothing worth announcing — only the
-send-out and the real collect fire), and every other web action not explicitly named above (shop
-tier buys, regrades, coinflip, betting, guild management, etc.) — not evaluated one-by-one, left
-out by default rather than guessed at. This exclusion is specifically about the **normal**
-activity channel's routine "you bought X" noise — a Companion Shop pull that happens to roll
-Mythic still fires into the separate **Big Events** channel (see below); Big Events' own
-2026-09-16 exclusion of Companion Hunt/Shop results was a SEPARATE, narrower decision (about
-that channel specifically, since a hunt/shop result isn't a rare enough moment to interrupt
-Big Events for) and is untouched by Scavenge/Companion Hunt joining the routine Activity channel
-here — the two channels' inclusion lists are independent, not layered.
+send-out and the real collect fire), and every other web action not explicitly named above
+(coinflip, betting, remaining guild management like invite/kick/promote/guildBuy, etc.) — not
+evaluated one-by-one, left out by default rather than guessed at. This exclusion is specifically
+about the **normal** activity channel's routine "you bought X" noise — a Companion Shop pull that
+happens to roll Mythic still fires into the separate **Big Events** channel (see below); Big
+Events' own 2026-09-16 exclusion of Companion Hunt/Shop results was a SEPARATE, narrower decision
+(about that channel specifically, since a hunt/shop result isn't a rare enough moment to interrupt
+Big Events for) and is untouched by anything joining the routine Activity channel — the two
+channels' inclusion lists are independent, not layered.
+
+**2026-09-19 note**: Guild Bank/Guild Buff/Mercenary Buff/Shop buy/Regrade were previously named
+explicitly in this section as excluded ("shop tier buys, regrades... guild management, etc.") —
+that default is reopened for these five specifically, on direct instruction, same as every other
+addition to this table. See "Guild Bank/Buff switches/Shop/Regrade join the Activity channel"
+below for the full writeup; unlike Scavenge/Companion Hunt above, this pass is **web-only with no
+bot-side command equivalent to check ephemeral status against** — the bot itself has never posted
+Guild Bank/buff-switch/shop/regrade actions to any activity channel (it has no normal-Activity
+poster of its own at all, see "Architecture" above), so there was no existing bot behavior to
+match parity against here, just the direct instruction naming these five web actions.
 
 ## Message format
 
@@ -435,3 +450,50 @@ condition is a straight boolean gate on already-tested `resolveRivalConfrontatio
 `resolveWarbandConfrontation` output, and `postBigEvent` itself is already covered by
 `bigEventsChannel.test.js`; no existing test asserted on `confrontRival.js`/`repelWarband.js` NOT
 calling `bigEventsChannel`, so nothing needed updating). `node -c` clean on both touched files.
+
+## Guild Bank/Buff switches/Shop/Regrade join the Activity channel (2026-09-19, three direct instructions, website-only)
+
+Three same-day direct instructions, all widening the routine **Activity** channel's included-action
+set (not Big Events — none of these five is a rare/lucky moment worth a louder channel): "Have
+guild deposit/withdraw from web show up in web activity channel," "Have guild buff switched and
+merc buff switches from web show up on web activity channel," "Add shop buys and regrades from
+website to web activity channel." All five actions (Guild Bank deposit, Guild Bank withdraw, Guild
+Buff switch, Mercenary Buff switch, Shop tier buy, Regrade attempt) were previously named
+explicitly in the "Scope" section above as deliberately excluded ("shop tier buys, regrades...
+guild management, etc.") — that default is reopened here specifically, on direct instruction, the
+same way every prior addition to the inclusion table above got there.
+
+**Website-only, no bot-side change** — same shape as the Scavenge/Companion Hunt addition earlier
+in this doc, but with one difference: that addition confirmed parity against real bot commands
+(`/companion-scavenge` etc. are public), since the bot already posts routine actions like Work/Bank
+via its own equivalent commands producing a public embed. Guild Bank/buff-switch/shop/regrade have
+**no bot-side activity-channel equivalent to check parity against at all** — the bot has never
+posted any of these five actions (done via Discord slash commands) to the Activity channel, because
+the channel only ever tracked WEBSITE actions in the first place (see "Architecture" above: this
+channel exists specifically so admins can see "website actions users are doing that normally
+display from the bot to other users," not to double-post real Discord command results). So this
+pass is a pure widening of which WEBSITE actions qualify, with no bot-side parity question to
+resolve.
+
+**Website side** (see `financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` `#56` for the full
+writeup): `gromp-guilds/handler.ts` gained Guild Bank deposit/withdraw (required hoisting a
+`netAmountForActivity` out of `doGuildBank`'s branches, since neither branch's own local
+`netAmount` was previously exposed past the function — same pattern `gromp-economy`'s own `doBank`
+already used for the personal-bank equivalent) and Guild Buff switch. `gromp-mercenary/handler.ts`
+gained Mercenary Buff switch. `gromp-economy/handler.ts` gained Shop tier buy (required
+`doBuyShopTier` to also return `shopSelect`/`cost`) and Regrade attempt (required `doRegrade` to
+also return `regradeSelect`; reused the existing `AncientRegradeTracks` array's own `label` field
+for a human-readable category name rather than adding a second regrade-label map). Regrade success
+and failure both post — win/loss conveyed by title text (`🌐 Regrade Success`/`🌐 Regrade Failed`),
+not color, matching every other win/loss activity post's existing convention. All five stay on the
+plain Greyple default color, same as every other non-work-flavor activity post — no scenario flavor
+to color these by.
+
+**Bot side**: no code change — `src/utils/constants.js` has no analogous "post to activity channel"
+call for `/guild-bank`, `/set-buff`, `/set-mercenary-buff`, shop-buy, or regrade commands, and none
+was added, since (as above) this channel is website-action-only by design.
+
+**Tests**: no bot-side test changes (nothing here touches bot code). Website side verified via
+`tsc --noEmit --skipLibCheck --target es2022 --module esnext --moduleResolution bundler` on all
+three touched `handler.ts` files — clean aside from each file's own expected missing
+`$amplify/env/*` module, same as every other website-only pass in this doc.
