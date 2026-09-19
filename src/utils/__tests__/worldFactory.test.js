@@ -1,4 +1,13 @@
-const mockHandlePotatoSplitByShare = jest.fn(async (raidListByMulti) => raidListByMulti);
+// Mirrors the real raidFactory.handlePotatoSplitByShare's own "mutate raidSplitAmount onto
+// each member, in place" contract (rather than a bare passthrough) — the World Boss Big
+// Events per-participant breakdown (2026-09-19) reads member.raidSplitAmount directly, so a
+// mock that never set it would silently diverge from what production actually does.
+const mockHandlePotatoSplitByShare = jest.fn(async (raidListByMulti, totalRaidSplit) => {
+    raidListByMulti.forEach(member => {
+        member.raidSplitAmount = Math.round(member.raidShare * totalRaidSplit);
+    });
+    return raidListByMulti;
+});
 const mockHandleStatSplit = jest.fn(async () => {});
 const mockIncrementCounter = jest.fn(async () => {});
 
@@ -26,7 +35,12 @@ beforeEach(() => {
     jest.clearAllMocks();
     dynamoHandler.updateStatDatabase.mockResolvedValue({});
     dynamoHandler.setActiveWorldBuff.mockResolvedValue({});
-    mockHandlePotatoSplitByShare.mockImplementation(async (raidListByMulti) => raidListByMulti);
+    mockHandlePotatoSplitByShare.mockImplementation(async (raidListByMulti, totalRaidSplit) => {
+        raidListByMulti.forEach(member => {
+            member.raidSplitAmount = Math.round(member.raidShare * totalRaidSplit);
+        });
+        return raidListByMulti;
+    });
     mockHandleStatSplit.mockImplementation(async () => {});
     mockIncrementCounter.mockImplementation(async () => {});
     // World Boss's own workMulti buff (2026-09-04) — default to no buff live; individual

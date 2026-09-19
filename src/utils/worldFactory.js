@@ -127,11 +127,18 @@ async function startWorldBoss(world, mob){
         // the scarcity here is in the OPPORTUNITY to fight one, not in this particular
         // attempt's odds — the same reasoning the Hard Rival trigger uses (gate on the rare
         // event itself, not a re-derived odds threshold).
+        //
+        // Per-participant breakdown (2026-09-19 follow-up, same-day direct instruction —
+        // "include what users were part of the raid and what they won") — replaces the
+        // original bare participant COUNT with the real roster, each member's own
+        // raidSplitAmount (set in place by handlePotatoSplitByShare just above). Built via
+        // buildParticipantsField below rather than inline, since a big roster has to be
+        // truncated to stay under Discord's 1024-char field-value limit.
         await bigEventsChannel.postBigEvent({
             title: `🌍 ${mob.name} Defeated!`,
             description: `${raidList.length.toLocaleString()} adventurers brought down the World Boss and split the spoils!`,
             fields: [
-                { name: "Participants", value: `${raidList.length}`, inline: true },
+                buildParticipantsField(raidListByMulti),
                 bigEventsChannel.oddsField(successChance),
                 bigEventsChannel.rewardField(totalRaidReward),
             ],
@@ -143,6 +150,25 @@ async function startWorldBoss(world, mob){
     }
     return embedFactory.createWorldResultEmbed(raidListByMulti, totalRaidReward, mob, successChance,
                                     raidResultDescription, workMultiReward, passiveReward, bankCapacityReward, worldBuff, successfulRaid)
+}
+
+// Discord field values cap at 1024 characters, and a World Boss roster can run large — this
+// stops adding lines once the next one would risk that limit and folds the remainder into a
+// single "…and N more" summary line rather than letting a big roster silently get truncated
+// mid-line by the Discord API or rejected outright.
+function buildParticipantsField(raidListByMulti) {
+    const lines = raidListByMulti.map(member => `${member.username}: ${member.raidSplitAmount.toLocaleString()} potatoes`);
+    let value = '';
+    let shown = 0;
+    for (const line of lines) {
+        if ((value + line + '\n').length > 900) break;
+        value += line + '\n';
+        shown++;
+    }
+    if (shown < lines.length) {
+        value += `…and ${lines.length - shown} more`;
+    }
+    return { name: 'Participants', value: value.trim() || 'None', inline: false };
 }
 
 function determineRaidResult(successChance) {

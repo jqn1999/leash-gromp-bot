@@ -4,6 +4,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { EventFactory, buildActiveEventPayload } = require("../../utils/eventFactory");
 const { setWorkScenarios } = require("../../commands/user/work.js");
 var { worldFactory } = require("../../utils/worldFactory.js");
+const bigEventsChannel = require("../../utils/bigEventsChannel.js");
 const { TowerLeaderboardFactory } = require("../../utils/towerLeaderboardFactory.js");
 const { QuestFactory } = require("../../utils/questFactory.js");
 const { GuildContracts } = require("../../utils/constants.js");
@@ -247,6 +248,17 @@ module.exports = async (client) => {
                     embed = wB.getWorldEmbed()
                     channel.send({embeds: [ embed ]});
                     channel.send(`<@&1207117686526582865>`);
+                    // Big Events (2026-09-19, direct instruction — "include world boss
+                    // appearances also in big events"), a same-day follow-up to the World
+                    // Boss KILL trigger above — a new boss spawning is itself the rare event
+                    // (5% chance per idle hourly tick) that the kill trigger's own comment
+                    // already reasons about, so this is the other half of the same "gate on
+                    // the rare event itself" logic, not a separate threshold.
+                    await bigEventsChannel.postBigEvent({
+                        title: `🌍 ${wB.mob.name} Has Appeared!`,
+                        description: `A World Boss threatens the Kingdom! Join the fight with /join-world-raid before it moves on.`,
+                        fields: [bigEventsChannel.rewardField(wB.mob.potatoReward)],
+                    });
                 })
             }
         }

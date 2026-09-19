@@ -14284,3 +14284,48 @@ rather than assumed to be what was meant:
 No code changed for this investigation — reported findings, no fix applied yet pending
 confirmation of which (if either) matches what was actually observed, since neither is a clean
 match for "lumped in with the spud keep skip chance message" as literally described.
+
+## World Boss kills, spawns, and participant detail join Big Events (2026-09-19, direct instructions across two same-day messages: "the world boss kill didn't go in big events" / "Include world boss appearances also in big events" / "If world boss dies, include in the big events embed details what users were part of the raid and what they won")
+
+Three related asks, landed together. `worldFactory.js`'s `startWorldBoss` (the World Boss fight
+resolver) and `backgroundEvents.js`'s hourly cron (the spawn/kill scheduler) had **zero**
+`bigEventsChannel` wiring at all before this pass, despite World Bosses being the single biggest
+event this game has — Griseous alone pays 150,000,000 potatoes on a win, dwarfing every other
+Big Events trigger (Golden Potato, <30%-chance Bounty/Raid/Heist wins, Hard Rival wins from
+yesterday's pass).
+
+**Kill trigger**: added inside `startWorldBoss`'s win branch, posted on **every** win rather than
+gated behind a re-derived `successChance < 30%` check like the Raid/Bounty/Heist pattern — a World
+Boss fight only exists at all when the hourly cron rolls one, so the scarcity is in the opportunity
+to fight it at all, same "gate on the rare event itself" reasoning the Hard Rival trigger already
+established. Originally showed a bare participant count; the same-day follow-up ("what users...
+and what they won") replaced that with `buildParticipantsField(raidListByMulti)` — one line per
+participant naming their own `raidSplitAmount`, truncated with an "…and N more" line once the
+running value risks Discord's 1024-char field-value cap.
+
+**Spawn trigger** (the other same-day follow-up): a new boss appearing (the cron's 5%-per-idle-tick
+`setWorldBoss` branch) is just as much a "big event" moment as the kill, and had the same zero
+wiring. Added at the cron layer in `backgroundEvents.js` (not inside `worldFactory.js` itself, since
+`setWorldBoss` is a plain state-setter with no announcement logic of its own) — title
+`🌍 {mob.name} Has Appeared!`, the boss's own `potatoReward` as the one field.
+
+**Test fix required**: `worldFactory.test.js`'s `mockHandlePotatoSplitByShare` mock was a bare
+passthrough that never set `raidSplitAmount` on any member — harmless until the new participant-
+breakdown field started reading that field directly, at which point 5 of 11 tests started failing
+on `Cannot read properties of undefined (reading 'toLocaleString')`. Fixed by upgrading the mock to
+actually compute `raidSplitAmount` from `raidShare * totalRaidSplit`, mirroring what the real
+`raidFactory.handlePotatoSplitByShare` already does — not a production bug, a mock that had quietly
+drifted from the real contract it stands in for.
+
+**No website counterpart for any of the three** — confirmed via grep before concluding, not
+assumed: `financial-project`'s `gromp-economy/handler.ts` only lets a player check/join an
+in-progress World Raid; the fight itself (spawn, resolution, kill) is exclusively resolved by the
+bot's own hourly `node-schedule` cron, with no Lambda-side equivalent for any of these three
+triggers to mirror into.
+
+**Tests**: full suite re-run clean, **1764/1764** across 95 suites, after the mock fix above.
+`node -c` clean on both touched files (`worldFactory.js`, `backgroundEvents.js`).
+
+Docs: `.claude/systems/raids-and-world-events.md` gained the full writeup (kill trigger, then a
+same-day-follow-up subsection for spawn + participant detail, then the "no website counterpart"
+note) right after the existing "World raids" section.

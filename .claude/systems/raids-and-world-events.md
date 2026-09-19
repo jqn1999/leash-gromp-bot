@@ -978,13 +978,44 @@ fight only exists at all when the hourly cron rolls one (5% chance per idle tick
 so the scarcity is in the opportunity to fight one at all, not in this particular attempt's odds
 (same "gate on the rare event itself" reasoning the same-day Hard Rival Big Events trigger uses).
 Wired directly inside `startWorldBoss` (utils-layer, not the command/cron layer) since that's where
-`mob`/`totalRaidReward`/`successChance`/`raidList` are already all in scope — posts participant
-count, odds, and total reward, title `🌍 {mob.name} Defeated!`. No dedicated test added, matching
-this repo's own established Big Events convention (`confront-rival`/`repel-warband`'s same-day
-entry above notes the same choice) — `postBigEvent` itself is already covered by
-`bigEventsChannel.test.js`, and `worldFactory.test.js` already mocks `dynamoHandler` wholesale so
-the added call resolves as a safe no-op (`getStatDatabase` returns `undefined`) in every existing
-test. Full suite re-run clean: **1764/1764**.
+`mob`/`totalRaidReward`/`successChance`/`raidList` are already all in scope. No dedicated test
+added, matching this repo's own established Big Events convention (`confront-rival`/
+`repel-warband`'s same-day entry above notes the same choice) — `postBigEvent` itself is already
+covered by `bigEventsChannel.test.js`. Full suite re-run clean: **1764/1764**.
+
+**Same-day follow-up (2026-09-19)** — two more gaps, both direct instructions:
+
+- **"Include world boss appearances also in big events."** A kill wasn't the only World Boss
+  moment missing from this channel — a new boss SPAWNING (the 5%-per-idle-tick branch in
+  `backgroundEvents.js`'s hourly cron, `wB.setWorldBoss()`) had no Big Events post either, even
+  though it's exactly the kind of rare, server-wide moment this channel exists for. Wired at the
+  cron layer (not `worldFactory.js` itself, since `setWorldBoss` is a plain state-setter with no
+  embed/announcement logic of its own — the cron already builds the spawn announcement via
+  `wB.getWorldEmbed()` right there) — title `🌍 {mob.name} Has Appeared!`, boss's own `potatoReward`
+  as the one field. `wB.mob` is safely readable synchronously right after the (un-awaited)
+  `wB.setWorldBoss()` call — that function assigns `this.mob` as its very first line, before its
+  first `await`, so the assignment has already happened by the time the caller's next synchronous
+  statement runs, same reasoning `wB.getWorldEmbed()` immediately after it already relied on before
+  this change.
+- **"If world boss dies, include in the big events embed details what users were part of the raid
+  and what they won."** The kill trigger shipped hours earlier only showed a participant COUNT, not
+  who or how much. Replaced with `buildParticipantsField(raidListByMulti)` — one line per
+  participant (`username: amount potatoes`, reading each member's own `raidSplitAmount`, set in
+  place by `handlePotatoSplitByShare` just above), truncated with an "…and N more" summary line
+  once the running value would risk Discord's 1024-char field-value cap, so a big roster degrades
+  gracefully instead of erroring or getting silently cut off mid-line by the Discord API.
+  `worldFactory.test.js`'s `mockHandlePotatoSplitByShare` had to be upgraded from a bare passthrough
+  to one that actually sets `raidSplitAmount` on each member (mirroring the real
+  `raidFactory.handlePotatoSplitByShare`'s own mutate-in-place contract) — the old passthrough mock
+  predates this field being read by anything, so it silently never set it; the new embed field
+  reads it directly and needs a mock that reflects real behavior. Full suite re-run clean:
+  **1764/1764**.
+
+**No website counterpart for either of the two World Boss Big Events triggers** (kill or spawn) —
+`financial-project`'s `gromp-economy/handler.ts` only lets a player check/join an in-progress World
+Raid (`world_active`/`world_index` reads); the fight itself is resolved exclusively by the bot's own
+hourly cron (`backgroundEvents.js`), with no Lambda-side equivalent to mirror this into. Confirmed
+via grep before concluding this — not assumed.
 
 ### Server-wide buff
 
