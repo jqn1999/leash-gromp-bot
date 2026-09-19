@@ -2699,26 +2699,35 @@ const Bounty = {
     //
     // Seventh pass, 2026-09-19, direct instruction — "bump merc bounties another 2x."
     // Every reward AND penalty doubled uniformly (a pure magnitude change — difficulty and
-    // the 1.0x-2.0x penalty:reward ratio climb are both untouched, same shape every pass
-    // above already establishes). Every sixth-pass value was already an exact multiple of
-    // 1,000, so doubling needed no re-rounding; T12's own "penalty = exactly reward*2"
-    // invariant still holds after doubling both sides (49,302,000*2 = 98,604,000). This is
-    // the CURRENT, correct table — a same-day flirtation with flattening penalty to one
-    // shared amount across every tier was reverted the same day (see the "Penalty
-    // escalation" comment above).
+    // the (at-the-time) climbing penalty:reward ratio were both untouched). A same-day
+    // flirtation with flattening penalty to one shared amount across every tier was
+    // reverted the same day (see the "Penalty escalation" comment above).
+    //
+    // Tenth pass (flat 1:1 ratio), same day, direct instruction — "Make the merc bounty
+    // penalties 1:1 with the reward by lowering the penalties... look at how guild raid
+    // reward and penalty is done." Guild Raid's own ratio is a flat step BY MODE (Regular
+    // always exactly 1.0x, Elite always exactly 1.5x, Legendary always exactly 2.0x — see
+    // Raid.T1_RAID_REWARD/PENALTY through LEGENDARY_T4_REWARD/PENALTY), never a smooth climb
+    // within a mode. This ladder has no mode bands to key off of (12 tiers, one continuous
+    // curve), so the closest direct mirror is the simplest one: penalty = -reward, flat 1:1,
+    // for every tier — matching Regular Raid's own ratio exactly rather than inventing a new
+    // banding scheme. LOWERED every tier's penalty down to equal its own reward (reward
+    // itself untouched, unlike Regular Raid where 1:1 comes from both sides being equal by
+    // construction) — replaces the 1.0x->2.0x climbing ratio the "Penalty escalation" pass
+    // introduced and every pass since had preserved. This is the CURRENT, correct table.
     TIERS: [
         { tier: 1,  difficulty: 10,   reward: 82000,    penalty: -82000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -156000 },      // 1.05x
-        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -304000 },      // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -580000 },      // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -1100000 },     // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -2024000 },     // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -3722000 },     // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -6780000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -12278000 },    // 1.73x
-        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -22130000 },    // 1.82x
-        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -40228000 },    // 1.91x
-        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -98604000 },    // 2.00x — set to exactly reward*2
+        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -148000 },      // 1.00x
+        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -258000 },      // 1.00x
+        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -450000 },      // 1.00x
+        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -804000 },      // 1.00x
+        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -1390000 },     // 1.00x
+        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -2410000 },     // 1.00x
+        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -4144000 },     // 1.00x
+        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -7106000 },     // 1.00x
+        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -12172000 },    // 1.00x
+        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -21072000 },    // 1.00x
+        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -49302000 },    // 1.00x
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),

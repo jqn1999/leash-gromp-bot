@@ -701,6 +701,18 @@ form (reward AND |penalty| both increase monotonically; the 1.0x→2.0x ratio cl
 again). Net lesson, not a design change: "stays at the base amount" meant "doesn't scale with
 rank," never "identical across tiers" — worth remembering if this phrasing comes up again.
 
+**Tenth pass (flat 1:1 ratio), same day, direct instruction** — after seeing the actual Guild Raid
+reward/penalty table (Regular T1-T4 always exactly 1.0x, Elite T1-T4 always exactly 1.5x, Legendary
+T1-T4 always exactly 2.0x — a flat step BY MODE, never a smooth climb within one mode), the player
+asked for the real change: "Make the merc bounty penalties 1:1 with the reward by lowering the
+penalties." This retires the 1.0x→2.0x climbing ratio entirely (the actual 2026-09-08 "Penalty
+escalation" design, correctly restored above, now itself superseded) in favor of the simplest
+direct mirror of Guild Raid's own mechanism available to a ladder with no mode bands: `penalty =
+-reward` for every one of the 12 tiers. **Change**: each tier's `penalty` LOWERED to exactly match
+its own `reward` (e.g. B12: 98,604,000 → 49,302,000); `reward` itself untouched throughout this
+entire back-and-forth. `mercenaryFactory.test.js`'s two climbing-ratio tests replaced by one
+`penalty equals -reward for every tier` test. Full suite: **1767/1767**.
+
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 
 Direct instruction: "add 5% bounty tax, nothing on rob-npc." `mercenaryFactory.resolveBountyAttempt`

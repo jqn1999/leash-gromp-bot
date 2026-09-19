@@ -14506,3 +14506,33 @@ a new PR).
 Docs: `.claude/systems/mercenary-bounties.md`'s own "Ninth pass (flat penalty)" subsection rewritten
 in place to describe the misread-and-correction directly, rather than adding a "Tenth pass" on top
 that would misrepresent this as a genuine second design change.
+
+## Bounty penalty set flat 1:1 with reward, matching Guild Raid's own ratio (2026-09-19, same day, direct instruction: "Make the merc bounty penalties 1:1 with the reward by lowering the penalties" — after being shown Guild Raid's actual reward/penalty table)
+
+The real, final word on the penalty:reward saga two entries above this one. Guild Raid's own ratio,
+read directly off its live constants (`Raid.T1_RAID_REWARD`/`PENALTY` through
+`LEGENDARY_T4_REWARD`/`PENALTY`), turned out to be a flat step BY MODE — Regular always exactly
+1.0x, Elite always exactly 1.5x, Legendary always exactly 2.0x, never a smooth climb within a mode.
+Bounty's own 12-tier ladder has no mode bands to key a step off of, so the closest direct mirror is
+the simplest one available: flat 1:1 for every tier, retiring the 1.0x→2.0x climbing ratio the
+2026-09-08 "Penalty escalation" pass introduced (and which the immediately-preceding roadmap entry
+had just correctly restored, believing it was still the intended design).
+
+**Change**: every one of `Bounty.TIERS`' 12 tiers had its `penalty` LOWERED to exactly match its own
+`reward` (`penalty = -reward`) — e.g. B6: -2,024,000 → -1,390,000; B12: -98,604,000 → -49,302,000.
+`reward` itself has been untouched through this entire multi-pass history. `resolveBountyAttempt`'s
+own penalty branch already never scaled with Mercenary Rank (only the reward branch does), so this
+change only affects the base per-tier amount, not any multiplier applied on top of it.
+
+**Tests**: `mercenaryFactory.test.js`'s two ratio-climb tests (`B1 keeps... B12 reaches exactly
+2.0x`, `penalty:reward ratio increases monotonically`) replaced by one test locking in the new flat
+invariant: `penalty equals -reward for every tier`. Full suite: **1767/1767** across 95 suites.
+`node -c` clean.
+
+**Cross-repo**: `financial-project`'s mirrored `Bounty.TIERS` copy still needs this same change —
+not yet ported (flagged here, not silently skipped, since the prior two Bounty-penalty entries were
+both already ported/reverted there and this one hasn't been yet).
+
+Docs: `.claude/systems/mercenary-bounties.md` gained a "Tenth pass (flat 1:1 ratio)" subsection
+right after the misread-and-correction entry, citing the actual Guild Raid numbers that motivated
+the final design.
