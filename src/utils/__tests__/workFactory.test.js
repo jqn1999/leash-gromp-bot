@@ -1,7 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, computeMimicMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, computeMimicMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti, calculateGainAmount } = require('../workFactory');
+const { TAX_EXEMPT_TEST_USER_ID } = require('../constants');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, MimicMitigation, MimicSlaying, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
 
@@ -1396,5 +1397,27 @@ describe('handleGoldenYam', () => {
 
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.workScenarioCounts.goldenYam).toBe(2);
+    });
+});
+
+// Balance-testing carve-out (TAX_EXEMPT_TEST_USER_ID, constants.js) — calculateGainAmount is
+// the one shared function /work AND /rob-npc (Heist) both funnel their payout through, so
+// this is the single place the exemption actually needs to hold for both commands at once.
+describe('calculateGainAmount tax-exempt test user carve-out', () => {
+    test('a normal user pays the 5% house cut and gets the taxed amount', async () => {
+        const gained = await calculateGainAmount(1000, 100000, 1, 1, { userId: 'someRegularUser' });
+
+        expect(gained).toBe(950); // floor(1000 * 1 * 1 * .95)
+        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledTimes(1);
+        const [, field, houseShare] = dynamoHandler.addUserDatabase.mock.calls[0];
+        expect(field).toBe('potatoes');
+        expect(houseShare).toBe(50); // floor(950 / .95 * .05)
+    });
+
+    test('the exempt test user keeps the full pre-tax amount and no house share is credited', async () => {
+        const gained = await calculateGainAmount(1000, 100000, 1, 1, { userId: TAX_EXEMPT_TEST_USER_ID });
+
+        expect(gained).toBe(1000); // no .95 reduction at all
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
     });
 });

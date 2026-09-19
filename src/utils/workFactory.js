@@ -1,6 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getRandomFromInterval } = require("../utils/helperCommands")
-const { Work, PoisonMitigation, MimicMitigation, MimicSlaying, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations } = require("../utils/constants")
+const { Work, PoisonMitigation, MimicMitigation, MimicSlaying, REGRADE_CAPS, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, shops, awsConfigurations, TAX_EXEMPT_TEST_USER_ID } = require("../utils/constants")
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -1035,12 +1035,20 @@ const sweetPotatoRewards = [
 // has a ready-made hook.
 async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
-    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * .95);
-    // Same 5%-cut pattern as /bank, /guild-bank, and /rob's fine — but unlike those, this
-    // one has no reply embed of its own to show it in (calculateGainAmount just returns a
-    // number to whichever /work handler called it), so there's nothing to display it in.
-    const houseShare = Math.floor(gainAmount / .95 * .05);
-    await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
+    // Balance-testing carve-out (see TAX_EXEMPT_TEST_USER_ID's own comment in constants.js)
+    // — this one flat 5% cut is the ONLY tax /work and /rob-npc (Heist) ever pay (both
+    // funnel through this shared function), so skipping it here covers both in one place.
+    // The player keeps the full pre-tax amount rather than the house share simply going
+    // uncredited — the point is raw formula output for testing, not free extra money.
+    const isTaxExempt = userDetails?.userId === TAX_EXEMPT_TEST_USER_ID;
+    gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * (isTaxExempt ? 1 : .95));
+    if (!isTaxExempt) {
+        // Same 5%-cut pattern as /bank, /guild-bank, and /rob's fine — but unlike those, this
+        // one has no reply embed of its own to show it in (calculateGainAmount just returns a
+        // number to whichever /work handler called it), so there's nothing to display it in.
+        const houseShare = Math.floor(gainAmount / .95 * .05);
+        await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
+    }
 
     return gainAmount
 }

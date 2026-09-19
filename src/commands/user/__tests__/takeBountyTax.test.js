@@ -8,7 +8,7 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Bounty } = require('../../../utils/constants');
+const { Bounty, TAX_EXEMPT_TEST_USER_ID } = require('../../../utils/constants');
 const { callback } = require('../takeBounty');
 
 const fakeClient = { user: { id: 'house-account' } };
@@ -195,5 +195,31 @@ describe('/take-bounty win tax', () => {
 
         expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith('house-account', 'potatoes', expectedHouseShare);
         expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('spud_keep', { potPotatoes: expectedPotShare });
+    });
+
+    // Balance-testing carve-out (TAX_EXEMPT_TEST_USER_ID, constants.js) — this account's
+    // Bounty wins skip the Kingdom Tax (and therefore its Spud Keep pot redirect) entirely.
+    test('the exempt test user keeps the full gross reward — no house or pot credit at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: TAX_EXEMPT_TEST_USER_ID }));
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'mercenary', holderId: null, expiresAt: Date.now() + 100000 }); // even with a live holder
+        const interaction = fakeInteraction({ mode: 'baby' });
+        interaction.user.id = TAX_EXEMPT_TEST_USER_ID;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.99)
+            .mockReturnValueOnce(0.99);
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const grossReward = Math.round(Bounty.TIERS[0].reward * 0.8 * 1.00);
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+        expect(dynamoHandler.addStatFields).not.toHaveBeenCalledWith('spud_keep', expect.anything());
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.potatoes).toBe(1000 + grossReward);
     });
 });

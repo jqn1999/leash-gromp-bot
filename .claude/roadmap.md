@@ -14329,3 +14329,44 @@ triggers to mirror into.
 Docs: `.claude/systems/raids-and-world-events.md` gained the full writeup (kill trigger, then a
 same-day-follow-up subsection for spawn + participant detail, then the "no website counterpart"
 note) right after the existing "World raids" section.
+
+## Balance-testing tax exemption for one test account (2026-09-19, direct instruction — Discord id 322949698388230147, "make it so work and bounties and rob heists it does do not go to the keep or leash gromp money since i just want to test with it")
+
+A deliberate, explicitly-requested one-account carve-out, not a general feature — flagged as such
+per this repo's own "flag invariant-breaking side effects" convention, but implemented directly
+since the request itself was already explicit about scope and rationale (balance testing), not an
+ambiguous inference on my part.
+
+**Investigation**: "leash gromp money" is the house account (`client.user.id`/`awsConfigurations.
+clientId` — the bot's own Discord account, literally named Leash Gromp; see
+`systems/economy-and-work.md#house-account-taxes`), and "the keep" is the Spud Keep pot redirect
+that siphons a share of certain house-account taxes while a holder is live. Traced exactly which
+of the 3 named commands (`/work`, `/take-bounty`, `/rob-npc`/Heist) actually have a real tax rather
+than assuming all 3 work the same way:
+- `/take-bounty` wins: the explicit 5% Kingdom Tax (`Bounty.WIN_TAX_PERCENT`), which is the ONLY
+  one of the 3 that ever redirects to the Spud Keep pot.
+- `/work` AND Heist: neither has a named "tax" in the House Account Taxes table at all — both
+  instead pay a flat 5% skim baked directly into `workFactory.calculateGainAmount`'s own formula
+  (Heist's `resolveNpcRob` reuses this exact function for its payout), credited to
+  `awsConfigurations.clientId` with no Spud Keep pot involvement.
+- Bounty's starch-currency branch and Stat Bounty don't go through either mechanism, so nothing
+  needed changing there.
+
+**Change**: added `TAX_EXEMPT_TEST_USER_ID` (constants.js, a single hardcoded id) and checked it at
+both of the 2 real sites above — `takeBounty.js` zeroes `taxAmount` outright for this id (which also
+skips the pot-redirect branch for free, since that only runs `if (taxAmount > 0)`), and
+`calculateGainAmount` swaps its permanently-baked-in `.95` multiplier for a plain `1` and skips the
+house-credit write entirely for this id. The player keeps the FULL pre-tax formula output rather
+than the house's share simply going uncredited while the player still eats the cut — the point is
+raw, untaxed numbers for testing, matching what "just want to test with it" implies.
+
+**Tests**: `workFactory.test.js` gained a `calculateGainAmount` describe block (normal user pays
+the 5%/gets floor(1000*.95)=950 with a `addUserDatabase` call for the house share; the exempt id
+gets the full 1000, `addUserDatabase` never called). `takeBountyTax.test.js` gained a case with a
+live Spud Keep holder AND the exempt id, confirming neither the house nor the pot gets anything and
+the winner keeps the full gross reward. Full suite: **1767/1767** across 95 suites. `node -c` clean
+on every touched file.
+
+Docs: `.claude/systems/economy-and-work.md`'s "House Account Taxes" section gained a new dated
+subsection identifying the exact 2 mechanisms this touches and why the other Bounty modes/`/rob`
+were deliberately left alone.

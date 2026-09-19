@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Bounty, Rival, CompanionLeveling, Work } = require("../../utils/constants");
+const { Bounty, Rival, CompanionLeveling, Work, TAX_EXEMPT_TEST_USER_ID } = require("../../utils/constants");
 const { RaidFactory } = require("../../utils/raidFactory");
 const raidFactory = new RaidFactory();
 const mercenaryFactory = require("../../utils/mercenaryFactory");
@@ -208,7 +208,11 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         );
         updatedNotoriety = userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety;
 
-        taxAmount = Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
+        // Balance-testing carve-out (see TAX_EXEMPT_TEST_USER_ID's own comment in
+        // constants.js) — this account's Bounty wins skip the Kingdom Tax (and therefore
+        // its Spud Keep pot redirect) entirely, so observed reward numbers reflect the raw
+        // formula while balance-testing.
+        taxAmount = userId === TAX_EXEMPT_TEST_USER_ID ? 0 : Math.floor(result.rewardAmount * Bounty.WIN_TAX_PERCENT);
         netRewardAmount = result.rewardAmount - taxAmount;
         if (taxAmount > 0) {
             // House account is potato-only, same as the Spud Keep pot (2026-09-06,

@@ -798,3 +798,38 @@ reaches `addUserDatabase`, confirmed by reading each site, not by keyword-matchi
 `Math.round`/`Math.floor`. No additional bug was found; see `roadmap.md`'s "Currency-rounding audit"
 entry for the full list of what was checked and the (inconclusive, since no current code path can
 produce it) investigation into the house-account symptom itself.
+
+**Balance-testing carve-out (2026-09-19, direct instruction)**: one hardcoded Discord id
+(`TAX_EXEMPT_TEST_USER_ID`, constants.js — `"322949698388230147"`) is fully exempt from every tax
+`/work`, `/take-bounty`, and `/rob-npc` (Heist) can apply, so a live balance-testing session sees
+raw formula output instead of numbers already thinned by the same cuts a real player pays. This is
+**not** a general "tax exempt player" feature — a single id, flagged here as exactly the kind of
+invariant-breaking carve-out this repo's own convention says to call out rather than bury.
+
+`/take-bounty`'s Kingdom Tax and `/work`/Heist's own separate skim (below) are the only two real
+tax mechanisms these 3 commands go through, so the exemption only needs 2 checks:
+- **`/take-bounty`'s Kingdom Tax** (`Bounty.WIN_TAX_PERCENT`, table above) — `takeBounty.js` sets
+  `taxAmount = 0` outright for this id, which also skips its Spud Keep pot redirect for free (the
+  redirect only ever runs `if (taxAmount > 0)`).
+- **`workFactory.calculateGainAmount`'s own flat 5% house skim** — this is the ONE function every
+  `/work` scenario (regular/golden/large/metal/ancient/sweet — poison is a loss, exempt already by
+  not needing this at all) AND Heist's own payout (`mercenaryFactory.resolveNpcRob` reuses this
+  exact function) all funnel their reward through, so one check here covers both commands at once.
+  Normally the player's own returned `gainAmount` already has a `* .95` reduction permanently baked
+  into it (the house's cut isn't a separate deduction from a computed total — it's woven into the
+  formula itself, then reverse-derived via `gainAmount / .95 * .05` to credit the house its exact
+  share); for the exempt id that multiplier becomes `1` instead of `.95` (the FULL pre-tax amount),
+  and the house-credit write is skipped entirely rather than just writing 0 — matching the redirect
+  side's "not even attempted" shape above.
+
+**Deliberately does NOT touch**: the Bounty starch-currency branch and Stat Bounty (neither funnels
+through `calculateGainAmount`, and Stat Bounty has no percentage-of-reward tax at all — see its own
+comment). `/rob` (real player-vs-player robbery) is untouched — it wasn't named in the request
+("work and bounties and rob heists" means Heist, `/rob-npc`, not real `/rob`) and already has no
+house cut on a loss per the section above regardless.
+
+**Tests**: `workFactory.test.js` gained a dedicated `calculateGainAmount` describe block (a normal
+user still pays the 5%/gets 950 from 1000; the exempt id gets the full 1000, no
+`addUserDatabase` call at all). `takeBountyTax.test.js` gained a case confirming the exempt id
+skips both the house AND pot credit even with a live Spud Keep holder, keeping the full gross
+reward. Full suite: **1767/1767** across 95 suites.

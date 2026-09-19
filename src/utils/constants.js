@@ -4490,7 +4490,19 @@ const awsConfigurations = {
     devs: ["103243257240121344"]
 }
 
+// Balance-testing carve-out (2026-09-19, direct instruction — a specific test account's
+// /work, Bounty, and Heist gains shouldn't get skimmed into the house account or Spud Keep
+// pot, "since i just want to test with it" — the player wants raw formula output while
+// probing balance, not numbers already thinned by the same taxes a live player pays).
+// Checked at exactly the 2 real skim sites those 3 commands go through:
+// workFactory.calculateGainAmount's houseShare (covers /work AND /rob-npc, which reuses the
+// same function for its own payout) and takeBounty.js's Kingdom Tax
+// (Bounty.WIN_TAX_PERCENT). Deliberately a single hardcoded id, not a general "tax exempt"
+// feature — flagged here rather than silently generalized.
+const TAX_EXEMPT_TEST_USER_ID = "322949698388230147";
+
 module.exports = {
+    TAX_EXEMPT_TEST_USER_ID,
     shops,
     guildShops,
     workRegradeTiers,
