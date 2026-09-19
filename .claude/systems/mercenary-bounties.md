@@ -683,20 +683,23 @@ again to 10%-130% (live range, computed directly against live constants: ~30%-11
 established, not a sign of a new dead zone (success-chance/tier-weighting math is completely
 unaffected by a uniform reward/penalty scale).
 
-**Ninth pass (flat penalty), same day, direct instruction** ("The penalty should stay at the base
-amount. The reward is intentionally scaling with tier"). Reverts the CLIMBING penalty:reward ratio
-the 2026-09-08 "Penalty escalation" pass introduced (1.0x at B1 → 2.0x at B12) — that ratio is gone
-entirely, not just re-scaled. **Change**: added `BOUNTY_BASE_PENALTY` (82000 — Tier 1's own
-post-doubling penalty from the eighth pass) and pointed every one of the 12 tiers' `penalty` field
-at this single shared constant instead of its own tier-scaled value. `reward` is completely
-untouched, keeping its full per-tier scaling from every pass above. Net effect: a loss now costs
-the exact same 82,000 whether it's a Tier 1 or a Tier 12 attempt, while a Tier 12 win still pays
-49,302,000 — the risk side no longer grows with the stakes at all, a much sharper "harder tiers are
-strictly better EV, not just higher-variance" shape than any ratio-based design could produce.
-`mercenaryFactory.test.js`'s own ladder-shape tests were rewritten: the old "reward and |penalty|
-both increase monotonically" and "ratio climbs 1.0x→2.0x" assertions are replaced by one test
-locking in the new invariant (penalty identical across all 12 tiers, reward still strictly
-increasing, B12's penalty now strictly LESS than its own reward rather than double it).
+**Same-day misread, corrected within the hour** — direct instruction ("The penalty should stay at
+the base amount. The reward is intentionally scaling with tier") was first read as "penalty should
+be identical across all 12 tiers," and briefly implemented that way (a `BOUNTY_BASE_PENALTY`
+constant, every tier's `penalty` pointed at it). The player corrected this immediately: "each tier
+should've had a higher penalty I just mean it shouldn't scale with the merc level or anything. Look
+at how guild raid reward and penalty is done." The actual intent was never about flattening the
+12-tier ladder — it was restating a property the ladder already had: `resolveBountyAttempt`'s
+penalty branch has never read `rankInfo.rewardMultiplier` (or anything else keyed off Mercenary
+Rank) at all, only the reward branch does, exactly mirroring how Guild Raid's own
+`Raid.ELITE_T1_REWARD`/`ELITE_T1_PENALTY` etc. are hardcoded PER BRACKET (climbing together with
+that bracket's own difficulty) and never scaled by the guild's own level. **Reverted in full**: the
+`BOUNTY_BASE_PENALTY` constant was removed and every tier's `penalty` restored to its own
+tier-scaled value — the table is byte-identical to the eighth pass' own doubled numbers, climbing
+ratio and all. `mercenaryFactory.test.js`'s ladder-shape tests were restored to their pre-flatten
+form (reward AND |penalty| both increase monotonically; the 1.0x→2.0x ratio climb is locked in
+again). Net lesson, not a design change: "stays at the base amount" meant "doesn't scale with
+rank," never "identical across tiers" — worth remembering if this phrasing comes up again.
 
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 

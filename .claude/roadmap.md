@@ -14471,3 +14471,38 @@ updated to match exactly, same `BOUNTY_BASE_PENALTY` constant name/value — see
 Docs: `.claude/systems/mercenary-bounties.md` gained a "Ninth pass (flat penalty)" narrative
 subsection right after the Eighth pass entry, explaining the reverted ratio and its net effect on
 tier-to-tier risk.
+
+## Correction: the "flat penalty" entry above was a misread — reverted in full (2026-09-19, same day, direct instruction: "What no each tier should've had a higher penalty I just mean it shouldn't scale with the merc level or anything. Look at how guild raid reward and penalty is done. Not 82k loss for every tier")
+
+The entry immediately above this one ("Bounty penalty reverted to a flat amount") was itself a
+misread of the instruction that prompted it, corrected within the same conversation before it had
+been out for long. Worth recording plainly rather than quietly overwriting, since the same
+ambiguous phrasing could resurface.
+
+**What "the penalty should stay at the base amount" actually meant**: penalty shouldn't scale with
+the mercenary's own Rank/level — a property `Bounty.TIERS` already had (`resolveBountyAttempt`'s
+penalty branch never reads `rankInfo.rewardMultiplier`, only the reward branch does). It did NOT
+mean "identical across all 12 tiers." The player's own reference point makes this unambiguous in
+hindsight: Guild Raid's `Raid.ELITE_T1_REWARD`/`ELITE_T1_PENALTY` (and every other bracket) are
+hardcoded PER BRACKET, both climbing together with that bracket's own difficulty — never scaled by
+the guild's own LEVEL. Bounty's own per-tier climbing penalty (reward and penalty both scaling with
+TIER, neither scaled by Rank) was already the exact same shape.
+
+**Reverted in full**: `constants.js`'s `BOUNTY_BASE_PENALTY` constant removed; every one of
+`Bounty.TIERS`' 12 tiers restored to its own distinct, tier-scaled `penalty` value — byte-identical
+to the values from the "bump merc bounties another 2x" entry two entries up (climbing 1.0x→2.0x
+ratio, T1 penalty 82,000 up through T12 penalty 98,604,000). `reward` was never touched by either
+the flatten or this revert. `mercenaryFactory.test.js`'s two ladder-shape tests were restored to
+their original form (`reward and |penalty| both increase monotonically with tier`,
+`penalty:reward ratio increases monotonically with tier`) — the exact tests the flat-penalty entry
+had replaced with a single "penalty identical across every tier" test, now removed. Full suite:
+**1768/1768** across 95 suites (back to the pre-flatten count). `node -c` clean.
+
+**Cross-repo**: `financial-project`'s mirrored copy needs the same revert — `gromp-mercenary/
+handler.ts`'s `Bounty.TIERS` and its own `BOUNTY_BASE_PENALTY` constant, on the
+`claude/bounty-flat-penalty` branch (not yet merged to `master`, so this is a same-branch fix, not
+a new PR).
+
+Docs: `.claude/systems/mercenary-bounties.md`'s own "Ninth pass (flat penalty)" subsection rewritten
+in place to describe the misread-and-correction directly, rather than adding a "Tenth pass" on top
+that would misrepresent this as a genuine second design change.

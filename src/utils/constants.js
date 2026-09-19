@@ -2629,11 +2629,6 @@ const MercenaryRank = {
 // constant/multiplication happens at roll time — mercenaryFactory.resolveBountyAttempt
 // reads `reward`/`penalty` directly), it's just the REWARD/PENALTY values themselves that
 // moved again in this second pass, superseding the first pass's own numbers.
-// Flat loss amount for EVERY Bounty tier (2026-09-19 revert — see Bounty.TIERS' own "Eighth
-// pass" comment) — Tier 1's own doubled penalty, used as the shared base every tier's
-// `penalty` field now points at instead of its own tier-scaled value.
-const BOUNTY_BASE_PENALTY = 82000;
-
 const Bounty = {
     BOUNTY_TIMER_SECONDS: 3600,       // matches Raid.RAID_TIMER_SECONDS exactly, no buff-driven reduction
 
@@ -2656,17 +2651,22 @@ const Bounty = {
     // higher for higher reward but merc should have more similar penalties") — penalty was
     // previously a flat `-reward` (1.0x ratio) across all 12 tiers; this pass made the
     // penalty:reward RATIO itself climb for bigger-stakes content (1.0x -> 2.0x,
-    // ratio(tier) = 1 + (tier-1)/11), mirroring Guild Raid's own escalating-stakes shape.
+    // ratio(tier) = 1 + (tier-1)/11), mirroring Guild Raid's own escalating-stakes shape —
+    // each of Guild Raid's own brackets (Regular/Elite/Legendary) hardcodes its OWN reward
+    // AND penalty, both climbing together with the bracket's own difficulty, the ratio
+    // between them stepping 1.0x -> 1.5x -> 2.0x by MODE (never by the guild's own level —
+    // see Raid.ELITE_T1_REWARD/PENALTY etc.). This ladder mirrors that same principle: both
+    // reward and penalty scale with TIER (the content's own difficulty), never with the
+    // mercenary's own Rank — `resolveBountyAttempt`'s penalty branch has never read
+    // `rankInfo.rewardMultiplier` at all, only the reward branch does.
     //
-    // REVERTED 2026-09-19, direct instruction ("The penalty should stay at the base amount.
-    // The reward is intentionally scaling with tier") — the climbing ratio above is gone.
-    // `penalty` is now a single FLAT value across all 12 tiers, equal to Tier 1's own base
-    // penalty (the smallest/most-accessible tier's amount) — a loss always costs the same,
-    // regardless of which tier was attempted. `reward` is untouched by this revert and keeps
-    // its full per-tier scaling exactly as every prior pass above left it — only the
-    // PENALTY side's shape changed, back to something even simpler than the original flat
-    // `-reward` (that was flat-per-tier, i.e. still scaled tier to tier; this is flat
-    // ACROSS every tier at one shared base amount).
+    // 2026-09-19 same-day back-and-forth: briefly flattened to one shared amount across all
+    // 12 tiers (misreading "the penalty should stay at the base amount" as "identical for
+    // every tier" rather than its actual meaning — "shouldn't scale with the merc's own
+    // rank/level," which was already true and is what this whole comment describes).
+    // Corrected the same day, direct instruction ("each tier should've had a higher
+    // penalty... look at how guild raid reward and penalty is done") — reverted back to
+    // the per-tier climbing shape below, unchanged from this pass's own original design.
     // Fourth pass, 2026-09-12, direct instruction — reward/penalty scaled x0.4580 (a
     // 54.2% cut) as one half of the combined "buff Elite/Legendary + nerf Solo Merc"
     // retune — see ELITE_T1_DIFFICULTY's own "Fifth pass" comment in the Raid block for
@@ -2698,27 +2698,27 @@ const Bounty = {
     // convention.
     //
     // Seventh pass, 2026-09-19, direct instruction — "bump merc bounties another 2x."
-    // Every reward AND penalty doubled uniformly (a pure magnitude change). Superseded a few
-    // messages later in the same conversation by the flat-penalty revert below — reward
-    // stayed at these doubled values, only penalty changed again after this pass.
-    //
-    // Eighth pass (flat penalty), same day, direct instruction — "The penalty should stay
-    // at the base amount. The reward is intentionally scaling with tier." `penalty` is now
-    // BOUNTY_BASE_PENALTY for every tier (Tier 1's own doubled penalty, -82000) — reward
-    // keeps the full per-tier scaling from every pass above, untouched.
+    // Every reward AND penalty doubled uniformly (a pure magnitude change — difficulty and
+    // the 1.0x-2.0x penalty:reward ratio climb are both untouched, same shape every pass
+    // above already establishes). Every sixth-pass value was already an exact multiple of
+    // 1,000, so doubling needed no re-rounding; T12's own "penalty = exactly reward*2"
+    // invariant still holds after doubling both sides (49,302,000*2 = 98,604,000). This is
+    // the CURRENT, correct table — a same-day flirtation with flattening penalty to one
+    // shared amount across every tier was reverted the same day (see the "Penalty
+    // escalation" comment above).
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 82000,    penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -BOUNTY_BASE_PENALTY },
-        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -BOUNTY_BASE_PENALTY },
+        { tier: 1,  difficulty: 10,   reward: 82000,    penalty: -82000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -156000 },      // 1.05x
+        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -304000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -580000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -1100000 },     // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -2024000 },     // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -3722000 },     // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -6780000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -12278000 },    // 1.73x
+        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -22130000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -40228000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -98604000 },    // 2.00x — set to exactly reward*2
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
