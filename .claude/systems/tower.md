@@ -1875,3 +1875,274 @@ added to `towerFactory.test.js`'s new "a stale click whose customId matches noth
 CURRENT screen defaults safely" block — one test per method, each mocking a `confirmation` with a
 customId that matches none of the current screen's real choices and asserting the safe default is
 returned instead of `undefined`.
+
+---
+
+## Overflow-to-Potato Discount Rate: Technical Design (2026-09-19, scoping pass, not yet implemented)
+
+**The bug** (confirmed, root-caused before this design pass): `creditRunPayout`'s overflow branch
+converts any PASSIVE_INCOME/BANK_CAPACITY amount past `getTowerRunCap`'s per-run ceiling into
+`PAYOUT.POTATOES` **1:1**, using the *already-scaled* reward number (post-`scaleReward`,
+post-`decayValue`). The run cap scales only with floor depth (`TOWER_FLOOR_CAP_STEP`, +2.5M
+bank/+500K passive per 10-floor band); the reward's face VALUE scales with player `multi` via
+`this.scalingFactor` (~1.0 at the multi-20 entry gate, ~6.7x by multi 50, ~1374x by multi 600).
+Past roughly multi 29, a single PASSIVE_INCOME/BANK_CAPACITY pick already blows the cap, and from
+then on nearly the entire scaled value — a number denominated in "bank capacity" or "passive
+income" units, not potatoes — gets dumped into the potato total at face value, treating 1 unit of
+either as literally worth 1 potato. It isn't: nowhere else in the game is 1 unit of either
+currency actually worth 1 potato, and the mismatch is exactly what makes the overflow a windfall
+rather than a fallback. The product owner picked direction #2 of three: discount the conversion
+rather than dropping the overflow (#1) or scaling the caps themselves (#3).
+
+### Where the discount rate comes from
+
+The brief asked for the rate to be grounded in something the game already prices this currency
+at, not a round number picked by feel. The one place BANK_CAPACITY and PASSIVE_INCOME are
+actually bought with potatoes anywhere else in the game is `constants.js`'s `shops.bankShop` /
+`shops.passiveIncomeShop` ladders (both 10 tiers). Summing each ladder's real `cost` against the
+real `amount - currentAmount` gained at every tier gives the *cumulative* average potato-cost per
+unit across the whole ladder (total spent to fully clear it, divided by total capacity/passive
+gained by doing so) — a more representative number than averaging the 10 per-tier ratios
+unweighted, since it's naturally weighted by how much of the ladder's total capacity each tier
+actually represents:
+
+**`shops.bankShop`** (10 tiers, `50,000 → 100,000,000,000` cost, `50,000 → 1,000,000,000` total
+capacity across all currentAmount→amount deltas):
+```
+total cost  = 50,000 + 200,000 + 1,000,000 + 5,000,000 + 20,000,000 + 50,000,000
+            + 500,000,000 + 1,000,000,000 + 1,500,000,000 + 2,000,000,000
+            = 5,076,250,000 potatoes
+total gain  = 50,000 + 400,000 + 2,000,000 + 7,500,000 + 15,000,000 + 25,000,000
+            + 200,000,000 + 250,000,000 + 250,000,000 + 250,000,000
+            = 999,950,000 bank capacity
+Cb = 5,076,250,000 / 999,950,000 ≈ 5.0765 potatoes per unit of bank capacity
+```
+Per-tier ratios actually range 0.5 (cheapest early tiers) to 8.0 (priciest, endgame tier 10) —
+the cumulative figure is pulled toward the high end because the late, expensive tiers each cover
+a large absolute chunk of the ladder's total capacity.
+
+**`shops.passiveIncomeShop`** (10 tiers, `50,000 → 500,000,000` cost, `50,000 → 60,000,000` total
+passive across all deltas):
+```
+total cost  = 50,000 + 200,000 + 1,000,000 + 5,000,000 + 20,000,000 + 50,000,000
+            + 75,000,000 + 100,000,000 + 250,000,000 + 500,000,000
+            = 1,001,250,000 potatoes
+total gain  = 50,000 + 50,000 + 80,000 + 320,000 + 500,000 + 2,000,000
+            + 4,000,000 + 7,000,000 + 13,000,000 + 33,000,000
+            = 60,000,000 passive income
+Cp = 1,001,250,000 / 60,000,000 = 16.6875 potatoes per unit of passive income (exact)
+```
+
+So the game's own economy already prices passive income at roughly **3.3x** what it prices bank
+capacity, per unit (`Cp/Cb ≈ 3.29`) — directionally consistent with (though not numerically
+identical to) the codebase's other already-established bank:passive value ratio, the 5:1 used by
+`TOWER_FLOOR_CAP_STEP` itself (`2,500,000 bank : 500,000 passive` per floor band, picked directly
+by the game's owner from `balance-audit.md`'s ~5.5x regrade-ladder cross-track ratio). Both
+anchors agree on the *direction* (passive income is the pricier currency per unit) even though
+they're derived from different ladders (shop tiers here vs. regrade-tier Monte Carlo there) and
+land on different exact multiples — expected, since they're pricing genuinely different things
+(shop purchase cost vs. regrade-gacha cost-to-clear).
+
+### Why the discount is a division, not a multiplication
+
+It would be natural to assume "grounding the rate in the shop's price" means multiplying the
+overflow by `Cb`/`Cp` — but that goes the wrong way. `Cb`/`Cp` answer "how many potatoes does the
+rest of the game charge to manufacture 1 unit of this currency"; multiplying the overflow by that
+number would mean *more* potatoes for a given overflow amount, not fewer, since `Cb`/`Cp` are both
+`> 1`. The shop has no "sell this back for potatoes" price to reuse directly, and the only
+non-arbitrary number that (a) comes from the same real, already-cited data source and (b)
+actually shrinks the overflow (which is the entire point of a *discount*) is the reciprocal:
+```
+overflow_potatoes = floor(overflow_amount / Cb)   // BANK_CAPACITY, ≈ 19.7% of face value
+overflow_potatoes = floor(overflow_amount / Cp)   // PASSIVE_INCOME, ≈ 6.0% of face value
+```
+`floor`, not `round`, mirroring this codebase's own existing convention that potato amounts floor
+to whole numbers (see the Tower Leaderboard's stat-bonus rounding in this same doc) — the discount
+should never round in the player's favor, and this is exactly the kind of currency-shrinking
+operation `decayValue`/`scaleReward`'s own `Math.round` was already careful about for a similar
+reason (avoiding fractional potatoes reaching `this.run[...]`).
+
+### Should the two currencies share one rate or use their own?
+
+**Type-specific, per the shop's own numbers** (`Cb ≈ 5.0765`, `Cp ≈ 16.6875`) is the recommended
+default — it's the most literal answer to "what does 1 unit of each actually cost, on average,
+across its own ladder," and the two ladders do show genuinely different numbers, not the same one
+twice. One honest caveat, worth flagging explicitly rather than glossing over: because the
+discount is a constant divisor, it shrinks the *absolute* overflow proportionally at every `multi`
+but doesn't change the *ratio* between two different TRANSACTIONS/REWARDS entries' own raw
+values — so an entry whose raw BANK_CAPACITY value was authored disproportionately large relative
+to a COMBAT floor's raw potato value (e.g. The Baron's Beet's `1,000,000` vs. Malevolent
+Pineapple's `60,000`, a ~16.7x raw gap) will still land somewhat above a top combat floor's payout
+after the type-specific discount is applied, at any multi, since `Cb` (~5.08) doesn't cancel that
+16.7x raw-value gap on its own. That residual gap is a *content-authoring* mismatch (an
+individual entry's raw value vs. the rest of the pool), not something an overflow discount rate
+is scoped to fully correct — see worked numbers below and the recommendation for how to think
+about it if the residual still feels too generous after this ships.
+
+### Worked numbers (grounds the magnitude, not just the formula)
+
+Using the product owner's own two Baron's Beet examples (raw value `1,000,000` BANK_CAPACITY,
+price a flat, non-scaling `450,000` potatoes):
+
+| multi | scaled value (pre-cap) | overflow (rough, cap ~2.5-5M) | **old** overflow→potatoes (1:1) | **new** overflow→potatoes (÷5.0765) | best Combat floor's own scaled payout |
+|---|---|---|---|---|---|
+| 50 | ≈6.68M | ≈4.18M | 4,180,000 | `floor(4,180,000/5.0765)` ≈ **823,000** | ≈400,800 (Malevolent Pineapple, 60,000 × 6.68) |
+| 600 | ≈1,372.6M | ≈1,367.6M | 1,367,600,000 | `floor(1,367,600,000/5.0765)` ≈ **269,405,000** | ≈82,440,000 (60,000 × 1372.6) |
+
+At multi 600 this is a **>99.98% reduction** (1.3676B → ~269M) — Baron's Beet's overflow-derived
+potatoes drop from "beats every other option in the run by 6-30x" to "still somewhat ahead of the
+best Combat floor (~3.3x, matching `Cp/Cb`'s own ~3.3x, not a coincidence: at very high multi where
+the cap is negligible relative to the scaled value, `overflow_potatoes / bestCombatPayout →
+(rawBankValue / Cb) / rawCombatValue`, a constant that doesn't depend on multi at all)". At multi
+50, the discounted overflow (~823K) is still about 2x the best Combat floor's own payout
+(~400.8K) — better than before (was ~9.3x the *cost*, now no longer wildly better than every
+legitimate option, but not fully at parity either. If the product owner wants a firmer guarantee
+that overflow-derived potatoes never meaningfully beat Combat's own payout at any multi, the
+cheapest follow-up tuning knob is switching to a single **shared** rate using `Cp` (~16.6875, the
+steeper of the two) for both currencies — algebraically this drives Baron's Beet's residual ratio
+to `(1,000,000/16.6875)/60,000 ≈ 1.0x` combat parity, almost exactly, purely because Baron's
+Beet's raw value happens to sit close to that ratio; it isn't guaranteed to land at parity for
+every entry the same way, just illustrative that a steeper shared rate is the lever to pull if the
+type-specific split still feels too generous in practice. Recommendation is still the type-specific
+split as the initial ship — it's the more literal, better-grounded answer to what was asked, and a
+single-constant follow-up tuning pass is cheap if real play data says otherwise.
+
+### Code shape
+
+**`towerConstants.js`** — new constant, documented with its derivation so a future maintainer
+doesn't have to re-run the arithmetic above:
+```js
+// Overflow discount rate (2026-09-19 design, ships alongside creditRunPayout's discount) —
+// each shop ladder's own real, cumulative average potato-cost-per-unit (constants.js's
+// bankShop/passiveIncomeShop: total tier cost / total capacity-or-passive gained across all
+// 10 tiers). creditRunPayout DIVIDES overflow by this (not multiplies) — see tower.md's
+// "Overflow-to-Potato Discount Rate" section for why the shop's own price, applied forward,
+// would make the exploit worse, not better.
+const TOWER_OVERFLOW_SHOP_RATE = {
+    [PAYOUT.BANK_CAPACITY]: 5.0765,     // bankShop: 5,076,250,000 / 999,950,000
+    [PAYOUT.PASSIVE_INCOME]: 16.6875    // passiveIncomeShop: 1,001,250,000 / 60,000,000 (exact)
+}
+```
+Add `TOWER_OVERFLOW_SHOP_RATE` to the `module.exports` block alongside the other `TOWER_*`
+constants.
+
+**`towerFactory.js`'s `creditRunPayout`** — the only call site touched, a small, local change:
+```js
+creditRunPayout(type, amount){
+    const cap = tC.getTowerRunCap(type, this.floor)
+    if(cap === undefined){ this.run[type] += amount; return amount }
+    const room = Math.max(0, cap - this.run[type])
+    const applied = Math.min(amount, room)
+    this.run[type] += applied
+    const overflow = amount - applied
+    if(overflow > 0 && (type === tC.PAYOUT.PASSIVE_INCOME || type === tC.PAYOUT.BANK_CAPACITY)){
+        const rate = tC.TOWER_OVERFLOW_SHOP_RATE[type]
+        this.run[tC.PAYOUT.POTATOES] += Math.floor(overflow / rate)
+    }
+    return applied
+}
+```
+No other call site reads or depends on the overflow conversion rate — `checkElitePayout` (King
+Kiwi) and every interactive/silent `updateValue`/`updateTransaction` payout branch already route
+through this same method, so the fix is centralized by construction, matching how the cap itself
+was added in one place originally.
+
+`getTowerRunCap` (`towerConstants.js`) needs **no changes** — the cap logic itself isn't part of
+direction #2's scope (that's direction #3, scaling the caps by `scalingFactor`, explicitly not
+what was picked).
+
+### Test changes (`src/utils/__tests__/towerFactory.test.js`)
+
+The existing `describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)')`
+block has four tests that assert the *old* 1:1 conversion literally and need updating, plus the
+Golden Ginger end-to-end test:
+
+- **`'PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES'`**
+  (line ~850) — rename to drop "1:1" from the title (now discounted), and change the final
+  assertion from `toBe(500000)` to `toBe(Math.floor(500000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]))`
+  — computing the expected value from the constant itself (≈`29,962`) rather than hardcoding a
+  derived magic number that would silently go stale if the rate is ever retuned. Same treatment
+  for the BANK_CAPACITY sibling test (line ~862, overflow `20,000,000` → expected
+  ≈`3,939,719`, computed the same way against `TOWER_OVERFLOW_SHOP_RATE[BANK_CAPACITY]`).
+- **`'repeated credits stop adding once the cap is already reached'`** (line ~895, overflow
+  `1,000,000` BANK_CAPACITY) — same pattern, expected `196,985`
+  (`Math.floor(1,000,000 / 5.0765)`).
+- **`'a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time'`**
+  (line ~908, overflow `4,900,000` PASSIVE_INCOME) — expected `293,632`
+  (`Math.floor(4,900,000 / 16.6875)`).
+- **`'Golden Ginger interactive pick applies the cap end-to-end...'`** (line ~922, overflow
+  `1,300,000` BANK_CAPACITY) — expected `256,081` (`Math.floor(1,300,000 / 5.0765)`).
+
+  (All four of the exact figures above were computed by hand against `Cb = 5.076504`/
+  `Cp = 16.6875` for this design doc's own worked numbers; the actual test code should compute
+  its expectation from `tC.TOWER_OVERFLOW_SHOP_RATE` directly, per the note above, rather than
+  hardcoding these — they're given here only so a reviewer can sanity-check the implementation's
+  output against a known-correct value.)
+
+**New tests to add**, locking in the discount behavior itself rather than just updating existing
+cap tests to tolerate it:
+- A direct unit test for `creditRunPayout` asserting the discount formula exactly for both types
+  at a hand-picked overflow amount, independent of any cap-banding logic (isolates the discount
+  math from the cap math, which the existing tests conflate).
+- A **near-zero-room edge case**: `run[type]` already sitting one unit below `cap`, credit an
+  amount larger than 1 — asserts `applied === 1` (the last sliver of legitimate room, unaffected
+  by the discount) and the discount only applies to the genuine remainder, not the whole
+  `amount` (guards against an off-by-one that discounts more than the true overflow).
+- A **small-overflow-rounds-to-zero-potatoes case**: an overflow smaller than the rate itself
+  (e.g. overflow `3` against `Cb ≈ 5.0765`) asserts `run[POTATOES]` gains exactly `0`, not a
+  fractional or negative number — this is an intentional, acceptable rounding-down (see "Edge
+  cases" below), not a bug, and should be asserted as such rather than left uncovered.
+- `Number.isInteger(tF.run[tC.PAYOUT.POTATOES])` assertions alongside the discount cases, matching
+  the existing "reward VALUE scaling" tests' own `Number.isInteger` checks — guards specifically
+  against the fractional-currency class of bug `Math.round`/`Math.floor` were already added
+  elsewhere in this file to prevent.
+
+### Edge cases
+
+- **Near-zero remaining room**: unaffected by this change — `room`/`applied` are computed exactly
+  as before (before the discount branch even runs), so a run sitting one unit below its cap still
+  gets that one legitimate unit applied at full, un-discounted value; only the genuine overflow
+  past that point is discounted. No new interaction with the discount.
+- **Rounding / fractional currency**: `Math.floor(overflow / rate)` guarantees an integer result,
+  the same guard rail `scaleReward`'s own `Math.round` and the Tower Leaderboard's "potatoes floor
+  to whole numbers" convention already establish elsewhere in this system — this fix doesn't
+  reopen that class of bug, and the new tests above assert it directly.
+- **Overflow smaller than the rate itself** floors to exactly `0` potatoes credited (e.g. an
+  overflow of `3` bank-capacity units, `Cb ≈ 5.08`, floors to `0`). This is new, and worth calling
+  out explicitly even though it's economically negligible (fractions of a single potato's worth of
+  currency): previously *any* overflow, however small, credited at least 1 potato; now overflow
+  under the rate credits nothing at all. Acceptable and intentional (never rounds in the player's
+  favor), but should be a documented, tested behavior rather than an unnoticed side effect.
+- **A future PAYOUT type added to the overflow branch without a matching `TOWER_OVERFLOW_SHOP_RATE`
+  entry** would divide by `undefined`, producing `NaN`, which would then corrupt
+  `this.run[POTATOES]` via `+= NaN`. Not a risk today (the branch's own `if` condition already
+  restricts it to exactly the two types that have rate entries), but worth a one-line comment at
+  the `TOWER_OVERFLOW_SHOP_RATE` definition (already included above) flagging that the two must be
+  extended together, so a future dev adding a third scaled/capped payout type doesn't miss it.
+
+### Related-but-separate: TRANSACTIONS' missing per-run de-dupe
+
+Flagged by the product owner, explicitly out of scope for direction #2: unlike `REWARDS`
+(`this.usedRewards`), `TRANSACTIONS` entries have no per-run variety cap — The Baron's Beet can be
+rerolled and repurchased repeatedly in a single run. This discount fix meaningfully blunts the
+*incentive* to do so (each repeat purchase past the run's cap now yields ~5-17x fewer potatoes
+than before), but doesn't remove the underlying gap — a sufficiently motivated player at very high
+multi could still reroll it multiple times per run for a diminished-but-still-real payout, and any
+future cheaper/more-repeatable TRANSACTIONS entry would reopen the same shape of issue at a lower
+cost floor. A cheap follow-up (extending `usedRewards`-style tracking, or a dedicated set, to
+`TRANSACTIONS`) is a reasonable adjacent ticket, but isn't folded into this design — it touches
+`execNormalFloor`'s TRANSACTION-picking logic and the affordability filter's interaction with a
+now-smaller effective pool, which is more surface than "add one constant and one division" and
+deserves its own review pass.
+
+### `financial-project` (web `/gromp`) impact
+
+Checked: `financial-project` does **not** implement the Tower minigame at all. It only reads two
+Tower-derived, already-computed fields for display — `records.highestTowerFloor` (a stat, shown
+in the player card) and the `tower_champion` achievement (`towerChampionCount` threshold-1) — both
+in `amplify/functions/gromp-economy/handler.ts`, and both are values the bot computes and writes;
+the web app never runs any Tower floor/reward/cap logic of its own. There is no equivalent
+`creditRunPayout`, `scaleReward`, or run-cap logic to keep in sync there, so this change needs
+**no companion port** to `financial-project` and no `NOTES_GROMP_WEB_INTEGRATION.md` entry — flag
+this explicitly rather than silently skipping it, per this repo's own standing cross-repo-sync
+rule, precisely because "no port needed" should be a stated conclusion, not an assumption.

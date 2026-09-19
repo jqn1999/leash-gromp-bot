@@ -14574,3 +14574,54 @@ silently skipped.
 Docs: `.claude/systems/mercenary-bounties.md` gained an "Eleventh pass" subsection (Bounty ratio)
 and a same-day rescale note under the Mercenary Rank table (reward multiplier), both explaining the
 net effect plainly rather than just the mechanical diff.
+
+## Design (scoping only, not implemented): Tower overflow-to-potato discount rate (2026-09-19, architect pass — product owner picked direction #2 of three for the confirmed `creditRunPayout` overflow bug)
+
+Confirmed bug, not yet fixed in `src/`: `creditRunPayout` (`towerFactory.js`) converts any
+PASSIVE_INCOME/BANK_CAPACITY overflow past `getTowerRunCap`'s floor-banded ceiling into
+`PAYOUT.POTATOES` at a flat 1:1 rate, using the already-`scaleReward`'d value. Since the run cap
+scales only with floor depth and the reward's face value scales steeply with player `multi`
+(`this.scalingFactor`, ~1374x by multi 600), any player past roughly multi 29 gets nearly the
+entire scaled value of a PASSIVE_INCOME/BANK_CAPACITY pick dumped into potatoes uncapped — e.g. The
+Baron's Beet (flat 450,000-potato cost, 1,000,000 raw BANK_CAPACITY) yields ~1.37 billion overflow
+potatoes at multi 600, a 6-30x better payout than any legitimate Combat floor at that multi. Of
+three fix directions proposed to the product owner (drop overflow entirely / discount the
+conversion / scale the caps themselves by `scalingFactor`), direction #2 (discount) was picked.
+
+**Design produced, full write-up in `.claude/systems/tower.md`'s "Overflow-to-Potato Discount
+Rate" section** (append at the end of that file): a new `TOWER_OVERFLOW_SHOP_RATE` constant in
+`towerConstants.js`, derived directly from `constants.js`'s real `shops.bankShop`/
+`shops.passiveIncomeShop` ladders — cumulative total tier cost ÷ total capacity/passive gained
+across all 10 tiers of each. That gives `Cb ≈ 5.0765` potatoes per unit of bank capacity and
+`Cp ≈ 16.6875` (exact) potatoes per unit of passive income — the game's own real, already-existing
+pricing for each currency, not an invented number. `creditRunPayout`'s overflow branch changes
+from `this.run[POTATOES] += overflow` to `this.run[POTATOES] += Math.floor(overflow / rate)`
+(division, not multiplication — multiplying by the shop's own forward price would make the exploit
+worse, not better, since both ratios are `> 1`; the design doc works through why division is the
+only sound direction). Type-specific rates (not one shared rate) are recommended, since the two
+ladders show genuinely different numbers (~3.3x apart), directionally consistent with (though not
+identical to) the codebase's existing 5:1 bank:passive value ratio already used by
+`TOWER_FLOOR_CAP_STEP`. Worked example: Baron's Beet's overflow at multi 600 drops from
+~1.3676 billion potatoes to ~269.4 million (>99.98% reduction) — still somewhat ahead of the best
+Combat floor's own payout at that multi (~82.4M) by a roughly constant ~3.3x factor that doesn't
+change with `multi` (a residual content-authoring gap between Baron's Beet's raw value and
+Combat's raw values, not something the discount rate alone is scoped to fully zero out; the design
+doc notes a single shared rate using the steeper `Cp` as a cheap follow-up tuning knob if the
+product owner wants a firmer guarantee).
+
+Also scoped: exact code diff shape (one new constant object, a 2-line change inside
+`creditRunPayout`, no changes needed to `getTowerRunCap` since cap-scaling is direction #3, not
+this one); which of the existing `towerFactory.test.js` cap tests need their hardcoded 1:1
+expectations replaced (four tests, exact corrected expected values given: 29,962 / 3,939,719 /
+196,985 / 293,632 / 256,081 depending on the test); new tests to add for the discount itself, a
+near-zero-room edge case, and a small-overflow-floors-to-zero-potatoes edge case (intentional, not
+a bug); the `TRANSACTIONS`-lacks-`usedRewards`-de-dupe issue flagged as real but explicitly
+out-of-scope for this pass (the discount blunts its exploit value considerably but doesn't remove
+the underlying gap). `financial-project` checked directly (`grep`'d for "Tower"/"tower") and
+confirmed to not implement the Tower minigame at all — it only displays two bot-computed fields
+(`records.highestTowerFloor`, the `tower_champion` achievement) with no `creditRunPayout`/
+`scaleReward`/cap logic of its own to keep in sync, so **no cross-repo port is needed** for this
+change; stated explicitly per this repo's standing cross-repo-sync rule rather than left unsaid.
+
+Not yet implemented — awaiting product owner/user review of the proposed rates before a developer
+builds it.
