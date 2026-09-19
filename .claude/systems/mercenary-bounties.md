@@ -683,6 +683,21 @@ again to 10%-130% (live range, computed directly against live constants: ~30%-11
 established, not a sign of a new dead zone (success-chance/tier-weighting math is completely
 unaffected by a uniform reward/penalty scale).
 
+**Ninth pass (flat penalty), same day, direct instruction** ("The penalty should stay at the base
+amount. The reward is intentionally scaling with tier"). Reverts the CLIMBING penalty:reward ratio
+the 2026-09-08 "Penalty escalation" pass introduced (1.0x at B1 → 2.0x at B12) — that ratio is gone
+entirely, not just re-scaled. **Change**: added `BOUNTY_BASE_PENALTY` (82000 — Tier 1's own
+post-doubling penalty from the eighth pass) and pointed every one of the 12 tiers' `penalty` field
+at this single shared constant instead of its own tier-scaled value. `reward` is completely
+untouched, keeping its full per-tier scaling from every pass above. Net effect: a loss now costs
+the exact same 82,000 whether it's a Tier 1 or a Tier 12 attempt, while a Tier 12 win still pays
+49,302,000 — the risk side no longer grows with the stakes at all, a much sharper "harder tiers are
+strictly better EV, not just higher-variance" shape than any ratio-based design could produce.
+`mercenaryFactory.test.js`'s own ladder-shape tests were rewritten: the old "reward and |penalty|
+both increase monotonically" and "ratio climbs 1.0x→2.0x" assertions are replaced by one test
+locking in the new invariant (penalty identical across all 12 tiers, reward still strictly
+increasing, B12's penalty now strictly LESS than its own reward rather than double it).
+
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 
 Direct instruction: "add 5% bounty tax, nothing on rob-npc." `mercenaryFactory.resolveBountyAttempt`

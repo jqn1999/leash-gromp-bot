@@ -14438,3 +14438,36 @@ Docs: `.claude/systems/mercenary-bounties.md`'s `MercenaryBuffScaling` table and
 rewritten for the new values; an "Eighth pass" narrative subsection added to its own Bounty-ladder
 retune history (matching the existing style of the seven passes before it), including
 re-derived Solo-Merc-vs-Elite ratios at the same reference power points prior passes used.
+
+## Bounty penalty reverted to a flat amount, no longer scales with tier (2026-09-19, same-day correction — direct instruction: "The penalty should stay at the base amount. The reward is intentionally scaling with tier")
+
+A direct correction to the climbing 1.0x→2.0x penalty:reward ratio from the entry right above this
+one — that ratio, itself a 2026-09-08 design ("Guild raid penalties are much higher for higher
+reward but merc should have more similar penalties"), is now gone entirely rather than re-scaled.
+
+**Change**: added `BOUNTY_BASE_PENALTY` (`constants.js`, 82000 — Tier 1's own post-doubling penalty
+from the immediately-preceding entry) and pointed every one of `Bounty.TIERS`' 12 `penalty` fields
+at this single shared constant instead of its own tier-scaled value. `reward` is completely
+untouched — it keeps the full per-tier scaling every prior pass in this ladder's history already
+established; only the loss side's SHAPE changed, from "climbs with the stakes" back to "flat
+regardless of stakes," which is even simpler than the pre-2026-09-08 original (that was flat
+PER-TIER at `-reward`, i.e. still scaled tier to tier — this is flat ACROSS every tier at one
+shared value). A Tier 12 loss now costs the same 82,000 a Tier 1 loss does, while a Tier 12 win
+still pays the full scaled 49,302,000 — pushing into higher tiers is now strictly better EV with no
+growing downside, not just a higher-variance bet.
+
+**Tests**: `mercenaryFactory.test.js`'s two tier-shape tests that encoded the now-reverted climbing
+ratio (`reward and |penalty| both increase monotonically`, `penalty:reward ratio increases
+monotonically... B12 reaches exactly 2.0x`) were replaced by one test locking in the new invariant:
+every tier's `penalty` equals Tier 1's own value, `reward` still strictly increases tier to tier,
+B1 still opens at the same 1:1 ratio (reward and the flat penalty happen to be equal there), and
+B12's penalty is now strictly LESS than its own reward (not double it). Full suite: **1767/1767**
+across 95 suites. `node -c` clean.
+
+**Cross-repo**: `financial-project`'s mirrored `Bounty.TIERS` copy (`gromp-mercenary/handler.ts`)
+updated to match exactly, same `BOUNTY_BASE_PENALTY` constant name/value — see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry #53.
+
+Docs: `.claude/systems/mercenary-bounties.md` gained a "Ninth pass (flat penalty)" narrative
+subsection right after the Eighth pass entry, explaining the reverted ratio and its net effect on
+tier-to-tier risk.
