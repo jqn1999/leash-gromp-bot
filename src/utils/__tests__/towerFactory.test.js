@@ -847,7 +847,7 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(999999999);
     });
 
-    test('PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES', () => {
+    test('PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts into POTATOES at the discounted shop rate (2026-09-19)', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
         tF.floor = 35;
         const cap = tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, tF.floor);
@@ -856,10 +856,11 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(cap).toBe(2000000);
         expect(applied).toBe(cap);
         expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(500000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor(500000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]));
+        expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
     });
 
-    test('BANK_CAPACITY is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES', () => {
+    test('BANK_CAPACITY is clamped at getTowerRunCap(floor), overflow converts into POTATOES at the discounted shop rate (2026-09-19)', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
         tF.floor = 35;
         const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
@@ -868,7 +869,8 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(cap).toBe(10000000);
         expect(applied).toBe(cap);
         expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(20000000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor(20000000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]));
+        expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
     });
 
     test('getTowerRunCap bands PASSIVE_INCOME/BANK_CAPACITY every 10 floors at a fixed 5:1 ratio', () => {
@@ -902,7 +904,8 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
 
         expect(applied).toBe(0);
         expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1000000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor(1000000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]));
+        expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
     });
 
     test('a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time', async () => {
@@ -915,7 +918,7 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         await tF.checkElitePayout();
 
         expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(5000000 - 100000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor((5000000 - 100000) / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]));
         expect(tF.run[tC.PAYOUT.ELITE_KILL]).toHaveLength(0);
     });
 
@@ -933,7 +936,69 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
 
         expect(outcome.amount).toBe(200000);
         expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1500000 - 200000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor((1500000 - 200000) / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]));
+        expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
+    });
+
+    // Overflow-to-Potato Discount Rate (2026-09-19) — isolated tests for the discount formula
+    // itself, independent of the cap-banding logic the tests above conflate it with.
+    describe('overflow discount formula (2026-09-19)', () => {
+        test('BANK_CAPACITY overflow converts at floor(overflow / TOWER_OVERFLOW_SHOP_RATE[BANK_CAPACITY]), not 1:1', () => {
+            const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+            tF.floor = 1;
+            const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
+            tF.run[tC.PAYOUT.BANK_CAPACITY] = cap;
+
+            const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, 10000000);
+
+            expect(applied).toBe(0);
+            const expectedPotatoes = Math.floor(10000000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]);
+            expect(tF.run[tC.PAYOUT.POTATOES]).toBe(expectedPotatoes);
+            expect(tF.run[tC.PAYOUT.POTATOES]).not.toBe(10000000); // guards against a regression back to the old 1:1 conversion
+            expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
+        });
+
+        test('PASSIVE_INCOME overflow converts at floor(overflow / TOWER_OVERFLOW_SHOP_RATE[PASSIVE_INCOME]), not 1:1', () => {
+            const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+            tF.floor = 1;
+            const cap = tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, tF.floor);
+            tF.run[tC.PAYOUT.PASSIVE_INCOME] = cap;
+
+            const applied = tF.creditRunPayout(tC.PAYOUT.PASSIVE_INCOME, 2000000);
+
+            expect(applied).toBe(0);
+            const expectedPotatoes = Math.floor(2000000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]);
+            expect(tF.run[tC.PAYOUT.POTATOES]).toBe(expectedPotatoes);
+            expect(tF.run[tC.PAYOUT.POTATOES]).not.toBe(2000000); // guards against a regression back to the old 1:1 conversion
+            expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
+        });
+
+        test('near-zero remaining room: the last legitimate unit is applied at full value, and only the genuine overflow past it is discounted', () => {
+            const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+            tF.floor = 1;
+            const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
+            tF.run[tC.PAYOUT.BANK_CAPACITY] = cap - 1;
+
+            const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, 1000001);
+
+            expect(applied).toBe(1); // the one sliver of legitimate room, undiscounted
+            expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(cap);
+            expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.floor(1000000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]));
+        });
+
+        test('an overflow smaller than the rate itself floors to exactly 0 potatoes (intentional — never rounds in the player\'s favor)', () => {
+            const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+            tF.floor = 1;
+            const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
+            tF.run[tC.PAYOUT.BANK_CAPACITY] = cap;
+
+            expect(tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]).toBeGreaterThan(3);
+            const applied = tF.creditRunPayout(tC.PAYOUT.BANK_CAPACITY, 3);
+
+            expect(applied).toBe(0);
+            expect(tF.run[tC.PAYOUT.POTATOES]).toBe(0);
+            expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
+        });
     });
 });
 

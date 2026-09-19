@@ -1878,7 +1878,7 @@ returned instead of `undefined`.
 
 ---
 
-## Overflow-to-Potato Discount Rate: Technical Design (2026-09-19, scoping pass, not yet implemented)
+## Overflow-to-Potato Discount Rate: Technical Design (2026-09-19, scoping pass; implemented same day — see roadmap.md's matching implementation entry)
 
 **The bug** (confirmed, root-caused before this design pass): `creditRunPayout`'s overflow branch
 converts any PASSIVE_INCOME/BANK_CAPACITY amount past `getTowerRunCap`'s per-run ceiling into
@@ -2051,51 +2051,60 @@ was added in one place originally.
 direction #2's scope (that's direction #3, scaling the caps by `scalingFactor`, explicitly not
 what was picked).
 
-### Test changes (`src/utils/__tests__/towerFactory.test.js`)
+### Test changes (`src/utils/__tests__/towerFactory.test.js`) — implemented as scoped
 
-The existing `describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)')`
-block has four tests that assert the *old* 1:1 conversion literally and need updating, plus the
-Golden Ginger end-to-end test:
+The `describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)')` block's
+four tests that used to assert the *old* 1:1 conversion literally, plus the Golden Ginger
+end-to-end test, were all updated to compute their expected potato value from
+`tC.TOWER_OVERFLOW_SHOP_RATE` directly (`Math.floor(overflow / tC.TOWER_OVERFLOW_SHOP_RATE[type])`)
+rather than a hardcoded number, per this doc's own recommendation above — so a future rate retune
+can't silently desync the test from the constant it's meant to check:
 
-- **`'PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts 1:1 into POTATOES'`**
-  (line ~850) — rename to drop "1:1" from the title (now discounted), and change the final
-  assertion from `toBe(500000)` to `toBe(Math.floor(500000 / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]))`
-  — computing the expected value from the constant itself (≈`29,962`) rather than hardcoding a
-  derived magic number that would silently go stale if the rate is ever retuned. Same treatment
-  for the BANK_CAPACITY sibling test (line ~862, overflow `20,000,000` → expected
-  ≈`3,939,719`, computed the same way against `TOWER_OVERFLOW_SHOP_RATE[BANK_CAPACITY]`).
-- **`'repeated credits stop adding once the cap is already reached'`** (line ~895, overflow
-  `1,000,000` BANK_CAPACITY) — same pattern, expected `196,985`
-  (`Math.floor(1,000,000 / 5.0765)`).
-- **`'a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time'`**
-  (line ~908, overflow `4,900,000` PASSIVE_INCOME) — expected `293,632`
-  (`Math.floor(4,900,000 / 16.6875)`).
-- **`'Golden Ginger interactive pick applies the cap end-to-end...'`** (line ~922, overflow
-  `1,300,000` BANK_CAPACITY) — expected `256,081` (`Math.floor(1,300,000 / 5.0765)`).
+- `'PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts into POTATOES at the
+  discounted shop rate (2026-09-19)'` (renamed off "1:1") — overflow `500,000` → `29,962` potatoes.
+- `'BANK_CAPACITY is clamped at getTowerRunCap(floor), overflow converts into POTATOES at the
+  discounted shop rate (2026-09-19)'` (renamed off "1:1") — overflow `20,000,000` → `3,939,722`
+  potatoes.
+- `'repeated credits stop adding once the cap is already reached'` — overflow `1,000,000`
+  BANK_CAPACITY → `196,986` potatoes.
+- `'a King Kiwi promise (checkElitePayout) is capped the same way at actual payout time'` —
+  overflow `4,900,000` PASSIVE_INCOME → `293,632` potatoes.
+- `'Golden Ginger interactive pick applies the cap end-to-end...'` — overflow `1,300,000`
+  BANK_CAPACITY → `256,081` potatoes.
 
-  (All four of the exact figures above were computed by hand against `Cb = 5.076504`/
-  `Cp = 16.6875` for this design doc's own worked numbers; the actual test code should compute
-  its expectation from `tC.TOWER_OVERFLOW_SHOP_RATE` directly, per the note above, rather than
-  hardcoding these — they're given here only so a reviewer can sanity-check the implementation's
-  output against a known-correct value.)
+**Note on this design doc's own earlier worked numbers**: the scoping pass above hand-computed the
+BANK_CAPACITY figures against the *unrounded* `Cb = 5,076,250,000 / 999,950,000 ≈ 5.07650382...`
+and got `3,939,719`/`196,985`; the constant that actually shipped in `towerConstants.js` is the
+4-decimal-rounded `5.0765` (per the confirmed spec), which floors to `3,939,722`/`196,986` instead
+— a real, checked-by-hand discrepancy (not a typo carried forward blind), caused entirely by
+rounding `Cb` to 4 decimal places before dividing rather than dividing by the full-precision
+ratio. Since the implemented tests compute their expectation from `tC.TOWER_OVERFLOW_SHOP_RATE`
+itself rather than a hardcoded figure, they pass against whichever of the two is actually shipped
+and don't need to pick a side — flagged here so a future reader comparing this doc's earlier table
+to the shipped constant isn't confused by the ~3-unit gap. PASSIVE_INCOME's `Cp = 16.6875` is exact
+(no rounding), so its worked figures (`29,962`/`293,632`) match either way.
 
-**New tests to add**, locking in the discount behavior itself rather than just updating existing
-cap tests to tolerate it:
+**New tests added**, locking in the discount behavior itself rather than just updating existing
+cap tests to tolerate it (see the `describe('overflow discount formula (2026-09-19)')` block):
 - A direct unit test for `creditRunPayout` asserting the discount formula exactly for both types
   at a hand-picked overflow amount, independent of any cap-banding logic (isolates the discount
-  math from the cap math, which the existing tests conflate).
-- A **near-zero-room edge case**: `run[type]` already sitting one unit below `cap`, credit an
+  math from the cap math, which the pre-existing tests conflate), including an explicit
+  `not.toBe(overflow)` assertion guarding against a regression back to the old 1:1 conversion.
+- A **near-zero-room edge case**: `run[type]` already sitting one unit below `cap`, credited an
   amount larger than 1 — asserts `applied === 1` (the last sliver of legitimate room, unaffected
-  by the discount) and the discount only applies to the genuine remainder, not the whole
+  by the discount) and that the discount only applies to the genuine remainder, not the whole
   `amount` (guards against an off-by-one that discounts more than the true overflow).
 - A **small-overflow-rounds-to-zero-potatoes case**: an overflow smaller than the rate itself
-  (e.g. overflow `3` against `Cb ≈ 5.0765`) asserts `run[POTATOES]` gains exactly `0`, not a
-  fractional or negative number — this is an intentional, acceptable rounding-down (see "Edge
-  cases" below), not a bug, and should be asserted as such rather than left uncovered.
+  (overflow `3` against `Cb = 5.0765`) asserts `run[POTATOES]` gains exactly `0`, not a fractional
+  or negative number — this is an intentional, acceptable rounding-down (see "Edge cases" below),
+  not a bug, and is asserted as such rather than left uncovered.
 - `Number.isInteger(tF.run[tC.PAYOUT.POTATOES])` assertions alongside the discount cases, matching
   the existing "reward VALUE scaling" tests' own `Number.isInteger` checks — guards specifically
   against the fractional-currency class of bug `Math.round`/`Math.floor` were already added
   elsewhere in this file to prevent.
+
+Full suite after this change: **1772/1772 passed, 95/95 suites**, `node -c` clean on both changed
+`src/utils/*.js` files.
 
 ### Edge cases
 

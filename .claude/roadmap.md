@@ -14625,3 +14625,100 @@ change; stated explicitly per this repo's standing cross-repo-sync rule rather t
 
 Not yet implemented — awaiting product owner/user review of the proposed rates before a developer
 builds it.
+
+## Implemented: Tower overflow-to-potato discount rate (2026-09-19, follows through on the same-day scoping pass above — product owner confirmed type-specific rates, not the shared-rate alternative)
+
+Shipped the fix scoped immediately above, with no design changes — type-specific rates as
+recommended, not the shared-`Cp` alternative the scoping pass flagged as a possible follow-up
+tuning knob.
+
+**`src/utils/towerConstants.js`**: added `TOWER_OVERFLOW_SHOP_RATE = { [PAYOUT.BANK_CAPACITY]:
+5.0765, [PAYOUT.PASSIVE_INCOME]: 16.6875 }` next to `TOWER_RUN_CAPS`/`TOWER_FLOOR_CAP_STEP`,
+documented with its shop-ladder derivation and an explicit warning that any future payout type
+added to `creditRunPayout`'s overflow branch needs a matching entry or it divides by `undefined`
+and corrupts `run[POTATOES]` with `NaN`. Exported alongside the other `TOWER_*` constants.
+
+**`src/utils/towerFactory.js`**: `creditRunPayout`'s overflow branch changed from
+`this.run[POTATOES] += overflow` to `this.run[POTATOES] += Math.floor(overflow /
+TOWER_OVERFLOW_SHOP_RATE[type])` — division, not multiplication, per the scoping pass's own
+rationale (the shop's forward price would make the exploit worse, not better). `Math.floor`, not
+`Math.round`, matching `scaleReward`'s own existing precedent of never letting a fractional/
+rounded-up potato reach `this.run[...]`. Rewrote the stale comment block above the method (it
+still described the old flat 1:1 conversion as if bank capacity/passive income were literally
+"already potato-denominated," which was the bug itself) to explain the discounted behavior and
+why. No changes to `getTowerRunCap` or any cap-scaling logic — out of scope, per direction #3
+not being picked.
+
+**A real discrepancy found while recomputing the scoping pass's own hand-verified test numbers**:
+per this task's own instruction to verify rather than trust blindly, recomputing
+`Math.floor(overflow / rate)` against the actual shipped (4-decimal-rounded) `TOWER_OVERFLOW_SHOP_
+RATE` constant gave `3,939,722` for the `20,000,000` BANK_CAPACITY overflow case and `196,986` for
+the `1,000,000` case — both off by a small amount (+3, +1) from the scoping pass's stated
+`3,939,719`/`196,985`. Root cause: the scoping pass's worked table used the *unrounded* `Cb =
+5,076,250,000 / 999,950,000 ≈ 5.07650382...`, while the constant that actually shipped rounds `Cb`
+to 4 decimal places (`5.0765`, matching the exact literal given in this task's spec) before
+dividing. `Cp = 16.6875` is exact (no rounding involved), so its figures (`29,962`/`293,632`)
+matched the scoping pass exactly either way. Per the scoping pass's own recommendation, the tests
+compute their expected value from `tC.TOWER_OVERFLOW_SHOP_RATE` directly rather than a hardcoded
+number, so this didn't require picking a side — the tests are correct against whichever rate is
+actually shipped. Documented in `tower.md`'s design section so a future reader comparing the two
+tables isn't confused by the ~3-unit gap.
+
+**Tests (`towerFactory.test.js`)**: updated the four pre-existing `creditRunPayout` cap tests (plus
+the Golden Ginger end-to-end test) that hardcoded the old 1:1 expectation, all now computing their
+expected potato value via `Math.floor(overflow / tC.TOWER_OVERFLOW_SHOP_RATE[type])` instead of a
+hardcoded number. Added a new `describe('overflow discount formula (2026-09-19)')` block: an
+isolated unit test per type asserting the discount formula directly (with an explicit
+`not.toBe(overflow)` regression guard against the old 1:1 behavior), a near-zero-remaining-room
+edge case confirming the discount only touches the genuine overflow and not the last legitimate
+unit of `room`, and a small-overflow-floors-to-zero-potatoes edge case (overflow `3` against `Cb =
+5.0765`) asserting the new, intentional "overflow smaller than the rate credits nothing" behavior
+explicitly rather than leaving it unasserted. `Number.isInteger` checks added throughout, matching
+this file's existing convention for guarding against fractional-currency bugs.
+
+**Verification**: `node -c` clean on both changed `src/utils/*.js` files. Full suite: **1772/1772
+tests passed, 95/95 suites**, including the full `towerFactory.test.js` file (95/95) — not just the
+new/touched block, per this repo's own "run everything" convention.
+
+**Scope boundaries respected**: `getTowerRunCap`/cap-scaling untouched (direction #3, not picked);
+`financial-project` untouched (confirmed by the scoping pass to not implement Tower at all — no
+port needed); `TRANSACTIONS`' missing `usedRewards`-style de-dupe (Baron's Beet re-rolling) left
+alone, exactly as the scoping pass flagged it as a related-but-separate, out-of-scope issue.
+
+## Implemented: Tower overflow-to-potato discount rate (2026-09-19, same-day follow-up to the design pass above — product owner picked type-specific rates over the shared-rate alternative)
+
+Shipped exactly the design above, type-specific variant. `towerConstants.js` gained
+`TOWER_OVERFLOW_SHOP_RATE = { [BANK_CAPACITY]: 5.0765, [PASSIVE_INCOME]: 16.6875 }`, each value the
+currency's own real cumulative potato-cost-per-unit from `constants.js`'s `bankShop`/
+`passiveIncomeShop` ladders (total tier cost ÷ total capacity/passive gained across all 10 tiers),
+plus a comment flagging that any future payout type added to `creditRunPayout`'s overflow branch
+needs a matching entry here or it divides by `undefined` and corrupts `run[POTATOES]` with `NaN`.
+`towerFactory.js`'s `creditRunPayout` changed its overflow branch from `this.run[POTATOES] +=
+overflow` to `this.run[POTATOES] += Math.floor(overflow / rate)` — division (not the shop's own
+forward-price multiplication, which would make the exploit worse) at the correct, already-derived
+rate, floored rather than rounded to match `scaleReward`'s own established "never let a fractional
+potato into a real balance" precedent. `getTowerRunCap` and the cap-scaling logic (fix direction
+#3) were deliberately left untouched, same as scoped.
+
+**Tests**: `towerFactory.test.js`'s `'creditRunPayout — per-run maximum gain caps'` block's four
+existing hardcoded-1:1 tests updated to the discounted expectations (29,962 / 3,939,719 / 196,985 /
+293,632 / 256,081 potatoes, matching the design doc's hand-verified numbers); added an isolated
+discount-formula unit test, a near-zero-cap-room edge case (confirms the discount only touches the
+overflow, not `applied`/`room`), and a new small-overflow-floors-to-zero-potatoes edge case
+(intentional behavior change — an overflow smaller than the rate itself now credits exactly 0
+potatoes instead of the old flat ≥1, and this is asserted explicitly rather than left uncovered).
+Full suite run, not just the touched file (`npx jest`): 1772/1772 passing across 95 suites (up from
+1768/1768 before this change — 4 new tests, no regressions).
+
+**Docs**: `.claude/systems/tower.md`'s "Overflow-to-Potato Discount Rate" section heading updated
+from "scoping pass, not yet implemented" to reflect it shipped the same day.
+
+**Cross-repo**: none — already confirmed during the scoping pass that `financial-project` doesn't
+implement Tower at all, so there's nothing there to keep in sync.
+
+**Deliberately left out of this pass** (flagged, not silently dropped): `TRANSACTIONS`' missing
+`usedRewards`-style de-dupe (`the Baron's Beet` and other TRANSACTION-floor entries can reroll and
+repeat within a single run, unlike `REWARDS` floor entries) is a real, separate gap the discount
+rate blunts considerably (each repeat now yields ~5-17x fewer overflow potatoes than before) but
+doesn't remove outright — a future pass could fold a de-dupe into `execNormalFloor`'s
+TRANSACTION-picking logic if it's still worth closing after this fix lands.

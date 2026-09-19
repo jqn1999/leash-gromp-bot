@@ -375,10 +375,18 @@ class towerFactory{
     // immediate REWARD/TRANSACTION branch in updateValue/updateTransaction, and King Kiwi's
     // deferred payout in checkElitePayout). Once this.run[type] would exceed the cap, only the
     // remaining room is credited to that type; for PASSIVE_INCOME/BANK_CAPACITY the leftover
-    // converts 1:1 into POTATOES instead of being lost outright (both are already
-    // potato-denominated — a bank capacity/passive income amount IS a count of potatoes, just
-    // held in a different bucket — so this isn't an invented exchange rate). WORK_MULTIPLIER
-    // has no natural potato equivalent, so its overflow is simply not granted; the 10x cap is
+    // converts into POTATOES instead of being lost outright, at a per-type DISCOUNTED rate
+    // (2026-09-19 fix, see tower.md's "Overflow-to-Potato Discount Rate" section) rather than
+    // the flat 1:1 this used to be. 1:1 was a real bug, not a deliberate design: the overflow
+    // amount here is already `scaleReward`'d (scales with player power, effectively unbounded),
+    // while the cap itself only scales with floor depth (bounded, flat), so past a fairly low
+    // multi almost the entire scaled value of a capped pick got dumped into potatoes at face
+    // value — nowhere else in the game is 1 unit of bank capacity/passive income actually worth
+    // 1 potato. `TOWER_OVERFLOW_SHOP_RATE[type]` is each currency's own real, cumulative
+    // average potato-cost-per-unit from constants.js's bankShop/passiveIncomeShop ladders, and
+    // the overflow is DIVIDED by it (not multiplied — the shop's forward price would make the
+    // exploit worse, not better). WORK_MULTIPLIER has no natural potato equivalent (and no
+    // entry in TOWER_OVERFLOW_SHOP_RATE), so its overflow is simply not granted; the 10x cap is
     // generous enough (real runs top out well under 2x, see tower.md) that this almost never
     // engages. PAYOUT.POTATOES itself has no cap and is credited in full, uncapped, same as
     // before. Returns the amount actually applied to `type` (not the raw pre-cap amount) so
@@ -407,7 +415,12 @@ class towerFactory{
         this.run[type] += applied
         const overflow = amount - applied
         if(overflow > 0 && (type === tC.PAYOUT.PASSIVE_INCOME || type === tC.PAYOUT.BANK_CAPACITY)){
-            this.run[tC.PAYOUT.POTATOES] += overflow
+            // floor(), not round() — mirrors scaleReward's own Math.round precedent of never
+            // letting a fractional/rounded-up potato slip into this.run[POTATOES]; here that
+            // means an overflow smaller than the rate itself (e.g. 3 bank-capacity units against
+            // Cb ≈ 5.08) intentionally floors to 0 potatoes credited, never negative or partial.
+            const rate = tC.TOWER_OVERFLOW_SHOP_RATE[type]
+            this.run[tC.PAYOUT.POTATOES] += Math.floor(overflow / rate)
         }
         return applied
     }

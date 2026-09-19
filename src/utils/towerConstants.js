@@ -203,6 +203,27 @@ const TOWER_FLOOR_CAP_STEP = {
     [PAYOUT.BANK_CAPACITY]: 2500000
 }
 
+// Overflow-to-potato discount rate (2026-09-19, product owner picked type-specific rates —
+// see tower.md's "Overflow-to-Potato Discount Rate" section for the full derivation). Fixes a
+// real exploit: creditRunPayout used to convert any PASSIVE_INCOME/BANK_CAPACITY overflow past
+// getTowerRunCap's ceiling into POTATOES at a flat 1:1 rate, using the already-scaled value —
+// but 1 unit of either currency is never actually worth 1 potato anywhere else in the game, and
+// the reward's face value scales with player power (scalingFactor, unbounded) while the cap only
+// scales with floor depth (bounded), so past ~multi 29 the overflow became a windfall dwarfing
+// every legitimate potato-earning option. Each rate below is that currency's own real, cumulative
+// average potato-cost-per-unit from constants.js's shop ladders (total tier cost / total
+// capacity-or-passive gained across all 10 tiers) — the one place the game already prices these
+// currencies in potatoes, so creditRunPayout DIVIDES overflow by this (not multiplies — the
+// shop's own forward price would make the exploit worse, not better, since both ratios are > 1).
+//
+// IMPORTANT: any FUTURE payout type added to creditRunPayout's overflow-conversion branch MUST
+// get a matching entry here — a missing entry divides by `undefined`, producing NaN, which then
+// corrupts this.run[POTATOES] via `+= NaN` for the rest of the run.
+const TOWER_OVERFLOW_SHOP_RATE = {
+    [PAYOUT.BANK_CAPACITY]: 5.0765,     // bankShop: 5,076,250,000 / 999,950,000
+    [PAYOUT.PASSIVE_INCOME]: 16.6875    // passiveIncomeShop: 1,001,250,000 / 60,000,000 (exact)
+}
+
 function getTowerRunCap(type, floor) {
     const step = TOWER_FLOOR_CAP_STEP[type]
     if (step === undefined) {
@@ -581,6 +602,7 @@ module.exports = {
     SCALING_EXPONENT,
     TOWER_RUN_CAPS,
     TOWER_FLOOR_CAP_BAND_SIZE,
+    TOWER_OVERFLOW_SHOP_RATE,
     getTowerRunCap
 }
 
