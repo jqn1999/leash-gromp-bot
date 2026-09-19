@@ -497,3 +497,27 @@ was added, since (as above) this channel is website-action-only by design.
 `tsc --noEmit --skipLibCheck --target es2022 --module esnext --moduleResolution bundler` on all
 three touched `handler.ts` files — clean aside from each file's own expected missing
 `$amplify/env/*` module, same as every other website-only pass in this doc.
+
+## Work's Activity post shows Sweet/Metal Potato's stat grants (2026-09-19, direct instruction, website-only)
+
+Direct instruction: "Have web activity also show what stats the sweet and metal potatoes gave from
+works on the website." The `🌐 Work` post already showed the potato/starch delta and encounter
+type, but nothing about the permanent Work Multiplier/Passive Income/Bank Capacity a Sweet or Metal
+Potato hit grants — `doWork` (website) already computed this as a `statGrant: {type, amount}[]`
+array (added 2026-09-17 for the player's own work-result message, mirroring the bot's own
+equivalent embed fields) but the Activity post never read it.
+
+**Website-only** (see `financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` `#57`):
+`gromp-economy/handler.ts` gained a `statGrantField(grants)` helper (mirrors the frontend's own
+`formatStatGrants`/`STAT_GRANT_LABELS` wording exactly) and the `work` post now appends a "Stats
+Gained" field from `result.statGrant` when present — `sweet`'s single-entry grant, `metalSuccess`'s
+three-entry grant (Work Multiplier + Passive Income + Bank Capacity). Every other encounter type
+has a null `statGrant`, so the field is simply omitted for them, unchanged from before.
+
+**Scope note**: Big Events' own Metal Potato post (fires alongside the Activity one, since
+`metalSuccess` is a `BIG_EVENT_WORK_ENCOUNTERS` member) was left untouched — the instruction named
+"web activity" specifically, not Big Events.
+
+**Bot side**: no code change — the bot's own `/work` command embed already shows these stat grants
+directly to the player (that's what `statGrant` was originally built to mirror on the website
+side), so there was nothing bot-side to add here.
