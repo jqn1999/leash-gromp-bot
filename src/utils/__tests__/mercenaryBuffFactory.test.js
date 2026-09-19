@@ -18,22 +18,40 @@ describe('MercenaryBuffScaling shape (roadmap.md test-surface note)', () => {
         }
     });
 
-    test('Rank 6 (max) never exceeds half of GuildBuffScaling\'s own Level 10 (max) — the literal "half of guild\'s max" invariant this design is built on', () => {
+    // Rescaled 2026-09-19 (direct instruction: "same scaling and amounts as guilds") —
+    // supersedes the original "half of guild's max, floor below guild's own floor" design
+    // this file used to test. Every MercenaryBuffScaling value is now copied verbatim from
+    // GuildBuffScaling at 6 evenly-spaced indices (Guild Levels 1/3/5/6/8/10), so Rank 1
+    // matches Guild Level 1's own floor exactly and Rank 6 matches Guild Level 10's own
+    // ceiling exactly — not "below," not "half," equal at both ends.
+    test('Rank 1 (floor) and Rank 6 (max) both land EXACTLY on GuildBuffScaling\'s own Level 1/Level 10 values — the "same scaling and amounts as guilds" invariant this design is now built on', () => {
         // workTimer/bountyTimer both compare against GuildBuffScaling.workTimer (raidTimer
         // shares the exact same array, per that constant's own comment).
         const guildEquivalent = { workMulti: 'workMulti', workTimer: 'workTimer', bountyTimer: 'workTimer', robChance: 'robChance' };
         for (const key of Object.keys(MercenaryBuffScaling)) {
+            const mercMin = MercenaryBuffScaling[key][0];
             const mercMax = MercenaryBuffScaling[key][5];
-            const guildMax = GuildBuffScaling[guildEquivalent[key]][9];
-            expect(mercMax).toBeLessThanOrEqual(guildMax / 2);
+            const guildScale = GuildBuffScaling[guildEquivalent[key]];
+            expect(mercMin).toBe(guildScale[0]);
+            expect(mercMax).toBe(guildScale[9]);
+        }
+    });
+
+    test('every Mercenary Rank value is copied verbatim from GuildBuffScaling at the 6 sampled indices [0,2,4,5,7,9]', () => {
+        const guildEquivalent = { workMulti: 'workMulti', workTimer: 'workTimer', bountyTimer: 'workTimer', robChance: 'robChance' };
+        const sampledIndices = [0, 2, 4, 5, 7, 9];
+        for (const key of Object.keys(MercenaryBuffScaling)) {
+            const guildScale = GuildBuffScaling[guildEquivalent[key]];
+            const expected = sampledIndices.map(i => guildScale[i]);
+            expect(MercenaryBuffScaling[key]).toEqual(expected);
         }
     });
 });
 
 describe('getMercenaryBuffValue', () => {
-    test('Rank 1 is deliberately far below Guild Level 1\'s own floor (0.06/0.06/0.06)', () => {
+    test('Rank 1 matches Guild Level 1\'s own floor exactly (0.06/0.06/0.06) — same scaling and amounts as guilds', () => {
         for (const buffType of Object.keys(MercenaryBuffScaling)) {
-            expect(getMercenaryBuffValue(buffType, 1)).toBeLessThan(0.06);
+            expect(getMercenaryBuffValue(buffType, 1)).toBe(0.06);
         }
     });
 
@@ -57,8 +75,8 @@ describe('getMercenaryBuffValue', () => {
 
 describe('getMercenaryBuffLabel', () => {
     test('builds a readable +X%/X% label with the rank noted', () => {
-        expect(getMercenaryBuffLabel('workMulti', 1)).toBe('+2% effective work multiplier — a harder bargain (Rank 1)');
-        expect(getMercenaryBuffLabel('workTimer', 6)).toBe('12% chance to skip /work cooldown — quicker feet (Rank 6)');
+        expect(getMercenaryBuffLabel('workMulti', 1)).toBe('+6% effective work multiplier — a harder bargain (Rank 1)');
+        expect(getMercenaryBuffLabel('workTimer', 6)).toBe('25% chance to skip /work cooldown — quicker feet (Rank 6)');
     });
 
     test('returns null for an unknown buff type instead of a broken label', () => {

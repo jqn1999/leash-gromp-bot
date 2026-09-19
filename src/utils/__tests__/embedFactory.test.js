@@ -360,13 +360,14 @@ describe('createUserEmbed Mercenary Buff field', () => {
     // printed the right label — this is the field that was actually missing the bonus:
     // "Current Work Multiplier:" silently excluded it from its live total, so a mercenary
     // who picked workMulti saw their buff listed as active but the number right above it
-    // never moved. Rank 1's own workMulti scale is 2% (MercenaryBuffScaling.workMulti[0]).
+    // never moved. Rank 1's own workMulti scale is 6% (MercenaryBuffScaling.workMulti[0],
+    // rescaled 2026-09-19 to match GuildBuffScaling's own Level 1 value — was 2% before).
     test('"Current Work Multiplier:" reflects an active workMulti Mercenary Buff', async () => {
         const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({
             mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
         }), 0);
         const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
-        expect(field.value).toBe('1.02x (+0.02x)');
+        expect(field.value).toBe('1.06x (+0.06x)');
     });
 
     test('"Current Work Multiplier:" is untouched when the Mercenary Buff is a different category', async () => {
@@ -382,7 +383,7 @@ describe('createUserEmbed Mercenary Buff field', () => {
             mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
         }));
         const field = embed.data.fields.find(f => f.name.includes('Current Work Multiplier Upgrade'));
-        expect(field.value).toContain('Live: 1.02x (+0.02x guild/mercenary/companion/rebirth/world buff)');
+        expect(field.value).toContain('Live: 1.06x (+0.06x guild/mercenary/companion/rebirth/world buff)');
     });
 });
 

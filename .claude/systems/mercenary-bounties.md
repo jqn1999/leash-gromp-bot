@@ -203,18 +203,22 @@ recheck — this is a pure additive change, no other `RobNpc.TIERS` formula (odd
 touched or re-derived. `workMulti`/`workTimer`/`bountyTimer` remain untouched by Heist, and
 `RobNpc.TIERS`' own cooldown (`npcRobTimer`) still has no Mercenary Buff skip-chance source.
 
-**`MercenaryBuffScaling`** (`constants.js`, rank-indexed, index 0 = Rank 1) — roughly half of
-`GuildBuffScaling`'s own per-tier value, topping out well under it at every rank (not just at the
-cap), mapped onto Rank's 6 tiers instead of Guild Level's 10:
+**`MercenaryBuffScaling`** (`constants.js`, rank-indexed, index 0 = Rank 1) — rescaled 2026-09-19
+(direct instruction: "same scaling and amounts as guilds") from the original "roughly half of
+`GuildBuffScaling`, topping out well under it at every rank" design. Every value below is now
+copied verbatim from `GuildBuffScaling` at 6 evenly-spaced indices (Guild Levels 1/3/5/6/8/10), so
+Rank 1 opens at Guild Level 1's own floor and Rank 6 reaches Guild Level 10's own ceiling exactly —
+a mercenary hits the same maximum a guild does, just via 6 Bounty-win-gated ranks instead of 10
+raid-gated levels:
 
 | Rank | Wins required | `workMulti` | `workTimer` / `bountyTimer` | `robChance` |
 |---|---|---|---|---|
-| 1 | 0 | +2% | 3% | 3% |
-| 2 | 15 | +3% | 4% | 4% |
-| 3 | 50 | +4% | 6% | 6% |
-| 4 | 125 | +5% | 8% | 8% |
-| 5 | 275 | +6% | 10% | 9% |
-| 6 (max) | 525 | +7% | 12% | 10% |
+| 1 | 0 | +6% | 6% | 6% |
+| 2 | 15 | +8% | 8% | 8% |
+| 3 | 50 | +10% | 11% | 10% |
+| 4 | 125 | +11% | 13% | 12% |
+| 5 | 275 | +13% | 18% | 16% |
+| 6 (max) | 525 | +15% | 25% | 20% |
 
 `workTimer` and `bountyTimer` share identical values — mirrors `GuildBuffScaling.workTimer`/
 `raidTimer`'s own existing precedent of being two separate keys with the same array, kept separate
@@ -664,6 +668,20 @@ Curves" chart was regenerated against these live values in the same pass; its ow
 "Heist-cap what-if" dashed lines (from when `RobNpc.MAX_REWARD_MULTIPLIER` was still 250) were
 also retired, since that cap has since been raised to 600 for real (see `RobNpc`'s own section
 below), collapsing the what-if into the real Merc/R5 lines.
+
+**Eighth pass, 2026-09-19, direct instruction** ("bump merc bounties another 2x"). **Change**:
+every `Bounty.TIERS` reward AND penalty doubled uniformly off the seventh pass' own ×2.3 base
+(difficulty and the existing 1.0x→2.0x penalty:reward ratio both untouched, same "magnitude-only"
+shape every prior pass used), same rounding convention (every seventh-pass value was already an
+exact multiple of 1,000, so no re-rounding was needed; B12 stays exactly `reward × 2`). Since Elite/
+Heist are completely untouched by this pass and the scale is uniform, every Solo-Merc-vs-Elite
+ratio the seventh pass computed simply doubles: maxed Merc ≈322% of Elite at power 140 (was ≈161%),
+≈106% at 300 (was ≈53%), ≈120% at power 600 (was ≈60%); Rank 5/Noble's Vault correspondingly
+≈70% of Elite at power 600 (was ≈35%). `mercenaryFactory.test.js`'s ladder-shape band was widened
+again to 10%-130% (live range, computed directly against live constants: ~30%-111%) — the same
+"widen to catch a collapse/runaway, not calibrate a shape" convention every prior widening already
+established, not a sign of a new dead zone (success-chance/tier-weighting math is completely
+unaffected by a uniform reward/penalty scale).
 
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 

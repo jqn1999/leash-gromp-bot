@@ -14370,3 +14370,71 @@ on every touched file.
 Docs: `.claude/systems/economy-and-work.md`'s "House Account Taxes" section gained a new dated
 subsection identifying the exact 2 mechanisms this touches and why the other Bounty modes/`/rob`
 were deliberately left alone.
+
+## Mercenary Buff rescaled to match Guild Buff; Bounty rewards doubled (2026-09-19, direct instructions: "lets bump it up to the same scaling and amounts as guilds... they'll be able to reach it faster but their overall bounty/heist amounts will be lower late game so it still feels balanced" / "Bump merc bounties another 2x")
+
+Two separate balance asks, landed together since they both touch the mercenary economy. A third,
+related question ("why are the win amounts so low compared to loss") was investigated but
+deliberately NOT acted on beyond an explanation — see its own subsection below.
+
+**MercenaryBuffScaling rescale** — supersedes the original design (`roughly half of
+GuildBuffScaling, topping out well under it at every rank`) this same constant shipped with on
+2026-09-09 and which a prior session's `AskUserQuestion` had already narrowed to "match guild's
+absolute ceiling only." This instruction is more expansive than that: "same scaling and amounts,"
+not just the ceiling. Every value is now copied VERBATIM from `GuildBuffScaling` at 6 evenly-spaced
+indices — `[0,2,4,5,7,9]` (Guild Levels 1/3/5/6/8/10) — so Rank 1 opens at Guild Level 1's own floor
+and Rank 6 reaches Guild Level 10's own ceiling exactly:
+
+| Rank | `workMulti` | `workTimer`/`bountyTimer` | `robChance` |
+|---|---|---|---|
+| 1 | 6% (was 2%) | 6% (was 3%) | 6% (was 3%) |
+| 6 (max) | 15% (was 7%) | 25% (was 12%) | 20% (was 10%) |
+
+This is the "reach it faster" half of the request: a mercenary hits the exact same maximum a guild
+does, via 6 Bounty-win-gated ranks instead of 10 raid-gated levels. The offsetting "lower late game"
+half is a separate, already-true structural fact this change doesn't touch — Bounty's own reward
+ceiling (`Bounty.TIERS`, next section) was already calibrated well below Guild Raid's, and this
+change only touched the OPTIONAL buff categories, not the base reward ladder.
+
+**Bounty.TIERS doubled** — every reward AND penalty across all 12 tiers scaled ×2 uniformly off the
+existing (seventh-pass) values, difficulty and the existing 1.0x→2.0x penalty:reward ratio both
+left untouched (a pure magnitude change, same shape every prior retune pass in this table's own
+history used). T1 41,000→82,000 up through T12 24,651,000→49,302,000 (penalty 49,302,000→98,604,000,
+still exactly `reward×2`).
+
+**Why win is so much lower than loss at high tiers (investigated, not changed)**: the reported
+table (Rank 6, 600 multi) showed Tier 12 paying 24,651,000 on a win but risking 49,302,000 on a
+loss — a real, deliberate design decision from 2026-09-08 ("Guild raid penalties are much higher
+for higher reward but merc should have more similar penalties" — ironically, that instruction was
+what INTRODUCED the climbing ratio, moving away from a flat 1:1), not a bug: `Bounty.TIERS`' own
+penalty:reward ratio climbs continuously from 1.0x at Tier 1 to 2.0x at Tier 12 (`ratio(tier) = 1 +
+(tier-1)/11`), mirroring Guild Raid's own escalating stakes at its highest brackets (1.0x Regular →
+1.5x Elite → 2.0x Legendary). Neither of today's two changes touches this ratio: the buff rescale
+doesn't touch `Bounty.TIERS` at all, and the 2x bump doubled both sides UNIFORMLY, so the ratio at
+every tier is byte-identical before and after (still exactly 2.00x at T12). Compounding with a low
+success chance at the exact power level where a tier first becomes reachable (30-48% at T11-T12 in
+the reported example) does make pushing into a freshly-unlocked high tier feel bad — but that's the
+same "harder AND better" shape Rival Bounty Hunters' own scenario tiers use by explicit design
+elsewhere in this game, not unique to Bounty. **Flagged, not silently decided**: if the intent is to
+flatten or cap this ratio (e.g. never exceed 1.5x, or hold flat at 1.0x like the original pre-#61
+design), that's a separate, real balance change this pass didn't make — say so and it can be scoped
+properly rather than bundled into a "why" answer.
+
+**Tests**: `mercenaryBuffFactory.test.js`'s own shape tests were rewritten to assert the NEW
+invariant (Rank 1/6 match Guild Level 1/10 exactly, every value traces back to
+`GuildBuffScaling[sampledIndices]`) rather than the old "half of guild's max" one they used to lock
+in. `mercenaryFactory.test.js`'s Bounty-vs-guild-reward-ratio sanity band was widened again (10%-130%,
+live range ~30%-111%) to match the doubled numbers — same "widen to catch a collapse/runaway, don't
+calibrate a shape" convention every prior widening of this exact band already established.
+`embedFactory.test.js` had 2 hardcoded Rank-1 workMulti label assertions (`+2%`/`1.02x`) updated to
+the new `+6%`/`1.06x`. Full suite: **1768/1768** across 95 suites. `node -c` clean on every touched
+file.
+
+**Cross-repo**: `financial-project`'s 3 mirrored copies of these constants (`gromp-mercenary` and
+`gromp-economy` handlers) updated to match exactly — see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry #52.
+
+Docs: `.claude/systems/mercenary-bounties.md`'s `MercenaryBuffScaling` table and description
+rewritten for the new values; an "Eighth pass" narrative subsection added to its own Bounty-ladder
+retune history (matching the existing style of the seven passes before it), including
+re-derived Solo-Merc-vs-Elite ratios at the same reference power points prior passes used.

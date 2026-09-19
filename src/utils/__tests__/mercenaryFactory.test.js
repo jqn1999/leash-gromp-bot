@@ -632,11 +632,23 @@ describe('Bounty.TIERS ladder shape', () => {
         // not a regression; the band below is deliberately loose (same "wide enough to
         // only catch a genuine collapse or runaway, not calibrate a shape" reasoning the
         // prior widenings already established) rather than tracking the exact live range.
+        //
+        // Band raised again 2026-09-19 (eighth retune pass, Bounty.TIERS' own "Seventh
+        // pass" comment) — "bump merc bounties another 2x," doubling every tier's reward
+        // uniformly. Live range is now ~0.30-1.11 (computed directly against live
+        // constants) — tiers 7-9 (the same Regular T3/T4/Elite-seam dip #70's own comment
+        // above already flags as a pre-existing non-smooth patch of the GUILD curve, not a
+        // Bounty artifact) now exceed 1.0, meaning Bounty briefly out-earns a realistic
+        // Level-2 guild's own total at that exact matching difficulty — a direct, intended
+        // consequence of a flat 2x applied on top of an already-uneven guild curve, not a
+        // regression. Widened again rather than narrowed, same "catch a collapse or
+        // runaway, don't calibrate a shape" philosophy this band has followed since the
+        // very first widening.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
             expect(ratio).toBeGreaterThan(0.10);
-            expect(ratio).toBeLessThan(0.65);
+            expect(ratio).toBeLessThan(1.30);
         });
     });
 });

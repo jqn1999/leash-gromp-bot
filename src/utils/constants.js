@@ -2692,19 +2692,26 @@ const Bounty = {
     // remain untouched, same "magnitude-only" shape as every prior pass — only reward/
     // penalty rescaled, rounded to the nearest 1,000 per this table's own existing
     // convention.
+    //
+    // Seventh pass, 2026-09-19, direct instruction — "bump merc bounties another 2x."
+    // Every reward AND penalty doubled uniformly (again a pure magnitude change — difficulty
+    // and the 1.0x-2.0x penalty:reward ratio climb are both untouched, same shape every pass
+    // above already establishes). Every sixth-pass value was already an exact multiple of
+    // 1,000, so doubling needed no re-rounding; T12's own "penalty = exactly reward*2"
+    // invariant still holds after doubling both sides (49,302,000*2 = 98,604,000).
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 41000,    penalty: -41000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000 },       // 1.05x
-        { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000 },      // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000 },      // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000 },      // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000 },     // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000 },     // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000 },     // 1.73x
-        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000 },    // 1.82x
-        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000 },    // 1.91x
-        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000 },    // 2.00x — set to exactly reward*2 (independent nearest-1000 rounding of reward/penalty would've landed it off that exact invariant)
+        { tier: 1,  difficulty: 10,   reward: 82000,    penalty: -82000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -156000 },      // 1.05x
+        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -304000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -580000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -1100000 },     // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -2024000 },     // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -3722000 },     // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -6780000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -12278000 },    // 1.73x
+        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -22130000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -40228000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -98604000 },    // 2.00x — set to exactly reward*2
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
@@ -3607,25 +3614,32 @@ const GuildBuffDescriptions = {
     workMulti: { sign: "+", text: "effective work multiplier" },
 }
 
-// Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction) — a solo, weaker
-// parallel to Guild Buff above, scaled by Mercenary Rank (1-6, MercenaryRank.THRESHOLDS)
-// instead of Guild Level (1-10). Roughly half of GuildBuffScaling's own per-tier value,
-// topping out well under it at EVERY rank (not just the cap): GuildBuffScaling.workMulti
-// maxes at 0.15 (half = 0.075), workTimer/raidTimer at 0.25 (half = 0.125), robChance at
-// 0.20 (half = 0.10) — Rank 6's max in each column here (0.07/0.12/0.10) lands at or just
-// under that half-mark. Rank 1 (0 wins, the instant a player becomes a mercenary) is
-// deliberately set far below Guild Level 1's own floor (0.06/0.06/0.06) since a solo pick
-// costs nothing and should never open at guild-parity. workTimer/bountyTimer share
+// Mercenary Buff (`/set-mercenary-buff`, 2026-09-09, direct instruction) — a solo parallel
+// to Guild Buff above, scaled by Mercenary Rank (1-6, MercenaryRank.THRESHOLDS) instead of
+// Guild Level (1-10).
+//
+// Rescaled 2026-09-19 (direct instruction: "bump it up to the same scaling and amounts as
+// guilds. They'll be able to reach it faster but their overall bounty/heist amounts will be
+// lower late game so it still feels balanced") — supersedes the original "roughly half of
+// GuildBuffScaling, topping out well under it at every rank" design this same block used to
+// document. Every value below is copied VERBATIM from GuildBuffScaling, not independently
+// tuned — Rank N here is GuildBuffScaling[index] at the 6 indices [0,2,4,5,7,9] (Guild
+// Levels 1/3/5/6/8/10, evenly spaced via round(i*9/5) for i=0..5), so Rank 1 opens at
+// Guild Level 1's own floor and Rank 6 reaches Guild Level 10's own ceiling exactly — a
+// mercenary hits the SAME maximum a guild does, just in 6 ranks (Bounty wins, solo) instead
+// of 10 levels (raid grinding, guild coordination), which is the "reach it faster" half of
+// the request. The offsetting "lower late game" half is a separate, already-true structural
+// fact this change doesn't touch: Bounty's own TIER_REWARD ceiling (Bounty.TIERS) was
+// already calibrated well below Guild Raid's own reward ceiling, and stays that way — only
+// the BUFF scaling changed here, not the base reward ladder. workTimer/bountyTimer share
 // IDENTICAL values, mirroring GuildBuffScaling.workTimer/raidTimer's own existing
-// precedent of being two separate keys with the same array — kept as two keys (not one
-// shared array) so a future divergence needs no restructuring. robChance steps 0.01
-// slower than workTimer at the top two ranks to mirror GuildBuffScaling.robChance's own
-// flatter finish relative to workTimer/raidTimer (0.20 cap vs. 0.25).
+// coincidence of being two separate keys with the same array (kept as two keys, not one
+// shared array, so a future divergence needs no restructuring).
 const MercenaryBuffScaling = {
-    workMulti:   [0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
-    workTimer:   [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
-    bountyTimer: [0.03, 0.04, 0.06, 0.08, 0.10, 0.12],
-    robChance:   [0.03, 0.04, 0.06, 0.08, 0.09, 0.10],
+    workMulti:   [0.06, 0.08, 0.10, 0.11, 0.13, 0.15],
+    workTimer:   [0.06, 0.08, 0.11, 0.13, 0.18, 0.25],
+    bountyTimer: [0.06, 0.08, 0.11, 0.13, 0.18, 0.25],
+    robChance:   [0.06, 0.08, 0.10, 0.12, 0.16, 0.20],
 }
 
 // The descriptive half of each Mercenary Buff category — paired with MercenaryBuffScaling's
