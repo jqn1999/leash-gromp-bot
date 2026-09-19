@@ -2550,14 +2550,21 @@ const SpudKeep = {
 // stacking feel pointless instead of rewarding — 38% still leaves real headroom (maxed
 // rank + maxed Spud Keep computes to 1-(1-.38)(1-.40) ≈ 63%, clamped to 60% only once BOTH
 // tracks are simultaneously maxed, not casually).
+// rewardMultiplier rescaled 2026-09-19, direct instruction — "Adjust the max merc reward to
+// be 5x instead of 2.35x at rank 6 with the benefits mostly back loaded at merc 4-6." Ranks
+// 1-3 are UNCHANGED (1.00/1.15/1.30) — the backload means early ranks stay exactly as
+// modest as before; the growth all happens from Rank 4 on. Of the full +4.00 gain from
+// Rank 1 (1.00x) to Rank 6 (5.00x), Ranks 4-6 alone contribute +3.70 (92.5% of the total
+// climb) — Rank 3->4 is already a bigger jump (+0.70) than the entire old Rank 1->3 climb
+// used to be, then accelerates further each rank after (+1.30, +1.70).
 const MercenaryRank = {
     THRESHOLDS: [
         { rank: 1, winsRequired: 0,   rewardMultiplier: 1.00, rivalSuccessBonus: { easy: 0.00, medium: 0.00, hard: 0.00 }, cooldownReductionPercent: 0.00 },
         { rank: 2, winsRequired: 15,  rewardMultiplier: 1.15, rivalSuccessBonus: { easy: 0.04, medium: 0.03, hard: 0.02 }, cooldownReductionPercent: 0.06 },
         { rank: 3, winsRequired: 50,  rewardMultiplier: 1.30, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 }, cooldownReductionPercent: 0.11 },
-        { rank: 4, winsRequired: 125, rewardMultiplier: 1.55, rivalSuccessBonus: { easy: 0.14, medium: 0.10, hard: 0.07 }, cooldownReductionPercent: 0.18 },
-        { rank: 5, winsRequired: 275, rewardMultiplier: 1.90, rivalSuccessBonus: { easy: 0.21, medium: 0.16, hard: 0.10 }, cooldownReductionPercent: 0.27 },
-        { rank: 6, winsRequired: 525, rewardMultiplier: 2.35, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },  // max
+        { rank: 4, winsRequired: 125, rewardMultiplier: 2.00, rivalSuccessBonus: { easy: 0.14, medium: 0.10, hard: 0.07 }, cooldownReductionPercent: 0.18 },
+        { rank: 5, winsRequired: 275, rewardMultiplier: 3.30, rivalSuccessBonus: { easy: 0.21, medium: 0.16, hard: 0.10 }, cooldownReductionPercent: 0.27 },
+        { rank: 6, winsRequired: 525, rewardMultiplier: 5.00, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },  // max
     ]
 }
 
@@ -2705,29 +2712,33 @@ const Bounty = {
     //
     // Tenth pass (flat 1:1 ratio), same day, direct instruction — "Make the merc bounty
     // penalties 1:1 with the reward by lowering the penalties... look at how guild raid
-    // reward and penalty is done." Guild Raid's own ratio is a flat step BY MODE (Regular
-    // always exactly 1.0x, Elite always exactly 1.5x, Legendary always exactly 2.0x — see
-    // Raid.T1_RAID_REWARD/PENALTY through LEGENDARY_T4_REWARD/PENALTY), never a smooth climb
-    // within a mode. This ladder has no mode bands to key off of (12 tiers, one continuous
-    // curve), so the closest direct mirror is the simplest one: penalty = -reward, flat 1:1,
-    // for every tier — matching Regular Raid's own ratio exactly rather than inventing a new
-    // banding scheme. LOWERED every tier's penalty down to equal its own reward (reward
-    // itself untouched, unlike Regular Raid where 1:1 comes from both sides being equal by
-    // construction) — replaces the 1.0x->2.0x climbing ratio the "Penalty escalation" pass
-    // introduced and every pass since had preserved. This is the CURRENT, correct table.
+    // reward and penalty is done." Set penalty = -reward, flat 1:1, for every tier —
+    // REVERTED again a few messages later in the same conversation (see Eleventh pass).
+    //
+    // Eleventh pass (revert to climbing ratio + halve both), same day, direct instruction —
+    // "Revert the recent change and have merc penalties go up to 2x again scaling... Reduce
+    // the reward/penalty amounts to 50% of what they are now so also what we had originally
+    // before the latest changes today." Two changes landed together: (1) the flat 1:1 ratio
+    // from the Tenth pass is gone — penalty climbs 1.0x -> 2.0x by tier again, exactly the
+    // "Penalty escalation" pass's original shape; (2) every reward AND penalty halved off
+    // the Seventh/Eighth-pass doubled values. Net effect of doing both at once: this table
+    // is now byte-identical to the Sixth-pass table, from BEFORE any of today's Bounty
+    // changes — the player's own "what we had originally before the latest changes today"
+    // was confirmed to land exactly there, not approximately. This is the CURRENT, correct
+    // table.
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 82000,    penalty: -82000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 148000,   penalty: -148000 },      // 1.00x
-        { tier: 3,  difficulty: 26,   reward: 258000,   penalty: -258000 },      // 1.00x
-        { tier: 4,  difficulty: 42,   reward: 450000,   penalty: -450000 },      // 1.00x
-        { tier: 5,  difficulty: 69,   reward: 804000,   penalty: -804000 },      // 1.00x
-        { tier: 6,  difficulty: 111,  reward: 1390000,  penalty: -1390000 },     // 1.00x
-        { tier: 7,  difficulty: 180,  reward: 2410000,  penalty: -2410000 },     // 1.00x
-        { tier: 8,  difficulty: 291,  reward: 4144000,  penalty: -4144000 },     // 1.00x
-        { tier: 9,  difficulty: 471,  reward: 7106000,  penalty: -7106000 },     // 1.00x
-        { tier: 10, difficulty: 763,  reward: 12172000, penalty: -12172000 },    // 1.00x
-        { tier: 11, difficulty: 1236, reward: 21072000, penalty: -21072000 },    // 1.00x
-        { tier: 12, difficulty: 2000, reward: 49302000, penalty: -49302000 },    // 1.00x
+        { tier: 1,  difficulty: 10,   reward: 41000,    penalty: -41000 },       // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000 },       // 1.05x
+        { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000 },      // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000 },      // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000 },      // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000 },     // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000 },     // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000 },     // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000 },     // 1.73x
+        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000 },    // 1.82x
+        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000 },    // 1.91x
+        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000 },    // 2.00x — set to exactly reward*2
     ],
     // Starch-flavored scenarios reuse Taro Trader's own formula
     // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),

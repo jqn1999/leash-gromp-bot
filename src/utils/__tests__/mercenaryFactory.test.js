@@ -504,26 +504,31 @@ describe('Bounty.TIERS ladder shape', () => {
         rest.forEach(r => expect(r).toBeCloseTo(first, 1));
     });
 
-    test('reward increases monotonically with tier', () => {
+    test('reward and |penalty| both increase monotonically with tier', () => {
         for (let i = 1; i < Bounty.TIERS.length; i++) {
             expect(Bounty.TIERS[i].reward).toBeGreaterThan(Bounty.TIERS[i - 1].reward);
+            expect(Math.abs(Bounty.TIERS[i].penalty)).toBeGreaterThan(Math.abs(Bounty.TIERS[i - 1].penalty));
         }
     });
 
-    // Penalty:reward ratio history: flat 1:1 at launch -> climbed 1.0x->2.0x (2026-09-08) ->
-    // briefly flattened to one shared amount across every tier (a same-day 2026-09-19
-    // misread, reverted the same day) -> climbing ratio restored -> finally set flat 1:1
-    // again, same day, direct instruction ("Make the merc bounty penalties 1:1 with the
-    // reward by lowering the penalties... look at how guild raid reward and penalty is
-    // done"). Guild Raid's own ratio is a flat step BY MODE (Regular always exactly 1.0x,
-    // Elite 1.5x, Legendary 2.0x — never a smooth climb within one mode); this ladder has no
-    // mode bands, so the direct mirror is the simplest one: penalty = -reward for every
-    // tier. Each tier's penalty was LOWERED to match its own reward — reward itself is
-    // untouched throughout this entire history.
-    test('penalty equals -reward for every tier (flat 1:1 ratio, matching Guild Raid\'s own Regular-mode ratio)', () => {
-        for (const tier of Bounty.TIERS) {
-            expect(tier.penalty).toBe(-tier.reward);
+    // Penalty:reward ratio history (all same-day, 2026-09-19, after the original
+    // 2026-09-08 "Penalty escalation" pass introduced the climbing ratio): briefly
+    // flattened to one shared amount across every tier (a misread, reverted same day) ->
+    // climbing ratio restored -> set flat 1:1 (direct instruction, "look at how guild raid
+    // reward and penalty is done") -> reverted again ("have merc penalties go up to 2x
+    // again scaling") back to the original climbing 1.0x->2.0x shape, landing here.
+    test('B1 keeps the original 1:1 penalty:reward ratio; B12 reaches exactly 2.0x', () => {
+        expect(Bounty.TIERS[0].penalty).toBe(-Bounty.TIERS[0].reward);
+        expect(Math.abs(Bounty.TIERS[11].penalty)).toBe(Bounty.TIERS[11].reward * 2);
+    });
+
+    test('penalty:reward ratio increases monotonically with tier', () => {
+        const ratios = Bounty.TIERS.map(t => Math.abs(t.penalty) / t.reward);
+        for (let i = 1; i < ratios.length; i++) {
+            expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
         }
+        expect(ratios[0]).toBeCloseTo(1.0, 5);
+        expect(ratios[ratios.length - 1]).toBeCloseTo(2.0, 5);
     });
 
     test('B1 (Baby Bounty\'s fixed tier) keeps the pre-rework Tier I difficulty (10) — continuity for the universal newbie landmark', () => {

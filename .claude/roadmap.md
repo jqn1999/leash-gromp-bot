@@ -14536,3 +14536,41 @@ both already ported/reverted there and this one hasn't been yet).
 Docs: `.claude/systems/mercenary-bounties.md` gained a "Tenth pass (flat 1:1 ratio)" subsection
 right after the misread-and-correction entry, citing the actual Guild Raid numbers that motivated
 the final design.
+
+## Bounty penalty reverted to a climbing ratio, both reward+penalty halved; Rank 6 reward multiplier raised to 5x, backloaded to Ranks 4-6 (2026-09-19, same day, direct instructions: "Revert the recent change and have merc penalties go up to 2x again scaling" / "Adjust the max merc reward to be 5x instead of 2.35x at rank 6 with the benefits mostly back loaded at merc 4-6" / "Reduce the reward/penalty amounts to 50% of what they are now so also what we had originally before the latest changes today")
+
+The last word (for today) on the Bounty penalty saga, plus an independent change to Mercenary
+Rank's own reward multiplier, landed in the same pass.
+
+**Bounty.TIERS**: two changes requested together turned out to have a clean combined effect. (1)
+The flat 1:1 penalty:reward ratio from the immediately-preceding entry is reverted — penalty climbs
+1.0x→2.0x by tier again, restoring the original 2026-09-08 "Penalty escalation" shape exactly. (2)
+Every reward AND penalty halved off today's doubled ("bump merc bounties another 2x") values.
+Applying both at once landed the table byte-identical to the Sixth-pass table — i.e. exactly what
+`Bounty.TIERS` looked like before ANY of today's changes touched it, confirming the player's own
+"what we had originally before the latest changes today" was literal, not approximate: T1
+41,000/41,000 up through T12 24,651,000/49,302,000 (penalty still exactly `reward × 2` at the top).
+
+**MercenaryRank.THRESHOLDS' `rewardMultiplier`**: an independent change — Rank 6's ceiling raised
+from 2.35x to 5.00x, with the growth backloaded onto Ranks 4-6. Ranks 1-3 are UNCHANGED
+(1.00x/1.15x/1.30x); Ranks 4-6 became 2.00x/3.30x/5.00x (previously 1.55x/1.90x/2.35x). Of the full
++4.00 climb from Rank 1 to Rank 6, Ranks 4-6 alone now contribute +3.70 (92.5%) — Rank 3→4's own
+jump (+0.70) is already bigger than the entire old Rank 1→3 climb, accelerating further each rank
+after. `rivalSuccessBonus`/`cooldownReductionPercent` (the other two columns on the same table)
+were left untouched — only the reward column was in scope.
+
+**Tests**: `mercenaryFactory.test.js`'s flat-1:1 penalty test replaced by the original two
+climbing-ratio tests (B1 keeps 1:1, B12 reaches exactly 2.0x, ratio strictly increasing tier to
+tier). No test hardcoded the old 2.35x rank-6 multiplier against the live constant (a couple of
+`embedFactory.test.js` fixtures use `rewardMultiplier: 2.35` as an arbitrary display-only value
+unrelated to the real constant — confirmed harmless, left alone). Full suite: **1768/1768** across
+95 suites. `node -c` clean.
+
+**Cross-repo**: `financial-project`'s mirrored `Bounty.TIERS` copy (`claude/merc-bounty-buff-rescale`
+branch) and its own `MercenaryRank`-equivalent reward-multiplier table (if present — needs
+confirming) both still need this same revert-and-rescale; not yet ported, flagged here rather than
+silently skipped.
+
+Docs: `.claude/systems/mercenary-bounties.md` gained an "Eleventh pass" subsection (Bounty ratio)
+and a same-day rescale note under the Mercenary Rank table (reward multiplier), both explaining the
+net effect plainly rather than just the mechanical diff.

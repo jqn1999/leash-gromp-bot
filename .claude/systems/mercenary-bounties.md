@@ -136,13 +136,22 @@ rank 2→5 span combined:
 | 1 | 0 | 1.00x | — |
 | 2 | 15 | 1.15x | 6% |
 | 3 | 50 | 1.30x | 11% |
-| 4 | 125 | 1.55x | 18% |
-| 5 | 275 | 1.90x | 27% |
-| 6 (max) | 525 | 2.35x | 38% |
+| 4 | 125 | 2.00x | 18% |
+| 5 | 275 | 3.30x | 27% |
+| 6 (max) | 525 | 5.00x | 38% |
 
 `cooldownReductionPercent`'s max was deliberately NOT pushed as high proportionally as the
 other two — see its own dedicated section further down for why (it feeds a SHARED cap with
 Spud Keep's own cooldown buff).
+
+**`rewardMultiplier` rescaled again, 2026-09-19** (direct instruction: "Adjust the max merc
+reward to be 5x instead of 2.35x at rank 6 with the benefits mostly back loaded at merc
+4-6"). Ranks 1-3 are UNCHANGED (1.00x/1.15x/1.30x) — the backload means the early game feels
+exactly as it did before; all of the extra growth is pushed onto Ranks 4-6. Of the full
++4.00 climb from Rank 1 to Rank 6, Ranks 4-6 alone contribute +3.70 (92.5%) — Rank 3→4's own
+jump (+0.70) is already bigger than the ENTIRE Rank 1→3 climb used to be, then accelerates
+further each rank after (+1.30, +1.70). `rivalSuccessBonus`/`cooldownReductionPercent` are
+untouched — this pass only touched the reward column.
 
 **Rank no longer gates Bounty tier access at all** — retired 2026-08-28 alongside the
 12-Tier Bounty Ladder rework below (`unlocksTier` removed from `MercenaryRank.THRESHOLDS`
@@ -712,6 +721,18 @@ direct mirror of Guild Raid's own mechanism available to a ladder with no mode b
 its own `reward` (e.g. B12: 98,604,000 → 49,302,000); `reward` itself untouched throughout this
 entire back-and-forth. `mercenaryFactory.test.js`'s two climbing-ratio tests replaced by one
 `penalty equals -reward for every tier` test. Full suite: **1767/1767**.
+
+**Eleventh pass (revert to climbing ratio + halve both), same day, direct instruction** —
+"Revert the recent change and have merc penalties go up to 2x again scaling... Reduce the
+reward/penalty amounts to 50% of what they are now so also what we had originally before the
+latest changes today." Two changes landed together: (1) the flat 1:1 ratio from the Tenth pass is
+gone — penalty climbs 1.0x→2.0x by tier again, exactly the original "Penalty escalation" shape;
+(2) every reward AND penalty halved off the Seventh/Eighth-pass doubled values. Doing both at once
+has a clean net effect: **this table is now byte-identical to the Sixth-pass table**, from before
+any of today's Bounty changes — confirming the player's own "what we had originally before the
+latest changes today" landed exactly there, not just approximately. `mercenaryFactory.test.js`'s
+flat-1:1 test replaced by the original two climbing-ratio tests (B1 1:1, B12 exactly 2.0x, ratio
+monotonically increasing). Full suite: **1768/1768**.
 
 ### House tax on a win (`Bounty.WIN_TAX_PERCENT`, 5%, new 2026-08-31)
 
