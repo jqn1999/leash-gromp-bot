@@ -362,12 +362,20 @@ async function getWorkCooldownSkipSources(userDetails) {
         ? mercenaryBuffFactory.getMercenaryBuffValue("workTimer", mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank)
         : 0;
 
+    // Trading Post's Quickstep Tonic (systems/trading-post.md) — a 6th skip-chance source,
+    // same shape as every other source here: 0 (a no-op) whenever no live workTimer potion
+    // is active on this player. Reads userDetails.activePotion directly (no DB fetch needed,
+    // unlike worldBuff/guild above) since it's already part of the userDetails object every
+    // caller here already holds.
+    const potionSkipChance = isPotionLive(userDetails.activePotion, "workTimer") ? userDetails.activePotion.value : 0;
+
     return [
         { key: "companion", chance: companionSkipChance, label: companionName },
         { key: "worldBuff", chance: worldBuffSkipChance, label: worldBuff ? worldBuff.bossName : null },
         { key: "guildBuff", chance: guildBuffSkipChance, label: guild ? guild.guildName : null },
         { key: "spudKeep", chance: spudKeepSkipChance, label: "Spud Keep" },
-        { key: "mercenaryBuff", chance: mercenaryBuffSkipChance, label: "Mercenary Buff" }
+        { key: "mercenaryBuff", chance: mercenaryBuffSkipChance, label: "Mercenary Buff" },
+        { key: "potion", chance: potionSkipChance, label: "Trading Post" }
     ];
 }
 
@@ -428,6 +436,8 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime, skipp
                 userDetails._cooldownSkippedByCompanion = { source: "spudKeep" };
             } else if (winningSource === "mercenaryBuff") {
                 userDetails._cooldownSkippedByCompanion = { source: "mercenaryBuff" };
+            } else if (winningSource === "potion") {
+                userDetails._cooldownSkippedByCompanion = { source: "potion" };
             }
             return Date.now();
         }
@@ -690,7 +700,14 @@ function getDefaultUserFields(userId, username) {
         // every winner a lump sum the instant before the next rob window opens. Collected
         // into liquid potatoes whenever the player chooses via /spud-keep-collect (see
         // dynamoHandler.collectSpudKeepReward).
-        spudKeepPendingPotatoes: 0
+        spudKeepPendingPotatoes: 0,
+        // Trading Post (systems/trading-post.md) — { potionId, effectType, value,
+        // expiresAt } | null, mirroring world_buff's exact shape (see isWorldBuffLive
+        // above) just keyed per-player instead of server-wide. An expired potion reads
+        // identically to no potion at all — never actively cleared, same "leave it to go
+        // stale until overwritten" convention world_buff already uses. See isPotionLive
+        // below for the shared freshness+type check every consumption point reads.
+        activePotion: null
     };
 }
 
@@ -925,7 +942,14 @@ const passivePotatoHandler = async function (timesInADay) {
         const passiveIncomePercent = companionFactory.getActivePerkValue(user, "passiveIncomePercent");
         const rebirthPercent = rebirthFactory.getLiveRebirthPercent(user);
         const spudKeepPassivePercent = spudKeepFactory.isSpudKeepBuffLiveForUser(spudKeepBuff, user, SpudKeep.PASSIVE_BUFF_TYPE) ? spudKeepBuff.value : 0;
-        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent + worldBuffPassivePercent + spudKeepPassivePercent) / timesInADay);
+        // Trading Post's Hoarder's Brew (systems/trading-post.md) — same
+        // percentage-of-current-passiveAmount shape as every other term in this sum. `user`
+        // here is a raw getUsers() scan row (not findUser's self-healed path), so
+        // user.activePotion can be genuinely undefined on an unhealed record —
+        // isPotionLive's own `Boolean(potion && ...)` guard already handles that safely,
+        // same as every other field this loop defends with toNumber for the same reason.
+        const potionPassivePercent = isPotionLive(user.activePotion, "passiveAmount") ? user.activePotion.value : 0;
+        const passiveGain = Math.round(toNumber(user.passiveAmount) * (1 + passiveIncomePercent + rebirthPercent + worldBuffPassivePercent + spudKeepPassivePercent + potionPassivePercent) / timesInADay);
         const userBankStored = toNumber(user.bankStored) + passiveGain;
         const userTotalEarnings = toNumber(user.totalEarnings) + passiveGain;
         await updateBankStoredPotatoesAndTotalEarnings(user.userId, userBankStored, userTotalEarnings);
@@ -2046,6 +2070,13 @@ function isWorldBuffLive(buff, buffType) {
     return Boolean(buff && buff.buffType === buffType && buff.expiresAt > Date.now());
 }
 
+// Trading Post's own per-player sibling to isWorldBuffLive above — structurally identical
+// (same "expired reads identically to no buff at all" convention), just checking
+// activePotion's own `effectType` key instead of world_buff's `buffType`.
+function isPotionLive(potion, effectType) {
+    return Boolean(potion && potion.effectType === effectType && potion.expiresAt > Date.now());
+}
+
 // Spud Keep (systems/spud-keep.md) — the granted-buff/holder-pointer doc, mirroring
 // getActiveWorldBuff/setActiveWorldBuff's own "global pointer in the stats table" shape
 // exactly, just carrying a holder-type-aware predicate (spudKeepFactory.
@@ -2187,6 +2218,7 @@ module.exports = {
     getActiveWorldBuff,
     setActiveWorldBuff,
     isWorldBuffLive,
+    isPotionLive,
 
     getActiveSpudKeepBuff,
     getActiveSpudKeepCooldownBuff,

@@ -15605,6 +15605,106 @@ a potion system would need its own web-side port once built, not just a read-onl
 Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
 the open questions above before a developer builds any of it.
 
+## Shipped: Trading Post — Guild & Merc Faction (2026-09-20, follows through on the scoping pass
+above, product owner confirmation "Dont include companions in the trading posts" already folded
+into `trading-post.md` before this build started)
+
+Built to the design doc's own confirmed shape — companions were never part of this build (that idea
+was dropped from the feature entirely during scoping, see `trading-post.md`'s own "CONFIRMED,
+superseding the original architect pass" note), so this shipped a pure NPC potion storefront, one
+mechanism, not the original two-mechanism fusion the architect pass first proposed. Both of the
+doc's "Still open" items (the purchase rule, and `passiveAmount`'s flat-vs-percentage shape) were
+resolved during implementation as developer judgment calls grounded in the rest of the doc, not new
+product decisions — see `trading-post.md`'s own "Shipped" section for the full reasoning on both.
+
+**Root-cause style investigation before locking `passiveAmount`'s shape**: rather than guessing,
+checked `dynamoHandler.passivePotatoHandler`'s existing per-user passive-gain line directly —
+it already sums `passiveIncomePercent` + `rebirthPercent` + `worldBuffPassivePercent` +
+`spudKeepPassivePercent` as PERCENTAGES multiplied against `passiveAmount`, never a flat add. Hoarder's
+Brew's `value` folds into that same sum as a percentage, keeping all three potions' illustrative 8-10%
+numbers consistently readable as "a percent boost," not a mix of flat-potatoes-per-day and percentage
+sibling terms that would have made the catalog's own shared `value` field mean two different things
+depending on which potion it belonged to.
+
+**`constants.js`**: new `Potions.CATALOG` — 3 entries (`workDraught`/`quickstepTonic`/`hoardersBrew`),
+one per effect type, each `{ id, name, effectType, value, durationSeconds, pricePotatoes }`. The
+`name` field is an addition beyond the design's own code sample, added purely for display (purchase
+confirmations, the embed's per-potion field titles, the "you already have X active" rejection
+message) — kept as ONE canonical name shared by both scopes rather than the doc's own "Flavor"
+section sketch of scope-exclusive item names (e.g. "Backroad Brew" for the merc read), a deliberate
+v1 simplification: only the surrounding embed copy (title/intro sentence/color) differs by scope,
+never the catalog data itself, keeping "same catalog, flavor-only difference" (an already-CONFIRMED
+resolution) unambiguous rather than reopening it with a second name field.
+
+**`dynamoHandler.js`**: `activePotion: null` added to `getDefaultUserFields`, healed via the existing
+generic top-level diff-and-heal loop in `findUser` — no migration script. New `isPotionLive(potion,
+effectType)`, structurally identical to `isWorldBuffLive`, exactly as scoped. `getWorkCooldownSkipSources`
+gained a 6th source reading `userDetails.activePotion` directly (no extra DB fetch — a potion is
+already part of the `userDetails` object every caller already holds, unlike the World Boss buff or a
+guild's own buff pick); `calculateWorkTimerValue`'s attribution branch and `embedFactory.
+buildCooldownSkipField` both gained a matching `{ source: 'potion' }` case. `passivePotatoHandler`'s
+per-user loop gained `potionPassivePercent` in the same sum as the other 4 passive percentage terms,
+guarded by `isPotionLive`'s own `Boolean(potion && ...)` check so a raw scan row missing `activePotion`
+entirely (an unhealed pre-existing account, since `getUsers()` is a scan, not `findUser`'s self-healed
+path) can't throw — same defensive posture every other field in that loop already has via `toNumber`.
+
+**`workFactory.js`**: new `getPotionWorkMulti(userDetails, userMultiplier)`, folded into every one of
+`WorkFactory`'s 7 non-Poison `effectiveMultiplier` sums that already included `worldBuffMultiplier`
+(Metal/Taro/Golden Yam/Ancient's potato-payout branch/Golden/Large/Regular), exported for
+`mercenaryFactory.js`'s own 2 sibling sums (`resolveBountyAttempt`'s starch-flavored win reward,
+`resolveNpcRob`'s developed-multiplier calc) — both already folded in `getWorldBuffWorkMulti` the same
+way, so the potion slots in identically. Deliberately excluded from `handlePoisonPotato`, mirroring
+that function's own pre-existing exclusion of the World Boss buff for the identical stated reason (a
+"bigger gains" perk must never silently become a bigger loss on a punishment scenario).
+
+**`embedFactory.js`**: `/profile` and `/user-stats`'s existing "live modifier" sums (guild buff/
+Mercenary Buff/companion perk/rebirth%/World Boss buff) both gained the potion's `workMulti`/
+`passiveAmount` terms — the same class of display-understatement bug this codebase has fixed before
+for World Boss and Mercenary Buff additions to this exact sum, caught proactively here rather than
+needing its own later bug report. New `createTradingPostEmbed` renders both scope flavors off one
+method, branching only title/intro sentence/color on `tradingPostFactory.isScopeGuild(scopeKey)` —
+Guild reads as a chartered, taxed institution; Merc reads as a hooded, no-questions trader — both
+lines checked against `lore.md`'s own storybook test before finalizing.
+
+**New `tradingPostFactory.js`**: `resolveTradingPostScope` shipped verbatim from the design's own code
+sample. `attemptPurchasePotion` reuses `shopFactory.attemptShopBuy`'s exact "re-fetch fresh, no
+optimistic lock" shape, an accepted tradeoff here for the same reason it's accepted there — a Trading
+Post purchase isn't a shared/contested resource (the doc's own confirmed "no scarcity, no
+cross-player competition" purchase model), so only the buyer's own concurrent actions could ever race
+it. Implements the purchase rule exactly as the doc's own recommendation: same effect type while one's
+active extends `expiresAt` off the CURRENT expiry by the new potion's `durationSeconds` (never
+re-rolling `value`); a different effect type while one's active is rejected outright, naming the
+active potion and its `<t:UNIX:R>` expiry, no partial refund; an EXPIRED potion of a different type
+doesn't block a new purchase (reads identically to no potion at all, same `world_buff` convention).
+
+**New `/trading-post` command** (`src/commands/user/tradingPost.js`) — placed alongside `takeBounty.js`
+in `commands/user/` (usable by both guilded and mercenary players, not guild-exclusive), auto-scoped
+off the caller's own `guildId`/`isMercenary`, rejects outright with a clear message for a player with
+neither, one buy button per catalog potion (disabled only when unaffordable, never for a
+purchase-rule rejection — that needs its own explanatory message a disabled button can't carry). No
+pagination (3 catalog entries), no listing/selling command — pure NPC storefront, exactly as
+confirmed.
+
+**Tests**: full suite run before and after — before this change: 106 suites / 1892 tests. After: 108
+suites / 1931 tests, all green, including 2 pre-existing tests updated for the new 6th
+cooldown-skip source and the widened live-modifier label text (both expected, additive consequences
+of folding a new term into existing shared sums, not regressions). New coverage: `tradingPostFactory.
+test.js` (scope resolution for guild/merc/neither, `hasAnyLivePotion`, `findPotionById`, and the full
+purchase-rule matrix), `tradingPost.test.js` (the command's reject-with-no-scope path, both scope
+embeds, a missing-guild-lookup error, and an end-to-end buy-button click), plus extended coverage in
+`dynamoHandler.test.js` (`isPotionLive`, the new cooldown-skip source, `activePotion` healing, and 3
+`passivePotatoHandler` potion-term cases), `workFactory.test.js` (`getPotionWorkMulti` directly, its
+`handleRegularWork` fold-in, and its `handlePoisonPotato` exclusion), and `mercenaryFactory.test.js`
+(the same potion term in `resolveBountyAttempt`/`resolveNpcRob`).
+
+**Explicitly deferred, not overlooked**: no `financial-project` port this pass, per this repo's own
+`CLAUDE.md` cross-repo rule and this task's own explicit "hold off on the website port" scope
+boundary — needs its own audit + port pass with a new numbered `## Bot caught up #N` entry in that
+repo's `NOTES_GROMP_WEB_INTEGRATION.md` before `/gromp` and the bot can drift on these three new
+stats. Concrete potion price/duration/magnitude numbers are still the doc's own illustrative
+placeholders (150,000 potatoes / 8-10% / 2h, identical across all three), not a locked balance pass —
+flagged again here rather than silently treated as final.
+
 ## Titles — Design (scoping only, not implemented) (2026-09-20, architect pass)
 
 Product owner confirmed idea B1 ("Titles / Cosmetic Loot," [feature-ideas.md](systems/feature-ideas.md#b-prestige--endgame-depth))

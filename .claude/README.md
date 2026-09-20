@@ -49,11 +49,11 @@ those AWS services.
 - [systems/spud-keep.md](systems/spud-keep.md) — the daily contested-territory event: guilds vs.
   the Merc Faction, the N-way weighted lottery, the bundle buff, the accruing tax-redirect pot, and
   the Attacker's Bonus.
-- [systems/trading-post.md](systems/trading-post.md) — **design only, not implemented** — a
-  Guild-scoped and a Merc-Faction-scoped Trading Post: a roster-filtered companion marketplace
-  (reusing `companionMarketFactory.js`'s escrow) plus a new potion vendor (temporary work
-  multiplier/cooldown-skip/starch buffs), gated the same `scopeKey` way as Guild Chat Sync/Merc
-  Faction Hall.
+- [systems/trading-post.md](systems/trading-post.md) — **shipped** — a Guild-scoped and a
+  Merc-Faction-scoped NPC potion vendor: a static, no-scarcity 3-potion catalog (temporary Work
+  Multiplier/Cooldown-Skip Chance/Passive Income boosts), gated the same `scopeKey` way as Guild
+  Chat Sync/Merc Faction Hall. No companion marketplace involved — that idea was dropped from
+  this feature during scoping.
 - [systems/seasonal-festivals.md](systems/seasonal-festivals.md) — **design only, not implemented**
   — time-boxed festivals: an admin-started/DB-persisted calendar window (Spud Keep's
   persisted-`expiresAt` pattern, not Quests' derived-tag one), a festival-only quest-shaped

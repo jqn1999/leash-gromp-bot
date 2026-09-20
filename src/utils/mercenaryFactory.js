@@ -1,7 +1,7 @@
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, StatBountyFlavor, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries, SpudKeep } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
-const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent } = require("../utils/workFactory");
+const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent, getPotionWorkMulti } = require("../utils/workFactory");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const dynamoHandler = require("../utils/dynamoHandler");
@@ -192,7 +192,10 @@ async function resolveBountyAttempt(userDetails, mode) {
             // amount shape every /work-shaped reward already uses (workFactory.js's own
             // effectiveMultiplier), was missing here the same way companionMultiplier was.
             const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier + worldBuffMultiplier;
+            // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as
+            // every other term here.
+            const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier + worldBuffMultiplier + potionMultiplier;
             const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[bandLetter];
             result.rewardAmount = Math.round(base * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
         }
@@ -300,7 +303,10 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // World Boss's workMulti buff (2026-09-04, direct instruction) — same absolute-amount
     // shape every /work-shaped reward already uses, was missing here too.
     const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier;
+    // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as every
+    // other term here.
+    const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier;
     // Capped 2026-09-12, direct instruction — see RobNpc.MAX_REWARD_MULTIPLIER's own comment
     // in constants.js. Applied to BOTH the loss-side lossScale below and the win-side reward
     // (via effectiveMultiplier further down), so risk and reward flatten together past this

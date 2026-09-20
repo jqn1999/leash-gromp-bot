@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, computeMimicMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti, calculateGainAmount } = require('../workFactory');
+const { WorkFactory, getCurrentWeekTag, computePoisonMitigation, computeMimicMitigation, getEffectiveScenarioChances, getWorldBuffWorkMultiPercent, getMercenaryWorkMulti, getPotionWorkMulti, calculateGainAmount } = require('../workFactory');
 const { TAX_EXEMPT_TEST_USER_ID } = require('../constants');
 const { Work, REGRADE_CAPS, Bank, PoisonMitigation, MimicMitigation, MimicSlaying, awsConfigurations } = require('../constants');
 const { WORK_SCENARIO_INDICES } = require('../eventFactory');
@@ -694,6 +694,49 @@ describe('getWorldBuffWorkMulti (via handleRegularWork)', () => {
         const noBuff = await workFactory.handleRegularWork(baseUser({ workMultiplierAmount: 10 }), 1000, 1, 0);
 
         expect(withMismatchedBuff).toBe(noBuff);
+    });
+});
+
+// Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-% shape as
+// getWorldBuffWorkMulti above, read straight off userDetails.activePotion.
+describe('getPotionWorkMulti', () => {
+    test('a live workMulti potion contributes userMultiplier * value', () => {
+        dynamoHandler.isPotionLive.mockImplementation((potion, type) => Boolean(potion && potion.effectType === type));
+        const userDetails = baseUser({ activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.08, expiresAt: Date.now() + 1000 } });
+        expect(getPotionWorkMulti(userDetails, 10)).toBeCloseTo(0.8);
+    });
+
+    test('an expired or wrong-type potion contributes 0', () => {
+        dynamoHandler.isPotionLive.mockReturnValue(false);
+        const userDetails = baseUser({ activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.08, expiresAt: Date.now() - 1000 } });
+        expect(getPotionWorkMulti(userDetails, 10)).toBe(0);
+    });
+
+    test('no active potion at all contributes 0', () => {
+        dynamoHandler.isPotionLive.mockReturnValue(false);
+        expect(getPotionWorkMulti(baseUser({ activePotion: null }), 10)).toBe(0);
+    });
+
+    test('a live workMulti potion adds to handleRegularWork\'s gain the same way getWorldBuffWorkMulti does', async () => {
+        dynamoHandler.isPotionLive.mockImplementation((potion, type) => Boolean(potion && potion.effectType === type && potion.expiresAt > Date.now()));
+        const buffed = baseUser({ workMultiplierAmount: 10, activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.08, expiresAt: Date.now() + 1000 } });
+        const unbuffed = baseUser({ workMultiplierAmount: 10, activePotion: null });
+        const buffedGain = await workFactory.handleRegularWork(buffed, 1000, 1, 0);
+        const unbuffedGain = await workFactory.handleRegularWork(unbuffed, 1000, 1, 0);
+        expect(buffedGain).toBeGreaterThan(unbuffedGain);
+    });
+
+    // Poison Potato deliberately excludes this potion, mirroring World Boss's own exclusion
+    // — a paid-for "bigger gains" potion should never silently turn into a bigger loss.
+    test('handlePoisonPotato\'s loss is unaffected by a live workMulti potion', async () => {
+        dynamoHandler.isPotionLive.mockImplementation((potion, type) => Boolean(potion && potion.effectType === type && potion.expiresAt > Date.now()));
+        const buffed = baseUser({ userId: 'a', workMultiplierAmount: 10, potatoes: 1000000, activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 } });
+        const unbuffed = baseUser({ userId: 'b', workMultiplierAmount: 10, potatoes: 1000000, activePotion: null });
+        dynamoHandler.getStatDatabase.mockResolvedValue({ hoardPotatoes: 0 });
+
+        const buffedResult = await workFactory.handlePoisonPotato(buffed, 1000, 1);
+        const unbuffedResult = await workFactory.handlePoisonPotato(unbuffed, 1000, 1);
+        expect(buffedResult.potatoesLost).toBe(unbuffedResult.potatoesLost);
     });
 });
 

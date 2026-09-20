@@ -383,7 +383,7 @@ describe('createUserEmbed Mercenary Buff field', () => {
             mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
         }));
         const field = embed.data.fields.find(f => f.name.includes('Current Work Multiplier Upgrade'));
-        expect(field.value).toContain('Live: 1.06x (+0.06x guild/mercenary/companion/rebirth/world buff)');
+        expect(field.value).toContain('Live: 1.06x (+0.06x guild/mercenary/companion/rebirth/world buff/potion)');
     });
 });
 

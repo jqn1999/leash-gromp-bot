@@ -1678,6 +1678,58 @@ describe('World Boss workMulti buff', () => {
     });
 });
 
+// Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as World Boss's
+// workMulti buff above, read straight off userDetails.activePotion (no DB fetch).
+describe('Trading Post workMulti potion', () => {
+    const dynamoHandler = require('../dynamoHandler');
+
+    afterEach(() => {
+        dynamoHandler.isPotionLive.mockReset();
+    });
+
+    test('resolveBountyAttempt: raises a starch-flavored win reward too', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, base range roll, stat-reward miss, yukon miss
+
+        dynamoHandler.isPotionLive.mockReturnValue(false);
+        let randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withoutPotion = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+        randomSpy.mockRestore();
+
+        dynamoHandler.isPotionLive.mockImplementation((potion, type) => Boolean(potion && potion.effectType === type));
+        randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withPotion = await mercenaryFactory.resolveBountyAttempt(
+            baseUser({ workMultiplierAmount: 90, activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 } }),
+            'baby'
+        );
+        randomSpy.mockRestore();
+
+        expect(withoutPotion.currency).toBe('starch');
+        expect(withPotion.currency).toBe('starch');
+        expect(withPotion.rewardAmount).toBeGreaterThan(withoutPotion.rewardAmount);
+    });
+
+    test('resolveNpcRob: raises the reward on a win', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees a hit, minimal multiplier roll
+
+        dynamoHandler.isPotionLive.mockReturnValue(false);
+        const withoutPotion = await mercenaryFactory.resolveNpcRob(baseUser({ workMultiplierAmount: 1 }), 1000, 0, 'market_stall');
+
+        dynamoHandler.isPotionLive.mockImplementation((potion, type) => Boolean(potion && potion.effectType === type));
+        const withPotion = await mercenaryFactory.resolveNpcRob(
+            baseUser({ workMultiplierAmount: 1, activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.5, expiresAt: Date.now() + 1000 } }),
+            1000, 0, 'market_stall'
+        );
+
+        randomSpy.mockRestore();
+        expect(withPotion.won).toBe(true);
+        expect(withoutPotion.won).toBe(true);
+        expect(withPotion.amount).toBeGreaterThan(withoutPotion.amount);
+    });
+});
+
 // getMercenaryCooldownSkipSources (2026-09-05, direct instruction — "can we get all the
 // user's skip chances for all the various mechanics somewhere") — the exact same
 // source-gathering both takeBounty.js's runBountyAttempt and robNpc.js's runNpcRobAttempt

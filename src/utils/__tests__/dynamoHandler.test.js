@@ -181,6 +181,24 @@ describe('findUser', () => {
         expect(writtenValue).toEqual({ regular: 3, large: 1, sweet: 0, taro: 0, poison: 0, metalSuccess: 0, metalFailure: 0, golden: 0, companion: 0, ancient: 0, mimic: 0, mimicKilled: 0, goldenYam: 0 });
     });
 
+    // Trading Post (systems/trading-post.md) — activePotion is a plain top-level field
+    // (default null), so it heals through the SAME generic diff-and-heal loop every other
+    // top-level field already relies on — no dedicated migration script needed.
+    test('heals a pre-existing account missing activePotion to null', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{ userId: 'u5b', username: 'name5b' }], // predates Trading Post entirely
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u5b', 'name5b');
+
+        expect(user.activePotion).toBeNull();
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).toContain('activePotion');
+    });
+
     test('does not touch a nested object that already has every sub-key', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,
@@ -846,6 +864,19 @@ describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuff
     });
 });
 
+// Trading Post's per-player sibling to isWorldBuffLive above — structurally identical,
+// just keyed off activePotion's own effectType instead of world_buff's buffType.
+describe('isPotionLive', () => {
+    test('true only for a matching, not-yet-expired potion', () => {
+        const future = Date.now() + 60000, past = Date.now() - 60000;
+        expect(dynamoHandler.isPotionLive({ effectType: 'workMulti', expiresAt: future }, 'workMulti')).toBe(true);
+        expect(dynamoHandler.isPotionLive({ effectType: 'workMulti', expiresAt: past }, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isPotionLive({ effectType: 'workTimer', expiresAt: future }, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isPotionLive(null, 'workMulti')).toBe(false);
+        expect(dynamoHandler.isPotionLive(undefined, 'workMulti')).toBe(false);
+    });
+});
+
 // Spud Keep (systems/spud-keep.md) — spud_keep_buff/spud_keep_cooldown_buff mirror
 // world_buff's own get/set shape exactly for reads.
 describe('Spud Keep buff docs (getActiveSpudKeepBuff / getActiveSpudKeepCooldownBuff)', () => {
@@ -1082,7 +1113,7 @@ describe('calculateWorkTimerValue mercenary workTimer buff', () => {
 // can preview it without performing a roll. No Math.random mocking needed here since this
 // function never rolls anything itself.
 describe('getWorkCooldownSkipSources', () => {
-    test('returns all five sources at 0 chance and null labels when nothing is active', async () => {
+    test('returns all six sources at 0 chance and null labels when nothing is active', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff
         const userDetails = {};
 
@@ -1094,7 +1125,29 @@ describe('getWorkCooldownSkipSources', () => {
             { key: 'guildBuff', chance: 0, label: null },
             { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
             { key: 'mercenaryBuff', chance: 0, label: 'Mercenary Buff' },
+            { key: 'potion', chance: 0, label: 'Trading Post' },
         ]);
+    });
+
+    // Trading Post's Quickstep Tonic (systems/trading-post.md) — a 6th skip-chance source,
+    // read straight off userDetails.activePotion (no DB fetch, unlike worldBuff/guildBuff).
+    test('a live workTimer potion shows its own chance', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        const userDetails = { activePotion: { potionId: 'quickstepTonic', effectType: 'workTimer', value: 0.1, expiresAt: Date.now() + 3600000 } };
+
+        const sources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
+        expect(sources.find(s => s.key === 'potion')).toEqual({ key: 'potion', chance: 0.1, label: 'Trading Post' });
+    });
+
+    test('an expired or wrong-type potion shows a 0 potion chance', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+
+        const expired = await dynamoHandler.getWorkCooldownSkipSources({ activePotion: { effectType: 'workTimer', value: 0.1, expiresAt: Date.now() - 1000 } });
+        expect(expired.find(s => s.key === 'potion').chance).toBe(0);
+
+        const wrongType = await dynamoHandler.getWorkCooldownSkipSources({ activePotion: { effectType: 'workMulti', value: 0.08, expiresAt: Date.now() + 3600000 } });
+        expect(wrongType.find(s => s.key === 'potion').chance).toBe(0);
     });
 
     // Mercenary Buff's workTimer category (systems/mercenary-bounties.md#mercenary-buff) —
@@ -1176,6 +1229,50 @@ describe('passivePotatoHandler world buff term', () => {
 
         await dynamoHandler.passivePotatoHandler(288);
 
+        const [updateParams] = docClient.update.mock.calls[0];
+        expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
+    });
+});
+
+// Trading Post's Hoarder's Brew (systems/trading-post.md) folds additively into
+// passivePotatoHandler's per-user passive gain, same site/shape as
+// passiveIncomePercent/rebirthPercent/worldBuffPassivePercent/spudKeepPassivePercent above.
+describe('passivePotatoHandler potion term', () => {
+    test('a live passiveAmount potion adds its value on top of the normal passive gain', async () => {
+        const user = { userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1, activePotion: { potionId: 'hoardersBrew', effectType: 'passiveAmount', value: 0.08, expiresAt: Date.now() + 60000 } };
+        docClient.scan.mockReturnValue(resolved({ Items: [user] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] })); // no world buff, no Spud Keep buff
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const [updateParams] = docClient.update.mock.calls[0];
+        expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 * 1.08 / 288));
+    });
+
+    test('an expired potion, or one of a different effectType, leaves the passive gain unboosted', async () => {
+        const expiredUser = { userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1, activePotion: { potionId: 'hoardersBrew', effectType: 'passiveAmount', value: 0.08, expiresAt: Date.now() - 1000 } };
+        docClient.scan.mockReturnValue(resolved({ Items: [expiredUser] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.passivePotatoHandler(288);
+
+        const [updateParams] = docClient.update.mock.calls[0];
+        expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
+    });
+
+    // getUsers() is a raw scan — a record only ever auto-vivified by an ADD-only write (or
+    // simply not yet healed) can genuinely be missing activePotion entirely. isPotionLive's
+    // own `Boolean(potion && ...)` guard must not throw on that, same defense every other
+    // field in this loop already gets via toNumber.
+    test('a record missing activePotion entirely does not throw and is treated as no potion', async () => {
+        const unhealedUser = { userId: 'u1', passiveAmount: 1000, bankStored: 0, totalEarnings: 0, potatoes: 0, starches: 0, workCount: 1 };
+        docClient.scan.mockReturnValue(resolved({ Items: [unhealedUser] }));
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await expect(dynamoHandler.passivePotatoHandler(288)).resolves.not.toThrow();
         const [updateParams] = docClient.update.mock.calls[0];
         expect(updateParams.ExpressionAttributeValues[':bankStored']).toBe(Math.round(1000 / 288));
     });

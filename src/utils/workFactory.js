@@ -255,7 +255,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
         const workMultiplierGrant = metalPotatoRewards.workMultiplierReward;
 
@@ -409,7 +412,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(effectiveMultiplier, 1.5 * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -441,7 +447,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
         const starchAmount = Math.round(getRandomFromInterval(Work.GOLDEN_YAM_MULTIPLIER_MIN * effectiveMultiplier, Work.GOLDEN_YAM_MULTIPLIER_MAX * effectiveMultiplier));
         userStarches += starchAmount;
 
@@ -574,7 +583,10 @@ class WorkFactory {
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const rebirthMultiplier = userDetails.workMultiplierAmount * rebirthFactory.getLiveRebirthPercent(userDetails);
             const worldBuffMultiplier = await getWorldBuffWorkMulti(userDetails.workMultiplierAmount);
-            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+            // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+            // bucket every other term here already feeds.
+            const potionMultiplier = getPotionWorkMulti(userDetails, userDetails.workMultiplierAmount);
+            const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
             potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails);
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
@@ -612,6 +624,9 @@ class WorkFactory {
         // pure "bigger gains" perk everywhere else it applies; folding it in here would
         // make it silently bigger LOSSES on a Poison hit instead, the opposite of what a
         // buff should ever do (see systems/raids-and-world-events.md#server-wide-buff).
+        // Trading Post's Steadfast Draught (systems/trading-post.md) is excluded for the
+        // identical reason — a paid-for "bigger gains" potion should never silently turn
+        // into a bigger loss here either.
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -829,7 +844,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -860,7 +878,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -891,7 +912,10 @@ class WorkFactory {
         const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier);
         const rebirthMultiplier = userMultiplier * rebirthFactory.getLiveRebirthPercent(userDetails);
         const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier, catchUpBonus);
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same additive-%
+        // bucket every other term here already feeds.
+        const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
+        const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
         const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
@@ -984,6 +1008,16 @@ async function getWorldBuffWorkMulti(userMultiplier) {
     return dynamoHandler.isWorldBuffLive(buff, "workMulti") ? userMultiplier * buff.value : 0;
 }
 
+// Trading Post's Steadfast Draught (systems/trading-post.md) — same "percentage of current
+// userMultiplier" shape as getGuildWorkMulti/getCompanionWorkMulti/getWorldBuffWorkMulti,
+// stacking with all of them rather than replacing any. Reads userDetails.activePotion
+// directly (no DB fetch — unlike getWorldBuffWorkMulti/getGuildWorkMulti, a potion is
+// already part of the userDetails object every caller here already holds), returning 0
+// (a no-op) whenever no live workMulti potion is active.
+function getPotionWorkMulti(userDetails, userMultiplier) {
+    return dynamoHandler.isPotionLive(userDetails.activePotion, "workMulti") ? userMultiplier * userDetails.activePotion.value : 0;
+}
+
 // Same buff, raw percent form (0 if none live) — for callers applying it as a multiplier
 // against an ALREADY-AGGREGATED power figure (Guild Raids' totalMultiplier, Bounty's
 // effectiveBountyPower, Spud Keep's entrant power) rather than as an absolute add-on to
@@ -1069,5 +1103,6 @@ module.exports = {
     getMercenaryWorkMulti,
     getCompanionWorkMulti,
     getWorldBuffWorkMulti,
-    getWorldBuffWorkMultiPercent
+    getWorldBuffWorkMultiPercent,
+    getPotionWorkMulti
 }

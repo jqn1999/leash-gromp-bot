@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket, Potions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -14,7 +14,22 @@ const cooldownFactory = require("../utils/cooldownFactory");
 const safehouseFactory = require("../utils/safehouseFactory");
 const shopFactory = require("../utils/shopFactory");
 const guildShopFactory = require("../utils/guildShopFactory");
+const tradingPostFactory = require("../utils/tradingPostFactory");
 const eventFactory = new EventFactory();
+
+// Trading Post (systems/trading-post.md) — plain-English label per effectType, shared by
+// createTradingPostEmbed below. Kept local (not exported from tradingPostFactory) since
+// it's purely a display concern, same "formatting stays in embedFactory" convention
+// shopFactory's own SHOP_VALUE_FORMATTERS/formatShopValue precedent already sets.
+const POTION_EFFECT_LABELS = {
+    workMulti: "Work Multiplier",
+    workTimer: "Cooldown-Skip Chance",
+    passiveAmount: "Passive Income",
+};
+function formatPotionEffect(potion) {
+    const label = POTION_EFFECT_LABELS[potion.effectType] || potion.effectType;
+    return `+${(potion.value * 100).toFixed(0)}% ${label}`;
+}
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
 // matches the medal convention createTowerLeaderboardResultsEmbed already established.
@@ -236,6 +251,7 @@ const COOLDOWN_SKIP_FLAVOR = {
 // - `{ worldBuffBossName }` when Griseous's World Boss buff rolled it
 // - `{ source: 'guildBuff', label }` when the guild's own selected workTimer buff rolled it
 // - `{ source: 'spudKeep' }` when Spud Keep's holder-wide perk rolled it
+// - `{ source: 'potion' }` when Trading Post's Quickstep Tonic rolled it
 // All reuse the same _cooldownSkippedByCompanion field/parameter rather than parallel ones,
 // so every existing call site's truthiness check and work.js's chain-continuation check
 // keep working unchanged for every source — see dynamoHandler.calculateWorkTimerValue and
@@ -303,6 +319,13 @@ function buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0) {
             return {
                 name: `🗡️ Mercenary Buff:`,
                 value: `Your own hard-won edge shaves the cooldown to nothing — go again right away!`,
+                inline: false,
+            };
+        }
+        if (cooldownSkipSource.source === 'potion') {
+            return {
+                name: `🧪 Quickstep Tonic:`,
+                value: `The tonic surges through you — your cooldown is shaved to nothing, go again right away!`,
                 inline: false,
             };
         }
@@ -525,12 +548,13 @@ class EmbedFactory {
                 inline: false,
             });
             // Every live modifier (guild buff, companion perk, rebirth's live %, World
-            // Boss's own buff) gets folded into these three display lines the same way —
-            // otherwise the number shown would understate what /work, the passive tick,
-            // and /bank actually use. World Boss buff added 2026-09-04, direct instruction
-            // — it was already live in /work's own effectiveMultiplier but missing here,
-            // so this "Live:" figure understated reality whenever one was active. Fetched
-            // once and reused below for the status line too, rather than a second read.
+            // Boss's own buff, Trading Post's own active potion) gets folded into these
+            // three display lines the same way — otherwise the number shown would
+            // understate what /work, the passive tick, and /bank actually use. World Boss
+            // buff added 2026-09-04, direct instruction — it was already live in /work's
+            // own effectiveMultiplier but missing here, so this "Live:" figure understated
+            // reality whenever one was active. Fetched once and reused below for the status
+            // line too, rather than a second read.
             const rebirthPercent = rebirthFactory.getLiveRebirthPercent(userDetails);
             const activeWorldBuff = await dynamoHandler.getActiveWorldBuff();
 
@@ -539,7 +563,10 @@ class EmbedFactory {
             const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
             const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
             const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
-            const totalWorkBonus = additionalWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
+            // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as
+            // every other live modifier above.
+            const potionWorkMulti = dynamoHandler.isPotionLive(userDetails.activePotion, "workMulti") ? userDetails.workMultiplierAmount * userDetails.activePotion.value : 0;
+            const totalWorkBonus = additionalWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti + potionWorkMulti;
             const workMultiLabel = totalWorkBonus > 0
                 ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (+${totalWorkBonus.toFixed(2)}x)`
                 : `${(userDetails.workMultiplierAmount).toFixed(2)}x`;
@@ -550,7 +577,10 @@ class EmbedFactory {
             });
 
             const worldBuffPassivePercent = dynamoHandler.isWorldBuffLive(activeWorldBuff, "passiveBoost") ? activeWorldBuff.value : 0;
-            const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent;
+            // Trading Post's Hoarder's Brew (systems/trading-post.md) — same bucket as
+            // dynamoHandler.passivePotatoHandler's own live tick.
+            const potionPassivePercent = dynamoHandler.isPotionLive(userDetails.activePotion, "passiveAmount") ? userDetails.activePotion.value : 0;
+            const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent + potionPassivePercent;
             const passiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
             const passiveLabel = passiveBonus > 0
                 ? `${(userDetails.passiveAmount + passiveBonus).toLocaleString()} potatoes per day (+${passiveBonus.toLocaleString()})`
@@ -675,10 +705,11 @@ class EmbedFactory {
     }
 
     // Async as of the live-data update — matches createUserEmbed's shape exactly (same
-    // five live modifiers: guild buff, Mercenary Buff, active companion perk, rebirth's
-    // live %, World Boss buff — Mercenary Buff added 2026-09-12, see
-    // getMercenaryWorkMulti's own comment for the bug it fixes) so /user-stats and
-    // /profile can no longer show two different "current" numbers for the same account.
+    // six live modifiers: guild buff, Mercenary Buff, active companion perk, rebirth's
+    // live %, World Boss buff, Trading Post's own active potion — Mercenary Buff added
+    // 2026-09-12, see getMercenaryWorkMulti's own comment for the bug it fixes) so
+    // /user-stats and /profile can no longer show two different "current" numbers for the
+    // same account.
     // The base+buff+regrade breakdown stays (useful on its own — it's the only place that
     // shows where the stored number actually comes from), with the live effective total
     // appended alongside it rather than replacing it.
@@ -704,10 +735,16 @@ class EmbedFactory {
         const companionWorkMulti = userDetails.workMultiplierAmount * companionFactory.getActivePerkValue(userDetails, "workMultiplierPercent");
         const rebirthWorkMulti = userDetails.workMultiplierAmount * rebirthPercent;
         const worldBuffWorkMulti = dynamoHandler.isWorldBuffLive(activeWorldBuff, "workMulti") ? userDetails.workMultiplierAmount * activeWorldBuff.value : 0;
-        const liveWorkBonus = guildWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti;
+        // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as every
+        // other live modifier above.
+        const potionWorkMulti = dynamoHandler.isPotionLive(userDetails.activePotion, "workMulti") ? userDetails.workMultiplierAmount * userDetails.activePotion.value : 0;
+        const liveWorkBonus = guildWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti + potionWorkMulti;
 
         const worldBuffPassivePercent = dynamoHandler.isWorldBuffLive(activeWorldBuff, "passiveBoost") ? activeWorldBuff.value : 0;
-        const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent;
+        // Trading Post's Hoarder's Brew (systems/trading-post.md) — same bucket as
+        // dynamoHandler.passivePotatoHandler's own live tick.
+        const potionPassivePercent = dynamoHandler.isPotionLive(userDetails.activePotion, "passiveAmount") ? userDetails.activePotion.value : 0;
+        const totalPassivePercent = companionFactory.getActivePerkValue(userDetails, "passiveIncomePercent") + rebirthPercent + worldBuffPassivePercent + potionPassivePercent;
         const livePassiveBonus = Math.round(userDetails.passiveAmount * totalPassivePercent);
 
         const bankCapacityMaxed = isBankCapacityMaxed(userDetails);
@@ -718,7 +755,7 @@ class EmbedFactory {
             {
                 name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
                 value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
-                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/mercenary/companion/rebirth/world buff)` : ''),
+                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/mercenary/companion/rebirth/world buff/potion)` : ''),
                 inline: false,
             },
             {
@@ -3940,6 +3977,50 @@ class EmbedFactory {
             .setThumbnail(avatarUrl)
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Trading Post (systems/trading-post.md) — one embed, two flavor variants sharing the
+    // exact same catalog/state underneath (tradingPostFactory.js). Guild reads as an
+    // official, chartered, taxed institution (matches lore.md's own "Guilds are an
+    // institution" framing); Merc reads as a hooded, off-the-books trader (matches
+    // "Mercenaries work outside guild structure") — never modern crime-movie language,
+    // per lore.md's hard no's. scopeLabel is the guild's own display name for the guild
+    // variant, or ignored for the merc variant (there's only one Merc Faction, no name to
+    // show). Only 3 catalog entries in v1 — no pagination needed (see the design doc).
+    createTradingPostEmbed(userDisplayName, userId, userAvatar, scopeKey, scopeLabel, userDetails) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const isGuild = tradingPostFactory.isScopeGuild(scopeKey);
+
+        const title = isGuild ? `${scopeLabel}'s Chartered Trading Post` : `The Hooded Trader's Stall`;
+        const intro = isGuild
+            ? `The Guild's own chartered trading stall — every sale logged, every coin taxed fair and square.`
+            : `No guild seal watches this stall — pay in potatoes, ask no questions, and don't linger.`;
+
+        const activePotion = userDetails.activePotion;
+        let statusLine;
+        if (tradingPostFactory.hasAnyLivePotion(activePotion)) {
+            const activeEntry = tradingPostFactory.findPotionById(activePotion.potionId);
+            const activeName = activeEntry ? activeEntry.name : "A potion";
+            statusLine = `🧪 **${activeName}** is active until <t:${Math.floor(activePotion.expiresAt / 1000)}:R>.`;
+        } else {
+            statusLine = `No potion currently active — buy one below.`;
+        }
+
+        const fields = Potions.CATALOG.map((potion) => ({
+            name: `${potion.name} — ${potion.pricePotatoes.toLocaleString()} potatoes`,
+            value: `${formatPotionEffect(potion)}\nLasts ${convertSecondstoMinutes(potion.durationSeconds)}`,
+            inline: false,
+        }));
+
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(`${intro}\n\n${statusLine}`)
+            .setColor(isGuild ? "Gold" : "DarkerGrey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields);
         return embed;
     }
 

@@ -2403,6 +2403,61 @@ const Raid = {
     REGULAR_STAT_RAID_DIFFICULTY: 100
 }
 
+// Trading Post (systems/trading-post.md) — a static, always-available NPC potion
+// storefront, scoped per Guild / the whole Merc Faction (see tradingPostFactory.js's
+// resolveTradingPostScope). No stock tracking, no rotation, no crafting, no P2P — every
+// player in scope can buy any of these at any time; only a player's OWN activePotion state
+// (getDefaultUserFields) is ever personal, never shared/contested with guildmates or fellow
+// mercenaries. One catalog entry per effectType (v1's confirmed 3-effect list — workMulti/
+// workTimer/passiveAmount, NOT a starchBuff — see the design doc's own "superseding the
+// original architect pass" note), read identically by both scopes; only the embed's flavor
+// text differs between them (tradingPostFactory/embedFactory branch on scope, never on
+// this catalog). Values are an illustrative first pass only — sized to sit comfortably
+// below Guild Buff/Mercenary Buff's own 15-25%-at-max-rank PERMANENT bonuses, since this is
+// an anyone-can-buy, no-progression-gate, short-lived bonus by comparison — a real balance
+// pass is still owed before these numbers are load-bearing.
+const Potions = {
+    CATALOG: [
+        {
+            id: "workDraught",
+            name: "Steadfast Draught",
+            effectType: "workMulti",       // additive % into the same bucket workFactory's
+                                            // getGuildWorkMulti/getMercenaryWorkMulti/
+                                            // getWorldBuffWorkMulti already feed — see
+                                            // workFactory.getPotionWorkMulti
+            value: 0.08,                   // +8%, illustrative
+            durationSeconds: 7200,         // 2h
+            pricePotatoes: 150000
+        },
+        {
+            id: "quickstepTonic",
+            name: "Quickstep Tonic",
+            effectType: "workTimer",       // a new source into
+                                            // dynamoHandler.getWorkCooldownSkipSources,
+                                            // feeding the existing
+                                            // cooldownFactory.combineSkipChance roll
+            value: 0.10,                   // +10% skip chance, illustrative
+            durationSeconds: 7200,
+            pricePotatoes: 150000
+        },
+        {
+            id: "hoardersBrew",
+            name: "Hoarder's Brew",
+            effectType: "passiveAmount",   // a percentage-of-current-passiveAmount term —
+                                            // matches the existing passiveIncomePercent/
+                                            // rebirthPercent/worldBuffPassivePercent/
+                                            // spudKeepPassivePercent convention already
+                                            // folded together in
+                                            // dynamoHandler.passivePotatoHandler, confirmed
+                                            // percentage-based (not flat) by checking those
+                                            // existing siblings before locking this shape
+            value: 0.08,                   // +8%, illustrative
+            durationSeconds: 7200,
+            pricePotatoes: 150000
+        }
+    ]
+}
+
 // Spud Keep — daily server-wide contested-territory event (guilds + Merc Faction). See
 // roadmap.md's "Spud Keep" entry for the full derivation; every magnitude below is
 // grounded there against an existing comparable constant rather than picked freeform.
@@ -4634,6 +4689,7 @@ module.exports = {
     GuildRoles,
     Raid,
     SpudKeep,
+    Potions,
     MercenaryRank,
     Bounty,
     BountyScenarios,
