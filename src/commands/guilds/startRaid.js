@@ -1,6 +1,6 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { ApplicationCommandOptionType } = require("discord.js");
-const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, Work } = require("../../utils/constants")
+const { GuildRoles, Raid, GuildRival, metalKingRaidBoss, regularStatRaidMobs, GuildHistory, SpudKeep, Work, GuildRaidStatReward } = require("../../utils/constants")
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval, requireUserDetails, requireUserGuild, buildConfirmCancelRow } = require("../../utils/helperCommands")
 const { RaidFactory, getRaidLevelInfo, getLiveRaidRoster, getGuildLevelClosestToWins, getWeightedScenarios, getEffectiveRaidPower, getMemberRaidPower, getInfamyGain } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
@@ -8,6 +8,7 @@ const companionFactory = require("../../utils/companionFactory");
 const guildBuffFactory = require("../../utils/guildBuffFactory");
 const guildCompanionFactory = require("../../utils/guildCompanionFactory");
 const cooldownFactory = require("../../utils/cooldownFactory");
+const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
@@ -1350,6 +1351,15 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
 
     let shouldChain = false;
     let finalNextRaidAvailableAt = null;
+    // Deferred long-shot-win Big Events post (2026-09-20, Guild Raid Stat Reward, section 7)
+    // — captured here instead of posted immediately inside resolveRaidCooldown, since the
+    // Stat Reward roll this now needs to combine with (see the shared post-resolution block
+    // below) doesn't happen until well after every scenario closure's own win handling has
+    // already called this function. null means "no winning scenario closure ran" (a loss, or
+    // this call was never reached); a number is always THIS raid's own successChance,
+    // whatever it was, even if it turns out >= the long-shot threshold (the shared block
+    // below is what actually gates on the threshold — this just carries the value out).
+    let finalSuccessChance = null;
     // Resolves the cooldown situation at the exact moment a scenario closure below already
     // knows its own win/loss — a loss NEVER rolls a skip at all (direct instruction, so
     // combineSkipChance/rollCooldownSkip aren't even called in that branch), a win rolls the
@@ -1363,25 +1373,18 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // announcing (2026-09-16, same-day follow-up, direct instruction: "I also wanted the
     // big events to generally include normal discord bot commands too for the golden and
     // metals and such" — extends Big Events' <30%-chance-raid-win trigger, previously
-    // website-only, to real Discord /start-raid wins too). Fire-and-forget (never awaited)
-    // since this function stays synchronous — postBigEvent already swallows its own errors
-    // and never rejects, so there's nothing to catch here either.
+    // website-only, to real Discord /start-raid wins too). The actual postBigEvent call for
+    // this trigger no longer lives here (2026-09-20 move, see finalSuccessChance's own
+    // comment above) — it now fires from the shared post-resolution block once the Stat
+    // Reward roll is also known, so a long-shot win that ALSO lands a stat hit gets ONE
+    // combined post instead of two.
     function resolveRaidCooldown(won, successChance = null) {
         if (!won) {
             finalNextRaidAvailableAt = Date.now() + Raid.RAID_TIMER_SECONDS * 1000;
             return { nextRaidAvailableAt: finalNextRaidAvailableAt, cooldownSkipSource: null, missedSkipChance: 0 };
         }
-        if (typeof successChance === 'number' && successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-            bigEventsChannel.postBigEvent({
-                title: '🔥 Against All Odds!',
-                description: `**${userDisplayName}** pulled off a daring raid win for **${guildName}** against the odds!`,
-                fields: [
-                    bigEventsChannel.playerField(userDisplayName),
-                    bigEventsChannel.oddsField(successChance),
-                    bigEventsChannel.guildField(guildName),
-                ],
-                color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
-            });
+        if (typeof successChance === 'number') {
+            finalSuccessChance = successChance;
         }
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
@@ -1651,6 +1654,89 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const existingRaidHistory = Array.isArray(guild.raidHistory) ? guild.raidHistory : [];
     const newRaidHistory = [...existingRaidHistory, raidHistoryEntry].slice(-GuildHistory.MAX_ENTRIES);
     await dynamoHandler.updateGuildDatabase(guildId, 'raidHistory', newRaidHistory);
+
+    // Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+    // Technical Design") — a rare, additional stat-reward roll on top of a winning raid's
+    // own payout, modeled on Mercenary Bounty's own rollBountyStatReward. Stat Raid
+    // ('stat') is explicitly EXCLUDED from the allowlist below — its entire premise is a
+    // guaranteed flat stat bump on every win (Raid.REGULAR_STAT_RAID_REWARD, applied via
+    // handleStatSplit inside statRaidScenarios' own closures), so layering this second,
+    // RARE roll on top would double-dip the one mode whose identity is "the guaranteed-stat
+    // mode." Metal King needs no special-casing — it already flows through the same
+    // regular/elite/legendary branches this allowlist covers, so it's included for free.
+    let hits = [];
+    if (wonThisRaid && ['baby', 'regular', 'elite', 'legendary'].includes(raidSelection)) {
+        const bandChance = GuildRaidStatReward.ROLL_CHANCE[raidSelection];
+        const grantTier = GuildRaidStatReward.GRANT_TIER_BY_MODE[raidSelection];
+        const bandPool = (Math.random() < bandChance) ? mercenaryFactory.pickStatGrantPool(grantTier) : null;
+
+        // Guild Level 8+ gets ONE independent, ADDITIONAL roll on top of the band roll
+        // above — stacks, doesn't replace (both are independent Math.random() calls; a
+        // single raid win can trigger neither, either, or both).
+        let extraPool = null;
+        if (guildLevel >= GuildRaidStatReward.LEVEL_EXTRA_ROLL.MIN_GUILD_LEVEL
+            && Math.random() < GuildRaidStatReward.LEVEL_EXTRA_ROLL.CHANCE) {
+            extraPool = mercenaryFactory.pickStatGrantPool(GuildRaidStatReward.LEVEL_EXTRA_ROLL.GRANT_TIER);
+        }
+
+        hits = [
+            bandPool && { label: `${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} Raid Blessing`, pool: bandPool },
+            extraPool && { label: 'Guild Level 8+ Bonus Blessing', pool: extraPool }
+        ].filter(Boolean);
+
+        if (hits.length > 0) {
+            for (const { pool } of hits) {
+                for (const entry of pool) {
+                    if (entry.type === 'workMultiplierAmount') {
+                        await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', entry.amount); // flat — existing helper, unchanged
+                    } else {
+                        // percent-of-own-current-stat — raidFactory.handlePercentStatSplit.
+                        // Its return (the real per-member amounts) is captured onto the
+                        // entry itself so createGuildStatRewardEmbed (and the deferred Big
+                        // Events post below) can tell whether every member actually got the
+                        // same number or not, without a second DB read.
+                        entry.resolvedAmounts = await raidFactory.handlePercentStatSplit(raidList, entry);
+                    }
+                }
+            }
+            const statRewardEmbed = embedFactory.createGuildStatRewardEmbed(guildName, hits);
+            await interaction.followUp({ embeds: [statRewardEmbed] }).catch(() => {});
+            // Big Events posting is CONDITIONAL, not automatic (2026-09-20, direct
+            // product-owner instruction: "I don't want any stat rewards to show up in big
+            // events unless it met the other criteria like being a low chance raid"). This
+            // block does NOT call bigEventsChannel.postBigEvent itself — it only computes
+            // and applies `hits`; the actual post (if any) happens below, once
+            // finalSuccessChance is also known, enriching the long-shot-win post rather
+            // than firing its own independent one.
+        }
+    }
+
+    // Deferred long-shot-win Big Events post (2026-09-20, Guild Raid Stat Reward, section
+    // 7) — this used to fire immediately inside resolveRaidCooldown; moved here so it can
+    // fire once both finalSuccessChance AND `hits` (just above) are known, letting ONE post
+    // carry both the long-shot framing and, if this same raid also landed a Stat Reward, an
+    // added "Stats Granted" field. A long-shot win with NO stat hit still posts exactly as
+    // it did before this refactor — only the TIMING moved, not the trigger condition or
+    // base fields. A stat hit on an otherwise-ordinary (non-long-shot) win posts nothing
+    // here, per the same product-owner instruction — the stat hit alone never justifies a
+    // Big Events post on its own.
+    if (typeof finalSuccessChance === 'number' && finalSuccessChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+        const fields = [
+            bigEventsChannel.playerField(userDisplayName),
+            bigEventsChannel.oddsField(finalSuccessChance),
+            bigEventsChannel.guildField(guildName),
+        ];
+        if (hits.length > 0) {
+            const STAT_LABEL = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+            fields.push({ name: 'Stats Granted', value: hits.map(h => h.pool.map(e => STAT_LABEL[e.type]).join(', ')).join(' + '), inline: false });
+        }
+        await bigEventsChannel.postBigEvent({
+            title: '🔥 Against All Odds!',
+            description: `**${userDisplayName}** pulled off a daring raid win for **${guildName}** against the odds!`,
+            fields,
+            color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
+        });
+    }
 
     // Cinderroot's acquisition roll (see systems/guilds.md's "Guild Companion
     // (Cinderroot) Rework" section) — one call, no closures touched. Reworked 2026-09-11:

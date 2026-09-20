@@ -68,28 +68,43 @@ function resolveGrantAmount(picked, userDetails) {
     return { type: picked.type, amount: calculatePercentDelta(currentValue, picked.amount, picked.maxGainSweetPotato, roundIncrement) };
 }
 
-// The actual grant-picking logic shared by rollBountyStatReward (Bounty's rare roll) and
-// resolveGuaranteedStatBump (Rival's guaranteed-on-win bump) — tierLetter is I/II/III in
-// both callers (Rival's easy/medium/hard map onto these 1:1, see resolveGuaranteedStatBump).
-// Tier I/II pick ONE of three tracks uniformly at random (TIER_I_GRANT/TIER_II_GRANT reuse
-// workFactory.js's own sweetPotatoRewards shape exactly); Tier III grants ALL THREE at once
-// (TIER_III_GRANT matches workFactory.js's metalPotatoRewards exactly). Always returns an
-// array of { type, amount } — already-resolved final deltas (percentage-of-current-stat,
-// capped, min-increment rounded, same math Sweet/Metal Potato's own handlers use) ready to
-// hand to raidFactory.handleStatSplit one entry at a time.
-function pickStatGrant(tierLetter, userDetails) {
+// Pool-selection half of the old pickStatGrant, split out (2026-09-20, Guild Raid Stat
+// Reward) so a caller can pick WHICH track(s) a tier grants without yet knowing any
+// specific user's stats — needed by startRaid.js's shared post-resolution roll, which picks
+// the pool once per raid but must resolve it separately PER GUILD MEMBER (see
+// raidFactory.handlePercentStatSplit) since passiveAmount/bankCapacity are a percentage of
+// each member's OWN current stat, unlike Bounty's single-recipient roll. Returns the
+// UNRESOLVED recipe — same entry shape TIER_I_GRANT/TIER_II_GRANT's own pool entries use
+// ({ type, amount, maxGainSweetPotato }) — ready for resolveGrantAmount to turn into a final
+// delta once a specific userDetails is known. Tier I/II pick ONE of three tracks uniformly
+// at random; Tier III returns all three tracks at once, matching workFactory.js's
+// metalPotatoRewards shape exactly.
+function pickStatGrantPool(tierLetter) {
     if (tierLetter === 'III') {
         const grant = BountyStatReward.TIER_III_GRANT;
         return [
             { type: 'workMultiplierAmount', amount: grant.workMultiplierAmount },
-            { type: 'passiveAmount', amount: calculatePercentDelta(userDetails.passiveAmount, grant.passiveMultiplier, grant.passiveMaxGain, 10000) },
-            { type: 'bankCapacity', amount: calculatePercentDelta(userDetails.bankCapacity, grant.bankMultiplier, grant.bankMaxGain, 50000) }
+            { type: 'passiveAmount', amount: grant.passiveMultiplier, maxGainSweetPotato: grant.passiveMaxGain },
+            { type: 'bankCapacity', amount: grant.bankMultiplier, maxGainSweetPotato: grant.bankMaxGain }
         ];
     }
-
     const pool = tierLetter === 'I' ? BountyStatReward.TIER_I_GRANT : BountyStatReward.TIER_II_GRANT;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    return [resolveGrantAmount(picked, userDetails)];
+    return [pool[Math.floor(Math.random() * pool.length)]];
+}
+
+// The actual grant-picking logic shared by rollBountyStatReward (Bounty's rare roll) and
+// resolveGuaranteedStatBump (Rival's guaranteed-on-win bump) — tierLetter is I/II/III in
+// both callers (Rival's easy/medium/hard map onto these 1:1, see resolveGuaranteedStatBump).
+// Now just pickStatGrantPool's unresolved recipe resolved against ONE specific user —
+// byte-identical output/RNG-call-count to the pre-split implementation (verified: the I/II
+// branch still makes exactly one Math.random() call, III still makes none), kept as its own
+// function since every existing single-recipient caller (Bounty, Rival) still wants a
+// one-call "pick and resolve for this user" API. Always returns an array of { type, amount }
+// — already-resolved final deltas (percentage-of-current-stat, capped, min-increment
+// rounded, same math Sweet/Metal Potato's own handlers use) ready to hand to
+// raidFactory.handleStatSplit one entry at a time.
+function pickStatGrant(tierLetter, userDetails) {
+    return pickStatGrantPool(tierLetter).map(entry => resolveGrantAmount(entry, userDetails));
 }
 
 // The rare permanent stat-increase branch (constants.js's BountyStatReward) — checked
@@ -506,6 +521,8 @@ module.exports = {
     getMercenaryRankInfo,
     getMercenaryCooldownSkipSources,
     rollBountyStatReward,
+    pickStatGrantPool,
+    resolveGrantAmount,
     resolveBountyAttempt,
     resolveStatBounty,
     resolveNpcRob,

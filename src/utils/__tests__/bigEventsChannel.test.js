@@ -14,6 +14,7 @@ const {
     guildField,
     companionField,
     sourceField,
+    statsGrantedField,
     BIG_EVENT_WIN_CHANCE_THRESHOLD,
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,
@@ -261,5 +262,24 @@ describe('field builders', () => {
 
     test('sourceField', () => {
         expect(sourceField('Bounty Reward')).toEqual({ name: 'Found', value: 'Bounty Reward', inline: true });
+    });
+
+    // Guild Raid Stat Reward parity pass (2026-09-20) — shared "Stats Granted" field for
+    // every merc-side long-shot post (takeBounty.js/robNpc.js/confrontRival.js) enriched
+    // with a stat-reward hit.
+    test('statsGrantedField maps grant-entry types to their display labels, comma-joined', () => {
+        expect(statsGrantedField(['workMultiplierAmount', 'passiveAmount', 'bankCapacity'])).toEqual({
+            name: 'Stats Granted',
+            value: 'Work Multiplier, Passive Income, Bank Capacity',
+            inline: false,
+        });
+    });
+
+    test('statsGrantedField falls back to the raw type string for an unrecognized type', () => {
+        expect(statsGrantedField(['someNewTrack'])).toEqual({
+            name: 'Stats Granted',
+            value: 'someNewTrack',
+            inline: false,
+        });
     });
 });

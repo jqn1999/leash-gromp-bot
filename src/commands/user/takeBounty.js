@@ -318,14 +318,24 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
     await sendBountyResult(interaction, embed, isChainedReply);
 
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+        const fields = [
+            bigEventsChannel.playerField(userDisplayName),
+            bigEventsChannel.oddsField(result.successChance),
+            bigEventsChannel.rewardField(netRewardAmount, result.currency),
+        ];
+        // Guild Raid Stat Reward parity pass (2026-09-20, systems/guilds.md's "Guild Raid
+        // Stat Reward: Technical Design", section 8) — enriches this ALREADY-firing
+        // long-shot post with a "Stats Granted" field when the same win also landed the
+        // rare permanent stat-increase roll (result.statReward, already resolved above at
+        // this point). Never a new independent post — a stat hit alone still never
+        // justifies one, same as Guild Raid's own gating.
+        if (result.statReward) {
+            fields.push(bigEventsChannel.statsGrantedField(result.statReward.map(s => s.type)));
+        }
         await bigEventsChannel.postBigEvent({
             title: '🔥 Against All Odds!',
             description: `**${userDisplayName}** pulled off a daring Bounty win against the odds!`,
-            fields: [
-                bigEventsChannel.playerField(userDisplayName),
-                bigEventsChannel.oddsField(result.successChance),
-                bigEventsChannel.rewardField(netRewardAmount, result.currency),
-            ],
+            fields,
             color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
         });
     }

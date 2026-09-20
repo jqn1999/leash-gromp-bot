@@ -1652,3 +1652,50 @@ describe('createGuildCompanionSacrificePromptEmbed', () => {
         expect(embed.data.description).not.toContain('NaN');
     });
 });
+
+// Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+// Technical Design", section 6) — the uniformity check is the whole point of this embed:
+// a percentage grant (passiveAmount/bankCapacity) shows the real number only when every
+// member's resolvedAmounts entry actually came out identical (most commonly because
+// everyone hit the cap), otherwise a generic no-numbers line, per the product owner's own
+// "without exact numbers" wording. workMultiplierAmount is flat (handleStatSplit, no
+// resolvedAmounts at all) and always shows the real number.
+describe('createGuildStatRewardEmbed', () => {
+    test('workMultiplierAmount (flat, no resolvedAmounts) always shows the real number', () => {
+        const hits = [{ label: 'Regular Raid Blessing', pool: [{ type: 'workMultiplierAmount', amount: 0.2 }] }];
+        const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
+        expect(embed.data.description).toContain('+0.20x Work Multiplier to every member!');
+    });
+
+    test('a percentage grant whose resolvedAmounts are all identical shows the real number', () => {
+        const hits = [{ label: 'Legendary Raid Blessing', pool: [{ type: 'passiveAmount', amount: 1.15, maxGainSweetPotato: 100000, resolvedAmounts: [100000, 100000, 100000] }] }];
+        const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
+        expect(embed.data.description).toContain('+100,000 Passive Income to every member!');
+    });
+
+    test('a percentage grant whose resolvedAmounts genuinely differ shows a no-numbers line', () => {
+        const hits = [{ label: 'Legendary Raid Blessing', pool: [{ type: 'bankCapacity', amount: 1.5, maxGainSweetPotato: 5000000, resolvedAmounts: [750000, 1000000] }] }];
+        const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
+        expect(embed.data.description).toContain('Guild members got a Bank Capacity boost!');
+        expect(embed.data.description).not.toMatch(/\d{3},\d{3}/); // no exact granted number anywhere
+    });
+
+    test('a single-member (or coincidentally-uniform) percentage grant with null entries filtered out still counts as uniform', () => {
+        // A member whose own findUser lookup failed (raidFactory.handlePercentStatSplit
+        // returns null for that slot) shouldn't make an otherwise-uniform grant register as
+        // non-uniform — only the real, resolved amounts are compared.
+        const hits = [{ label: 'Regular Raid Blessing', pool: [{ type: 'passiveAmount', amount: 1.15, maxGainSweetPotato: 100000, resolvedAmounts: [100000, null, 100000] }] }];
+        const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
+        expect(embed.data.description).toContain('+100,000 Passive Income to every member!');
+    });
+
+    test('multiple hits (band + Guild Level 8+ bonus stacking) each render under their own label', () => {
+        const hits = [
+            { label: 'Elite Raid Blessing', pool: [{ type: 'workMultiplierAmount', amount: 0.4 }] },
+            { label: 'Guild Level 8+ Bonus Blessing', pool: [{ type: 'workMultiplierAmount', amount: 0.2 }] },
+        ];
+        const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
+        expect(embed.data.description).toContain('**Elite Raid Blessing:**');
+        expect(embed.data.description).toContain('**Guild Level 8+ Bonus Blessing:**');
+    });
+});

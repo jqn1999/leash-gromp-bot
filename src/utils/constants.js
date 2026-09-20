@@ -2928,6 +2928,26 @@ const BountyStatReward = {
     }
 }
 
+// Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+// Technical Design") — Guild Raid's own rare stat-reward roll, modeled directly on
+// Mercenary Bounty's rollBountyStatReward/pickStatGrant above and reusing its exact
+// TIER_I_GRANT/TIER_II_GRANT/TIER_III_GRANT pools verbatim (no new pools defined).
+const GuildRaidStatReward = {
+    // 1% / 2.5% / 5% per the product owner's own numbers — baby explicitly mirrors regular's
+    // rate, same literal-per-key shape GuildRival.INFAMY_PER_RAID_MODE already uses for baby.
+    ROLL_CHANCE: { baby: 0.01, regular: 0.01, elite: 0.025, legendary: 0.05 },
+    // Which BountyStatReward pool each band's roll draws from — band scales BOTH how often
+    // the roll hits AND how big the grant is once it does, mirroring Bounty's own I/II/III
+    // band-letter convention exactly (bigger stakes, bigger reward, same shape).
+    GRANT_TIER_BY_MODE: { baby: 'I', regular: 'I', elite: 'II', legendary: 'III' },
+    // Guild Level 8+ gets ONE independent, ADDITIONAL roll on top of the band roll above —
+    // mirrors MercenaryRank Rank 6's own statGrantChanceOnWin: 0.05, which always reuses
+    // Tier I's pool regardless of which Bounty tier actually won (a guild-LEVEL gate is the
+    // closer analog to a mercenary-RANK gate than to a raid-band gate, so this follows that
+    // precedent). Stacks with the band roll above, doesn't replace it.
+    LEVEL_EXTRA_ROLL: { MIN_GUILD_LEVEL: 8, CHANCE: 0.05, GRANT_TIER: 'I' }
+};
+
 // Stat Bounty's own flavor text (2026-09-10) — separate from BountyScenarios (band-keyed,
 // tier-ladder flavor) since Stat Bounty has no tier/band at all, just a flat win/lose roll.
 // Bounty's existing voice is solo-heist/outlaw-toned (see BountyScenarios above), not Guild
@@ -4604,6 +4624,7 @@ module.exports = {
     Bounty,
     BountyScenarios,
     BountyStatReward,
+    GuildRaidStatReward,
     StatBountyFlavor,
     RobNpc,
     MercenaryCompanionDrop,

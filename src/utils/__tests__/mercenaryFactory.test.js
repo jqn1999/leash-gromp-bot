@@ -227,6 +227,54 @@ describe('rollBountyStatReward', () => {
     });
 });
 
+// Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+// Technical Design", section 4) — pickStatGrant's pool-selection/per-user-resolution split.
+// pickStatGrantPool needs no userDetails at all (a guild raid picks the pool ONCE, then
+// resolves it per-member via raidFactory.handlePercentStatSplit); resolveGrantAmount (now
+// exported) is the same per-entry resolver pickStatGrant already used internally.
+describe('pickStatGrantPool / resolveGrantAmount (post-split)', () => {
+    test('Tier I/II returns an unresolved single-entry pool — exactly one Math.random() call, same as before the split', () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // picks index 0 -> workMultiplierAmount
+        try {
+            const pool = mercenaryFactory.pickStatGrantPool('I');
+            expect(pool).toEqual([BountyStatReward.TIER_I_GRANT[0]]);
+            expect(randomSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('Tier III returns all three unresolved tracks with zero Math.random() calls', () => {
+        const randomSpy = jest.spyOn(Math, 'random');
+        try {
+            const pool = mercenaryFactory.pickStatGrantPool('III');
+            expect(pool).toEqual([
+                { type: 'workMultiplierAmount', amount: BountyStatReward.TIER_III_GRANT.workMultiplierAmount },
+                { type: 'passiveAmount', amount: BountyStatReward.TIER_III_GRANT.passiveMultiplier, maxGainSweetPotato: BountyStatReward.TIER_III_GRANT.passiveMaxGain },
+                { type: 'bankCapacity', amount: BountyStatReward.TIER_III_GRANT.bankMultiplier, maxGainSweetPotato: BountyStatReward.TIER_III_GRANT.bankMaxGain },
+            ]);
+            expect(randomSpy).not.toHaveBeenCalled();
+        } finally {
+            randomSpy.mockRestore();
+        }
+    });
+
+    test('resolveGrantAmount applied to pickStatGrantPool\'s own output reproduces pickStatGrant\'s pre-split result exactly', () => {
+        const user = baseUser({ passiveAmount: 1000000 });
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce(0.35); // pool index 1 -> passiveAmount, same draw the pre-split test above used
+        let pool;
+        try {
+            pool = mercenaryFactory.pickStatGrantPool('I');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const resolved = pool.map(entry => mercenaryFactory.resolveGrantAmount(entry, user));
+        expect(resolved).toHaveLength(1);
+        expect(resolved[0].type).toBe('passiveAmount');
+        expect(resolved[0].amount).toBe(BountyStatReward.TIER_I_GRANT[1].maxGainSweetPotato);
+    });
+});
+
 describe('resolveBountyAttempt', () => {
     // 'baby' mode always resolves Bounty.TIERS[0] (Tier 1) directly, with zero extra
     // Math.random() calls for tier selection (unlike 'regular', which rolls one via

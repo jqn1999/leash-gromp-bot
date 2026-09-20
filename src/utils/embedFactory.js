@@ -1486,6 +1486,47 @@ class EmbedFactory {
         return embed;
     }
 
+    // Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+    // Technical Design", section 6) — a second, sibling embed sent via interaction.followUp,
+    // the same pattern createGuildCompanionDropEmbed above already uses, since createRaidEmbed
+    // has already been sent by the time startRaid.js's shared post-resolution block (where
+    // this roll lives) even knows whether it fired. `hits` is an array of
+    // { label, pool }, each `pool` entry a { type, amount, resolvedAmounts? } — percentage
+    // tracks (passiveAmount/bankCapacity) carry `resolvedAmounts` (raidFactory.
+    // handlePercentStatSplit's return, one entry per raid member); workMultiplierAmount is
+    // flat (handleStatSplit) and has none, trivially uniform by construction.
+    // Title/flavor line is a placeholder pending a real .claude/lore.md pass — flagged as a
+    // naming task, not a mechanic one.
+    createGuildStatRewardEmbed(guildName, hits) {
+        const STAT_LABEL = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+        const lines = hits.map(({ label, pool }) => {
+            const grantLines = pool.map(entry => {
+                // workMultiplierAmount has no resolvedAmounts (flat, handleStatSplit) —
+                // trivially uniform by construction. passiveAmount/bankCapacity always carry
+                // resolvedAmounts — check them for real, don't assume either way (2026-09-20,
+                // product-owner instruction: a percentage grant CAN land on the same number
+                // for everyone, most commonly when everyone hits the cap).
+                const amounts = entry.resolvedAmounts;
+                const isUniform = !amounts || new Set(amounts.filter(a => a != null)).size <= 1;
+                if (entry.type === 'workMultiplierAmount') {
+                    return `+${entry.amount.toFixed(2)}x ${STAT_LABEL[entry.type]} to every member!`;
+                }
+                if (isUniform) {
+                    const amount = amounts.find(a => a != null) || 0;
+                    return `+${amount.toLocaleString()} ${STAT_LABEL[entry.type]} to every member!`;
+                }
+                return `Guild members got a ${STAT_LABEL[entry.type]} boost!`;
+            }).join('\n');
+            return `**${label}:**\n${grantLines}`;
+        }).join('\n\n');
+        return new EmbedBuilder()
+            .setTitle(`⚡ ${guildName}'s Raiders Return Sharpened!`)
+            .setDescription(lines)
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now());
+    }
+
     // Shown when a raid loss offers the raid-starting member the choice to sacrifice a
     // possessed Cinderroot to void the loss's entire penalty — see startRaid.js's
     // promptCompanionSacrifice. Unchanged behavior from before the Cinderroot Rework, just

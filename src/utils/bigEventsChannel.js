@@ -133,6 +133,18 @@ function companionField(companion) {
 function sourceField(label) {
     return { name: "Found", value: label, inline: true };
 }
+// Guild Raid Stat Reward parity pass (2026-09-20, systems/guilds.md's "Guild Raid Stat
+// Reward: Technical Design", section 8) — shared "Stats Granted" field for every merc-side
+// long-shot-win post (takeBounty.js/robNpc.js/confrontRival.js) that also landed a stat
+// grant on the same win, enriching an already-firing post rather than triggering a new one.
+// `types` is a flat array of grant-entry `type` strings (workMultiplierAmount/passiveAmount/
+// bankCapacity) — own copy of embedFactory.js's own statLabels map (Bounty result embed),
+// same "small lookup duplicated rather than shared across module internals" precedent this
+// file's own RARITY_LABEL/COMPANION_RARITY_LABEL pair already sets.
+const STAT_REWARD_LABEL = { workMultiplierAmount: "Work Multiplier", passiveAmount: "Passive Income", bankCapacity: "Bank Capacity" };
+function statsGrantedField(types) {
+    return { name: "Stats Granted", value: types.map(t => STAT_REWARD_LABEL[t] ?? t).join(", "), inline: false };
+}
 
 // Companion-pull Big Event condition (2026-09-16, direct instruction — "add mythic and
 // above companions or the tower/yukon/guild companions to the big events"). Two
@@ -180,6 +192,7 @@ module.exports = {
     guildField,
     companionField,
     sourceField,
+    statsGrantedField,
     BIG_EVENT_WIN_CHANCE_THRESHOLD,
     BIG_EVENT_WORK_ENCOUNTERS,
     BIG_EVENT_WORK_LABELS,

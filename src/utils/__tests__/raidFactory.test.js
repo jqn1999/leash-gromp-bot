@@ -689,6 +689,70 @@ describe('handleStatSplit', () => {
     });
 });
 
+// Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+// Technical Design", section 4) — the percentage-track analog of handleStatSplit above.
+// passiveAmount/bankCapacity grants are a percentage of each recipient's OWN current stat
+// (mercenaryFactory.resolveGrantAmount's math, lazy-required inside this method), so unlike
+// handleStatSplit's flat broadcast, two members with different starting stats must resolve
+// to two different granted amounts — this is the correctness nuance the whole method exists
+// to fix (see the doc's own comment on why handleStatSplit alone would silently over/under-
+// grant here).
+describe('handlePercentStatSplit', () => {
+    function sweetPotatoBuffs() {
+        return { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 };
+    }
+
+    test("resolves each member's own percentage-of-current-stat independently, capping only where the cap actually binds", async () => {
+        // Same shape as BountyStatReward.TIER_I_GRANT's own passiveAmount entry.
+        const grantEntry = { type: 'passiveAmount', amount: 1.15, maxGainSweetPotato: 100000 };
+        dynamoHandler.findUser.mockImplementation(async id => {
+            if (id === 'a') return user('a', { passiveAmount: 500000, sweetPotatoBuffs: sweetPotatoBuffs() });
+            if (id === 'b') return user('b', { passiveAmount: 1000000, sweetPotatoBuffs: sweetPotatoBuffs() });
+            return undefined;
+        });
+        const raidList = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }];
+
+        const result = await raidFactory.handlePercentStatSplit(raidList, grantEntry);
+
+        // a: raw = 500,000 * 1.15 = 575,000 -> rounds to 580,000 -> +80,000 (under the
+        // 100,000 cap, so the full uncapped increase applies).
+        // b: raw = 1,000,000 * 1.15 = 1,150,000 -> +150,000 uncapped, but capped at 100,000.
+        // Same grant, same rate, genuinely different final numbers per member.
+        expect(result).toEqual([80000, 100000]);
+
+        const [, aAttrs] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'a');
+        expect(aAttrs.passiveAmount).toBe(500000 + 80000);
+        expect(aAttrs.sweetPotatoBuffs.passiveAmount).toBe(80000);
+
+        const [, bAttrs] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'b');
+        expect(bAttrs.passiveAmount).toBe(1000000 + 100000);
+        expect(bAttrs.sweetPotatoBuffs.passiveAmount).toBe(100000);
+    });
+
+    test('bankCapacity resolves against bankCapacity (own 50,000 rounding increment), not passiveAmount', async () => {
+        dynamoHandler.findUser.mockResolvedValue(user('a', { bankCapacity: 5000000, sweetPotatoBuffs: sweetPotatoBuffs() }));
+        const result = await raidFactory.handlePercentStatSplit(
+            [{ id: 'a', username: 'a' }],
+            { type: 'bankCapacity', amount: 1.15, maxGainSweetPotato: 1000000 }
+        );
+        // raw = 5,750,000 (already a multiple of 50,000) -> +750,000, under the 1,000,000 cap.
+        expect(result).toEqual([750000]);
+        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes.bankCapacity).toBe(5000000 + 750000);
+        expect(setAttributes.sweetPotatoBuffs.bankCapacity).toBe(750000);
+    });
+
+    test('a member whose record cannot be found resolves to null in the returned array and is never written', async () => {
+        dynamoHandler.findUser.mockResolvedValue(undefined);
+        const result = await raidFactory.handlePercentStatSplit(
+            [{ id: 'ghost', username: 'ghost' }],
+            { type: 'passiveAmount', amount: 1.15, maxGainSweetPotato: 100000 }
+        );
+        expect(result).toEqual([null]);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+});
+
 describe('incrementCounter', () => {
     test('ADDs the given amount to every member with no read first (feeds achievement counters)', async () => {
         const raidList = [{ id: 'a', username: 'a' }, { id: 'b', username: 'b' }];

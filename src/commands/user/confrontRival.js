@@ -108,14 +108,23 @@ module.exports = {
         // and the more literal reading of what was asked — every Hard win already clears
         // BIG_EVENT_WIN_CHANCE_THRESHOLD anyway, so this is never looser than that pattern.
         if (result.won && result.scenario === 'hard') {
+            const fields = [
+                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.oddsField(result.successChance),
+                bigEventsChannel.rewardField(result.rewardAmount),
+            ];
+            // Guild Raid Stat Reward parity pass (2026-09-20, systems/guilds.md's "Guild
+            // Raid Stat Reward: Technical Design", section 8) — enriches this ALREADY-firing
+            // post with a "Stats Granted" field. Unlike Bounty/Heist's RARE roll,
+            // result.statBump here is GUARANTEED on every win (resolveGuaranteedStatBump,
+            // never a rollChance gate) — Hard's own win branch above always applies it
+            // (`if (result.won) { for (const grant of result.statBump) ... }`), so this is
+            // never conditionally absent on a Hard win, just enriched the same way.
+            fields.push(bigEventsChannel.statsGrantedField(result.statBump.map(s => s.type)));
             await bigEventsChannel.postBigEvent({
                 title: '⚔️ Hard Rival Bounty Hunter Defeated!',
                 description: `**${userDisplayName}** took down ${result.rival.name} on the hardest Rival Bounty Hunter tier!`,
-                fields: [
-                    bigEventsChannel.playerField(userDisplayName),
-                    bigEventsChannel.oddsField(result.successChance),
-                    bigEventsChannel.rewardField(result.rewardAmount),
-                ],
+                fields,
                 color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
             });
         }

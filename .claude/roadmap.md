@@ -15041,3 +15041,112 @@ pending a real `.claude/lore.md` pass.
 
 Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
 the four flagged items above before a developer builds it.
+
+## Shipped: Guild Raid Stat Reward (2026-09-20, follows through on the scoping pass above, all four
+flagged items resolved CONFIRMED by the product owner before this build — see
+`.claude/systems/guilds.md`'s "Guild Raid Stat Reward: Technical Design" section, whose header now
+reads "IMPLEMENTED")
+
+Implemented exactly as the confirmed design specified, with one notable correction already baked
+into the design doc before this build started: a same-day product-owner instruction ("I don't want
+any stat rewards to show up in big events unless it met the other criteria like being a low chance
+raid") overturned the original architect recommendation of one unconditional `postBigEvent` call per
+stat-reward hit — the shipped behavior instead ENRICHES the existing long-shot-win post, never fires
+independently. See below for how that reshaped the `resolveRaidCooldown` refactor.
+
+**`constants.js`**: new `GuildRaidStatReward` block placed near `BountyStatReward`, added to
+`module.exports` — `ROLL_CHANCE: { baby: 0.01, regular: 0.01, elite: 0.025, legendary: 0.05 }`,
+`GRANT_TIER_BY_MODE: { baby: 'I', regular: 'I', elite: 'II', legendary: 'III' }`,
+`LEVEL_EXTRA_ROLL: { MIN_GUILD_LEVEL: 8, CHANCE: 0.05, GRANT_TIER: 'I' }`. No new grant pools — reuses
+`BountyStatReward.TIER_I_GRANT`/`TIER_II_GRANT`/`TIER_III_GRANT` verbatim, exactly as scoped.
+
+**`mercenaryFactory.js` refactor**, verified behavior-preserving: split `pickStatGrant(tierLetter,
+userDetails)` into a new exported `pickStatGrantPool(tierLetter)` (the unresolved recipe — which
+track(s), at what rate, no user context needed) and the existing `resolveGrantAmount` (now also
+exported, previously module-private). `pickStatGrant` itself is now just
+`pickStatGrantPool(tierLetter).map(entry => resolveGrantAmount(entry, userDetails))`. Confirmed by
+running the full `mercenaryFactory.test.js` suite unchanged first (all 95 pre-existing tests stayed
+green with zero edits) before adding new coverage for the two new exports.
+
+**`raidFactory.js`**: new `handlePercentStatSplit(raidList, grantEntry)` class method, the
+percentage-track analog of the existing `handleStatSplit` — for `passiveAmount`/`bankCapacity`
+grants only, which resolve as a percentage of EACH member's OWN current stat
+(`mercenaryFactory.resolveGrantAmount`'s math), unlike Metal King's own flat rewards. Re-fetches
+every member's fresh `userDetails` inside the loop, writes the resolved delta into both
+`userDetails[grantEntry.type]` and `sweetPotatoBuffs[grantEntry.type]` via
+`dynamoHandler.updateUserFields`, and returns the array of actual per-member granted amounts (needed
+by the embed's uniformity check — see below). Requires a lazy in-function
+`require('./mercenaryFactory')` to avoid the circular top-level require
+(`mercenaryFactory.js` already requires `raidFactory.js` at its own module top) — the same fix
+`dynamoHandler.applyGuildTreasuryInterest` already uses for the identical problem.
+`workMultiplierAmount` grants stay flat and route through the existing, unmodified `handleStatSplit`.
+
+**`startRaid.js` injection**: the roll lives in `resolveRaid`'s shared post-resolution block,
+right where Infamy accrual/raidHistory/Cinderroot's roll are already centralized — fires when
+`wonThisRaid && ['baby','regular','elite','legendary'].includes(raidSelection)` (Stat Raid excluded
+by design — it already guarantees its own flat stat reward on every win, so a second rare roll would
+double-dip its whole identity; Metal King needed no special-casing since it already flows through the
+same `regular`/`elite`/`legendary` branches this covers). Rolls the band chance AND the
+guild-level-8+ extra chance independently — both can hit on the same raid, captured into a `hits`
+array of `{ label, pool }`. Each pool entry routes through `handleStatSplit` (flat
+`workMultiplierAmount`) or `handlePercentStatSplit` (percentage tracks), with the percentage call's
+return captured onto the entry as `entry.resolvedAmounts` for the embed step. A new
+`embedFactory.createGuildStatRewardEmbed(guildName, hits)` is sent via `interaction.followUp` — a
+second, sibling embed, NOT an extension of `createRaidEmbed`'s signature, since `createRaidEmbed` has
+already been sent by the time `wonThisRaid` and this roll are even known.
+
+**The Big Events refactor (the trickiest piece)**: a stat-reward hit is never its own independent Big
+Events trigger — it only enriches the ALREADY-firing "🔥 Against All Odds!" long-shot-win post with
+an added "Stats Granted" field, and only when that same raid was both a long-shot win
+(`successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD`) AND had a stat hit. Since that
+post used to fire immediately INSIDE `resolveRaidCooldown` (called from within a scenario closure's
+own win handling) but the stat roll only resolves LATER in the shared post-resolution block, the fix
+defers the post: `resolveRaidCooldown` now just captures `successChance` into a new outer-scoped
+`finalSuccessChance` (alongside the existing `finalNextRaidAvailableAt`/`shouldChain` it already
+mutates) instead of posting immediately; the actual `postBigEvent` call moved to the shared
+post-resolution block, firing once both `finalSuccessChance` and `hits` are known. Regression-tested
+directly: a long-shot win with no stat hit still posts with the exact same title and exact same three
+fields (`Adventurer`/`Odds`/`Guild`) as before this refactor — only the TIMING of the call moved, not
+its trigger condition or base fields. A stat hit on an otherwise-ordinary win posts nothing, per the
+product owner's own instruction.
+
+**Merc-side Big Events parity** (bundled into this same pass, per the design doc's final
+confirmation): added a "Stats Granted" field to each of `takeBounty.js`'s (the tiered-Bounty rare
+roll only — its separate Stat Bounty mode's own guaranteed flat grant was left untouched, since the
+confirmed design only scoped the rare-roll branch and touching the second branch would have been an
+unconfirmed scope expansion), `robNpc.js`'s, and `confrontRival.js`'s EXISTING long-shot-win
+`postBigEvent` calls, firing only when that same win also produced a stat reward. Verified per-file
+(not assumed from the design doc) that all three already have their stat-reward result known BEFORE
+their own long-shot post fires — no `resolveRaidCooldown`-style restructuring needed in any of the
+three, unlike Guild Raid's own timing problem. Added a small shared `bigEventsChannel.statsGrantedField(types)`
+helper (own copy of `embedFactory.js`'s `statLabels` map, matching this file's own established
+"duplicate a small lookup rather than reach into another module's internals" precedent already set by
+its `RARITY_LABEL`/`COMPANION_RARITY_LABEL` pair) reused by all three merc-side files.
+
+**Embed uniformity check**: `createGuildStatRewardEmbed` checks whether every member's
+`resolvedAmounts` entry for a percentage grant actually came out identical (most commonly because
+everyone was already sitting at/near the cap) rather than assuming percentage grants are always
+non-uniform — shows the real number if uniform, a no-numbers "Guild members got a [stat] boost!" line
+if not. `workMultiplierAmount` has no `resolvedAmounts` at all (flat, `handleStatSplit`) and is
+trivially uniform by construction, always showing the real number. Title/flavor text
+(`⚡ ${guildName}'s Raiders Return Sharpened!`) is a placeholder pending a real `.claude/lore.md` pass,
+exactly as the confirmed design flagged — not finalized in this build.
+
+**Tests**: full suite run before AND after, comparing baseline to final —
+**before: 95 suites / 1800 tests, all passing. After: 99 suites / 1828 tests, all passing** (28 new
+tests across 4 new files plus additions to 4 existing test files, zero regressions). New coverage:
+`mercenaryFactory.test.js` (`pickStatGrantPool`/`resolveGrantAmount` RNG-call-count parity with the
+pre-split `pickStatGrant`), `raidFactory.test.js` (`handlePercentStatSplit`'s per-member correctness —
+two members with different current stats resolve to different granted amounts, one capped one not),
+`embedFactory.test.js` (the uniformity-check branching, both directions, plus multi-hit stacking
+rendering under separate labels), `bigEventsChannel.test.js` (the new `statsGrantedField` helper), a
+new `startRaidStatReward.test.js` (band roll hit/miss, Stat Raid's exclusion, the Level 8+ extra roll
+stacking with the band roll on the same raid, and the three Big Events combinations — long-shot/no
+hit regression, long-shot/with hit combined post, ordinary-win/with hit posts nothing), and three new
+merc-side files (`takeBountyBigEvents.test.js`, `robNpcBigEvents.test.js`,
+`confrontRivalBigEvents.test.js`) each covering their own enrichment field's presence/absence.
+
+**Not done, explicitly out of scope per the confirmed design's own item 6**: no `financial-project`
+changes — that repo's Guild Raid handler still needs its own audit + port pass with a new numbered
+`## Bot caught up #N` entry in its `NOTES_GROMP_WEB_INTEGRATION.md`, deferred to a future session as
+originally flagged.

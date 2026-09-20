@@ -372,6 +372,40 @@ class RaidFactory {
         }))
     }
 
+    // Guild Raid Stat Reward (2026-09-20, systems/guilds.md's "Guild Raid Stat Reward:
+    // Technical Design", section 4) — the percentage-track analog of handleStatSplit above,
+    // for passiveAmount/bankCapacity grant entries ONLY. Those two tracks are a percentage
+    // of each recipient's OWN current stat (mercenaryFactory.resolveGrantAmount's math), so
+    // unlike Metal King's flat rewards (which handleStatSplit already handles correctly for
+    // a whole raidList), broadcasting one member's resolved amount to everyone else would
+    // silently over/under-grant any member whose current passiveAmount/bankCapacity differs.
+    // Re-fetches each member's own fresh userDetails and resolves the grant against THEM
+    // specifically. workMultiplierAmount entries stay flat and route through the existing,
+    // unmodified handleStatSplit instead — this method is never called for that type.
+    async handlePercentStatSplit(raidList, grantEntry) {
+        // Lazy require — mercenaryFactory.js requires raidFactory.js at its own top level
+        // (for getEffectiveRaidPower/rollWeightedTier), so a top-level require here would be
+        // circular. Same fix dynamoHandler.applyGuildTreasuryInterest's own lazy
+        // require('./raidFactory') uses for an identical reason.
+        const mercenaryFactory = require('./mercenaryFactory');
+        // Returns the actual per-member granted amounts (2026-09-20, product-owner
+        // instruction) — the embed needs to know whether every member's amount came out
+        // IDENTICAL (e.g. everyone was already sitting at/near the cap) vs. genuinely
+        // different because each member's own current stat differed — see
+        // embedFactory.createGuildStatRewardEmbed's uniformity check.
+        return await Promise.all(raidList.map(async member => {
+            const userDetails = await dynamoHandler.findUser(member.id, member.username);
+            if (!userDetails) return null;
+            const { amount } = mercenaryFactory.resolveGrantAmount(grantEntry, userDetails);
+            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+            const setAttributes = { sweetPotatoBuffs };
+            setAttributes[grantEntry.type] = userDetails[grantEntry.type] + amount;
+            sweetPotatoBuffs[grantEntry.type] += amount;
+            await dynamoHandler.updateUserFields(member.id, setAttributes);
+            return amount;
+        }));
+    }
+
     // Atomic ADD, no read-then-write needed — used to tally wins (guildRaidWinCount,
     // worldBossWinCount) for the achievements those feed. Works on both guild raidList
     // and world raidList shapes ({id, username}[]).
