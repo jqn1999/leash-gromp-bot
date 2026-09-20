@@ -2132,31 +2132,21 @@ all of mercs" as a second, ambiguous phrase. This is a genuinely cross-repo, two
 design (channel/permission provisioning is new bot capability; Discord→web sync has no existing
 analog at all) — see the numbered decision points at the end before any of this gets built.
 
-### 0. Decision point #1 — what "for all of mercs" means (validate before anything else)
+### 0. Decision point #1 — what "for all of mercs" means — CONFIRMED (2026-09-20)
 
-The architect's working hypothesis, going in: a SECOND, separate, non-Guild-scoped chat channel
-for everyone on the Mercenary track, since Bounty/Heist/Rival Confrontation are solo activities
-with no roster to scope a private channel to.
+**Product owner confirmed: the Merc Faction Hall, gated to mercenaries only** (`isMercenary`
+players) — not a fully-open public channel. This is the MORE expensive of the two readings this
+design flagged (section 11's second bullet, not its first) — a real, small membership-sync cost
+(2 hook points: `becomeMercenary.js`/`retireMercenary.js`), not zero, but still far cheaper than
+the Guild scope's N-Guilds-worth of hooks. Section 11 below is written against this confirmed
+gating, not the open-town-square alternative.
 
-**This checks out against real precedent already in the codebase — it isn't a guess from nothing.**
-`spudKeepFactory.js`/`systems/spud-keep.md` already establish **the Merc Faction** as a real,
-named, single collective every mercenary belongs to simultaneously (`getLiveMercFactionRoster()`),
-competing against every signed-up Guild as one combined pseudo-entrant in Spud Keep. "For all of
-mercs" reads naturally as "give the Merc Faction the same kind of home channel a Guild's own
-private channel is" — the Merc Faction is already this game's established stand-in for "the
-mercenaries, collectively," not a phrase this design has to invent. Nothing in `lore.md`/
-`mercenary-bounties.md`/`spud-keep.md` suggests a broader reading (e.g. "mercs" meaning something
-wider than the Mercenary track, like "every player" or "every guild's mercenaries" — mercenaries
-and guild members are mutually exclusive via `isMercenary`, so there's no such overlap group to
-name anyway).
-
-**What's still genuinely open** (not resolved by the precedent above, needs the product owner's
-own call — see decision point #2 near the end): whether this shared channel should be gated to
-`isMercenary` players only (symmetric to a Guild's channel being private to that Guild's own
-roster — "open to everyone doing Mercenary-track content" reads this way most literally), or
-open to the whole Discord server as a public "town square" (simpler — zero membership-sync cost,
-the sync-cost claim in the product owner's own brief). These have different build costs — see
-section 8.
+The architect's working hypothesis going in checked out against real precedent already in the
+codebase: `spudKeepFactory.js`/`systems/spud-keep.md` already establish **the Merc Faction** as a
+real, named, single collective every mercenary belongs to simultaneously
+(`getLiveMercFactionRoster()`), competing against every signed-up Guild as one combined
+pseudo-entrant in Spud Keep. "For all of mercs" reads naturally as "give the Merc Faction the same
+kind of home channel a Guild's own private channel is."
 
 ### 1. Data model
 
@@ -2199,10 +2189,10 @@ re-registered fresh on every `ready` event with no persistence or missed-window 
 repo's own standing convention) — a poor fit for "delete chat messages older than N days," since a
 missed window means stale messages just accumulate until the next restart. DynamoDB's native TTL
 (`expiresAt`, epoch seconds) sweeps expired items automatically, server-side, with no app code and
-nothing that can be "missed" by a bot restart. Recommend `ChatMessages.RETENTION_DAYS = 7` (a
-tunable constant, easy to retune later) — a chat panel showing "the last week" is a completely
-reasonable product for this feature, and keeps the table small indefinitely without any bot-side
-sweep logic at all. **New pattern for this codebase** — no existing table uses DynamoDB TTL today;
+nothing that can be "missed" by a bot restart. **`ChatMessages.RETENTION_DAYS = 30`, CONFIRMED by
+product owner (2026-09-20)** — a chat panel showing "the last month" keeps the table small
+indefinitely without any bot-side sweep logic at all. **New pattern for this codebase** — no
+existing table uses DynamoDB TTL today;
 flagging it explicitly as new infra (a one-time TTL-attribute-enable on the table, done once at
 table-creation time in AWS, not per-item).
 
@@ -2239,7 +2229,9 @@ off — it's a server-wide singleton, same shape `server_big_events_channel` alr
 // trackingId: "merc_faction_chat_channel"
 {
   channelId: null,
-  roleId: null,        // only relevant if decision point #2 resolves to mercenary-gated — see section 9
+  roleId: null,        // CONFIRMED needed — the Merc Faction Hall is gated to isMercenary players
+                        // only (decision point #1, resolved 2026-09-20), not fully open — see
+                        // section 11's second bullet for the exact 2-hook sync this role requires.
   webhookId: null,
   webhookUrl: null,
 }
@@ -2309,19 +2301,45 @@ member's own `GuildMember` object," which has no comparable per-channel ceiling.
 standard Discord bot pattern for "private channel per group," not a novel choice for this
 codebase to validate.
 
-**Teardown on `/disband-guild`** (`disbandGuild.js`) — unlike the guild DB record itself
-(deliberately left in place "in case it's needed again"), an orphaned empty channel/role/webhook
-has zero of that "might be needed again" value and a real cost against the channel cap (section
-10). Add, right after the existing `memberList` clear: if `guild.guildChatChannelId` is set,
-delete the channel (`client.channels.fetch(id).then(ch => ch.delete())`), delete the webhook
+**Teardown is available two ways, CONFIRMED by product owner (2026-09-20): "Opt-in via a command.
+They can also opt out and it gets deleted."** — a Guild must be able to voluntarily tear its chat
+down WITHOUT disbanding the whole Guild, not just have it torn down as a side effect of disbanding.
+Both paths share one extracted helper so the teardown steps can't drift between them:
+
+`tearDownGuildChat(guild)` (new shared function, `guildChat.js`, exported for `disbandGuild.js` to
+also call): if `guild.guildChatChannelId` is set, delete the channel
+(`client.channels.fetch(id).then(ch => ch.delete())`), delete the webhook
 (`client.fetchWebhook(webhookId).then(wh => wh.delete())`), delete the role
 (`interaction.guild.roles.delete(roleId)`), each wrapped in its own `.catch(() => {})` (best-effort
-cleanup — a channel already manually deleted by an admin shouldn't block the disband itself), then
-clear all 4 fields on the guild record and remove its entry from `chat_channel_index`.
-`disbandGuild.js`'s existing writes are unguarded (`updateGuildDatabase` calls, no
-`updateGuildFieldsWithLock`) — this addition follows that same existing (pre-feature, not
-introduced by this design) unguarded style for consistency with the rest of that file, rather than
-silently upgrading its concurrency safety as a side effect of an unrelated feature.
+cleanup — a channel already manually deleted by an admin shouldn't block either caller), then clear
+all 4 guild fields and remove the entry from `chat_channel_index`. A no-op if
+`guild.guildChatChannelId` is already `null` (never set up, or already torn down) — safe to call
+unconditionally from both paths below.
+
+- **`/guild-chat disable`** (new, same `guildChat.js` file, same Co-Leader/Leader gate as `setup`):
+  confirms (`buildConfirmCancelRow`, same pattern every other destructive guild action — `/guild-buy`
+  respec, `/disband-guild` itself — already uses, since deleting the channel also deletes every
+  message ever sent in it with no undo), then calls `tearDownGuildChat(guild)` via
+  `updateGuildFieldsWithLock` (guarded, matching `setup`'s own optimistic-lock write — unlike
+  `disbandGuild.js` below, this file's OWN writes should use the guarded convention since it's new
+  code, not pre-existing style to stay consistent with).
+- **`/disband-guild`** (`disbandGuild.js`) — right after the existing `memberList` clear, call the
+  same `tearDownGuildChat(guild)` helper. `disbandGuild.js`'s existing writes are unguarded
+  (`updateGuildDatabase` calls, no `updateGuildFieldsWithLock`) — this call site follows that
+  existing (pre-feature, not introduced by this design) unguarded style for consistency with the
+  rest of that file, rather than silently upgrading its concurrency safety as a side effect of an
+  unrelated feature; the SHARED helper itself has no opinion on locking, that's each caller's own
+  concern.
+
+A Guild that re-runs `/guild-chat setup` after disabling gets a brand new channel/role/webhook —
+message history from before the disable is gone (the old table rows still exist until their own
+TTL expires, but nothing re-links a NEW channel back to OLD `scopeKey` rows since the scopeKey is
+keyed by `guildId`, not by channel — actually, re-checking section 1's schema: `scopeKey =
+"guild#<guildId>"` is stable across a disable/re-setup cycle since it's keyed by the persistent
+`guildId`, not the ephemeral Discord channel ID, so old messages DO still show up if the Guild
+re-enables chat before the 30-day TTL sweeps them — worth confirming this is the desired behavior
+rather than wanting a hard wipe on disable, but no code change needed either way since the schema
+already behaves this way by construction).
 
 ### 3. Membership sync — exact hook points
 
@@ -2531,58 +2549,47 @@ Checked directly rather than assumed:
   moment multi-server support ships. Not a reason to block this feature today, but a documented
   landmine for whoever eventually builds multi-server support to trip over otherwise.
 
-### 11. The Merc Faction Hall — the simpler mirror scope
+### 11. The Merc Faction Hall — CONFIRMED gated to mercenaries only, not fully open
 
-Assuming decision point #1 resolves as expected (a single shared, non-Guild-scoped channel for the
-Merc Faction):
+Per decision point #1's resolution above: NOT zero membership-sync cost (the product owner's
+original brief assumed "for all of mercs" meant free of sync cost, but the confirmed gating means
+it isn't quite — it's just much cheaper than the Guild scope's N-Guilds-worth of hooks):
 
-- **No membership-sync problem in the fully-open interpretation** (channel visible to the whole
-  Discord server, default `@everyone` view permission, no role/overwrite at all) — this really is
-  the simpler build the product owner's own brief anticipated, and could genuinely ship as a lower-
-  risk phase 1 ahead of the Guild-scoped work, proving out Direction A/B's mechanics (webhook POST,
-  `messageCreate` relay, the chat-messages table) against a single scope before multiplying it
-  across N Guilds.
-- **If instead gated to `isMercenary` players only** (the more literal reading of "open to everyone
-  doing Mercenary-track content," see decision point #1's own callout above) — still far simpler
-  than the Guild scope, but NOT zero membership-sync cost as the product owner's brief assumed:
-  exactly 2 hook points instead of N-Guilds'-worth of hooks — `becomeMercenary.js` (add a single
-  shared `Merc Faction Access` role) and `retireMercenary.js` (remove it) — versus the Guild
-  scope's 3 hook points × however many chat-enabled Guilds exist. One role, one channel, provisioned
-  once via a new admin command (`/set-merc-chat-channel`, mirroring `setActivityChannel.js`'s exact
-  shape — devOnly + Administrator, creates the webhook, stores under the `merc_faction_chat_channel`
-  trackingId) rather than folding into that unrelated activity-feed command.
-- Either way, Direction A/B (sections 4-5) are identical mechanics against `scopeKey = "merc"` — no
-  new sync code needed there.
+- Exactly **2 hook points**: `becomeMercenary.js` (add a single shared `Merc Faction Access` role)
+  and `retireMercenary.js` (remove it) — versus the Guild scope's 3 hook points × however many
+  chat-enabled Guilds exist.
+- One role, one channel, provisioned once via a new admin command (`/set-merc-chat-channel`,
+  mirroring `setActivityChannel.js`'s exact shape — devOnly + Administrator, creates the webhook,
+  stores under the `merc_faction_chat_channel` trackingId) rather than folding into that unrelated
+  activity-feed command.
+- A current mercenary's role is granted retroactively the first time this command is run (loop
+  every `isMercenary` user the same way `/guild-chat setup` retroactively grants its own role to a
+  Guild's current roster — section 2, step 5) — this isn't a brand-new player-facing command
+  players opt into per-person, it's an admin-provisioned channel every mercenary is added to.
+- Direction A/B (sections 4-5) are identical mechanics against `scopeKey = "merc"` — no new sync
+  code needed there.
 
-### Summary of items needing product owner confirmation before a developer builds any of this
+### Summary of items needing product owner confirmation before a developer builds this
 
-1. **"For all of mercs" interpretation** (section 0) — confirmed as "the Merc Faction gets its own
-   shared chat scope" against real precedent (`spud-keep.md`'s Merc Faction), but the EXACT gating
-   still needs a call: fully open to the whole Discord server (zero sync cost, section 11's first
-   bullet), or restricted to current mercenaries only (2-hook sync cost, section 11's second
-   bullet, the more literal reading of the original phrasing).
-2. **Viability at scale — the live Guild count** (section 10). This design is buildable and the
-   Discord permission side is NOT a blocker (section 9), but the per-Guild-channel approach's
-   viability against the ~500-channel cap depends on a number this design pass couldn't check
-   (how many real, active in-game Guilds exist today, and how many would realistically opt into
-   `/guild-chat setup`). Get that number before committing engineering time to this shape.
-3. **Chat retention window** — `ChatMessages.RETENTION_DAYS = 7` (section 1) is this design's own
-   proposed default, not a stated requirement; confirm 7 days is the right amount of chat history
-   to keep visible, or pick a different number.
-4. **Provisioning gate: opt-in per-Guild command vs. automatic at Guild creation** — this design
-   recommends opt-in (`/guild-chat setup`, Co-Leader/Leader-gated) specifically to protect the
-   channel-cap budget (item 2) from inactive Guilds; confirm that's an acceptable UX cost (a Guild
-   has to remember to run one extra command) versus the simpler "every Guild just has a chat
-   channel from day one" alternative.
-5. **Web-side avatar display** (section 4) — messages sent from the web currently only have a
-   stored Discord `username` to show via the webhook, no `avatarUrl`; confirm whether a generic
-   default avatar for web-originated messages is acceptable for v1, or whether avatar syncing
-   should be scoped in now.
-6. **Phasing** — given the Merc Faction Hall (section 11) is meaningfully lower-risk and could
-   validate Direction A/B's mechanics before the Guild-scoped, N-times-multiplied, membership-sync-
-   heavy version is built, confirm whether to sequence it as an explicit phase 1 rather than
-   building both simultaneously.
+**All resolved as of 2026-09-20 except phasing:**
 
-**Not resolved by this pass, deliberately** (per this task's own scope): whether this feature is
-worth building at all relative to other roadmap items — that's the product owner's call, not
-this design's to make. This design answers "how," assuming "whether" is already settled.
+1. **"For all of mercs" interpretation** — **CONFIRMED: the Merc Faction Hall, gated to
+   mercenaries only** (section 0). Section 11 above is written against this.
+2. **Viability at scale — the live Guild count** — **CONFIRMED SAFE.** Product owner: "There is
+   only 1 guild with many[sic — read as: not many] only a few more in the future." The
+   per-Guild-channel approach's viability against Discord's ~500-channel cap (section 10) is not a
+   concern at this Guild count and expected growth — no fallback/pooling mechanism needed.
+3. **Chat retention window** — **CONFIRMED: 30 days** (`ChatMessages.RETENTION_DAYS = 30`, section
+   1 — updated from this design's own original 7-day proposal).
+4. **Provisioning gate** — **CONFIRMED: opt-in via `/guild-chat setup`**, AND (a requirement this
+   design didn't originally have) **a Guild can also opt back OUT via `/guild-chat disable`,
+   tearing everything down** — see section 2's updated teardown design (a shared
+   `tearDownGuildChat` helper called from both the new `/guild-chat disable` command and the
+   existing `/disband-guild` flow).
+5. **Web-side avatar display** — **CONFIRMED: username only, no avatar sync**, final for this
+   feature (not just a v1 placeholder) — financial-project's webhook POST (section 4) only ever
+   needs to set the `username` override field, never `avatar_url`.
+6. **Phasing — still OPEN, not yet answered.** Given the Merc Faction Hall (section 11) is
+   meaningfully lower-risk (no per-Guild multiplication, only 2 sync hooks total) and could validate
+   Direction A/B's mechanics before the Guild-scoped, N-Guilds-heavy version is built, should it
+   ship as an explicit phase 1 ahead of Guild chat, or should both be built together in one pass?
