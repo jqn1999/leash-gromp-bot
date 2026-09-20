@@ -15465,3 +15465,174 @@ a potion system would need its own web-side port once built, not just a read-onl
 
 Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
 the open questions above before a developer builds any of it.
+
+## Titles — Design (scoping only, not implemented) (2026-09-20, architect pass)
+
+Product owner confirmed idea B1 ("Titles / Cosmetic Loot," [feature-ideas.md](systems/feature-ideas.md#b-prestige--endgame-depth))
+should proceed, with three concrete asks: a title is earned via a real milestone (achievements/
+rebirth-count/mercenary-rank/guild-level/Tower-champion-runs, per B1's own recommendation),
+titles show on `/profile`, and a new command lets a player switch which earned title is currently
+displayed. Full design in the new [systems/titles.md](systems/titles.md) — summary here.
+
+**Data model**: one new top-level user field, `equippedTitle: null` (a Title id or null), healed
+by `findUser`'s existing diff-and-heal loop like any other new optional field. Deliberately no
+`unlockedTitles` array or per-title "unlocked" flag is ever persisted — every Title's condition is
+resolved **live** off current stats (reusing `achievementFactory.js`'s own `getStatValue` dot-path
+resolver for 12 of the 13 v1 titles, plus one new `guildLevel`-type condition needing a live guild
+fetch for the 13th). This was chosen specifically to sidestep Achievements' own documented
+lazy-resolve-on-next-`/work`-call gap entirely, rather than inheriting it by reading
+`userDetails.achievements` — a Title is either true right now or it isn't, checked fresh every
+time, never stale.
+
+**v1 list**: 13 titles spanning Achievements/Rebirth/Mercenary Rank/Guild Level/Tower, each citing
+the exact existing field/threshold it reads (8 of the 13 map 1:1 onto an existing Achievement's own
+threshold, e.g. `fort_knox` -> title "Fort Spudnox," `mercenary_legend` -> title "The Iron Tuber,"
+reusing `MERCENARY_RANK_TITLES[6]` verbatim). Full table in `systems/titles.md`.
+
+**New command, `/set-title`** — one required autocompleted `title` option, showing only titles the
+invoking player has actually earned (mirrors `/companion-fuse`'s autocomplete-then-revalidate
+discipline exactly — never trusts the client's autocomplete pick, re-validates server-side against
+fresh `userDetails` before writing). A `none` choice un-equips. No switch cooldown — this is
+cosmetic-only, so there's no mechanical flip-flopping to gate against.
+
+**Embed**: only `/profile` (`embedFactory.createUserEmbed`, page 1) is touched in v1 — a new
+dedicated "Title:" field, not folded into the existing rebirth/Menagerie-Complete/guild-name tag
+line on the embed's own title string (that line is already three conditional badges deep; a
+Title's flavor text is longer and risks the 256-char embed-title cap if crammed in as a fourth).
+Work/raid/Tower result embeds are explicitly NOT touched in v1, following this codebase's own
+"one thing shown at a time, expand later" precedent (Tower's incremental buildout, the
+single-active-buff/companion convention) — flagged as a possible phase-2 extension, not proposed
+now.
+
+**Decision points flagged for product owner sign-off, not yet resolved by this pass**: (1) whether
+Titles stay 100% cosmetic — the brainstorm's own B1 recommended this, but the product owner's
+follow-up ask never independently re-confirmed it, so this design assumes cosmetic-only rather
+than deciding it silently; (2) the Guild Level title (`Warlord of the Realm`, Guild Level 10) is
+the one title in the v1 list that can be lost by leaving the guild that earned it, since Guild
+Level isn't a lifetime counter on the user record at all — confirm this "current membership only"
+behavior is acceptable; (3) no proactive "title unlocked!" push notification in v1 (discovery is
+via `/titles`/`/set-title`'s autocomplete only) — confirm, or flag it as a wanted fast-follow; (4)
+whether a `/titles` browse-all-with-progress command ships alongside `/set-title` (recommended,
+cheap, mirrors `/achievements`) since the literal ask was only for the switch command.
+
+**Cross-repo**: confirmed directly (not assumed) that `/profile`'s web equivalent exists in
+`financial-project` (`toProfile` in `gromp-economy`'s handler, rendered by `gromp.component.html`'s
+profile card) and that Achievements are already ported there — so Titles need a matching web port
+(`equippedTitle` passthrough + a `/set-title`-equivalent Lambda action) once built, flagged per
+this repo's own `CLAUDE.md` cross-repo rule rather than left to drift silently.
+
+Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
+the decision points above before a developer builds any of it.
+
+## Design (scoping only, not implemented): Seasonal Festivals (2026-09-20, architect pass)
+
+Product owner ask: a full technical design for `feature-ideas.md`'s idea **A1** ("Seasonal
+Festivals") — the first real design pass on `roadmap.md`'s own long-flagged-open item ("Seasonal/
+limited-time events remain undesigned — not forgotten, just not selected this round," see
+"Discussed earlier, not picked up in this pass"). Full build-ready design in the new
+`.claude/systems/seasonal-festivals.md`; this entry is the summary.
+
+**What it is**: a time-boxed (1-2 week), medieval-flavored festival — **Harvest Festival**,
+**Frost Fair**, **Spring Planting** (the brainstorm's own three named examples, all confirmed to
+pass `lore.md`'s test as-is) — during which every player sees the same fixed set of 3 festival-only
+objectives (reusing Quests' delta/snapshot progress-tracking pattern), earns a new **Festival
+Tokens** currency for completing them, and spends it at a temporary personal festival shop (reusing
+Companion Shop's seeded-rotation mechanism) before the window closes.
+
+**Scheduling — the one place a genuinely new persistence question had to be resolved, not just
+copied.** Checked both existing "spans more than one check" precedents directly: Guild
+Contracts/Quests **derive** the current period from wall-clock time alone (`getWeeklyTag` recomputes
+which week it is from scratch every call — works because the cadence is fixed and predictable).
+Spud Keep instead **persists** an explicit `expiresAt` epoch-ms timestamp on a stats-table doc,
+checked live at consume time by every reader, regardless of whether the cron that eventually acts on
+it fired exactly on schedule. A festival has no fixed cadence to derive from (it starts whenever the
+team decides and runs an arbitrary 1-2 weeks) — so **Spud Keep's persisted-timestamp shape is the
+correct template, not Quests'/Guild Contracts' derived-tag shape**. New `active_festival` stats-doc
+(`festivalId`/`startsAt`/`endsAt`/`objectiveIds`), started by a new admin command
+(`/admin-start-festival`, mirrors `/admin-trigger-event`'s manual-override shape) rather than an
+automated content calendar (flagged as a deliberately smaller v1 scope, with a real calendar as an
+additive follow-up), and ended by a new check in the existing 8pm ET daily cron — restart-safe by
+construction, same property `spud_keep_buff.expiresAt` already has.
+
+**Objective pool — confirmed which existing shape actually fits "everyone experiences the same
+festival," rather than assuming.** Quests are already shared server-wide (same quest set for
+everyone, per-user delta-from-baseline progress) — this is the correct template, NOT Guild
+Contracts (which aggregates one shared progress bar *per guild*, the wrong unit for something every
+player, guilded or not, experiences individually). The one real structural difference: Quests
+rotate an `ACTIVE_COUNT`-of-`POOL` random subset every period (daily variety); a festival's 3
+objectives are its own fixed, complete, festival-flavored set with no rotation, since a 1-2 week
+single-themed event doesn't need "today's different objectives." New `festivalQuests` user field,
+byte-identical shape to the existing `quests` field, keyed on `festivalId` instead of
+`rotationDate` for the same "stale snapshot means take a fresh baseline" guard `checkAndClaimQuests`
+already runs. Nine concrete example objectives given (3 per named festival), all built from
+already-tracked counters (`workCount`, `workScenarioCounts.sweet/poison/companion/taro/goldenYam`)
+in the exact `{id, statPath, tiers}` shape a real Quest/Guild Contract template already uses today —
+zero invented minigames.
+
+**Currency — expiry resolved via a lazy, read-time mechanism, not an active clear-out cron.** The
+brainstorm's own open question (expire unspent tokens vs. roll them over) is answered: **expire**,
+for the stated urgency-to-spend reason, but via Companion Shop's own "a tag mismatch means treat
+stale state as fresh, purely a read-side computation" idiom — a `festivalTokensFestivalId` field
+alongside the token balance, checked against the currently active festival before honoring a spend.
+A mismatch means the balance is stale and reads as spendable-zero, with **zero extra writes** and no
+active full-table sweep needed, versus the naive alternative of a mass zero-out cron.
+
+**Shop** reuses `companionShopFactory.js`'s seeded-deterministic-offering trick verbatim
+(`xmur3`/`mulberry32`), but the tag is the festival's own id (one fixed lineup for the whole window,
+no daily/weekly re-roll), pricing is flat single-currency (no potato/starch dual-pricing branch,
+since Festival Tokens have no live market rate), and items are cosmetic-only for v1. Purchase
+validation gets three explicit fail-closed gates for the "currency conceptually goes away at
+festival end" scenario the brief specifically asked to design for: is any festival live at all, is
+the player's own stored shop reference still for the CURRENT festival, and is their token balance
+still fresh (not stale-zero per the expiry rule above) — all three reject cleanly with a specific
+message rather than crash, mirroring every existing shop's `{ ok: false, message }` shape.
+
+**Rewards — cosmetic-only confirmed, and now wired into a real system rather than a hypothetical
+one.** `.claude/systems/titles.md` landed in parallel this same session (see the entry above) —
+recommend festival shop cosmetic purchases (persisted on a new `festivalCosmetics` array, since a
+purchase is an event with no other stat to derive it from) feed into Titles as a new
+`{ type: "festivalCosmetic", cosmeticId }` condition, the same kind of one-off condition-type
+addition Titles' own design already needed once for Guild Level, rather than building a second,
+competing cosmetic-display list on `/profile`. Flagged explicitly as a sequencing dependency for
+product owner sign-off — if Titles is deferred, festival cosmetics can still ship standalone with
+the Title-wiring added later as a pure follow-up, since the underlying persisted field is identical
+either way.
+
+**The one piece of the brainstorm's own pitch that genuinely doesn't fit as literally suggested,
+and needed correcting rather than implementing as pitched**: "just run an hourly special event at
+elevated odds all week" does not work, checked directly against `eventFactory.js`. `EventFactory` is
+an in-memory-only singleton whose hourly cron always hard-resets to base odds before rolling a fresh
+20%-chance event *every single hour* — nothing about a currently-elevated state is persisted
+anywhere, so it is not restart-safe (a bot restart mid-festival would silently lose the boosted
+odds, recoverable only by luck on the next hourly roll) and would actively fight, not compose with,
+the natural hourly roll's own reset. **Recommendation, flagged explicitly as a genuinely new
+pattern for this codebase**: a second, independent, DB-persisted odds-override
+(`active_festival.oddsOverride`, reusing `EVENT_SCENARIO_MAP`'s own `{scenario, multiplier}` shape)
+composed WITH — not merged into — `EventFactory`'s existing live odds at `/work`-roll time, so a
+festival's week-long boost and the hourly special event's own independent roll can genuinely stack,
+and a bot restart loses nothing since the override is re-derived from the DB on every call rather
+than held only in `EventFactory`'s transient memory. This is the one place this design introduces
+real new architecture rather than pure reuse — flagged for a developer's explicit attention.
+
+**Cross-repo**: the odds-override piece, if built, needs mirroring to `financial-project` — its
+`gromp-economy` Lambda already reads the shared `active_work_event` doc (per this session's own
+earlier "Hourly special work event now mirrored to financial-project's website" entry) so the
+website doesn't silently disagree with the bot about current odds; a second `active_festival` read
+composed the same way is a real, in-scope, NOT-optional port item if this ships. Everything else
+(the objective/currency/shop plumbing itself) is flagged as unconfirmed rather than assumed —
+Quests' own web-port status is itself marked "unconfirmed — check before assuming" in
+`feature-ideas.md`, and this design doesn't resolve that; recommend checking it before
+implementation begins.
+
+**Six items explicitly flagged for product owner confirmation before a developer builds this** (full
+reasoning in `seasonal-festivals.md`'s own closing section): (1) currency expiry mechanism (lazy
+tag-mismatch, recommended, vs. an active sweep); (2) cosmetic-only rewards wired into Titles
+(recommended, contingent on Titles' own sequencing) vs. a standalone display list; (3) admin-
+triggered start (recommended for v1) vs. a real content calendar; (4) the illustrative
+objective-count/threshold/token numbers (not a final balance pass); (5) shop slot count/pricing
+(depends on #4); (6) the odds-override cross-repo mirroring, confirmed necessary (not optional) if
+that piece ships at all.
+
+Not yet implemented — nothing in `src/` touched by this pass, and nothing in `financial-project`
+either (read-only access only, per this pass's scope). Awaiting product owner sign-off on the six
+flagged items above before a developer builds any of it.

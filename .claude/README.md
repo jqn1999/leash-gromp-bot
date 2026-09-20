@@ -24,6 +24,10 @@ those AWS services.
   bank/tax, personal shops, regrade gacha system, catch-up bonus.
 - [systems/achievements.md](systems/achievements.md) — achievement definitions, unlock checking,
   the lazy-backfill design for pre-existing accounts.
+- [systems/titles.md](systems/titles.md) — **design only, not implemented** — a selectable
+  cosmetic title layer on top of Achievements/Rebirth/Mercenary Rank/Guild Level/Tower milestones,
+  computed live (never stored as a grant) and shown on `/profile`, switched via a new `/set-title`
+  command.
 - [systems/daily-streak.md](systems/daily-streak.md) — auto-triggered login streak reward,
   day-boundary/race-safety logic, no dedicated command.
 - [systems/quests.md](systems/quests.md) — daily/weekly quest pool, rotation, and the
@@ -50,6 +54,11 @@ those AWS services.
   (reusing `companionMarketFactory.js`'s escrow) plus a new potion vendor (temporary work
   multiplier/cooldown-skip/starch buffs), gated the same `scopeKey` way as Guild Chat Sync/Merc
   Faction Hall.
+- [systems/seasonal-festivals.md](systems/seasonal-festivals.md) — **design only, not implemented**
+  — time-boxed festivals: an admin-started/DB-persisted calendar window (Spud Keep's
+  persisted-`expiresAt` pattern, not Quests' derived-tag one), a festival-only quest-shaped
+  objective pool reusing Quests' delta/snapshot tracking, Festival Tokens, and a temporary festival
+  shop reusing Companion Shop's rotation mechanism.
 - [systems/feature-ideas.md](systems/feature-ideas.md) — a broad, organized brainstorm of candidate
   features/systems the game could add or deepen, triaged by category with effort/risk/cross-repo
   notes — pure ideation, not a build spec. Check here before assuming an idea hasn't been considered.
