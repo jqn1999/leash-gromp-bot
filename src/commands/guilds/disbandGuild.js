@@ -1,6 +1,7 @@
 const { GuildRoles } = require("../../utils/constants");
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
+const { tearDownGuildChat } = require("./guildChat");
 
 module.exports = {
     name: "disband-guild",
@@ -33,6 +34,19 @@ module.exports = {
         // Leaving the guild in database in case its ever needed again
         await dynamoHandler.updateGuildDatabase(guildId, 'memberList', []);
         await dynamoHandler.updateUserDatabase(userId, "guildId", 0);
+
+        // Guild Chat Sync full teardown (systems/guilds.md) — a disbanded guild's private
+        // channel/role/webhook shouldn't linger indefinitely. Same shared helper /guild-chat
+        // disable uses; this call site follows this file's own existing unguarded
+        // (updateGuildDatabase, no lock) write style for consistency with the rest of it,
+        // rather than silently upgrading its concurrency safety as a side effect of an
+        // unrelated feature — tearDownGuildChat itself has no opinion on locking.
+        await tearDownGuildChat(client, interaction.guild, guild);
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildChatChannelId', null);
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildChatRoleId', null);
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildChatWebhookId', null);
+        await dynamoHandler.updateGuildDatabase(guildId, 'guildChatWebhookUrl', null);
+
         interaction.editReply(`${userDisplayName} you have disbanded the guild, '${guild.guildName}'!`);
     }
 }

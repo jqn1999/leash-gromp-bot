@@ -105,6 +105,7 @@ Defined in `awsConfigurations` in [src/utils/constants.js](../../src/utils/const
 | `aws_stats_table_name` | `leash-gromp-stats` | Misc. singleton "doc" records (starch prices, world raid state, coinflip counters) |
 | `aws_shop_table_name` | `leash-gromp-bot-shop` | (declared, not exercised by any read/write function seen in `dynamoHandler.js` — shop data actually lives statically in `constants.js`) |
 | `aws_guilds_table_name` | `leash-gromp-bot-guilds` | Guild records |
+| `aws_chat_table_name` | `leash-gromp-bot-chat-messages` | Guild Chat Sync / Merc Faction Hall messages — one row per message, see below |
 
 `aws_remote_config` pulls AWS credentials from `.env` (`AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY_ID`, `AWS_REGION`). `testServer`, `clientId`, and `devs` (an array of Discord
@@ -214,7 +215,14 @@ drift into two different copies:
     completed: false
   },
   raidHistory: [],        // most recent GuildHistory.MAX_ENTRIES raids — see systems/guilds.md#guild-history
-  contractHistory: []     // most recent GuildHistory.MAX_ENTRIES completed Guild Contracts
+  contractHistory: [],    // most recent GuildHistory.MAX_ENTRIES completed Guild Contracts
+  // Guild Chat Sync (systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20)
+  // — all 4 null until /guild-chat setup provisions them; cleared together at teardown
+  // (/guild-chat disable or /disband-guild, via the shared tearDownGuildChat helper).
+  guildChatChannelId: null,
+  guildChatRoleId: null,
+  guildChatWebhookId: null,
+  guildChatWebhookUrl: null
 }
 ```
 
@@ -289,9 +297,42 @@ whatever fields that subsystem needs. Known docs in use:
   player kills the Mimic and claims a percentage share. Same atomic-`ADD` pattern (and field
   naming convention) as `spud_keep`'s own `potPotatoes` — see
   [systems/economy-and-work.md](../systems/economy-and-work.md#mimic-slaying--a-chance-to-kill-the-mimic-instead-of-losing-to-it-2026-09-10-direct-instruction).
+- `guild_chat_category` — `{ categoryId }`, the lazily-created, server-wide singleton Discord
+  category ("🏰 Guild Chat Halls") every private Guild chat channel AND the Merc Faction Hall
+  live under. See [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20).
+- `chat_channel_index` — `{ channels: { "<discord channel id>": { scopeType: "guild", scopeId }
+  | { scopeType: "merc" } } }` — the `messageCreate` handler's fast-path lookup from a Discord
+  channel id to its chat scope, written to at provisioning/teardown time, read once per message
+  that passes the cheap category pre-filter. Same doc.
+- `merc_faction_chat_channel` — `{ channelId, roleId, webhookId, webhookUrl }`, the Merc Faction
+  Hall's own provisioning doc (provisioned by `/set-merc-chat-channel`), analogous to
+  `server_activity_channel`/`server_big_events_channel`'s shape.
 
 There's no schema registry for this table; if you add a new background/global counter, follow this
 same `trackingId` + flat-fields pattern via `updateStatDatabase`/`getStatDatabase`.
+
+## Chat messages table (`leash-gromp-bot-chat-messages`, key: `scopeKey` + sort key `sortKey`)
+
+Guild Chat Sync / Merc Faction Hall (systems/guilds.md) — one row per chat message, not a growing
+array on a stats-table doc, since an active chat channel's message count isn't bounded the way
+every other "stats doc array" (`raidHistory`, `tower_leaderboard`'s `entries`) deliberately is.
+Written by `dynamoHandler.postChatMessage`, read by `getChatMessagesSince`/`getRecentChatMessages`
+(both a `Query`, never a `Scan`):
+
+```js
+{
+  scopeKey,      // "guild#<guildId>" or the fixed literal "merc" — partition key
+  sortKey,       // "<15-digit zero-padded epoch ms>#<6-char random>" — sort key; the random
+                 // suffix breaks ties when two messages land in the same millisecond
+  authorId,      // Discord user id, either way (web messages key off webLinkToken -> userId)
+  authorDisplayName,
+  source,        // "discord" | "web"
+  content,
+  createdAt,     // epoch ms, redundant with sortKey's own prefix
+  expiresAt      // epoch SECONDS (DynamoDB TTL requires seconds) — ChatMessages.RETENTION_DAYS
+                 // (30) out from createdAt; TTL sweeps expired rows server-side, no cron
+}
+```
 
 ## The "house" account
 

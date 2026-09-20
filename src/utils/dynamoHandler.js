@@ -1,4 +1,4 @@
-const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent, REGRADE_CAPS } = require("../utils/constants.js");
+const { awsConfigurations, Work, CatchUp, Bank, Starch, SpudKeep, TreasuryInterestScaling, CinderrootTreasuryBonusPercent, REGRADE_CAPS, ChatMessages } = require("../utils/constants.js");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
@@ -1377,6 +1377,95 @@ const getStatDatabase = async function (trackingId) {
     return response
 }
 
+// Guild Chat Sync / Merc Faction Hall (systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall)
+// — one row per message in its own table (aws_chat_table_name), never a growing array on
+// a stats-table doc, since an active chat channel's message count isn't bounded the way
+// every other "stats doc array" (raidHistory, tower_leaderboard's entries) deliberately
+// is capped/rotated. scopeKey partitions by "guild#<guildId>" or the fixed literal "merc"
+// so a Query against one scope can never leak another Guild's (or the Merc Faction's)
+// messages. Every read here is a Query, never a Scan.
+//
+// sortKey is "<epoch ms, zero-padded>#<6-char random>" — the random suffix only exists to
+// break ties when two messages land in the exact same millisecond (a Discord message and a
+// web POST arriving back-to-back), since a plain epoch-ms sort key alone isn't guaranteed
+// unique. Padded to 15 digits so lexicographic string ordering matches numeric ordering
+// all the way out past the year 5138 (13-digit epoch ms today).
+function buildChatSortKey(createdAt) {
+    const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
+    return `${String(createdAt).padStart(15, '0')}#${randomSuffix}`;
+}
+
+// Retention is enforced by DynamoDB's own TTL sweep on `expiresAt` (epoch SECONDS, not
+// ms — TTL requires seconds), not a cron job — this codebase's node-schedule cron jobs are
+// re-registered fresh on every `ready` event with no missed-window catch-up, a poor fit
+// for "delete anything older than N days." ChatMessages.RETENTION_DAYS is CONFIRMED 30
+// (2026-09-20), superseding this feature's own original 7-day proposal.
+const postChatMessage = async function (scopeKey, { authorId, authorDisplayName, source, content }) {
+    const createdAt = Date.now();
+    const params = {
+        TableName: awsConfigurations.aws_chat_table_name,
+        Item: {
+            scopeKey,
+            sortKey: buildChatSortKey(createdAt),
+            authorId,
+            authorDisplayName,
+            source,
+            content,
+            createdAt,
+            expiresAt: Math.floor(createdAt / 1000) + ChatMessages.RETENTION_DAYS * 86400,
+        },
+    };
+
+    return docClient.put(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            console.debug(`postChatMessage error: ${JSON.stringify(err)}`);
+            return false;
+        });
+}
+
+// Incremental poll — the one function both financial-project's own polling Lambda and any
+// future bot-side "show recent chat" command would call. A Query keyed on scopeKey with
+// sortKey > sinceSortKey, so each poll stays cheap regardless of polling frequency
+// (typically 0-5 rows for an idle chat) — never a Scan. sinceSortKey defaults to '0' (a
+// value that lexicographically precedes every real sortKey) so "no prior cursor" still
+// returns full history rather than requiring a caller-side branch.
+const getChatMessagesSince = async function (scopeKey, sinceSortKey, limit) {
+    const params = {
+        TableName: awsConfigurations.aws_chat_table_name,
+        KeyConditionExpression: 'scopeKey = :scopeKey AND sortKey > :sinceSortKey',
+        ExpressionAttributeValues: { ':scopeKey': scopeKey, ':sinceSortKey': sinceSortKey || '0' },
+        Limit: limit,
+    };
+
+    return docClient.query(params).promise()
+        .then((data) => data.Items || [])
+        .catch(function (err) {
+            console.debug(`getChatMessagesSince error: ${JSON.stringify(err)}`);
+            return [];
+        });
+}
+
+// Initial page load (no prior cursor) — newest `limit` messages for a scope, in
+// most-recent-first order (ScanIndexForward: false). Same Query shape as
+// getChatMessagesSince, just without a lower bound on sortKey.
+const getRecentChatMessages = async function (scopeKey, limit) {
+    const params = {
+        TableName: awsConfigurations.aws_chat_table_name,
+        KeyConditionExpression: 'scopeKey = :scopeKey',
+        ExpressionAttributeValues: { ':scopeKey': scopeKey },
+        ScanIndexForward: false,
+        Limit: limit,
+    };
+
+    return docClient.query(params).promise()
+        .then((data) => data.Items || [])
+        .catch(function (err) {
+            console.debug(`getRecentChatMessages error: ${JSON.stringify(err)}`);
+            return [];
+        });
+}
+
 // Guilds
 // Note: previously had a comment-only `.then()` handler, which meant every call
 // resolved to `undefined` on BOTH success and failure — harmless while every existing
@@ -1701,7 +1790,18 @@ function getDefaultGuildFields(guildId, guildName, guildLeaderId, guildLeaderUse
         // were never actually converted, so any guild not currently holding the buff had to
         // re-run /join-spud-keep every day. This field replaces that per-cycle list
         // entirely — see spudKeepFactory.getLiveGuildSpudKeepRoster.
-        autoJoinSpudKeep: false
+        autoJoinSpudKeep: false,
+        // Guild Chat Sync (systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall)
+        // — set together at /guild-chat setup, cleared together at teardown (/guild-chat
+        // disable, or /disband-guild via the shared tearDownGuildChat helper). null means
+        // this guild never ran /guild-chat setup (or has since torn it down) — every
+        // membership-sync hook is a no-op for a guild in that state. Healed in for every
+        // pre-existing guild by findGuildById's existing generic diff-and-heal loop.
+        guildChatChannelId: null,
+        guildChatRoleId: null,
+        guildChatWebhookId: null,   // for cleanup/rotation, same pair server_activity_channel/
+                                     // server_big_events_channel already store (see setActivityChannel.js)
+        guildChatWebhookUrl: null   // what financial-project's Lambda POSTs into for web -> Discord
     };
 }
 
@@ -2090,5 +2190,9 @@ module.exports = {
 
     getActiveSpudKeepBuff,
     getActiveSpudKeepCooldownBuff,
-    setActiveSpudKeepBundle
+    setActiveSpudKeepBundle,
+
+    postChatMessage,
+    getChatMessagesSince,
+    getRecentChatMessages
 }

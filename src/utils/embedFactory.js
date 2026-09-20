@@ -3904,6 +3904,45 @@ class EmbedFactory {
         return embed;
     }
 
+    // /guild-chat disable confirmation trio — same 3-embed shape as the /leave and
+    // /retire-mercenary trios above. Deleting the channel also deletes every message ever
+    // sent in it, with no undo, so this warns explicitly rather than just naming the action.
+    createGuildChatDisableConfirmEmbed(userDisplayName, userId, userAvatar, guildName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`Disable ${guildName}'s guild chat?`)
+            .setDescription(`This deletes the guild's private chat channel, its access role, and its webhook — every message ever sent there goes with it, with no undo. The guild itself is untouched; you can run /guild-chat setup again later for a brand new channel.`)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createGuildChatDisableCancelledEmbed(userDisplayName, userId, userAvatar, guildName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} backed out`)
+            .setDescription(`${guildName}'s guild chat is untouched — nothing changed.`)
+            .setColor("Grey")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    createGuildChatDisableCompleteEmbed(userDisplayName, userId, userAvatar, guildName) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const embed = new EmbedBuilder()
+            .setTitle(`${guildName}'s guild chat has been disabled`)
+            .setDescription(`The channel, role, and webhook are gone. Run /guild-chat setup any time to stand up a brand new one.`)
+            .setColor("Orange")
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
     createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob, companionXpGained = 0, companionName = null) {

@@ -88,7 +88,22 @@ async function attemptJoinGuild(userId, username, userDisplayName, guildName) {
         return { ok: false, message: `this guild changed while processing your join. Please try again!` };
     }
     await dynamoHandler.updateUserDatabase(userId, "guildId", guildId);
-    return { ok: true, message: `you have joined the guild, '${guild.guildName}'!` };
+    // guildChatRoleId handed back (not acted on here) so the caller — which has the
+    // Discord interaction this pure, DB-only function deliberately doesn't take — can grant
+    // the guild's chat role. A guild that never ran /guild-chat setup has no role to grant,
+    // so this is undefined for the vast majority of joins.
+    return { ok: true, message: `you have joined the guild, '${guild.guildName}'!`, guildId, guildChatRoleId: guild.guildChatRoleId };
+}
+
+// Guild Chat Sync membership hook (systems/guilds.md) — grants the guild's chat access
+// role to a just-joined member, best-effort (a member who can't be fetched, or a guild with
+// no chat role at all, is a silent no-op). Kept separate from attemptJoinGuild itself so
+// that function stays Discord.js-free and directly testable without mocking interaction.guild.
+async function grantGuildChatRoleIfNeeded(interactionGuild, userId, guildChatRoleId) {
+    if (!guildChatRoleId || !interactionGuild) return;
+    const guildMember = await interactionGuild.members.fetch(userId).catch(() => null);
+    if (!guildMember) return;
+    await guildMember.roles.add(guildChatRoleId).catch((err) => console.error(`join-guild: failed to grant chat role to ${userId}:`, err));
 }
 
 // Up to 5 join buttons per page, one per invited guild shown — labeled with the guild's
@@ -156,6 +171,9 @@ module.exports = {
         // before this rework.
         if (guildName) {
             const result = await attemptJoinGuild(userId, username, userDisplayName, guildName);
+            if (result.ok) {
+                await grantGuildChatRoleIfNeeded(interaction.guild, userId, result.guildChatRoleId);
+            }
             interaction.editReply(`${userDisplayName}, ${result.message}`);
             return;
         }
@@ -196,6 +214,7 @@ module.exports = {
                 const result = await attemptJoinGuild(userId, username, userDisplayName, targetGuild?.guildName);
 
                 if (result.ok) {
+                    await grantGuildChatRoleIfNeeded(interaction.guild, userId, result.guildChatRoleId);
                     // Nothing left to do once joined — a member of one guild can't join
                     // another, so the whole browsing session ends here rather than
                     // staying open on a now-useless list.
@@ -224,5 +243,6 @@ module.exports = {
     // Exported for tests — see companionCancel.js's attemptCancelListing for why the
     // actual per-click logic lives in a standalone function rather than inline in the
     // collector loop.
-    attemptJoinGuild
+    attemptJoinGuild,
+    grantGuildChatRoleIfNeeded
 }

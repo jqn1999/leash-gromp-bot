@@ -95,6 +95,15 @@ module.exports = {
         // Starts the guild<->mercenary switch cooldown — the other half of this pair is
         // checked in becomeMercenary.js. See Bounty.GUILD_SWITCH_COOLDOWN_SECONDS.
         await dynamoHandler.updateUserFields(userId, { guildId: 0, guildMercenarySwitchTimer: Date.now() });
+
+        // Guild Chat Sync membership hook (systems/guilds.md) — same reasoning as kick.js's
+        // own hook: a departed member keeps neither in-game membership nor channel access.
+        if (freshGuild.guildChatRoleId) {
+            const leavingGuildMember = await interaction.guild.members.fetch(userId).catch(() => null);
+            if (leavingGuildMember) {
+                await leavingGuildMember.roles.remove(freshGuild.guildChatRoleId).catch((err) => console.error(`leave: failed to remove chat role from ${userId}:`, err));
+            }
+        }
         const completeEmbed = embedFactory.createLeaveGuildCompleteEmbed(userDisplayName, userId, userAvatar, freshGuild.guildName);
         interaction.followUp({ embeds: [completeEmbed] });
     }

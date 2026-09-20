@@ -2136,7 +2136,7 @@ pass with a new numbered `## Bot caught up #N` entry in that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md`, deferred to a future session, per this repo's `CLAUDE.md` rule and
 this design's own section 9.
 
-## Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Technical Design (2026-09-20, architect pass, scoping only, not implemented)
+## Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Technical Design (2026-09-20, architect pass — IMPLEMENTED, see "Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Shipped" below)
 
 Product owner ask (paraphrased): keep a Discord channel and a website chat panel in sync, scoped
 per in-game Guild (private to that Guild's own roster, invisible to every other Guild) — "and for
@@ -2601,7 +2601,128 @@ it isn't quite — it's just much cheaper than the Guild scope's N-Guilds-worth 
 5. **Web-side avatar display** — **CONFIRMED: username only, no avatar sync**, final for this
    feature (not just a v1 placeholder) — financial-project's webhook POST (section 4) only ever
    needs to set the `username` override field, never `avatar_url`.
-6. **Phasing — still OPEN, not yet answered.** Given the Merc Faction Hall (section 11) is
-   meaningfully lower-risk (no per-Guild multiplication, only 2 sync hooks total) and could validate
-   Direction A/B's mechanics before the Guild-scoped, N-Guilds-heavy version is built, should it
-   ship as an explicit phase 1 ahead of Guild chat, or should both be built together in one pass?
+6. **Phasing — CONFIRMED: both scopes built together, in one pass, not phased** (direct instruction
+   at build time — "build BOTH scopes — the per-Guild private chat AND the Merc Faction Hall —
+   ALONGSIDE each other in this same pass, not phased"). The Merc Faction Hall's lower relative risk
+   (section 11) turned out not to matter for sequencing, since both scopes reuse the exact same
+   category-singleton/`chat_channel_index`/Direction A-B machinery — there was no meaningful
+   "validate on the cheap scope first" benefit left once that shared plumbing existed either way.
+
+## Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Shipped (2026-09-20)
+
+Built exactly to the confirmed design above — every one of the "Summary of items needing product
+owner confirmation" resolutions was CONFIRMED before this build started, so the only decisions made
+during implementation itself were mechanical translation choices explicitly left to the developer's
+judgment by the design (the Subcommand-vs-separate-command call below), not new product/design
+decisions.
+
+**Bot-side only** (this repo's own `CLAUDE.md` cross-repo rule, and this build's own explicit scope
+boundary) — `financial-project`'s own Direction A Lambda, Direction B polling read, and new chat
+panel UI (section 6) are NOT built here, flagged as the next expected step for a future session with
+its own `## Bot caught up #N` entry in that repo's `NOTES_GROMP_WEB_INTEGRATION.md`.
+
+**`constants.js`**: `ChatMessages = { RETENTION_DAYS: 30 }` (the confirmed 30-day window, superseding
+this design's own original 7-day proposal) and `aws_chat_table_name: 'leash-gromp-bot-chat-messages'`
+on `awsConfigurations`, both exported.
+
+**`dynamoHandler.js`**: `postChatMessage`/`getChatMessagesSince`/`getRecentChatMessages` shipped
+exactly to section 1's schema and query shapes — all three a `Query`, never a `Scan`. The 4 new guild
+fields (`guildChatChannelId`/`guildChatRoleId`/`guildChatWebhookId`/`guildChatWebhookUrl`) were added
+to `getDefaultGuildFields`, healed onto every pre-existing guild by `findGuildById`'s existing
+generic diff-and-heal loop with no special-casing needed — same precedent `guildCompanion` already
+set.
+
+**One mechanical deviation from the design's own literal file/command shape, forced by a hard loader
+constraint the design didn't check**: section 2 describes `/guild-chat setup` and `/guild-chat
+disable` as living in one file, `guildChat.js`, phrased with a slash-separated command name
+suggesting Discord Subcommands but leaving the exact mechanism as "your call." `getLocalCommands.js`
+(verified directly) does `localCommands.push(commandObject)` once per required FILE with no
+array-flattening — a single file can only ever export ONE command object, so two literal separate
+top-level commands in one file was never actually possible. Implemented as genuine Discord.js
+Subcommands (`ApplicationCommandOptionType.Subcommand`) inside one registered `guild-chat` command
+instead — this required zero changes to `handleCommands.js`'s existing name-lookup dispatch or
+`areCommandsDifferent.js`'s existing option-diffing (both already handle a top-level Subcommand-type
+option correctly, confirmed by reading both directly), and satisfies the design's own one-file intent
+exactly.
+
+**`/guild-chat setup`** shipped per section 2 steps 1-8 verbatim: idempotent reject if
+`guild.guildChatChannelId` is already set, lazy-created `🏰 Guild Chat Halls` category singleton
+(`getStatDatabase`/`updateStatFields('guild_chat_category', ...)`), a `Guild: <Name> Access` role, a
+slugified `<guild-name>-hall` text channel with the exact two-entry permission-overwrite shape
+(deny `@everyone` ViewChannel, allow the new role ViewChannel/SendMessages/ReadMessageHistory),
+retroactive best-effort role grants to every current `memberList` entry, a webhook in the new
+channel, all 4 fields written via a guarded `updateGuildFieldsWithLock`, and a new `chat_channel_index`
+entry. A failed channel creation rolls back the already-created role, avoiding an orphaned
+role-with-no-channel.
+
+**Teardown, both paths, exactly per section 2's confirmed split**:
+- `tearDownGuildChat(client, discordGuild, guild)` — the shared helper, exported from `guildChat.js`
+  for `disbandGuild.js` to also import. Deletes the channel/webhook/role each independently
+  best-effort, removes the `chat_channel_index` entry, is a safe no-op when
+  `guild.guildChatChannelId` is already `null`, and deliberately never writes the 4 guild fields back
+  to `null` itself — "the shared helper has no opinion on locking" is implemented literally: each
+  caller nulls those fields via its own preferred write.
+- `/guild-chat disable` — confirm/cancel-gated via `buildConfirmCancelRow` (same pattern `/leave`/
+  `/retire-mercenary`/`/disband-guild` already use), re-fetches the guild fresh right before
+  committing, calls `tearDownGuildChat`, then clears the 4 fields via a guarded
+  `updateGuildFieldsWithLock` — the NEW convention for this file, since it's new code with no
+  pre-existing style to match.
+- `disbandGuild.js` — calls the same shared helper right after its existing `memberList` clear, then
+  4 individual unguarded `updateGuildDatabase` calls to null the fields, deliberately matching this
+  file's own pre-existing unguarded style rather than silently upgrading its concurrency safety as a
+  side effect of an unrelated feature.
+
+**Membership sync — exactly the hook points in section 3's table, each gated on
+`guildChatRoleId`/`roleId` being non-null**: `joinGuild.js`'s `attemptJoinGuild` now returns
+`guildChatRoleId` alongside its existing `{ ok, message }` shape (verified the pre-existing
+`joinGuild.test.js` suite stayed green unchanged — a pure addition, not a breaking reshape), with a
+new `grantGuildChatRoleIfNeeded` helper doing the actual Discord-side role grant at both of the
+command's own call sites (typed-name path and no-args button-click path) — kept OUT of
+`attemptJoinGuild` itself so that function stays Discord.js-free and directly testable, matching its
+existing design intent. `kick.js`/`leave.js` remove the departing member's own role right after their
+existing guarded writes succeed. `becomeMercenary.js`/`retireMercenary.js` — the Merc Faction Hall's
+own 2 hooks from section 11 — add/remove its shared role by reading
+`getStatDatabase('merc_faction_chat_channel')`.
+
+**`/set-merc-chat-channel`** (`src/commands/moderation/setMercChatChannel.js`) shipped per section 11
+— mirrors `setActivityChannel.js`'s exact shape (`devOnly`, `Administrator`-gated, a `disable`
+option), reuses `guildChat.js`'s own `ensureGuildChatCategory`/`addChatChannelIndexEntry`/
+`removeChatChannelIndexEntry` (exported for this exact cross-file reuse, same precedent
+`skipChances.js`'s existing cross-command require of `startRaid.js` already set) rather than
+duplicating category-creation logic, and retroactively grants the Hall's role to every current
+`isMercenary` user via a raw `getUsers()` scan.
+
+**`messageCreate` handler** — Direction B, shipped essentially as section 5's own literal snippet,
+with one deliberate, documented correction: the design's own code caches whatever `categoryId` it
+first reads, INCLUDING `null` if no chat has been provisioned yet. That has two real bugs a literal
+implementation would have shipped: caching a stale `null` forever after the FIRST chat channel is
+ever provisioned post-boot (that brand-new channel's messages would never relay until a restart), and
+— more subtly — comparing `message.channel.parentId !== null` while the cache is still `null` would
+incorrectly PASS for every message in ANY OTHER uncategorized channel server-wide (an uncategorized
+channel's own `parentId` is also `null`), defeating the entire point of the "cheap, zero-DB-call
+pre-filter" the design's own comment describes it as. Fixed by only ever caching a truthy
+`categoryId` — while it's still unset, the category doc is simply re-queried per message (a bounded,
+self-resolving cost given this game's confirmed low guild count) rather than ever short-circuiting
+against a `null` that could match too broadly.
+
+**`embedFactory.js`**: a `createGuildChatDisableConfirmEmbed`/`CancelledEmbed`/`CompleteEmbed` trio,
+matching the exact shape the `/leave` and `/retire-mercenary` trios already established.
+
+**Tests**: full suite run before and after — **before: 99 suites / 1828 tests, all passing; after:
+106 suites / 1892 tests, all passing** (7 new test files, 64 new tests, zero regressions). New
+coverage: `chatMessages.test.js` (the dynamoHandler primitives' exact Query/Put shapes plus the new
+guild-field healing), `guildChat.test.js` (`tearDownGuildChat`, `ensureGuildChatCategory`, the
+`chat_channel_index` helpers, and the full `/guild-chat setup`/`disable` command flows including
+role-rollback-on-failure and race-lost-write cases), `disbandGuildChatTeardown.test.js` (the second
+`tearDownGuildChat` call site), `guildChatMembershipSync.test.js` and `mercFactionChatSync.test.js`
+(all 5 membership-sync hooks, Discord.js's `GuildMember`/`roles.add`/`roles.remove` mocked directly
+per this task's own instruction), `messageHandler.test.js` (the category pre-filter INCLUDING the
+stale-null-cache regression case described above, and scope resolution for Guild vs. Merc vs.
+unrelated channels), and `setMercChatChannel.test.js`.
+
+**Live, one-time pre-flight this build could not verify from static code** (flagged by the design's
+own section 9, repeated here since it's the one thing standing between this code and production):
+confirm `MESSAGE CONTENT INTENT` is toggled ON in the Discord Developer Portal for the actual
+production bot token. Not a blocker to writing or shipping this code — a portal setting, not
+something inspectable from this repo — but should be checked before this feature is expected to work
+live.

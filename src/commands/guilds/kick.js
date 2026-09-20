@@ -74,6 +74,18 @@ module.exports = {
             return;
         }
         await dynamoHandler.updateUserDatabase(targetUser, "guildId", 0);
+
+        // Guild Chat Sync membership hook (systems/guilds.md) — an ex-member who still has
+        // channel access defeats the point of a private channel. Best-effort: a kicked
+        // member who's since left the physical Discord server can't have a role removed at
+        // all, and a guild with no chat role set up is a silent no-op either way.
+        if (guild.guildChatRoleId) {
+            const targetGuildMember = await interaction.guild.members.fetch(targetUser).catch(() => null);
+            if (targetGuildMember) {
+                await targetGuildMember.roles.remove(guild.guildChatRoleId).catch((err) => console.error(`kick: failed to remove chat role from ${targetUser}:`, err));
+            }
+        }
+
         interaction.editReply(`${userDisplayName} you have kicked <@${targetUser}> from the guild '${guild.guildName}'!`);
     }
 }

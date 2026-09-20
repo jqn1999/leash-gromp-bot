@@ -66,6 +66,18 @@ module.exports = {
         // Starts the guild<->mercenary switch cooldown — the other half of this pair is
         // checked in createGuild.js/joinGuild.js. See Bounty.GUILD_SWITCH_COOLDOWN_SECONDS.
         await dynamoHandler.updateUserFields(userId, { isMercenary: false, guildMercenarySwitchTimer: Date.now() });
+
+        // Merc Faction Hall membership sync (systems/guilds.md#the-merc-faction-hall) — same
+        // reasoning as the Guild Chat sync hooks: an ex-mercenary shouldn't keep channel
+        // access. Best-effort/silent no-op if the Hall was never provisioned.
+        const mercChatConfig = await dynamoHandler.getStatDatabase('merc_faction_chat_channel');
+        if (mercChatConfig?.roleId) {
+            const guildMember = await interaction.guild.members.fetch(userId).catch(() => null);
+            if (guildMember) {
+                await guildMember.roles.remove(mercChatConfig.roleId).catch((err) => console.error(`retire-mercenary: failed to remove Merc Faction Hall role from ${userId}:`, err));
+            }
+        }
+
         const completeEmbed = embedFactory.createRetireMercenaryCompleteEmbed(userDisplayName, userId, userAvatar, Bounty.GUILD_SWITCH_COOLDOWN_SECONDS);
         interaction.followUp({ embeds: [completeEmbed] });
     }

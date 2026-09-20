@@ -77,6 +77,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `repelWarband.js` | `/repel-warband` | Elder+ resolves an Ashclove Company warband confrontation immediately (no confirm, no options — scenario is rolled, not chosen) once Infamy crosses the threshold — subtracts the threshold win or lose — see [systems/guilds.md](../systems/guilds.md#guild-rival-warbands) |
 | `guildCompanionDonate.js` | `/guild-companion-donate` | The owning player (no role gate) donates their own found Cinderroot to their guild, activating it immediately — status is shown on `/guild` itself, no dedicated status command — see [systems/guilds.md](../systems/guilds.md#guild-companion-cinderroot-rework-personal-find-donate-in-withdraw-out) |
 | `guildCompanionWithdraw.js` | `/guild-companion-withdraw` | Co-Leader/Leader pulls the guild's Cinderroot out entirely, awarding a personal instance to whoever ran the command |
+| `guildChat.js` | `/guild-chat setup` \| `/guild-chat disable` | Co-Leader/Leader provisions (or tears down, confirm-gated) the guild's own private Discord chat channel — see [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20) |
 
 ## `starch/` — [systems/starch-trading.md](../systems/starch-trading.md)
 
@@ -134,3 +135,4 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `adminWork.js` | `/admin-work` | `devOnly` — forces a specific `/work` scenario (and optionally an exact companion) on the caller, reusing the real scenario action/embed; skips the workTimer cooldown and doesn't touch the shared `work` stats doc |
 | `adminStats.js` | `/admin-stats` | `devOnly` + Administrator — ephemeral dashboard of cached economy/starch/world/quest state, so admins don't need to check DynamoDB directly |
 | `adminResetTower.js` | `/admin-reset-tower player:<mention>` | `devOnly` + Administrator — restores a target player's `canEnterTower` to `true`, unsticking them from a crashed/stuck Tower run without waiting for the next day's 8pm ET reset — see [systems/tower.md](../systems/tower.md#admin-reset-tower) |
+| `setMercChatChannel.js` | `/set-merc-chat-channel` | `devOnly` + Administrator — provisions (or tears down) the Merc Faction Hall, a shared chat channel gated to `isMercenary` players — see [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20) |

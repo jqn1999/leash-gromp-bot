@@ -4538,6 +4538,11 @@ const awsConfigurations = {
     aws_stats_table_name: 'leash-gromp-stats',
     aws_shop_table_name: 'leash-gromp-bot-shop',
     aws_guilds_table_name: 'leash-gromp-bot-guilds',
+    // Guild Chat Sync / Merc Faction Hall (systems/guilds.md) — one ROW per chat message,
+    // not one growing array on a stats-table doc, since an active channel's message count
+    // isn't bounded the way every other "stats doc array" (raidHistory, tower_leaderboard)
+    // deliberately is. TTL-swept server-side (ChatMessages.RETENTION_DAYS below), no cron.
+    aws_chat_table_name: 'leash-gromp-bot-chat-messages',
     aws_local_config: {
         //Provide details for local configuration
     },
@@ -4549,6 +4554,14 @@ const awsConfigurations = {
     testServer: "168379467931058176",
     clientId: "1187560268172116029",
     devs: ["103243257240121344"]
+}
+
+// Guild Chat Sync / Merc Faction Hall — chat history retention. CONFIRMED 30 days
+// (2026-09-20, product owner) — supersedes this feature's own original 7-day proposal.
+// Enforced via DynamoDB's native TTL on the chat-messages table's `expiresAt` attribute
+// (epoch seconds), not a cron job — see dynamoHandler.postChatMessage.
+const ChatMessages = {
+    RETENTION_DAYS: 30
 }
 
 // Balance-testing carve-out (2026-09-19, direct instruction — a specific test account's
@@ -4571,6 +4584,7 @@ module.exports = {
     bankRegradeTiers,
     REGRADE_CAPS,
     awsConfigurations,
+    ChatMessages,
     Work,
     Achievements,
     CatchUp,

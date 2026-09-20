@@ -40,6 +40,18 @@ module.exports = {
         }
 
         await dynamoHandler.updateUserFields(userId, { isMercenary: true });
+
+        // Merc Faction Hall membership sync (systems/guilds.md#the-merc-faction-hall) — the
+        // shared mercenary-only chat channel, provisioned via /set-merc-chat-channel. A
+        // silent no-op if that admin command hasn't been run yet (nothing to grant).
+        const mercChatConfig = await dynamoHandler.getStatDatabase('merc_faction_chat_channel');
+        if (mercChatConfig?.roleId) {
+            const guildMember = await interaction.guild.members.fetch(userId).catch(() => null);
+            if (guildMember) {
+                await guildMember.roles.add(mercChatConfig.roleId).catch((err) => console.error(`become-mercenary: failed to grant Merc Faction Hall role to ${userId}:`, err));
+            }
+        }
+
         interaction.editReply(`${userDisplayName}, you're now a mercenary! Run /bounty-board to see your unlocked Bounty tiers, /take-bounty to attempt one, and /rob-npc for a lower-stakes solo heist. You can't join or found a guild while you're a mercenary — /retire-mercenary reverses this any time, no progress lost.`);
     }
 }
