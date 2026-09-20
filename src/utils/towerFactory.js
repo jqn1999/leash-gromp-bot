@@ -293,7 +293,15 @@ class towerFactory{
             // depth decay explicitly exempts them, since Elites already carry their own risk
             // throttle via the difficulty curve) — but that exemption is about floor DEPTH,
             // a different axis than player POWER, so scaleReward still applies here.
-            this.run[tC.PAYOUT.POTATOES] += this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value)
+            //
+            // Routed through creditRunPayout (2026-09-20, per-run POTATOES cap fix — see
+            // tower.md/roadmap.md) rather than a direct `this.run[...] +=`. This is the
+            // single highest-risk part of that fix: Elite kills are undecayed and compound
+            // to roughly a quarter to a third of a deep run's total potato haul, so a direct
+            // credit here would silently bypass the new cap almost entirely. This.floor is
+            // already correct at this call site (the Elite's own floor), so the evolving
+            // floor-band cap applies exactly as it does to every other credit path.
+            this.creditRunPayout(tC.PAYOUT.POTATOES, this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value))
             // handle reward payouts
             this.checkElitePayout()
             // Tower Pet (2026-09-13) — leveling bookkeeping and Bastion's own drop roll, both
@@ -388,8 +396,12 @@ class towerFactory{
     // exploit worse, not better). WORK_MULTIPLIER has no natural potato equivalent (and no
     // entry in TOWER_OVERFLOW_SHOP_RATE), so its overflow is simply not granted; the 10x cap is
     // generous enough (real runs top out well under 2x, see tower.md) that this almost never
-    // engages. PAYOUT.POTATOES itself has no cap and is credited in full, uncapped, same as
-    // before. Returns the amount actually applied to `type` (not the raw pre-cap amount) so
+    // engages. PAYOUT.POTATOES now ALSO gets a floor-banded cap (2026-09-20, see
+    // TOWER_FLOOR_CAP_STEP's own comment and tower.md's "Per-Run POTATOES Cap" section) — its
+    // overflow is simply discarded (this `if` condition below only ever fires for
+    // PASSIVE_INCOME/BANK_CAPACITY, deliberately excluding POTATOES, since potatoes has no
+    // "next currency down" to convert into). Returns the amount actually applied to `type` (not
+    // the raw pre-cap amount) so
     // callers that report a per-floor delta (updateValue/updateTransaction's silent outcome,
     // read by the Fast Forward summary embed) can't claim more than what actually landed in
     // this.run[type] — the same "displayed number must match what's credited" principle the

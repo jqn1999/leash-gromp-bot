@@ -2156,7 +2156,7 @@ the web app never runs any Tower floor/reward/cap logic of its own. There is no 
 this explicitly rather than silently skipping it, per this repo's own standing cross-repo-sync
 rule, precisely because "no port needed" should be a stated conclusion, not an assumption.
 
-## Per-Run POTATOES Cap: Technical Design (2026-09-20, scoping pass — NOT implemented, nothing in `src/` touched by this pass)
+## Per-Run POTATOES Cap: Technical Design (2026-09-20, scoping pass — IMPLEMENTED, see "Per-Run POTATOES Cap: Shipped" below)
 
 **The confirmed problem** (verified against a real 500-run Monte Carlo at power/`workMultiplierAmount`
 600 using the live `towerFactory.js` success-chance/scaling/decay formulas): median outcome is
@@ -2452,3 +2452,62 @@ amount is materially less than the pre-cap scaled/decayed value (e.g. "...though
 already overflowing today"), rather than leaving the static per-floor text to imply a gain that
 didn't actually happen. Not implemented as part of this scoping pass — a product call on whether
 it's worth the extra surface area.
+
+## Per-Run POTATOES Cap: Shipped (2026-09-20)
+
+Built exactly to the scoping design above, per explicit product owner confirmation: "go with the
+350,000,000 step value, exactly as scoped — do NOT include any additional overall potato-generation
+reduction" (a separate, broader "cut Tower's potato output by ~50%" idea was raised and explicitly
+retracted in the same breath). This is a per-run CAP only — no reward value, `scalingFactor`,
+`SCALING_EXPONENT`, or any other Tower magnitude changed.
+
+**`towerConstants.js`**: one new entry added to the existing `TOWER_FLOOR_CAP_STEP` object,
+`[PAYOUT.POTATOES]: 350000000`, with a comment summarizing the derivation above (the ~460.2B
+cumulative cost to reach power 600 and the ~2.9-4.1B/day realistic raid-EV ceiling from
+`balance-audit.md`'s newest entry, NOT a round number). Grows the identical way
+`PASSIVE_INCOME`/`BANK_CAPACITY` already do (flat +350,000,000 per 10-floor band via the existing
+`getTowerRunCap` — zero changes needed to that function itself, it already dispatches generically
+off whatever keys exist in `TOWER_FLOOR_CAP_STEP`). Resulting table: floors 1-9 (band 0) 350M,
+10-19 (band 1) 700M, ... 90-99 (band 9) 3.5B, 100-109 (band 10) 3.85B, +350M per band beyond that.
+
+**`towerFactory.js`**: two changes.
+1. `execElite`'s win branch — the single highest-risk part of this fix — rerouted its Elite-kill
+   potato credit from a direct `this.run[tC.PAYOUT.POTATOES] += this.scaleReward(...)` line
+   (which completely bypassed `creditRunPayout` and therefore any cap) to
+   `this.creditRunPayout(tC.PAYOUT.POTATOES, this.scaleReward(...))`. Without this reroute the
+   cap would have done almost nothing, since Elite-kill rewards are undecayed and compound to
+   roughly a quarter to a third of a deep run's total potato haul.
+2. `creditRunPayout`'s own top-of-method comment updated — it used to state flatly that
+   `PAYOUT.POTATOES` "has no cap and is credited in full, uncapped"; now notes it's capped the
+   same floor-banded way, with overflow simply discarded (the method's overflow-conversion `if`
+   branch already only fires for `PASSIVE_INCOME`/`BANK_CAPACITY`, so a `POTATOES` cap entry
+   alone makes its own overflow fall through and discard with zero body changes needed).
+
+**`checkElitePayout`** (King Kiwi's deferred elite-kill bonus) needed no change at all — confirmed
+directly by reading it, not assumed: it already calls `this.creditRunPayout(payout[TYPE],
+payout[AMOUNT])`, so it automatically respects the new cap the moment `TOWER_FLOOR_CAP_STEP` gained
+a `POTATOES` entry.
+
+**Overflow**: confirmed discarded, not redirected anywhere — verified with a dedicated test
+asserting `applied === room` and that no other `run[...]` field (WORK_MULTIPLIER, PASSIVE_INCOME,
+BANK_CAPACITY) absorbed the difference. No `POTATOES` entry was added to
+`TOWER_OVERFLOW_SHOP_RATE` (would have been self-referential).
+
+**Tests** (`src/utils/__tests__/towerFactory.test.js`): the one test that directly contradicted the
+new behavior — `'PAYOUT.POTATOES has no cap and is credited in full'` — was rewritten to
+`'PAYOUT.POTATOES is clamped at getTowerRunCap(floor), and overflow is discarded (not converted to
+anything)'`, computing its expected cap from `tC.getTowerRunCap` rather than a hardcoded literal so
+a future step retune can't desync the test from the constant. Every other existing
+`PAYOUT.POTATOES`-asserting test in the file was checked directly and confirmed unaffected — they
+all use `ENTRY_GATE_MULTI` (20, `scalingFactor === 1`), summing in the low hundred-thousands, far
+under even band 0's 350M cap. Five new tests added: a floor-band table test for POTATOES' own cap
+growth, a credit comfortably under the cap applying in full, an over-cap credit clamped with the
+overflow confirmed discarded (not redirected to WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY), room
+reopening at a band boundary, and — the dedicated regression coverage the design called out as
+highest-value — two tests in a new `execElite`-reroute describe block asserting an Elite win's own
+potato reward is clamped by the cap when room is tight (and still credited in full when it isn't),
+specifically so a future edit can't silently revert `execElite` back to a direct, uncapped credit.
+Full suite: **95 test suites / 1800 tests, all passing** (up from 95/1794 pre-change).
+
+`financial-project` re-confirmed not touched (per the scoping pass's own conclusion): it doesn't
+implement Tower at all, no port needed.

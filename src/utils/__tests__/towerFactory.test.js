@@ -840,11 +840,72 @@ describe('REWARD variety cap (2026-09-04)', () => {
 });
 
 describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)', () => {
-    test('PAYOUT.POTATOES has no cap and is credited in full', () => {
+    // Rewritten (2026-09-20) — PAYOUT.POTATOES is no longer uncapped, per the "Per-Run
+    // POTATOES Cap" fix (see towerConstants.js's TOWER_FLOOR_CAP_STEP and tower.md). This
+    // used to assert the opposite (full, uncapped credit); now asserts the clamp itself,
+    // same shape as the pre-existing PASSIVE_INCOME/BANK_CAPACITY cap tests below.
+    test('PAYOUT.POTATOES is clamped at getTowerRunCap(floor), and overflow is discarded (not converted to anything)', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
         const applied = tF.creditRunPayout(tC.PAYOUT.POTATOES, 999999999);
-        expect(applied).toBe(999999999);
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(999999999);
+
+        expect(cap).toBe(350000000);
+        expect(applied).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(cap);
+    });
+
+    test('a POTATOES credit comfortably under the cap is applied in full, unaffected by the cap', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 5;
+        const applied = tF.creditRunPayout(tC.PAYOUT.POTATOES, 1000000);
+
+        expect(applied).toBe(1000000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1000000);
+    });
+
+    test('getTowerRunCap bands PAYOUT.POTATOES every 10 floors, growing +350,000,000/band (mirrors the PASSIVE_INCOME/BANK_CAPACITY band test below)', () => {
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 1)).toBe(350000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 9)).toBe(350000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 10)).toBe(700000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 95)).toBe(3500000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 109)).toBe(3850000000);
+    });
+
+    test('a POTATOES credit that would exceed the cap is clamped exactly at the room available, with the overflow NOT redirected anywhere (unlike PASSIVE_INCOME/BANK_CAPACITY)', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 5;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
+        tF.run[tC.PAYOUT.POTATOES] = cap - 100000;
+
+        const applied = tF.creditRunPayout(tC.PAYOUT.POTATOES, 5000000);
+
+        expect(applied).toBe(100000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(cap);
+        // No other run field should have absorbed the discarded overflow — guards against a
+        // future "helpfully" added TOWER_OVERFLOW_SHOP_RATE[POTATOES] entry reactivating a
+        // self-referential conversion.
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(0);
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(0);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(0);
+    });
+
+    test('POTATOES cap room reopens once the floor advances into a new band', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 5;
+        const capBand0 = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
+        tF.creditRunPayout(tC.PAYOUT.POTATOES, capBand0);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(capBand0);
+
+        // No more room in band 0.
+        expect(tF.creditRunPayout(tC.PAYOUT.POTATOES, 1000000)).toBe(0);
+
+        tF.floor = 15; // band 1
+        const capBand1 = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
+        const appliedInBand1 = tF.creditRunPayout(tC.PAYOUT.POTATOES, 1000000);
+
+        expect(appliedInBand1).toBe(1000000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(capBand0 + 1000000);
+        expect(capBand1).toBeGreaterThan(capBand0);
     });
 
     test('PASSIVE_INCOME is clamped at getTowerRunCap(floor), overflow converts into POTATOES at the discounted shop rate (2026-09-19)', () => {
@@ -999,6 +1060,69 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
             expect(tF.run[tC.PAYOUT.POTATOES]).toBe(0);
             expect(Number.isInteger(tF.run[tC.PAYOUT.POTATOES])).toBe(true);
         });
+    });
+});
+
+// Regression coverage for the "Per-Run POTATOES Cap" fix's own highest-risk piece (2026-09-20,
+// see tower.md/roadmap.md): execElite's win branch used to credit its Elite-kill potato reward
+// via a direct `this.run[tC.PAYOUT.POTATOES] +=` line that completely bypassed creditRunPayout
+// (and therefore the new cap). This test exists specifically so a future edit can't silently
+// revert that reroute back to a direct, uncapped credit — it fails immediately if it does.
+describe("execElite's Elite-kill potato reward is rerouted through creditRunPayout, respecting the per-run cap (2026-09-20)", () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('an Elite win with little room left under the cap is clamped, not added in full', async () => {
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 10; // forced Elite N=1, band 0 -> POTATOES cap = 350,000,000
+        const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
+        // Leave only 50,000 of room — less than Celerity's raw 150,000 Elite reward (and
+        // ENTRY_GATE_MULTI's scalingFactor === 1, so the raw value is exactly what would be
+        // credited if this bypassed the cap).
+        tF.run[tC.PAYOUT.POTATOES] = cap - 50000;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValueOnce(0)     // fight roll -> win
+            .mockReturnValue(0);        // drop roll / anything else
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        // If this ever regresses back to a direct `+=`, run[POTATOES] would be
+        // cap - 50,000 + 150,000 = cap + 100,000, exceeding the cap.
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(cap);
+        expect(tF.run[tC.PAYOUT.POTATOES]).not.toBe(cap - 50000 + 150000);
+    });
+
+    test('an Elite win comfortably under the cap still credits its full scaled reward (the reroute is a no-op when there is room)', async () => {
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 10;
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)     // pickElite candidate index
+            .mockReturnValueOnce(0)     // fight roll -> win
+            .mockReturnValue(0);
+
+        try {
+            await tF.execElite(tF.difficulty);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(150000);
     });
 });
 

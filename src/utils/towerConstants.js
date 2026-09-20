@@ -200,7 +200,33 @@ const TOWER_RUN_CAPS = {
 const TOWER_FLOOR_CAP_BAND_SIZE = 10
 const TOWER_FLOOR_CAP_STEP = {
     [PAYOUT.PASSIVE_INCOME]: 500000,
-    [PAYOUT.BANK_CAPACITY]: 2500000
+    [PAYOUT.BANK_CAPACITY]: 2500000,
+    // Per-run POTATOES cap (2026-09-20, product-owner-confirmed, per-run cap ONLY — an
+    // additional overall potato-generation cut was raised in the same discussion and
+    // explicitly retracted, do not add one here). See tower.md's "Per-Run POTATOES Cap:
+    // Technical Design" section for the full derivation; summarized here so this number
+    // is never mistaken for a round guess:
+    //
+    // A real 500-run Monte Carlo at power (workMultiplierAmount) 600 found a single Tower
+    // run's MEDIAN payout was 6.3-8.3 BILLION potatoes — recouping the real cumulative
+    // ~460,201,102,807-potato cost to reach power 600 (SCALING_ANCHOR_TABLE's own 600
+    // entry) in just ~56-73 days from ONE free, once-daily action, versus the
+    // ~2.9-4.1-billion/day realistic ceiling for a maxed guild member grinding every raid
+    // cooldown 24/7 (balance-audit.md's newest Raid EV re-derivation) — that raid ceiling
+    // itself implies a sane ~112-159-day payback horizon for "the single best other daily
+    // income source, maxed." 350,000,000/band was picked so a power-600 run's CAPPED total
+    // lands inside that same 2.9-4.1B target band (~3.15B Greedy/band 8, ~3.85B Safe/band
+    // 10 at that power's real median stopping floors of 87/100) while leaving powers
+    // 100/250 (well below band 8-10) completely untouched — verified against three power
+    // points, not just 600. Grows the identical way PASSIVE_INCOME/BANK_CAPACITY already
+    // do (flat +350,000,000 per 10-floor band via getTowerRunCap) — deliberately no new
+    // growth curve, since the reward-decay safeguard already handles the floor-DEPTH axis;
+    // this only needs to solve the floor-independent scalingFactor/POWER axis. Unlike
+    // PASSIVE_INCOME/BANK_CAPACITY, overflow past this cap has nowhere further to convert
+    // to (potatoes is already this game's terminal currency) and is simply discarded —
+    // creditRunPayout's existing overflow branch already only fires for PASSIVE_INCOME/
+    // BANK_CAPACITY, so this needs NO new entry in TOWER_OVERFLOW_SHOP_RATE; do not add one.
+    [PAYOUT.POTATOES]: 350000000
 }
 
 // Overflow-to-potato discount rate (2026-09-19, product owner picked type-specific rates —

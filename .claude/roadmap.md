@@ -14889,3 +14889,58 @@ developer builds it.
 Docs: `systems/companions.md`'s Companion Fusion / Ascension section rewritten to describe the new
 batch selection flow on top of the unchanged target-must-be-max-level rationale.
 
+## Shipped: per-run POTATOES cap for Tower (2026-09-20, follows through on the scoping pass above)
+
+Product owner reviewed the scoped 350,000,000 step value and confirmed it exactly, in the same
+breath explicitly retracting a separately-raised, broader "cut Tower's potato output by ~50%"
+idea ("Dont include any potato reduction for now") — this shipped change is a per-run CAP only, no
+reward value/`scalingFactor`/`SCALING_EXPONENT`/any other Tower magnitude touched.
+
+**Two files changed.** `towerConstants.js`: one new entry added to the existing
+`TOWER_FLOOR_CAP_STEP` object, `[PAYOUT.POTATOES]: 350000000`, with a derivation comment (grounded
+against the ~460.2B cumulative cost to reach power 600 and the ~2.9-4.1B/day realistic raid-EV
+ceiling from `balance-audit.md`'s newest entry — not a round number). Reuses `getTowerRunCap`'s
+existing floor-banded mechanism unchanged (no new growth curve): floors 1-9 (band 0) cap at 350M,
+10-19 (band 1) at 700M, growing +350M per 10-floor band with no ceiling. `towerFactory.js`: (1)
+`execElite`'s win branch — the design's own flagged highest-risk piece — rerouted from a direct
+`this.run[tC.PAYOUT.POTATOES] += this.scaleReward(...)` line (which completely bypassed
+`creditRunPayout` and therefore any cap) to `this.creditRunPayout(tC.PAYOUT.POTATOES,
+this.scaleReward(...))`; (2) `creditRunPayout`'s stale top-of-method comment (previously stating
+POTATOES "has no cap... credited in full, uncapped") updated to describe the new cap and its
+discard-on-overflow behavior.
+
+**Confirmed, not assumed, that `checkElitePayout` (King Kiwi's deferred elite-kill bonus) needed no
+change** — read directly: it already calls `this.creditRunPayout(payout[TYPE], payout[AMOUNT])`,
+so it automatically inherited the new cap the moment `TOWER_FLOOR_CAP_STEP` gained a `POTATOES`
+key, with zero code changes to that method.
+
+**Overflow confirmed discarded, not redirected** — `creditRunPayout`'s existing overflow-to-potato
+branch already only fires `if (type === PASSIVE_INCOME || type === BANK_CAPACITY)`, so a `POTATOES`
+cap entry alone makes its own overflow fall through that check and vanish, with zero body changes
+needed. No entry was added to `TOWER_OVERFLOW_SHOP_RATE` for `POTATOES` (would have been
+self-referential — converting potatoes overflow into potatoes at an invented rate is meaningless).
+
+**Tests** (`src/utils/__tests__/towerFactory.test.js`): exactly one existing test needed rewriting,
+as the scoping pass predicted — `'PAYOUT.POTATOES has no cap and is credited in full'` directly
+asserted the now-false behavior, rewritten to assert the clamp instead (`'PAYOUT.POTATOES is
+clamped at getTowerRunCap(floor), and overflow is discarded (not converted to anything)'`),
+computing its expected cap from `tC.getTowerRunCap` rather than a hardcoded literal. Verified by
+actually running the suite (not trusting the scoping pass's claim blindly) that every other
+`PAYOUT.POTATOES`-asserting test in the file was unaffected — confirmed they all use
+`ENTRY_GATE_MULTI` (`scalingFactor === 1`), summing in the low hundred-thousands, nowhere near even
+band 0's 350M. Five new tests added: a floor-band table test mirroring the existing
+`PASSIVE_INCOME`/`BANK_CAPACITY` band test, a credit comfortably under the cap applying in full, an
+over-cap credit clamped with the overflow explicitly confirmed NOT redirected to any other
+`run[...]` field, room reopening correctly at a band boundary, and — the design's own
+highest-priority ask — a dedicated `execElite`-reroute regression describe block with two tests
+(an Elite win with tight room under the cap gets clamped; an Elite win with plenty of room still
+credits its full scaled reward) specifically so a future edit can't silently revert `execElite`
+back to a direct, uncapped credit. Full suite: **95 test suites / 1800 tests, all passing** (up
+from 95/1794 before this change).
+
+`financial-project` re-confirmed out of scope, same conclusion as the scoping pass: it doesn't
+implement Tower at all, no companion port needed. Docs updated: `systems/tower.md`'s "Per-Run
+POTATOES Cap: Technical Design" section heading now reads "IMPLEMENTED" (pointing at a new
+"Per-Run POTATOES Cap: Shipped" section appended after it with the same level of detail as this
+entry) rather than "NOT implemented."
+
