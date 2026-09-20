@@ -1594,3 +1594,337 @@ A fourth Cinderroot perk analogous to Yukon's `rivalSuccessChanceFlat` (a flat a
 deferring this, since Cinderroot's three existing perks already went through two same-day retuning
 passes each and bolting on a fourth in the same pass risks needing its own immediate retune before
 anyone's had real playtime with either change.
+
+## Guild Raid Stat Reward: Technical Design (2026-09-20, architect pass — not yet implemented)
+
+Product owner ask (verbatim): *"Can you have guild raids also have a chance of granting stats to
+all members in the raid? Similar to merc bounty but have the % chance go 1%, 2.5%, 5% and at guild
+level 8+ also get the extra 5% roll? Make sure embeds, UIs, and the web-activity or big events
+channel are updated to say if the guild raid granted stats"* plus *"Check the merc side for all the
+same stuff and make sure stat gains are shown correctly on everything."* This section is the
+build-ready design; nothing in `src/` has been touched yet. Modeled directly on Mercenary Bounty's
+own rare stat-reward roll (`mercenaryFactory.js`'s `rollBountyStatReward`/`pickStatGrant`,
+`constants.js`'s `BountyStatReward` — see [mercenary-bounties.md](mercenary-bounties.md)) — every
+formula/pool below is a confirmed reuse of that existing mechanism, not a new parallel one, per the
+"check the merc side... parity" framing of the ask.
+
+### 1. Band mapping — confirmed: Regular/Elite/Legendary, not per-T1-T4-bracket
+
+Guild Raid's three `raid-select` modes are the natural 3-band mapping for the requested 1%/2.5%/5%,
+and the three numbers the product owner listed are themselves evidence for this: three percentages
+for three modes, not twelve (T1-T4 × 3 modes). `baby` mode gets the SAME rate as `regular` — it's
+literally `regularRaidScenarios`' own T1 entry reused by reference (see "`baby` mode" above), and
+`GuildRival.INFAMY_PER_RAID_MODE` already sets the precedent for how `baby` should be keyed
+alongside `regular` (`{ baby: 1, regular: 1, elite: 2, legendary: 3 }` — an explicit literal per
+key, not a derived alias): this reuses that exact shape, an explicit `baby` key equal to `regular`'s
+value. `stat` mode is excluded — see "Stat Raid — excluded" below.
+
+New `constants.js` block, placed near `BountyStatReward` (reuses its exact `TIER_I_GRANT`/
+`TIER_II_GRANT`/`TIER_III_GRANT` pools verbatim — no new pools defined):
+
+```js
+const GuildRaidStatReward = {
+    // 1% / 2.5% / 5% per the product owner's own numbers — baby explicitly mirrors regular's
+    // rate, same literal-per-key shape GuildRival.INFAMY_PER_RAID_MODE already uses for baby.
+    ROLL_CHANCE: { baby: 0.01, regular: 0.01, elite: 0.025, legendary: 0.05 },
+    // Which BountyStatReward pool each band's roll draws from — band scales BOTH how often
+    // the roll hits AND how big the grant is once it does, mirroring Bounty's own I/II/III
+    // band-letter convention exactly (bigger stakes, bigger reward, same shape).
+    GRANT_TIER_BY_MODE: { baby: 'I', regular: 'I', elite: 'II', legendary: 'III' },
+    // Guild Level 8+ gets ONE independent, ADDITIONAL roll on top of the band roll above —
+    // mirrors MercenaryRank Rank 6's own statGrantChanceOnWin: 0.05, which always reuses
+    // Tier I's pool regardless of which Bounty tier actually won (a guild-LEVEL gate is the
+    // closer analog to a mercenary-RANK gate than to a raid-band gate, so this follows that
+    // precedent — see "Guild-level-8+ extra roll" below).
+    LEVEL_EXTRA_ROLL: { MIN_GUILD_LEVEL: 8, CHANCE: 0.05, GRANT_TIER: 'I' }
+};
+```
+
+### 2. Injection point — confirmed: `startRaid.js`'s shared post-resolution block in `resolveRaid`
+
+The shared block after all scenario closures resolve (raidHistory write, Infamy accrual,
+Cinderroot's acquisition roll — `resolveRaid`, ~line 1616-1699) is the correct single injection
+point, for the exact same reason it already centralizes those three: every one of the 14+ scenario
+closures (`regular`/`elite`/`legendary` × Metal King/T4/T3/T2/T1, plus 2 stat-raid variants) already
+increments `raidCount` on a win and nothing else, so `wonThisRaid` (already derived here via the
+`raidCount` diff) is the only reliable signal available without threading a new field through every
+closure's return contract — which stays a bare number by design (see the existing comment on
+`raidHistoryEntry` above this point).
+
+```js
+if (wonThisRaid && ['baby', 'regular', 'elite', 'legendary'].includes(raidSelection)) {
+    const bandChance = GuildRaidStatReward.ROLL_CHANCE[raidSelection];
+    const grantTier = GuildRaidStatReward.GRANT_TIER_BY_MODE[raidSelection];
+    const bandPool = (Math.random() < bandChance) ? mercenaryFactory.pickStatGrantPool(grantTier) : null;
+
+    let extraPool = null;
+    if (guildLevel >= GuildRaidStatReward.LEVEL_EXTRA_ROLL.MIN_GUILD_LEVEL
+        && Math.random() < GuildRaidStatReward.LEVEL_EXTRA_ROLL.CHANCE) {
+        extraPool = mercenaryFactory.pickStatGrantPool(GuildRaidStatReward.LEVEL_EXTRA_ROLL.GRANT_TIER);
+    }
+
+    const hits = [
+        bandPool && { label: `${raidSelection[0].toUpperCase()}${raidSelection.slice(1)} Raid Blessing`, pool: bandPool },
+        extraPool && { label: 'Guild Level 8+ Bonus Blessing', pool: extraPool }
+    ].filter(Boolean);
+
+    if (hits.length > 0) {
+        for (const { pool } of hits) {
+            for (const entry of pool) {
+                if (entry.type === 'workMultiplierAmount') {
+                    await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', entry.amount); // flat — existing helper, unchanged
+                } else {
+                    await raidFactory.handlePercentStatSplit(raidList, entry); // percent-of-own-current-stat — new helper, see section 4
+                }
+            }
+        }
+        const statRewardEmbed = embedFactory.createGuildStatRewardEmbed(guildName, hits);
+        await interaction.followUp({ embeds: [statRewardEmbed] }).catch(() => {});
+        await bigEventsChannel.postBigEvent({ /* see section 7 */ });
+    }
+}
+```
+
+`guildLevel` is already an in-scope variable at this point in `resolveRaid` (computed once near the
+top via `getRaidLevelAndRewardMultiplier(guild)`), so the Level 8+ check needs no extra fetch.
+
+**Flagged for confirmation — Stat Raid (`raidSelection === 'stat'`) is EXCLUDED.** Stat Raid already
+GUARANTEES a flat `workMultiplierAmount` stat reward on every win (`Raid.REGULAR_STAT_RAID_REWARD`,
+applied via `handleStatSplit`) — its entire premise is "pay a flat buy-in for a guaranteed permanent
+bump, no potato risk." Layering a second, RARE roll on top would double-dip a mode whose whole
+identity is "the guaranteed-stat mode," and would make Stat Raid strictly dominant over every other
+mode for stat-hunting (guaranteed reward + a chance at more) rather than its own distinct niche.
+Recommend excluding it, but this is a genuine "what," not a "how," and needs product owner
+confirmation before a developer builds it either way — architect's recommendation is EXCLUDE.
+
+**Flagged for confirmation — Metal King is INCLUDED by default, not carved out, because excluding
+it is expensive.** Metal King is a bracket WITHIN `regular`/`elite`/`legendary` (not its own
+`raidSelection` value), resolved inside the same scenario closures as every other bracket, and
+already guarantees its own flat stat reward (`METAL_KING_MULTIPLIER_REWARD`/`PASSIVE_REWARD`/
+`CAPACITY_REWARD`) on top of its potato reward. The shared post-resolution block this new roll lives
+in has no visibility into WHICH bracket won — only that the mode won — so excluding Metal King
+specifically would require threading a new signal out of the closures, reopening exactly the
+"14+ closures touched" cost the shared block exists to avoid. Default recommendation: include Metal
+King (a big, rare, guild-wide win getting an extra rare layer on top reads as appropriately special,
+not exploitative — the roll chance is still only 1-5%). Flag for product owner confirmation since
+there's no strong technical reason either way, only a design-feel one.
+
+### 3. `baby` mode rate — confirmed: same as `regular`
+
+Covered in section 1 — `GuildRaidStatReward.ROLL_CHANCE.baby === ROLL_CHANCE.regular` (both 0.01),
+matching the `GuildRival.INFAMY_PER_RAID_MODE` precedent's own literal-per-key shape exactly.
+
+### 4. Per-member percentage stat grants — the one genuinely new piece of code
+
+**The correctness nuance, confirmed by reading `mercenaryFactory.js`'s `pickStatGrant`/
+`resolveGrantAmount`/`calculatePercentDelta` in full**: `passiveAmount`/`bankCapacity` grants are a
+PERCENTAGE of that specific user's OWN current stat (`calculatePercentDelta(userDetails.passiveAmount,
+rewardMultiplier, maxGain, roundIncrement)` — `raw = previousValue * rewardMultiplier`, rounded to
+the nearest increment, delta capped at `maxGain`), because Bounty only ever grants to one person.
+`workMultiplierAmount` grants are flat (`picked.amount` returned as-is, no per-user computation) —
+this is the one track `raidFactory.handleStatSplit` already handles correctly for a guild-wide
+grant, since Metal King's own `workMultiplierAmount`/`passiveAmount`/`bankCapacity` rewards are ALL
+flat by construction (`METAL_KING_*_REWARD` constants), unlike Bounty's percentage tracks.
+Reusing `BountyStatReward`'s pools verbatim means `handleStatSplit` alone is NOT sufficient for the
+two percentage-based tracks — computing one member's percentage once and broadcasting that single
+resolved number to every other member via `handleStatSplit` would silently over- or under-grant
+every member whose current `passiveAmount`/`bankCapacity` differs from whoever it was computed
+against.
+
+**Fix — a small, behavior-preserving refactor of `mercenaryFactory.js`, plus one new
+`raidFactory.js` function:**
+
+1. Split `pickStatGrant(tierLetter, userDetails)`'s pool-selection from its per-user resolution.
+   New exported `pickStatGrantPool(tierLetter)` returns the UNRESOLVED recipe — which track(s), and
+   at what rate — without touching any specific user's stats:
+   ```js
+   function pickStatGrantPool(tierLetter) {
+       if (tierLetter === 'III') {
+           const grant = BountyStatReward.TIER_III_GRANT;
+           return [
+               { type: 'workMultiplierAmount', amount: grant.workMultiplierAmount },
+               { type: 'passiveAmount', amount: grant.passiveMultiplier, maxGainSweetPotato: grant.passiveMaxGain },
+               { type: 'bankCapacity', amount: grant.bankMultiplier, maxGainSweetPotato: grant.bankMaxGain }
+           ];
+       }
+       const pool = tierLetter === 'I' ? BountyStatReward.TIER_I_GRANT : BountyStatReward.TIER_II_GRANT;
+       return [pool[Math.floor(Math.random() * pool.length)]];
+   }
+   ```
+   `pickStatGrant` itself becomes `pickStatGrantPool(tierLetter).map(entry => resolveGrantAmount(entry, userDetails))`
+   — byte-identical output and RNG-call-count to today's implementation (verified by inspection: the
+   `I`/`II` branch still makes exactly one `Math.random()` call for the pool pick, `III` still makes
+   none), so every existing `pickStatGrant`/`rollBountyStatReward` test stays green unchanged.
+   `resolveGrantAmount` (already exists, currently module-private) needs to be added to
+   `mercenaryFactory.js`'s `module.exports` alongside the new `pickStatGrantPool`.
+
+2. New `raidFactory.js` method, the percentage-track analog of `handleStatSplit` (same signature
+   shape — `raidList` first, one call per grant entry, same `{id, username}[]` roster shape,
+   same "re-fetch `userDetails` fresh inside the loop, write via `updateUserFields`" pattern):
+   ```js
+   async handlePercentStatSplit(raidList, grantEntry) {
+       // Lazy require — mercenaryFactory.js requires raidFactory.js at its own top level
+       // (for getEffectiveRaidPower/rollWeightedTier), so a top-level require here would be
+       // circular. Same fix dynamoHandler.js's applyGuildTreasuryInterest already uses for
+       // an identical reason — see this file's own module-level require comment precedent.
+       const mercenaryFactory = require('./mercenaryFactory');
+       await Promise.all(raidList.map(async member => {
+           const userDetails = await dynamoHandler.findUser(member.id, member.username);
+           if (!userDetails) return;
+           const { amount } = mercenaryFactory.resolveGrantAmount(grantEntry, userDetails);
+           let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+           const setAttributes = { sweetPotatoBuffs };
+           setAttributes[grantEntry.type] = userDetails[grantEntry.type] + amount;
+           sweetPotatoBuffs[grantEntry.type] += amount;
+           await dynamoHandler.updateUserFields(member.id, setAttributes);
+       }));
+   }
+   ```
+   Called once per pool entry from `startRaid.js` (section 2's snippet) — one call for Tier I/II
+   (single-track pools), three calls for Tier III (all three tracks) — mirroring exactly how Metal
+   King's own three flat `handleStatSplit` calls are already hand-written inline per scenario
+   closure. `workMultiplierAmount` entries still route through the existing, unmodified
+   `handleStatSplit` (flat, no per-member resolution needed) — `handlePercentStatSplit` is only ever
+   called for `passiveAmount`/`bankCapacity` entries.
+
+**New pattern flag**: `raidFactory.js` requiring `mercenaryFactory.js` at all is new — no existing
+`raidFactory.js` function has ever needed anything from the Mercenary track before. The lazy
+in-function `require` avoids the circular-require failure mode outright (confirmed: `mercenaryFactory.js`
+already does `require("../utils/raidFactory")` at module top for `getEffectiveRaidPower`/
+`rollWeightedTier`), matching this codebase's own established fix for the same class of problem
+(`dynamoHandler.applyGuildTreasuryInterest`'s lazy `require('./raidFactory')`,
+`getWorkCooldownSkipSources`'s lazy `require`s of `mercenaryFactory`/`spudKeepFactory`).
+
+### 5. Guild-level-8+ extra roll — confirmed: always Tier I's pool, independent of raid band
+
+Mirrors `MercenaryRank.THRESHOLDS`' own Rank 6 (`statGrantChanceOnWin: 0.05`, always
+`pickStatGrant('I', userDetails)` regardless of which Bounty tier actually won) — a RANK gate is
+the closer analog to a guild-LEVEL gate than to a raid-BAND gate, since level (like rank) is a
+standing account/guild property independent of which specific action just resolved, whereas band
+scales with the stakes of the action itself. `LEVEL_EXTRA_ROLL.GRANT_TIER: 'I'` fixed regardless of
+`raidSelection` — a max-level guild running a Baby raid and a max-level guild running Legendary both
+draw from the same Tier I pool for this specific roll (they differ only in whether the BAND roll
+above it also fires, which does scale with the band). **Stacks, doesn't replace** — both rolls are
+independent `Math.random()` calls; a single raid win can trigger neither, either, or both (see
+section 2's `hits` array handling both cases in the same embed/Big-Events post).
+
+### 6. Embeds — confirmed: a `followUp`, NOT an extension of `createRaidEmbed`'s signature
+
+**Verified directly against `startRaid.js`: `createRaidEmbed` is built and sent (`await
+sendResult(embed)`) INSIDE each scenario closure, before control ever returns to the shared
+post-resolution block this new roll lives in.** By the time `wonThisRaid` is known and the new roll
+can fire, the raid's own result embed has *already been sent to Discord* — there is no live embed
+left to extend with new fields. Extending `createRaidEmbed`'s signature (the product owner's
+originally-suggested approach) is therefore not implementable without moving the roll INSIDE all
+14+ scenario closures, which reintroduces exactly the duplication the shared post-resolution block
+exists to avoid. **Recommendation: a second embed via `interaction.followUp`, mirroring
+`createGuildCompanionDropEmbed`'s own sibling pattern exactly** (also a `followUp`, sent after the
+main result embed, for a rare event that doesn't happen every raid) — this is the correct answer
+the product owner's own item 6 asked to confirm-or-correct, resolved by evidence, not preference.
+
+New `embedFactory.createGuildStatRewardEmbed(guildName, hits)` (`hits` = section 2's array of
+`{ label, pool }`) — renders flat vs. percentage tracks DIFFERENTLY, which is the actual fix for the
+section-4 correctness nuance surfacing in the UI too: a flat `workMultiplierAmount` grant is the
+same real number for everyone, so it's shown as one; a percentage `passiveAmount`/`bankCapacity`
+grant is NOT the same real number for everyone (each member's own current stat differs), so it's
+shown as a rate/description, never a single misleading absolute figure:
+
+```js
+createGuildStatRewardEmbed(guildName, hits) {
+    const STAT_LABEL = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+    const lines = hits.map(({ label, pool }) => {
+        const grantLines = pool.map(entry => entry.type === 'workMultiplierAmount'
+            ? `+${entry.amount.toFixed(2)}x ${STAT_LABEL[entry.type]} to every member!`
+            : `+~${Math.round((entry.amount - 1) * 100)}% ${STAT_LABEL[entry.type]} to every member (their own current amount, capped)`
+        ).join('\n');
+        return `**${label}:**\n${grantLines}`;
+    }).join('\n\n');
+    return new EmbedBuilder()
+        .setTitle(`⚡ ${guildName}'s Raiders Return Sharpened!`)
+        .setDescription(lines)
+        .setColor('Gold')
+        .setFooter({ text: "Made by Beggar" })
+        .setTimestamp(Date.now());
+}
+```
+
+Title/flavor line is a placeholder — needs a real pass through `.claude/lore.md`'s voice before
+shipping (e.g. something in the same register as `GuildCompanions[0].dropFlavor`), flagged here as a
+naming task, not a mechanic one.
+
+### 7. Big Events channel post
+
+Same shape as the two existing `startRaid.js` call sites (`bigEventsChannel.postBigEvent` for the
+long-shot-win trigger at ~line 1374-1385, and for Cinderroot's drop at ~line 1663-1682):
+
+```js
+await bigEventsChannel.postBigEvent({
+    title: '✨ Guild Raid Stat Blessing!',
+    description: `**${guildName}**'s entire raiding party was permanently strengthened by this raid's victory!`,
+    fields: [
+        bigEventsChannel.guildField(guildName),
+        bigEventsChannel.playerField(userDisplayName),
+        { name: 'Granted', value: hits.map(h => h.pool.map(e => STAT_LABEL[e.type]).join(', ')).join(' + '), inline: false }
+    ],
+    color: 0xE67E22 // reuses bigEventsChannel.SCENARIO_COLOR.sweet — these grants are literally
+                     // sourced from workFactory's own Sweet/Metal Potato reward shape (see
+                     // constants.js's BountyStatReward comment), tying the color to that lineage
+});
+```
+One combined post even when both the band roll and the Level 8+ roll hit in the same raid (not two
+separate posts) — avoids doubling Big Events noise for what is still, from a viewer's perspective,
+one raid resolution.
+
+### 8. Merc-side parity audit (confirmed findings, not yet acted on)
+
+Read `takeBounty.js`, `robNpc.js`, and `confrontRival.js` in full for their own rare/guaranteed
+stat-reward handling:
+
+- **Bounty (`takeBounty.js`, ~line 306-315)**: `result.statReward` is applied correctly via
+  `raidFactory.handleStatSplit` (a 1-person "raidList") and shown correctly on
+  `createBountyResultEmbed` (`embedFactory.js`, ~line 2543-2549, and the loss-branch mirror at
+  ~2705-2712) — the reward computation and display are both correct today. **Confirmed gap: no
+  Big Events post for the stat-reward branch at all** — the only two `postBigEvent` calls in
+  `takeBounty.js` are for a rare companion pull (Yukon) and the long-shot-win threshold; a Bounty
+  win that lands the rare stat roll produces no Big Events entry.
+- **Heist (`robNpc.js`, ~line 220-229)**: identical shape and identical gap — the Royal Treasury
+  tier's `statGrantChanceOnWin` branch (`RobNpc.TIERS`, Tier IV) is applied and displayed correctly,
+  but `robNpc.js`'s only `postBigEvent` call is the long-shot-win one; no Big Events post exists for
+  its own rare stat grant either.
+- **Rival Confrontation (`confrontRival.js`, ~line 95-119)**: same shape again —
+  `resolveGuaranteedStatBump`'s `statBump` (easy/medium/hard scenario-scoped, GUARANTEED not rare —
+  see `mercenaryFactory.js`'s own comment) is applied and displayed correctly, but the file's only
+  `postBigEvent` call is, again, the long-shot-win one.
+
+**This is a real, consistent, pre-existing gap across the entire Mercenary track — not something
+this feature introduces or needs to fix to ship.** Since the product owner explicitly said "make
+sure stat gains are shown correctly on everything," recommend a small, low-risk follow-up (one new
+`postBigEvent` call per file, reusing the exact field-builder helpers `bigEventsChannel.js` already
+exports) to bring all three up to parity with what this new Guild Raid feature is being built to do
+from day one. Flagged as a **separate, optional follow-up pass** rather than bundled into this
+feature's own implementation — it touches three already-shipped, already-tested commands with no
+dependency on anything above, and doing it in its own pass keeps this feature's own diff reviewable.
+
+### 9. Cross-repo note — `financial-project` port required
+
+`financial-project`'s `amplify/functions/gromp-guilds/handler.ts` re-implements Guild Raid
+server-side for the web `/gromp` page (per this repo's own `CLAUDE.md`: any change here touching
+game logic/formulas/data shapes that the web version also implements needs the equivalent change
+made there too). This feature is exactly that kind of change — a new roll, new persisted-stat
+writes, and a new data shape (`GuildRaidStatReward`) the web raid resolution would need to mirror.
+**Not designed here** (out of this pass's scope — guild raids are bot-only in scope for this
+architect pass) but explicitly flagged: once this ships here, `financial-project`'s own Guild Raid
+handler needs an equivalent audit + port pass, with a new numbered `## Bot caught up #N` entry in
+its `NOTES_GROMP_WEB_INTEGRATION.md`.
+
+### Summary of items needing product owner confirmation before a developer builds this
+
+1. Stat Raid (`raidSelection === 'stat'`) — architect recommends EXCLUDE (guaranteed-reward mode
+   already occupies this niche); needs explicit sign-off either way.
+2. Metal King bracket — architect recommends INCLUDE by default (excluding it is expensive at this
+   injection point); flagged since there's no strong technical reason either way.
+3. Whether the "check the merc side" follow-up (section 8 — adding Big Events posts to Bounty/
+   Heist/Rival Confrontation's own existing stat-reward branches) should be built in the same pass
+   as this feature, or scoped as a separate follow-up ticket.
+4. The `createGuildStatRewardEmbed` title/flavor text (section 6) is a placeholder — needs a real
+   lore pass before shipping, not a mechanic decision.

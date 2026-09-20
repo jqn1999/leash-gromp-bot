@@ -14943,3 +14943,101 @@ implement Tower at all, no companion port needed. Docs updated: `systems/tower.m
 POTATOES Cap: Technical Design" section heading now reads "IMPLEMENTED" (pointing at a new
 "Per-Run POTATOES Cap: Shipped" section appended after it with the same level of detail as this
 entry) rather than "NOT implemented."
+
+## Design (scoping only, not implemented): Guild Raid Stat Reward (2026-09-20, architect pass)
+
+Product owner ask (verbatim): *"Can you have guild raids also have a chance of granting stats to
+all members in the raid? Similar to merc bounty but have the % chance go 1%, 2.5%, 5% and at guild
+level 8+ also get the extra 5% roll? Make sure embeds, UIs, and the web-activity or big events
+channel are updated to say if the guild raid granted stats"* plus a merc-side parity audit
+instruction. Full build-ready design in `.claude/systems/guilds.md`'s new "Guild Raid Stat Reward:
+Technical Design" section (appended at the end of that file) — this entry is the summary.
+
+**Confirmed reuse, not a new mechanic**: models directly on Mercenary Bounty's own rare stat-reward
+roll (`mercenaryFactory.js`'s `rollBountyStatReward`/`pickStatGrant`, `constants.js`'s
+`BountyStatReward` — `TIER_I_GRANT`/`TIER_II_GRANT`/`TIER_III_GRANT` reused verbatim, no new pools).
+New `constants.js` block `GuildRaidStatReward`: `ROLL_CHANCE: { baby: 0.01, regular: 0.01, elite:
+0.025, legendary: 0.05 }` (baby mirrors regular's rate — same literal-per-key shape
+`GuildRival.INFAMY_PER_RAID_MODE` already uses for baby), `GRANT_TIER_BY_MODE: { baby: 'I', regular:
+'I', elite: 'II', legendary: 'III' }` (band scales both roll chance AND grant size together, same
+as Bounty's own I/II/III convention), `LEVEL_EXTRA_ROLL: { MIN_GUILD_LEVEL: 8, CHANCE: 0.05,
+GRANT_TIER: 'I' }` (an INDEPENDENT, stacking extra roll, always Tier I regardless of raid band —
+mirrors `MercenaryRank` Rank 6's own `statGrantChanceOnWin: 0.05` precedent exactly, a guild-LEVEL
+gate being the closer analog to a mercenary-RANK gate than to a raid-band gate).
+
+**Injection point**: `startRaid.js`'s `resolveRaid`, the existing shared post-resolution block
+(raidHistory write, Infamy accrual, Cinderroot's acquisition roll, ~line 1616-1699) — confirmed the
+correct single spot for the same reason it already centralizes those three: every one of the 14+
+scenario closures already increments `raidCount` on a win and nothing else, so the already-derived
+`wonThisRaid` diff is the only reliable signal without threading a new field through every closure's
+return contract.
+
+**The one genuinely new piece of code**: `mercenaryFactory.js`'s existing `passiveAmount`/
+`bankCapacity` grants are percentage-of-ONE-user's-own-current-stat (`calculatePercentDelta`),
+because Bounty only ever grants to one person; Guild Raid's existing "grant to all members" helper
+(`raidFactory.handleStatSplit`) applies one FLAT amount to everyone, because Metal King's own
+rewards are flat by construction. Reusing Bounty's pools verbatim means a `passiveAmount`/
+`bankCapacity` hit needs a NEW per-member helper (`raidFactory.handlePercentStatSplit(raidList,
+grantEntry)`) that re-resolves each member's own delta against their own current stat, rather than
+computing once and broadcasting — confirmed via a full read of `pickStatGrant`/`resolveGrantAmount`/
+`calculatePercentDelta` that broadcasting one resolved number would silently over/under-grant any
+member whose current stat differs from whoever it was computed against. Requires a small,
+behavior-preserving split of `pickStatGrant` into a new exported `pickStatGrantPool(tierLetter)`
+(unresolved recipe) + the existing `resolveGrantAmount` (now exported) — verified byte-identical
+RNG-call-count and output to today's `pickStatGrant`, so no existing test needs to change.
+`workMultiplierAmount` grants stay flat and route through the existing, unmodified `handleStatSplit`.
+
+**New pattern flagged**: this is the first time `raidFactory.js` needs anything from
+`mercenaryFactory.js`, which already requires `raidFactory.js` at its own module top (for
+`getEffectiveRaidPower`/`rollWeightedTier`) — a top-level require the other way would be circular.
+Fixed with a lazy in-function `require('./mercenaryFactory')` inside the new
+`handlePercentStatSplit` only, the same fix this codebase already uses for the identical problem
+(`dynamoHandler.applyGuildTreasuryInterest`'s lazy `require('./raidFactory')`).
+
+**Embeds — a `followUp`, not an extension of `createRaidEmbed`'s signature.** Verified directly
+against `startRaid.js`: `createRaidEmbed` is built and sent INSIDE each scenario closure, before
+control ever reaches the shared post-resolution block this roll lives in — by the time the roll can
+fire, the raid's own result embed has already been sent to Discord, so there's no live embed left to
+extend. This corrects the product owner's own item 6 suggestion (extend `createRaidEmbed`) with the
+actual answer their question was checking for: a second embed via `interaction.followUp`, mirroring
+`createGuildCompanionDropEmbed`'s own sibling pattern exactly (also a followUp, for a rare event that
+doesn't happen every raid). The new `createGuildStatRewardEmbed` renders flat vs. percentage tracks
+differently on purpose — a flat `workMultiplierAmount` grant is genuinely the same number for
+everyone and is shown as one; a percentage `passiveAmount`/`bankCapacity` grant is NOT the same
+number for everyone, so it's shown as a rate/description ("+~15% Passive Income to every member,
+their own current amount, capped"), never a single misleading absolute figure — this is the
+section-4 correctness nuance surfacing in the UI, not just the write path.
+
+**Big Events**: one `postBigEvent` call (same shape as `startRaid.js`'s two existing call sites —
+the long-shot-win trigger and Cinderroot's drop), firing once per raid resolution even if both the
+band roll and the Level 8+ roll hit together (one combined post, not two).
+
+**Merc-side parity audit, confirmed findings**: read `takeBounty.js`, `robNpc.js`, and
+`confrontRival.js` in full. All three apply and DISPLAY their own rare/guaranteed stat-reward
+branch correctly today (Bounty's `statReward`, Heist's Royal Treasury `statGrantChanceOnWin`,
+Rival Confrontation's guaranteed `statBump`) — no display or write-path bug found anywhere on the
+merc side. **Confirmed genuine gap**: none of the three ever post to Big Events for their own
+stat-reward branch specifically — each file's only `postBigEvent` call is the shared long-shot-win
+trigger (plus Bounty's own rare-companion pull). Recommended as a small, separate follow-up pass
+(one new `postBigEvent` call per file, reusing existing `bigEventsChannel.js` field helpers) to
+bring the whole Mercenary track to the same standard this new Guild Raid feature is being built to
+from day one — NOT bundled into this feature's own implementation, since it touches three already-
+shipped, already-tested commands with no dependency on anything above.
+
+**Cross-repo**: flagged, not designed — `financial-project`'s `amplify/functions/gromp-guilds/
+handler.ts` re-implements Guild Raid server-side and will need an equivalent audit + port pass once
+this ships, per this repo's own `CLAUDE.md` rule, with a new numbered entry in that repo's
+`NOTES_GROMP_WEB_INTEGRATION.md`.
+
+**Four items explicitly flagged for product owner confirmation before a developer builds this**
+(full reasoning in `guilds.md`'s own section): (1) Stat Raid mode excluded from this roll —
+architect recommends EXCLUDE, since it already guarantees a stat reward every win and this would
+double-dip that mode's own distinct niche; (2) Metal King bracket included by default — architect
+recommends INCLUDE, since excluding it cleanly would require threading a new signal out of all
+14+ scenario closures, the exact cost the shared injection point exists to avoid, for a design-feel
+reason rather than a strong technical one; (3) whether the merc-side Big Events parity follow-up
+ships in the same pass or a separate one; (4) the new embed's title/flavor text is a placeholder
+pending a real `.claude/lore.md` pass.
+
+Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
+the four flagged items above before a developer builds it.
