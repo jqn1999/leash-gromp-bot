@@ -15042,6 +15042,81 @@ pending a real `.claude/lore.md` pass.
 Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
 the four flagged items above before a developer builds it.
 
+## Design (scoping only, not implemented): Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall (2026-09-20, architect pass)
+
+Product owner ask (paraphrased): keep a Discord channel and a website chat panel in sync, scoped
+per in-game Guild (private to that Guild's roster, invisible to every other Guild) — "and for all
+of mercs" as a second, initially-ambiguous phrase. Full build-ready design in `.claude/systems/
+guilds.md`'s new "Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Technical Design" section
+(appended at the end of that file) — this entry is the summary.
+
+**Cross-repo from the start, not bot-only.** Unlike most entries in this file, this feature is
+fundamentally two-sided: web→Discord reuses `bigEventsChannel.js`/`server-activity-channel.md`'s
+existing proven webhook pattern almost verbatim, but Discord→web has no existing analog anywhere
+in either repo — only the bot's own persistent gateway connection can observe a message typed
+directly into a Discord channel, so the bot's near-empty `messageCreate` stub
+(`src/events/messageCreate/messageHandler.js`) needs to become the one place that relays a Discord
+message into a new shared DynamoDB table both repos read from.
+
+**"For all of mercs" resolved against real precedent, not guessed at**: `spud-keep.md`'s existing
+**Merc Faction** (every mercenary belongs to it simultaneously, already the game's established
+collective noun for "the mercenaries, as one group") is the natural target — a second,
+non-Guild-scoped chat channel for it. What's still open: whether that channel should be fully
+public (zero membership-sync cost) or gated to `isMercenary` players only (a small, 2-hook sync
+cost) — see the design doc's decision point #1.
+
+**New data model, new table**: a `leash-gromp-bot-chat-messages` table (one row per message,
+partition key `scopeKey` = `guild#<id>` or the literal `merc`, sort key a padded-timestamp +
+random suffix) rather than folding into the existing `leash-gromp-stats` table's "one doc per
+concern, capped array" convention — chat history is unbounded, unlike every existing capped-and-
+rotated list (`raidHistory`, `tower_leaderboard`) that convention was built for. Retention via
+DynamoDB TTL (a genuinely new pattern for this codebase — no existing table uses it), deliberately
+NOT a `node-schedule` cron job, since this repo's cron jobs have no persistence/catch-up across a
+restart and TTL sweeps server-side with nothing to miss.
+
+**New bot capability, but not a new deployment blocker**: creating a private per-Guild Discord
+channel with a permission-gated role is genuinely new code for this bot (zero prior
+`channels.create`/`PermissionOverwrites`/`ManageChannels` usage anywhere in `src/`), but checked
+directly against this repo's own `README.md` setup instructions and confirmed the live bot almost
+certainly already has everything needed: Administrator permission (superset of Manage Channels/
+Roles/Webhooks) and the `MessageContent`/`GuildMessages` privileged intents are both explicitly
+part of this repo's documented bot-invite/setup steps, and `setActivityChannel.js` already
+successfully creates webhooks in production today — strong indirect confirmation the deployed bot
+already has elevated permissions, not just base `bot`+`applications.commands` scope. One live,
+one-time check still recommended before shipping (confirm `MESSAGE CONTENT INTENT` is toggled on
+in the Developer Portal for the actual production bot token, and that role-hierarchy allows the
+bot to assign its own auto-created per-Guild roles) — see the design doc's section 9.
+
+**Provisioning is opt-in** (`/guild-chat setup`, Co-Leader/Leader-gated, new
+`src/commands/guilds/guildChat.js`) rather than automatic at Guild creation, specifically to
+protect against Discord's ~500-channel-per-server cap — this bot runs in exactly one physical
+Discord server today, and every private Guild channel plus the shared Merc Faction Hall all count
+against that one server's single ceiling. **The one number this design pass couldn't check**: how
+many real, active in-game Guilds exist today, which determines whether the per-Guild-channel
+approach is viable at all at scale — flagged as the item most likely to actually block this from
+shipping, not the Discord-permissions question the product owner originally worried about most.
+
+**Membership sync — the real, ongoing-maintenance piece**: a role-based permission overwrite (one
+Discord role per Guild, assigned/removed from members) rather than per-member overwrites, so
+sync means "add/remove one role" at exactly 3 hook points — `joinGuild.js`'s `attemptJoinGuild`,
+`kick.js`, `leave.js` — plus full teardown (channel+role+webhook deletion) on `disbandGuild.js`.
+`promote.js`/`demote.js`/`passLeadership.js` deliberately untouched — chat access is
+membership-based, not role-tier-based, in this design.
+
+**Six items explicitly flagged for product owner confirmation before a developer builds this**
+(full reasoning in `guilds.md`'s own section): (1) the exact "for all of mercs" gating (fully
+public vs. mercenary-only); (2) the live Guild count, to confirm the per-Guild-channel approach is
+viable against Discord's channel cap; (3) the chat retention window (7 days proposed, not
+confirmed); (4) opt-in-per-command vs. automatic provisioning; (5) whether web-originated messages
+need a synced avatar for v1 or a generic default is acceptable; (6) whether to sequence the Merc
+Faction Hall as an explicit, lower-risk phase 1 ahead of the Guild-scoped work.
+
+Not yet implemented — nothing in `src/` touched by this pass, and nothing in `financial-project`
+either (that repo's own required Lambda/UI changes are noted in prose in the design doc, not
+built — this pass had read-only access there). Awaiting product owner sign-off on the six flagged
+items above, and specifically on whether this is viable at all pending the live Guild-count check,
+before a developer builds any of it.
+
 ## Shipped: Guild Raid Stat Reward (2026-09-20, follows through on the scoping pass above, all four
 flagged items resolved CONFIRMED by the product owner before this build — see
 `.claude/systems/guilds.md`'s "Guild Raid Stat Reward: Technical Design" section, whose header now

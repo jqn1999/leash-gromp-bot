@@ -2123,3 +2123,466 @@ merc-side files covering each command's own enrichment field.
 pass with a new numbered `## Bot caught up #N` entry in that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md`, deferred to a future session, per this repo's `CLAUDE.md` rule and
 this design's own section 9.
+
+## Guild Chat Sync (Discord ↔ Web) + a Merc Faction Hall: Technical Design (2026-09-20, architect pass, scoping only, not implemented)
+
+Product owner ask (paraphrased): keep a Discord channel and a website chat panel in sync, scoped
+per in-game Guild (private to that Guild's own roster, invisible to every other Guild) — "and for
+all of mercs" as a second, ambiguous phrase. This is a genuinely cross-repo, two-new-mechanism
+design (channel/permission provisioning is new bot capability; Discord→web sync has no existing
+analog at all) — see the numbered decision points at the end before any of this gets built.
+
+### 0. Decision point #1 — what "for all of mercs" means (validate before anything else)
+
+The architect's working hypothesis, going in: a SECOND, separate, non-Guild-scoped chat channel
+for everyone on the Mercenary track, since Bounty/Heist/Rival Confrontation are solo activities
+with no roster to scope a private channel to.
+
+**This checks out against real precedent already in the codebase — it isn't a guess from nothing.**
+`spudKeepFactory.js`/`systems/spud-keep.md` already establish **the Merc Faction** as a real,
+named, single collective every mercenary belongs to simultaneously (`getLiveMercFactionRoster()`),
+competing against every signed-up Guild as one combined pseudo-entrant in Spud Keep. "For all of
+mercs" reads naturally as "give the Merc Faction the same kind of home channel a Guild's own
+private channel is" — the Merc Faction is already this game's established stand-in for "the
+mercenaries, collectively," not a phrase this design has to invent. Nothing in `lore.md`/
+`mercenary-bounties.md`/`spud-keep.md` suggests a broader reading (e.g. "mercs" meaning something
+wider than the Mercenary track, like "every player" or "every guild's mercenaries" — mercenaries
+and guild members are mutually exclusive via `isMercenary`, so there's no such overlap group to
+name anyway).
+
+**What's still genuinely open** (not resolved by the precedent above, needs the product owner's
+own call — see decision point #2 near the end): whether this shared channel should be gated to
+`isMercenary` players only (symmetric to a Guild's channel being private to that Guild's own
+roster — "open to everyone doing Mercenary-track content" reads this way most literally), or
+open to the whole Discord server as a public "town square" (simpler — zero membership-sync cost,
+the sync-cost claim in the product owner's own brief). These have different build costs — see
+section 8.
+
+### 1. Data model
+
+**New table, not a `leash-gromp-stats` doc.** Every existing "stats table doc" (`raidHistory`,
+`contractHistory`, `tower_leaderboard`'s `entries`) is a small, capped-and-rotated array living on
+ONE DynamoDB item (`GuildHistory.MAX_ENTRIES = 25`, oldest dropped) — that shape works because
+those lists are bounded by construction. Chat history isn't: an active Guild channel could
+accumulate thousands of messages, and DynamoDB caps a single item at 400KB — appending to one
+growing array would eventually hit that ceiling and start silently failing writes. This needs its
+own table with one **row per message**, not one item per scope holding an array.
+
+**New `leash-gromp-bot-chat-messages` table** (new `awsConfigurations.aws_chat_table_name`):
+
+```js
+{
+  scopeKey: "guild#482",       // partition key — "guild#<guildId>" or the fixed literal "merc"
+  sortKey: "1758400000000#a1b2c3",  // sort key — "<epoch ms, zero-padded>#<6-char random>",
+                                     // the random suffix only exists to break ties when two
+                                     // messages land in the same millisecond (Discord and a web
+                                     // POST landing back-to-back) — a plain epoch-ms sort key
+                                     // alone isn't guaranteed unique
+  authorId: "1187...",          // Discord user ID either way — the web side already keys off
+                                 // this via webLinkToken -> userId, so no new identity concept
+  authorDisplayName: "Baron Russet",
+  source: "discord" | "web",
+  content: "the actual message text",
+  createdAt: 1758400000000,     // epoch ms, redundant with sortKey's own prefix but kept as its
+                                 // own attribute so a caller doesn't have to parse it back out
+  expiresAt: 1759004800,        // epoch SECONDS (DynamoDB TTL requires seconds, not ms) — see
+                                 // "Retention via TTL, not a cron" below
+}
+```
+
+`scopeKey` doubles as the sharding key for the Merc Faction Hall too (fixed literal `"merc"`) —
+one table serves both scopes cleanly, a `Query` on `scopeKey` naturally can never leak one Guild's
+messages into another's or into the Merc Faction's.
+
+**Retention via DynamoDB TTL, not a cron job.** This codebase's `node-schedule` cron jobs are
+re-registered fresh on every `ready` event with no persistence or missed-window catch-up (see this
+repo's own standing convention) — a poor fit for "delete chat messages older than N days," since a
+missed window means stale messages just accumulate until the next restart. DynamoDB's native TTL
+(`expiresAt`, epoch seconds) sweeps expired items automatically, server-side, with no app code and
+nothing that can be "missed" by a bot restart. Recommend `ChatMessages.RETENTION_DAYS = 7` (a
+tunable constant, easy to retune later) — a chat panel showing "the last week" is a completely
+reasonable product for this feature, and keeps the table small indefinitely without any bot-side
+sweep logic at all. **New pattern for this codebase** — no existing table uses DynamoDB TTL today;
+flagging it explicitly as new infra (a one-time TTL-attribute-enable on the table, done once at
+table-creation time in AWS, not per-item).
+
+**`dynamoHandler.js` additions** (mirrors the existing `docClient`/`buildUpdateExpression`
+conventions, no ORM):
+- `postChatMessage(scopeKey, { authorId, authorDisplayName, source, content })` — builds
+  `sortKey`/`createdAt`/`expiresAt` itself, one `put`.
+- `getChatMessagesSince(scopeKey, sinceSortKey, limit)` — a `Query` (`KeyConditionExpression:
+  scopeKey = :s AND sortKey > :since`), NOT a `scan` — this is the one function both financial-
+  project's polling Lambda and (if ever needed) a bot-side "show recent chat" command would call.
+- `getRecentChatMessages(scopeKey, limit)` — same `Query`, `ScanIndexForward: false` +`Limit`, for
+  an initial page load with no prior `sinceSortKey`.
+
+**Guild record — 4 new fields**, added to `getDefaultGuildFields` (default `null`, healed by
+`findGuildById`'s existing generic diff-and-heal loop exactly like `guildCompanion`/`guildBuff`
+before it — no special-casing needed):
+
+```js
+guildChatChannelId: null,   // the private Discord channel's snowflake, once provisioned
+guildChatRoleId: null,      // the auto-managed Discord role used for the channel's permission overwrite
+guildChatWebhookId: null,   // for cleanup/rotation, same pair setActivityChannel.js already stores
+guildChatWebhookUrl: null,  // what financial-project's Lambda POSTs into for web -> Discord
+```
+
+All four are set together at provisioning time (section 3) and cleared together at teardown
+(guild disband). Reused the exact `webhookId`+`webhookUrl` pairing `server_activity_channel`/
+`server_big_events_channel` already store, for the same reason: cleanly re-deletable via
+`client.fetchWebhook(webhookId)` without depending on the URL string alone.
+
+**Merc Faction Hall — a stats-table doc, not a guild field** (there's no guild record to hang it
+off — it's a server-wide singleton, same shape `server_big_events_channel` already is):
+
+```js
+// trackingId: "merc_faction_chat_channel"
+{
+  channelId: null,
+  roleId: null,        // only relevant if decision point #2 resolves to mercenary-gated — see section 9
+  webhookId: null,
+  webhookUrl: null,
+}
+```
+
+**A small lookup doc for the `messageCreate` fast-path** (section 5 needs this to avoid a DB call
+on every single message sent anywhere in the server, not just chat channels):
+
+```js
+// trackingId: "chat_channel_index"
+{
+  channels: {
+    "<discord channel id>": { scopeType: "guild", scopeId: "482" },
+    "<discord channel id>": { scopeType: "merc" },
+  }
+}
+```
+
+Written to at provisioning/teardown time (section 3), read once at `messageCreate` for any message
+that passes the cheap category check below — not scanned/rebuilt from the Guild table on every
+message.
+
+### 2. Provisioning is opt-in, not automatic at Guild creation
+
+**Deliberately NOT wired into `createGuild.js`'s `handleGuildCreation`.** A large fraction of this
+game's Guilds are small/inactive (created once for the raid mechanic, never used for anything
+social) — auto-creating a channel+role+webhook for every one of them at creation time burns a slot
+against Discord's channel cap (section 10) for Guilds that will never send a single chat message.
+A new command, gated the same Co-Leader/Leader tier as `guildBank`/`guildBuy`/`setBuff` (this is
+"guild administration," not a roster action any Member can trigger):
+
+`/guild-chat setup` (`src/commands/guilds/guildChat.js`, new):
+1. Reject if `guild.guildChatChannelId` already set (idempotent, same "same-pick rejected as a
+   no-op" convention `/set-buff`/`/set-mercenary-buff` already use).
+2. Ensure a shared parent category exists — a single server-wide singleton doc
+   (`getStatDatabase('guild_chat_category')` holding `categoryId`), lazily created on the FIRST
+   Guild that ever runs this command (`interaction.guild.channels.create({ type:
+   ChannelType.GuildCategory, name: "🏰 Guild Chat Halls" })`), reused by every Guild after —
+   keeps every private Guild channel (and the Merc Faction Hall) visually grouped, and gives the
+   `messageCreate` handler a cheap `message.channel.parentId === categoryId` pre-filter (section 5)
+   before it does any DB work at all.
+3. Create a Discord role: `interaction.guild.roles.create({ name: `Guild: ${guild.guildName}
+   Access`, mentionable: false })` — a role, not per-member `PermissionOverwrites`, is the
+   mechanism (see "Why a role, not per-member overwrites" below).
+4. Create the channel under that category: `ChannelType.GuildText`, `permissionOverwrites: [{ id:
+   interaction.guild.id /* @everyone */, deny: [ViewChannel] }, { id: roleId, allow: [ViewChannel,
+   SendMessages, ReadMessageHistory] }]` (the bot's own permissions come from its existing
+   Administrator grant — see section 9 — so it needs no explicit overwrite entry to see/manage the
+   channel it just created).
+5. Assign the new role to every CURRENT `guild.memberList` entry's live Discord `GuildMember`
+   (`interaction.guild.members.fetch(m.id).then(gm => gm.roles.add(roleId)).catch(() => {})` per
+   member, best-effort — a member who's since left the physical Discord server entirely can't be
+   given a role, logged and skipped, not a hard failure for the whole command).
+6. Create a webhook in the new channel (`channel.createWebhook(...)`, identical call shape to
+   `setActivityChannel.js`'s existing one).
+7. Write all 4 new guild fields via `updateGuildFieldsWithLock(guild.guildId, guild.guildVersion,
+   {...})` — same optimistic-lock convention every other guild-mutating write in this file uses.
+8. Update the `chat_channel_index` doc with this channel's new entry.
+
+**Why a role, not per-member `PermissionOverwrites`.** The membership-sync mechanic (section 6)
+needs to run on every join/kick/leave — a per-member overwrite approach means editing the
+channel's own overwrite list (add/remove one entry) on every one of those events, and Discord
+caps a channel at roughly 500 total permission overwrite entries, which a large/many-Guild server
+could plausibly threaten over time. A role-based overwrite needs exactly ONE overwrite entry on
+the channel, ever (the role's own entry) — membership sync becomes "add/remove ONE role on the
+member's own `GuildMember` object," which has no comparable per-channel ceiling. This is also the
+standard Discord bot pattern for "private channel per group," not a novel choice for this
+codebase to validate.
+
+**Teardown on `/disband-guild`** (`disbandGuild.js`) — unlike the guild DB record itself
+(deliberately left in place "in case it's needed again"), an orphaned empty channel/role/webhook
+has zero of that "might be needed again" value and a real cost against the channel cap (section
+10). Add, right after the existing `memberList` clear: if `guild.guildChatChannelId` is set,
+delete the channel (`client.channels.fetch(id).then(ch => ch.delete())`), delete the webhook
+(`client.fetchWebhook(webhookId).then(wh => wh.delete())`), delete the role
+(`interaction.guild.roles.delete(roleId)`), each wrapped in its own `.catch(() => {})` (best-effort
+cleanup — a channel already manually deleted by an admin shouldn't block the disband itself), then
+clear all 4 fields on the guild record and remove its entry from `chat_channel_index`.
+`disbandGuild.js`'s existing writes are unguarded (`updateGuildDatabase` calls, no
+`updateGuildFieldsWithLock`) — this addition follows that same existing (pre-feature, not
+introduced by this design) unguarded style for consistency with the rest of that file, rather than
+silently upgrading its concurrency safety as a side effect of an unrelated feature.
+
+### 3. Membership sync — exact hook points
+
+The core correctness requirement: an ex-member who left the Guild but still has channel access
+defeats the entire point of a private channel. Every mutation to `guild.memberList` needs a
+matching role add/remove, gated on `guild.guildChatRoleId != null` (a Guild that never ran
+`/guild-chat setup` has no role to sync at all — every hook below is a no-op for it):
+
+| File / function | Hook |
+|---|---|
+| `joinGuild.js`'s `attemptJoinGuild` (shared by both the direct-name and no-args-button join paths) | Right after the guarded `updateGuildFieldsWithLock` succeeds: `interaction.guild.members.fetch(userId).then(gm => gm.roles.add(guild.guildChatRoleId))` |
+| `kick.js` | Right after its guarded write succeeds: remove `targetUser`'s role the same way |
+| `leave.js` | Right after its guarded write succeeds (the post-confirm branch, after the 30s confirm step) | Remove the leaving member's own role |
+| `disbandGuild.js` | Full teardown (section 2), not a per-member removal — the channel/role themselves stop existing |
+
+**Deliberately NOT touched**: `promote.js`/`demote.js`/`passLeadership.js` — chat access is
+membership-based, not role-tier-based. Every member from `Member` up to `Leader` gets identical
+read/write access to their own Guild's channel; there's no "Elder-only" chat tier in this design.
+Promotion/demotion only ever changes `role`, never `memberList` membership itself, so none of these
+three commands touch the role-based overwrite at all.
+
+**A known, deliberately-not-fixed gap**: a player who leaves the physical Discord server entirely
+(without running `/leave`) keeps both their in-game `guildId` and their Discord role assignment
+stale. This is **not a privacy hole** — Discord permissions require actual server membership
+regardless of role, so someone who's left the server cannot view any channel in it no matter what
+roles they still hold on paper. It's the same category of harmless staleness Spud Keep's own
+roster fetches already tolerate for a departed member (treated as contributing zero, never a
+security concern) — flagging it so a developer doesn't over-build a `guildMemberRemove` listener
+to "fix" something that was never actually a leak.
+
+### 4. Direction A: web message → Discord (reuses an existing, proven pattern exactly)
+
+This is the easy direction — `financial-project`'s Lambdas already POST to a stored webhook URL
+for Big Events/Server Activity (`gromp-guilds/handler.ts`'s own `config.webhookUrl` +`fetch(...)`
+pattern, byte-identical shape to this bot's own `bigEventsChannel.js`). A new chat message
+typed on the web panel needs a new Lambda action (`action: 'sendGuildChatMessage'` /
+`'sendMercChatMessage'`, financial-project's own dispatch shape) that does exactly two things:
+1. `dynamoHandler`-equivalent `postChatMessage(scopeKey, { authorId, authorDisplayName: username,
+   source: 'web', content })` against the shared chat-messages table (same table, same
+   `@aws-sdk/lib-dynamodb` client every other Lambda action already uses).
+2. POST to the stored `guildChatWebhookUrl`/Merc Faction Hall `webhookUrl`, with Discord's own
+   webhook `username`/`avatar_url` override fields set to the sender's own Discord username (`{
+   content, username: authorDisplayName, avatar_url: <optional, not stored today — see below> }`)
+   so the message visually appears to come FROM that player in Discord, not from a generic "Gromp"
+   webhook identity — a small, deliberate polish choice, not required for correctness.
+
+**Note**: the bot's own `users` table stores `username` (kept fresh via `findUser`) but no
+`avatarUrl` — the web-side message would render with Discord's default webhook avatar unless a
+future pass also stores/threads an avatar URL through. Not a blocker, just an open nice-to-have
+flagged rather than silently built in scope-creep.
+
+### 5. Direction B: Discord message → web (the genuinely new piece)
+
+Discord has no "outgoing webhook for arbitrary channel messages" concept — only the bot's own
+persistent gateway connection can observe a message typed directly into a channel. The bot already
+has a `messageCreate` handler (`src/events/messageCreate/messageHandler.js`, currently a 3-line
+stub that early-returns on commands/bot messages and does nothing else) and the gateway intents
+this needs are **already requested** in `src/index.js` (`GuildMessages`, `MessageContent` — see
+section 9).
+
+```js
+// src/events/messageCreate/messageHandler.js
+module.exports = async (client, message) => {
+    if (message.isChatInputCommand) return;
+    if (message.author.bot) return;
+    // Cheap, in-memory, zero-DB-call pre-filter — every message sent anywhere else in the
+    // server (which is the overwhelming majority of traffic) never reaches a DB call at all.
+    if (message.channel.parentId !== GUILD_CHAT_CATEGORY_ID) return;
+
+    const index = await dynamoHandler.getStatDatabase('chat_channel_index');
+    const scope = index?.channels?.[message.channel.id];
+    if (!scope) return;
+
+    const scopeKey = scope.scopeType === 'guild' ? `guild#${scope.scopeId}` : 'merc';
+    await dynamoHandler.postChatMessage(scopeKey, {
+        authorId: message.author.id,
+        authorDisplayName: message.member?.displayName ?? message.author.username,
+        source: 'discord',
+        content: message.content,
+    });
+};
+```
+
+`GUILD_CHAT_CATEGORY_ID` is read once from the same `guild_chat_category` stats doc section 2
+creates (cached at module load / on first use — this ONE lookup, not per-message, is the only
+place a small in-memory cache is worth introducing; everything else in this design follows the
+codebase's existing "just hit DynamoDB, don't over-engineer a cache" convention, e.g.
+`handleCommands.js`'s own live `command_channels_<guildId>` read on every interaction).
+
+**financial-project's polling Lambda** then reads via `getChatMessagesSince(scopeKey,
+lastSeenSortKey, limit)` — a `Query`, not a `Scan`, against a well-chosen partition+sort key, so
+each poll is cheap regardless of polling frequency (see section 8's cost correction).
+
+### 6. Financial-project's own required changes (read-only for this pass — not implemented here)
+
+Per this repo's own `CLAUDE.md`, any change here touching data shapes the web version also
+implements needs an equivalent port. `financial-project` needs, when this actually gets built:
+- A new `gromp-chat` (or folded into an existing) Lambda action pair: `sendChatMessage` (Direction
+  A, section 4) and `getChatMessages` (a polling read, section 5/8) against the new
+  `leash-gromp-bot-chat-messages` table — this repo has no existing Lambda touching that table,
+  since it doesn't exist yet.
+- A new chat panel component under `gromp.component.ts`/`.html` — `gromp.component.ts` currently
+  has zero chat UI of any kind (confirmed via grep — "chat" appears nowhere in that file), so this
+  is new UI, not an extension of an existing panel.
+- The panel needs to know which scope (its own Guild's `guildId`, or the Merc Faction) the logged-
+  in user belongs to — already derivable from the same `webLinkToken -> userId -> guildId/
+  isMercenary` lookup every other `gromp-*` Lambda action already does at the top of its handler.
+- **Not designed here** (out of this architect pass's scope, same "bot-only design, web side
+  flagged in prose" instruction this task was given) — a developer session building this needs to
+  audit + port per this repo's `CLAUDE.md`, with a new numbered `## Bot caught up #N` entry in
+  `financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md`.
+
+### 7. Message table shape recap (single source of truth for both repos)
+
+See section 1's full schema. The one thing both repos must agree on byte-for-byte: `scopeKey`
+format (`guild#<guildId>` / `merc`), `sortKey` format (`<paddedTimestamp>#<random>`), and the
+`source` field's two literal values (`"discord"` / `"web"`) — a chat panel needs `source` to
+render "sent from Discord" vs. its own native message styling, mirroring how Server Activity posts
+already end every description "— via the website" so players can tell the two apart at a glance.
+
+### 8. Polling vs. a live subscription — recommendation: poll, don't introduce AppSync subscriptions
+
+Grounded directly against `financial-project`'s own code, not assumed: **zero** GraphQL
+subscriptions exist anywhere in that codebase today (confirmed via grep) — every "live-ish" UI
+update (`gromp.component.ts`'s own cooldown timers) is a plain `setInterval`. Introducing an
+AppSync subscription for chat specifically would be this feature's own isolated new infra pattern,
+with real added risk (new connection lifecycle, new auth wiring, nothing else in the app to lean
+on if it breaks) for a feature that isn't the app's core loop.
+
+**Recommendation: poll, every 2-3 seconds**, via the cheap incremental `getChatMessagesSince`
+query above — matching this app's own established "good enough, not real-time" convention
+everywhere else. **Correcting one framing in the product owner's own brief**: the cost concern
+isn't as large as "polling every guild member's browser... against DynamoDB" implies — browsers
+never talk to DynamoDB directly in this architecture (only the Lambda does, same as every other
+`gromp-*` action already), and the query itself is a keyed `Query` against a specific
+`scopeKey`+`sortKey > x` range (typically returning 0-5 rows per poll for an idle chat), not a
+`Scan` — cheap regardless of poll frequency. The real, honest cost of polling here is Lambda
+invocation/API Gateway request volume (nonzero, scales with concurrent chat viewers × poll
+frequency) and the UX tradeoff (a 2-3s lag isn't a "real chat" feel) — not a DynamoDB bill risk.
+Given this app already accepts that shape everywhere else, polling is the right choice for a v1;
+a subscription-based rework is a reasonable LATER upgrade if chat proves popular enough that the
+lag becomes a real complaint, not a v1 requirement.
+
+### 9. Discord permission / deployment blocker check — resolved, NOT a blocker
+
+Checked directly rather than assumed:
+- `src/index.js` already requests `IntentsBitField.Flags.Guilds`, `GuildMembers`,
+  `GuildMessages`, **and `MessageContent`** — the exact intent Direction B's `messageCreate`
+  handler needs to read `message.content` at all. `MessageContent` is a *privileged* intent that
+  also has to be toggled on in the Discord Developer Portal separately from this code request —
+  this repo's own `README.md` explicitly instructs exactly that ("Toggle on all Privileged Gateway
+  Intents, which are Presence Intent, Server Members Intent, and Message Content Intent"), and
+  `setActivityChannel.js`/`bigEventsChannel.js` already successfully call `channel.createWebhook`
+  in production — Manage Webhooks only works if the bot's invite already granted elevated
+  permissions, strong indirect confirmation the live bot already has more than base `bot`+
+  `applications.commands` scope. This repo's `README.md` also explicitly instructs "Give
+  Administrator permissions for the easiest selection" for the invite link — Administrator is a
+  superset of `ManageChannels`/`ManageRoles`/`ManageWebhooks`, everything this feature's
+  provisioning step (section 2) needs.
+- **Net: no re-invite should be required**, assuming the live production bot was invited per this
+  repo's own documented setup instructions (reasonable to assume, given the webhook-creation
+  features above are already live and working). **One thing still worth a live, one-time check
+  before building**: confirm in the Discord Developer Portal that `MESSAGE CONTENT INTENT` is
+  actually toggled ON for the specific bot application/token running in production — this is a
+  portal setting, not something inspectable from this codebase, and a bot invited long before this
+  intent became privileged-and-opt-in could plausibly have missed it.
+- **A real role-hierarchy gotcha, not a scope gap**: Discord's Administrator PERMISSION bypasses
+  channel-level permission checks, but role ASSIGNMENT (`GuildMember.roles.add`) is still governed
+  by role HIERARCHY regardless of Administrator — the bot's own highest role must sit above any
+  `Guild: <Name> Access` role it creates and assigns (section 2, step 3). Discord places
+  newly-created roles at the bottom of the hierarchy by default, and a bot invited with
+  Administrator is typically placed near the top — this should work out of the box, but is worth
+  one live verification (create a test role via `/guild-chat setup` in a dev server, confirm the
+  bot can actually assign it) before this ships, rather than discovering it live against a real
+  Guild's chat setup.
+
+### 10. Numeric constraints — checked, not just gestured at
+
+- **Discord's ~500-channel-per-server cap.** This bot operates in exactly **one** physical Discord
+  server today (`awsConfigurations.testServer`, hardcoded — `multi-server-support.md` confirms
+  multi-server is planned but not started). Every private Guild channel this feature ever creates,
+  PLUS the one shared Merc Faction Hall, PLUS the 2 categories (main + any future), all count
+  against that one server's single 500-channel ceiling, alongside whatever channels already exist
+  there (`seedCommandChannels.js`'s legacy allowlist names exactly 5 playable channels, suggesting
+  a modest total channel count today, likely well under 50). **Could not verify the live count of
+  actual in-game Guilds from static files alone** (no DB access from this design pass) — a
+  developer picking this up should run a live count (`/guild-leaderboard` or an equivalent scan)
+  before greenlighting the opt-in-per-Guild-channel approach at scale. The opt-in design (section
+  2) already caps exposure somewhat (only Guilds that actually run `/guild-chat setup` consume a
+  slot), and the disband-teardown (section 2) reclaims slots from dead Guilds — but if the live
+  Guild count is already in the hundreds, this approach doesn't scale and would need a fallback
+  (e.g. a hard cap on total chat-enabled Guilds, or shared/pooled channels for smaller Guilds)
+  before shipping. Flagging this as the one number that could make the whole per-Guild-channel
+  approach non-viable, and it's not resolvable without a live check.
+- **Discord webhook rate limit (5 requests / 2 seconds per webhook).** Irrelevant at realistic chat
+  volume — a private Guild channel with a handful of members, or even the single shared Merc
+  Faction Hall, isn't plausibly sustaining 2.5+ messages/second from the web side specifically
+  (Direction A is the only side that uses the webhook at all; Direction B writes straight to
+  DynamoDB via the bot's own gateway connection, no webhook involved). Confirmed non-issue, not
+  worth designing around.
+- **A structural conflict with `multi-server-support.md`'s own future plan, worth flagging now
+  rather than discovering later**: that doc's own decision is "the in-game player Guild system
+  stays global, not per-server" specifically so a user active in two physical Discord servers can't
+  double-dip Guild benefits. A Discord role/channel, by definition, only exists inside ONE physical
+  server — this chat feature is implicitly built on today's single-server reality, and would need
+  a real redesign (which physical server does a cross-server Guild's channel even live in?) the
+  moment multi-server support ships. Not a reason to block this feature today, but a documented
+  landmine for whoever eventually builds multi-server support to trip over otherwise.
+
+### 11. The Merc Faction Hall — the simpler mirror scope
+
+Assuming decision point #1 resolves as expected (a single shared, non-Guild-scoped channel for the
+Merc Faction):
+
+- **No membership-sync problem in the fully-open interpretation** (channel visible to the whole
+  Discord server, default `@everyone` view permission, no role/overwrite at all) — this really is
+  the simpler build the product owner's own brief anticipated, and could genuinely ship as a lower-
+  risk phase 1 ahead of the Guild-scoped work, proving out Direction A/B's mechanics (webhook POST,
+  `messageCreate` relay, the chat-messages table) against a single scope before multiplying it
+  across N Guilds.
+- **If instead gated to `isMercenary` players only** (the more literal reading of "open to everyone
+  doing Mercenary-track content," see decision point #1's own callout above) — still far simpler
+  than the Guild scope, but NOT zero membership-sync cost as the product owner's brief assumed:
+  exactly 2 hook points instead of N-Guilds'-worth of hooks — `becomeMercenary.js` (add a single
+  shared `Merc Faction Access` role) and `retireMercenary.js` (remove it) — versus the Guild
+  scope's 3 hook points × however many chat-enabled Guilds exist. One role, one channel, provisioned
+  once via a new admin command (`/set-merc-chat-channel`, mirroring `setActivityChannel.js`'s exact
+  shape — devOnly + Administrator, creates the webhook, stores under the `merc_faction_chat_channel`
+  trackingId) rather than folding into that unrelated activity-feed command.
+- Either way, Direction A/B (sections 4-5) are identical mechanics against `scopeKey = "merc"` — no
+  new sync code needed there.
+
+### Summary of items needing product owner confirmation before a developer builds any of this
+
+1. **"For all of mercs" interpretation** (section 0) — confirmed as "the Merc Faction gets its own
+   shared chat scope" against real precedent (`spud-keep.md`'s Merc Faction), but the EXACT gating
+   still needs a call: fully open to the whole Discord server (zero sync cost, section 11's first
+   bullet), or restricted to current mercenaries only (2-hook sync cost, section 11's second
+   bullet, the more literal reading of the original phrasing).
+2. **Viability at scale — the live Guild count** (section 10). This design is buildable and the
+   Discord permission side is NOT a blocker (section 9), but the per-Guild-channel approach's
+   viability against the ~500-channel cap depends on a number this design pass couldn't check
+   (how many real, active in-game Guilds exist today, and how many would realistically opt into
+   `/guild-chat setup`). Get that number before committing engineering time to this shape.
+3. **Chat retention window** — `ChatMessages.RETENTION_DAYS = 7` (section 1) is this design's own
+   proposed default, not a stated requirement; confirm 7 days is the right amount of chat history
+   to keep visible, or pick a different number.
+4. **Provisioning gate: opt-in per-Guild command vs. automatic at Guild creation** — this design
+   recommends opt-in (`/guild-chat setup`, Co-Leader/Leader-gated) specifically to protect the
+   channel-cap budget (item 2) from inactive Guilds; confirm that's an acceptable UX cost (a Guild
+   has to remember to run one extra command) versus the simpler "every Guild just has a chat
+   channel from day one" alternative.
+5. **Web-side avatar display** (section 4) — messages sent from the web currently only have a
+   stored Discord `username` to show via the webhook, no `avatarUrl`; confirm whether a generic
+   default avatar for web-originated messages is acceptable for v1, or whether avatar syncing
+   should be scoped in now.
+6. **Phasing** — given the Merc Faction Hall (section 11) is meaningfully lower-risk and could
+   validate Direction A/B's mechanics before the Guild-scoped, N-times-multiplied, membership-sync-
+   heavy version is built, confirm whether to sequence it as an explicit phase 1 rather than
+   building both simultaneously.
+
+**Not resolved by this pass, deliberately** (per this task's own scope): whether this feature is
+worth building at all relative to other roadmap items — that's the product owner's call, not
+this design's to make. This design answers "how," assuming "whether" is already settled.
