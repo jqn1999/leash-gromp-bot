@@ -2707,3 +2707,63 @@ efficiency bands shifted up ×2.1833), and `mercenaryFactory.test.js` (Bounty la
 Royal Treasury dominance test title) all needed updating for the new numbers; no test caught an
 actual regression beyond the expected magnitude shift. Docs: `mercenary-bounties.md`,
 `raids-and-world-events.md`.
+
+## Follow-up (2026-09-19): full re-derivation against today's live constants + a new Legendary (lvl 10, Cinderroot) column — surfaces a broken Elite-vs-Merc crossover
+
+Player: "with all the latest code and whatnot can you now regenerate the raid ev curves? throw in
+legendary max level guild as well on top of all the rest now." A genuine ground-up rebuild, not a
+patch — read `raidFactory.js`'s real `getDynamicTierWeights`/`getEffectiveRaidPowerBreakdown`
+directly (rather than re-deriving the weighting math by hand) plus every constant this chart
+depends on (`Raid`, `RaidLevel.THRESHOLDS`, `GuildCompanionScaling`, `Bounty.TIERS`,
+`MercenaryRank.THRESHOLDS`, `RobNpc.TIERS`), computed as a closed-form/numerically-integrated EV
+(no Monte Carlo noise — Heist's reward-roll-coupled risk is integrated over 2000 steps since its
+odds and payout share one draw, everything else is exact). Verified the script's own formulas
+line-by-line against `startRaid.js`/`mercenaryFactory.js` (success-chance cap per mode, tax timing,
+whether penalty is scaled by `raidRewardMultiplier`/rank/Yukon or not, win-only cooldown-skip
+`combineSkipChance` OR-formula) rather than assumed from the prior chart's own behavior.
+
+**Added column**: Legendary (lvl 10, Cinderroot) — the direct counterpart to the already-existing
+Elite (lvl 10, Cinderroot) column, since that Elite column was what originally surfaced the
+2026-09-14 "Elite beats Legendary at every power point" dominance finding. Comparing like-for-like
+now (both maxed, both with Cinderroot) rather than Elite-maxed-vs-Legendary-plain: Elite (lvl 10c)
+still leads through most of the range, but **Legendary (lvl 10c) overtakes it at power ≈772** and
+stays ahead through 1000 — a normal higher-mode-eventually-wins ramp once compared fairly, not a
+dominance inversion. The 2026-09-14 finding was real but the comparison it was measured against
+wasn't apples-to-apples; noted in the chart itself rather than left to imply the inversion still
+stands.
+
+**Real finding, not a modeling artifact: today's Mercenary Rank rescale broke the 2026-09-12 "Elite
+≈3x Solo Merc peak" design intent.** That 3x/7x ceiling (see the "Fifth pass" entry above) was
+solved against whatever Solo Merc's own numbers were on 2026-09-12 and re-verified against the
+2026-09-14 rebuild — but never re-checked against today's standalone Rank 6 `rewardMultiplier`
+change (2.35x → 5.00x, a same-day balance pass unrelated to raids at all — see roadmap.md's Mercenary
+Rank entry from earlier today). That multiplier only touches Bounty's reward formula
+(`resolveBountyAttempt`'s `rankInfo.rewardMultiplier` term) — Heist/`resolveNpcRob` never reads it
+at all, so Royal Treasury's own payout is completely unaffected; the whole shift is Bounty-side.
+
+Net effect: Elite (lvl 7, the plain unlock-level baseline every prior "3x cap" measurement used)
+now only leads maxed Solo Merc in a narrow band (power ≈275-450, with the two curves interleaving
+narrowly through ≈450-515 from the dynamic tier-weight reshuffle near Elite T1's own difficulty
+boundary) before Solo Merc pulls decisively, permanently ahead past ≈515 — including the entire
+low end of the power range, where Elite used to be the stronger choice by a wide margin. Elite
+(lvl 10, Cinderroot) is unaffected in the sense that it still beats maxed Solo Merc at every power
+point shown — the break is specifically in the "plain unlock-level Elite vs. maxed Solo Merc"
+comparison the original 3x design was calibrated against, not a claim that guild raiding is broken
+across the board.
+
+**Not fixed here — flagged for a decision.** Options, not yet chosen:
+1. Re-derive the Elite/Legendary reward buff against the NEW Solo Merc baseline, same
+   geometric-mean-split methodology the "Fifth pass" entry above used (buff Elite/Legendary,
+   nerf Solo Merc, split the gap) — the standing precedent for exactly this situation.
+2. Treat Rank 6 specifically as the outlier (it jumped 2.35x→5.00x today, more than double, while
+   Ranks 1-5 moved far less) and reconsider just that one rank's multiplier instead of re-touching
+   `Raid.*` again.
+3. Accept the new gap — Solo Merc at endgame rank being genuinely competitive with (or ahead of)
+   plain-unlock-level Elite isn't automatically wrong, only automatically DIFFERENT from what the
+   2026-09-12 pass explicitly targeted; worth an explicit call rather than a silent inheritance.
+
+Chart republished to the same URL (Version 15). No test suite changes — this is a standalone
+analysis script (`/tmp/.../scratchpad/raidEv.js`, not committed to the repo, matching every prior
+chart-generation pass's own precedent of living outside the test-covered codebase) and no `src/`
+files were touched by this pass. Docs: this entry only — no rebalance shipped yet, pending the
+decision above.

@@ -2272,6 +2272,93 @@ class EmbedFactory {
         return embed;
     }
 
+    // Batch Fusion (2026-09-20) selection/preview embed — shown alongside the multi-select
+    // menu and per-rarity Select All buttons, re-rendered after every click (page nav,
+    // menu selection, select-all) so the numbers shown always match the CURRENT accumulated
+    // selection. selectedCandidates: array of { entry, companion, fuelValue } (the subset of
+    // getEligibleSacrificeCandidates currently selected, from companionFusionFactory.js).
+    // preview: companionFusionFactory.climbAscensionStars' own return shape
+    // ({ ascensionFuel, ascensionStars, starsGained }), computed against the target's REAL
+    // current ascensionFuel/ascensionStars plus the selection's total fuel — a pure
+    // preview, nothing is written yet.
+    createBatchFusionSelectionEmbed(userDisplayName, targetCompanion, targetEntry, selectedCandidates, totalFuelValue, preview, pageIndex, totalPages) {
+        const targetLevel = companionFactory.getCompanionLevel(targetEntry.workCount);
+        const currentAscensionStars = targetEntry.ascensionStars || 0;
+
+        const countsByRarity = selectedCandidates.reduce((counts, { companion }) => {
+            counts[companion.rarity] = (counts[companion.rarity] || 0) + 1;
+            return counts;
+        }, {});
+        const selectedSummary = selectedCandidates.length === 0
+            ? "None yet — pick some below, or use a Select All button."
+            : `${Object.entries(countsByRarity).map(([rarity, count]) => `${COMPANION_RARITY_LABEL[rarity]}: ${count}`).join(' | ')}\n**${selectedCandidates.length} total**`;
+
+        const ascensionProgress = preview.ascensionStars < CompanionFusion.ASCENSION_MAX_STARS
+            ? `${preview.ascensionFuel.toLocaleString()} / ${CompanionFusion.ASCENSION_STAR_COSTS[preview.ascensionStars].toLocaleString()} fuel to ${'★'.repeat(preview.ascensionStars + 1)}`
+            : `Fully ascended!`;
+
+        const fields = [
+            {
+                name: `Selected (Page ${pageIndex + 1}/${totalPages}):`,
+                value: selectedSummary,
+                inline: false,
+            },
+            {
+                name: `Projected Fuel:`,
+                value: `${totalFuelValue.toLocaleString()}`,
+                inline: true,
+            },
+            {
+                name: `Projected Ascension:`,
+                value: `${'★'.repeat(currentAscensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - currentAscensionStars)}${preview.starsGained > 0 ? ` → ${'★'.repeat(preview.ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - preview.ascensionStars)} (+${preview.starsGained})` : ''}\n${ascensionProgress}`,
+                inline: false,
+            }
+        ];
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}, choose companions to fuse into ${targetCompanion.name} (Lv. ${targetLevel})`)
+            .setDescription(`Every companion selected below is sacrificed **permanently** — there's no undo. Use the menu (and Select All buttons) to build your batch, then confirm.`)
+            .setColor(COMPANION_RARITY_COLOR[targetCompanion.rarity])
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Batch Fusion (2026-09-20) complete embed — result: companionFusionFactory.
+    // resolveBatchFusion's own return shape (totalFuelValue/sacrificedCount instead of the
+    // single-pair resolveFusion's fuelValue). Mirrors createFusionCompleteEmbed's own
+    // "only one outcome branch" shape (every successful fusion is Ascension fuel now).
+    createBatchFusionCompleteEmbed(userDisplayName, targetCompanion, result) {
+        const fields = [
+            {
+                name: `Sacrificed:`,
+                value: `${result.sacrificedCount} companion${result.sacrificedCount === 1 ? '' : 's'} — total fuel value ${result.totalFuelValue.toLocaleString()}`,
+                inline: false,
+            }
+        ];
+
+        const currentMultiplier = result.ascensionStars > 0
+            ? CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[result.ascensionStars - 1]
+            : companionFactory.getLevelMultiplier(MAX_COMPANION_LEVEL);
+        const ascensionProgress = result.ascensionStars < CompanionFusion.ASCENSION_MAX_STARS
+            ? `\n${result.ascensionFuel.toLocaleString()} / ${CompanionFusion.ASCENSION_STAR_COSTS[result.ascensionStars].toLocaleString()} fuel to ${'★'.repeat(result.ascensionStars + 1)}`
+            : `\nFully ascended!`;
+        fields.push({
+            name: result.starsGained > 0 ? `🌟 Ascension Star${result.starsGained > 1 ? 's' : ''} Gained!` : `🌟 Ascension Progress:`,
+            value: `${'★'.repeat(result.ascensionStars)}${'☆'.repeat(CompanionFusion.ASCENSION_MAX_STARS - result.ascensionStars)} — max-level multiplier now ${currentMultiplier}x${ascensionProgress}`,
+            inline: false,
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName} fused ${result.sacrificedCount} companion${result.sacrificedCount === 1 ? '' : 's'} into ${targetCompanion.name}!`)
+            .setColor(COMPANION_RARITY_COLOR[targetCompanion.rarity])
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
     // Ancient Potato's outcome branches like Metal Potato's success/failure split, but
     // on regrade-vs-potato-reward instead — doesn't fit createWorkEmbed's single
     // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own

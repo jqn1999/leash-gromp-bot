@@ -14720,3 +14720,92 @@ Verified via `tsc --noEmit --skipLibCheck --target es2022 --module esnext --modu
 bundler` on all three touched `handler.ts` files in `financial-project` — clean aside from each
 file's own expected missing `$amplify/env/*` module. No bot-side test changes (nothing in this
 repo's own `src/` was touched).
+
+## Feature: `/companion-fuse` moved from one sacrifice at a time to a batch multi-select flow (2026-09-20, product-owner/architect-scoped, confirmed before implementation)
+
+**What was asked**: fully ascending one companion to 5 stars costs 26,375 total fuel
+(`CompanionFusion.ASCENSION_STAR_COSTS` summed), but a Common — the most common fusion fodder —
+is only worth ~50-100 fuel. The old `/companion-fuse` required a separate command invocation (two
+autocomplete picks plus a confirm click) per sacrifice, so fully ascending even one companion from
+Common overflow alone could take 50-100+ invocations. Player-named pain: "1 at a time having to
+pick what companion to kill and what companion is the target."
+
+**What shipped**: `/companion-fuse` now drops the `sacrifice` option entirely — a player picks only
+`target` (autocomplete unchanged: owned, not scavenging, max level, not fully ascended), then gets
+a multi-select menu of every eligible sacrifice-fodder companion they own (Common/Rare/Legendary,
+not scavenging, not the target itself), **sorted ascending by fuel value** (explicit product
+instruction, overriding the more obvious rarity/level/acquisition-order sorts), paginated 25 per
+page (Discord's own per-select-menu option cap) via the existing Next/Prev button convention. Three
+per-rarity "Select All" buttons (Commons/Rares/Legendaries — deliberately no single
+indiscriminate "select everything" button) add every eligible companion of that rarity across ALL
+pages in one click. The running selection is a closure-scoped `Set<instanceId>` that persists
+across page navigation and select-all clicks for the whole interaction lifecycle — picking some on
+page 1, paging to page 2, and picking more all accumulate into the same batch. A live preview embed
+(re-rendered after every click) shows the current selection count by rarity, total projected fuel,
+and the ascension stars that fuel would grant, computed via a new pure `climbAscensionStars`
+helper (the same star-threshold math the real resolve step uses, run against a hypothetical total
+with nothing written). Confirm re-fetches fresh user data and re-validates the FULL batch — every
+selected instance must still be owned/eligible and the target must still qualify — rejecting the
+whole confirm and naming the SPECIFIC companion that broke if any one entry fails, rather than
+silently dropping it and fusing the rest. A successful confirm sums every selected sacrifice's fuel
+into one `ascensionFuel` addition, climbs the star thresholds once, removes every sacrificed
+instance from `owned` in one pass, auto-unequips the active slot if it was among the sacrificed
+batch, and commits with exactly ONE `updateUserFields` write — no loop calling the old
+single-sacrifice resolve function once per pick.
+
+**Design calls made where the spec left room**:
+- **Single-vs-batch function consolidation**: kept both shapes, but the single-pair functions
+  (`validateFusionRequest`/`resolveFusion`) are now thin wrappers around new batch versions
+  (`validateBatchFusionRequest`/`resolveBatchFusion`) rather than two independently-maintained
+  implementations — there's no other real caller left needing a true single-only code path (only
+  the pre-existing single-pair test suite depends on the wrapper's exact
+  `{ sacrificeEntry, sacrificeCompanion, fuelValue }` return shape, not arrays), so a parallel
+  implementation would just be a second place for the same eligibility rules to drift out of sync.
+  The per-sacrifice checks (ownership, rarity, not-scavenging, not-the-target) are factored into a
+  shared `validateSacrificeCandidate`, and the target checks are split into
+  `validateTargetOwnership` (existence, checked early) and `validateTargetEligibility`
+  (scavenging/max-level/ascension gates, checked late) — split specifically to preserve the
+  original single-pair function's exact failure-precedence (a Mythic sacrifice's rarity rejection
+  firing before a not-yet-max-level target's own rejection, which the pre-existing test suite
+  depends on) once a real N-sacrifice loop sits between "check the target's ownership" and "check
+  the target's eligibility."
+- **Row-layout under Discord's limits**: select menu (own row, a select menu can never share a
+  row with anything else) + per-rarity Select All buttons (own row, only built if at least one
+  eligible companion of that rarity exists) + pagination Prev/Next (own row, only when >25
+  eligible candidates) + Confirm/Cancel (own row) = at most 4 action rows, comfortably under
+  Discord's 5-row-per-message cap — no collapsing was actually needed for this layout, unlike the
+  scoping note's anticipation that it might be tight.
+- **Error-message specificity**: the shared per-sacrifice validator now names the offending
+  companion in its rarity/scavenging rejection messages (e.g. "Mochi can't be sacrificed... too
+  valuable to burn") instead of the old generic "that companion" — needed for the batch confirm's
+  "name which companion broke" requirement; verified this doesn't break the pre-existing
+  single-pair tests, which only regex-match a substring of these messages.
+
+**New embeds**: `embedFactory.createBatchFusionSelectionEmbed` (the live selection preview, added
+alongside — not replacing — the existing single-pair `createFusionPreviewEmbed`) and
+`createBatchFusionCompleteEmbed` (result summary: sacrificed count, total fuel, new ascension
+stars). The single-pair embeds stay in place since `createFusionPreviewEmbed`/
+`createFusionCompleteEmbed` are pure functions with no other caller removed.
+
+**Tests**: `companionFusionFactory.test.js` grew from 19 to 37 tests (the original 19 unchanged
+and still passing against the wrapper functions) — batch validation (valid multi-rarity batch,
+empty selection, one invalid entry naming the specific companion for both a rarity failure and a
+scavenging failure, every rarity selectable in one batch, a not-max-level target rejecting the
+whole batch), `getEligibleSacrificeCandidates`'s ascending fuel sort and its
+target/scavenging/rarity exclusions, `climbAscensionStars` as a standalone preview function, and
+`resolveBatchFusion` (fuel summing, multi-sacrifice star climbing, one-pass removal, active-slot
+auto-unequip both when the active companion was and wasn't in the batch, and `applyMaxLevelTracking`
+firing exactly once regardless of batch size). `companionFuse.test.js` was rewritten for the new
+command shape (15 tests): rejects an invalid target before building any UI, rejects when zero
+eligible sacrifice candidates exist, cancel/timeout write nothing, a select-menu pick plus confirm
+writes exactly the selected instances in one call, confirming with nothing selected rejects instead
+of writing an empty fusion, a per-rarity Select All button adds every eligible companion of that
+rarity across pages (tested with 26 commons, one more than a single select-menu page), selections
+made on different pages both survive into the final confirm, active-slot auto-unequip, re-validation
+against fresh state naming the specific companion that broke, and that unrelated `companions` state
+(`scavenging`) survives the write untouched. Combined, the two touched test files grew from 30
+tests (19 + 11) pre-change to 52 (37 + 15). Full suite: **95 test suites / 1794 tests, all
+passing**.
+
+Docs: `systems/companions.md`'s Companion Fusion / Ascension section rewritten to describe the new
+batch selection flow on top of the unchanged target-must-be-max-level rationale.
