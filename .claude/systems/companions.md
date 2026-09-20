@@ -1569,15 +1569,87 @@ direct instruction, "make sure that xp from every non fusion is capped at 3725."
 every level-scaled perk were already clamped at max level regardless of how high `workCount`
 climbed). Only Fusion's own `ascensionFuel` field is allowed to keep growing past this point.
 
-**`/companion-fuse`** mirrors `companionSellNpc.js`'s confirm/cancel shape (preview embed →
-30s button collector → re-fetch and re-validate against fresh state before committing →
-result embed), but is the first command in this codebase needing two independent
-autocomplete fields on one command (`sacrifice`, filtered to Common/Rare/Legendary only via
-`getFocused(true).name`, and `target`, unfiltered) rather than one. Sacrificing the
-currently-equipped instance auto-unequips it, same precedent
+**`/companion-fuse`: batch multi-select flow (2026-09-20 rework, product-owner/architect-
+scoped, confirmed before implementation)** — supersedes the original one-sacrifice-per-
+invocation design. Fully ascending one companion costs 26,375 total fuel while a Common
+alone is worth only ~50-100, so the original design (two autocomplete picks — `sacrifice`
+and `target` — plus a confirm click, once per sacrifice) could take 50-100+ separate command
+runs to fill even one star; player-named pain: "1 at a time having to pick what companion to
+kill and what companion is the target."
+
+The command now takes only a `target` option (autocomplete unchanged: owned, not scavenging,
+max level, not fully ascended). After a valid target is picked, `/companion-fuse` builds and
+sends, in one message:
+
+- A `StringSelectMenuBuilder` multi-select (`minValues: 0`, `maxValues` = however many
+  options are on the current page) listing every eligible sacrifice-fodder instance the
+  player owns — `companionFusionFactory.getEligibleSacrificeCandidates(userDetails,
+  targetInstanceId)` filters to Common/Rare/Legendary (`canBeSacrificed`), not scavenging,
+  and not the target instance itself. Each option's label is `"<Name> (Lv. <N>) — <fuel>
+  fuel"`, value = instanceId. **Sorted ascending by fuel value** (lowest first) — an explicit
+  product instruction overriding the more obvious rarity/level/acquisition-order sorts, so a
+  player burning overflow duplicates sees their cheapest sacrifices first.
+- **Pagination** at 25 per page (Discord's own per-select-menu option cap) via the same
+  Next/Prev button convention `/companion`/`/shop` already use
+  (`helperCommands.buildPaginationRow`, customIds `companion_fuse_prev`/`_next`). The
+  accumulated selection lives in a single closure-scoped `Set<instanceId>` for the whole
+  interaction lifecycle — not per-page state — so picking some companions on page 1, paging
+  to page 2, and picking more all land in the same batch. Re-rendering a page marks any
+  already-selected option's own `default: true` so paging back shows it still checked.
+- **Three per-rarity "Select All" buttons** (Commons/Rares/Legendaries — deliberately no
+  single indiscriminate "select everything" button, per product instruction), each shown
+  only if at least one eligible companion of that rarity exists, each adding every eligible
+  companion of that rarity across ALL pages (not just the current one) to the accumulated
+  selection in one click.
+- A **live preview embed** (`embedFactory.createBatchFusionSelectionEmbed`, re-rendered after
+  every click) showing the current selection's count by rarity, total projected fuel, and
+  the ascension stars that fuel would grant — computed via
+  `companionFusionFactory.climbAscensionStars(targetEntry.ascensionFuel,
+  targetEntry.ascensionStars, totalFuelValue)`, a pure extraction of the same star-threshold
+  while-loop `resolveBatchFusion` itself runs, exposed standalone specifically so this
+  preview can run the real math against a hypothetical total without writing anything.
+- A Confirm/Cancel row (`buildConfirmCancelRow`, unchanged from the original design).
+
+Row budget: select menu (its own row — a select menu can never share a row with anything
+else) + Select All buttons (own row, 0-3 buttons) + pagination (own row, only when >25
+eligible candidates) + Confirm/Cancel (own row) = at most 4 action rows, under Discord's
+5-row-per-message cap with room to spare — no row-collapsing was actually needed for this
+layout.
+
+**On Confirm**: re-fetches fresh user data and calls
+`companionFusionFactory.validateBatchFusionRequest(freshUserDetails,
+Array.from(selectedInstanceIds), targetInstanceId)` — every selected instanceId must still
+be owned, sacrifice-eligible, and not scavenging, and the target must still qualify. If ANY
+single entry fails, the whole confirm is rejected with a message naming the SPECIFIC
+companion that broke (never silently dropped so the rest still go through). On success,
+`companionFusionFactory.resolveBatchFusion` sums every selected entry's own
+`getFusionFuelValue` into ONE `ascensionFuel` addition, climbs the star thresholds once,
+removes every sacrificed instance from `owned` in a single pass, auto-unequips the active
+slot if it was ANY of the sacrificed instances, calls `applyMaxLevelTracking` once, and the
+whole batch commits with exactly ONE `updateUserFields` write — never a loop calling the
+single-sacrifice path once per pick (which would mean N writes/N redundant
+`applyMaxLevelTracking` recomputations).
+
+**Function shape**: the original single-pair functions
+(`validateFusionRequest`/`resolveFusion`) are now thin wrappers around new batch versions
+(`validateBatchFusionRequest`/`resolveBatchFusion`), not a second parallel implementation —
+kept only because the pre-existing single-pair test suite (and nothing else) still depends on
+their exact `{ sacrificeEntry, sacrificeCompanion, fuelValue }` (not array) return shape. The
+per-sacrifice checks (ownership, rarity, not-scavenging, not-the-target) are factored into a
+shared `validateSacrificeCandidate`, called once per candidate in a batch; the target checks
+split into `validateTargetOwnership` (existence, runs early, before the sacrifice loop) and
+`validateTargetEligibility` (scavenging/max-level/ascension gates, runs late, after every
+sacrifice candidate already passed) — this split preserves the ORIGINAL single-pair
+function's exact failure-precedence (e.g. a Mythic sacrifice's rarity rejection firing before
+a not-yet-max-level target's own rejection) now that a real N-sacrifice loop sits in between
+the two target-check halves. `validateTargetForFusion` is a separate combined helper
+`/companion-fuse`'s callback uses just once, up front, to validate the target on its own
+before any sacrifice has been picked yet (there's no sacrifice list at that point for the
+ownership/eligibility split to matter). Sacrificing the currently-equipped instance (or any
+instance in the batch) auto-unequips it, same precedent
 `companionMarketFactory.removeFromOwned` already sets for selling/listing the active
-companion away. A companion out scavenging can be neither the sacrifice nor the target
-(same `isScavenging` guard every other companion-mutating command already checks).
+companion away. A companion out scavenging can be neither a sacrifice nor the target (same
+`isScavenging` guard every other companion-mutating command already checks).
 
 **Ascension deliberately does not survive a market sale** — `companionMarket.js`'s
 `attemptBuy`/`companionMarketFactory.buildListing` only ever capture `workCount`, the same
