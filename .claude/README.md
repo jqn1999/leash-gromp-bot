@@ -45,6 +45,11 @@ those AWS services.
 - [systems/spud-keep.md](systems/spud-keep.md) — the daily contested-territory event: guilds vs.
   the Merc Faction, the N-way weighted lottery, the bundle buff, the accruing tax-redirect pot, and
   the Attacker's Bonus.
+- [systems/trading-post.md](systems/trading-post.md) — **design only, not implemented** — a
+  Guild-scoped and a Merc-Faction-scoped Trading Post: a roster-filtered companion marketplace
+  (reusing `companionMarketFactory.js`'s escrow) plus a new potion vendor (temporary work
+  multiplier/cooldown-skip/starch buffs), gated the same `scopeKey` way as Guild Chat Sync/Merc
+  Faction Hall.
 - [systems/feature-ideas.md](systems/feature-ideas.md) — a broad, organized brainstorm of candidate
   features/systems the game could add or deepen, triaged by category with effort/risk/cross-repo
   notes — pure ideation, not a build spec. Check here before assuming an idea hasn't been considered.

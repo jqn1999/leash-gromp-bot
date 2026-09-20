@@ -15394,3 +15394,74 @@ Not yet implemented — nothing in `src/` touched by this pass. No `financial-pr
 either: this is purely an internal read/write-count optimization with no change to any formula,
 reward, cooldown, or data shape a player or the web UI would ever observe, so there is nothing for
 that repo's own re-implementation to drift out of sync with.
+
+## Design (scoping only, not implemented): Trading Post — Guild & Merc Faction (2026-09-20, architect pass)
+
+Product owner ask (paraphrased): a "Trading Post," in two scoped instances — one for Guilds, one
+for the Merc Faction — mirroring the dual-scope shape Guild Chat Sync/Merc Faction Hall just
+established (a `scopeKey` of `guild#<id>` vs. the fixed literal `merc`). Flavor text differs by
+scope (Guild = "nice and legal," Merc = "underground and sneaky," both still period-appropriate,
+never heist-movie language). The post should also be a new way to get **potions** — temporary
+buffs for work multiplier, cooldown-skip chance, and "stuff like starches." Full build-ready design
+in the new `.claude/systems/trading-post.md`; this entry is the summary.
+
+**This fuses two previously-separate brainstorm ideas** (`feature-ideas.md`'s F1 "Guild Trading
+Post," a members-only companion-market filter, and F3 "Brewed Elixirs," flagged there as the one
+idea in that whole doc needing genuinely new data-model work) rather than being either alone.
+
+**Two shapes coexist under one venue, not one mechanism reused twice**: companion listings reuse
+`companionMarketFactory.js`'s existing escrow machinery verbatim (a new optional `scopeKey` field
+per listing, filtered at browse/buy time — same shape as the existing server-wide
+`/companion-market`, just roster-gated), while potions are sold through a **fixed-catalog NPC
+storefront** (the `shopFactory`/Guild Shop "static list, direct buy, deduct currency" shape — no
+rotation, no luck, since a potion purchase is a deliberate pick, not a gacha roll). Recommended
+specifically because escrow assumes players already hold the item being traded — nobody holds a
+potion today, so P2P listing them would require inventing a real multi-item inventory concept,
+the exact complexity F3's own brainstorm entry already flagged as avoidable.
+
+**Potions are purchased, not crafted** — the product owner's own phrasing ("another way of
+GETTING special potions") reads as acquisition, not a recipe/ingredient loop. No new crafting
+system for v1; F3's original "Brewed Elixirs" pitch is treated as a possible SECOND, harder
+acquisition path for later, not this feature's v1 scope.
+
+**"Stuff like starches" — ambiguous, both readings investigated, presented in the systems doc**:
+(a) a potion whose effect touches starches (recommended: a temporary add to the same
+`starchSellBonusPercent`/buy-discount bucket the World Boss's Yamsalot buff already feeds), vs.
+(b) trading raw starches themselves as a good in the post. Recommended (a) — it reads as one of
+several parallel "things a potion does" in the same sentence as work-multi/skip-chance, and it
+reuses an EXISTING temporary-buff consumption point (`starchFactory`'s World Boss buff read)
+rather than inventing a new tradeable-good concept on top of an already-two-shape venue.
+
+**A potion's temporary effect reuses the World Boss buff's exact `{ type, value, expiresAt }` +
+live-freshness-check shape** (`dynamoHandler.getActiveWorldBuff`/`isWorldBuffLive`) — the closest
+existing precedent for "a stored expiry timestamp + a live check at the point the bonus applies,"
+just per-player (`userDetails.activePotion`) instead of server-wide. Explicitly NOT
+`sweetPotatoBuffs` — that track is permanent-only by design; potions need a genuinely different,
+expiring track. Also explicitly NOT Guild Buff/Mercenary Buff's "pick a lane, free to reassign"
+shape — those are zero-cost category picks, but a potion is a PAID consumable, so overwriting an
+active one on a fresh purchase would silently waste real spend. New pattern, flagged for
+confirmation: recommend a same-effect-type repurchase EXTENDS remaining duration, while a
+different-effect-type purchase is REJECTED outright while one is still active, rather than either
+silently discarding paid-for time or allowing free-form stacking.
+
+**Effects for v1 (3, not a sprawling catalog)**: Work Multiplier Draught (`workMulti`, additive
+into the same bucket as `getGuildWorkMulti`/`getMercenaryWorkMulti`/`getWorldBuffWorkMulti`),
+Cooldown-Skip Draught (`workTimer`, a new source into `getWorkCooldownSkipSources`), Starch-Sale
+Tonic (`starchBuff`, additive into `starchFactory`'s existing World-Boss-buff bucket). All three
+reuse an EXISTING aggregation point — no new formula math, only a new input into each.
+
+**Open questions needing product owner confirmation** (full list, with recommendations, in
+`trading-post.md`): the starches-ambiguity reading above; crafted-vs-purchased; same catalog for
+both scopes vs. scope-exclusive potions (recommend: same, flavor-only difference, per the literal
+ask); whether scoped companion listings get a lower `CompanionMarket.TAX_PERCENT` as a membership
+perk (recommend: no change for v1); the same-type-extends/different-type-blocks purchase rule
+above; concrete potion price/duration/magnitude numbers (illustrative only, not balance-locked).
+
+**Cross-repo**: Companions are confirmed ported to `financial-project` (`gromp-companions`), so a
+scope-filtered `/companion-market` view needs a matching web-side filter if `/gromp` ever exposes
+Trading Post browsing. Potions are entirely new — nothing to audit against yet, but the effect
+values (`workMulti`/`workTimer`/`starchBuff`) do touch stats the web `/work` port re-implements, so
+a potion system would need its own web-side port once built, not just a read-only display.
+
+Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
+the open questions above before a developer builds any of it.
