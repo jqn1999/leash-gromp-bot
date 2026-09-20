@@ -14943,4 +14943,3 @@ implement Tower at all, no companion port needed. Docs updated: `systems/tower.m
 POTATOES Cap: Technical Design" section heading now reads "IMPLEMENTED" (pointing at a new
 "Per-Run POTATOES Cap: Shipped" section appended after it with the same level of detail as this
 entry) rather than "NOT implemented."
-
