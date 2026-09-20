@@ -15225,3 +15225,163 @@ merc-side files (`takeBountyBigEvents.test.js`, `robNpcBigEvents.test.js`,
 changes — that repo's Guild Raid handler still needs its own audit + port pass with a new numbered
 `## Bot caught up #N` entry in its `NOTES_GROMP_WEB_INTEGRATION.md`, deferred to a future session as
 originally flagged.
+
+## Design (scoping only, not implemented): cooldown-skip chain read/write consolidation (2026-09-20, architect pass)
+
+Product owner ask (paraphrased): can the cooldown-skip auto-chain (`/work`'s `performWork`,
+`/take-bounty`'s `runBountyAttempt`/`runStatBountyAttempt`, `/rob-npc`'s `runNpcRobAttempt`,
+`/start-raid`'s `resolveRaid` — all four recurse on a WIN that rolls a skip, up to
+`Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` = 10 links deep) do ONE `findUser` read + ONE write at the
+top-level command instead of a fresh read+write per chain link, accumulating deltas in memory.
+Read all four functions in full plus `cooldownFactory.js`, `dynamoHandler.js`'s `findUser`/
+`updateUserFields`/`updateGuildDatabase`/the one existing `transactWrite` call site, and the
+achievement/quest check helpers each of the four calls into.
+
+**Realistic chain depth is much shallower than the "5-10 round trips" framing in the ask.**
+`combineSkipChance` (`cooldownFactory.js`) combines sources via `1-∏(1-pᵢ)`, hard-capped at
+`DEFAULT_SKIP_CHANCE_CAP` = 0.60. Expected additional chain links for a geometric process capped at
+10 is `Σ pⁱ (i=1..10)`. For a typical single-companion /work player (Spudsprite 15% or Mochi 20%,
+no other stacked source), that's ~0.18-0.25 extra links on average — i.e. most `/work` calls chain
+0 times, a real minority chain once, twice is uncommon. Even a maxed-out player sitting at the 60%
+cap (multiple stacked sources — companion + guild buff + Spud Keep + World Boss buff, or for
+Bounty/Heist, Mercenary Rank 6's 0.38 + a `bountyTimer` Mercenary Buff) only averages ~1.5 extra
+links (`0.6·(1-0.6¹⁰)/0.4`), and hitting the full 10-link cap requires ten consecutive hits at
+p=0.6, ≈1% probability per invocation even at the theoretical ceiling. So the common case this
+would optimize is "save 0-1 extra round trip some of the time," not "save 5-10 round trips
+regularly" — real, but a much smaller win than the premise implies. No existing telemetry logs
+chain depth (the only per-link signal is a `console.log` on chain-abort, not on chain continuation),
+so this is reasoned from the formula, not measured; recommend adding a one-line `chainDepth` log on
+final chain-exit if this is ever built, purely to validate this estimate against real play.
+
+**`dynamoHandler.js`'s actual shape, checked directly**: every mutation here is a single
+`docClient.update()` (`UpdateItem`) — no `batchWriteItem` anywhere in the file. There is exactly
+ONE existing `transactWrite` call site (`setActiveSpudKeepBundle`, added 2026-09-14 to atomically
+pair the Spud Keep passive/cooldown buff docs), so multi-item atomic writes are an established,
+precedented pattern here, not a new one — a consolidated write (if built) should reuse
+`buildUpdateExpression` + `docClient.update`/`transactWrite` the same way, not invent new plumbing.
+No `BillingMode`/RCU-provisioning config exists in `constants.js`'s `awsConfigurations` (billing
+mode is a table-level AWS setting, not visible from code), and a full-text search of
+`.claude/roadmap.md` found zero prior mentions of `ProvisionedThroughputExceededException` or any
+throttling incident — i.e. no evidence this bot has ever actually hit a DynamoDB throughput wall.
+That matters for prioritization: this is a cost-hygiene improvement, not a fix for an observed
+production problem.
+
+**Read-side, checked independently of the write question**: `findUser` always does a full-item
+`Query` with `ConsistentRead: true` (deliberately, per its own comment — closes a real race where a
+just-superseded item comes back after a write on a different replica) and never a projection — every
+chain link pays for the WHOLE user record plus double RCU for strong consistency, every time. No
+call site anywhere uses `ConsistentRead: false` or `ProjectionExpression`. This read cost is
+orthogonal to the chain-consolidation question (it costs the same per read whether that read happens
+once or ten times) and is a separate, smaller optimization opportunity: a chain link's own
+re-fetch-after-write (see below) is the ONE place per command where a strongly-consistent read is
+load-bearing (it must see the write that just landed); the very FIRST read of a fresh top-level
+invocation arguably doesn't need `ConsistentRead: true` at all if this bot accepted the same
+"rare, hard-to-reproduce, already-mitigated-in-most-places" staleness risk the comment on
+`findUser` describes — not recommended to change given that comment exists specifically because
+that risk was already hit once (a companion `workCount` gain "disappearing").
+
+**Function-by-function correctness audit — what's genuinely safe to fold into memory vs. what's
+fresh-by-necessity:**
+
+- **`/work` (`performWork`, `work.js` + `workFactory.js`)** — NOT a clean consolidation candidate.
+  Every one of the 10 scenario handlers (`handleGoldenPotato`, `handleLargePotato`, ... in
+  `workFactory.js`) does its OWN `dynamoHandler.updateUserFields` write internally, and
+  `calculateWorkTimerValue` (called inside each handler) does its OWN fresh async reads of guild
+  buff / World Boss buff / Spud Keep buff / Mercenary Buff docs to compute the skip roll — this is
+  the exact "recomputed fresh because shared buffs/Spud Keep/guild state can change between links"
+  pattern the product owner flagged as deliberate elsewhere, just not commented as explicitly in
+  `work.js` as it is in `resolveRaid`. `performWork` also explicitly re-fetches `userDetails` via a
+  SECOND `findUser` after the scenario runs specifically because "the scenario handlers wrote stat
+  updates straight to the DB without mutating this in-memory userDetails object" (its own comment) —
+  achievement checks, quest checks, guild contract checks, and companion-leveling all depend on that
+  fresh read. `newWorkCount` also reads/writes a SERVER-WIDE shared stat doc (`getStatDatabase('work')`
+  / `updateStatDatabase`) every link — other players' concurrent `/work` calls touch this same doc,
+  so even the read-then-increment shape already has a pre-existing (separate, not this ask's problem)
+  lost-update race, and is definitely not something a per-user in-memory accumulator could safely
+  fold in without a broader rework. Consolidating here would mean restructuring all 10 scenario
+  handlers to return deltas instead of writing directly — a wide, invasive refactor for a mechanic
+  that (per the depth analysis above) averages under 1 extra chain link for most players.
+
+- **`/take-bounty` (`runBountyAttempt`/`runStatBountyAttempt`, `takeBounty.js`)** — safe, and the
+  best candidate. Each link already funnels its numeric deltas (potatoes, totalEarnings/Losses,
+  starches, companions, mercenaryBountyWinCount, mercenaryNotoriety) into ONE
+  `dynamoHandler.updateUserFields(setAttributes, addAttributes)` call, not several scattered writes.
+  `mercenaryFactory.getMercenaryCooldownSkipSources` — the per-link "fresh" read — pulls
+  Mercenary Rank and the Mercenary Buff purely from fields already on `userDetails` in memory (no DB
+  read at all for those two); only Spud Keep's cooldown buff is a real per-link DB read, and it's a
+  single small global stats doc, changing at most once/day (daily resolution) — reading it once at
+  chain-start and reusing it for all 10 possible links carries negligible staleness risk. The
+  house-tax/Spud-Keep-pot credit, `updateIfNewRecord` (personal best), and `raidFactory.handleStatSplit`
+  (rare stat-reward branch) are each their own extra write today, but all are simple ADD/conditional
+  writes on the SAME user's own fields that could accumulate into the same combined write with
+  moderate, well-scoped effort. The trailing `findUser` re-fetch + achievement/quest checks are the
+  one piece that still needs a real read afterward (achievements/quests are evaluated by internal
+  factories that read+conditionally-write on their own) — but that's ONE read per TOP-LEVEL command
+  regardless of chain depth, not per link, if the accumulation itself moves to memory and only the
+  final link's outcome gets checked against achievements/quests.
+
+- **`/rob-npc` (`runNpcRobAttempt`, `robNpc.js`)** — safe, same shape as Bounty, same verdict.
+  Single `updateUserFields(setAttributes, addAttributes)` per link, `getMercenaryCooldownSkipSources`
+  reused verbatim (same in-memory-mostly, one-small-doc-read profile), `raidFactory.handleStatSplit`
+  for the rare Royal Treasury stat branch, one trailing `findUser` + achievement/quest check. No
+  guild-shaped or multi-actor state anywhere in this path (heists are solo, "no real player
+  involved," per this file's own header comment) — the cleanest of the four to consolidate.
+
+- **`/start-raid` (`resolveRaid`, `startRaid.js`)** — NOT safe, don't attempt full consolidation.
+  This is the one function whose own comment says it outright: cooldown-skip sources are
+  "[r]ecomputed fresh on every call, including chain links... since guild buffs/Spud Keep/companion
+  state can change between them." Unlike the three solo commands above, a Guild Raid's state is
+  genuinely multi-actor: `getLiveRaidRoster`, `guild.raidCount`/level, `guild.guildBuff`,
+  `guild.guildCompanion`, and `guild.bankStored`/`bankCapacity` can all change between chain links
+  because OTHER guild members can join/leave the raid roster, buy a guild buff, or the guild's
+  Cinderroot companion state can change, all while THIS command's own chain is still resolving —
+  none of that is under the current player's control the way a solo command's own timer/companion
+  state is. Worse, `resolveRaid` also does a real inter-request race guard every link
+  (`claimGuildRaidSlot`, added 2026-09-18 specifically because two guild members clicking "Start the
+  raid" near-simultaneously could both pass a stale `raidTimer` check) — this MUST stay a live,
+  per-link conditional write against the guild's actual current `raidTimer`, because a consolidated
+  single-claim-at-chain-start would reopen exactly the double-raid race that fix closed for any
+  OTHER member's raid attempt landing mid-chain. Elite/Legendary's guild-level gate and the
+  raid-starter's own role permission are also explicicitly re-checked every link "since guild level
+  can change between chain links" (own comment) for the same reason. This function is also by far
+  the largest (~450 lines, 14+ scenario branches each with their own `updateGuildDatabase` calls for
+  `bankStored`/`raidCount`/`totalEarnings`/`raidHistory`/`guildInfamy`), making a correctness-safe
+  refactor here the highest-effort, highest-regression-risk option of the four for the smallest
+  guaranteed win (guild-shared reads can't be skipped no matter what).
+
+**Partial/safer win actually recommended, if this is picked up**: don't attempt a blanket "one read,
+one write" rewrite. For Bounty and Heist specifically, keep the achievement/quest re-fetch as the
+one read per TOP-LEVEL invocation it already effectively is (only the LAST chain link needs to run
+those checks — a mid-chain link's achievement/quest state can't regress), and change the recursion
+to pass the already-updated in-memory `userDetails`/deltas forward instead of re-deriving cooldown
+skip's non-DB-backed sources (`mercenaryRank`, `mercenaryBuff`) from scratch — that alone removes the
+redundant `findUser` most links currently do implicitly via `requireUserDetails` at chain-recursion
+time, while leaving the one genuinely-fresh Spud Keep doc read and the final achievement/quest
+read-check untouched. This gets most of the realistic savings (the accumulation-vs-per-link-DB-write
+gap, which is real but bounded by the ~0.2-1.5-extra-link averages above) without touching the
+higher-risk shared/guild-state reads in `/start-raid` or the widely-scattered per-scenario writes in
+`/work`.
+
+**Verdict table**:
+
+| Function | Verdict | Why |
+|---|---|---|
+| `/work` `performWork` | (c) Not safe / not worth it as a full rewrite | 10 scenario handlers each do their own direct DB write + fresh buff/guild/Spud-Keep reads inside `calculateWorkTimerValue`; a shared server-wide `work` stat doc is read/written every link; consolidating requires restructuring every scenario handler to return deltas instead of writing, for a mechanic averaging well under 1 extra chain link for most players. |
+| `/take-bounty` `runBountyAttempt`/`runStatBountyAttempt` | (a) Safe and worth doing (best target) | Already funnels deltas into one `updateUserFields` call per link; cooldown-skip sources are almost entirely in-memory (Rank, Buff) plus one small, slow-changing global doc (Spud Keep); solo-only state, no other-actor risk. |
+| `/rob-npc` `runNpcRobAttempt` | (a) Safe and worth doing (same profile as Bounty) | Same single-write-per-link shape, same mostly-in-memory skip sources, explicitly solo/no-other-player state. |
+| `/start-raid` `resolveRaid` | (c) Not safe / not worth it | Guild-shared state (roster, buffs, bank, level, companion) can genuinely change between links from OTHER members' actions; the 2026-09-18 `claimGuildRaidSlot` race guard is load-bearing per link; largest/most-branching function of the four. |
+
+**Overall recommendation**: worth a developer's time only as the scoped-down Bounty+Heist version
+above (share the resolution code path where reasonable, since `runNpcRobAttempt` and
+`runBountyAttempt` already mirror each other closely) — not the full 4-function rewrite the original
+ask implied. Skip `/work` and `/start-raid` entirely; their own per-link reads exist for reasons this
+audit confirmed are real (direct-write scenario handlers and genuinely-external guild state,
+respectively), and `/work`'s chain is the shallowest of the four anyway (no stacked skip-chance
+source in `Work` comes close to Bounty/Heist's Mercenary Rank + Buff combination). Start with
+`/rob-npc` specifically — solo, no tax/Yukon/notoriety-band branching Bounty has, so it's the
+smallest surface area to prove the pattern on before porting it to Bounty's two modes.
+
+Not yet implemented — nothing in `src/` touched by this pass. No `financial-project` audit needed
+either: this is purely an internal read/write-count optimization with no change to any formula,
+reward, cooldown, or data shape a player or the web UI would ever observe, so there is nothing for
+that repo's own re-implementation to drift out of sync with.

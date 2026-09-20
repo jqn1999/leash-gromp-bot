@@ -778,6 +778,60 @@ explicitly on the result embed as a "Kingdom Tax" field
 (`embedFactory.createBountyResultEmbed`'s new `netRewardAmount`/`taxAmount` params, both defaulting
 to the untaxed shape so a call site that hasn't been updated doesn't crash).
 
+## Cooldown-skip chain: per-link DB cost, and why full read/write consolidation isn't a clean win everywhere
+
+The cooldown-skip auto-chain mechanic itself (roll a combined skip chance on a win, recurse as
+`isChainedReply: true` up to `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)` deep if it hits) is shared,
+byte-for-byte in shape, across four command flows: `/work`'s `performWork` (this file),
+`/take-bounty`'s `runBountyAttempt`/`runStatBountyAttempt` and `/rob-npc`'s `runNpcRobAttempt` (see
+[mercenary-bounties.md](mercenary-bounties.md)), and `/start-raid`'s `resolveRaid` (see
+[guilds.md](guilds.md)). Each chain link today does its own full `findUser`/`requireUserDetails`
+read and its own write(s) — a 2026-09-20 architect pass (see `.claude/roadmap.md`'s "cooldown-skip
+chain read/write consolidation" entry for the full per-function audit) investigated whether these
+can be consolidated into one read-at-start + one write-at-end per top-level invocation, accumulating
+every chain link's deltas in memory instead. Summary of the findings, since this is exactly the kind
+of thing a future rebalance or refactor could get wrong in either direction:
+
+- **Realistic chain depth is short.** `cooldownFactory.combineSkipChance` caps the combined chance at
+  `DEFAULT_SKIP_CHANCE_CAP(0.60)`. A geometric process capped at 10 links averages `Σ pⁱ (i=1..10)`
+  extra links — roughly 0.2-0.25 extra for a typical single-source `/work` player (one companion's
+  `workCooldownSkipChance`, no other stacked source), up to ~1.5 extra even at the theoretical 60%
+  ceiling with every source stacked. Reaching the full 10-link cap needs ten consecutive hits at
+  p=0.6, ≈1% probability per invocation even for a maxed-out player. The DB-cost problem this
+  mechanic creates is real but bounded — most invocations chain 0-1 times, not the 5-10 the "how
+  often does this run deep" question might assume.
+- **`/work`'s own chain links are NOT safe to fold into a single write.** Every one of the 10
+  scenario handlers in `workFactory.js` (`handleGoldenPotato`, `handleLargePotato`, etc.) does its
+  own direct `dynamoHandler.updateUserFields` write, and `calculateWorkTimerValue` (called from
+  inside each handler) does its own fresh per-link reads of the guild/World Boss/Spud Keep/Mercenary
+  Buff docs to resolve the skip roll — the same "state can change between links" reasoning
+  `resolveRaid`'s own comment states explicitly for raids applies here too, just less loudly
+  commented. `performWork` also does a second `findUser` re-fetch after the scenario runs
+  specifically because the scenario already wrote straight to the DB without updating the in-memory
+  object — achievement/quest/guild-contract checks and companion leveling all depend on that fresh
+  read. Consolidating here means rewriting all 10 handlers to return deltas instead of writing
+  directly, for the shallowest-chaining of the four commands.
+- **`/take-bounty` and `/rob-npc` are the safe, worthwhile targets.** Both already fold their numeric
+  deltas into one `updateUserFields(setAttributes, addAttributes)` call per link, and their shared
+  `mercenaryFactory.getMercenaryCooldownSkipSources` pulls Mercenary Rank and Mercenary Buff purely
+  from fields already in memory — only Spud Keep's cooldown buff (a single small global doc,
+  changing at most once/day) is a genuine per-link DB read, and reading it once at chain-start
+  instead of per-link carries negligible staleness risk. Neither has any other-player-shaped shared
+  state to worry about (heists and bounties are solo-only).
+- **`/start-raid`'s `resolveRaid` is NOT safe to consolidate.** Its own comment already says
+  cooldown-skip sources are "recomputed fresh on every call... since guild buffs/Spud Keep/companion
+  state can change between them" — and unlike the three solo commands, that state genuinely can
+  change mid-chain from OTHER guild members' actions (joining/leaving the raid roster, buying a
+  guild buff, Cinderroot's state). The 2026-09-18 `claimGuildRaidSlot` race guard (see this doc's own
+  raid section and `guilds.md`) is also a live per-link conditional write that must stay per-link —
+  collapsing it to one claim at chain-start would reopen the exact double-raid race that fix closed
+  for any other member's concurrent raid attempt.
+
+No code has been changed as a result of this pass — see `.claude/roadmap.md`'s dated entry for the
+full per-function reasoning, the recommended scoped-down version (Bounty + Heist only, sharing the
+resolution path where the two already mirror each other), and the suggested starting point
+(`/rob-npc`, the smallest surface area of the two safe candidates).
+
 **Note on currency (corrected 2026-09-06, player-reported)**: a starch-denominated tax (`/give`'s
 starch tax, a starch-flavored `/take-bounty` win's tax) is now converted to potatoes BEFORE it's
 credited anywhere — the house account is potato-only, same as the Spud Keep pot, and never holds a
