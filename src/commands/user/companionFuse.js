@@ -97,7 +97,11 @@ function buildComponents(candidates, pages, pageIndex, selectedInstanceIds) {
 
 module.exports = {
     name: "companion-fuse",
-    description: "Sacrifice a batch of Common/Rare/Legendary companions as Ascension fuel for an already max-level companion",
+    // Kept to Discord's 100-char slash-command description cap (2026-09-20 fix — the
+    // original wording was 106 chars and made command registration fail outright with a
+    // 400 on EVERY command, not just this one, since 01registerCommands.js registers the
+    // whole set in one batch/PATCH).
+    description: "Sacrifice a batch of Common/Rare/Legendary companions as Ascension fuel for a max-level companion",
     devOnly: false,
     deleted: false,
     options: [
