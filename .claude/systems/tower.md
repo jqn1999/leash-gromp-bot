@@ -2155,3 +2155,300 @@ the web app never runs any Tower floor/reward/cap logic of its own. There is no 
 **no companion port** to `financial-project` and no `NOTES_GROMP_WEB_INTEGRATION.md` entry — flag
 this explicitly rather than silently skipping it, per this repo's own standing cross-repo-sync
 rule, precisely because "no port needed" should be a stated conclusion, not an assumption.
+
+## Per-Run POTATOES Cap: Technical Design (2026-09-20, scoping pass — NOT implemented, nothing in `src/` touched by this pass)
+
+**The confirmed problem** (verified against a real 500-run Monte Carlo at power/`workMultiplierAmount`
+600 using the live `towerFactory.js` success-chance/scaling/decay formulas): median outcome is
+**6,335,473,658 potatoes** (Greedy policy, median floor 87) or **8,283,891,632** (Safe, median floor
+100) from a single daily run — not a tail result, the literal median. Root cause, confirmed directly
+in `execElite`: **dying in Tower never resets accumulated potatoes** — only the run's temporary
+`WORK_MULTIPLIER`/`PASSIVE_INCOME`/`BANK_CAPACITY` gains wipe to 0 on an Elite loss
+(`this.run[tC.PAYOUT.WORK_MULTIPLIER] = 0`, etc.); `this.run[tC.PAYOUT.POTATOES]` is untouched. Every
+combat/reward/Elite floor's potato payout scales by the same uncapped `this.scalingFactor` (tied to
+player power via `investment(M)`, unbounded — ~1,374x at multi 600) for the whole run, and floor-depth
+decay (`TOWER_REWARD_DECAY_RATIO` past `TOWER_REWARD_GRACE_FLOOR`=100) barely engages at a median
+depth of 87-100. `WORK_MULTIPLIER`/`PASSIVE_INCOME`/`BANK_CAPACITY` all got a floor-banded per-run
+cap via `getTowerRunCap`/`TOWER_FLOOR_CAP_STEP` (2026-09-04/09-17 — see above) plus an
+overflow-to-potato discount (2026-09-19 — see above); `PAYOUT.POTATOES` itself has never had any cap
+at all — `creditRunPayout`'s own comment explicitly documents "PAYOUT.POTATOES itself has no cap and
+is credited in full, uncapped."
+
+**Why this is disproportionate, concretely.** Cost to reach power 600 (`towerConstants.js`'s own
+`SCALING_ANCHOR_TABLE`, the exact table Tower's reward scaling is calibrated against):
+`investment(600) = 460,201,102,807` — ~460.2 billion cumulative real potatoes. Tower is strictly
+once per day (`enter-tower.js`'s own gate — "you have already entered the tower today!"), so a
+per-run cap and a daily cap are the same number here. A same-day Raid EV re-derivation
+(`balance-audit.md`'s newest entry) found even a maxed guild member raiding literally every
+cooldown, 24 hours a day, tops out around **~2.9-4.1 billion/day** at power 600 (Legendary/Elite
+lvl 10 w/ Cinderroot); Solo Merc's realistic ceiling is **~1.1 billion/day**. One low-effort,
+once-daily Tower action already beats every other endgame income source from a single action, and
+at the Safe-policy median it beats the raid ceiling by close to 2x.
+
+### Where the cap value comes from
+
+Two of the three grounding methods the brief suggested converge on the same number, which is the
+main reason to trust it over a round-number guess:
+
+1. **Payback-period framing against the real investment curve.** Before this fix, a single Tower
+   run recoups `460.2B / 6.335B ≈ 73 days` (Greedy) or `460.2B / 8.284B ≈ 56 days` (Safe) of the
+   *entire* cost to reach power 600 — from ONE daily, low-effort action, while every other
+   endgame track (raids, bounties, the shop/regrade ladders themselves) is priced against a much
+   longer payback horizon. The raid-ceiling comparison itself implies a sane payback horizon of
+   `460.2B / 4.1B ≈ 112 days` to `460.2B / 2.9B ≈ 159 days` for "the single best other daily
+   income source, maxed, grinded nonstop." Targeting Tower's *capped* ceiling to land in roughly
+   that same 112-159-day payback band (rather than the current 56-73 days) is the concrete,
+   numeric form of "what fraction of total investment should one daily action reasonably recoup."
+2. **The raid-ceiling comparison directly.** Tower's capped ceiling at power 600 should land at,
+   or modestly below, the ~2.9-4.1B/day realistic endgame ceiling from every other system — not
+   an order of magnitude above it (today) or so far below it that surviving deep into the Tower
+   stops feeling worth the real death risk.
+
+Both point at the same target: **a capped total in the ~2.9-4.1B range at the floor depths power
+600 actually, typically reaches (87-100).**
+
+### Band shape: same mechanism, currency-appropriate step (not a new growth curve)
+
+**Reuses the exact existing floor-banded mechanism, unchanged** — `getTowerRunCap`'s
+`step * (Math.floor(floor / TOWER_FLOOR_CAP_BAND_SIZE) + 1)` formula, banded every 10 floors
+(`TOWER_FLOOR_CAP_BAND_SIZE`, already aligned to the forced-Elite-every-10th-floor structure), same
+"room reopens as floor advances into a new band" behavior PASSIVE_INCOME/BANK_CAPACITY already
+have. This directly answers the brief's "does it grow the same way, or does potatoes deserve
+different band-growth math" question: **same linear-additive shape, no new growth curve** — a
+flat per-band step, sized specifically for potatoes' own much larger absolute scale, is sufficient
+to hit the target above once correctly calibrated; a fundamentally different curve shape (geometric,
+etc.) isn't needed to make deep floors "still feel rewarding," because the existing reward-decay
+safeguard (0.95/floor past floor 100, closed-form ceiling of ~19 floor-equivalents) already handles
+"depth stops mattering past a point" on its own axis — the floor-band cap only needs to solve the
+*power*-scaling axis, which a flat per-band step does fine.
+
+**Proposed step: `TOWER_FLOOR_CAP_STEP[PAYOUT.POTATOES] = 350,000,000`** (350M), added to the
+existing `TOWER_FLOOR_CAP_STEP` object (not `TOWER_RUN_CAPS` — potatoes must grow with floor depth
+like passive/bank, not stay flat like `WORK_MULTIPLIER`'s 10x). Resulting cap table
+(`getTowerRunCap(PAYOUT.POTATOES, floor)`):
+
+| Floors | Band | Potatoes cap |
+|---|---|---|
+| 1-9 | 0 | 350,000,000 |
+| 10-19 | 1 | 700,000,000 |
+| 20-29 | 2 | 1,050,000,000 |
+| 30-39 | 3 | 1,400,000,000 |
+| 40-49 | 4 | 1,750,000,000 |
+| 50-59 | 5 | 2,100,000,000 |
+| 60-69 | 6 | 2,450,000,000 |
+| 70-79 | 7 | 2,800,000,000 |
+| 80-89 | 8 | 3,150,000,000 |
+| 90-99 | 9 | 3,500,000,000 |
+| 100-109 | 10 | 3,850,000,000 |
+| ... | ... | +350,000,000/band |
+
+A nice independent confirmation this isn't overfit to the one reported data point: the "threshold
+multi where the cap starts to meaningfully bind" falls out of this step almost exactly at the
+already-reported problem power. Each band spans 10 floors and adds 350M of room (~35M/floor of
+average headroom); the real average per-floor scaled potato value (backed out from the actual
+Monte Carlo: `6,335,473,658 / 1,374 (scalingFactor@600) / 87 floors ≈ 53,000` raw-equivalent
+potatoes/floor) crosses that ~35M/floor room right around `scalingFactor ≈ 660`, which corresponds
+to `multi ≈ 605-610` — i.e. the cap starts actually doing something almost exactly where the
+reported problem starts, without having been hand-tuned to that specific number.
+
+### Worked numbers across power levels (hand-derived from the live formulas, not re-run as a fresh Monte Carlo — flagged so the actual implementation pass re-verifies with a real simulation before shipping)
+
+Elite survival curves (`(multi + modifier) / (difficulty(N) * 10)`, capped at 0.95, `difficulty(N)
+= 4.0 * 1.45^(N-1)`) give an approximate median stopping floor per power; multiplying that floor
+count by the empirically-backed-out ~53,000-60,000 raw-potatoes/floor rate and each power's own
+`scalingFactor(M)` (`= (investment(M)/76,250,000)^0.83`) gives the **natural (uncapped)** total,
+compared against `getTowerRunCap(POTATOES, floor)` for the **capped** total:
+
+| Power (`multi`) | `scalingFactor` | Median floor (approx.) | Band | Natural (uncapped) total | **Capped total** | Cap engages? |
+|---|---|---|---|---|---|---|
+| 100 | ≈16.6x | ≈47 | 4 | ≈46.8M | **≈46.8M (unaffected)** | No |
+| 250 | ≈224x | ≈69 | 6 | ≈927M | **≈927M (unaffected)** | No |
+| 600 (Greedy) | ≈1,374x | 87 (real sim) | 8 | **6,335,473,658** (real sim) | **≈3,150,000,000** | Yes, from early in the run |
+| 600 (Safe) | ≈1,374x | 100 (real sim) | 10 | **8,283,891,632** (real sim) | **≈3,850,000,000** | Yes, from early in the run |
+| 1000 | ≈2,757x (extrapolated past the table's own top anchor, same log-log slope `investment()` already uses) | ≈105 | 10 | ≈17.4B | **≈3,850,000,000** (same band as 600-Safe) | Yes, more aggressively |
+
+**Reading this table**: powers 100 and 250 are completely unaffected — their natural per-floor
+earning never gets close to the cap, exactly as intended (the fix should only rein in the high end
+that prompted it). At 600, both policies land inside the targeted 2.9-4.1B raid-ceiling comparison
+band. At 1000, the SAME floor-100-109 band produces the SAME 3.85B cap as a 600-power player who
+reaches the same depth — this is the intended behavior, not an oversight: it's the identical
+"flat regardless of multi, only floor-dependent" property `PASSIVE_INCOME`/`BANK_CAPACITY`'s own
+caps already have. A power-1000 player's real advantage over a power-600 player shows up as a
+*much better chance of reliably reaching the higher band* (their own survival curve is far to the
+right), not as a bigger number at the same depth — power converts into consistency/reachability,
+not into an ever-larger per-floor multiplier, which is the whole point of decoupling POTATOES from
+`scalingFactor` the same way the other three currencies already are.
+
+**Payback-period sanity check** (`investment(M) / capped-daily-total`, Tower alone):
+
+| Power | Payback, before fix | Payback, after fix |
+|---|---|---|
+| 100 | ~48 days | ~48 days (unchanged) |
+| 250 | ~56 days | ~56 days (unchanged) |
+| 600 (Greedy) | ~73 days | ~146 days |
+| 600 (Safe) | ~56 days | ~120 days |
+| 1000 | ~61 days (extrapolated) | ~277 days |
+
+Before the fix, payback *shrinks* as power grows (Tower gets disproportionately more efficient the
+more already invested — a backwards incentive matching no other track in the game). After the fix,
+payback *grows* with power, the same diminishing-marginal-return shape every other progression
+track already has.
+
+### Required code change beyond the constant: `execElite`'s own potato credit bypasses `creditRunPayout` entirely
+
+**This is the one easy-to-miss part of implementing this cap, and without it the cap does almost
+nothing.** `execElite`'s win branch currently credits an Elite kill's own potato reward directly:
+
+```js
+this.run[tC.PAYOUT.POTATOES] += this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value)
+```
+
+This line **never goes through `creditRunPayout`**, so it would completely bypass the new cap.
+Elite kills are not a minor contributor — they're undecayed (Elite fight rewards are explicitly
+exempt from `decayValue`) and compound with depth: at power 600, 8-10 forced-Elite kills each worth
+`150,000 * scalingFactor ≈ 205.8M` sum to **~1.65-2.06B**, roughly a quarter to a third of the
+reported median totals, all currently uncapped by construction. The fix must change this line to:
+
+```js
+this.creditRunPayout(tC.PAYOUT.POTATOES, this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value))
+```
+
+`this.floor` is already correct at this call site (it's the actual Elite's floor, the same value
+`checkElitePayout`'s own King-Kiwi credit already reads at real payout time), so no other change is
+needed for this call site to respect the same evolving floor-band cap as every other credit path.
+No other bypass exists — every other POTATOES credit (`COMBATS`/`ENCOUNTERS`/`REWARDS`' `updateValue`
+default branch, `TRANSACTIONS`' `updateTransaction` payout branch) already funnels through
+`creditRunPayout`.
+
+### Overflow handling: discard, confirmed correct (not converted to anything else)
+
+Per the brief's own framing, this is the right call, for the same reason `WORK_MULTIPLIER`'s
+overflow is already simply dropped rather than converted: `PASSIVE_INCOME`/`BANK_CAPACITY` convert
+their overflow *into potatoes* specifically because potatoes is the one place the rest of the game
+already prices both currencies in (the shop ladders `TOWER_OVERFLOW_SHOP_RATE` is derived from).
+Potatoes has no analogous "next currency down" to convert into — it's already the terminal
+accounting unit in this game's economy. Inventing a potatoes→stat conversion (e.g. spilling excess
+into `WORK_MULTIPLIER`) would require inventing a NEW exchange rate with nothing in the existing
+economy to ground it against (unlike `Cb`/`Cp`, which reuse the shop's own real forward price), and
+would reopen exactly the kind of ungrounded-number problem this whole system has been actively
+fixing for two other currencies already. **`creditRunPayout`'s existing overflow branch already
+does the right thing with zero code change**: its `if` condition only fires for
+`type === PASSIVE_INCOME || type === BANK_CAPACITY`, so once `PAYOUT.POTATOES` gets a
+`TOWER_FLOOR_CAP_STEP` entry, its own overflow simply falls through that check and is discarded —
+identical in shape to how `WORK_MULTIPLIER`'s overflow already works today. Worth a one-line
+comment at the overflow branch stating this is deliberate (mirroring the existing "any future
+payout type added to the overflow branch needs a matching `TOWER_OVERFLOW_SHOP_RATE` entry or it
+divides by `undefined`" warning) so a future maintainer doesn't "fix" the apparent gap by adding a
+POTATOES entry to `TOWER_OVERFLOW_SHOP_RATE` (which would be self-referential — converting
+potatoes overflow into potatoes at some invented rate is meaningless).
+
+### Exact code shape
+
+**`towerConstants.js`** — one new entry in the existing `TOWER_FLOOR_CAP_STEP` object:
+
+```js
+const TOWER_FLOOR_CAP_STEP = {
+    [PAYOUT.PASSIVE_INCOME]: 500000,
+    [PAYOUT.BANK_CAPACITY]: 2500000,
+    // Per-run POTATOES cap (2026-09-20 design) — see tower.md's "Per-Run POTATOES Cap" section.
+    // Sized against the ~2.9-4.1B/day realistic endgame raid-EV ceiling (balance-audit.md) and
+    // the ~460.2B investment-to-reach-600 payback horizon that comparison implies (~112-159
+    // days), NOT a round number. Grows the identical way PASSIVE_INCOME/BANK_CAPACITY already
+    // do (flat +350,000,000 per 10-floor band via getTowerRunCap) — deliberately no new growth
+    // curve, since the reward-decay safeguard already handles the floor-DEPTH axis; this only
+    // needs to solve the floor-independent scalingFactor/POWER axis. Unlike PASSIVE_INCOME/
+    // BANK_CAPACITY, overflow past this cap has nowhere further to convert to (potatoes is
+    // already this game's terminal currency) and is simply discarded — creditRunPayout's
+    // existing overflow branch already only fires for PASSIVE_INCOME/BANK_CAPACITY, so this
+    // needs NO new entry in TOWER_OVERFLOW_SHOP_RATE; do not add one.
+    [PAYOUT.POTATOES]: 350000000
+}
+```
+
+No changes needed to `getTowerRunCap` itself — it already dispatches generically off whatever keys
+exist in `TOWER_FLOOR_CAP_STEP`.
+
+**`towerFactory.js`** — two changes:
+1. `execElite`'s win branch (see above): reroute the direct `this.run[tC.PAYOUT.POTATOES] +=`
+   line through `this.creditRunPayout(...)`.
+2. `creditRunPayout`'s own top-of-method comment block needs a line added noting `PAYOUT.POTATOES`
+   is now capped too (the existing comment currently states flatly that it "has no cap... credited
+   in full, uncapped," which would become stale/wrong).
+
+No changes needed to `creditRunPayout`'s body at all — it's already fully generic over `type`
+(reads `getTowerRunCap(type, this.floor)`, and the overflow-to-potato branch's `if` condition
+already excludes `POTATOES` from itself, which is exactly the desired discard behavior).
+
+### Test changes (`src/utils/__tests__/towerFactory.test.js`)
+
+**One existing test needs rewriting** (it directly asserts the behavior this design changes):
+`'PAYOUT.POTATOES has no cap and is credited in full'` (inside the
+`'towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04)'` describe block) currently
+asserts `creditRunPayout(PAYOUT.POTATOES, 999999999)` applies the full 999,999,999 at `tF.floor`'s
+default of `0` (band 0). Once `PAYOUT.POTATOES` gets a `TOWER_FLOOR_CAP_STEP` entry, band 0's cap
+is `350,000,000`, so this would now fail. Rewrite it to the same pattern the `WORK_MULTIPLIER`
+"clamped... overflow simply dropped" test already uses (compute the expected cap from
+`tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor)` rather than a hardcoded literal, so a future step
+retune doesn't desync the test from the constant), and rename off "has no cap."
+
+**Every other existing POTATOES-related test in the file is unaffected** — checked directly: every
+other test that asserts a specific `run[PAYOUT.POTATOES]` numeric value uses either
+`tC.ENTRY_GATE_MULTI` (20, `scalingFactor === 1`, sums in the low hundred-thousands — far under even
+band 0's 350M) or exercises the loss/decline branches of `execElite` (no potato credit happens at
+all), so none of them come anywhere near a floor-band cap that only meaningfully engages well above
+that scale. This was verified by reading every `PAYOUT.POTATOES` usage in the test file directly,
+not assumed.
+
+**New tests to add**, mirroring the existing PASSIVE_INCOME/BANK_CAPACITY cap coverage:
+- `getTowerRunCap` bands `PAYOUT.POTATOES` correctly (mirrors the existing
+  `'getTowerRunCap bands PASSIVE_INCOME/BANK_CAPACITY every 10 floors at a fixed 5:1 ratio'` test) —
+  assert floor 1→350,000,000, floor 9→350,000,000, floor 10→700,000,000, floor 95→3,500,000,000,
+  floor 109→3,850,000,000.
+- **A run comfortably under the cap is unaffected**: `creditRunPayout(POTATOES, someSmallAmount)`
+  at a low floor applies the full amount, matching the pre-existing "well under the cap" shape of
+  coverage the other two currencies already have.
+- **A credit that would exceed the cap is clamped exactly at the room available**, and — the
+  currency-specific case that needs its own explicit test, since it's the ONE thing that's
+  different here from PASSIVE_INCOME/BANK_CAPACITY — **the overflow is NOT redirected anywhere**:
+  assert `applied === room` and that `run[POTATOES]` doesn't exceed the cap, with no other
+  `run[...]` field mutated as a side effect (guards against a future "helpfully" added
+  `TOWER_OVERFLOW_SHOP_RATE[POTATOES]` entry accidentally reactivating a self-referential
+  conversion).
+- **Room reopens at a band boundary** (mirrors `'repeated credits stop adding once the cap is
+  already reached'`): credit up to band N's cap, advance `tF.floor` into band N+1, credit again,
+  assert the new room is available.
+- **Regression coverage for the `execElite` reroute specifically** — the highest-value new test,
+  since this is the part of the fix most likely to silently regress later: set `tF.floor` to a
+  floor where `run[POTATOES]` is already at (or near) `getTowerRunCap(POTATOES, tF.floor)`, force
+  an Elite win via the existing `Math.random` mocking pattern, and assert the Elite's own potato
+  reward is clamped by the cap rather than added in full — this test fails immediately if a future
+  edit reverts `execElite` back to a direct `+=`.
+
+Full suite should be re-run after implementation (not part of this scoping pass) — expect it to
+stay green aside from the one rewritten test, per the "every other test uses low multi" check above.
+
+### `financial-project` impact
+
+Same conclusion as the Overflow-to-Potato Discount Rate section immediately above, re-confirmed for
+this change specifically: `financial-project` does not implement the Tower minigame at all and has
+no `creditRunPayout`/cap logic of its own to keep in sync — **no companion port needed**, stated
+explicitly rather than silently assumed.
+
+### Open UX note, flagged but not blocking the numeric design
+
+Once this cap engages (power ~600+), a meaningful share of COMBAT/ENCOUNTER floors — the single
+most common floor type, 50% of all floors — will credit `0` new potatoes for stretches inside an
+already-filled band, while their static flavor text (e.g. "you collect 100,000 potatoes from the
+deceased fruit") keeps displaying the pre-cap wording regardless. This exact tension already exists
+today for `PASSIVE_INCOME`/`BANK_CAPACITY` (`REWARDS`' 2026-09-04 wording rework dropped their
+specific figures for the same reason), but it's currently only visible on a much smaller share of
+floors (a couple `REWARDS`/`TRANSACTIONS` entries) than it would be once it also applies to
+`POTATOES`, the outcome on every single COMBAT floor. This doesn't change the cap's sizing or
+mechanism — the running "Potatoes:" field in `createNextEmbed` already shows the true, accurate,
+capped total live, so no player-facing number is ever actually wrong — but a cheap, optional
+follow-up worth flagging to the product owner: have `updateValue`/`updateTransaction`'s
+non-silent path append a short note to `resultText` when `creditRunPayout`'s returned `applied`
+amount is materially less than the pre-cap scaled/decayed value (e.g. "...though your reserves are
+already overflowing today"), rather than leaving the static per-floor text to imply a gain that
+didn't actually happen. Not implemented as part of this scoping pass — a product call on whether
+it's worth the extra surface area.

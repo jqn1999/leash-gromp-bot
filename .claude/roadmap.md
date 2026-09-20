@@ -14807,6 +14807,85 @@ against fresh state naming the specific companion that broke, and that unrelated
 tests (19 + 11) pre-change to 52 (37 + 15). Full suite: **95 test suites / 1794 tests, all
 passing**.
 
+## Design (scoping only, not implemented): per-run POTATOES cap for Tower (2026-09-20, architect pass — confirmed balance issue, not a bug report)
+
+**Confirmed problem, not an outlier**: a real 500-run Monte Carlo at power (`workMultiplierAmount`)
+600, using the actual live `towerFactory.js` success-chance/scaling/decay code, gave a **median**
+(not tail) outcome of 6,335,473,658 potatoes (Greedy, median floor 87) / 8,283,891,632 (Safe,
+median floor 100) from ONE daily run. Root cause, confirmed directly: dying in Tower never resets
+accumulated potatoes (`execElite`'s loss branch wipes `WORK_MULTIPLIER`/`PASSIVE_INCOME`/
+`BANK_CAPACITY` to 0 but never touches `PAYOUT.POTATOES`), and unlike those three currencies
+(floor-banded caps shipped 2026-09-04/09-17, an overflow-to-potato discount shipped earlier today —
+see the two entries directly above), `PAYOUT.POTATOES` has never had any per-run cap at all —
+`creditRunPayout`'s own comment explicitly says so. Tower is strictly once/day
+(`enter-tower.js`'s daily gate), so a per-run cap and a daily cap are the same number. Cost to
+reach power 600 is `investment(600) = 460,201,102,807` (`towerConstants.js`'s own
+`SCALING_ANCHOR_TABLE`); today's re-derived Raid EV ceiling (`balance-audit.md`'s newest entry)
+tops out around ~2.9-4.1 billion/day even for a maxed guild member grinding every raid cooldown
+24/7 — Tower's one low-effort daily action already beats that from a single action, by close to
+2x at the Safe-policy median.
+
+**Design produced, full write-up in `.claude/systems/tower.md`'s "Per-Run POTATOES Cap" section**
+(appended at the end of that file, same pattern as the Overflow-to-Potato Discount Rate section
+immediately above it): extends the EXACT SAME floor-banded cap mechanism `PASSIVE_INCOME`/
+`BANK_CAPACITY` already use (`getTowerRunCap`, `TOWER_FLOOR_CAP_STEP`, banded every 10 floors via
+`TOWER_FLOOR_CAP_BAND_SIZE`) to also cover `PAYOUT.POTATOES` — no new mechanism invented, per
+explicit instruction. Proposed step: `TOWER_FLOOR_CAP_STEP[PAYOUT.POTATOES] = 350,000,000`,
+grounded two ways that independently converge on the same number: (1) payback-period framing —
+before the fix, a single Tower run recoups the ~460.2B cost to reach power 600 in ~56-73 days from
+ONE daily action alone, while the raid-ceiling comparison itself implies the sane payback horizon
+for "the single best other daily income source, maxed" is ~112-159 days; (2) matching Tower's
+capped ceiling directly against that same ~2.9-4.1B/day raid-EV comparison band. At power 600 this
+produces a capped total of ≈3.15B (Greedy, band 8) / ≈3.85B (Safe, band 10) — both landing inside
+the target band, a ~40-53% cut from the uncapped medians, with resulting Tower-alone payback moving
+from ~56-73 days to ~120-146 days (now growing with power like every other progression track,
+instead of shrinking). Checked against three other power points, not just 600: powers 100 (≈47M
+capped/uncapped, identical — cap never engages) and 250 (≈927M, also identical — unaffected) confirm
+the cap is a no-op for the mid-game players it was never meant to touch; power 1000 lands at the
+SAME 3.85B cap as power-600-Safe (same floor band, 100-109) despite ~2x the raw `scalingFactor` —
+deliberately: a higher-power player's real advantage is a much better chance of *reliably reaching*
+a higher band, not a bigger number at the same depth, the same "flat regardless of multi" property
+`PASSIVE_INCOME`/`BANK_CAPACITY`'s own caps already have.
+
+**Overflow answered directly, per the brief's own question**: unlike `PASSIVE_INCOME`/
+`BANK_CAPACITY` (which convert overflow into potatoes at a discounted rate, since potatoes is the
+one place the game already prices both in), potato overflow past its own cap should simply be
+**discarded** — it's already the terminal currency, with no analogous "next currency down" to
+convert into, and this needs **zero code change**: `creditRunPayout`'s existing overflow branch
+already only fires for `type === PASSIVE_INCOME || type === BANK_CAPACITY`, so a `POTATOES` entry
+in `TOWER_FLOOR_CAP_STEP` alone makes its own overflow fall through and discard automatically,
+identical in shape to how `WORK_MULTIPLIER`'s overflow already works today. Explicitly do NOT add
+a `POTATOES` entry to `TOWER_OVERFLOW_SHOP_RATE` — that would be self-referential.
+
+**One easy-to-miss required code change flagged prominently in the design**: `execElite`'s win
+branch currently credits its own Elite-kill potato reward via a direct
+`this.run[tC.PAYOUT.POTATOES] += ...` line that **completely bypasses `creditRunPayout`** — without
+rerouting this specific line through `creditRunPayout`, the new cap would do almost nothing, since
+Elite kills are undecayed and compound to roughly a quarter to a third of a deep run's total
+(8-10 kills × `150,000 × scalingFactor` at power 600 ≈ 1.65-2.06B). This is the single highest-risk
+part of the implementation and got its own dedicated regression-test recommendation in the design
+(assert an Elite win's own reward is clamped by the cap, not added in full, so a future edit can't
+silently revert the bypass).
+
+Also scoped: exact code diff shape (one new `TOWER_FLOOR_CAP_STEP` entry with a derivation comment,
+the one `execElite` line change, and an updated stale comment on `creditRunPayout` that currently
+states POTATOES is uncapped); which existing `towerFactory.test.js` test needs rewriting (exactly
+one — `'PAYOUT.POTATOES has no cap and is credited in full'` — verified every other POTATOES-
+asserting test in the file uses the scale-neutral `ENTRY_GATE_MULTI`, so none of them come close to
+even band 0's cap); five new test cases recommended (band table, under-cap unaffected, over-cap
+clamped with overflow confirmed NOT redirected, room reopening at a band boundary, and the
+`execElite`-reroute regression test). `financial-project` re-confirmed (same conclusion as the
+Overflow-to-Potato Discount Rate entry above): doesn't implement Tower at all, **no port needed**.
+Also flagged, not blocking: once this cap engages, COMBAT floors (50% of all floors) will
+sometimes credit 0 new potatoes while their static flavor text still claims a gain — an existing
+tension `PASSIVE_INCOME`/`BANK_CAPACITY` already have on a much smaller share of floors, worth a
+cheap optional follow-up (append a "capped today" note to the result text when `creditRunPayout`
+visibly clips the reward) but not required for the numeric fix itself.
+
+Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner review of the
+proposed 350,000,000 step (and the band-shape/overflow-discard reasoning behind it) before a
+developer builds it.
+
 Docs: `systems/companions.md`'s Companion Fusion / Ascension section rewritten to describe the new
 batch selection flow on top of the unchanged target-must-be-max-level rationale.
 
