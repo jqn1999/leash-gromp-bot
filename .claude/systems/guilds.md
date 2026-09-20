@@ -1674,13 +1674,22 @@ if (wonThisRaid && ['baby', 'regular', 'elite', 'legendary'].includes(raidSelect
                 if (entry.type === 'workMultiplierAmount') {
                     await raidFactory.handleStatSplit(raidList, 'workMultiplierAmount', entry.amount); // flat — existing helper, unchanged
                 } else {
-                    await raidFactory.handlePercentStatSplit(raidList, entry); // percent-of-own-current-stat — new helper, see section 4
+                    // percent-of-own-current-stat — new helper, see section 4. Its return
+                    // (the real per-member amounts) is captured onto the entry itself so
+                    // createGuildStatRewardEmbed (section 6) can tell whether every member
+                    // actually got the same number or not, without a second DB read.
+                    entry.resolvedAmounts = await raidFactory.handlePercentStatSplit(raidList, entry);
                 }
             }
         }
         const statRewardEmbed = embedFactory.createGuildStatRewardEmbed(guildName, hits);
         await interaction.followUp({ embeds: [statRewardEmbed] }).catch(() => {});
-        await bigEventsChannel.postBigEvent({ /* see section 7 */ });
+        // Big Events posting is CONDITIONAL, not automatic — see section 7 (2026-09-20,
+        // direct product-owner instruction: "I don't want any stat rewards to show up in
+        // big events unless it met the other criteria like being a low chance raid"). This
+        // block does NOT call bigEventsChannel.postBigEvent itself; it only computes `hits`
+        // and applies them. The actual post (if any) happens where finalSuccessChance is
+        // already known — see section 7's restructured resolveRaidCooldown.
     }
 }
 ```
@@ -1688,26 +1697,17 @@ if (wonThisRaid && ['baby', 'regular', 'elite', 'legendary'].includes(raidSelect
 `guildLevel` is already an in-scope variable at this point in `resolveRaid` (computed once near the
 top via `getRaidLevelAndRewardMultiplier(guild)`), so the Level 8+ check needs no extra fetch.
 
-**Flagged for confirmation — Stat Raid (`raidSelection === 'stat'`) is EXCLUDED.** Stat Raid already
-GUARANTEES a flat `workMultiplierAmount` stat reward on every win (`Raid.REGULAR_STAT_RAID_REWARD`,
-applied via `handleStatSplit`) — its entire premise is "pay a flat buy-in for a guaranteed permanent
-bump, no potato risk." Layering a second, RARE roll on top would double-dip a mode whose whole
-identity is "the guaranteed-stat mode," and would make Stat Raid strictly dominant over every other
-mode for stat-hunting (guaranteed reward + a chance at more) rather than its own distinct niche.
-Recommend excluding it, but this is a genuine "what," not a "how," and needs product owner
-confirmation before a developer builds it either way — architect's recommendation is EXCLUDE.
+**CONFIRMED by product owner (2026-09-20): Stat Raid (`raidSelection === 'stat'`) is EXCLUDED.**
+Stat Raid already GUARANTEES a flat `workMultiplierAmount` stat reward on every win
+(`Raid.REGULAR_STAT_RAID_REWARD`, applied via `handleStatSplit`) — its entire premise is "pay a flat
+buy-in for a guaranteed permanent bump, no potato risk." Layering a second, RARE roll on top would
+double-dip a mode whose whole identity is "the guaranteed-stat mode." The `['baby', 'regular',
+'elite', 'legendary']` allowlist in the snippet above already reflects this — do not add `'stat'`.
 
-**Flagged for confirmation — Metal King is INCLUDED by default, not carved out, because excluding
-it is expensive.** Metal King is a bracket WITHIN `regular`/`elite`/`legendary` (not its own
-`raidSelection` value), resolved inside the same scenario closures as every other bracket, and
-already guarantees its own flat stat reward (`METAL_KING_MULTIPLIER_REWARD`/`PASSIVE_REWARD`/
-`CAPACITY_REWARD`) on top of its potato reward. The shared post-resolution block this new roll lives
-in has no visibility into WHICH bracket won — only that the mode won — so excluding Metal King
-specifically would require threading a new signal out of the closures, reopening exactly the
-"14+ closures touched" cost the shared block exists to avoid. Default recommendation: include Metal
-King (a big, rare, guild-wide win getting an extra rare layer on top reads as appropriately special,
-not exploitative — the roll chance is still only 1-5%). Flag for product owner confirmation since
-there's no strong technical reason either way, only a design-feel one.
+**CONFIRMED by product owner (2026-09-20): Metal King is INCLUDED**, unchanged from the
+architect's own default recommendation — no code difference needed; Metal King already flows through
+the same `regular`/`elite`/`legendary` branches this injection point covers, so nothing extra is
+needed to include it, and nothing needs to be added to exclude it.
 
 ### 3. `baby` mode rate — confirmed: same as `regular`
 
@@ -1768,15 +1768,20 @@ against.
        // circular. Same fix dynamoHandler.js's applyGuildTreasuryInterest already uses for
        // an identical reason — see this file's own module-level require comment precedent.
        const mercenaryFactory = require('./mercenaryFactory');
-       await Promise.all(raidList.map(async member => {
+       // Returns the actual per-member granted amounts (2026-09-20, product-owner instruction
+       // — the embed needs to know whether every member's amount came out IDENTICAL, e.g.
+       // everyone was already sitting at/near the cap, vs. genuinely different because each
+       // member's own current stat differed — see section 6's uniformity check).
+       return await Promise.all(raidList.map(async member => {
            const userDetails = await dynamoHandler.findUser(member.id, member.username);
-           if (!userDetails) return;
+           if (!userDetails) return null;
            const { amount } = mercenaryFactory.resolveGrantAmount(grantEntry, userDetails);
            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
            const setAttributes = { sweetPotatoBuffs };
            setAttributes[grantEntry.type] = userDetails[grantEntry.type] + amount;
            sweetPotatoBuffs[grantEntry.type] += amount;
            await dynamoHandler.updateUserFields(member.id, setAttributes);
+           return amount;
        }));
    }
    ```
@@ -1784,8 +1789,11 @@ against.
    (single-track pools), three calls for Tier III (all three tracks) — mirroring exactly how Metal
    King's own three flat `handleStatSplit` calls are already hand-written inline per scenario
    closure. `workMultiplierAmount` entries still route through the existing, unmodified
-   `handleStatSplit` (flat, no per-member resolution needed) — `handlePercentStatSplit` is only ever
-   called for `passiveAmount`/`bankCapacity` entries.
+   `handleStatSplit` (flat, no per-member resolution needed, and trivially uniform by construction
+   — flat means every member gets the identical number). `handlePercentStatSplit` is only ever
+   called for `passiveAmount`/`bankCapacity` entries; section 2's injection snippet must capture its
+   returned amount array onto the `hits` entry (e.g. `entry.resolvedAmounts = await
+   raidFactory.handlePercentStatSplit(raidList, entry)`) so section 6's embed can check uniformity.
 
 **New pattern flag**: `raidFactory.js` requiring `mercenaryFactory.js` at all is new — no existing
 `raidFactory.js` function has ever needed anything from the Mercenary track before. The lazy
@@ -1823,20 +1831,37 @@ main result embed, for a rare event that doesn't happen every raid) — this is 
 the product owner's own item 6 asked to confirm-or-correct, resolved by evidence, not preference.
 
 New `embedFactory.createGuildStatRewardEmbed(guildName, hits)` (`hits` = section 2's array of
-`{ label, pool }`) — renders flat vs. percentage tracks DIFFERENTLY, which is the actual fix for the
-section-4 correctness nuance surfacing in the UI too: a flat `workMultiplierAmount` grant is the
-same real number for everyone, so it's shown as one; a percentage `passiveAmount`/`bankCapacity`
-grant is NOT the same real number for everyone (each member's own current stat differs), so it's
-shown as a rate/description, never a single misleading absolute figure:
+`{ label, pool }`, each percentage `pool` entry now also carrying `resolvedAmounts` per section 4's
+updated `handlePercentStatSplit`) — renders flat vs. percentage tracks DIFFERENTLY:
+
+**CONFIRMED by product owner (2026-09-20): check uniformity, don't just assume percentage grants
+are always non-uniform.** A percentage grant CAN land on the same number for everyone — most
+commonly when every member's current stat is already high enough that the grant hits its
+`maxGainSweetPotato` cap for all of them, but also just by coincidence for a small roster. So the
+rule isn't "flat=exact number, percent=always vague" — it's "check the actual resolved amounts": if
+every member's `resolvedAmounts` entry came out identical, show the real number; if they differ, show
+a generic "guild members got a boost" line with no numbers at all (not even a range/average — the
+product owner's own wording was "without exact numbers," not "with an approximate number"):
 
 ```js
 createGuildStatRewardEmbed(guildName, hits) {
     const STAT_LABEL = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
     const lines = hits.map(({ label, pool }) => {
-        const grantLines = pool.map(entry => entry.type === 'workMultiplierAmount'
-            ? `+${entry.amount.toFixed(2)}x ${STAT_LABEL[entry.type]} to every member!`
-            : `+~${Math.round((entry.amount - 1) * 100)}% ${STAT_LABEL[entry.type]} to every member (their own current amount, capped)`
-        ).join('\n');
+        const grantLines = pool.map(entry => {
+            // workMultiplierAmount has no resolvedAmounts (flat, handleStatSplit) — trivially
+            // uniform by construction. passiveAmount/bankCapacity always carry resolvedAmounts
+            // (section 4) — check them for real, don't assume either way.
+            const amounts = entry.resolvedAmounts;
+            const isUniform = !amounts || new Set(amounts.filter(a => a != null)).size <= 1;
+            if (entry.type === 'workMultiplierAmount') {
+                return `+${entry.amount.toFixed(2)}x ${STAT_LABEL[entry.type]} to every member!`;
+            }
+            if (isUniform) {
+                const amount = amounts.find(a => a != null) || 0;
+                return `+${amount.toLocaleString()} ${STAT_LABEL[entry.type]} to every member!`;
+            }
+            return `Guild members got a ${STAT_LABEL[entry.type]} boost!`;
+        }).join('\n');
         return `**${label}:**\n${grantLines}`;
     }).join('\n\n');
     return new EmbedBuilder()
@@ -1852,10 +1877,82 @@ Title/flavor line is a placeholder — needs a real pass through `.claude/lore.m
 shipping (e.g. something in the same register as `GuildCompanions[0].dropFlavor`), flagged here as a
 naming task, not a mechanic one.
 
-### 7. Big Events channel post
+### 7. Big Events channel post — REVISED (2026-09-20, product-owner correction, supersedes the
+original architect recommendation below)
 
-Same shape as the two existing `startRaid.js` call sites (`bigEventsChannel.postBigEvent` for the
-long-shot-win trigger at ~line 1374-1385, and for Cinderroot's drop at ~line 1663-1682):
+**Product owner's exact words: "I don't want any stat rewards to show up in big events unless it
+met the other criteria like being a low chance raid. It should show up in web activity if it
+happens though from web."** This overturns the architect's original "always post, one combined
+post" design — a stat-reward hit is explicitly NOT its own independent Big Events trigger. It only
+belongs in Big Events when the SAME raid ALSO independently qualifies via an existing criterion —
+concretely, the raid's own `successChance` was already below `bigEventsChannel.
+BIG_EVENT_WIN_CHANCE_THRESHOLD` (0.30), the same "long shot win" gate `resolveRaidCooldown` already
+checks. Rare companion drops are the only other existing Big Events criterion in this file and are
+unrelated to stats, so success-chance is the one gate that applies here.
+
+**The timing problem this creates, and its fix**: `resolveRaidCooldown` (the function that already
+posts the "🔥 Against All Odds!" long-shot-win embed, ~line 1374-1385) is called and does its own
+posting DURING each scenario closure's own win handling — before control ever reaches the shared
+post-resolution block this new stat roll lives in (section 2). So by the time `hits` is known, any
+long-shot Big Event for this raid has *already fired independently*. Two ways to reconcile this:
+
+- **(Recommended) Defer the long-shot post.** `resolveRaidCooldown` already mutates outer-scoped
+  closure variables (`finalNextRaidAvailableAt`, `shouldChain`) rather than acting immediately in
+  some cases — extend that same pattern with one more: `let finalSuccessChance = null;` alongside
+  those, set inside `resolveRaidCooldown` whenever it's called with a numeric `successChance`, and
+  MOVE the actual `bigEventsChannel.postBigEvent` call for the long-shot trigger OUT of
+  `resolveRaidCooldown` and into the shared post-resolution block, firing once `hits` is also known.
+  This lets ONE post carry BOTH the long-shot framing (if `finalSuccessChance <
+  BIG_EVENT_WIN_CHANCE_THRESHOLD`) AND the stat-reward fields (if `hits.length > 0`), covering every
+  combination correctly:
+  - long-shot win, no stat hit → post fires exactly as it does today (existing behavior preserved).
+  - long-shot win AND a stat hit → ONE post, long-shot framing plus an added "Stats Granted" field.
+  - a stat hit with a perfectly normal (non-long-shot) win → NO post at all, per the product owner's
+    instruction — the stat hit alone never justifies one.
+  - neither → no post, unchanged.
+
+  ```js
+  // Inside resolveRaidCooldown, replacing its own immediate postBigEvent call:
+  if (typeof successChance === 'number') {
+      finalSuccessChance = successChance;
+  }
+  // ... (no bigEventsChannel.postBigEvent call left in this function)
+
+  // In the shared post-resolution block, after `hits` is computed and applied:
+  const isLongShotWin = typeof finalSuccessChance === 'number' && finalSuccessChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD;
+  if (isLongShotWin) {
+      const fields = [
+          bigEventsChannel.playerField(userDisplayName),
+          bigEventsChannel.oddsField(finalSuccessChance),
+          bigEventsChannel.guildField(guildName),
+      ];
+      if (hits.length > 0) {
+          fields.push({ name: 'Stats Granted', value: hits.map(h => h.pool.map(e => STAT_LABEL[e.type]).join(', ')).join(' + '), inline: false });
+      }
+      await bigEventsChannel.postBigEvent({
+          title: '🔥 Against All Odds!',
+          description: `**${userDisplayName}** pulled off a daring raid win for **${guildName}** against the odds!`,
+          fields,
+          color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
+      });
+  }
+  ```
+  This is a real (small) refactor of existing, already-shipped behavior — the long-shot post moves
+  timing, but its own trigger condition and base fields are unchanged, so every raid that posts today
+  still posts, unchanged, unless it ALSO now has a stat hit to append.
+
+- (Not recommended) Leave `resolveRaidCooldown`'s post exactly where it is and add a SEPARATE,
+  second conditional post later for "long-shot win + stat hit" — rejected because it can produce two
+  back-to-back Big Events posts about the literal same raid (the original unconditional long-shot
+  post, then a second one repeating the odds/guild/player fields just to add the stat line), which
+  is worse noise than the one-post approach above for no benefit.
+
+**No new Big Events trigger condition is being added** — this is strictly a case of enriching an
+EXISTING trigger's fields when a second, independent thing also happened to be true, never a reason
+to post on its own.
+
+**Original architect recommendation (SUPERSEDED, kept for record only — do not implement this
+version):**
 
 ```js
 await bigEventsChannel.postBigEvent({
@@ -1866,14 +1963,11 @@ await bigEventsChannel.postBigEvent({
         bigEventsChannel.playerField(userDisplayName),
         { name: 'Granted', value: hits.map(h => h.pool.map(e => STAT_LABEL[e.type]).join(', ')).join(' + '), inline: false }
     ],
-    color: 0xE67E22 // reuses bigEventsChannel.SCENARIO_COLOR.sweet — these grants are literally
-                     // sourced from workFactory's own Sweet/Metal Potato reward shape (see
-                     // constants.js's BountyStatReward comment), tying the color to that lineage
+    color: 0xE67E22
 });
 ```
-One combined post even when both the band roll and the Level 8+ roll hit in the same raid (not two
-separate posts) — avoids doubling Big Events noise for what is still, from a viewer's perspective,
-one raid resolution.
+This version posted unconditionally on any stat hit, independent of `successChance` — explicitly
+rejected by the product owner above.
 
 ### 8. Merc-side parity audit (confirmed findings, not yet acted on)
 
@@ -1896,16 +1990,20 @@ stat-reward handling:
   see `mercenaryFactory.js`'s own comment) is applied and displayed correctly, but the file's only
   `postBigEvent` call is, again, the long-shot-win one.
 
-**This is a real, consistent, pre-existing gap across the entire Mercenary track — not something
-this feature introduces or needs to fix to ship.** Since the product owner explicitly said "make
-sure stat gains are shown correctly on everything," recommend a small, low-risk follow-up (one new
-`postBigEvent` call per file, reusing the exact field-builder helpers `bigEventsChannel.js` already
-exports) to bring all three up to parity with what this new Guild Raid feature is being built to do
-from day one. Flagged as a **separate, optional follow-up pass** rather than bundled into this
-feature's own implementation — it touches three already-shipped, already-tested commands with no
-dependency on anything above, and doing it in its own pass keeps this feature's own diff reviewable.
+**CONFIRMED by product owner (2026-09-20): bundle this into the SAME implementation pass, but as an
+"enrich the existing long-shot post" fix, not as a brand-new independent trigger** — same correction
+as section 7's. The product owner's Big Events instruction ("I don't want any stat rewards to show
+up in big events unless it met the other criteria like being a low chance raid") applies generally,
+not just to Guild Raid. Since none of the three merc-side commands currently have ANY Big Events
+post tied to their own stat-reward branch, this "fix" is actually simple and low-risk: apply
+section 7's exact same pattern (add a "Stats Granted" field to the EXISTING long-shot-win
+`postBigEvent` call already in each file, only when that same win also produced a stat reward) —
+no new trigger condition, no new post, no restructuring needed in these three files the way
+`resolveRaidCooldown` needed restructuring (their existing long-shot posts already fire AFTER their
+own stat-reward roll is known, unlike Guild Raid's timing problem — verify this ordering per-file
+before implementing, but it's the expected shape based on the read-through above).
 
-### 9. Cross-repo note — `financial-project` port required
+### 9. Cross-repo note — `financial-project` port required, PLUS a Web Activity requirement
 
 `financial-project`'s `amplify/functions/gromp-guilds/handler.ts` re-implements Guild Raid
 server-side for the web `/gromp` page (per this repo's own `CLAUDE.md`: any change here touching
@@ -1917,14 +2015,33 @@ architect pass) but explicitly flagged: once this ships here, `financial-project
 handler needs an equivalent audit + port pass, with a new numbered `## Bot caught up #N` entry in
 its `NOTES_GROMP_WEB_INTEGRATION.md`.
 
+**Additional product-owner instruction for that future web port (2026-09-20): "It should show up in
+web activity if it happens though from web."** Unlike Big Events (gated on the long-shot-win
+criterion, section 7), a stat-reward hit on a web-originated Guild Raid should post to
+`financial-project`'s own Web/Server Activity channel UNCONDITIONALLY — that channel already has a
+lower, "show it happened" bar than Big Events' "only genuinely rare/notable moments" bar (see this
+repo's own precedent: Work's Activity post already names every companion-encounter rarity, not just
+the Big-Events-worthy ones). Record this requirement in whatever design doc eventually scopes the
+`financial-project` port so it isn't lost between now and then.
+
 ### Summary of items needing product owner confirmation before a developer builds this
 
-1. Stat Raid (`raidSelection === 'stat'`) — architect recommends EXCLUDE (guaranteed-reward mode
-   already occupies this niche); needs explicit sign-off either way.
-2. Metal King bracket — architect recommends INCLUDE by default (excluding it is expensive at this
-   injection point); flagged since there's no strong technical reason either way.
-3. Whether the "check the merc side" follow-up (section 8 — adding Big Events posts to Bounty/
-   Heist/Rival Confrontation's own existing stat-reward branches) should be built in the same pass
-   as this feature, or scoped as a separate follow-up ticket.
-4. The `createGuildStatRewardEmbed` title/flavor text (section 6) is a placeholder — needs a real
-   lore pass before shipping, not a mechanic decision.
+**All confirmed as of 2026-09-20 — nothing left blocking implementation:**
+
+1. Stat Raid (`raidSelection === 'stat'`) — **EXCLUDED.**
+2. Metal King bracket — **INCLUDED** (no extra code needed either way — it already flows through
+   the covered branches).
+3. Merc-side Big Events parity — **bundled into this same implementation pass**, but corrected to
+   "enrich the existing long-shot post" rather than "add a new independent post" (see section 8's
+   final text above — this mirrors section 7's own correction).
+4. Big Events gating — **corrected**: a stat-reward hit is NEVER its own Big Events trigger; it only
+   appends to an already-firing long-shot-win post (section 7). Applies to Guild Raid AND all three
+   merc-side commands (section 8).
+5. Embed display for percentage grants — **corrected**: check whether every member's resolved
+   amount actually came out identical (most commonly because everyone hit the cap) rather than
+   assuming percentage grants are always non-uniform; show the real number if uniform, a
+   no-numbers "guild members got a boost" line if not (section 6).
+6. Web Activity (financial-project, future work) — stat-reward hits from a web-originated raid post
+   there unconditionally, unlike Big Events' gated behavior (section 9).
+7. The `createGuildStatRewardEmbed` title/flavor text (section 6) remains a placeholder — needs a
+   real lore pass before shipping, not a mechanic decision, does not block implementation.
