@@ -7,6 +7,15 @@ Complexity tags are rough: **S** = isolated, low risk, reuses existing tracked d
 persisted state and/or a new command flow, moderate surface area. **L** = touches several systems
 and needs its own balance pass.
 
+## Broad feature brainstorm (2026-09-20)
+
+Product-owner-requested wide brainstorm on new systems/improvements ("what else could this game
+incorporate from other games, or improve in what's already here") — organized into categories with
+per-idea effort/risk/cross-repo notes, not a build spec. Full writeup moved to its own doc rather
+than crammed into this backlog's per-feature format: see
+[systems/feature-ideas.md](systems/feature-ideas.md). Nothing there is scheduled or prioritized
+into the list below until a specific idea is picked and given its own entry here.
+
 ## Suggested order
 
 - [x] **1. Achievements & Titles** — S/M — **Done**

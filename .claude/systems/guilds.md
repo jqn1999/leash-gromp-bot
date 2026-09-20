@@ -381,6 +381,18 @@ at the SAME `raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` 
 `startRaid.js`'s `resolveRaid`, which recurses exactly like `/work`'s `performWork`/`takeBounty.js`'s
 `runBountyAttempt`.
 
+**Why `resolveRaid`'s per-link `findUser`/guild reads can't be consolidated into one read-at-start**
+(2026-09-20 architect pass, scoping only — see `.claude/roadmap.md`'s dated entry): unlike the three
+solo commands sharing this same chain mechanic, a guild's roster/buffs/bank/level/companion are
+genuinely multi-actor state — another member can join/leave the raid roster, buy a guild buff, or
+change Cinderroot's state while THIS chain is still resolving, which is exactly why the sources above
+are "recomputed fresh on every call... since guild buffs/Spud Keep/companion state can change between
+them" (this doc's own words, quoted verbatim in that comment). The 2026-09-18 `claimGuildRaidSlot`
+race guard is also a live per-link conditional write that has to stay per-link — collapsing it to one
+claim at chain-start would reopen the exact double-raid race that fix closed. Not a consolidation
+candidate; full reasoning in
+[economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere](economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere).
+
 Deliberately computed, not stored — a second write path to keep `level` in sync with `raidCount`
 would just reintroduce the same class of sync-drift bug that left the old fields dead in the first
 place. The multiplier scales **only the winning side** of a guild raid — every scenario closure in

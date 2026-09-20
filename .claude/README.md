@@ -45,6 +45,9 @@ those AWS services.
 - [systems/spud-keep.md](systems/spud-keep.md) — the daily contested-territory event: guilds vs.
   the Merc Faction, the N-way weighted lottery, the bundle buff, the accruing tax-redirect pot, and
   the Attacker's Bonus.
+- [systems/feature-ideas.md](systems/feature-ideas.md) — a broad, organized brainstorm of candidate
+  features/systems the game could add or deepen, triaged by category with effort/risk/cross-repo
+  notes — pure ideation, not a build spec. Check here before assuming an idea hasn't been considered.
 - [reference/commands.md](reference/commands.md) — one-line summary of every slash command by category.
 - [reference/constants.md](reference/constants.md) — key tunable constants from `src/utils/constants.js`,
   with pointers to where each is used.

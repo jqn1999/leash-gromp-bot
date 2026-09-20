@@ -1624,6 +1624,14 @@ only on a call where a skip actually happened, replacing the old always-shown-at
 "Mercenary Rank Cooldown Bonus" field that promised a number that no longer matches what's
 guaranteed.
 
+**Per-link DB read/write cost of this auto-chain** (2026-09-20 architect pass, scoping only — see
+`.claude/roadmap.md`'s dated entry) — `runBountyAttempt`/`runStatBountyAttempt` and
+`runNpcRobAttempt` are, of the four commands sharing this chain mechanic, the two flagged as safe
+to consolidate into one read + one write per top-level command instead of one per chain link (their
+cooldown-skip sources are almost entirely in-memory, and neither has guild-shaped shared state).
+Not yet implemented. Full per-function reasoning in
+[economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere](economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere).
+
 **Yukon's `rivalSuccessChanceFlat` perk** (direct instruction — Yukon previously had no
 Rival-specific benefit at all) adds a flat +5% to the rolled range, applied after the roll and
 stacking additively with the rank bonus above. Kept modest specifically because Hard's own
