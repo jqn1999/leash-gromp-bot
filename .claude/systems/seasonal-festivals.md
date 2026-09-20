@@ -248,9 +248,55 @@ originally scoped (a bare `festivalCosmetics` array with no display beyond a raw
 Title-condition wiring added as a pure follow-up once Titles lands, since the underlying persisted
 field doesn't change either way.
 
-**No stat power in v1, deliberately** — sidesteps a balance pass entirely on a first pass whose real
-goal is proving out the rotation/currency/shop plumbing, exactly the brainstorm's own reasoning.
-Revisit ONLY after that plumbing has run at least one full festival cleanly.
+**CONFIRMED by product owner (2026-09-20), a second shop item TYPE alongside cosmetics: "Encounter
+Vouchers."** "I'm fine with it being admin started. How about its cosmetic rewards and also able to
+have rewards for things that are like 'work' events. So currency can be spent on a sweet potato
+encounter, or a metal potato attempt etc." This is a real, second reward category — not a
+replacement for the cosmetic/Titles wiring above, both ship together:
+
+- **What it is**: a festival shop slot that, on purchase, immediately grants the player ONE
+  specific `/work` encounter's outcome on demand — e.g. a "Sweet Potato Charm" voucher instantly
+  resolves as if the player had rolled a Sweet Potato encounter; a "Metal Potato Ambush" voucher
+  instantly resolves a Metal Potato attempt. This is a genuinely different mechanism from the
+  cosmetic items above (which just flip an owned-flag), so it needs its own resolution path, not a
+  reuse of `attemptPurchaseFestivalSlot`'s existing "mark owned" branch.
+- **Real mechanism already exists to build this on, confirmed by reading `work.js` directly**: each
+  work scenario (`handleGoldenPotato`, `handleSweetPotato`, `handleMetalPotato`, etc.) is already
+  its OWN standalone function in `workFactory.js`, separate from `performWork`'s own cooldown-check/
+  roll-dispatch/workCount-increment wrapper logic in `work.js`. A voucher redemption calls the
+  target scenario's own handler function DIRECTLY (bypassing the random roll entirely, which is the
+  whole point — a voucher guarantees the specific outcome instead of leaving it to chance) and
+  renders that scenario's own existing result embed, exactly the "guaranteed instead of rolled"
+  outcome the product owner described.
+- **Open technical question, needs explicit confirmation before a developer builds this**: does
+  redeeming a voucher count toward the player's normal `workCount`/cooldown/Quest/Achievement
+  progress the same way a real `/work` call would, or is it a side-channel reward that grants the
+  scenario's own potato/companion/stat payout WITHOUT touching `workCount` or the work cooldown at
+  all? Recommend the latter (a pure bonus payout, untied to `workCount`) — a voucher is explicitly
+  bought with festival currency as an ADDITIONAL reward on top of normal play, not a way to
+  fast-forward the daily grind counters that gate Achievements/Quests/companion leveling; making it
+  also silently advance those would let festival participation double-dip progress meant to be
+  earned through real `/work` calls. Flagging this as a real design decision, not an implementation
+  detail, since it changes what "buying 5 Sweet Potato vouchers" actually does for a player's
+  broader progress.
+- **Which encounters are voucher-able**: recommend a curated subset per festival (not literally every
+  scenario) — e.g. Harvest Festival's shop could offer a Sweet Potato voucher (thematically apt,
+  "harvest" pairs with "sweet potato"), Frost Fair a Golden Potato or Metal Potato voucher, etc. —
+  matching how the festival's own OBJECTIVES above already lean into scenario-specific flavor per
+  festival rather than being generic. Exact per-festival voucher selection is a content decision for
+  implementation time, not locked here.
+- **Data model**: no new persisted field needed beyond the existing `festivalShop.purchasedSlots`
+  tracking (a voucher slot is still "purchased once," same as a cosmetic slot) — the difference is
+  purely in what `attemptPurchaseFestivalSlot` DOES on a successful purchase for this item type
+  (`itemType: "voucher", scenarioHandler: "handleSweetPotato"` vs. `itemType: "cosmetic",
+  cosmeticId: "..."` in the `FestivalShop` catalog entry) rather than a new stored fact per player.
+
+**No stat power beyond the voucher mechanism above, deliberately** — the cosmetic/Title track still
+carries zero permanent stat power, and a voucher's own payout is exactly whatever that scenario
+already pays a normal player who rolls it naturally (no bonus multiplier on top) — sidesteps a
+balance pass on the REWARD MAGNITUDES themselves, even though the acquisition path (guaranteed vs.
+rolled) is new. Revisit magnitude tuning only after the rotation/currency/shop plumbing has run at
+least one full festival cleanly.
 
 ## The odds-boost piece — genuinely does NOT fit as "just run an hourly event for a week"
 
@@ -458,16 +504,17 @@ same discipline this session's other architect passes already applied.
 1. **Currency expiry at festival end** — recommended: lazy, read-time expiry by
    `festivalTokensFestivalId` tag mismatch (spendable balance reads as 0 once stale), not an active
    clear-out cron. See "Currency" above for the full reasoning.
-2. **Rewards: cosmetic-only vs. any real power for the first festival** — recommended: 100%
-   cosmetic-only, per the brainstorm's own recommendation and `feature-ideas.md`'s own B1 precedent.
-   `titles.md` landed in parallel this same session (product-owner-confirmed to proceed) — recommend
-   wiring festival cosmetic purchases into Titles as a new `{ type: "festivalCosmetic", cosmeticId }`
-   condition (see "Rewards" above) rather than building a second, standalone cosmetic-display list;
-   confirm this sequencing (Titles landing before/alongside Seasonal Festivals) is acceptable, or
-   fall back to a bare standalone `festivalCosmetics` list for v1 if Titles is deferred.
-3. **Start mechanism: admin-triggered vs. a real content calendar** — recommended: admin-triggered
-   (`/admin-start-festival`) for a first festival, deferring an actual recurring calendar as a
-   separate, additive follow-up feature.
+2. **CONFIRMED by product owner (2026-09-20): cosmetic rewards, plus a second reward type —
+   Encounter Vouchers.** No real stat power in either track. Cosmetic purchases wire into Titles as
+   a new `{ type: "festivalCosmetic", cosmeticId }` condition (Titles has landed and is confirmed
+   real, so this sequencing concern from the original pass is resolved). Encounter Vouchers are a
+   NEW mechanism — see "Rewards" above's updated section — that grants a guaranteed specific `/work`
+   scenario outcome (e.g. a Sweet Potato or Metal Potato encounter) on purchase, bypassing the normal
+   random roll. **Still open**: whether a voucher redemption should count toward `workCount`/Quest/
+   Achievement progress (recommended: no, a pure bonus payout) — needs explicit confirmation.
+3. **CONFIRMED by product owner (2026-09-20): admin-triggered start** ("im fine with it being admin
+   started") — a real content calendar remains a separate, additive follow-up feature, not needed
+   for v1.
 4. **Objective count/thresholds/token amounts** — the 3-objectives-per-festival structure and the
    Tier 1/2/3 threshold/reward numbers above are illustrative, sized against the same "realistic
    attempt ceiling" methodology Quests already use, not a final balance pass — confirm before a

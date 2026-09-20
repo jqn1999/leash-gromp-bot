@@ -19,18 +19,14 @@ point #1" below for why this is an assumption, not yet a re-confirmed one.
 
 ## Decision points needing product owner sign-off (read first)
 
-1. **Cosmetic-only, not yet independently re-confirmed.** The brainstorm's own B1 entry
-   recommended 100% cosmetic, citing the Companion Full-Roster capstone precedent. The product
-   owner's follow-up message ("we can add titles in… show on embeds… a command to switch") did
-   not explicitly re-confirm or override that recommendation. **This entire design assumes
-   cosmetic-only** — no `sweetPotatoBuffs` entry, no stat anywhere. If that's wrong, the whole
-   "computed live, never stored as a grant" approach in section 2 still works, but every title's
-   selection would then need to touch the fixed `sweetPotatoBuffs` shape and reopen a real balance
-   pass (same warning B2's "Eternal Regrade" idea got) — flag before building either way.
-2. **Guild Level title is the one title in the v1 list that can be un-earned in practice**
-   (leaving the guild that earned it un-derives it, since Guild Level isn't a lifetime counter on
-   the user record at all — see section 3). Confirm this is acceptable "earned while a member,
-   loses eligibility if you leave" behavior rather than a bug to design around.
+1. **CONFIRMED by product owner (2026-09-20): "cosmetic only is good."** No `sweetPotatoBuffs`
+   entry, no stat anywhere — every title is 100% display, no power.
+2. **RESOLVED by product owner (2026-09-20): titles are permanent once earned, full stop.**
+   "If a user earns the title, they should keep the title forever even if they leave guild life for
+   example." This directly overturns this design's own original recommendation for the Guild Level
+   title (which would have let it become un-earned again by leaving the guild) — see section 3's
+   updated `permanentTitles` mechanism for how this is now handled without reopening the
+   lazy-resolve problem the "compute live" approach was built to avoid in the first place.
 3. **No proactive "title unlocked!" notification in v1** (recommended below, section 4) — a
    player discovers new titles by running `/titles` or `/set-title`'s autocomplete, not via a
    follow-up embed the moment they cross a threshold. Confirm this is acceptable, or flag that
@@ -69,19 +65,22 @@ lazily via `AchievementFactory.checkAndUnlock` on `/work` and streak-claim. Titl
 `dynamoHandler.js`:
 
 ```js
-equippedTitle: null,   // Titles (systems/titles.md) — a Title id (string) or null. The ONLY
-                        // piece of Titles state that's ever persisted; which titles a player has
-                        // UNLOCKED is never stored, only computed live (see below).
+equippedTitle: null,      // Titles (systems/titles.md) — a Title id (string) or null.
+permanentTitles: [],      // Titles (systems/titles.md) — array of Title ids that have been
+                           // permanently earned via a NON-lifetime condition (today: only
+                           // warlord_of_the_realm's guildLevel condition) — see below for why
+                           // this exists alongside "compute live" rather than replacing it.
 ```
 
-Default `null`, healed for every pre-existing account by `findUser`'s existing generic
-diff-and-heal loop exactly like every other optional top-level field added since — same
-precedent Companion Fusion's `ascensionStars`/`ascensionFuel` and Guild Chat Sync's own new guild
-fields both used: nothing missing, no migration script, a veteran account's next `findUser` call
-silently backfills `equippedTitle: null` and nothing else changes.
+Both default (`null`/`[]`), healed for every pre-existing account by `findUser`'s existing generic
+diff-and-heal loop exactly like every other optional top-level field added since — same precedent
+Companion Fusion's `ascensionStars`/`ascensionFuel` and Guild Chat Sync's own new guild fields both
+used: nothing missing, no migration script, a veteran account's next `findUser` call silently
+backfills both fields and nothing else changes.
 
-**No `unlockedTitles` array, and no per-title "unlocked" flag stored anywhere.** This is the one
-real "how" decision in this design, so it's worth stating explicitly why:
+**Mostly no `unlockedTitles` array — computed live for 12 of 13 titles, with ONE narrow exception
+for permanence.** This is the one real "how" decision in this design, worth stating explicitly why,
+including the 2026-09-20 product-owner correction that reshaped it:
 
 - Achievements themselves already have a known, documented gap: `checkAndUnlock` only runs at
   specific hook points (`/work`, a streak claim), so a stat crossed elsewhere (a big raid payout,
@@ -89,25 +88,42 @@ real "how" decision in this design, so it's worth stating explicitly why:
   player's *next* `/work` call. `achievements.md` calls this out as a known, accepted lazy-resolve
   gap, not yet closed.
 - If Titles instead checked `userDetails.achievements.includes(id)`, they'd inherit that exact
-  same lag — a player could hit `rebirthCount: 5` and still see "Cycle of the Harvest" greyed out
-  in `/set-title`'s autocomplete until they happened to run `/work` once more.
-- Titles avoid this entirely by **never reading the achievements array** and instead resolving
-  their own `statPath`/`threshold` straight off `userDetails` (and, for the one Guild Level title,
-  a live guild fetch) every single time they're checked — in `/titles`, in `/set-title`'s
-  autocomplete, and in `/set-title`'s own server-side validation. There is no "grant" moment to
-  miss, because there is no grant — a Title is either currently true or it isn't, checked fresh
-  on every read. This is the same "computed live off a static table, never stored" precedent
-  `MercenaryRank`/`RaidLevel` (Guild Level) already established for rank/level display — Titles
-  just extend that precedent one step further, to milestone eligibility instead of a display
-  number.
-- The tradeoff: a title can, in principle, become un-true again if its underlying value could
-  regress. Every source used in the v1 list below except Guild Level is a documented **lifetime,
-  never-reset counter** (`rebirthCount`, `mercenaryBountyWinCount`, `towerChampionCount`,
-  `totalEarnings`, `workCount`, `workScenarioCounts.golden`, `regrades.*.regradeAmount`,
-  `guildRaidWinCount`, `worldBossWinCount`) — this codebase's own "lifetime counters never
-  regress" precedent (stated explicitly next to `mercenaryBountyWinCount`/`guildRaidWinCount` in
-  `getDefaultUserFields`) means those titles, once true, stay true forever. Guild Level is the
-  sole exception — see Decision point #2.
+  same lag. Titles avoid this by **never reading the achievements array** and instead resolving
+  their own `statPath`/`threshold` straight off `userDetails` every single time they're checked.
+  This is the same "computed live off a static table, never stored" precedent
+  `MercenaryRank`/`RaidLevel` (Guild Level) already established for rank/level display.
+- Every source used in the v1 list below EXCEPT Guild Level is a documented **lifetime, never-reset
+  counter** (`rebirthCount`, `mercenaryBountyWinCount`, `towerChampionCount`, `totalEarnings`,
+  `workCount`, `workScenarioCounts.golden`, `regrades.*.regradeAmount`, `guildRaidWinCount`,
+  `worldBossWinCount`) — this codebase's own "lifetime counters never regress" precedent means
+  those 12 titles, once live-checked true, are ALREADY permanent for all practical purposes
+  (checking live vs. checking a permanent grant produces the identical answer forever) — no
+  persistence needed for any of them.
+- **Guild Level is the one exception, and per the product owner's explicit 2026-09-20 instruction
+  ("keep the title forever even if they leave guild life"), it needs a real permanent grant, not
+  just a live check.** Rather than reworking the whole "compute live" architecture (which is
+  correct and worth keeping for the other 12), `isTitleUnlocked` for `type: "guildLevel"` titles
+  specifically does this: check `permanentTitles.includes(titleId)` first (an O(1), no-DB-call
+  short-circuit) — if true, return true immediately, no guild fetch needed at all. If not yet
+  permanent, do the live guild fetch as before; if that live check comes back true, opportunistically
+  write `titleId` into `permanentTitles` right then (a single-field array-append, same
+  `updateUserFields` call shape every other opportunistic write in this codebase uses) before
+  returning true. Every SUBSEQUENT check for that player short-circuits on `permanentTitles` forever
+  after, even if they later leave the guild that earned it. This is the same "lazy, on-next-natural-
+  check" grant timing Achievements themselves already use (not instant, but not missed either) —
+  the only difference from Achievements' own gap is that Titles' many read points (`/titles`,
+  `/set-title` autocomplete, `/profile` render) give this far more opportunities to fire than
+  Achievements' narrow `/work`-and-streak-claim hook set, so the practical lag is smaller, not
+  larger.
+- **Why not just add all 13 titles to `permanentTitles` for consistency?** The other 12 gain
+  nothing from persistence (already permanent by construction, per the lifetime-counter argument
+  above) and persisting them anyway would mean writing to `permanentTitles` on every single
+  Achievement-adjacent milestone crossing — real, unnecessary write volume for zero behavioral
+  change. `permanentTitles` exists specifically and only for the one condition TYPE
+  (`guildLevel`, and any future non-lifetime condition type — see `seasonal-festivals.md`'s own
+  `festivalCosmetic` condition, which is naturally already-permanent by construction since
+  `festivalCosmetics` is itself an append-only owned-items array, so it doesn't need this mechanism
+  either) that can genuinely regress without it.
 
 ## 3. `TitleFactory` — new file, `src/utils/titleFactory.js`
 
@@ -125,31 +141,32 @@ Achievements never needed: a condition that isn't a plain dot-path off `userDeta
 
 - `async isTitleUnlocked(userDetails, titleId)` — looks up the Title record, resolves its
   condition. For `type: "stat"`, reuses `getStatValue` (exported from `achievementFactory.js`)
-  exactly as `AchievementFactory.checkAndUnlock` does. For `type: "guildLevel"`, does its own
-  `dynamoHandler.findGuildById(userDetails.guildId)` (returns `false` immediately if
-  `!userDetails.guildId`, no wasted call) and compares `guildBuffFactory.getGuildLevel(guild.raidCount)`
-  against `minLevel`. Owning this fetch internally (rather than requiring every caller to thread a
-  `guild` object through) keeps `/set-title` and `/titles` simple call sites; `createUserEmbed`
-  already fetches the same guild for its own "(guildName)" tag, so that one call site pays for a
-  guild lookup twice — a cheap, single-item DynamoDB read, acceptable for a display-only feature,
-  and flagged here as an easy follow-up micro-optimization (thread the already-fetched `guild`
-  through) rather than a blocking requirement.
+  exactly as `AchievementFactory.checkAndUnlock` does. For `type: "guildLevel"`: **first** checks
+  `userDetails.permanentTitles.includes(titleId)` — if true, returns `true` immediately, no guild
+  fetch at all. Otherwise does its own `dynamoHandler.findGuildById(userDetails.guildId)` (returns
+  `false` immediately if `!userDetails.guildId`, no wasted call) and compares
+  `guildBuffFactory.getGuildLevel(guild.raidCount)` against `minLevel`; if that live check is
+  `true`, opportunistically persists it (`updateUserFields(userId, { permanentTitles:
+  [...userDetails.permanentTitles, titleId] })`) before returning `true`, per section 2's
+  `permanentTitles` mechanism — this is now the ONE place that write happens, so every other
+  caller (`/titles`, `/set-title`, `createUserEmbed`) gets the permanence for free just by calling
+  this same function. `createUserEmbed` already fetches the same guild for its own "(guildName)"
+  tag, so that one call site pays for a guild lookup twice ONLY on a not-yet-permanent player's
+  render — a cheap, single-item DynamoDB read, and a one-time cost per player (never repeats once
+  `permanentTitles` is set).
 - `async getTitleProgress(userDetails)` — returns every Title with `{ title, isUnlocked,
   currentValue }`, same shape `AchievementFactory.getProgress` returns, for `/titles`.
 - `async getUnlockedTitles(userDetails)` — filter of the above to `isUnlocked`, for `/set-title`'s
   autocomplete and its server-side re-validation.
-- `getEquippedTitleLabel(titleId)` — pure lookup, no async, for `createUserEmbed`'s display line
-  (display never re-validates the equipped title's condition on every render — see Decision point
-  #2 for why that matters for the Guild Level title specifically, and the recommended graceful
-  fallback below).
+- `getEquippedTitleLabel(titleId)` — pure lookup, no async, for `createUserEmbed`'s display line.
 
-**Display fallback for a no-longer-valid equipped title**: rather than silently forcing a DB
-write to null out `equippedTitle` the moment a render notices it's no longer earned (which would
-turn a read into a surprise write, and race awkwardly with a concurrent `/set-title`),
-`createUserEmbed` should call `titleFactory.isTitleUnlocked` at render time and simply fall back
-to "no title equipped" display text if it no longer holds — the stored `equippedTitle` value is
-left untouched, so it silently becomes valid again automatically if the player re-earns it (e.g.
-rejoins a guild and grinds back to the same level). Purely a display-time check, never a write.
+**No display fallback needed for an equipped title going invalid** — this was the original design's
+own workaround for the Guild Level title's live-only check (before `permanentTitles` existed): a
+player who left the guild that earned "Warlord of the Realm" would see it silently stop rendering.
+**Superseded by the product owner's 2026-09-20 permanence instruction** — once
+`isTitleUnlocked`/`permanentTitles` marks a title permanent, `createUserEmbed`'s render check always
+returns `true` for it regardless of current guild membership, so the equipped title always displays
+as long as it was ever equipped. No fallback branch needed in the embed code at all.
 
 **New constant array, `constants.js`**: `Titles = [{ id, label, description, condition }]` — a
 plain data array, same "no code changes needed to add one" property `Achievements` has.
@@ -186,7 +203,7 @@ Every row cites the exact existing field/threshold it reads. Flavor text checked
 | `tower_titan` | "the Tower Titan" | `towerChampionCount >= 1` (= `tower_champion`) | Climbed the Tater Tower and stood alone at the top when the dust settled. |
 | `seasoned_mercenary` | "the Seasoned Mercenary" | `mercenaryBountyWinCount >= 25` (= `mercenary_veteran`) | Enough bounty posters torn down to paper a tavern wall. |
 | `iron_tuber` | "The Iron Tuber" | `mercenaryBountyWinCount >= 525` (= `mercenary_legend`, `MercenaryRank` max, verbatim reuse of `MERCENARY_RANK_TITLES[6]`) | The name whispered by every other bounty hunter in the Kingdom, usually with some envy. |
-| `warlord_of_the_realm` | "Warlord of the Realm" | **Guild Level 10** (max, `RaidLevel.THRESHOLDS` — `raidCount >= 3000` — `type: "guildLevel"`, the one non-lifetime, membership-dependent condition, see Decision point #2) | Command of a guild that has answered every muster the Kingdom has ever called. |
+| `warlord_of_the_realm` | "Warlord of the Realm" | **Guild Level 10** (max, `RaidLevel.THRESHOLDS` — `raidCount >= 3000` — `type: "guildLevel"`, the one condition needing a live guild fetch AND the `permanentTitles` mechanism, since it's the one source that isn't a lifetime counter — see section 2/3) | Command of a guild that has answered every muster the Kingdom has ever called — a claim time cannot take back. |
 
 Spans all five categories the brainstorm/product owner named (Achievements broadly: 8 of the 13
 above map onto an existing Achievement 1:1; Rebirth: 2; Mercenary Rank: 2; Guild Level: 1; Tower:
