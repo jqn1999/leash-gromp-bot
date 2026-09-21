@@ -16639,3 +16639,60 @@ change that repo's own `CLAUDE.md` cross-repo rule calls out, but it was deliber
 rather than bundled into this same session; flag for a follow-up audit + port pass, appending the
 next numbered `## Bot caught up #N` entry to `financial-project/NOTES_GROMP_WEB_INTEGRATION.md`
 when that happens.
+
+## Fix: Golden Potato underpay from a corrupted `serverTotal`, plus "always 500k" simplification (2026-09-21, player-reported)
+
+**What was asked.** A player reported a Golden Potato payout of 3.2M potatoes at a 39.7 Work
+Multiplier, flagging it as suspiciously low.
+
+**Root cause investigation.** Traced `handleGoldenPotato`'s formula end to end rather than
+guessing from the reported number alone: `calculateGainAmount(workGainAmount * 100,
+Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails)`, where `workGainAmount =
+max(serverTotal * Work.PERCENT_OF_TOTAL(.002), Work.MAX_BASE_WORK_GAIN(1000))`. At a 39.7
+multiplier, the math only produces ~3.2M if `workGainAmount` is sitting at (or near) its 1000
+floor — i.e., `serverTotal * .002 < 1000`, `serverTotal < 500,000`. Checked both the bot's own
+formula and `financial-project`'s port (`gromp-economy/handler.ts`) line-by-line — identical
+formula, identical `effectiveMultiplier` composition (guild/mercenary/companion/rebirth/world
+buff/Trading Post potion, all confirmed present on both sides), so this wasn't a bot/web
+divergence. `economy.serverTotal` itself is written once per 5-minute tick by
+`dynamoHandler.js`'s `passivePotatoHandler` (`serverTotal += toNumber(user.potatoes) +
+userBankStored`, summed unconditionally over every row from a raw `getUsers()` scan — no
+exclusion for test/admin accounts, unlike `calculateGainAmount`'s own `TAX_EXEMPT_TEST_USER_ID`
+carve-out, which only skips the 5% tax, not this aggregation). The player then found the actual
+cause independently: a test client's account had an artificially/hugely negative
+`potatoes`/`bankStored` balance, dragging the whole server-wide sum deeply negative and silently
+floor-clamping `workGainAmount` to 1000 for every player server-wide — not just Golden Potato,
+every `workGainAmount`-scaled scenario (Regular/Large/Metal/Ancient/Poison) was equally
+suppressed, Golden was just the one a player happened to notice and report.
+
+**What was considered but not built.** Before landing on the eventual fix, three options were
+laid out for the player to choose from: (1) fix the specific test account's balance directly
+(data-level, one-time), (2) exclude test/admin accounts from the `serverTotal` sum going forward
+(code-level, mirrors the `TAX_EXEMPT_TEST_USER_ID` precedent), (3) floor `serverTotal` at 0 so no
+single corrupted account (test or a future real bug) can ever drag it negative again. None of
+these were implemented — the player instead asked for a simpler, more targeted change scoped to
+Golden Potato specifically.
+
+**What shipped.** "Honestly we can just make it so that the amount is always 500k without the
+whole floor thing going on" — `handleGoldenPotato`'s `calculateGainAmount` call now passes
+`Work.MAX_GOLDEN_POTATO` as BOTH the `currentGain` and `maxGain` arguments (instead of
+`workGainAmount * 100`), so Golden Potato's base is unconditionally the flat 500,000 ceiling —
+only the luck roll and `effectiveMultiplier` vary the payout now, immune to `serverTotal`
+entirely. Scoped to Golden Potato only, per the exact wording of the ask ("the amount," not "all
+scenarios") — Regular/Large/Metal/Ancient/Poison Potato all remain `workGainAmount`-scaled and
+therefore still exposed to the same class of corrupted-`serverTotal` issue if it recurs; the
+three options above (test-account exclusion, a 0-floor on the sum, or fixing today's specific bad
+balance) are still open follow-ups, not acted on in this pass. Mirrored to
+`financial-project/gromp-economy/handler.ts`'s own `doWork` golden branch in the same session
+(`Bot caught up #N` entry — see that repo's `NOTES_GROMP_WEB_INTEGRATION.md`), so bot and web
+stay in sync rather than drifting the way the underlying bug itself went undetected on both sides
+simultaneously.
+
+**Docs**: `systems/economy-and-work.md`'s encounter table and its Golden Yam repricing section
+(which had described Golden Potato's 380k-570k range as "guaranteed" — true in intent, but
+actually only held once server wealth pushed `workGainAmount` high enough to hit the cap; it's
+genuinely unconditional now) both updated to match.
+
+**Verification**: `node -c workFactory.js`; full suite `npx jest` — **111 suites / 2047 tests, all
+passing** (the one test referencing `handleGoldenPotato` is a relative comparison against Ancient
+Potato, which still holds now that Golden pays even more under the same inputs).

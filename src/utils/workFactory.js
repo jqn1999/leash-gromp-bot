@@ -865,7 +865,15 @@ class WorkFactory {
         const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 100, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
+        // Always the flat max (2026-09-21, direct instruction: "make it so the amount is
+        // always 500k without the whole floor thing going on") — no longer scaled/capped by
+        // workGainAmount's server-wealth-derived base. A single corrupted account's balance
+        // (root cause of a live underpay incident — a test client had dragged economy.
+        // serverTotal hugely negative, silently floor-clamping every player's payouts
+        // server-wide) can no longer touch Golden Potato's payout at all; only the luck roll
+        // and effectiveMultiplier vary it now, same as before, just without the server-wealth
+        // term in the mix.
+        const potatoesGained = await calculateGainAmount(Work.MAX_GOLDEN_POTATO, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 

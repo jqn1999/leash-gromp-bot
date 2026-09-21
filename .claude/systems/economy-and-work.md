@@ -66,13 +66,27 @@ was there before but with the bot id instead."
 
 | Encounter | Slice | Handler | Effect |
 |---|---|---|---|
-| Golden | 0–.001 | `handleGoldenPotato` | `calculateGainAmount(workGainAmount*100, Work.MAX_GOLDEN_POTATO(500000), ...)` — pure potato reward |
+| Golden | 0–.001 | `handleGoldenPotato` | `calculateGainAmount(Work.MAX_GOLDEN_POTATO(500000), Work.MAX_GOLDEN_POTATO(500000), ...)` — pure potato reward, always the flat max base (2026-09-21, see below — no longer scaled/capped by `workGainAmount`) |
 | Poison | .001–.011 | `handlePoisonPotato` | Same formula ×10, capped `Work.MAX_POISON_POTATO(10000)`, **negated** (a loss). Also sets cooldown to `Work.POISON_POTATO_TIMER_INCREASE_SECONDS(1800)` instead of the normal 300s — both the loss and the lockout are further reduced by `PoisonMitigation` based on how many times poison has already hit the same player this week (see below) |
 | Large | .011–.051 | `handleLargePotato` | Formula ×10, capped `Work.MAX_LARGE_POTATO(10000)` |
 | Metal | .051–.061 | `handleMetalPotato` | Internal 10% roll for success vs. failure — see below |
 | Sweet | .061–.081 | `handleSweetPotato` | No potatoes — grants a permanent stat buff instead |
 | Taro | .081–.101 | `handleTaroTrader` | No potatoes — grants **starches** instead |
 | Regular | remainder | `handleRegularWork` | Formula uncapped multiplier, capped `Work.MAX_BASE_WORK_GAIN(1000)`; flavor mob from `regularWorkMobs` is cosmetic only |
+
+**Golden Potato dropped its `workGainAmount` scaling (2026-09-21, direct instruction: "make it
+so the amount is always 500k without the whole floor thing going on").** Every other encounter
+in the table above still scales its base off `workGainAmount` (server-wealth-derived, floored at
+`Work.MAX_BASE_WORK_GAIN`), but Golden's own base is now unconditionally
+`Work.MAX_GOLDEN_POTATO` — root cause was a live underpay incident where a test account's
+corrupted balance dragged the shared `economy.serverTotal` doc (read by both the bot and the
+website's own port — see `financial-project`'s `gromp-economy/handler.ts`) hugely negative,
+silently floor-clamping `workGainAmount` to 1000 for every player server-wide, which in turn
+capped Golden Potato's pre-multiplier base at 100,000 instead of its real 500,000 ceiling (a
+~5x underpay). Only `Golden` got this treatment, not the other server-wealth-scaled scenarios —
+those remain vulnerable to the same class of corrupted-`serverTotal` issue if it recurs, which
+wasn't in scope for this fix (see roadmap.md's own entry for the options considered and not yet
+acted on: excluding test/admin accounts from the `serverTotal` sum, or flooring it at 0).
 
 **`Work.MAX_LARGE_POTATO` briefly didn't exist (2026-08-22 evening–2026-08-23).** An edit adding
 `ANCIENT_POTATO_PAYOUT_CHANCE` to the `Work` object in `constants.js` replaced the
@@ -484,7 +498,11 @@ potatoes.
 Potato's exact same 0.1% `workScenarios` slice, but the original `MIN(8)`–`MAX(12)` range was never
 actually priced against it — at a representative ~10,000-potato starch price that worked out to
 only ~80k-123k potato-equivalent per hit, well under Golden Potato's guaranteed 380k-570k
-(`MAX_GOLDEN_POTATO(500000) * {.8, 1.2} luck roll * .95` house cut) for the same rarity. Retuned to
+(`MAX_GOLDEN_POTATO(500000) * {.8, 1.2} luck roll * .95` house cut) for the same rarity — "guaranteed"
+was aspirational at the time this section was written (Golden Potato's base was still
+`workGainAmount`-scaled then, so the range only actually held once server wealth pushed
+`workGainAmount` high enough to hit the cap); it became literally true once Golden Potato dropped
+that scaling entirely (see above). Retuned to
 `MIN(29.23)`–`MAX(43.85)` so `MIN/MAX * 13,000 potatoes/starch` exactly reproduces Golden Potato's
 380,000/570,000 range at multiplier 1x — the two jackpots are worth the same at that reference
 starch price, genuinely worth less below it and more above it, since starches (unlike Golden
