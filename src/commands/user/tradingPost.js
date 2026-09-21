@@ -77,6 +77,21 @@ module.exports = {
             const potionId = clicked.customId.slice(BUY_PREFIX.length);
             const result = await tradingPostFactory.attemptPurchasePotion(userId, username, potionId);
 
+            // A successful purchase closes the shop out — direct instruction ("make trading
+            // post embed go away when purchase happens"). Only one potion can ever be active
+            // at once and a same-type buy just extends it, so there's nothing left to browse
+            // for immediately afterward; a REJECTED purchase (wrong effect type active, can't
+            // afford it) leaves the shop open instead, same as before, so the player can pick
+            // a different potion or top up without re-running the command.
+            if (result.ok) {
+                await interaction.editReply({
+                    content: `${userDisplayName}, ${result.message}`,
+                    embeds: [],
+                    components: []
+                });
+                break;
+            }
+
             userDetails = await dynamoHandler.findUser(userId, username);
             await interaction.editReply({
                 content: `${userDisplayName}, ${result.message}`,

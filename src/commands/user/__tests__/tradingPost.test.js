@@ -91,7 +91,7 @@ describe('/trading-post', () => {
     // End-to-end purchase click — the command's own wiring around
     // tradingPostFactory.attemptPurchasePotion (that function's own branching is covered
     // directly in tradingPostFactory.test.js).
-    test('clicking a buy button purchases the potion and re-renders with the fresh state', async () => {
+    test('a successful purchase closes the shop out — direct instruction, no re-rendered embed/buttons, no further click awaited', async () => {
         const potion = Potions.CATALOG[0];
         const startingUser = baseUser({ guildId: 'g1' });
         dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
@@ -102,26 +102,59 @@ describe('/trading-post', () => {
             .mockResolvedValueOnce({ customId: `trading_post_buy_${potion.id}`, deferUpdate: jest.fn().mockResolvedValue() })
             .mockResolvedValueOnce(null);
 
-        const afterPurchaseUser = baseUser({
-            guildId: 'g1',
-            potatoes: startingUser.potatoes - potion.pricePotatoes,
-            activePotion: { potionId: potion.id, effectType: potion.effectType, value: potion.value, expiresAt: Date.now() + potion.durationSeconds * 1000 },
-        });
-        // Three findUser calls happen in order: the command's own initial lookup, then
+        // Two findUser calls happen in order: the command's own initial lookup, then
         // tradingPostFactory.attemptPurchasePotion's own internal re-fetch (a fresh read
-        // right before writing, same precedent shopFactory.attemptShopBuy already sets),
-        // then the command's own post-purchase re-render fetch.
+        // right before writing, same precedent shopFactory.attemptShopBuy already sets) — a
+        // successful purchase never triggers the command's OWN post-purchase re-fetch
+        // anymore, since there's no embed left to render fresh state into.
         dynamoHandler.findUser
             .mockResolvedValueOnce(startingUser)
-            .mockResolvedValueOnce(startingUser)
-            .mockResolvedValueOnce(afterPurchaseUser);
+            .mockResolvedValueOnce(startingUser);
 
         await callback({}, interaction);
 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', expect.objectContaining({
             potatoes: startingUser.potatoes - potion.pricePotatoes,
         }));
+        expect(dynamoHandler.findUser).toHaveBeenCalledTimes(2);
         const finalCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
         expect(finalCall.content).toContain(potion.name);
+        expect(finalCall.embeds).toEqual([]);
+        expect(finalCall.components).toEqual([]);
+        // The loop breaks immediately on a successful purchase rather than looping back to
+        // await a second click.
+        expect(reply.awaitMessageComponent).toHaveBeenCalledTimes(1);
+    });
+
+    test('a rejected purchase (e.g. a different potion already active) leaves the shop open with fresh state, not closed', async () => {
+        const potion = Potions.CATALOG[0];
+        const activePotion = Potions.CATALOG.find(p => p.effectType !== potion.effectType) || Potions.CATALOG[1];
+        const startingUser = baseUser({
+            guildId: 'g1',
+            activePotion: { potionId: activePotion.id, effectType: activePotion.effectType, value: activePotion.value, expiresAt: Date.now() + 60_000 },
+        });
+        dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
+
+        const { interaction, reply } = fakeInteraction();
+        reply.awaitMessageComponent
+            .mockResolvedValueOnce({ customId: `trading_post_buy_${potion.id}`, deferUpdate: jest.fn().mockResolvedValue() })
+            .mockResolvedValueOnce(null);
+
+        // Rejected purchase never writes, so the command's post-rejection re-render re-fetches
+        // the SAME (unchanged) user a third time.
+        dynamoHandler.findUser
+            .mockResolvedValueOnce(startingUser)
+            .mockResolvedValueOnce(startingUser)
+            .mockResolvedValueOnce(startingUser);
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        const finalCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+        expect(finalCall.content).toMatch(/already have/i);
+        expect(finalCall.embeds).toHaveLength(1);
+        expect(finalCall.components).toHaveLength(1);
+        // The loop keeps going after a rejection, waiting for a second click.
+        expect(reply.awaitMessageComponent).toHaveBeenCalledTimes(2);
     });
 });

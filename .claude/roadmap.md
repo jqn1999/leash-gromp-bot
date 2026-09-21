@@ -16393,3 +16393,31 @@ of this pass's test delta).
 **Not ported to `financial-project` this pass** — Titles has no web presence at all yet (`/gromp`
 has never shown a Title anywhere), so there's nothing to keep in sync on that side until Titles
 itself gets ported, which is a separate, larger scoping decision than this follow-up.
+
+## Trading Post: close the shop embed on a successful purchase (2026-09-21, direct instruction — "make trading post embed go away when purchase happens")
+
+`/trading-post`'s buy loop previously re-rendered the shop embed + buy-row after EVERY click,
+success or rejection alike, and only ever cleared components on a 60s idle timeout. Since only one
+potion can ever be active at a time and a same-type rebuy just extends it (never re-rolls value),
+there's nothing left to browse for the instant a purchase actually succeeds — re-showing the same
+3-button row right after was dead weight, not a real next action.
+
+**Change, scoped to `tradingPost.js`'s own click-handling branch only**: `attemptPurchasePotion`'s
+result already distinguishes `ok: true`/`ok: false` (success vs. every rejection reason — can't
+afford it, wrong effect type already active). On `ok: true`, the reply is now edited to
+`{ content: <confirmation>, embeds: [], components: [] }` and the collector loop `break`s
+immediately — no further click is awaited, no post-purchase re-fetch of `userDetails` happens
+either (nothing left to render it into). On `ok: false`, behavior is unchanged: re-fetch, re-render
+the embed and buy-row with fresh state, and keep the loop open so the player can pick a different
+potion or top up without re-running the command. `tradingPostFactory.js` itself was untouched —
+this is purely `tradingPost.js`'s own reply-shaping and loop-control logic.
+
+**Tests**: `tradingPost.test.js`'s prior single purchase-click test (previously asserting a
+re-rendered embed after a successful buy, which is now the wrong expectation) was replaced with two
+cases: a successful purchase asserts `embeds: []`/`components: []` on the final reply, only 2
+`findUser` calls (no post-purchase re-fetch), and exactly 1 `awaitMessageComponent` call (the loop
+doesn't ask for a second click); a new rejected-purchase case (buying a different effect type while
+one's active) asserts the embed/buttons ARE still present on the final reply and the loop awaits a
+second click, confirming the two branches now behave differently on purpose. Full suite: **111
+suites / 2018 tests, all passing** (up from 111/2017 — net 0 new suites, +1 test: one replaced,
+two added).

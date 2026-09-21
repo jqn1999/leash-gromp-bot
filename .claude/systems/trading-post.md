@@ -346,7 +346,14 @@ for the embed title when guild-scoped, and renders one buy button per catalog po
 only when unaffordable — a purchase-rule rejection is deliberately left enabled rather than
 disabled, since that rejection needs its own message naming what's active and when it expires,
 which a silently-disabled button can't convey). No pagination, no separate listing/selling
-command — matches this doc's own confirmed "buy-only, no P2P" shape exactly.
+command — matches this doc's own confirmed "buy-only, no P2P" shape exactly. **(2026-09-21, direct
+instruction — "make trading post embed go away when purchase happens"):** a SUCCESSFUL purchase
+clears the embed and buy-row entirely (`embeds: [], components: []`) and ends the interaction
+loop right there, replacing them with just the plain-text confirmation message — there's nothing
+left to browse for immediately afterward, since only one potion can ever be active at once and a
+same-type rebuy just extends it. A REJECTED purchase (wrong effect type already active, can't
+afford it) leaves the shop open exactly as before, re-rendering the embed/buttons with fresh state
+so the player can pick a different potion or top up without re-running the command.
 
 **Tests**: `tradingPostFactory.test.js` (scope resolution for guild/merc/neither, `hasAnyLivePotion`,
 `findPotionById`, and the full purchase-rule matrix — no active potion succeeds cleanly, same
