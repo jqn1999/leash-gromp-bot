@@ -1805,4 +1805,25 @@ describe('createTitlesPageEmbed', () => {
         const field = embed.data.fields[0];
         expect(field.value).toContain('(5 / 10)');
     });
+
+    // Seasonal Festivals' own condition type (systems/seasonal-festivals.md) — binary, so a
+    // locked one always reads "0 / 1" regardless of currentValue, same as a not-yet-reached
+    // guildLevel title reads "X / minLevel" rather than crashing on an undefined threshold.
+    test('a locked festivalCosmetic title shows binary 0/1 progress, not a crash on undefined threshold', () => {
+        const title = { id: 'test_festival_title', label: 'Test Title', description: 'Own a test cosmetic', condition: { type: 'festivalCosmetic', cosmeticId: 'harvest_festival_banner' } };
+        const progressList = [{ title, isUnlocked: false, currentValue: 0 }];
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        const field = embed.data.fields[0];
+        expect(field.name).toContain('🔒');
+        expect(field.value).toContain('(0 / 1)');
+    });
+
+    test('an unlocked festivalCosmetic title shows its flavor text, no progress fraction', () => {
+        const title = { id: 'test_festival_title', label: 'Test Title', description: 'Own a test cosmetic', condition: { type: 'festivalCosmetic', cosmeticId: 'harvest_festival_banner' } };
+        const progressList = [{ title, isUnlocked: true, currentValue: 1 }];
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        const field = embed.data.fields[0];
+        expect(field.name).toContain('✅');
+        expect(field.value).toBe(title.description);
+    });
 });

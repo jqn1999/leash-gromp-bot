@@ -6,8 +6,9 @@ const embedFactory = new EmbedFactory();
 const titleFactory = new TitleFactory();
 
 // Titles (systems/titles.md, section 7) — a browse-all view mirroring /achievements' embed
-// shape. Unlike /achievements' 59-entry, 5-per-page paginated flow, all 13 v1 titles fit
-// comfortably under Discord's 25-field cap in one embed, so no pagination is needed here.
+// shape. Unlike /achievements' 59-entry, 5-per-page paginated flow, all 16 titles (the 13 v1
+// set plus 3 Seasonal Festival flagship titles) fit comfortably under Discord's 25-field cap
+// in one embed, so no pagination is needed here.
 module.exports = {
     name: "titles",
     description: "View your (or another user's) earned and unearned Titles",

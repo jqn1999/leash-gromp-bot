@@ -4939,13 +4939,16 @@ class EmbedFactory {
     }
 
     // Titles (systems/titles.md, section 7) — a single-embed browse-all view, same ✅/🔒 +
-    // progress shape as createAchievementsPageEmbed above, but unpaginated: all 13 v1 titles
-    // fit comfortably under Discord's 25-field cap, unlike Achievements' 59-entry list.
+    // progress shape as createAchievementsPageEmbed above, but unpaginated: all 16 titles (13
+    // v1 + 3 Seasonal Festival flagship titles) fit comfortably under Discord's 25-field cap,
+    // unlike Achievements' 59-entry list.
     createTitlesPageEmbed(userDisplayName, progressList) {
         const unlockedCount = progressList.filter(entry => entry.isUnlocked).length;
         const fields = progressList.map(({ title, isUnlocked, currentValue }) => {
             const status = isUnlocked ? '✅' : '🔒';
-            const threshold = title.condition.type === "stat" ? title.condition.threshold : title.condition.minLevel;
+            const threshold = title.condition.type === "stat" ? title.condition.threshold
+                : title.condition.type === "guildLevel" ? title.condition.minLevel
+                : 1; // festivalCosmetic — binary, "0 / 1" until purchased
             const value = isUnlocked
                 ? title.description
                 : `${title.description}\n(${Math.min(currentValue, threshold).toLocaleString()} / ${threshold.toLocaleString()})`;

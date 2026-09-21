@@ -119,6 +119,41 @@ describe('isTitleUnlocked — warlord_of_the_realm (guildLevel, permanentTitles 
     });
 });
 
+describe('isTitleUnlocked — festivalCosmetic titles (Seasonal Festivals integration)', () => {
+    test('locked when the player has never purchased the backing cosmetic', async () => {
+        const user = baseUser({ festivalCosmetics: [] });
+        expect(await titleFactory.isTitleUnlocked(user, 'harvest_laureate')).toBe(false);
+    });
+
+    test('unlocked as soon as festivalCosmetics contains the exact backing cosmeticId, no DB call', async () => {
+        const user = baseUser({ festivalCosmetics: ['harvest_festival_grand_laurel'] });
+        expect(await titleFactory.isTitleUnlocked(user, 'harvest_laureate')).toBe(true);
+        expect(dynamoHandler.findGuildById).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('owning a different festival\'s cosmetic does not unlock an unrelated flagship title', async () => {
+        const user = baseUser({ festivalCosmetics: ['frost_fair_grand_medallion'] });
+        expect(await titleFactory.isTitleUnlocked(user, 'harvest_laureate')).toBe(false);
+        expect(await titleFactory.isTitleUnlocked(user, 'frost_fair_laureate')).toBe(true);
+    });
+
+    test('missing festivalCosmetics entirely (a pre-Festival account) reads as locked, not a crash', async () => {
+        const user = baseUser();
+        delete user.festivalCosmetics;
+        expect(await titleFactory.isTitleUnlocked(user, 'bloom_laureate')).toBe(false);
+    });
+
+    test('all 3 flagship titles are backed by their festival\'s own "grand" cosmetic', () => {
+        const festivalTitles = Titles.filter(t => t.condition.type === 'festivalCosmetic');
+        expect(festivalTitles.map(t => t.condition.cosmeticId)).toEqual([
+            'harvest_festival_grand_laurel',
+            'frost_fair_grand_medallion',
+            'spring_planting_grand_bloom',
+        ]);
+    });
+});
+
 describe('getTitleProgress', () => {
     test('returns every title with isUnlocked/currentValue, without persisting anything for already-unlocked stat titles', async () => {
         const user = baseUser({ rebirthCount: 5 });
@@ -141,6 +176,19 @@ describe('getTitleProgress', () => {
         const warlord = progress.find(p => p.title.id === 'warlord_of_the_realm');
         expect(warlord.isUnlocked).toBe(false);
         expect(warlord.currentValue).toBe(5);
+    });
+
+    test('a locked festivalCosmetic title reports binary 0 progress, an unlocked one reports 1', async () => {
+        const user = baseUser({ festivalCosmetics: ['harvest_festival_grand_laurel'] });
+        const progress = await titleFactory.getTitleProgress(user);
+
+        const harvest = progress.find(p => p.title.id === 'harvest_laureate');
+        expect(harvest.isUnlocked).toBe(true);
+        expect(harvest.currentValue).toBe(1);
+
+        const frost = progress.find(p => p.title.id === 'frost_fair_laureate');
+        expect(frost.isUnlocked).toBe(false);
+        expect(frost.currentValue).toBe(0);
     });
 });
 

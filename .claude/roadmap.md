@@ -16349,3 +16349,47 @@ resolves immediately and Node drains the full microtask queue (however many sequ
 chained inside) before any macrotask runs. Full suite: 111 suites / 2009 tests, all passing (up
 from 110/2003 — +1 suite, +6 tests, all in the new file).
 
+## Shipped: Seasonal Festivals ↔ Titles integration — 3 flagship Titles backed by festival cosmetics (2026-09-21, deferred follow-up from both features' own "Shipped" sections)
+
+Both `titles.md` and `seasonal-festivals.md` flagged this as outstanding the moment both features
+landed on the session branch: Seasonal Festivals shipped `festivalCosmetics: []` as a standalone
+owned-items array with a forward reference to a `{ type: "festivalCosmetic", cosmeticId }` Title
+condition that Titles' own design had already anticipated needing (the same "a condition that isn't
+a plain dot-path off `userDetails`" shape Guild Level's `guildLevel` condition already established),
+but neither branch could build it since each was developed in isolation before the other existed.
+
+**Mechanism** (`titleFactory.js`): `isTitleUnlocked` and `getTitleProgress` gained a
+`festivalCosmetic` branch — `userDetails.festivalCosmetics.includes(cosmeticId)`, no live guild
+fetch, no `permanentTitles` entry. Needs neither: `festivalCosmetics` is itself an append-only
+owned-items array (a bought cosmetic is never un-bought), so it's already permanent by
+construction, exactly like every `type: "stat"` condition's own backing counter — `permanentTitles`
+exists ONLY for Guild Level's own genuinely-regressable case, and this isn't one.
+`embedFactory.js`'s `createTitlesPageEmbed` threshold ternary (previously `stat ? threshold :
+minLevel`, which would have read `undefined` — and crashed on `.toLocaleString()` — for a locked
+`festivalCosmetic` title) gained a third branch resolving to a flat `1` (binary: 0/1, not a
+countable stat).
+
+**Scope, product-owner-confirmed**: not all 12 FestivalShop cosmetics (4 per festival) get a Title
+— only one flagship Title per festival, backed by that festival's rarest "grand" cosmetic
+(`harvest_festival_grand_laurel`, `frost_fair_grand_medallion`, `spring_planting_grand_bloom`),
+mirroring how every one of the other 13 Titles is tied to a genuine top-tier milestone rather than
+a routine purchase. Added to `constants.js`'s `Titles` array: `harvest_laureate` ("the Harvest
+Laureate"), `frost_fair_laureate` ("the Frost Fair Laureate"), `bloom_laureate` ("the Bloom
+Laureate") — flavor text checked against `.claude/lore.md`'s established voice, no modern-world
+language. Titles count goes from 13 to 16; both `/titles`' and `createTitlesPageEmbed`'s own
+"comfortably under Discord's 25-field cap" comments updated to the new count (still comfortably
+under, unpaginated).
+
+**Tests**: `titleFactory.test.js` gained a `festivalCosmetic` describe block (5 tests: locked by
+default, unlocked exactly on a matching `cosmeticId` with no DB call, owning a DIFFERENT festival's
+cosmetic doesn't cross-unlock, a missing `festivalCosmetics` field entirely reads as locked rather
+than crashing, and the 3 flagship titles' `cosmeticId`s match `FestivalShop`'s own grand-tier
+entries exactly) plus one `getTitleProgress` case (binary 0/1 currentValue). `embedFactory.test.js`
+gained 2 cases covering the new threshold branch directly (a locked festivalCosmetic title renders
+"0 / 1" instead of crashing; an unlocked one renders flavor text with no fraction). Full suite:
+**111 suites / 2017 tests, all passing** (see the orphan-cleanup fix entry above for the other half
+of this pass's test delta).
+
+**Not ported to `financial-project` this pass** — Titles has no web presence at all yet (`/gromp`
+has never shown a Title anywhere), so there's nothing to keep in sync on that side until Titles
+itself gets ported, which is a separate, larger scoping decision than this follow-up.

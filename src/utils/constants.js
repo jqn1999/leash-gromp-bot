@@ -285,7 +285,18 @@ const Titles = [
     // needing a live guild fetch AND titleFactory's permanentTitles mechanism, since Guild
     // Level (unlike every other source above) isn't a lifetime counter and can regress if a
     // player leaves the guild that earned it.
-    { id: "warlord_of_the_realm", label: "Warlord of the Realm", description: "Command of a guild that has answered every muster the Kingdom has ever called — a claim time cannot take back.", condition: { type: "guildLevel", minLevel: 10 } }
+    { id: "warlord_of_the_realm", label: "Warlord of the Realm", description: "Command of a guild that has answered every muster the Kingdom has ever called — a claim time cannot take back.", condition: { type: "guildLevel", minLevel: 10 } },
+    // Seasonal Festivals integration (systems/seasonal-festivals.md's own forward reference to
+    // this file) — the new `festivalCosmetic` condition type, resolved by
+    // titleFactory.isTitleUnlocked as `userDetails.festivalCosmetics.includes(cosmeticId)`.
+    // Product-owner-confirmed scope (2026-09-21): one flagship Title per festival, backed by
+    // that festival's rarest "grand" FestivalShop cosmetic only (not all 12 cosmetics, and not
+    // the mid-tier ones) — mirrors how every other Title above is tied to a genuine top-tier
+    // milestone, not a routine purchase. No permanentTitles entry needed — festivalCosmetics is
+    // itself an append-only owned-items array, already permanent by construction.
+    { id: "harvest_laureate", label: "the Harvest Laureate", description: "Crowned with the rarest laurel of the Harvest Festival — every stall bested, every ladder cleared.", condition: { type: "festivalCosmetic", cosmeticId: "harvest_festival_grand_laurel" } },
+    { id: "frost_fair_laureate", label: "the Frost Fair Laureate", description: "Earned the Frost Fair's grandest medallion before the last stall closed for the season.", condition: { type: "festivalCosmetic", cosmeticId: "frost_fair_grand_medallion" } },
+    { id: "bloom_laureate", label: "the Bloom Laureate", description: "Wears the Grand Bloom Laurel — Spring Planting's rarest wreath, earned only by the season's most dedicated planter.", condition: { type: "festivalCosmetic", cosmeticId: "spring_planting_grand_bloom" } }
 ]
 
 const CatchUp = {

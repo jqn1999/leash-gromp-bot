@@ -17,6 +17,11 @@ const { Titles } = require("../utils/constants");
 // condition type into userDetails.permanentTitles the first time it's ever seen true, and
 // short-circuits on that array (no DB call at all) on every later check — see the function
 // itself for the exact order of operations.
+//
+// `type: "festivalCosmetic"` (systems/seasonal-festivals.md's own forward reference to this
+// file) needs none of that machinery — festivalCosmetics is itself an append-only owned-items
+// array (a purchased cosmetic is never un-purchased), so checking it live is already
+// permanent by construction, same as every `type: "stat"` condition below.
 class TitleFactory {
     // Resolves whether a single title is currently unlocked. For `type: "stat"` titles this
     // is a pure, synchronous-shaped (but still async for a uniform call signature) live
@@ -52,6 +57,10 @@ class TitleFactory {
             return unlocked;
         }
 
+        if (condition.type === "festivalCosmetic") {
+            return (userDetails.festivalCosmetics || []).includes(condition.cosmeticId);
+        }
+
         return false;
     }
 
@@ -72,6 +81,10 @@ class TitleFactory {
                 currentValue = getStatValue(userDetails, title.condition.statPath) || 0;
             } else if (title.condition.type === "guildLevel") {
                 currentValue = isUnlocked ? title.condition.minLevel : await this.getCurrentGuildLevel(userDetails);
+            } else if (title.condition.type === "festivalCosmetic") {
+                // Binary, not a countable stat — "0 / 1" until purchased, same as a
+                // guildLevel title reads "0 / minLevel" before it's ever been reached.
+                currentValue = isUnlocked ? 1 : 0;
             }
             results.push({ title, isUnlocked, currentValue });
         }
