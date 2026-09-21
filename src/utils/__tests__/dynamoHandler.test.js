@@ -199,6 +199,26 @@ describe('findUser', () => {
         expect(healedFieldNames).toContain('activePotion');
     });
 
+    // Titles (systems/titles.md) — equippedTitle/permanentTitles are both plain top-level
+    // fields (defaults null/[]), same generic diff-and-heal loop as activePotion above — no
+    // dedicated migration script needed for a veteran account that predates the feature.
+    test('heals a pre-existing account missing equippedTitle/permanentTitles to null/[]', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{ userId: 'u5c', username: 'name5c' }], // predates Titles entirely
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u5c', 'name5c');
+
+        expect(user.equippedTitle).toBeNull();
+        expect(user.permanentTitles).toEqual([]);
+        const healedFieldNames = docClient.update.mock.calls
+            .map(([params]) => Object.values(params.ExpressionAttributeNames)[0]);
+        expect(healedFieldNames).toContain('equippedTitle');
+        expect(healedFieldNames).toContain('permanentTitles');
+    });
+
     test('does not touch a nested object that already has every sub-key', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,

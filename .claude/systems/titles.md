@@ -1,9 +1,11 @@
-# Titles (design, not yet implemented)
+# Titles (shipped 2026-09-21 — see "Shipped" section at the end for what actually landed)
 
 Technical design for idea B1 ("Titles / Cosmetic Loot") from
 [feature-ideas.md](feature-ideas.md#b-prestige--endgame-depth), product-owner-confirmed to
-proceed 2026-09-20. This doc is a design, not a build log — nothing in `src/` has been touched
-yet. Grounded directly in [achievements.md](achievements.md) /
+proceed 2026-09-20, implemented 2026-09-21 (see "Shipped" section at the bottom of this doc for
+what actually landed and the handful of small deviations). The rest of this doc is kept as-written
+at design time — it's still an accurate description of the shipped behavior, just written before
+the code existed. Grounded directly in [achievements.md](achievements.md) /
 [src/utils/achievementFactory.js](../../src/utils/achievementFactory.js) (the confirmed unlock
 source), `src/utils/constants.js` (`Achievements`, `MercenaryRank`, `RaidLevel`), and
 `src/utils/embedFactory.js` (`createUserEmbed`, `MERCENARY_RANK_TITLES`).
@@ -316,3 +318,48 @@ scoped as:
   `userDetails` (the Guild Level `type: "guildLevel"` branch, needing its own guild fetch) — the
   one real architectural wrinkle in an otherwise fully-reused design, and the reason Decision
   point #2 exists.
+
+## 11. Shipped (2026-09-21)
+
+Built exactly to this doc's spec, including the corrected `permanentTitles` mechanism in section
+2/3 (the product owner's 2026-09-20 permanence instruction was already folded into this doc before
+the build started, so there was no re-litigating decision point #2 during implementation). Files:
+`src/utils/constants.js` (`Titles`, 13 entries, placed directly after `Achievements`),
+`src/utils/dynamoHandler.js` (`equippedTitle`/`permanentTitles` added to `getDefaultUserFields`,
+healed automatically by `findUser`'s existing generic diff-and-heal loop — no special-casing
+needed), `src/utils/titleFactory.js` (new file), `src/commands/user/setTitle.js`,
+`src/commands/user/titles.js`, and `embedFactory.js` (`createTitlesPageEmbed` + the new "Title:"
+field on `createUserEmbed`).
+
+**Two small deviations from this doc's own pseudocode, neither changing any behavior described
+above**:
+- `getTitleProgress`'s `currentValue` for the one `guildLevel` title (`warlord_of_the_realm`) is
+  the player's own current live guild level (0 if unguilded) rather than the flat `0` this doc's
+  section 2 suggested — needed a concrete value so `/titles` can show real `current / 10`
+  progress on a locked entry instead of an uninformative `0 / 10`. Pulled via a small
+  `getCurrentGuildLevel` helper in `titleFactory.js`; `isTitleUnlocked` itself is untouched by
+  this — it never reads `currentValue`.
+- `getEquippedTitleLabel(titleId)` returns the single already-formatted `"{label} — {description}"`
+  string `createUserEmbed`'s field value needs directly, rather than the two separately-implied
+  `titleLabel`/`titleDescription` values in this doc's section 8 pseudocode — section 3 already
+  described it as one function "for `createUserEmbed`'s display line" (singular), so this was a
+  direct implementation of that, not a design change.
+
+**Verified specifically** (per this repo's `CLAUDE.md` stateful-mechanism testing discipline): the
+`permanentTitles` grant-then-persist lifecycle in `titleFactory.test.js` — a guild-level-10 live
+check returns `true` and writes `permanentTitles` via a mocked `updateUserFields`, then a
+*separate* `userDetails` object simulating the player having since left the guild (`guildId`
+cleared, `permanentTitles` carried forward) still resolves `true` with `findGuildById` asserted to
+never fire — i.e. the permanence genuinely survives the underlying condition regressing, not just
+within a single call. All 12 stat-backed titles' live-check behavior, `/set-title`'s
+autocomplete/validation (leads with "None", rejects an unearned title by name, rejects an unknown
+id, never trusts the client's autocomplete pick), and `/profile`'s new field (both the equipped and
+empty states, and its position directly under "Active Companion:") all have dedicated test
+coverage. Full suite: 110 suites / 1962 tests passing after this change.
+
+**Not done in this pass, flagged rather than silently skipped**: the `financial-project` web port
+(section 9) and the Seasonal Festivals `festivalCosmetic` condition-type integration
+(`seasonal-festivals.md`'s own forward reference to this doc) — the latter specifically because
+this build happened in an isolated git worktree where Seasonal Festivals' own files don't exist
+yet (built concurrently by a different session against the same base branch); that wiring is a
+follow-up once both branches merge.

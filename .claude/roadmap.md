@@ -15763,6 +15763,77 @@ this repo's own `CLAUDE.md` cross-repo rule rather than left to drift silently.
 Not yet implemented — nothing in `src/` touched by this pass. Awaiting product owner sign-off on
 the decision points above before a developer builds any of it.
 
+## Titles — Shipped (2026-09-21, developer pass)
+
+Built per `systems/titles.md`'s full design, with the product owner's 2026-09-20 corrections
+already folded into that doc before this pass started: **cosmetic-only, permanent once earned**
+(decision point #1 confirmed, decision point #2 overturned from the design's own original
+recommendation — see below), no proactive unlock notification in v1 (decision point #3 accepted),
+the `full_roster`/Menagerie-Complete overlap deliberately left out of v1 (decision point #4
+accepted), and `/titles` shipped alongside `/set-title` (decision point #5 accepted, "very cheap").
+
+**What actually shipped, matching the design 1:1**: `Titles` (13-entry array, `constants.js`),
+`equippedTitle`/`permanentTitles` on `getDefaultUserFields` (healed via `findUser`'s existing
+generic diff-and-heal loop — no migration script), `src/utils/titleFactory.js`
+(`isTitleUnlocked`/`getTitleProgress`/`getUnlockedTitles`/`getEquippedTitleLabel`, reusing
+`achievementFactory.js`'s `getStatValue` directly rather than re-implementing dot-path
+resolution), `/set-title` (`src/commands/user/setTitle.js`, autocomplete-then-revalidate mirroring
+`/companion-fuse`'s discipline, a hardcoded `none` choice first), `/titles`
+(`src/commands/user/titles.js` + `embedFactory.createTitlesPageEmbed`, single unpaginated embed —
+13 entries comfortably fit under the 25-field cap), and one new "Title:" field on `/profile`
+page 1 directly under "Active Companion:".
+
+**The one real mechanism worth restating (`permanentTitles`)**: 12 of the 13 titles are backed by
+already-lifetime, never-reset counters, so `isTitleUnlocked` never touches the database for them —
+a live check today gives the same answer forever. `warlord_of_the_realm` (Guild Level 10) is the
+one exception — Guild Level isn't a field on `userDetails` at all and genuinely regresses if a
+player leaves the guild that earned it, which directly conflicts with the product owner's explicit
+instruction ("keep the title forever even if they leave guild life"). `isTitleUnlocked` handles
+this by checking `permanentTitles.includes(titleId)` first (an O(1) short-circuit, no DB call at
+all), and only falling back to a live `findGuildById` + `guildBuffFactory.getGuildLevel` check if
+not yet permanent — a true result there gets written into `permanentTitles` right then via
+`updateUserFields`, so every later caller (`/titles`, `/set-title`, `createUserEmbed`) inherits the
+permanence for free. Verified directly in `titleFactory.test.js`: a title granted via one live-true
+check stays `true` on a subsequent check even after simulating the player leaving the guild
+(`guildId` cleared) and reusing a fresh `userDetails` object with only `permanentTitles` carried
+forward — `findGuildById` is asserted to never fire on that second check.
+
+**Small deviations from the design doc, none load-bearing**:
+- `getTitleProgress`'s `currentValue` for the one `guildLevel` title needed a concrete definition
+  the design didn't spell out (it only said "0 for a guildLevel title — there's no single numeric
+  progress to show"). Implemented instead as the player's own current live guild level (0 if
+  unguilded), via a small `getCurrentGuildLevel` helper, so `/titles` can still render a real
+  "current / 10" progress line for a locked Warlord of the Realm entry instead of a flat,
+  uninformative "0 / 10" — a strictly more useful reading of the same intent, not a behavior
+  change to `isTitleUnlocked` itself (which is unaffected — it never reads this value).
+- `getEquippedTitleLabel` returns the full formatted `"{label} — {description}"` string (matching
+  exactly what `createUserEmbed`'s field value needs) rather than two separately-named
+  `titleLabel`/`titleDescription` values the design's own pseudocode implied — a single pure lookup
+  was simpler and the design's section 3 already described it as "one function... for
+  `createUserEmbed`'s display line" (singular).
+
+**Tests**: `titleFactory.test.js` (all 12 stat-backed titles' live-check behavior including a
+sanity check that non-guildLevel `Titles` entries number exactly 12, and the full
+`permanentTitles` lifecycle above), `setTitle.test.js` (autocomplete always leads with "None",
+never offers a not-yet-earned title, callback rejects an unearned/unknown title by name with no DB
+write, accepts `none` to clear, re-validates against a fresh `findUser` call rather than trusting
+the option value), `embedFactory.test.js` (new `createUserEmbed` "Title:" field — both the
+equipped and no-title-equipped cases, and that it sits directly under "Active Companion:" — plus
+`createTitlesPageEmbed`'s unlocked/locked-stat/locked-guildLevel rendering), and a `findUser`
+healing case in `dynamoHandler.test.js` for the two new default fields. Full suite
+(`npx jest`) passes at 110 suites / 1962 tests after this change.
+
+**Cross-repo**: per this repo's own `CLAUDE.md` rule and `systems/titles.md` section 9, this is a
+change `financial-project`'s `/gromp` page needs ported (an `equippedTitle` passthrough in
+`toProfile`, enough of the `Titles` condition table server-side to compute it, and a
+`/set-title`-equivalent Lambda action) — explicitly **not done in this pass** (this pass shipped
+in an isolated git worktree alongside a concurrent Seasonal Festivals build and stayed scoped to
+the bot-side feature only), flagged here rather than left to drift silently. `feature-ideas.md`'s
+own Seasonal Festivals brainstorm already anticipated wiring festival cosmetics into Titles as a
+future `{ type: "festivalCosmetic", cosmeticId }` condition once both features are merged together
+— also explicitly not done in this pass, since Seasonal Festivals' own files don't exist yet in
+this worktree.
+
 ## Design (scoping only, not implemented): Seasonal Festivals (2026-09-20, architect pass)
 
 Product owner ask: a full technical design for `feature-ideas.md`'s idea **A1** ("Seasonal

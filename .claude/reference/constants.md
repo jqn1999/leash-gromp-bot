@@ -13,6 +13,7 @@ changes without this knowledge base being updated alongside it.
 | `MimicSlaying` | Mimic Potato's flat, ungated chance to be killed instead of stealing from the bank, and the shared `mimic_hoard` payout percentage on a kill | [systems/economy-and-work.md](../systems/economy-and-work.md#mimic-slaying--a-chance-to-kill-the-mimic-instead-of-losing-to-it-2026-09-10-direct-instruction) |
 | `CatchUp` | `/work` catch-up bonus strength, maturity reference, minimum population gate | [systems/economy-and-work.md](../systems/economy-and-work.md#catch-up-bonus) |
 | `Achievements` | Achievement definitions (id, name, description, statPath, threshold) | [systems/achievements.md](../systems/achievements.md) |
+| `Titles` | Title definitions (id, label, description, condition — either `{type:"stat", statPath, threshold}` or `{type:"guildLevel", minLevel}`) | [systems/titles.md](../systems/titles.md) |
 | `DailyStreak` | Login streak reward scaling (per-multiplier base, day-ramp, max scaling days) | [systems/daily-streak.md](../systems/daily-streak.md) |
 | `TowerLeaderboard` | Daily Tower leaderboard tier percentages + stat-bonus rounding increments | [systems/tower.md](../systems/tower.md#daily-leaderboard) |
 | `DailyQuest`, `WeeklyQuest`, `Quests` | Quest pool, active-count per rotation, daily reward scaling | [systems/quests.md](../systems/quests.md) |

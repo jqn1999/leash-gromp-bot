@@ -387,6 +387,75 @@ describe('createUserEmbed Mercenary Buff field', () => {
     });
 });
 
+// Titles (systems/titles.md, section 8) — createUserEmbed's new "Title:" field, directly
+// below "Active Companion:" on page 1. Cosmetic display only — no unlock re-check happens
+// here, the field just renders whatever equippedTitle already holds.
+describe('createUserEmbed Title field', () => {
+    function userDetailsFixture(overrides = {}) {
+        return {
+            rebirthCount: 0,
+            companions: { ownedCount: 0, owned: [], active: null },
+            guildId: 0,
+            isMercenary: false,
+            equippedTitle: null,
+            potatoes: 0,
+            bankStored: 0,
+            starches: 0,
+            workMultiplierAmount: 1,
+            passiveAmount: 0,
+            bankCapacity: 50000,
+            maxStarches: 250,
+            workCount: 0,
+            loginStreak: 0,
+            records: {},
+            totalEarnings: 0,
+            totalLosses: 0,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides
+        };
+    }
+
+    beforeEach(() => {
+        const dynamoHandler = require('../dynamoHandler');
+        const rebirthFactory = require('../rebirthFactory');
+        const companionFactory = require('../companionFactory');
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        rebirthFactory.getLiveRebirthPercent.mockReturnValue(0);
+        companionFactory.getActivePerkValue.mockReturnValue(0);
+        companionFactory.getActiveCompanion.mockReturnValue(null);
+    });
+
+    test('shows a hint to run /titles or /set-title when no title is equipped', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture(), 0);
+        const field = embed.data.fields.find(f => f.name === 'Title:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('/titles');
+        expect(field.value).toContain('/set-title');
+    });
+
+    test('shows the equipped title\'s label and description when one is set', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture({
+            equippedTitle: 'reborn_spud',
+        }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Title:');
+        expect(field).toBeDefined();
+        expect(field.value).toContain('the Reborn');
+        expect(field.value).toContain('Shed one life\'s harvest to plant the next.');
+    });
+
+    test('the Title field sits directly under Active Companion', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture(), 0);
+        const names = embed.data.fields.map(f => f.name);
+        const companionIndex = names.indexOf('Active Companion:');
+        expect(names[companionIndex + 1]).toBe('Title:');
+    });
+});
+
 // createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).
 describe('createWorldResultEmbed world-buff announcement', () => {
     const mob = { name: 'Griseous, the Dragon Fruit', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
@@ -1697,5 +1766,43 @@ describe('createGuildStatRewardEmbed', () => {
         const embed = embedFactory.createGuildStatRewardEmbed('Some Guild', hits);
         expect(embed.data.description).toContain('**Elite Raid Blessing:**');
         expect(embed.data.description).toContain('**Guild Level 8+ Bonus Blessing:**');
+    });
+});
+
+// Titles (systems/titles.md, section 7) — /titles' single-embed browse-all view.
+describe('createTitlesPageEmbed', () => {
+    const { Titles } = require('../constants');
+
+    test('renders one field per title, all fitting in a single embed (under the 25-field cap)', () => {
+        const progressList = Titles.map(title => ({ title, isUnlocked: false, currentValue: 0 }));
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        expect(embed.data.fields).toHaveLength(Titles.length);
+        expect(embed.data.description).toContain(`0 / ${Titles.length} unlocked`);
+    });
+
+    test('an unlocked title shows a checkmark and its flavor text, no progress fraction', () => {
+        const title = Titles.find(t => t.id === 'reborn_spud');
+        const progressList = [{ title, isUnlocked: true, currentValue: 1 }];
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        const field = embed.data.fields[0];
+        expect(field.name).toContain('✅');
+        expect(field.value).toBe(title.description);
+    });
+
+    test('a locked stat-backed title shows a lock and current/threshold progress', () => {
+        const title = Titles.find(t => t.id === 'cycle_of_harvest'); // rebirthCount >= 5
+        const progressList = [{ title, isUnlocked: false, currentValue: 2 }];
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        const field = embed.data.fields[0];
+        expect(field.name).toContain('🔒');
+        expect(field.value).toContain('(2 / 5)');
+    });
+
+    test('a locked guildLevel title shows progress against minLevel, not a stat threshold', () => {
+        const title = Titles.find(t => t.id === 'warlord_of_the_realm'); // guildLevel minLevel 10
+        const progressList = [{ title, isUnlocked: false, currentValue: 5 }];
+        const embed = embedFactory.createTitlesPageEmbed('Player', progressList);
+        const field = embed.data.fields[0];
+        expect(field.value).toContain('(5 / 10)');
     });
 });
