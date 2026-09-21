@@ -593,3 +593,20 @@ from what's written above, and why.
   not-optional port item per this doc's own "Cross-repo" section — flagged again here rather than
   left to silently drift, needs its own audit + numbered `## Bot caught up #N` entry in that repo's
   `NOTES_GROMP_WEB_INTEGRATION.md` before `/gromp` and the bot can disagree on festival-boosted odds.
+
+## Post-ship balance pass (2026-09-21, direct instruction)
+
+Two numeric changes, both superseding this doc's own original "1-2 week"/"50/150/400" numbers
+above (left as historical record of the design process, not corrected in place):
+
+- **Every season now runs a fixed 1 week**, not an admin-picked 1-14 day range. `Festival.
+  MIN_DURATION_DAYS`/`MAX_DURATION_DAYS` collapsed into a single `Festival.DURATION_DAYS: 7`;
+  `/admin start-festival` no longer takes a `duration_days` option at all — `festivalFactory.
+  startFestival(festivalId)` dropped the parameter entirely rather than keeping it and ignoring
+  it, so there's no dead/misleading option left in the command surface.
+- **Every festival's "complete /work sessions" objective tiers raised from 50/150/400 to
+  100/300/600** (all three festivals — Harvest's "Bring in the Harvest," Frost Fair's "Brave the
+  Frost Roads," Spring Planting's "Plant the Fields") — token payouts per tier (15/35/90)
+  unchanged, only the thresholds moved. Combined with the fixed 1-week window above, this is a
+  real, deliberate increase in grind-per-day for that one objective (roughly 2x the old ceiling in
+  half the old maximum window, in the worst case) — a scoped balance call, not a formula bug.

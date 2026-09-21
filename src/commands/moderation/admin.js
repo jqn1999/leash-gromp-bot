@@ -523,10 +523,9 @@ const FESTIVAL_CHOICES = Object.keys(FestivalTemplates).map(festivalId => ({
 async function runStartFestival(client, interaction) {
     await interaction.deferReply({ ephemeral: true });
     const festivalId = interaction.options.get('festival')?.value;
-    const durationDays = interaction.options.get('duration_days')?.value;
     const announce = interaction.options.get('announce')?.value ?? true;
 
-    const festival = await festivalFactory.startFestival(festivalId, durationDays);
+    const festival = await festivalFactory.startFestival(festivalId);
     if (!festival) {
         interaction.editReply(`"${festivalId}" isn't a recognized festival.`);
         return;
@@ -696,16 +695,10 @@ module.exports = {
             options: [
                 {
                     name: 'festival',
-                    description: 'Which festival to start',
+                    description: 'Which festival to start (always runs 1 week)',
                     required: true,
                     type: ApplicationCommandOptionType.String,
                     choices: FESTIVAL_CHOICES,
-                },
-                {
-                    name: 'duration_days',
-                    description: `How many days it runs (${Festival.MIN_DURATION_DAYS}-${Festival.MAX_DURATION_DAYS})`,
-                    required: true,
-                    type: ApplicationCommandOptionType.Integer,
                 },
                 {
                     name: 'announce',

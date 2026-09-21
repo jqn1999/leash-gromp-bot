@@ -34,18 +34,18 @@ function getSpendableFestivalTokens(userDetails, activeFestival) {
 // /admin start-festival's entry point (or a future content-calendar cron calling the same
 // function, per the design doc's own "additive layer on top" note). objectiveIds is
 // recorded purely for informational/debugging purposes — every consumer resolves the real
-// objective set live off FestivalTemplates[festivalId], never off this array.
-async function startFestival(festivalId, durationDays) {
+// objective set live off FestivalTemplates[festivalId], never off this array. Duration is
+// always Festival.DURATION_DAYS (1 week) — no longer an admin-picked value.
+async function startFestival(festivalId) {
     const templates = FestivalTemplates[festivalId];
     if (!templates) {
         return null;
     }
-    const clampedDays = Math.min(Math.max(durationDays, Festival.MIN_DURATION_DAYS), Festival.MAX_DURATION_DAYS);
     const now = Date.now();
     const festival = {
         festivalId,
         startsAt: now,
-        endsAt: now + clampedDays * 24 * 60 * 60 * 1000,
+        endsAt: now + Festival.DURATION_DAYS * 24 * 60 * 60 * 1000,
         objectiveIds: templates.map(template => template.id),
         oddsOverride: Festival.ODDS_OVERRIDE[festivalId] || null,
     };

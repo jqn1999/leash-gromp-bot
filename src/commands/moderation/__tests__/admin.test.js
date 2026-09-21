@@ -427,14 +427,13 @@ describe('/admin set-merc-chat-channel', () => {
 // describe blocks above (fake interaction options + a fake client.channels.fetch/send).
 // ---------------------------------------------------------------------------------------
 describe('/admin start-festival', () => {
-    function fakeInteraction({ festival, durationDays, announce } = {}) {
+    function fakeInteraction({ festival, announce } = {}) {
         return {
             deferReply: jest.fn().mockResolvedValue(),
             editReply: jest.fn().mockResolvedValue(),
             options: {
                 get: (name) => {
                     if (name === 'festival' && festival !== undefined) return { value: festival };
-                    if (name === 'duration_days' && durationDays !== undefined) return { value: durationDays };
                     if (name === 'announce' && announce !== undefined) return { value: announce };
                     return undefined;
                 },
@@ -449,7 +448,7 @@ describe('/admin start-festival', () => {
 
     test('rejects an unrecognized festival id without touching festivalFactory further', async () => {
         festivalFactory.startFestival.mockResolvedValue(null);
-        const interaction = fakeInteraction({ festival: 'not_a_festival', durationDays: 7 });
+        const interaction = fakeInteraction({ festival: 'not_a_festival' });
         const client = fakeClient();
 
         await startFestivalCallback(client, interaction);
@@ -458,15 +457,16 @@ describe('/admin start-festival', () => {
         expect(client.channels.fetch).not.toHaveBeenCalled();
     });
 
-    test('starts a festival and announces it by default', async () => {
+    // Every season is always exactly 1 week (2026-09-21) — no duration option to pass anymore.
+    test('starts a festival for the fixed 1-week duration and announces it by default', async () => {
         const now = Date.now();
         festivalFactory.startFestival.mockResolvedValue({ festivalId: 'harvest_festival', startsAt: now, endsAt: now + 7 * 24 * 60 * 60 * 1000 });
-        const interaction = fakeInteraction({ festival: 'harvest_festival', durationDays: 7 });
+        const interaction = fakeInteraction({ festival: 'harvest_festival' });
         const client = fakeClient();
 
         await startFestivalCallback(client, interaction);
 
-        expect(festivalFactory.startFestival).toHaveBeenCalledWith('harvest_festival', 7);
+        expect(festivalFactory.startFestival).toHaveBeenCalledWith('harvest_festival');
         expect(client.channels.fetch).toHaveBeenCalledWith('1188525931346792498');
         expect(client.__channel.send).toHaveBeenCalledWith(expect.stringContaining('Harvest Festival'));
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('announced'));
@@ -474,8 +474,8 @@ describe('/admin start-festival', () => {
 
     test('announce:false starts the festival without posting anything', async () => {
         const now = Date.now();
-        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'frost_fair', startsAt: now, endsAt: now + 3 * 24 * 60 * 60 * 1000 });
-        const interaction = fakeInteraction({ festival: 'frost_fair', durationDays: 3, announce: false });
+        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'frost_fair', startsAt: now, endsAt: now + 7 * 24 * 60 * 60 * 1000 });
+        const interaction = fakeInteraction({ festival: 'frost_fair', announce: false });
         const client = fakeClient();
 
         await startFestivalCallback(client, interaction);

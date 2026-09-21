@@ -16421,3 +16421,35 @@ one's active) asserts the embed/buttons ARE still present on the final reply and
 second click, confirming the two branches now behave differently on purpose. Full suite: **111
 suites / 2018 tests, all passing** (up from 111/2017 — net 0 new suites, +1 test: one replaced,
 two added).
+
+## Seasonal Festivals balance pass: fixed 1-week duration, work-session tiers raised 50/150/400 → 100/300/600 (2026-09-21, direct instruction)
+
+Two numeric changes to the design confirmed in the earlier ship, no new mechanism:
+
+1. **Every season now runs a fixed 1 week.** `Festival.MIN_DURATION_DAYS`/`MAX_DURATION_DAYS`
+   (previously a 1-14 day admin-picked range) collapsed into a single `Festival.DURATION_DAYS: 7`.
+   `festivalFactory.startFestival` dropped its `durationDays` parameter entirely rather than
+   keeping and ignoring it. `/admin start-festival` lost its `duration_days` option — the
+   subcommand now takes only `festival` and `announce`, so there's no dead option left implying a
+   choice that no longer exists.
+2. **Every festival's "complete /work sessions" objective raised its 3 tiers from 50/150/400 to
+   100/300/600** — `festival_harvest_work` ("Bring in the Harvest"), `festival_frost_work` ("Brave
+   the Frost Roads"), and `festival_spring_work` ("Plant the Fields"), all three identically. Token
+   payouts per tier (15/35/90) unchanged, only the thresholds moved. Combined with the now-fixed
+   1-week window (previously up to 14 days), this roughly doubles the grind-per-day this one
+   objective requires in the worst case — a deliberate, instructed balance call, not something
+   this pass second-guessed or softened.
+
+**Touched**: `constants.js` (`Festival.DURATION_DAYS`, all 3 `FestivalTemplates` work-session tier
+arrays + their description strings), `festivalFactory.js` (`startFestival` signature),
+`admin.js` (`runStartFestival` + the `start-festival` subcommand's option list), `admin.test.js`
+(dropped `durationDays` from the fake-interaction helper and all 3 `/admin start-festival` test
+cases), `festivalFactory.test.js` (one test's `workCount: 50` fixture bumped to `100` to match the
+new tier-1 threshold it was exercising). `.claude/reference/commands.md` and
+`seasonal-festivals.md` updated (the latter via a new dated addendum section rather than editing
+the original design brainstorm's own "1-2 week"/"50/150/400" prose in place, since that text is
+this feature's own historical design record, not a live spec).
+
+**Tests**: no new test files, no new test count — purely constant/signature changes with existing
+coverage updated to match. Full suite: **111 suites / 2018 tests, all passing** (unchanged from the
+previous entry — same suite/test count, different fixture values).

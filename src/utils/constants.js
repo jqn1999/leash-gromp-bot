@@ -2579,10 +2579,10 @@ const SpudKeep = {
 // setActiveFestival) rather than Quests' derived-tag shape, since a festival's window is
 // arbitrary (whenever an admin starts one) rather than a fixed, predictable cadence.
 const Festival = {
-    // /admin start-festival's own duration clamp — the brainstorm's own "1-2 week" framing,
-    // widened slightly on the low end for a quick same-day test run.
-    MIN_DURATION_DAYS: 1,
-    MAX_DURATION_DAYS: 14,
+    // Every season runs exactly one week (2026-09-21, direct instruction — "update seasons
+    // to be 1 week"), no longer an admin-picked 1-14 day range. /admin start-festival no
+    // longer takes a duration option at all — startFestival always uses this.
+    DURATION_DAYS: 7,
 
     // Display-only labels — the underlying persisted fields (festivalTokens,
     // festivalTokensFestivalId) are one generic pair shared by every festival, themed only
@@ -2625,11 +2625,11 @@ const FestivalTemplates = {
     harvest_festival: [
         {
             id: "festival_harvest_work", name: "Bring in the Harvest", category: "festival", statPath: "workCount",
-            description: "Complete /work sessions during the Harvest Festival for scaling Harvest Token rewards: 50/150/400 sessions for 15/35/90 tokens",
+            description: "Complete /work sessions during the Harvest Festival for scaling Harvest Token rewards: 100/300/600 sessions for 15/35/90 tokens",
             tiers: [
-                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
-                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
-                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+                { threshold: 100, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 300, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 600, reward: { type: "festivalTokens", amount: 90 } },
             ]
         },
         {
@@ -2654,11 +2654,11 @@ const FestivalTemplates = {
     frost_fair: [
         {
             id: "festival_frost_work", name: "Brave the Frost Roads", category: "festival", statPath: "workCount",
-            description: "Complete /work sessions during the Frost Fair: 50/150/400 sessions for 15/35/90 tokens",
+            description: "Complete /work sessions during the Frost Fair: 100/300/600 sessions for 15/35/90 tokens",
             tiers: [
-                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
-                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
-                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+                { threshold: 100, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 300, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 600, reward: { type: "festivalTokens", amount: 90 } },
             ]
         },
         {
@@ -2683,11 +2683,11 @@ const FestivalTemplates = {
     spring_planting: [
         {
             id: "festival_spring_work", name: "Plant the Fields", category: "festival", statPath: "workCount",
-            description: "Complete /work sessions during Spring Planting: 50/150/400 sessions for 15/35/90 tokens",
+            description: "Complete /work sessions during Spring Planting: 100/300/600 sessions for 15/35/90 tokens",
             tiers: [
-                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
-                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
-                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+                { threshold: 100, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 300, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 600, reward: { type: "festivalTokens", amount: 90 } },
             ]
         },
         {

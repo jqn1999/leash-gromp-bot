@@ -132,13 +132,13 @@ describe('Festival Tokens — lazy expiry by festivalId tag mismatch', () => {
         const userDetails = baseUser({
             festivalTokens: 9999,
             festivalTokensFestivalId: 'harvest_festival',
-            workCount: 50,
+            workCount: 100,
         });
 
         await festivalFactory.checkAndClaimFestivalQuests(userDetails, baseUser({ workCount: 0 }));
 
         const [, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        // Tier 1 of festival_frost_work (threshold 50) pays 15 tokens — the stale 9999
+        // Tier 1 of festival_frost_work (threshold 100) pays 15 tokens — the stale 9999
         // must NOT have been added to this.
         expect(calledFields.festivalTokens).toBe(15);
         expect(calledFields.festivalTokensFestivalId).toBe('frost_fair');
