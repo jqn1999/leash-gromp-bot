@@ -9,9 +9,11 @@ const embedFactory = new EmbedFactory();
 const BUY_PREFIX = 'trading_post_buy_';
 
 // One button per catalog entry (3 in v1, well under Discord's 5-per-row cap) — disabled
-// only when the caller can't afford it, same "a doomed click should never even be possible"
-// precedent companionShop.js/companionMarket.js already set. A potion that would be
-// REJECTED by the purchase rule (a different effect type already active) is deliberately
+// when the caller can't afford it OR has already bought that potion today (2026-09-21,
+// the new daily-stock limit — a predictable, always-known-in-advance state, unlike the
+// effect-type-conflict rejection below), same "a doomed click should never even be
+// possible" precedent companionShop.js/companionMarket.js already set. A potion that would
+// be REJECTED by the purchase rule (a different effect type already active) is deliberately
 // left enabled rather than disabled — that rejection needs its own clear message naming
 // what's active and when it expires (see tradingPostFactory.attemptPurchasePotion), which a
 // silently-disabled button can't convey.
@@ -20,7 +22,7 @@ function buildBuyRow(userDetails) {
         .setCustomId(`${BUY_PREFIX}${potion.id}`)
         .setLabel(`Buy ${potion.name} (${potion.pricePotatoes.toLocaleString()})`)
         .setStyle(ButtonStyle.Success)
-        .setDisabled(userDetails.potatoes < potion.pricePotatoes)
+        .setDisabled(userDetails.potatoes < potion.pricePotatoes || tradingPostFactory.hasBoughtToday(userDetails, potion.id))
     );
     return new ActionRowBuilder().addComponents(buttons);
 }

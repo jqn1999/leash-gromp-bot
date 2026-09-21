@@ -6,6 +6,7 @@ jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { Potions } = require('../../../utils/constants');
+const { getDailyTag } = require('../../../utils/tradingPostFactory');
 const { callback } = require('../tradingPost');
 
 function fakeInteraction() {
@@ -65,6 +66,31 @@ describe('/trading-post', () => {
         const embed = interaction.editReply.mock.calls[0][0].embeds[0];
         expect(embed.data.title).toContain('Spud Squad');
         expect(embed.data.fields).toHaveLength(Potions.CATALOG.length);
+    });
+
+    // Daily stock limit (2026-09-21) — the buy button for a potion already bought today is
+    // disabled up front (a "doomed click should never even be possible"), and the embed's
+    // own field for it carries the same note, so the two can never disagree.
+    test('a potion already bought today shows a disabled button and an "already bought" note, others stay normal', async () => {
+        const today = getDailyTag();
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            guildId: 'g1',
+            tradingPostDailyPurchases: { dailyTag: today, potionIds: [Potions.CATALOG[0].id] },
+        }));
+        dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
+        const { interaction } = fakeInteraction();
+
+        await callback({}, interaction);
+
+        const call = interaction.editReply.mock.calls[0][0];
+        const boughtField = call.embeds[0].data.fields[0];
+        expect(boughtField.value).toMatch(/already bought today/i);
+        const otherField = call.embeds[0].data.fields[1];
+        expect(otherField.value).not.toMatch(/already bought today/i);
+
+        const buttons = call.components[0].components;
+        expect(buttons[0].data.disabled).toBe(true);
+        expect(buttons[1].data.disabled).toBeFalsy();
     });
 
     test('a guilded player whose guild can no longer be found gets a clear lookup error', async () => {

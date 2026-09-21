@@ -4024,11 +4024,19 @@ class EmbedFactory {
             statusLine = `No potion currently active — buy one below.`;
         }
 
-        const fields = Potions.CATALOG.map((potion) => ({
-            name: `${potion.name} — ${potion.pricePotatoes.toLocaleString()} potatoes`,
-            value: `${formatPotionEffect(potion)}\nLasts ${convertSecondstoMinutes(potion.durationSeconds)}`,
-            inline: false,
-        }));
+        // Daily stock limit (2026-09-21) — one purchase per potion per Eastern trading day,
+        // mirrors the disabled-button state tradingPost.js's own buildBuyRow already computes
+        // off the same tradingPostFactory.hasBoughtToday check, so the embed text and the
+        // button state can never disagree.
+        const fields = Potions.CATALOG.map((potion) => {
+            const alreadyBoughtToday = tradingPostFactory.hasBoughtToday(userDetails, potion.id);
+            return {
+                name: `${potion.name} — ${potion.pricePotatoes.toLocaleString()} potatoes`,
+                value: `${formatPotionEffect(potion)}\nLasts ${convertSecondstoMinutes(potion.durationSeconds)}`
+                    + (alreadyBoughtToday ? `\n*Already bought today — resets at 8pm ET.*` : ''),
+                inline: false,
+            };
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(title)

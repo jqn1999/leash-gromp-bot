@@ -708,6 +708,12 @@ function getDefaultUserFields(userId, username) {
         // stale until overwritten" convention world_buff already uses. See isPotionLive
         // below for the shared freshness+type check every consumption point reads.
         activePotion: null,
+        // Trading Post's daily purchase limit (2026-09-21) — { dailyTag, potionIds } | null,
+        // same lazy "stale tag reads as empty, only overwritten on the next actual purchase"
+        // idiom activePotion/world_buff/Companion Shop's own dailyTag already use. One
+        // purchase per potionId per Eastern trading day (8pm ET boundary), not a shared
+        // stock pool — see tradingPostFactory.getDailyTag/hasBoughtToday.
+        tradingPostDailyPurchases: null,
         // Titles (systems/titles.md) — a Title id (string) or null. Cosmetic only, no stat
         // power anywhere. Kept forever once set, even if the underlying condition later
         // becomes false — see permanentTitles below for the one condition type that needs

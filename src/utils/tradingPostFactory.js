@@ -12,6 +12,48 @@
 const dynamoHandler = require("./dynamoHandler");
 const { Potions } = require("./constants");
 
+// Daily purchase limit (2026-09-21, direct instruction — "make trade post have a limited
+// stock for each player daily," confirmed as one purchase PER POTION per player per day,
+// resetting on the same 8pm ET boundary as every other daily mechanic — not a shared
+// server-wide stock pool). Same 8pm ET boundary Quests/Companion Shop/Daily Login Streak
+// already reset at — duplicated here (not imported) per this codebase's established
+// "mirrored, not shared" convention for these tiny pure date helpers (see
+// companionShopFactory.js's own getDailyTag/getEasternDateParts, which this is a byte-for-
+// byte copy of).
+const RESET_HOUR_EST = 20;
+
+function getEasternDateParts(date) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23'
+    }).formatToParts(date);
+    const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return { year: Number(map.year), month: Number(map.month), day: Number(map.day), hour: Number(map.hour) };
+}
+
+function formatYMD(year, month, day) {
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// The effective "trading day" for a given real moment — the Eastern calendar day, bumped by
+// one once it's 8pm ET or later, same shape as companionShopFactory.js's own getDailyTag.
+function getDailyTag(now = new Date()) {
+    const { year, month, day, hour } = getEasternDateParts(now);
+    const effectiveDay = hour >= RESET_HOUR_EST ? day + 1 : day;
+    const effective = new Date(Date.UTC(year, month - 1, effectiveDay));
+    return formatYMD(effective.getUTCFullYear(), effective.getUTCMonth() + 1, effective.getUTCDate());
+}
+
+// Lazy reset, no cron needed — same "reads as empty once the stored tag is stale, only
+// actually overwritten the next time it's touched" idiom festivalTokens/world_buff/Companion
+// Shop's own dailyTag all already use. A record from a past trading day (or one that's never
+// bought anything yet) always reads as "hasn't bought today," regardless of what
+// potionIds it's still carrying from a prior day.
+function hasBoughtToday(userDetails, potionId, now = new Date()) {
+    const record = userDetails.tradingPostDailyPurchases;
+    if (!record || record.dailyTag !== getDailyTag(now)) return false;
+    return record.potionIds.includes(potionId);
+}
+
 // Mirrors Guild Chat Sync / Merc Faction Hall's own scope shape exactly (see
 // messageHandler.js's `guild#${scope.scopeId}` / 'merc' scopeKey convention) — deliberate
 // reuse of an already-shipped pattern, not a coincidence. isMercenary and a real guildId are
@@ -73,6 +115,13 @@ async function attemptPurchasePotion(userId, username, potionId) {
         };
     }
 
+    if (hasBoughtToday(userDetails, potion.id)) {
+        return {
+            ok: false,
+            message: `you've already bought ${potion.name} today — the Trading Post's daily stock for it resets at 8pm ET.`
+        };
+    }
+
     const active = userDetails.activePotion;
     const now = Date.now();
     let newActivePotion;
@@ -106,7 +155,16 @@ async function attemptPurchasePotion(userId, username, potionId) {
     }
 
     const newPotatoes = userDetails.potatoes - potion.pricePotatoes;
-    await dynamoHandler.updateUserFields(userId, { potatoes: newPotatoes, activePotion: newActivePotion });
+    // Carries forward today's OTHER already-bought potionIds (e.g. buying Steadfast Draught
+    // after already buying Hoarder's Brew earlier today) — a fresh array only when the
+    // stored tag is stale (yesterday's list or no record at all), same lazy-reset idiom
+    // hasBoughtToday itself reads against.
+    const dailyTag = getDailyTag();
+    const priorPurchasesToday = userDetails.tradingPostDailyPurchases?.dailyTag === dailyTag
+        ? userDetails.tradingPostDailyPurchases.potionIds
+        : [];
+    const tradingPostDailyPurchases = { dailyTag, potionIds: [...priorPurchasesToday, potion.id] };
+    await dynamoHandler.updateUserFields(userId, { potatoes: newPotatoes, activePotion: newActivePotion, tradingPostDailyPurchases });
 
     return {
         ok: true,
@@ -121,5 +179,7 @@ module.exports = {
     isScopeGuild,
     hasAnyLivePotion,
     findPotionById,
+    getDailyTag,
+    hasBoughtToday,
     attemptPurchasePotion
 };

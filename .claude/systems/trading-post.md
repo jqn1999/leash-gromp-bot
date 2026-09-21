@@ -375,3 +375,61 @@ per this repo's `CLAUDE.md` cross-repo rule, deferred by the same explicit instr
 this build session), no Seasonal Festivals/Titles work (unrelated, separate design docs), no
 companion-marketplace code of any kind (confirmed dropped from this feature during scoping, see
 above), no crafting/recipes (purchased only, per the confirmed design).
+
+## Shipped: daily purchase limit (2026-09-21, direct instruction — "make trade post have a limited stock for each player daily")
+
+Confirmed scope over the two candidate shapes: **one purchase per potion (per player) per
+Eastern trading day**, not a shared server-wide stock pool and not a flat "1 purchase total
+across all 3" — resetting on the same 8pm ET boundary Quests/Companion Shop/Daily Login Streak
+already use, not a rolling 24h-since-last-purchase cooldown.
+
+**`tradingPostFactory.js`**: new `getDailyTag(now)` — a byte-for-byte copy of
+`companionShopFactory.js`'s own (Eastern calendar day, bumped at 8pm ET), duplicated rather than
+imported per this codebase's established "mirrored, not shared" convention for these tiny pure
+date helpers. New `hasBoughtToday(userDetails, potionId, now)` reads
+`userDetails.tradingPostDailyPurchases` — `{ dailyTag, potionIds } | null` — lazily: a stale tag
+(yesterday's, or no record at all) always reads as "hasn't bought today," same "leave it to go
+stale until overwritten" idiom `activePotion`/`world_buff`/Companion Shop's own `dailyTag` already
+use — no cron reset needed. `attemptPurchasePotion` gained a check right after the affordability
+gate (before the same-type-extends/different-type-rejects purchase rule) that rejects with a clear
+message naming the reset time; a successful purchase writes a new `tradingPostDailyPurchases` in
+the SAME `updateUserFields` call as `potatoes`/`activePotion`, appending to today's existing list
+(not replacing it) when the stored tag still matches. A same-type EXTENSION purchase still counts
+against the daily limit — buying Steadfast Draught while it's already active still consumes that
+potion's slot for the day, same as a fresh purchase would.
+
+**`dynamoHandler.js`**: `tradingPostDailyPurchases: null` added to `getDefaultUserFields`, healed
+onto pre-existing accounts by `findUser`'s existing generic diff-and-heal loop.
+
+**`tradingPost.js`**: `buildBuyRow`'s per-button `setDisabled` now also checks
+`tradingPostFactory.hasBoughtToday` alongside the existing affordability check — a potion already
+bought today is disabled up front rather than left clickable-but-doomed, unlike the different-
+effect-type-active rejection (which stays enabled, per this doc's own existing reasoning, since
+THAT rejection needs a message naming what's active and when it expires).
+
+**`embedFactory.js`**: `createTradingPostEmbed`'s per-potion field gained an `*Already bought
+today — resets at 8pm ET.*` note, computed off the exact same `hasBoughtToday` check the button's
+`disabled` state uses, so the embed text and the button state can never disagree with each other.
+
+**Tests**: `tradingPostFactory.test.js` gained `getDailyTag`/`hasBoughtToday` describe blocks (6
+tests) plus a `daily purchase limit` describe under `attemptPurchasePotion` (5 tests: rejects an
+already-bought potion without touching potatoes/activePotion, a successful purchase records
+today's tag+potionId, a second same-day purchase appends rather than replaces the list, a stale
+list doesn't block a purchase and starts fresh, and a same-type extension purchase still counts
+against the limit). `tradingPost.test.js` gained one command-level case confirming the disabled
+button and embed note for an already-bought potion while a DIFFERENT potion's field/button stay
+normal. Full suite: **111 suites / 2030 tests, all passing** (up from 111/2018 — net 0 new suites,
++12 tests).
+
+## Future scope, flagged not built (2026-09-21, product-owner note)
+
+- **More potion types/tiers, with a daily-rotating stock of only 3 available at a time** (out of a
+  larger catalog), weighted so better potions (bigger effect magnitude, longer duration, or both)
+  are rarer pulls — explicitly the CURRENT catalog's own 3-effect-type/1-tier-each shape evolving
+  into something closer to `companionShop.js`'s seeded-deterministic daily rotation, but with
+  potion QUALITY varying by roll, not just which slot is offered. Needs real design work before a
+  developer touches it: how many tiers, how the rarity weighting works, whether existing
+  `Potions.CATALOG` entries become one tier among several or get replaced outright, and how a
+  daily reroll interacts with the daily purchase limit shipped just above (does a reroll reset
+  what's already been bought, or run alongside it independently?). Not scoped, not started — a
+  future architect/product-owner pass, not a developer task yet.

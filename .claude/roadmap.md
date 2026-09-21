@@ -16453,3 +16453,46 @@ this feature's own historical design record, not a live spec).
 **Tests**: no new test files, no new test count — purely constant/signature changes with existing
 coverage updated to match. Full suite: **111 suites / 2018 tests, all passing** (unchanged from the
 previous entry — same suite/test count, different fixture values).
+
+## Trading Post: daily purchase limit, one per potion per player per day (2026-09-21, direct instruction — "make trade post have a limited stock for each player daily")
+
+Confirmed scope over two design questions before writing any code: **per-potion, not a flat total**
+(a player can buy each of the 3 potions once per day, not just 1 purchase across all 3), and
+**resets on the existing 8pm ET boundary** (the same one Quests/Companion Shop/Daily Login Streak
+already use), not a shared server-wide stock pool and not a rolling 24h-since-purchase cooldown —
+the last two were real candidate shapes this pass didn't silently pick between.
+
+**`tradingPostFactory.js`**: new `getDailyTag`, a byte-for-byte duplicate of
+`companionShopFactory.js`'s own (Eastern day, bumped at 8pm ET) — mirrored, not imported, per this
+codebase's established convention for these tiny date helpers. New `hasBoughtToday(userDetails,
+potionId, now)` reads a new `tradingPostDailyPurchases: { dailyTag, potionIds } | null` field
+lazily — a stale tag (yesterday's, or no record) always reads as "hasn't bought today," same
+"stale until overwritten" idiom `activePotion`/`world_buff` already use, no cron reset needed.
+`attemptPurchasePotion` gained the check right after the affordability gate; a successful purchase
+writes the new field in the SAME `updateUserFields` call as `potatoes`/`activePotion`, appending
+to (not replacing) today's existing list. A same-type EXTENSION purchase still counts against the
+day's limit for that potion, same as a fresh purchase.
+
+**`dynamoHandler.js`**: `tradingPostDailyPurchases: null` added to `getDefaultUserFields`, healed
+onto pre-existing accounts via the existing generic diff-and-heal loop. **`tradingPost.js`**:
+`buildBuyRow` disables a potion's button when already bought today, alongside the existing
+affordability check — a "doomed click should never even be possible," same precedent
+companionShop.js/companionMarket.js set, and consistent with THIS doc's own prior fix (this
+session's earlier "close the shop embed on purchase" entry above) rather than reversing it.
+**`embedFactory.js`**: `createTradingPostEmbed`'s per-potion field gained an "Already bought today"
+note, computed off the exact same `hasBoughtToday` check the button uses, so the two can never
+disagree.
+
+**Tests**: `tradingPostFactory.test.js` gained `getDailyTag`/`hasBoughtToday` describe blocks (6
+tests) plus a 5-test `daily purchase limit` describe under `attemptPurchasePotion` (rejects without
+touching potatoes/activePotion, records today's tag+potionId on success, a second same-day
+purchase appends rather than replaces, a stale list doesn't block a purchase and starts fresh, a
+same-type extension still counts against the limit). `tradingPost.test.js` gained one command-level
+case confirming the disabled button + embed note for an already-bought potion while a different
+potion's field/button stay normal. Full suite: **111 suites / 2030 tests, all passing** (up from
+111/2018 — net 0 new suites, +12 tests).
+
+**Not done this pass, flagged in `trading-post.md`'s own "Future scope" section**: the separately-
+raised idea of more potion tiers with a daily-rotating 3-of-many stock (weighted toward rarer,
+stronger potions) — real design work needed (tier count, rarity weighting, how a reroll interacts
+with THIS pass's own daily limit) before a developer touches it; not scoped, not started.

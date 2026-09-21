@@ -1,11 +1,12 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { resolveTradingPostScope, isScopeGuild, hasAnyLivePotion, findPotionById, attemptPurchasePotion } = require('../tradingPostFactory');
+const { resolveTradingPostScope, isScopeGuild, hasAnyLivePotion, findPotionById, getDailyTag, hasBoughtToday, attemptPurchasePotion } = require('../tradingPostFactory');
 const { Potions } = require('../constants');
 
 const workPotion = Potions.CATALOG.find(p => p.effectType === 'workMulti');
 const timerPotion = Potions.CATALOG.find(p => p.effectType === 'workTimer');
+const passivePotion = Potions.CATALOG.find(p => p.effectType === 'passiveAmount');
 
 function freshUser(overrides = {}) {
     return {
@@ -68,6 +69,42 @@ describe('findPotionById', () => {
 
     test('returns null for an unknown id', () => {
         expect(findPotionById('not-a-real-potion')).toBeNull();
+    });
+});
+
+describe('getDailyTag — 8pm ET boundary (same shape as companionShopFactory.js\'s own)', () => {
+    test('a moment before 8pm ET stays on the current Eastern calendar day', () => {
+        // 7:59pm ET on 2026-09-14 (EDT, UTC-4) is 23:59 UTC the same day.
+        expect(getDailyTag(new Date('2026-09-14T23:59:00Z'))).toBe('2026-09-14');
+    });
+
+    test('a moment at/after 8pm ET rolls to the next day', () => {
+        // 8:00pm ET on 2026-09-14 is 00:00 UTC on 2026-09-15.
+        expect(getDailyTag(new Date('2026-09-15T00:00:00Z'))).toBe('2026-09-15');
+    });
+});
+
+describe('hasBoughtToday — lazy reset, one purchase per potion per Eastern trading day', () => {
+    const now = new Date('2026-09-14T12:00:00Z'); // stays 2026-09-14 either side of 8pm ET
+    const today = getDailyTag(now);
+
+    test('false with no record at all', () => {
+        expect(hasBoughtToday(freshUser(), workPotion.id, now)).toBe(false);
+    });
+
+    test('false when today\'s record exists but doesn\'t include this potionId', () => {
+        const user = freshUser({ tradingPostDailyPurchases: { dailyTag: today, potionIds: [timerPotion.id] } });
+        expect(hasBoughtToday(user, workPotion.id, now)).toBe(false);
+    });
+
+    test('true when today\'s record includes this exact potionId', () => {
+        const user = freshUser({ tradingPostDailyPurchases: { dailyTag: today, potionIds: [workPotion.id] } });
+        expect(hasBoughtToday(user, workPotion.id, now)).toBe(true);
+    });
+
+    test('a STALE record (yesterday\'s tag) reads as false, even for a potionId it lists', () => {
+        const user = freshUser({ tradingPostDailyPurchases: { dailyTag: '2026-09-13', potionIds: [workPotion.id] } });
+        expect(hasBoughtToday(user, workPotion.id, now)).toBe(false);
     });
 });
 
@@ -176,5 +213,73 @@ describe('attemptPurchasePotion', () => {
         dynamoHandler.findUser.mockResolvedValue(freshUser({ guildId: 0, isMercenary: true, activePotion: null }));
         const result = await attemptPurchasePotion('u1', 'user1', workPotion.id);
         expect(result.ok).toBe(true);
+    });
+
+    // Daily stock limit (2026-09-21) — one purchase per potionId per Eastern trading day.
+    describe('daily purchase limit', () => {
+        test('rejects a potion already bought today, without touching potatoes/activePotion', async () => {
+            const today = getDailyTag();
+            dynamoHandler.findUser.mockResolvedValue(freshUser({
+                guildId: 'g1',
+                tradingPostDailyPurchases: { dailyTag: today, potionIds: [workPotion.id] },
+            }));
+
+            const result = await attemptPurchasePotion('u1', 'user1', workPotion.id);
+
+            expect(result.ok).toBe(false);
+            expect(result.message).toMatch(/already bought.*today/i);
+            expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        });
+
+        test('a successful purchase records today\'s tag and this potionId', async () => {
+            dynamoHandler.findUser.mockResolvedValue(freshUser({ guildId: 'g1', activePotion: null }));
+
+            await attemptPurchasePotion('u1', 'user1', workPotion.id);
+
+            const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setAttributes.tradingPostDailyPurchases).toEqual({ dailyTag: getDailyTag(), potionIds: [workPotion.id] });
+        });
+
+        test('buying a second potion the same day appends to, not replaces, today\'s list', async () => {
+            const today = getDailyTag();
+            dynamoHandler.findUser.mockResolvedValue(freshUser({
+                guildId: 'g1',
+                activePotion: null,
+                tradingPostDailyPurchases: { dailyTag: today, potionIds: [timerPotion.id] },
+            }));
+
+            await attemptPurchasePotion('u1', 'user1', passivePotion.id);
+
+            const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setAttributes.tradingPostDailyPurchases).toEqual({ dailyTag: today, potionIds: [timerPotion.id, passivePotion.id] });
+        });
+
+        test('a STALE list (yesterday\'s tag) is not carried forward — starts fresh, and does not block the purchase', async () => {
+            dynamoHandler.findUser.mockResolvedValue(freshUser({
+                guildId: 'g1',
+                activePotion: null,
+                tradingPostDailyPurchases: { dailyTag: '2020-01-01', potionIds: [workPotion.id] },
+            }));
+
+            const result = await attemptPurchasePotion('u1', 'user1', workPotion.id);
+
+            expect(result.ok).toBe(true);
+            const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setAttributes.tradingPostDailyPurchases).toEqual({ dailyTag: getDailyTag(), potionIds: [workPotion.id] });
+        });
+
+        test('same-type extension purchase still counts against the daily limit (records the tag/potionId too)', async () => {
+            const originalExpiresAt = Date.now() + 1000;
+            dynamoHandler.findUser.mockResolvedValue(freshUser({
+                guildId: 'g1',
+                activePotion: { potionId: workPotion.id, effectType: workPotion.effectType, value: workPotion.value, expiresAt: originalExpiresAt },
+            }));
+
+            const result = await attemptPurchasePotion('u1', 'user1', workPotion.id);
+
+            expect(result.ok).toBe(true);
+            const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+            expect(setAttributes.tradingPostDailyPurchases.potionIds).toContain(workPotion.id);
+        });
     });
 });
