@@ -707,7 +707,23 @@ function getDefaultUserFields(userId, username) {
         // identically to no potion at all — never actively cleared, same "leave it to go
         // stale until overwritten" convention world_buff already uses. See isPotionLive
         // below for the shared freshness+type check every consumption point reads.
-        activePotion: null
+        activePotion: null,
+        // Titles (systems/titles.md) — a Title id (string) or null. Cosmetic only, no stat
+        // power anywhere. Kept forever once set, even if the underlying condition later
+        // becomes false — see permanentTitles below for the one condition type that needs
+        // help enforcing that.
+        equippedTitle: null,
+        // Titles' one narrow persistence exception: 12 of the 13 v1 titles are backed by
+        // already-lifetime, never-reset counters (rebirthCount, mercenaryBountyWinCount,
+        // etc.), so checking them live forever gives the same answer as a permanent grant
+        // would — no storage needed. Guild Level (warlord_of_the_realm) is the one source
+        // that ISN'T a lifetime counter (leaving the guild that earned it would make a live
+        // check go false again), and the product owner's explicit instruction is "keep the
+        // title forever even if they leave guild life" — so this array exists ONLY to make
+        // that one condition type permanent, written to once by titleFactory.isTitleUnlocked
+        // the first time its live guild-level check comes back true. Never written to for
+        // any of the other 12 titles.
+        permanentTitles: []
     };
 }
 
