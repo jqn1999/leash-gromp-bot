@@ -486,7 +486,7 @@ deliberate, low-risk exception left coupled to `Raid`, since it's a shared *conc
 12-tier rework touched.
 
 `mercenaryFactory.getBandLetter(tierEntry.tier)` maps the rolled numeric 1-12 tier down to
-the 3-band `I`/`II`/`III` shape `BountyScenarios`/`BountyStatReward`/`STARCH_TIER_MULTIPLIER`/
+the 3-band `I`/`II`/`III` shape `BountyScenarios`/`BountyStatReward`/
 `MercenaryCompanionDrop.YUKON_CHANCE`/`Rival.NOTORIETY_PER_BOUNTY_TIER` all still use for
 flavor text, the rare stat-reward roll, currency ratios, and notoriety (B1-4→I, B5-8→II,
 B9-12→III) — deliberately reused rather than authoring 12 tiers' worth of fresh content for
@@ -494,32 +494,36 @@ a rework scoped to difficulty/reward/penalty/tier-selection. See those sections 
 
 ### Reward/penalty formula
 
-On a **win**, for a potato-flavored scenario:
+Both currencies share ONE formula now (2026-09-21 rebalance, player-reported: "the starch
+side of t6 looks way higher than the potato side" — see `Bounty.STARCH_REFERENCE_PRICE`'s
+own comment in `constants.js` for the full derivation). On a **win**:
 
 ```
 rangeRoll  = getRandomFromInterval(.8, 1.2)
 rankInfo   = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount)
 yukonBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent")   // 0 if not equipped
-reward = round(tierEntry.reward * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonBonus))
+base       = scenario.currency === 'potato' ? tierEntry.reward : tierEntry.starchReward
+reward = round(base * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonBonus))
 ```
 
-For a starch-flavored scenario (reuses Taro Trader's own shape, scaled by
-`Bounty.STARCH_TIER_MULTIPLIER[bandLetter]` — never discounted by the now-retired
-`SOLO_BOUNTY_REWARD_SHARE` in the first place, since guild raids never pay starches so
-there was never an analogous "don't out-earn guild" risk to guard against here):
+`tierEntry.starchReward` is a precomputed, fixed-per-tier constant —
+`round(tierEntry.reward / Bounty.STARCH_REFERENCE_PRICE)` (13,000 potatoes/starch, the same
+reference price Golden Yam is pegged against — see `GOLDEN_YAM_MULTIPLIER_MIN`/`MAX`'s own
+comment) — baked directly into `Bounty.TIERS`, not computed live.
 
-```
-totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier
-base = round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[bandLetter]
-starchReward = round(base * rankInfo.rewardMultiplier * (1 + yukonBonus))
-```
-
-(`guildMultiplier` is always 0 for a mercenary — a mercenary can never be guilded — but the
-formula still calls the standard `getGuildWorkMulti` helper for consistency with every
-other Taro-shaped reward. `companionMultiplier` = `workFactory.js`'s `getCompanionWorkMulti`
-— added 2026-08-24, fixing a gap where `resolveNpcRob`/`resolveYukonAward` already included
-the equipped companion's `workMultiplierPercent` perk in their identically-shaped reward
-formulas but this branch didn't.)
+**Retired, 2026-09-21**: the old starch-flavored formula reused Taro Trader's own shape
+(`round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) *
+Bounty.STARCH_TIER_MULTIPLIER[bandLetter]`, where `totalMultiplier` folded in the winner's
+own `workMultiplierAmount` + guild/companion/world-buff/potion work-multiplier terms) — this
+meant the starch reward grew with the WINNER's own power while the potato side of the exact
+same tier stayed fixed regardless of it, unlike Golden Yam/Golden Potato (which both scale
+off `effectiveMultiplier`, so a single MIN/MAX retune keeps them proportional at every power
+level). Verified directly: at T6's own difficulty (~111) the old formula averaged ~6.5x T6's
+own potato reward at every rank alike (rank cancels out of the ratio — applied identically
+to both sides), growing without bound above that reference power since only the starch side
+scaled with it at all. `Bounty.STARCH_TIER_MULTIPLIER` itself was removed as dead code —
+`getBandLetter`'s output is still used for `BountyScenarios`/`BountyStatReward`/
+`MercenaryCompanionDrop.YUKON_CHANCE`, just no longer for pricing.
 
 On a **loss** (regardless of which scenario currency was drawn — the penalty always
 denominates in potatoes, representing the physical risk of the attempt itself):

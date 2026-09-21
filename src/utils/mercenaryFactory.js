@@ -141,7 +141,7 @@ async function resolveBountyAttempt(userDetails, mode) {
     const tierEntry = mode === 'baby'
         ? Bounty.TIERS[0]
         : rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
-    const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase } = tierEntry;
+    const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase, starchReward: starchRewardBase } = tierEntry;
     const bandLetter = getBandLetter(tierNum);
 
     const successChance = Math.min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
@@ -169,36 +169,17 @@ async function resolveBountyAttempt(userDetails, mode) {
     if (won) {
         const yukonRewardBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent");
 
-        if (scenario.currency === 'potato') {
-            const rangeRoll = getRandomFromInterval(.8, 1.2);
-            result.rewardAmount = Math.round(rewardBase * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
-        } else {
-            const userMultiplier = userDetails.workMultiplierAmount;
-            const guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier); // always 0 for a
-                                                                                            // mercenary (can
-                                                                                            // never be guilded)
-                                                                                            // — kept for
-                                                                                            // consistency with
-                                                                                            // every other
-                                                                                            // Taro-shaped reward
-            const companionMultiplier = getCompanionWorkMulti(userDetails, userMultiplier); // Sprout/Firefly/
-                                                                                              // Spudsprite/Mochi's
-                                                                                              // workMultiplierPercent
-                                                                                              // — was missing here
-                                                                                              // even though resolveNpcRob
-                                                                                              // and resolveYukonAward
-                                                                                              // both already include it
-            // World Boss's workMulti buff (2026-09-04, direct instruction) — same absolute-
-            // amount shape every /work-shaped reward already uses (workFactory.js's own
-            // effectiveMultiplier), was missing here the same way companionMultiplier was.
-            const worldBuffMultiplier = await getWorldBuffWorkMulti(userMultiplier);
-            // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as
-            // every other term here.
-            const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
-            const totalMultiplier = userMultiplier + guildMultiplier + companionMultiplier + worldBuffMultiplier + potionMultiplier;
-            const base = Math.round(getRandomFromInterval(totalMultiplier, 1.5 * totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER[bandLetter];
-            result.rewardAmount = Math.round(base * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
-        }
+        // Both currencies share the exact same roll shape now (2026-09-21, direct
+        // instruction — see Bounty.STARCH_REFERENCE_PRICE's own comment in constants.js):
+        // this tier's own fixed base (rewardBase potatoes, or starchRewardBase starches —
+        // rewardBase's own value already converted to an equivalent starch count at the
+        // 13,000-potato reference price) times the same .8-1.2 range roll, rank multiplier,
+        // and Yukon bonus. Neither currency depends on the WINNER's own workMultiplierAmount
+        // any more — true parity between the two at every tier/rank/power level, not just
+        // at one reference point.
+        const rangeRoll = getRandomFromInterval(.8, 1.2);
+        const base = scenario.currency === 'potato' ? rewardBase : starchRewardBase;
+        result.rewardAmount = Math.round(base * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
 
         result.statReward = rollBountyStatReward(bandLetter, userDetails);
         result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[bandLetter];

@@ -3035,8 +3035,8 @@ const Bounty = {
     // unconditionally — mirrors Baby Raid's own "guaranteed T1, no risk of a harsh roll"
     // role for brand-new guilds. `tier` is a plain 1-12 number (no more Roman-numeral
     // I/II/III letters) — mercenaryFactory.getBandLetter(tier) maps it down to the 3-band
-    // I/II/III shape BountyScenarios/BountyStatReward/STARCH_TIER_MULTIPLIER/
-    // MercenaryCompanionDrop.YUKON_CHANCE/Rival.NOTORIETY_PER_BOUNTY_TIER still use for
+    // I/II/III shape BountyScenarios/BountyStatReward/MercenaryCompanionDrop.YUKON_CHANCE/
+    // Rival.NOTORIETY_PER_BOUNTY_TIER still use for
     // flavor/rare-stat-reward/currency-ratio purposes (B1-4->I, B5-8->II, B9-12->III) —
     // deliberately reused rather than authoring 12 tiers' worth of fresh flavor text.
     //
@@ -3117,27 +3117,44 @@ const Bounty = {
     // changes — the player's own "what we had originally before the latest changes today"
     // was confirmed to land exactly there, not approximately. This is the CURRENT, correct
     // table.
+    // starchReward (2026-09-21, direct instruction, player-reported: "the starch side of
+    // t6 looks way higher than the potato side") — replaces the old STARCH_TIER_MULTIPLIER
+    // band-scaled-by-player-power formula entirely. That formula reused Taro Trader's own
+    // shape (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))
+    // * a per-band multiplier), which meant the starch reward grew with the WINNER's own
+    // workMultiplierAmount while `reward` above (the potato side, same tier) stays fixed
+    // regardless of player power — the two currencies were never peers in shape the way
+    // Golden Yam/Golden Potato are (both of those scale off effectiveMultiplier, so a
+    // single MIN/MAX retune made them proportional at every power level). Verified directly
+    // (not estimated): at a representative T6 power level (~111, matching this tier's own
+    // `difficulty`), the old formula's average starch payout worked out to roughly 6.5x
+    // T6's own potato reward at every rank alike (the rank multiplier cancels out of the
+    // ratio, since it's applied identically to both sides) — and grows without bound past
+    // that reference power, since only the starch side scales with it at all.
+    // starchReward here is `round(reward / STARCH_REFERENCE_PRICE)` — this tier's own
+    // potato reward converted to an equivalent starch count at the SAME 13,000-potato
+    // reference price Golden Yam already uses (constants.js:92-98's own "bring it up so
+    // if starches were each worth 13000 the golden tater is equal" precedent) — then rolled
+    // through the exact same shape as the potato reward above
+    // (round(starchReward * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier *
+    // (1 + yukonRewardBonus)), see mercenaryFactory.js's resolveBountyAttempt), not the old
+    // Taro-style 1x-1.5x range — true parity with the potato side at every tier, every
+    // rank, and every player power level now, not just at one reference point.
+    STARCH_REFERENCE_PRICE: 13000,
     TIERS: [
-        { tier: 1,  difficulty: 10,   reward: 41000,    penalty: -41000 },       // 1.00x
-        { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000 },       // 1.05x
-        { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000 },      // 1.18x
-        { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000 },      // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000 },      // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000 },     // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000 },     // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000 },     // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000 },     // 1.73x
-        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000 },    // 1.82x
-        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000 },    // 1.91x
-        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000 },    // 2.00x — set to exactly reward*2
+        { tier: 1,  difficulty: 10,   reward: 41000,    penalty: -41000,      starchReward: 3 },    // 1.00x
+        { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000,      starchReward: 6 },    // 1.05x
+        { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000,     starchReward: 10 },   // 1.18x
+        { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000,     starchReward: 17 },   // 1.29x
+        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000,     starchReward: 31 },   // 1.37x
+        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000,    starchReward: 53 },   // 1.46x
+        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000,    starchReward: 93 },   // 1.54x
+        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000,    starchReward: 159 },  // 1.64x
+        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000,    starchReward: 273 },  // 1.73x
+        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000,   starchReward: 468 },  // 1.82x
+        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000,   starchReward: 810 },  // 1.91x
+        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000,   starchReward: 1896 }, // 2.00x — set to exactly reward*2
     ],
-    // Starch-flavored scenarios reuse Taro Trader's own formula
-    // (round(getRandomFromInterval(userMulti+guildMulti, 1.5*(userMulti+guildMulti)))),
-    // scaled by this per-BAND multiplier (see the banding note above) — unaffected by the
-    // SOLO_BOUNTY_REWARD_SHARE retirement above, since starch rewards were never
-    // discounted by it in the first place (guild raids never pay starches, so there was
-    // never an analogous "don't out-earn guild" risk to guard against here).
-    STARCH_TIER_MULTIPLIER: { I: 1, II: 2.5, III: 5 },
     // House tax on a WON bounty (2026-08-31, direct instruction: "add 5% bounty tax,
     // nothing on rob-npc") — taken off the top of result.rewardAmount before crediting the
     // winner, same "taken out of a gross amount" shape every other percentage-of-reward
