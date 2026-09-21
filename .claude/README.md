@@ -54,11 +54,13 @@ those AWS services.
   Multiplier/Cooldown-Skip Chance/Passive Income boosts), gated the same `scopeKey` way as Guild
   Chat Sync/Merc Faction Hall. No companion marketplace involved — that idea was dropped from
   this feature during scoping.
-- [systems/seasonal-festivals.md](systems/seasonal-festivals.md) — **design only, not implemented**
-  — time-boxed festivals: an admin-started/DB-persisted calendar window (Spud Keep's
-  persisted-`expiresAt` pattern, not Quests' derived-tag one), a festival-only quest-shaped
-  objective pool reusing Quests' delta/snapshot tracking, Festival Tokens, and a temporary festival
-  shop reusing Companion Shop's rotation mechanism.
+- [systems/seasonal-festivals.md](systems/seasonal-festivals.md) — **shipped** — time-boxed festivals:
+  an admin-started/DB-persisted window (Spud Keep's persisted-`expiresAt` pattern, not Quests'
+  derived-tag one), a festival-only quest-shaped objective pool reusing Quests' delta/snapshot
+  tracking, Festival Tokens (lazy tag-mismatch expiry), a temporary festival shop reusing Companion
+  Shop's seeded-rotation mechanism (cosmetics + guaranteed-outcome Encounter Vouchers), and a
+  DB-persisted odds-override composed alongside `EventFactory`'s own hourly roll. Titles integration
+  for cosmetic rewards is a deferred follow-up (Titles hadn't landed in this build's worktree yet).
 - [systems/feature-ideas.md](systems/feature-ideas.md) — a broad, organized brainstorm of candidate
   features/systems the game could add or deepen, triaged by category with effort/risk/cross-repo
   notes — pure ideation, not a build spec. Check here before assuming an idea hasn't been considered.

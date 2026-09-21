@@ -241,7 +241,17 @@ class WorkFactory {
     // was permanently dead weight. See systems/companions.md's Prospector section for the
     // full history if this mechanism (or a future Metal-focused companion) is ever
     // revisited.
-    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
+    // trackProgress (default true, every real /work call) gates the THREE pieces of
+    // progress-tracking state that — contrary to the original Seasonal Festivals design
+    // pass's own assumption that these handlers were already fully decoupled from
+    // performWork's wrapper — actually live INSIDE this handler: the workScenarioCounts
+    // counter Quests/Achievements key off, the workCount ADD, and the cooldown timer write.
+    // Festival Encounter Vouchers (systems/seasonal-festivals.md) redeem this handler
+    // directly to guarantee the outcome, and are required to NOT touch workCount/cooldown/
+    // Quest/Achievement progress — passing trackProgress=false skips exactly those three
+    // writes while still applying the real potato/stat payout, so a normal /work call
+    // (which never passes this option) is completely unaffected.
+    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true } = {}) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
@@ -281,21 +291,25 @@ class WorkFactory {
         sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
         sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
 
-        let workScenarioCounts = userDetails.workScenarioCounts;
-        workScenarioCounts.metalSuccess += 1;
-
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
-
-        await dynamoHandler.updateUserFields(userId, {
+        const setFields = {
             potatoes: userPotatoes,
             totalEarnings: userTotalEarnings,
             workMultiplierAmount: userMultiplier,
             passiveAmount: userPassiveAmount,
             bankCapacity: userBankCapacity,
             sweetPotatoBuffs: sweetPotatoBuffs,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        };
+        const addFields = {};
+
+        if (trackProgress) {
+            let workScenarioCounts = userDetails.workScenarioCounts;
+            workScenarioCounts.metalSuccess += 1;
+            setFields.workScenarioCounts = workScenarioCounts;
+            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            addFields.workCount = 1;
+        }
+
+        await dynamoHandler.updateUserFields(userId, setFields, addFields);
 
         // statGrant (2026-09-18, direct instruction) — see handleSweetPotato's own comment;
         // Metal Potato grants all three permanent stats at once, so this is always length 3.
@@ -309,7 +323,8 @@ class WorkFactory {
         };
     }
 
-    async handleSweetPotato(userDetails) {
+    // trackProgress — see handleMetalPotato's own comment on this option immediately above.
+    async handleSweetPotato(userDetails, { trackProgress = true } = {}) {
         const userId = userDetails.userId;
         let userMultiplier = userDetails.workMultiplierAmount;
         let userPassiveAmount = userDetails.passiveAmount;
@@ -343,17 +358,18 @@ class WorkFactory {
                 break;
         }
 
-        let workScenarioCounts = userDetails.workScenarioCounts;
-        workScenarioCounts.sweet += 1;
+        const setFields = { ...setAttributes, sweetPotatoBuffs: sweetPotatoBuffs };
+        const addFields = {};
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        if (trackProgress) {
+            let workScenarioCounts = userDetails.workScenarioCounts;
+            workScenarioCounts.sweet += 1;
+            setFields.workScenarioCounts = workScenarioCounts;
+            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            addFields.workCount = 1;
+        }
 
-        await dynamoHandler.updateUserFields(userId, {
-            ...setAttributes,
-            sweetPotatoBuffs: sweetPotatoBuffs,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        await dynamoHandler.updateUserFields(userId, setFields, addFields);
 
         // statGrant (2026-09-18, direct instruction — "make sweet and metal show the numbers
         // on the bot too", matching the website's own gromp-economy port of the same fix)

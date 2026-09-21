@@ -11,10 +11,14 @@ jest.mock('../../guilds/guildChat', () => ({
     addChatChannelIndexEntry: jest.fn().mockResolvedValue(),
     removeChatChannelIndexEntry: jest.fn().mockResolvedValue(),
 }));
+jest.mock('../../../utils/festivalFactory', () => ({
+    startFestival: jest.fn(),
+}));
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback } = require('../admin');
+const festivalFactory = require('../../../utils/festivalFactory');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -413,5 +417,70 @@ describe('/admin set-merc-chat-channel', () => {
             expect(client.channels.fetch).not.toHaveBeenCalled();
             expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('merc_faction_chat_channel', { channelId: null, roleId: null, webhookId: null, webhookUrl: null });
         });
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin start-festival — folded in from the standalone adminStartFestival.js built in
+// Seasonal Festivals' isolated worktree (admin.js didn't exist there yet); this is that
+// command's first test coverage, same shape as the trigger-event/set-activity-channel
+// describe blocks above (fake interaction options + a fake client.channels.fetch/send).
+// ---------------------------------------------------------------------------------------
+describe('/admin start-festival', () => {
+    function fakeInteraction({ festival, durationDays, announce } = {}) {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: {
+                get: (name) => {
+                    if (name === 'festival' && festival !== undefined) return { value: festival };
+                    if (name === 'duration_days' && durationDays !== undefined) return { value: durationDays };
+                    if (name === 'announce' && announce !== undefined) return { value: announce };
+                    return undefined;
+                },
+            },
+        };
+    }
+
+    function fakeClient() {
+        const channel = { send: jest.fn().mockResolvedValue() };
+        return { channels: { fetch: jest.fn().mockResolvedValue(channel) }, __channel: channel };
+    }
+
+    test('rejects an unrecognized festival id without touching festivalFactory further', async () => {
+        festivalFactory.startFestival.mockResolvedValue(null);
+        const interaction = fakeInteraction({ festival: 'not_a_festival', durationDays: 7 });
+        const client = fakeClient();
+
+        await startFestivalCallback(client, interaction);
+
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/isn't a recognized festival/i));
+        expect(client.channels.fetch).not.toHaveBeenCalled();
+    });
+
+    test('starts a festival and announces it by default', async () => {
+        const now = Date.now();
+        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'harvest_festival', startsAt: now, endsAt: now + 7 * 24 * 60 * 60 * 1000 });
+        const interaction = fakeInteraction({ festival: 'harvest_festival', durationDays: 7 });
+        const client = fakeClient();
+
+        await startFestivalCallback(client, interaction);
+
+        expect(festivalFactory.startFestival).toHaveBeenCalledWith('harvest_festival', 7);
+        expect(client.channels.fetch).toHaveBeenCalledWith('1188525931346792498');
+        expect(client.__channel.send).toHaveBeenCalledWith(expect.stringContaining('Harvest Festival'));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('announced'));
+    });
+
+    test('announce:false starts the festival without posting anything', async () => {
+        const now = Date.now();
+        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'frost_fair', startsAt: now, endsAt: now + 3 * 24 * 60 * 60 * 1000 });
+        const interaction = fakeInteraction({ festival: 'frost_fair', durationDays: 3, announce: false });
+        const client = fakeClient();
+
+        await startFestivalCallback(client, interaction);
+
+        expect(client.channels.fetch).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('no announcement sent'));
     });
 });

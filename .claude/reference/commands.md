@@ -18,6 +18,8 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `titles.js` | `/titles` | Full Title list (unlocked + locked-with-progress), same shape as `/achievements`, self or a target user — see [systems/titles.md](../systems/titles.md) |
 | `setTitle.js` | `/set-title title:<autocomplete>` | Equip (or `none` to clear) a cosmetic Title shown on `/profile` — autocomplete lists only titles you've earned, server-side revalidated, no switch cooldown (purely cosmetic) — see [systems/titles.md](../systems/titles.md) |
 | `quests.js` | `/quests` | Active daily/weekly quest list with progress, self or a target user (read-only, doesn't snapshot/claim) — see [systems/quests.md](../systems/quests.md) |
+| `festival.js` | `/festival` | Read-only status view of the current admin-started Seasonal Festival — fixed 3-objective progress plus your live (lazy-expiry-checked) Festival Token balance; a clear "no festival running" message when none is active — see [systems/seasonal-festivals.md](../systems/seasonal-festivals.md) |
+| `festivalShop.js` | `/festival-shop` | Browse/buy the current festival's small fixed cosmetic + Encounter Voucher catalog with flat Festival Token pricing (buy button per item, disabled once purchased or unaffordable) — a voucher purchase guarantees that `/work` scenario's outcome on the spot, shown as its own follow-up result embed — see [systems/seasonal-festivals.md](../systems/seasonal-festivals.md) |
 | `companion.js` | `/companion` | Paginated list of owned companions (or, via optional `target-user`, another user's — read-only, no equip buttons) with a per-page equip button row on your own list — clicking the active companion's own button unequips it instead, disabled otherwise only for a scavenging companion — see [systems/companions.md](../systems/companions.md) |
 | `companionMarket.js` | `/companion-market` | Not ephemeral (others can see it) but invoker-only buttons — paginated browser of active companion market listings with numbered buy buttons (1-5 per page, no price on the label, disabled for your own listings) — see [systems/companions.md](../systems/companions.md) |
 | `companionSell.js` | `/companion-sell` | Takes only an asking `price` option — opens a paginated embed of your own owned companions with a per-page sell button row (disabled for scavenging or below that tier's price floor), confirm/cancel flow, escrow — see [systems/companions.md](../systems/companions.md) |
@@ -128,12 +130,14 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 ## `moderation/`
 
-One shared `devOnly` + Administrator command, `/admin <subcommand>` (`admin.js`), consolidates 8
-formerly-separate top-level commands as Discord Subcommands — done 2026-09-20 specifically to claw
-back command slots after `getLocalCommands()` hit Discord's 100-command-per-guild cap on startup
-(see `roadmap.md`'s dated incident entry). Each subcommand's own logic is exported from `admin.js`
-individually (`giveCallback`, `resetTowerCallback`, etc.) for direct unit testing, mirroring
-`guildChat.js`'s own run-function-export precedent.
+One shared `devOnly` + Administrator command, `/admin <subcommand>` (`admin.js`), consolidates 9
+formerly-separate top-level commands as Discord Subcommands — 8 done 2026-09-20 specifically to
+claw back command slots after `getLocalCommands()` hit Discord's 100-command-per-guild cap on
+startup (see `roadmap.md`'s dated incident entry), plus `start-festival` folded in during the
+Seasonal Festivals build rather than shipping as its own new top-level command (see
+`seasonal-festivals.md`). Each subcommand's own logic is exported from `admin.js` individually
+(`giveCallback`, `resetTowerCallback`, etc.) for direct unit testing, mirroring `guildChat.js`'s
+own run-function-export precedent.
 
 | File | Command | Summary |
 |---|---|---|
@@ -145,4 +149,5 @@ individually (`giveCallback`, `resetTowerCallback`, etc.) for direct unit testin
 | `admin.js` | `/admin trigger-world-boss boss:<choice>` | Spawns a specific world boss, posting the announcement to the world-event channel |
 | `admin.js` | `/admin set-activity-channel type:<choice> channel:<channel> disable:<bool>` | Sets (or clears) a webhook-delivered channel for website activity — either the normal feed or the colorized Big Events feed — see [systems/server-activity-channel.md](../systems/server-activity-channel.md) |
 | `admin.js` | `/admin set-merc-chat-channel disable:<bool>` | Provisions (or tears down) the Merc Faction Hall, a shared chat channel gated to `isMercenary` players — see [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20) |
+| `admin.js` | `/admin start-festival festival:<choice> duration_days:<n> announce:<bool>` | Starts a Seasonal Festival window, persisted (survives a restart) via `active_festival` — see [systems/seasonal-festivals.md](../systems/seasonal-festivals.md) |
 | `setCommandChannels.js` | `/set-command-channels` | **Not** `devOnly` (Administrator-gated separately) — per-guild allowlist of channels commands may run in; exempt from its own restriction so an admin can never lock themselves out — see [systems/command-channels.md](../systems/command-channels.md) |

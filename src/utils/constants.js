@@ -2562,6 +2562,190 @@ const SpudKeep = {
     ATTACKER_BONUS_STREAK_CAP: 4
 }
 
+// Seasonal Festivals (systems/seasonal-festivals.md) — a time-boxed, admin-started
+// server-wide event (`/admin start-festival`), scheduling modeled directly on Spud Keep's
+// own persisted-expiresAt doc (`active_festival`, dynamoHandler.getActiveFestival/
+// setActiveFestival) rather than Quests' derived-tag shape, since a festival's window is
+// arbitrary (whenever an admin starts one) rather than a fixed, predictable cadence.
+const Festival = {
+    // /admin start-festival's own duration clamp — the brainstorm's own "1-2 week" framing,
+    // widened slightly on the low end for a quick same-day test run.
+    MIN_DURATION_DAYS: 1,
+    MAX_DURATION_DAYS: 14,
+
+    // Display-only labels — the underlying persisted fields (festivalTokens,
+    // festivalTokensFestivalId) are one generic pair shared by every festival, themed only
+    // here at the display layer (systems/seasonal-festivals.md's own "Currency" section).
+    NAME: {
+        harvest_festival: "Harvest Festival",
+        frost_fair: "Frost Fair",
+        spring_planting: "Spring Planting",
+    },
+    TOKEN_LABEL: {
+        harvest_festival: "Harvest Tokens",
+        frost_fair: "Frost Fair Coins",
+        spring_planting: "Spring Seeds",
+    },
+
+    // The odds-boost piece (systems/seasonal-festivals.md's own "genuinely does NOT fit as
+    // just run an hourly event" section) — a second, independent, DB-persisted multiplier
+    // composed ALONGSIDE EventFactory's own live hourly roll, never merged into it (see
+    // festivalFactory.applyFestivalOddsOverride). One scenario per festival, themed to
+    // match that festival's own objectives above (Harvest leans into Sweet Potato, Frost
+    // Fair into surviving Poison Potato, Spring Planting into Taro trading).
+    ODDS_OVERRIDE: {
+        harvest_festival: { scenario: "sweet", multiplier: 1.5 },
+        frost_fair: { scenario: "poison", multiplier: 1.5 },
+        spring_planting: { scenario: "taro", multiplier: 1.5 },
+    }
+}
+
+// Fixed, complete 3-objective set per festival — NOT a rotated subset like Quests' own
+// pool (see systems/seasonal-festivals.md's "Objective pool" section for why a 1-2 week
+// single-themed event doesn't need daily variety the way an indefinitely-reused Quest pool
+// does). Same `{ id, name, description, statPath, tiers }` shape Quests already use,
+// resolved the same delta-since-baseline way (festivalFactory.checkAndClaimFestivalQuests),
+// just keyed on `festivalId` instead of `rotationDate` for staleness. Every statPath here
+// already exists (workCount, workScenarioCounts.*) — zero new tracked counters, matching
+// how a real Quest/Guild Contract objective is already phrased today. Tier thresholds/
+// rewards are the design's own illustrative numbers (systems/seasonal-festivals.md's
+// "Currency" section), not a locked balance pass.
+const FestivalTemplates = {
+    harvest_festival: [
+        {
+            id: "festival_harvest_work", name: "Bring in the Harvest", category: "festival", statPath: "workCount",
+            description: "Complete /work sessions during the Harvest Festival for scaling Harvest Token rewards: 50/150/400 sessions for 15/35/90 tokens",
+            tiers: [
+                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+            ]
+        },
+        {
+            id: "festival_harvest_sweet", name: "Sweet Potato Bounty", category: "festival", statPath: "workScenarioCounts.sweet",
+            description: "Find Sweet Potatoes during the Harvest Festival: 10/25/60 finds for 20/45/110 tokens",
+            tiers: [
+                { threshold: 10, reward: { type: "festivalTokens", amount: 20 } },
+                { threshold: 25, reward: { type: "festivalTokens", amount: 45 } },
+                { threshold: 60, reward: { type: "festivalTokens", amount: 110 } },
+            ]
+        },
+        {
+            id: "festival_harvest_companion", name: "Feast Among Friends", category: "festival", statPath: "workScenarioCounts.companion",
+            description: "Meet Wandering Companions during the Harvest Festival: 12/25/55 finds for 20/45/110 tokens",
+            tiers: [
+                { threshold: 12, reward: { type: "festivalTokens", amount: 20 } },
+                { threshold: 25, reward: { type: "festivalTokens", amount: 45 } },
+                { threshold: 55, reward: { type: "festivalTokens", amount: 110 } },
+            ]
+        },
+    ],
+    frost_fair: [
+        {
+            id: "festival_frost_work", name: "Brave the Frost Roads", category: "festival", statPath: "workCount",
+            description: "Complete /work sessions during the Frost Fair: 50/150/400 sessions for 15/35/90 tokens",
+            tiers: [
+                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+            ]
+        },
+        {
+            id: "festival_frost_poison", name: "Guard the Frozen Stores", category: "festival", statPath: "workScenarioCounts.poison",
+            description: "Survive Poison Potatoes during the Frost Fair: 8/18/35 survived for 20/45/110 tokens",
+            tiers: [
+                { threshold: 8, reward: { type: "festivalTokens", amount: 20 } },
+                { threshold: 18, reward: { type: "festivalTokens", amount: 45 } },
+                { threshold: 35, reward: { type: "festivalTokens", amount: 110 } },
+            ]
+        },
+        {
+            id: "festival_frost_goldenyam", name: "Chase the Golden Yam", category: "festival", statPath: "workScenarioCounts.goldenYam",
+            description: "Find the rare Golden Yam during the Frost Fair: 1/2/4 finds for 25/55/140 tokens",
+            tiers: [
+                { threshold: 1, reward: { type: "festivalTokens", amount: 25 } },
+                { threshold: 2, reward: { type: "festivalTokens", amount: 55 } },
+                { threshold: 4, reward: { type: "festivalTokens", amount: 140 } },
+            ]
+        },
+    ],
+    spring_planting: [
+        {
+            id: "festival_spring_work", name: "Plant the Fields", category: "festival", statPath: "workCount",
+            description: "Complete /work sessions during Spring Planting: 50/150/400 sessions for 15/35/90 tokens",
+            tiers: [
+                { threshold: 50, reward: { type: "festivalTokens", amount: 15 } },
+                { threshold: 150, reward: { type: "festivalTokens", amount: 35 } },
+                { threshold: 400, reward: { type: "festivalTokens", amount: 90 } },
+            ]
+        },
+        {
+            id: "festival_spring_companion", name: "Court the Sprouting Companions", category: "festival", statPath: "workScenarioCounts.companion",
+            description: "Meet Wandering Companions during Spring Planting: 12/25/55 finds for 20/45/110 tokens",
+            tiers: [
+                { threshold: 12, reward: { type: "festivalTokens", amount: 20 } },
+                { threshold: 25, reward: { type: "festivalTokens", amount: 45 } },
+                { threshold: 55, reward: { type: "festivalTokens", amount: 110 } },
+            ]
+        },
+        {
+            id: "festival_spring_taro", name: "Trade the Spring Crop", category: "festival", statPath: "workScenarioCounts.taro",
+            description: "Trade with Taro Traders during Spring Planting: 10/25/60 trades for 20/45/110 tokens",
+            tiers: [
+                { threshold: 10, reward: { type: "festivalTokens", amount: 20 } },
+                { threshold: 25, reward: { type: "festivalTokens", amount: 45 } },
+                { threshold: 60, reward: { type: "festivalTokens", amount: 110 } },
+            ]
+        },
+    ],
+}
+
+// The festival shop — reuses Companion Shop's seeded-deterministic-offering TRICK
+// (createSeededRandom/xmur3/mulberry32), but not its rotation shape: `tag` is the
+// festival's own festivalId, so the lineup is fixed for the whole festival window and
+// never re-rolls (systems/seasonal-festivals.md's own "genuine branching differences"
+// section). Unlike Companion Shop, items here are a small fixed CATALOG (not rolled from a
+// rarity table) since there's no rarity concept for a cosmetic/voucher — every item is
+// hand-authored, flat `festivalTokens`-priced. Two item shapes:
+//   - `{ itemType: "cosmetic", cosmeticId }` — flips an entry into the owner's
+//     festivalCosmetics array (systems/seasonal-festivals.md's "Rewards" section; Titles
+//     integration is a deferred follow-up once titleFactory.js lands).
+//   - `{ itemType: "voucher", scenarioHandler }` — guarantees one specific /work scenario's
+//     outcome on demand (CONFIRMED by product owner 2026-09-20, "Encounter Vouchers"),
+//     dispatched by festivalFactory.redeemVoucher directly against workFactory's own
+//     standalone scenario handler, bypassing performWork's roll/cooldown/workCount wrapper
+//     entirely. Only Harvest Festival catalogs one for v1 (Sweet Potato, matching that
+//     festival's own "Sweet Potato Bounty" objective's theme) — the mechanism itself is
+//     generic (see workFactory.js's `trackProgress` option on handleSweetPotato/
+//     handleMetalPotato), so cataloging more is purely a data addition later.
+const FestivalShop = {
+    harvest_festival: {
+        items: [
+            { id: "harvest_cosmetic_banner", itemType: "cosmetic", cosmeticId: "harvest_festival_banner", name: "Harvest Banner", description: "A banner to fly proudly over your stall for the rest of the season.", cost: 60 },
+            { id: "harvest_cosmetic_sash", itemType: "cosmetic", cosmeticId: "harvest_festival_champion_flair", name: "Harvest Champion's Sash", description: "A woven sash marking a champion of the Harvest Festival.", cost: 120 },
+            { id: "harvest_voucher_sweet", itemType: "voucher", scenarioHandler: "handleSweetPotato", name: "Sweet Potato Charm", description: "A charmed root that guarantees a Sweet Potato encounter the moment it's used.", cost: 150 },
+            { id: "harvest_cosmetic_crown", itemType: "cosmetic", cosmeticId: "harvest_festival_potato_crown", name: "Potato King's Harvest Crown", description: "A crown of gilded potato leaves, awarded only during the Harvest Festival.", cost: 250 },
+            { id: "harvest_cosmetic_grand", itemType: "cosmetic", cosmeticId: "harvest_festival_grand_laurel", name: "Grand Harvest Laurel", description: "The rarest laurel of the season, for those who cleared every ladder.", cost: 400 },
+        ]
+    },
+    frost_fair: {
+        items: [
+            { id: "frost_cosmetic_lantern", itemType: "cosmetic", cosmeticId: "frost_fair_ice_lantern", name: "Ice Lantern Charm", description: "A charm shaped like the fair's own frozen-river lanterns.", cost: 60 },
+            { id: "frost_cosmetic_cloak", itemType: "cosmetic", cosmeticId: "frost_fair_laureate_cloak", name: "Frost Fair Laureate's Cloak", description: "A frost-rimed cloak awarded to Frost Fair laureates.", cost: 120 },
+            { id: "frost_cosmetic_crown", itemType: "cosmetic", cosmeticId: "frost_fair_frost_crown", name: "Frost Fair Crown", description: "A crown of woven frost, granted to the fair's champions.", cost: 250 },
+            { id: "frost_cosmetic_grand", itemType: "cosmetic", cosmeticId: "frost_fair_grand_medallion", name: "Grand Frost Medallion", description: "The rarest medallion of the fair, for those who cleared every ladder.", cost: 400 },
+        ]
+    },
+    spring_planting: {
+        items: [
+            { id: "spring_cosmetic_wreath", itemType: "cosmetic", cosmeticId: "spring_planting_sprout_wreath", name: "Sprout Wreath", description: "A wreath of the season's first new sprouts.", cost: 60 },
+            { id: "spring_cosmetic_sash", itemType: "cosmetic", cosmeticId: "spring_planting_planters_sash", name: "Planter's Sash", description: "A sash worn by the season's most dedicated planters.", cost: 120 },
+            { id: "spring_cosmetic_crown", itemType: "cosmetic", cosmeticId: "spring_planting_bloom_crown", name: "Bloom Crown", description: "A crown of the season's first blooms.", cost: 250 },
+            { id: "spring_cosmetic_grand", itemType: "cosmetic", cosmeticId: "spring_planting_grand_bloom", name: "Grand Bloom Laurel", description: "The rarest laurel of Spring Planting, for those who cleared every ladder.", cost: 400 },
+        ]
+    },
+}
+
 // Mercenary Bounties (roadmap "Mercenary Bounties (Solo Raid-Equivalent Progression)") —
 // a personal, guild-independent alternative to Guild Raids, mutually exclusive with
 // guild membership (see userDetails.isMercenary). See mercenaryFactory.js and
@@ -4725,6 +4909,9 @@ module.exports = {
     GuildRoles,
     Raid,
     SpudKeep,
+    Festival,
+    FestivalTemplates,
+    FestivalShop,
     Potions,
     MercenaryRank,
     Bounty,

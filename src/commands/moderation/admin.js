@@ -1,7 +1,7 @@
 const { ApplicationCommandOptionType, ChannelType, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands");
-const { Work, Companions } = require("../../utils/constants");
+const { Work, Companions, Festival, FestivalTemplates } = require("../../utils/constants");
 const { EventFactory, buildActiveEventPayload, WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -9,25 +9,29 @@ const { worldFactory, worldBossMobs } = require("../../utils/worldFactory");
 const { setWorkScenarios } = require("../user/work.js");
 const work = require("./../user/work");
 const { ensureGuildChatCategory, addChatChannelIndexEntry, removeChatChannelIndexEntry } = require("../guilds/guildChat");
+const festivalFactory = require("../../utils/festivalFactory");
 
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
 
 // /admin — a single devOnly Discord command grouping every admin/moderation subcommand
 // (2026-09-20, incident fix — see roadmap.md's "Discord 100-command cap hit on startup"
-// entry). Before this, each of the 8 subcommands below was its own top-level command file,
-// which pushed the guild's non-deleted command count to 101 and made
+// entry). Before this, each of the first 8 subcommands below was its own top-level command
+// file, which pushed the guild's non-deleted command count to 101 and made
 // applicationCommands.create for a brand-new command (set-merc-chat-channel) throw
 // DiscordAPIError[30032] on every bot startup, permanently stuck since nothing ever
 // retried it. Consolidating 8 commands into 1 (7 Subcommand entries + this file's own top
 // level) frees 7 slots. Each subcommand's own logic is preserved verbatim from its original
 // file — only the file's shape (module boundary, option name -> Subcommand name) changed,
-// not any behavior, DB call, embed, or error message.
+// not any behavior, DB call, embed, or error message. `start-festival` was added as a 9th
+// subcommand later, during the Seasonal Festivals merge — it never had its own top-level
+// command file live in this repo (built standalone in an isolated worktree, then folded in
+// here on merge since admin.js existed by then) — see seasonal-festivals.md.
 //
 // Every one of these was already devOnly + (mostly) Administrator-gated; see
 // handleCommands.js's dispatch order — permissionsRequired is checked only for members who
 // already passed the devOnly check, and that same check unconditionally lets any dev bypass
-// permissionsRequired too, so folding all 8 under one devOnly + Administrator gate changes
+// permissionsRequired too, so folding all 9 under one devOnly + Administrator gate changes
 // nothing observable for any of them.
 
 async function runGive(client, interaction) {
@@ -503,6 +507,44 @@ async function runSetMercChatChannel(client, interaction) {
     interaction.editReply(`The Merc Faction Hall is ready — <#${channel.id}>. Every current mercenary has been given access.`);
 }
 
+// Seasonal Festivals (systems/seasonal-festivals.md) — admin-triggered start, CONFIRMED by
+// product owner over a real content calendar for v1 ("im fine with it being admin started").
+// Mirrors trigger-event's own shape (a manual write to a shared doc everyone picks up on next
+// read). Folded in here as a subcommand rather than its own top-level command since admin.js
+// already existed by the time Seasonal Festivals merged into the session branch.
+const FESTIVAL_EVENT_CHANNEL_ID = '1188525931346792498';
+const FESTIVAL_EVENT_ROLE_ID = '1207117686526582865';
+
+const FESTIVAL_CHOICES = Object.keys(FestivalTemplates).map(festivalId => ({
+    name: Festival.NAME[festivalId] || festivalId,
+    value: festivalId,
+}));
+
+async function runStartFestival(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+    const festivalId = interaction.options.get('festival')?.value;
+    const durationDays = interaction.options.get('duration_days')?.value;
+    const announce = interaction.options.get('announce')?.value ?? true;
+
+    const festival = await festivalFactory.startFestival(festivalId, durationDays);
+    if (!festival) {
+        interaction.editReply(`"${festivalId}" isn't a recognized festival.`);
+        return;
+    }
+
+    const festivalName = Festival.NAME[festivalId] || festivalId;
+    const tokenLabel = Festival.TOKEN_LABEL[festivalId] || 'Festival Tokens';
+    const endsAtSeconds = Math.floor(festival.endsAt / 1000);
+
+    if (announce) {
+        const channel = await client.channels.fetch(FESTIVAL_EVENT_CHANNEL_ID);
+        await channel.send(`<@&${FESTIVAL_EVENT_ROLE_ID}> The **${festivalName}** has begun! Check /festival for objectives and /festival-shop to spend ${tokenLabel} — ends <t:${endsAtSeconds}:R>.`);
+        interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}>.`);
+    } else {
+        interaction.editReply(`Started ${festivalName}, ending <t:${endsAtSeconds}:R> — no announcement sent.`);
+    }
+}
+
 module.exports = {
     name: "admin",
     description: "Admin/moderation tools (subcommands)",
@@ -647,6 +689,32 @@ module.exports = {
                 }
             ],
         },
+        {
+            name: 'start-festival',
+            description: 'Start a Seasonal Festival for a fixed number of days',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+                {
+                    name: 'festival',
+                    description: 'Which festival to start',
+                    required: true,
+                    type: ApplicationCommandOptionType.String,
+                    choices: FESTIVAL_CHOICES,
+                },
+                {
+                    name: 'duration_days',
+                    description: `How many days it runs (${Festival.MIN_DURATION_DAYS}-${Festival.MAX_DURATION_DAYS})`,
+                    required: true,
+                    type: ApplicationCommandOptionType.Integer,
+                },
+                {
+                    name: 'announce',
+                    description: 'Post the public announcement to the events channel? (default: yes)',
+                    required: false,
+                    type: ApplicationCommandOptionType.Boolean,
+                }
+            ],
+        },
     ],
     callback: async (client, interaction) => {
         const subcommand = interaction.options.getSubcommand();
@@ -675,6 +743,9 @@ module.exports = {
             case 'set-merc-chat-channel':
                 await runSetMercChatChannel(client, interaction);
                 break;
+            case 'start-festival':
+                await runStartFestival(client, interaction);
+                break;
         }
     },
     // Exported individually for direct unit testing, same "export the inner logic, not just
@@ -687,4 +758,5 @@ module.exports = {
     triggerWorldBossCallback: runTriggerWorldBoss,
     setActivityChannelCallback: runSetActivityChannel,
     setMercChatChannelCallback: runSetMercChatChannel,
+    startFestivalCallback: runStartFestival,
 }

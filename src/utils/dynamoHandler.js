@@ -723,7 +723,33 @@ function getDefaultUserFields(userId, username) {
         // that one condition type permanent, written to once by titleFactory.isTitleUnlocked
         // the first time its live guild-level check comes back true. Never written to for
         // any of the other 12 titles.
-        permanentTitles: []
+        permanentTitles: [],
+        // Seasonal Festivals (systems/seasonal-festivals.md) — festivalTokens/
+        // festivalTokensFestivalId mirror activePotion's own "expired reads identically to
+        // none at all, never actively cleared" convention: a stale festivalTokensFestivalId
+        // (from a past, already-ended festival) means the balance sitting in festivalTokens
+        // reads as spendable-ZERO at every consume site (festivalFactory.
+        // getSpendableFestivalTokens) without ever needing a write to clear it — the next
+        // time this player earns ANY token during a FUTURE festival, the earning write
+        // resets both fields fresh and naturally overwrites the stale pair.
+        festivalTokens: 0,
+        festivalTokensFestivalId: null,
+        // Byte-identical shape to `quests` above, just keyed on `festivalId` instead of
+        // `rotationDate` for staleness (festivalFactory.checkAndClaimFestivalQuests) —
+        // { [objectiveId]: { startValue, festivalId, tiersCompleted } }.
+        festivalQuests: {},
+        // Personal, seeded-deterministic festival shop state (companionShopFactory.js's own
+        // trick, just keyed on festivalId instead of a rolling daily/weekly tag — see
+        // festivalFactory.js). null until the shop's first browse/purchase; { festivalId,
+        // purchasedSlots } after.
+        festivalShop: null,
+        // A purchase is an event, not a derivable stat, so it needs its own persisted fact
+        // (systems/seasonal-festivals.md's "Rewards" section) — array of owned cosmetic ids
+        // (e.g. "harvest_festival_champion_flair"). Titles integration (a new
+        // `{ type: "festivalCosmetic", cosmeticId }` condition) is a deliberate follow-up
+        // once titleFactory.js lands from its own parallel build — this ships standalone for
+        // now, same fallback plan the design doc itself called out.
+        festivalCosmetics: []
     };
 }
 
@@ -2093,6 +2119,24 @@ function isPotionLive(potion, effectType) {
     return Boolean(potion && potion.effectType === effectType && potion.expiresAt > Date.now());
 }
 
+// Seasonal Festivals (systems/seasonal-festivals.md) — the persisted festival window,
+// mirroring getActiveWorldBuff/setActiveWorldBuff's own "global pointer in the stats
+// table" shape exactly (get/set, no dedicated freshness predicate here — every consumer
+// checks `festivalId` non-null AND `Date.now() < endsAt` live itself, since that check
+// differs slightly per caller: festivalFactory.isFestivalLive for most, work.js's odds
+// override reading `oddsOverride` off the same doc directly). Chosen over Quests'/Guild
+// Contracts' derived-tag shape specifically because a festival's window is admin-started
+// and arbitrary-length, not a fixed predictable cadence — see that doc's own "Scheduling"
+// section for the full comparison. `{ festivalId, startsAt, endsAt, objectiveIds,
+// oddsOverride }` — festivalId is null when no festival is running.
+const getActiveFestival = async function () {
+    return getStatDatabase("active_festival");
+}
+
+const setActiveFestival = async function (festival) {
+    await updateStatFields("active_festival", festival);
+}
+
 // Spud Keep (systems/spud-keep.md) — the granted-buff/holder-pointer doc, mirroring
 // getActiveWorldBuff/setActiveWorldBuff's own "global pointer in the stats table" shape
 // exactly, just carrying a holder-type-aware predicate (spudKeepFactory.
@@ -2235,6 +2279,9 @@ module.exports = {
     setActiveWorldBuff,
     isWorldBuffLive,
     isPotionLive,
+
+    getActiveFestival,
+    setActiveFestival,
 
     getActiveSpudKeepBuff,
     getActiveSpudKeepCooldownBuff,

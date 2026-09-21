@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket, Potions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Festival, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket, Potions } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -5210,6 +5210,105 @@ class EmbedFactory {
             .setTitle('🥔🏰 Spud Keep Payout Collected!')
             .setDescription(`${userDisplayName} collected **${amountCollected.toLocaleString()} potatoes** from the Spud Keep pot.`)
             .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // Seasonal Festivals (systems/seasonal-festivals.md) — mirrors createQuestCompleteEmbed's
+    // shape almost exactly (the completed-objective payload shape is identical, per the
+    // design doc's own note), just themed with the per-festival token label instead of a
+    // fixed "potatoes"/stat label, since every festival reward here is the one flat
+    // `festivalTokens` type.
+    createFestivalQuestCompleteEmbed(userDisplayName, completedObjectives, festivalId) {
+        const tokenLabel = Festival.TOKEN_LABEL[festivalId] || 'Festival Tokens';
+        const fields = completedObjectives.map(objective => ({
+            name: `✅ ${objective.name}`,
+            value: `${objective.description}\n+${objective.reward.amount.toLocaleString()} ${tokenLabel}`,
+            inline: false,
+        }));
+
+        const title = completedObjectives.length > 1
+            ? `${userDisplayName} completed ${completedObjectives.length} festival objectives!`
+            : `${userDisplayName} completed a festival objective!`;
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🎪 ${title}`)
+            .setColor("Green")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // /festival's read-only status view — mirrors createQuestsPageEmbed's per-entry field
+    // shape (tiered-quest branch only, since every festival objective is always tiered).
+    // Not paginated — a festival's fixed 3-objective set never grows past one embed's field
+    // cap, unlike Quests' own (theoretically growable) active count.
+    createFestivalStatusEmbed(userDisplayName, activeFestival, progressList, tokenBalance) {
+        const festivalName = Festival.NAME[activeFestival.festivalId] || activeFestival.festivalId;
+        const tokenLabel = Festival.TOKEN_LABEL[activeFestival.festivalId] || 'Festival Tokens';
+
+        const fields = progressList.map(({ objective, isCompleted, progress, tiersCompleted, totalTiers, nextTierThreshold }) => {
+            const status = isCompleted ? '✅' : '🎪';
+            const value = isCompleted
+                ? `${objective.description}\nAll ${totalTiers} tiers complete!`
+                : `${objective.description}\nTier ${tiersCompleted}/${totalTiers} — (${progress.toLocaleString()} / ${nextTierThreshold.toLocaleString()} to next tier)`;
+            return { name: `${status} ${objective.name}`, value, inline: false };
+        });
+        if (fields.length === 0) {
+            fields.push({ name: 'No objectives', value: 'This festival has no objectives configured.', inline: false });
+        }
+
+        const endsInMs = activeFestival.endsAt - Date.now();
+        const endsInText = endsInMs > 0 ? `ends in ~${Math.max(1, Math.ceil(endsInMs / (60 * 60 * 1000)))} hour(s)` : 'ending shortly';
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🎪 ${festivalName}`)
+            .setDescription(`${tokenBalance.toLocaleString()} ${tokenLabel} — ${endsInText}`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // /festival-shop's browse view — mirrors createCompanionShopEmbed's per-slot field
+    // shape, just against a small fixed catalog (FestivalShop[festivalId].items) instead of
+    // a seeded-rolled offering table.
+    createFestivalShopEmbed(userDisplayName, shopView) {
+        const festivalName = Festival.NAME[shopView.festivalId] || shopView.festivalId;
+        const tokenLabel = Festival.TOKEN_LABEL[shopView.festivalId] || 'Festival Tokens';
+
+        const fields = shopView.items.map(({ item, purchased, affordable }) => {
+            const status = purchased ? '✅ Purchased' : affordable ? '🛒 Available' : '🔒 Not enough tokens';
+            const typeLabel = item.itemType === 'voucher' ? ' (Voucher)' : '';
+            return {
+                name: `${item.name}${typeLabel}`,
+                value: `${item.description}\nCost: ${item.cost.toLocaleString()} ${tokenLabel}\n${status}`,
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🎪 ${festivalName} Shop`)
+            .setDescription(`${userDisplayName}'s balance: ${shopView.balance.toLocaleString()} ${tokenLabel}`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // The 8pm ET cron's own end-of-festival announcement (backgroundEvents.js) — posted
+    // only on an actual transition (endFestival returns non-null), mirroring Spud Keep's
+    // own "no post on a no-op cycle" discipline.
+    createFestivalEndEmbed(festivalId) {
+        const festivalName = Festival.NAME[festivalId] || festivalId;
+        const embed = new EmbedBuilder()
+            .setTitle(`🎪 ${festivalName} Has Ended`)
+            .setDescription(`The stalls have packed up for the season — thanks to everyone who took part! Any unspent tokens from this festival are gone, but a new festival brings fresh stalls and fresh objectives.`)
+            .setColor("Grey")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;

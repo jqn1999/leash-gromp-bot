@@ -9,6 +9,7 @@ const { GuildContractFactory } = require("../../utils/guildContractFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
+const festivalFactory = require("../../utils/festivalFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 const achievementFactory = new AchievementFactory();
@@ -350,7 +351,15 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     // workScenarios array (reused across every concurrent player's /work call — a
     // per-request mutation there would race).
     const prospectorMultiplierBonus = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus");
-    const effectiveChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
+    const prospectorAdjustedChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
+    // Seasonal Festivals' odds-boost piece (systems/seasonal-festivals.md) — a second,
+    // independent, DB-persisted multiplier composed ALONGSIDE (never merged into)
+    // EventFactory's own live hourly roll, since EventFactory itself is an in-memory-only
+    // singleton with no concept of a multi-day festival window. Read fresh on every /work
+    // call rather than cached, so a bot restart mid-festival loses nothing.
+    const activeFestival = await dynamoHandler.getActiveFestival();
+    const festivalOddsOverride = festivalFactory.isFestivalLive(activeFestival) ? activeFestival.oddsOverride : null;
+    const effectiveChances = festivalFactory.applyFestivalOddsOverride(prospectorAdjustedChances, festivalOddsOverride);
     // Auto-recovery (2026-09-14, player-reported: "the embed didn't display" on a Mimic
     // kill) — mirrors enter-tower.js's own "Auto-recovery" fix exactly. Previously nothing
     // wrapped this dispatch at all: if a scenario's own action() threw for ANY reason
@@ -462,6 +471,15 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         if (questResult.completedQuests.length > 0) {
             const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
             interaction.followUp({ embeds: [questEmbed] });
+        }
+
+        // Seasonal Festivals' own objective track (systems/seasonal-festivals.md) — mirrors
+        // the Quest check immediately above exactly (same re-fetched updatedUserDetails,
+        // same pre-action userDetails baseline), gated internally on a live active_festival.
+        const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(updatedUserDetails, userDetails);
+        if (festivalQuestResult.completedObjectives.length > 0) {
+            const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
+            interaction.followUp({ embeds: [festivalQuestEmbed] });
         }
 
         // Guild Contract is a guild-wide aggregate, not a per-user check — only

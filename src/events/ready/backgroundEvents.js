@@ -11,6 +11,7 @@ const { GuildContracts } = require("../../utils/constants.js");
 const { GuildContractFactory } = require("../../utils/guildContractFactory.js");
 const { EmbedFactory } = require("../../utils/embedFactory.js");
 const spudKeepFactory = require("../../utils/spudKeepFactory.js");
+const festivalFactory = require("../../utils/festivalFactory.js");
 
 // Eastern-timezone-aware "MM-DD" (Intl, DST-safe) — used only by the birthday cron below
 // to judge "is it actually this person's birthday" in the same timezone that job's own
@@ -167,6 +168,32 @@ module.exports = async (client) => {
                 });
         } catch (err) {
             console.log('daily cron: Spud Keep resolution step failed:', err)
+        }
+
+        // Seasonal Festivals (systems/seasonal-festivals.md) — a new check alongside the
+        // Quest/Tower/Spud Keep resets above, same daily cron. endFestival() is a single
+        // idempotent write (null out festivalId/startsAt/endsAt/objectiveIds/oddsOverride)
+        // returning null if there's nothing live/expired to end, so a cron tick that runs
+        // before the real endsAt (or a second tick after it already ended) just no-ops —
+        // no flag, no catch-up logic needed, same tolerance Spud Keep's own daily
+        // resolution already has for a cron that doesn't fire at the exact instant intended.
+        try {
+            const activeFestival = await dynamoHandler.getActiveFestival();
+            if (activeFestival && activeFestival.festivalId && Date.now() >= activeFestival.endsAt) {
+                const ended = await festivalFactory.endFestival();
+                if (ended) {
+                    client.channels.fetch('1188525931346792498')
+                        .then(async channel => {
+                            const festivalEndEmbed = embedFactory.createFestivalEndEmbed(ended.festivalId);
+                            channel.send({ embeds: [festivalEndEmbed] })
+                        })
+                        .catch(err => {
+                            console.log(err)
+                        });
+                }
+            }
+        } catch (err) {
+            console.log('daily cron: festival end step failed:', err)
         }
     });
 
