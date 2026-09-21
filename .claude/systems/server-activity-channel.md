@@ -300,9 +300,12 @@ decision.
 
 Confirmed against each bot command's own `deferReply()` call (this repo's own "ephemeral flag is
 the source of truth" rule, from "Scope" below): `/companion-scavenge`, `/companion-scavenge-collect`,
-`/companion-hunt`, and `/companion-hunt-collect` are all public. `/companion-scavenge-cancel` and
-`/companion-hunt-cancel` were deliberately left out — a cancel is a no-op retreat with no reward,
-nothing worth announcing.
+`/companion-hunt action:<tier>`, and `/companion-hunt action:collect` are all public.
+`/companion-scavenge-cancel` and `/companion-hunt action:cancel` (folded into `/companion-hunt`
+itself 2026-09-21 — see roadmap.md's command-cap headroom entry; `/companion-hunt-collect`/
+`/companion-hunt-cancel` were separate top-level commands at the time this section was written)
+were deliberately left out — a cancel is a no-op retreat with no reward, nothing worth
+announcing.
 
 Website side (see financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md` for the full writeup):
 `gromp-companions/handler.ts` gained its own `postServerActivity` (mirrored from the other three
@@ -332,7 +335,7 @@ Checked directly against each bot command's own `deferReply({ ephemeral: ... })`
 | Bank deposit/withdraw | `/bank` (public — included on direct instruction, "include deposits and withdrawals") |
 | Safehouse deposit/withdraw | `/safehouse` (public — included on direct instruction) |
 | Scavenge (send + collect) | `/companion-scavenge`, `/companion-scavenge-collect` (both public — added 2026-09-18, direct instruction) |
-| Companion Hunt (send + collect) | `/companion-hunt`, `/companion-hunt-collect` (both public — added 2026-09-18, direct instruction) |
+| Companion Hunt (send + collect) | `/companion-hunt action:<tier>`, `/companion-hunt action:collect` (both public — added 2026-09-18, direct instruction; folded into one `/companion-hunt` command 2026-09-21) |
 | Guild Bank deposit/withdraw | web-only — no bot-side equivalent post exists (bot has no normal-Activity poster of its own, see "Architecture" above); added 2026-09-19, direct instruction |
 | Guild Buff switch | web-only, added 2026-09-19, direct instruction |
 | Mercenary Buff switch | web-only, added 2026-09-19, direct instruction |

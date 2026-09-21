@@ -965,8 +965,10 @@ power, not buff-inflated" precedent `spudKeepFactory.splitPotByWorkMulti` alread
 per-member split). Unlike guild raids, reward is split **proportionally by each participant's own
 share** (`handlePotatoSplitByShare`), and there is currently no penalty on failure
 (`potatoPenalty: 0`).
-`join-world-raid` / `current-world-raid` mirror the guild raid join/status commands but operate
-against the `world` stats doc instead of a guild record.
+`/world-raid join-world-raid` / `/world-raid current-world-raid` (folded together into one
+`/world-raid` command 2026-09-21, previously their own top-level `/join-world-raid`/
+`/current-world-raid` commands — see roadmap.md's command-cap headroom entry) mirror the guild raid
+join/status commands but operate against the `world` stats doc instead of a guild record.
 
 **Big Events (2026-09-19, direct instruction — "the world boss kill didn't go in big events")**:
 `worldFactory.startWorldBoss` had zero `bigEventsChannel` wiring at all despite being the single

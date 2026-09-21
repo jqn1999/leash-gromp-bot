@@ -56,9 +56,15 @@ that one slice's destination changes. `userDetails` is an optional trailing para
 
 ## Companion Hunt
 
-`/companion-hunt` (start) + `/companion-hunt-collect` (resolve) + `/companion-hunt-cancel`
-(early bailout) — [src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
-[src/commands/user/companionHunt{,Collect,Cancel}.js](../../src/commands/user/). 2026-09-08,
+`/companion-hunt action:<short|medium|long>` (start) + `/companion-hunt action:collect`
+(resolve) + `/companion-hunt action:cancel` (early bailout) — folded into one command
+2026-09-21 (command-cap headroom pass, see roadmap.md), previously their own separate
+`/companion-hunt`/`/companion-hunt-collect`/`/companion-hunt-cancel` commands — same
+required-single-choice shape `/leaderboard`'s own option enum already used, chosen since all
+three took zero (or the tier-pick-only) options and only ever act on the ONE hunt a player can
+have active at a time. —
+[src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
+[src/commands/user/companionHunt.js](../../src/commands/user/companionHunt.js). 2026-09-08,
 direct instruction: "a command a user can use to scavenge for companions themselves... stop
 them from working... 2-4 hours... a chance of a companion so users that don't want to spam
 work have a viable way of getting companions." A second acquisition path alongside `/work`'s
@@ -68,10 +74,10 @@ touches `/work` at all. Companion Hunt sends the **player themselves** away and 
 own `/work` for the duration; the two can run simultaneously with zero conflict since neither
 touches the other's state.
 
-**Three tiers** (`CompanionHunt.TIERS`), the player picks one via a required `duration`
-option (all three always listed, no rank/level gate — available to everyone from day one,
-same "the whole point is to serve players who don't want to grind" reasoning that keeps it
-ungated):
+**Three tiers** (`CompanionHunt.TIERS`), the player picks one via the required `action`
+option (all three always listed alongside `collect`/`cancel`, no rank/level gate on the tiers
+themselves — available to everyone from day one, same "the whole point is to serve players who
+don't want to grind" reasoning that keeps it ungated):
 
 | Tier | Duration | Success chance |
 |---|---|---|
@@ -103,22 +109,23 @@ null` field, deliberately kept separate from `workTimer` itself (not folded into
 block can never tangle with `workTimer`'s other machinery (Poison Potato lockout extensions,
 the cooldown-skip chain). `work.js`'s `performWork` checks it right after its existing
 `workTimer` gate, rejecting with time remaining. **`/work` reopens automatically once
-`returnsAt` passes, even before `/companion-hunt-collect` is run** — the block is scoped to
-the committed duration only, not to "until collected," so a player who forgets to collect is
-never permanently locked out of `/work`.
+`returnsAt` passes, even before `/companion-hunt action:collect` is run** — the block is
+scoped to the committed duration only, not to "until collected," so a player who forgets to
+collect is never permanently locked out of `/work`.
 
-**Commands**: `/companion-hunt` rejects if a hunt is already active (or already returned and
+**Commands** (all three dispatched off `/companion-hunt`'s own `action` choice — see above):
+starting a hunt (a tier value) rejects if a hunt is already active (or already returned and
 awaiting collection) and dispatches a plain, unconditional write — same low/no-stakes race
 precedent Companion Scavenging's own dispatch write already relies on (a player can only ever
-race against their own other calls). `/companion-hunt-collect` rejects if not out or not yet
-returned, rolls the outcome, and writes through `dynamoHandler.resolveCompanionHunt` — a
-guarded update conditioned on `companionHunt.returnsAt` matching (mirrors `resolveScavenge`'s
-own instanceId-guard shape) so a raced double-collect can't double-grant. On a hit, the
-achievement check runs the same way `companionScavengeCollect.js`'s own does (a new companion
-can unlock `first_companion`/`companion_collector`/`full_roster`/`mythic_bond`).
-`/companion-hunt-cancel` mirrors `companion-scavenge-cancel.js`'s confirm/cancel shape exactly
-(30s button collector, re-fetch and re-validate against fresh state before the guarded write)
-since it forfeits a real chance, unlike dispatch which risks nothing.
+race against their own other calls). `action:collect` rejects if not out or not yet returned,
+rolls the outcome, and writes through `dynamoHandler.resolveCompanionHunt` — a guarded update
+conditioned on `companionHunt.returnsAt` matching (mirrors `resolveScavenge`'s own
+instanceId-guard shape) so a raced double-collect can't double-grant. On a hit, the achievement
+check runs the same way `companionScavengeCollect.js`'s own does (a new companion can unlock
+`first_companion`/`companion_collector`/`full_roster`/`mythic_bond`). `action:cancel` mirrors
+`companion-scavenge-cancel.js`'s confirm/cancel shape exactly (30s button collector, re-fetch
+and re-validate against fresh state before the guarded write) since it forfeits a real chance,
+unlike dispatch which risks nothing.
 
 **No additional cooldown after collecting or cancelling** — a player can immediately queue
 another expedition. The block itself (zero `/work` income for the committed duration) is

@@ -99,10 +99,8 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 | File | Command | Summary |
 |---|---|---|
-| `createNewBet.js` | `/create-new-bet` | Admin-only, opens a new 2-option prediction market |
+| `manageBet.js` | `/manage-bet <create\|lock\|end>` | Admin-only subcommands: `create` opens a new 2-option prediction market, `lock` freezes further wagers, `end` resolves the bet and pays winners from the losing pool — merged from the former separate `/create-new-bet`/`/lock-bets`/`/bet-end` commands |
 | `bet.js` | `/bet` | Wager potatoes on option 1 or 2 |
-| `lock-bets.js` | `/lock-bets` | Admin freezes further wagers |
-| `betEnd.js` | `/bet-end` | Admin resolves the bet, pays winners from the losing pool |
 | `currentBet.js` | `/current-bet` | Shows the active bet's state |
 
 ## `games/` — [systems/betting-and-games.md](../systems/betting-and-games.md)
@@ -121,8 +119,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `help.js` | `/help topic:<name>` | Ephemeral, data-driven help topics (17, `HelpTopics` in `constants.js`) — most cite real live numbers straight off `constants.js` (odds, caps, tiers), not vague flavor text; `companions`/`commands` render live off their own source data instead of static content — see [systems/help.md](../systems/help.md) |
 | `start.js` | `/start` | Ephemeral, paginated (9 pages) onboarding tour covering every system in the bot — the recommended first command for a new player |
 | `currentEvent.js` | `/current-event` | Shows the active hourly special work event, if any |
-| `currentWorldRaid.js` | `/current-world-raid` | Shows the active world boss and its joined participants |
-| `joinWorldRaid.js` | `/join-world-raid` | Joins the current world boss encounter |
+| `worldRaid.js` | `/world-raid world-raid-option:<join-world-raid\|current-world-raid>` | Joins the current world boss encounter, or shows the active world boss and its joined participants — merged from the former separate `/join-world-raid`/`/current-world-raid` commands |
 | `currentSpudKeep.js` | `/current-spud-keep` | Read-only live Spud Keep status — current holder, this cycle's entrants with a live power/chance preview, and the accruing pot — see [systems/spud-keep.md](../systems/spud-keep.md) |
 | `addBirthday.js` | `/add-birthday` | Registers the caller's birthday |
 | `birthdays.js` | `/birthdays` | Lists upcoming birthdays, sorted by next occurrence |

@@ -29,8 +29,9 @@ the field, the same as any other field.
 table's `economy` doc, refreshed every 5 minutes by `passivePotatoHandler` (which already scans
 every user for the passive-income tick, so computing the total there is free — no extra scan).
 Falls back to a live `getServerTotal()` scan if the cache hasn't been populated yet. `/work` and
-`create-new-bet` use the cached value; `getServerTotal()` itself (full scan) is still used directly
-by `leaderboard.js`, where up-to-the-second accuracy is the point.
+`/manage-bet create` (formerly the separate `/create-new-bet` command) use the cached value;
+`getServerTotal()` itself (full scan) is still used directly by `leaderboard.js`, where
+up-to-the-second accuracy is the point.
 
 The same `economy` doc also caches `serverTotalStarches`, `medianTotalEarnings`, and
 `activeUserCount` (accounts with `workCount > 0`) — the latter two back the `/work` catch-up bonus,

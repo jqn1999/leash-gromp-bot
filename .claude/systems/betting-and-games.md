@@ -5,20 +5,25 @@
 [src/commands/betting/](../../src/commands/betting/), backed by the `leash-gromp-bot-betting` table
 — see [architecture/data-model.md](../architecture/data-model.md) for the bet item shape.
 
-Admin-created binary prediction markets:
+Admin-created binary prediction markets. The 3 Administrator-only actions
+(`/create-new-bet`/`/lock-bets`/`/bet-end`) were folded into one `/manage-bet create|lock|end`
+command 2026-09-21 (command-cap headroom pass — see roadmap.md), using Discord Subcommand
+entries (mirroring `/admin`'s own shape) since each keeps a genuinely different option set;
+`/bet` and `/current-bet` stayed separate top-level commands since they're ungated, ordinary
+player commands, not admin tools:
 
-- [createNewBet.js](../../src/commands/betting/createNewBet.js) — Administrator-only, and refuses to
+- [manageBet.js](../../src/commands/betting/manageBet.js)'s `create` subcommand — refuses to
   create a new bet while one is already active (checked via `getMostRecentBet().isActive`). Base
   amount seeded on both sides:
   `round(serverTotal * Bet.PERCENT_OF_SERVER_TOTAL_TO_BASE(.025) / 10000) * 10000`, rounded to the
   nearest 10,000 and capped at 1,000,000. `betId` is just `previousBetId + 1` (starts at 1).
 - [bet.js](../../src/commands/betting/bet.js) — users wager potatoes on option 1 or 2. Repeat bets
   from the same user on the same option accumulate rather than creating duplicate voter entries.
-- [lock-bets.js](../../src/commands/betting/lock-bets.js) (admin) — freezes further wagers
-  (`isLocked = true`) without resolving the outcome yet.
-- [betEnd.js](../../src/commands/betting/betEnd.js) (admin) — resolves the bet: winners split the
-  *losing* side's total pool proportionally to their own stake (`isActive = false`,
-  `winningOption` set).
+- [manageBet.js](../../src/commands/betting/manageBet.js)'s `lock` subcommand — freezes further
+  wagers (`isLocked = true`) without resolving the outcome yet.
+- [manageBet.js](../../src/commands/betting/manageBet.js)'s `end` subcommand — resolves the bet:
+  winners split the *losing* side's total pool proportionally to their own stake
+  (`isActive = false`, `winningOption` set).
 - [currentBet.js](../../src/commands/betting/currentBet.js) — displays the active bet's embed/state.
   "Current" = highest `betId` (see data-model.md note on how "current" is derived, not stored).
 

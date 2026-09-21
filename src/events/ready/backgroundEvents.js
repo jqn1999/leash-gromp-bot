@@ -256,7 +256,7 @@ module.exports = async (client) => {
                     // the rare event itself" logic, not a separate threshold.
                     await bigEventsChannel.postBigEvent({
                         title: `🌍 ${wB.mob.name} Has Appeared!`,
-                        description: `A World Boss threatens the Kingdom! Join the fight with /join-world-raid before it moves on.`,
+                        description: `A World Boss threatens the Kingdom! Join the fight with /world-raid join-world-raid before it moves on.`,
                         fields: [bigEventsChannel.rewardField(wB.mob.potatoReward)],
                     });
                 })
