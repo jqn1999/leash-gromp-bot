@@ -52,10 +52,18 @@ For **every guild the bot is currently in** (`client.guilds.cache`), this file:
 
 1. Fetches that guild's currently-registered application commands via
    [getApplicationCommands.js](../../src/utils/getApplicationCommands.js).
-2. Diffs each local command against the live one using
+2. **Orphan cleanup** (2026-09-21, fix for the Discord 100-command cap recurring after the
+   original fix): deletes any Discord-registered command whose name has NO matching local
+   command file at all — active or `deleted: true`. Needed because a command-consolidation
+   pass typically deletes the old command's file outright rather than keeping it around only
+   to mark it `deleted: true`; without this step, that old command stays registered on Discord
+   forever, since step 3 below only ever walks the local command list and is structurally
+   blind to a Discord command with zero corresponding local file. Runs before step 3 so a
+   freed slot is available to it in the same pass.
+3. Diffs each remaining local command against the live one using
    [areCommandsDifferent.js](../../src/utils/areCommandsDifferent.js) (compares description,
    option count, and per-option description/type/required/choices).
-3. Creates commands that don't exist yet, edits ones that differ, deletes ones flagged
+4. Creates commands that don't exist yet, edits ones that differ, deletes ones flagged
    `deleted: true`.
 
 **Registration is per-guild, not global** — there is no `client.application.commands` bulk-register

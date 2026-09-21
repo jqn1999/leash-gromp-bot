@@ -8,11 +8,35 @@ module.exports =  (client) => {
         const localCommands = getLocalCommands();
         const allGuilds = client.guilds.cache.map(guild => guild.id);
         // const allGuilds = [awsConfigurations.testServer];
+        const localCommandNames = new Set(localCommands.map((c) => c.name));
         allGuilds.forEach(async function (guild) {
             const applicationCommands = await getApplicationCommands(
                 client,
                 guild
             );
+
+            // Orphan cleanup — a command genuinely registered on Discord with NO matching
+            // local command file at all (not even a `deleted: true` stub), left behind by a
+            // consolidation pass that deleted the old file outright instead of keeping it
+            // around just to mark it deleted (root cause of the cap being hit again after the
+            // 2026-09-20 fix: getLocalCommands()'s own non-deleted count looked comfortably
+            // under 100, but Discord's ACTUAL registered count for the guild never dropped,
+            // since nothing here had ever looked at Discord's own command list to find and
+            // remove a name with no local file left to represent it — the loop below only ever
+            // walks `localCommands`, so it's structurally blind to this case). Runs before the
+            // create/edit loop so freed slots are available to it in the same pass, not the
+            // next bot restart.
+            for (const [commandId, existingCommand] of applicationCommands.cache) {
+                if (!localCommandNames.has(existingCommand.name)) {
+                    try {
+                        await applicationCommands.delete(commandId);
+                        console.log(`Deleted orphaned command "${existingCommand.name}" (no matching local command file).`);
+                    } catch (orphanError) {
+                        console.log(`There was an error deleting orphaned command "${existingCommand.name}": ${orphanError}`);
+                    }
+                }
+            }
+
             for (const localCommand of localCommands) {
                 const { name, description, options } = localCommand;
 

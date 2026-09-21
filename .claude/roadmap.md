@@ -16291,3 +16291,61 @@ direct-run-function-export testing for. Full suite before this merge (headroom p
 baseline): 109 suites / 1979 tests. After: **110 suites / 2003 tests, all passing** — +1 suite
 from Seasonal Festivals' own `festivalFactory.test.js` (21 tests, already written in its
 worktree) plus these 3 new `admin.test.js` cases (109+1=110 suites, 1979+21+3=2003 tests).
+
+## Fix: Discord 100-command cap recurred after the 2026-09-20 fix — orphaned commands never actually left Discord (2026-09-21, live production incident)
+
+Production incident, reported directly from the bot's own startup logs: `DiscordAPIError[30032]:
+Maximum number of application commands reached (100)` firing again for `manage-bet`, `world-raid`,
+`admin`, `festival`, and `festival-shop` — the exact class of failure the 2026-09-20 fix was
+supposed to have closed. `getLocalCommands().filter(c => !c.deleted).length` still reported a
+comfortable 92, so the fix's own regression guard (`getLocalCommands.test.js`) never caught this —
+the bug wasn't in the local file count at all.
+
+**Root cause**: every command-consolidation pass so far (the original 8-into-`/admin` merge, then
+world-raid/companion-hunt/betting, then Seasonal Festivals' fold-in) deleted its old command's
+*file* outright rather than keeping the file around just to flip it to `deleted: true`. That's fine
+for `getLocalCommands()`'s own count (a deleted file obviously isn't in the list either way), but
+`01registerCommands.js`'s registration loop **only ever walks `localCommands`** — it has no step
+that looks at what Discord itself currently has registered for a guild and asks "does this name
+still correspond to anything local at all, active or explicitly deleted?" A command whose file was
+deleted outright is therefore invisible to the whole script: never edited, never explicitly
+deleted, just permanently stuck registered on Discord. Every consolidation pass this session
+(`admin-give`, `admin-reset-tower`, `join-world-raid`, `current-world-raid`,
+`companion-hunt-cancel`, `companion-hunt-collect`, `create-new-bet`, `lock-bets`, `bet-end`,
+`tower-leaderboard`, `admin-start-festival` — 11 names across 4 passes) left exactly this kind of
+orphan behind. Discord's real registered count for the guild never actually dropped the way the
+local file count implied it had — it kept climbing with every new command added on top of the
+orphans that were never removed. (This also explains why `guild-chat`/`companion-cancel`/
+`companion-hunt` could still be *edited* successfully in the same failing run: editing an
+already-registered command doesn't consume a new slot, only `create` does, which is exactly what
+was failing for every genuinely new command name.)
+
+**Fix**: `01registerCommands.js` gained an orphan-cleanup pass, run once per guild before the
+existing create/edit/delete loop. It builds a `Set` of every local command name (active or
+`deleted: true` — file existing at all is what matters here) and deletes any command in
+`applicationCommands.cache` whose name isn't in that set, logging each one. Wrapped in its own
+try/catch per orphan (same per-command isolation discipline the 2026-09-20 fix established for the
+create/edit/delete loop) so one failed delete can't block cleanup of the rest or the loop after it.
+Runs BEFORE the create/edit loop specifically so a slot freed by this pass is available to a
+brand-new command in the SAME registration run, not stuck until the next bot restart.
+
+**Not changed**: the 11 already-orphaned command names above don't need any code fix beyond this —
+the very next bot startup's orphan-cleanup pass finds and removes all of them itself, no manual
+Discord-side cleanup or one-off script needed. Left the existing "delete the file outright, no
+`deleted: true` stub needed" convention exactly as-is for future consolidations too — per this
+fix, that's now a normal, fully self-healing case rather than something contributors need to
+remember to avoid or work around.
+
+**Tests**: new `src/events/ready/__tests__/01registerCommands.test.js` (6 tests, this script's
+first-ever test coverage) — an orphan with no local file gets deleted; a command that still has a
+local file (changed or not) is left alone; a `deleted: true` local command is removed by the
+pre-existing per-command branch and not double-deleted by the new orphan pass; a freed slot is
+available to a `create` call in the same pass; one orphan's delete failing doesn't block cleanup of
+another orphan or the loop after it; cleanup runs independently per guild. `01registerCommands.js`'s
+own `allGuilds.forEach(async ...)` shape (never awaited by the exported function, a pre-existing,
+deliberately-unchanged architecture — see the 2026-09-20 fix's own comment on it) meant the test
+suite needed a `setImmediate`-based microtask flush after calling the export, since every mock
+resolves immediately and Node drains the full microtask queue (however many sequential awaits are
+chained inside) before any macrotask runs. Full suite: 111 suites / 2009 tests, all passing (up
+from 110/2003 — +1 suite, +6 tests, all in the new file).
+
