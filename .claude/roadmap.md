@@ -16027,3 +16027,110 @@ which isn't part of this project's own source; the 107/1935 figures above are th
 count, confirmed stable across repeated runs.)
 Docs: this entry; `reference/commands.md`'s moderation table now lists `/admin <subcommand>` instead
 of the 8 old rows.
+
+## Further command-cap headroom pass: world-raid, companion-hunt, betting merged (2026-09-21, follow-up to the entry above)
+
+Same incident's follow-up work: with the `/admin` merge (and, in the same commit, folding
+`/tower-leaderboard` into `/leaderboard`'s existing `leaderboard-option` enum) landed at 93
+non-deleted commands, this pass went looking for further safe, low-risk consolidation
+opportunities to build real headroom ahead of Titles and Seasonal Festivals — both about to add
+1-3 commands each. Titles landed in parallel with this same pass and, as expected, used 2 of the
+freed slots (`/titles`, `/set-title`) — see its own "Titles — Shipped" entry above. Net effect of
+this pass alone: 93 → 88 non-deleted commands (5 commands folded away across 3 merges, 8 files →
+3); with Titles' +2 landed on top, the repo's real current total is **90 non-deleted commands**
+(`getLocalCommands().filter(c => !c.deleted).length`, confirmed directly, not estimated).
+
+**Merges executed** (each preserves 100% of prior behavior/options/choices/validation — pure
+command-surface consolidation, no logic changes):
+
+1. **`/join-world-raid` + `/current-world-raid` → `/world-raid`** (`src/commands/misc/worldRaid.js`,
+   both originals deleted). Both took zero options and are a genuine one-shot-action +
+   read-only-status pair for the SAME activity, so this uses `/leaderboard`'s own
+   single-required-String-choice-option shape (`world-raid-option: join-world-raid |
+   current-world-raid`) rather than Discord Subcommands — identical to how `/tower-leaderboard`
+   was folded into `/leaderboard` itself. World raids are a rare, admin-spawned event, not a
+   "type fast" command, so the extra dropdown entry costs nothing in practice. Player-facing
+   flavor text referencing the old command name was updated at every call site: the 4 world boss
+   description strings in `worldFactory.js`, the hourly-event announcement string in
+   `backgroundEvents.js`, and `systems/raids-and-world-events.md`.
+2. **`/companion-hunt-cancel` + `/companion-hunt-collect` folded into `/companion-hunt`**
+   (`src/commands/user/companionHunt.js`, both originals deleted). Both take zero options and
+   only ever apply to whichever ONE hunt a player can have active at a time, so they were added
+   as two more values on `/companion-hunt`'s own existing required choice option — renamed
+   `duration` → `action` since the choice list is no longer purely duration tiers (`action:
+   short | medium | long | collect | cancel`). All cross-references to the two retired command
+   names were updated to the new `action:collect`/`action:cancel` invocation: `companionHunt.js`'s
+   own reply text, `work.js`'s "you're out on an expedition" block message, and
+   `systems/companions.md`/`systems/server-activity-channel.md`.
+3. **`/bet-end` + `/create-new-bet` + `/lock-bets` → `/manage-bet`** (`src/commands/betting/manageBet.js`,
+   all three originals deleted), using Discord Subcommands (`create`/`end`/`lock`) rather than a
+   choice enum — mirroring `/admin`'s own shape, since (unlike the two merges above) these three
+   keep genuinely different, non-trivial option sets (`create` needs 4 options, `end` needs 1,
+   `lock` needs none). All three were already `PermissionFlagsBits.Administrator`-gated, so one
+   shared gate at the top level changes nothing observable. `/bet` and `/current-bet` were
+   deliberately left as their own top-level commands and NOT folded in here: `/bet` is the
+   frequent, ungated player action (folding it behind an Administrator-only command would lock
+   ordinary players out of a command they can run today), and `/current-bet` is a normal-player
+   read command with the same concern.
+
+**Notable design points**:
+- The choice-enum-vs-Subcommand split above isn't arbitrary — it's the same rule the product
+  owner's own example set: fold a status/cancel/collect sibling into its main command as another
+  choice value when the option sets are trivial/identical (zero options, or the same single
+  option), and only reach for Discord Subcommands when the actions being merged genuinely need
+  different option shapes (mirroring why `/admin` itself needed Subcommands but `/leaderboard`
+  never did).
+- `manageBet.js`'s `calculateBetBaseAmount` carries over a pre-existing latent bug verbatim from
+  the original `createNewBet.js` (`totalBetBase = ...` with no `let`/`const`, an implicit
+  global) — deliberately NOT fixed here, since this pass is scoped to pure command-surface
+  consolidation and fixing unrelated bugs would be an uncalled-for behavior change riding along
+  with a merge that's supposed to be behavior-neutral.
+- `worldRaid.js` transitively requires `worldFactory.js`, which constructs its own `EmbedFactory`
+  singleton before `worldRaid.js` constructs its own — worth flagging for whoever writes the next
+  test against a command with this same transitive shape, since `EmbedFactory.mock.instances[0]`
+  silently grabs the WRONG singleton in that case (caught while writing `worldRaid.test.js`; fixed
+  there by indexing from the end of `mock.instances` instead of from the front).
+
+**Tests**: `companionHuntCancel.test.js` (4 tests) and `companionHuntCollect.test.js` (5 tests)
+were deleted as standalone files and folded into `companionHunt.test.js` (grew from 3 to 12
+tests, every prior assertion preserved 1:1, just re-targeted at the merged command's `action`
+dispatch instead of importing `{ callback }` from three separate files). Two new test files cover
+the two brand-new consolidated commands: `worldRaid.test.js` (5 tests) and `manageBet.test.js` (8
+tests) — neither original trio had any prior test coverage. Net suite-file effect: 0 (2 removed,
+2 added). Net test effect: +13. Full suite after this pass (and after Titles landed on top):
+**109 suites / 1979 tests, all passing**.
+
+**Candidates found but declined** (reported for the product owner to weigh in on, not merged
+here — in each case either the UX tradeoff was unclear or merging would require relaxing/reshaping
+an existing required option in a way that reads as a behavior change, not pure consolidation):
+- **`/companion-scavenge` + `/companion-scavenge-cancel` + `/companion-scavenge-collect`** — the
+  same shape as the Companion Hunt triad above, EXCEPT `/companion-scavenge`'s own required
+  option is a dynamic `autocomplete: true` String (live-fetched owned-companion instance IDs),
+  not a small static `choices` list — Discord doesn't allow combining `autocomplete` with static
+  `choices` on the same option, so `cancel`/`collect` can't be added as plain enum values the way
+  they were for Companion Hunt. The only way to fold them in without changing `/companion-scavenge`'s
+  own required-ness or adding a second, now-optional option (either of which reads as a real
+  validation/behavior change, not pure surface consolidation) would be injecting two sentinel
+  values (e.g. "Cancel scavenging"/"Collect scavenging reward") into the autocomplete suggestion
+  list alongside real companion entries — functionally sound but meaningfully more code and
+  behavioral surface than this pass's other merges, so it's flagged rather than executed.
+- **`/join-raid` + `/current-raid` + `/start-raid`** — `/join-raid` is actually an unrelated
+  persistent opt-in toggle (auto-join future raids), not a state-machine step of one raid
+  attempt, despite the naming similarity to the other two. `/current-raid` already embeds its own
+  "Start Raid" button that chains into `runStartRaidFlow` (the exact same function `/start-raid`'s
+  own callback uses), so the two are already functionally bridged for a player who wants both in
+  one place. `/start-raid` itself is also the single largest, most heavily-scenario-tabled command
+  file in the repo (~1,850 lines) — folding it into anything else for a 1-2 command savings isn't
+  worth the regression risk this pass is trying to avoid.
+- **`/join-spud-keep` + `/spud-keep-signup` + `/current-spud-keep` + `/spud-keep-collect`** — four
+  genuinely distinct actions/scopes (a guild-officer-only toggle, a mercenary-only toggle, a
+  read-only status view, and a personal payout claim), each already zero-option, with no existing
+  umbrella command name to extend the way `/leaderboard`/`/companion-hunt` already existed for
+  the other merges. Mechanically mergeable via a `/leaderboard`-style choice enum, but the
+  permission/scope mismatch across the 4 choices (guild officer vs. any mercenary vs. any player)
+  felt likely to read as confusing rather than clearly better UX — flagged rather than guessed at.
+- **`/bet`/`/current-bet` folded into `/manage-bet` or each other** — considered and rejected (see
+  "Notable design points" above and the merge description itself): `/bet` is the frequent, ungated
+  player action and would need its own required options (`bet-amount`, `option`) relaxed to also
+  support a bare "show current bet" read, which is exactly the kind of required-option reshaping
+  this pass avoided elsewhere.
