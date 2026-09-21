@@ -16639,3 +16639,79 @@ change that repo's own `CLAUDE.md` cross-repo rule calls out, but it was deliber
 rather than bundled into this same session; flag for a follow-up audit + port pass, appending the
 next numbered `## Bot caught up #N` entry to `financial-project/NOTES_GROMP_WEB_INTEGRATION.md`
 when that happens.
+
+## Rebalance: Bounty's starch reward made tier-fixed like the potato side (2026-09-21, player-reported: "the starch side of t6 looks way higher than the potato side")
+
+**What was asked.** A player asked to see the starch amounts for Mercenary Bounty tiers,
+specifically flagging that Tier 6's starch-flavored reward looked disproportionately high
+against T6's own potato reward.
+
+**Root cause investigation.** Traced the two formulas side by side rather than eyeballing the
+numbers. Potato side: `round(tierEntry.reward * rangeRoll(.8,1.2) * rankInfo.rewardMultiplier *
+(1 + yukonBonus))` — `tierEntry.reward` is a FIXED table value per tier (695,000 for T6),
+independent of the winning player's own stats. Starch side (before this pass): reused Taro
+Trader's own shape, `round(getRandomFromInterval(totalMultiplier, 1.5*totalMultiplier)) *
+Bounty.STARCH_TIER_MULTIPLIER[bandLetter]`, where `totalMultiplier` folded in the WINNER's own
+`workMultiplierAmount` plus guild/companion/world-buff/potion work-multiplier terms — so the
+starch side scaled with the player's own power while the potato side of the exact same tier
+didn't move at all. Computed the actual ratio at T6's own `difficulty` (111, a representative
+power for a player who'd realistically land T6): the old formula averaged ~6.5x T6's own potato
+reward, IDENTICALLY across every Mercenary Rank (the rank multiplier applies to both sides
+equally, so it cancels out of the ratio — confirmed by dividing each rank's absolute gap by its
+own `rewardMultiplier` and getting the same ~6.5x back every time). Above that reference power
+the gap only widens further, since only one side of the comparison scales with player power at
+all — at R6 with a very strong player it could exceed 30x.
+
+**Why this isn't the same shape as the Golden Yam/Golden Potato precedent.** Golden Yam was
+successfully "priced to match" Golden Potato (2026-09-02 pass) with a single MIN/MAX retune
+because BOTH of those already scale off `effectiveMultiplier` — same shape, different constants,
+so one retune makes them proportional at every power level permanently. Bounty's potato and
+starch sides were never shape-peers: one is a fixed table lookup, the other was player-power-
+scaled. This was flagged explicitly to the player before implementing (via AskUserQuestion) as a
+real design fork: (a) retune `STARCH_TIER_MULTIPLIER` per band to hit parity at one reference
+power per band (smaller change, matches this table's own history of magnitude-only retunes, but
+leaves real disparity above/below that one reference point), or (b) restructure the starch
+formula to be tier-fixed like the potato side (bigger change, but achieves true parity at every
+power level, matching what "peg it like Golden Yam" actually implies once you account for the
+shape mismatch). The player chose (b).
+
+**What shipped.** `Bounty.TIERS` gained a `starchReward` field per tier — a precomputed
+`round(reward / Bounty.STARCH_REFERENCE_PRICE)` (13,000 potatoes/starch, the SAME reference
+price Golden Yam already uses — deliberately reused, not a new number invented for this pass):
+T1 3, T2 6, T3 10, T4 17, T5 31, T6 53, T7 93, T8 159, T9 273, T10 468, T11 810, T12 1896.
+`mercenaryFactory.js`'s `resolveBountyAttempt` collapsed its two separate reward branches
+(potato/starch) into one shared formula — `base = scenario.currency === 'potato' ? rewardBase :
+starchRewardBase; reward = round(base * rangeRoll(.8,1.2) * rankInfo.rewardMultiplier * (1 +
+yukonBonus))` — removing the now-dead `userMultiplier`/`guildMultiplier`/`companionMultiplier`/
+`worldBuffMultiplier`/`potionMultiplier`/`totalMultiplier` computation block entirely (those
+helper functions are still imported/used elsewhere in this file for Heist, untouched).
+`Bounty.STARCH_TIER_MULTIPLIER` removed as dead code — `getBandLetter`'s output is still used
+for `BountyScenarios`/`BountyStatReward`/`MercenaryCompanionDrop.YUKON_CHANCE`, just no longer
+for starch pricing.
+
+**Tests.** `mercenaryFactory.test.js`: replaced the two tests that locked in the old
+player-power-scaled formula (including the 2026-08-24 companion-perk-fold-in regression test,
+whose whole premise the rebalance retires) with a formula-correctness test against the new
+tier-fixed shape, and a new invariant test confirming a starch-flavored win reward is now
+IDENTICAL for a low-power vs. a high-power-plus-companion-buffed player. Fixed the two "raises a
+starch-flavored win reward too" tests in the World Boss workMulti buff / Trading Post workMulti
+potion describe blocks — their premise flipped, so they now assert the buff/potion does NOT
+change the (now tier-fixed) starch reward. `takeBountyTax.test.js`: its two starch-tax-conversion
+tests used `baby` mode (always `Bounty.TIERS[0]`), whose new `starchReward` (3) is small enough
+that a 5% tax always floors to 0 — no longer exercises the "house converts tax to potatoes"
+path at all via baby mode. Switched both to `regular` mode with `workMultiplierAmount: 2000`
+(matching Tier 12's own `difficulty`) and a tier-roll of `0.5`, confirmed directly (via a
+throwaway script calling `raidFactory.rollWeightedTier` with the exact same inputs, not assumed)
+to reliably land on Tier 12 — same pattern the existing "maxed-power mercenary is weighted
+toward Tier 12" test in `mercenaryFactory.test.js` already relies on. Full suite (`npx jest`):
+**111 suites / 2047 tests, all passing** (net 0 new suites, same 2047 total — 4 tests rewritten
+in place, not added).
+
+**Docs.** `systems/mercenary-bounties.md`'s "Reward/penalty formula" section rewritten to
+describe the unified formula and the retired old one; `reference/constants.md`'s Bounty section
+updated to drop the `STARCH_TIER_MULTIPLIER` reference and add `starchReward`.
+
+Not done this pass: no `financial-project` port yet, for the same reason the Trading Post
+tier rework above wasn't bundled with its own web port — `mercenaryFactory.js`'s formula is
+mirrored into `financial-project`'s `gromp-mercenary/handler.ts` (per that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md`), so a follow-up audit + port pass is owed there too.

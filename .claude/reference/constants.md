@@ -125,12 +125,15 @@ Bounty mode always resolves `Bounty.TIERS[0]` directly, no roll.
 reward/penalty instead of a separate multiplication (mathematically identical realized
 numbers, one less step). `mercenaryFactory.getBandLetter(tier)` maps the rolled numeric
 1-12 tier down to the pre-existing 3-band `I`/`II`/`III` shape (B1-4→I, B5-8→II, B9-12→III)
-that `BountyScenarios`/`BountyStatReward`/`STARCH_TIER_MULTIPLIER`/`MercenaryCompanionDrop.
-YUKON_CHANCE`/`Rival.NOTORIETY_PER_BOUNTY_TIER` all still key off, reused rather than
-authoring 12 tiers' worth of fresh flavor content. `MercenaryRank.THRESHOLDS` lost its
-`unlocksTier` field — Rank no longer gates tier access at all, only `rewardMultiplier`.
-Still shares `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single
-flat shared concept, deliberately left coupled). Full derivation:
+that `BountyScenarios`/`BountyStatReward`/`MercenaryCompanionDrop.YUKON_CHANCE`/
+`Rival.NOTORIETY_PER_BOUNTY_TIER` all still key off, reused rather than authoring 12 tiers'
+worth of fresh flavor content. `MercenaryRank.THRESHOLDS` lost its `unlocksTier` field — Rank
+no longer gates tier access at all, only `rewardMultiplier`. Still shares
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` as the success-chance cap (a single flat shared
+concept, deliberately left coupled). Each `Bounty.TIERS` entry also carries its own
+`starchReward` (2026-09-21 rebalance — `round(reward / Bounty.STARCH_REFERENCE_PRICE(13000))`,
+replacing the retired `Bounty.STARCH_TIER_MULTIPLIER`, which scaled starch rewards by the
+WINNER's own power instead of being tier-fixed like the potato side). Full derivation:
 [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework).
 
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)

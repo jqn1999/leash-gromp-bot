@@ -94,15 +94,25 @@ describe('/take-bounty win tax', () => {
     // it should never hold raw starches at all): the house account is potato-only, same
     // as the Spud Keep pot, so a starch-denominated tax is now converted to its potato
     // equivalent BEFORE crediting the house, not credited as raw starches.
+    //
+    // 'regular' mode + a rigged Tier 12 power (2026-09-21 rebalance follow-up) — baby mode
+    // is hardcoded to Bounty.TIERS[0], whose starchReward (3) is now too small for a 5% tax
+    // to ever round above 0 (floor(3 * up to ~1.2) * .05 stays 0 at every roll), so this
+    // test can no longer exercise a nonzero tax via baby mode the way it used to. Power
+    // 2000 (matching Tier 12's own difficulty) with a tier-roll of 0.5 was confirmed
+    // (directly, via raidFactory.rollWeightedTier) to reliably land on Tier 12 — same
+    // pattern mercenaryFactory.test.js's own "maxed-power mercenary is weighted toward
+    // Tier 12" test already relies on.
     test('a starch win converts the tax to potatoes before crediting the house — the house never holds starches', async () => {
-        dynamoHandler.findUser.mockResolvedValue(baseUser());
-        const interaction = fakeInteraction({ mode: 'baby' });
-        // Same sequence mercenaryFactory.test.js's own starch-flavored win case uses —
-        // scenario index 0.15 lands on BountyScenarios.I[1], a starch entry.
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: 2000 }));
+        const interaction = fakeInteraction({ mode: 'regular' });
+        // BountyScenarios.III[2] ("The Starch Cartel's Kipfler") is starch; pool.length=10,
+        // index 2 needs a roll in [0.2, 0.3).
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)  // tier roll -> Tier 12
             .mockReturnValueOnce(0)    // win check
-            .mockReturnValueOnce(0.15) // scenario index -> starch entry
-            .mockReturnValueOnce(0.5)  // starch base range roll
+            .mockReturnValueOnce(0.25) // scenario index -> starch entry
+            .mockReturnValueOnce(0.5)  // range roll
             .mockReturnValueOnce(0.99) // stat-reward miss
             .mockReturnValueOnce(0.99); // yukon miss
         try {
@@ -112,10 +122,11 @@ describe('/take-bounty win tax', () => {
         }
 
         // Same GROSS formula mercenaryFactory.test.js's own starch-flavored win test
-        // derives independently (userMultiplier=90, rank 1 -> multiplier 1, baby mode -> 1).
-        const userMultiplier = 90;
-        const base = Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
-        const grossReward = Math.round(base * 1 * 1);
+        // derives independently — the tier's own fixed starchReward (2026-09-21 rebalance,
+        // no longer scaled by the winner's own workMultiplierAmount) times the range roll,
+        // rank 1 -> multiplier 1.
+        const rangeRoll = 0.5 * (1.2 - .8) + .8; // getRandomFromInterval(.8, 1.2) at roll=0.5
+        const grossReward = Math.round(Bounty.TIERS[11].starchReward * rangeRoll * 1 * 1);
         const expectedTax = Math.floor(grossReward * Bounty.WIN_TAX_PERCENT);
         expect(expectedTax).toBeGreaterThan(0);
         const expectedTaxInPotatoes = Math.floor(expectedTax * 5); // starch_sell = 5, no live Spud Keep holder -> 100% to house
@@ -129,12 +140,13 @@ describe('/take-bounty win tax', () => {
     });
 
     test('a starch win with a live Spud Keep holder splits the CONVERTED potato amount between house and pot', async () => {
-        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: 2000 }));
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'mercenary', holderId: null, expiresAt: Date.now() + 100000 });
-        const interaction = fakeInteraction({ mode: 'baby' });
+        const interaction = fakeInteraction({ mode: 'regular' });
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)  // tier roll -> Tier 12
             .mockReturnValueOnce(0)
-            .mockReturnValueOnce(0.15)
+            .mockReturnValueOnce(0.25)
             .mockReturnValueOnce(0.5)
             .mockReturnValueOnce(0.99)
             .mockReturnValueOnce(0.99);
@@ -144,9 +156,8 @@ describe('/take-bounty win tax', () => {
             randomSpy.mockRestore();
         }
 
-        const userMultiplier = 90;
-        const base = Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
-        const grossReward = Math.round(base * 1 * 1);
+        const rangeRoll = 0.5 * (1.2 - .8) + .8; // getRandomFromInterval(.8, 1.2) at roll=0.5
+        const grossReward = Math.round(Bounty.TIERS[11].starchReward * rangeRoll * 1 * 1);
         const expectedTax = Math.floor(grossReward * Bounty.WIN_TAX_PERCENT);
         const taxInPotatoes = Math.floor(expectedTax * 5); // starch_sell = 5, converted BEFORE splitting
         const expectedPotShare = Math.floor(taxInPotatoes * 0.75); // SpudKeep.POT_REDIRECT_PERCENT

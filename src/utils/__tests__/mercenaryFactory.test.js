@@ -337,14 +337,14 @@ describe('resolveBountyAttempt', () => {
         expect(result.rewardAmount).toBeGreaterThan(Bounty.TIERS[0].reward);
     });
 
-    test('a starch-flavored win formula reuses userMultiplier+guildMultiplier the same shape Taro Trader uses, scaled by STARCH_TIER_MULTIPLIER and rank', async () => {
+    test('a starch-flavored win formula uses the tier\'s own fixed starchReward (2026-09-21 rebalance)', async () => {
         const user = baseUser({ workMultiplierAmount: 90 });
         // Scenario index needs to land on a starch entry — BountyScenarios.I[1] (Marsh
         // Bandit Malone) is starch. pool.length=10, index 1 needs a roll in [0.1, 0.2).
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
             .mockReturnValueOnce(0.15) // scenario index -> floor(0.15*10) = 1
-            .mockReturnValueOnce(0.5)  // starch base range roll
+            .mockReturnValueOnce(0.5)  // range roll
             .mockReturnValueOnce(0.99) // stat-reward miss
             .mockReturnValueOnce(0.99); // yukon miss
         let result;
@@ -356,42 +356,50 @@ describe('resolveBountyAttempt', () => {
 
         expect(result.currency).toBe('starch');
         expect(result.scenario).toBe(BountyScenarios.I[1]);
-        const userMultiplier = 90;
-        const base = Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
-        const expected = Math.round(base * 1 * 1);
+        const rangeRoll = 0.5 * (1.2 - .8) + .8; // getRandomFromInterval(.8, 1.2) at roll=0.5
+        const expected = Math.round(Bounty.TIERS[0].starchReward * rangeRoll * 1 * 1);
         expect(result.rewardAmount).toBe(expected);
     });
 
-    // 2026-08-24: a player reported their companion's workMultiplierPercent perk wasn't
-    // moving Bounty at all — the starch-flavored reward formula was missing
-    // getCompanionWorkMulti even though resolveNpcRob/resolveYukonAward's identical shape
-    // already included it. This locks the fix in.
-    test('the starch-flavored win formula folds in the equipped companion\'s workMultiplierPercent perk, same as resolveNpcRob', async () => {
-        const user = baseUser({
-            workMultiplierAmount: 90,
+    // 2026-09-21 rebalance (player-reported: "the starch side of t6 looks way higher than
+    // the potato side") — the starch-flavored reward used to reuse Taro Trader's own
+    // player-power-scaled shape (round(getRandomFromInterval(userMulti+guildMulti,
+    // 1.5*(userMulti+guildMulti))) * a per-band multiplier), which grew with the winner's
+    // own workMultiplierAmount and companion perks while the potato side (same tier) stayed
+    // fixed — see Bounty.STARCH_REFERENCE_PRICE's own comment in constants.js. Supersedes
+    // this same describe block's old "folds in the equipped companion's workMultiplierPercent
+    // perk" test, which locked in exactly the behavior this rebalance removed.
+    test('the starch-flavored win formula no longer scales with the winner\'s own power or companion perks', async () => {
+        const lowPowerUser = baseUser({ workMultiplierAmount: 5 });
+        const highPowerUser = baseUser({
+            workMultiplierAmount: 500,
             companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
         });
-        const randomSpy = jest.spyOn(Math, 'random')
+        const mockRandomSequence = () => jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)    // win check
             .mockReturnValueOnce(0.15) // scenario index -> starch entry
-            .mockReturnValueOnce(0.5)  // starch base range roll
+            .mockReturnValueOnce(0.5)  // range roll
             .mockReturnValueOnce(0.99) // stat-reward miss
             .mockReturnValueOnce(0.99); // yukon miss
-        let result;
+
+        let randomSpy = mockRandomSequence();
+        let lowResult;
         try {
-            result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+            lowResult = await mercenaryFactory.resolveBountyAttempt(lowPowerUser, 'baby');
+        } finally {
+            randomSpy.mockRestore();
+        }
+        randomSpy = mockRandomSequence();
+        let highResult;
+        try {
+            highResult = await mercenaryFactory.resolveBountyAttempt(highPowerUser, 'baby');
         } finally {
             randomSpy.mockRestore();
         }
 
-        expect(result.currency).toBe('starch');
-        const userMultiplier = 90;
-        const companionMultiplier = userMultiplier * 0.05; // Sprout's workMultiplierPercent at level 1
-        const totalMultiplier = userMultiplier + companionMultiplier;
-        const base = Math.round((0.5 * (1.5 * totalMultiplier - totalMultiplier) + totalMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I;
-        const expected = Math.round(base * 1 * 1);
-        expect(result.rewardAmount).toBe(expected);
-        expect(result.rewardAmount).toBeGreaterThan(Math.round(Math.round((0.5 * (1.5 * userMultiplier - userMultiplier) + userMultiplier)) * Bounty.STARCH_TIER_MULTIPLIER.I));
+        expect(lowResult.currency).toBe('starch');
+        expect(highResult.currency).toBe('starch');
+        expect(highResult.rewardAmount).toBe(lowResult.rewardAmount);
     });
 
     // 2026-08-24: Bounty's success chance for a solo mercenary runs through
@@ -1637,9 +1645,14 @@ describe('World Boss workMulti buff', () => {
         expect(withBuff.successChance).toBeGreaterThan(withoutBuff.successChance);
     });
 
-    test('resolveBountyAttempt: raises a starch-flavored win reward too', async () => {
+    // 2026-09-21 rebalance flipped this assertion — a starch-flavored Bounty reward is now
+    // the tier's own fixed starchReward (see Bounty.STARCH_REFERENCE_PRICE's own comment in
+    // constants.js), so World Boss's workMulti buff no longer touches it at all, unlike the
+    // successChance test above it (which still reads effectiveBountyPower, untouched by
+    // this rebalance).
+    test('resolveBountyAttempt: does not change a starch-flavored win reward', async () => {
         const user = baseUser({ workMultiplierAmount: 90 });
-        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, base range roll, stat-reward miss, yukon miss
+        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, range roll, stat-reward miss, yukon miss
 
         dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
         dynamoHandler.isWorldBuffLive.mockReturnValue(false);
@@ -1657,7 +1670,7 @@ describe('World Boss workMulti buff', () => {
 
         expect(withoutBuff.currency).toBe('starch');
         expect(withBuff.currency).toBe('starch');
-        expect(withBuff.rewardAmount).toBeGreaterThan(withoutBuff.rewardAmount);
+        expect(withBuff.rewardAmount).toBe(withoutBuff.rewardAmount);
     });
 
     test('resolveNpcRob: raises the reward on a win', async () => {
@@ -1687,9 +1700,12 @@ describe('Trading Post workMulti potion', () => {
         dynamoHandler.isPotionLive.mockReset();
     });
 
-    test('resolveBountyAttempt: raises a starch-flavored win reward too', async () => {
+    // 2026-09-21 rebalance flipped this assertion — same reasoning as the World Boss
+    // describe block's own sibling test above: a starch-flavored Bounty reward is the
+    // tier's own fixed starchReward now, so Steadfast Draught no longer touches it.
+    test('resolveBountyAttempt: does not change a starch-flavored win reward', async () => {
         const user = baseUser({ workMultiplierAmount: 90 });
-        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, base range roll, stat-reward miss, yukon miss
+        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, range roll, stat-reward miss, yukon miss
 
         dynamoHandler.isPotionLive.mockReturnValue(false);
         let randomSpy = jest.spyOn(Math, 'random');
@@ -1708,7 +1724,7 @@ describe('Trading Post workMulti potion', () => {
 
         expect(withoutPotion.currency).toBe('starch');
         expect(withPotion.currency).toBe('starch');
-        expect(withPotion.rewardAmount).toBeGreaterThan(withoutPotion.rewardAmount);
+        expect(withPotion.rewardAmount).toBe(withoutPotion.rewardAmount);
     });
 
     test('resolveNpcRob: raises the reward on a win', async () => {
