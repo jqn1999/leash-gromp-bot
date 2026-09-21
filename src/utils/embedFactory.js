@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Festival, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket, Potions } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Festival, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -31,6 +31,15 @@ const POTION_EFFECT_LABELS = {
 function formatPotionEffect(potion) {
     const label = POTION_EFFECT_LABELS[potion.effectType] || potion.effectType;
     return `+${(potion.value * 100).toFixed(0)}% ${label}`;
+}
+
+// Tier flavor (2026-09-21 rotation expansion) — lore.md has no existing potion-rarity
+// convention to reuse, so this stays a plain, period-appropriate "Tier I/II/III" label
+// rather than inventing a modern "Common/Rare/Legendary" loot-tier framing lore.md's own
+// voice doesn't support.
+const TIER_LABELS = { 1: "Tier I", 2: "Tier II", 3: "Tier III" };
+function formatTier(potion) {
+    return TIER_LABELS[potion.tier] || `Tier ${potion.tier}`;
 }
 
 // Shared across every leaderboard embed so 1st/2nd/3rd read the same way everywhere —
@@ -4039,14 +4048,18 @@ class EmbedFactory {
             statusLine = `No potion currently active — buy one below.`;
         }
 
-        // Daily stock limit (2026-09-21) — one purchase per potion per Eastern trading day,
-        // mirrors the disabled-button state tradingPost.js's own buildBuyRow already computes
-        // off the same tradingPostFactory.hasBoughtToday check, so the embed text and the
-        // button state can never disagree.
-        const fields = Potions.CATALOG.map((potion) => {
+        // Daily rotation (2026-09-21) — only TODAY's 3 rotated potions (one per effect type,
+        // tradingPostFactory.getDailyRotation), each priced LIVE off this viewer's own stats
+        // (computePotionPrice), never all 9 catalog entries/a static price. Daily stock limit
+        // note mirrors the disabled-button state tradingPost.js's own buildBuyRow already
+        // computes off the same tradingPostFactory.hasBoughtToday check, so the embed text and
+        // the button state can never disagree.
+        const rotation = tradingPostFactory.getDailyRotation(userId);
+        const fields = rotation.map((potion) => {
+            const price = tradingPostFactory.computePotionPrice(potion, userDetails);
             const alreadyBoughtToday = tradingPostFactory.hasBoughtToday(userDetails, potion.id);
             return {
-                name: `${potion.name} — ${potion.pricePotatoes.toLocaleString()} potatoes`,
+                name: `${potion.name} (${formatTier(potion)}) — ${price.toLocaleString()} potatoes`,
                 value: `${formatPotionEffect(potion)}\nLasts ${convertSecondstoMinutes(potion.durationSeconds)}`
                     + (alreadyBoughtToday ? `\n*Already bought today — resets at 8pm ET.*` : ''),
                 inline: false,

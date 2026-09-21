@@ -1,16 +1,22 @@
 // Trading Post (systems/trading-post.md) — a Guild-scoped and a Merc-Faction-scoped NPC
-// potion vendor. No stock tracking, no rotation, no crafting, no P2P marketplace (that idea
-// — a scoped companion marketplace — was explicitly dropped from this feature; see the
-// design doc's own "CONFIRMED, superseding the original architect pass" note). This file
-// owns scope resolution and the purchase flow only; the static catalog itself lives in
-// constants.js's Potions.CATALOG (shared, unscoped data — only the embed's flavor text
-// differs by scope, never the catalog), and every potion effect's actual consumption point
-// lives wherever that effect already has an existing aggregation bucket
-// (workFactory.getPotionWorkMulti, dynamoHandler.getWorkCooldownSkipSources,
-// dynamoHandler.passivePotatoHandler's own live tick) — see the design doc's "Formulas /
-// consumption points" table.
+// potion vendor. No shared stock, no crafting, no P2P marketplace (that idea — a scoped
+// companion marketplace — was explicitly dropped from this feature; see the design doc's
+// own "CONFIRMED, superseding the original architect pass" note). This file owns scope
+// resolution, the daily seeded rotation, live per-player pricing, and the purchase flow;
+// the static 9-entry (3 effect types x 3 tiers) catalog itself lives in constants.js's
+// Potions.CATALOG (shared, unscoped data — only the embed's flavor text differs by scope,
+// never the catalog), and every potion effect's actual consumption point lives wherever
+// that effect already has an existing aggregation bucket (workFactory.getPotionWorkMulti,
+// dynamoHandler.getWorkCooldownSkipSources, dynamoHandler.passivePotatoHandler's own live
+// tick) — see the design doc's "Formulas / consumption points" table.
+//
+// Daily rotation + scaled pricing (2026-09-21, "add more potion types/tiers with a daily-
+// rotating stock of only 3 available at a time") — each player gets their OWN seeded
+// rotation, one potion per effect type per trading day (getDailyRotation), each priced live
+// off that player's own stats (computePotionPrice) rather than a flat price — see
+// constants.js's own Potions block comment for the pricing rationale.
 const dynamoHandler = require("./dynamoHandler");
-const { Potions } = require("./constants");
+const { Potions, TradingPostRotation } = require("./constants");
 
 // Daily purchase limit (2026-09-21, direct instruction — "make trade post have a limited
 // stock for each player daily," confirmed as one purchase PER POTION per player per day,
@@ -52,6 +58,87 @@ function hasBoughtToday(userDetails, potionId, now = new Date()) {
     const record = userDetails.tradingPostDailyPurchases;
     if (!record || record.dailyTag !== getDailyTag(now)) return false;
     return record.potionIds.includes(potionId);
+}
+
+// getUsers()-style external/partial data guard (dynamoHandler.js's own toNumber
+// precedent, mirrored here) — a raw scan row missing/NaN-ing its own priceStat must never
+// propagate into a stored numeric field via a purchase.
+function toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+// Daily rotation (2026-09-21, "add more potion types/tiers with a daily-rotating stock of
+// only 3 available at a time") — xmur3 hash + mulberry32 PRNG, a byte-for-byte mirror of
+// companionShopFactory.js's own createSeededRandom (duplicated, not imported, per this
+// codebase's established "mirrored, not shared" convention for these tiny pure random/date
+// helpers — see that file's own comment on the same choice for getDailyTag).
+function xmur3(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+        h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        h ^= h >>> 16;
+        return h >>> 0;
+    };
+}
+
+function mulberry32(seed) {
+    let t = seed;
+    return function () {
+        t |= 0;
+        t = (t + 0x6D2B79F5) | 0;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function createSeededRandom(userId, tag, slotIndex) {
+    const seedFn = xmur3(`${userId}:${tag}:${slotIndex}`);
+    return mulberry32(seedFn());
+}
+
+// Cumulative walk against TradingPostRotation.TIER_ODDS_CUMULATIVE, same shape as
+// companionShopFactory.js's rollShopRarity against CompanionShop.RARITY_ODDS — index 0 is
+// tier 1, and the array's own length IS the tier count, so a future 4th tier only needs a
+// new cumulative threshold appended here, nothing else.
+function rollTier(roll) {
+    const thresholds = TradingPostRotation.TIER_ODDS_CUMULATIVE;
+    for (let i = 0; i < thresholds.length; i++) {
+        if (roll < thresholds[i]) {
+            return i + 1;
+        }
+    }
+    return thresholds.length;
+}
+
+// The live price for a catalog entry against a specific player's own stats — replaces the
+// old flat pricePotatoes. pricePerPoint (workMulti/workTimer lines) and pricePct
+// (passiveAmount line) are mutually exclusive per catalog entry; whichever is present wins.
+// Floored at priceFloor via Math.floor's own natural rounding-down (priceFloor plus a
+// non-negative scaling term can never fall below priceFloor itself).
+function computePotionPrice(potion, userDetails) {
+    const statValue = toNumber(userDetails[potion.priceStat]);
+    const scaling = potion.pricePerPoint !== undefined ? potion.pricePerPoint : potion.pricePct;
+    return Math.floor(potion.priceFloor + scaling * statValue);
+}
+
+// One slot per TradingPostRotation.SLOT_EFFECT_TYPES entry, deterministic per
+// (userId, dailyTag, slotIndex) — same "nothing about a slot needs to be pre-rolled or
+// stored, only which slots have been bought" design companionShopFactory.js's own daily
+// rotation already established. Always returns exactly 3 potions, one per effect type.
+function getDailyRotation(userId, now = new Date()) {
+    const tag = getDailyTag(now);
+    return TradingPostRotation.SLOT_EFFECT_TYPES.map((effectType, slotIndex) => {
+        const rng = createSeededRandom(userId, tag, slotIndex);
+        const tier = rollTier(rng());
+        return Potions.CATALOG.find((p) => p.effectType === effectType && p.tier === tier);
+    });
 }
 
 // Mirrors Guild Chat Sync / Merc Faction Hall's own scope shape exactly (see
@@ -108,10 +195,20 @@ async function attemptPurchasePotion(userId, username, potionId) {
         return { ok: false, message: `you need to be in a guild or be a mercenary to buy from a Trading Post!` };
     }
 
-    if (userDetails.potatoes < potion.pricePotatoes) {
+    // Daily rotation (2026-09-21) — only today's 3 rotated potions are actually offered;
+    // reject a client trying to buy an off-rotation tier (e.g. a stale embed from an
+    // earlier trading day, or a hand-crafted customId) before touching price/potatoes at
+    // all.
+    const rotation = getDailyRotation(userId);
+    if (!rotation.some((rotationPotion) => rotationPotion && rotationPotion.id === potion.id)) {
+        return { ok: false, message: `${potion.name} isn't in today's Trading Post rotation — check back for what's on offer right now.` };
+    }
+
+    const price = computePotionPrice(potion, userDetails);
+    if (userDetails.potatoes < price) {
         return {
             ok: false,
-            message: `you don't have enough potatoes for ${potion.name} — it costs ${potion.pricePotatoes.toLocaleString()} potatoes and you only have ${userDetails.potatoes.toLocaleString()}.`
+            message: `you don't have enough potatoes for ${potion.name} — it costs ${price.toLocaleString()} potatoes and you only have ${userDetails.potatoes.toLocaleString()}.`
         };
     }
 
@@ -154,7 +251,7 @@ async function attemptPurchasePotion(userId, username, potionId) {
         };
     }
 
-    const newPotatoes = userDetails.potatoes - potion.pricePotatoes;
+    const newPotatoes = userDetails.potatoes - price;
     // Carries forward today's OTHER already-bought potionIds (e.g. buying Steadfast Draught
     // after already buying Hoarder's Brew earlier today) — a fresh array only when the
     // stored tag is stale (yesterday's list or no record at all), same lazy-reset idiom
@@ -168,7 +265,7 @@ async function attemptPurchasePotion(userId, username, potionId) {
 
     return {
         ok: true,
-        message: `bought ${potion.name} for ${potion.pricePotatoes.toLocaleString()} potatoes! It's active until <t:${Math.floor(newActivePotion.expiresAt / 1000)}:R>. You have ${newPotatoes.toLocaleString()} potatoes left.`,
+        message: `bought ${potion.name} for ${price.toLocaleString()} potatoes! It's active until <t:${Math.floor(newActivePotion.expiresAt / 1000)}:R>. You have ${newPotatoes.toLocaleString()} potatoes left.`,
         potion,
         activePotion: newActivePotion
     };
@@ -181,5 +278,7 @@ module.exports = {
     findPotionById,
     getDailyTag,
     hasBoughtToday,
+    computePotionPrice,
+    getDailyRotation,
     attemptPurchasePotion
 };

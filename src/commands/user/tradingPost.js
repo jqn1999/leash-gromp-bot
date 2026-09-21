@@ -2,28 +2,31 @@ const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const tradingPostFactory = require("../../utils/tradingPostFactory");
-const { Potions } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 const BUY_PREFIX = 'trading_post_buy_';
 
-// One button per catalog entry (3 in v1, well under Discord's 5-per-row cap) — disabled
-// when the caller can't afford it OR has already bought that potion today (2026-09-21,
-// the new daily-stock limit — a predictable, always-known-in-advance state, unlike the
-// effect-type-conflict rejection below), same "a doomed click should never even be
-// possible" precedent companionShop.js/companionMarket.js already set. A potion that would
-// be REJECTED by the purchase rule (a different effect type already active) is deliberately
-// left enabled rather than disabled — that rejection needs its own clear message naming
-// what's active and when it expires (see tradingPostFactory.attemptPurchasePotion), which a
-// silently-disabled button can't convey.
-function buildBuyRow(userDetails) {
-    const buttons = Potions.CATALOG.map((potion) => new ButtonBuilder()
-        .setCustomId(`${BUY_PREFIX}${potion.id}`)
-        .setLabel(`Buy ${potion.name} (${potion.pricePotatoes.toLocaleString()})`)
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(userDetails.potatoes < potion.pricePotatoes || tradingPostFactory.hasBoughtToday(userDetails, potion.id))
-    );
+// One button per TODAY'S rotated potion (3, via tradingPostFactory.getDailyRotation — one
+// per effect type, not all 9 catalog entries), well under Discord's 5-per-row cap —
+// disabled when the caller can't afford the LIVE computed price OR has already bought that
+// potion today (2026-09-21, the daily-stock limit — a predictable, always-known-in-advance
+// state, unlike the effect-type-conflict rejection below), same "a doomed click should
+// never even be possible" precedent companionShop.js/companionMarket.js already set. A
+// potion that would be REJECTED by the purchase rule (a different effect type already
+// active) is deliberately left enabled rather than disabled — that rejection needs its own
+// clear message naming what's active and when it expires (see
+// tradingPostFactory.attemptPurchasePotion), which a silently-disabled button can't convey.
+function buildBuyRow(userId, userDetails) {
+    const rotation = tradingPostFactory.getDailyRotation(userId);
+    const buttons = rotation.map((potion) => {
+        const price = tradingPostFactory.computePotionPrice(potion, userDetails);
+        return new ButtonBuilder()
+            .setCustomId(`${BUY_PREFIX}${potion.id}`)
+            .setLabel(`Buy ${potion.name} (${price.toLocaleString()})`)
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(userDetails.potatoes < price || tradingPostFactory.hasBoughtToday(userDetails, potion.id));
+    });
     return new ActionRowBuilder().addComponents(buttons);
 }
 
@@ -60,7 +63,7 @@ module.exports = {
         const renderEmbed = (details) => embedFactory.createTradingPostEmbed(userDisplayName, userId, interaction.user.avatar, scope, scopeLabel, details);
 
         const embed = renderEmbed(userDetails);
-        const components = [buildBuyRow(userDetails)];
+        const components = [buildBuyRow(userId, userDetails)];
         const reply = await interaction.editReply({ embeds: [embed], components });
 
         const collectorFilter = i => i.user.id === interaction.user.id;
@@ -98,7 +101,7 @@ module.exports = {
             await interaction.editReply({
                 content: `${userDisplayName}, ${result.message}`,
                 embeds: [renderEmbed(userDetails)],
-                components: [buildBuyRow(userDetails)]
+                components: [buildBuyRow(userId, userDetails)]
             });
         }
     }

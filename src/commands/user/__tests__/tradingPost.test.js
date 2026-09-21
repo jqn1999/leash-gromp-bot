@@ -1,12 +1,11 @@
 // /trading-post — Guild-scoped and Merc-Faction-scoped NPC potion vendor
 // (systems/trading-post.md). Mocks at the dynamoHandler boundary the command actually
-// touches; tradingPostFactory stays REAL so scope resolution/purchase-rule logic is
-// actually exercised, not stubbed.
+// touches; tradingPostFactory stays REAL so scope resolution/daily-rotation/purchase-rule
+// logic is actually exercised, not stubbed.
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Potions } = require('../../../utils/constants');
-const { getDailyTag } = require('../../../utils/tradingPostFactory');
+const { getDailyTag, getDailyRotation, computePotionPrice } = require('../../../utils/tradingPostFactory');
 const { callback } = require('../tradingPost');
 
 function fakeInteraction() {
@@ -27,9 +26,16 @@ function baseUser(overrides = {}) {
         guildId: 0,
         isMercenary: false,
         activePotion: null,
+        workMultiplierAmount: 10,
+        passiveAmount: 100000,
         ...overrides,
     };
 }
+
+// The caller in every test below is 'user-1' — this is their own actual daily rotation,
+// used the same way tradingPostFactory.attemptPurchasePotion itself derives it, so tests
+// never assume a specific catalog id is on offer.
+const rotation = getDailyRotation('user-1');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -56,7 +62,7 @@ describe('/trading-post', () => {
         expect(dynamoHandler.findGuildById).not.toHaveBeenCalled();
     });
 
-    test('a guilded player sees the guild-scoped embed, titled after their own guild', async () => {
+    test('a guilded player sees the guild-scoped embed, titled after their own guild, showing today\'s 3 rotated potions', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ guildId: 'g1' }));
         dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
         const { interaction } = fakeInteraction();
@@ -65,7 +71,25 @@ describe('/trading-post', () => {
 
         const embed = interaction.editReply.mock.calls[0][0].embeds[0];
         expect(embed.data.title).toContain('Spud Squad');
-        expect(embed.data.fields).toHaveLength(Potions.CATALOG.length);
+        expect(embed.data.fields).toHaveLength(rotation.length);
+        rotation.forEach((potion) => {
+            expect(embed.data.fields.some(f => f.name.startsWith(potion.name))).toBe(true);
+        });
+    });
+
+    test('buy button labels/prices reflect the LIVE computed price for the viewing player, not a flat price', async () => {
+        const user = baseUser({ guildId: 'g1' });
+        dynamoHandler.findUser.mockResolvedValue(user);
+        dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
+        const { interaction } = fakeInteraction();
+
+        await callback({}, interaction);
+
+        const buttons = interaction.editReply.mock.calls[0][0].components[0].components;
+        rotation.forEach((potion, i) => {
+            const price = computePotionPrice(potion, user);
+            expect(buttons[i].data.label).toContain(price.toLocaleString());
+        });
     });
 
     // Daily stock limit (2026-09-21) — the buy button for a potion already bought today is
@@ -75,7 +99,7 @@ describe('/trading-post', () => {
         const today = getDailyTag();
         dynamoHandler.findUser.mockResolvedValue(baseUser({
             guildId: 'g1',
-            tradingPostDailyPurchases: { dailyTag: today, potionIds: [Potions.CATALOG[0].id] },
+            tradingPostDailyPurchases: { dailyTag: today, potionIds: [rotation[0].id] },
         }));
         dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
         const { interaction } = fakeInteraction();
@@ -118,8 +142,9 @@ describe('/trading-post', () => {
     // tradingPostFactory.attemptPurchasePotion (that function's own branching is covered
     // directly in tradingPostFactory.test.js).
     test('a successful purchase closes the shop out — direct instruction, no re-rendered embed/buttons, no further click awaited', async () => {
-        const potion = Potions.CATALOG[0];
+        const potion = rotation[0];
         const startingUser = baseUser({ guildId: 'g1' });
+        const price = computePotionPrice(potion, startingUser);
         dynamoHandler.findGuildById.mockResolvedValue({ guildId: 'g1', guildName: 'Spud Squad' });
         dynamoHandler.updateUserFields.mockResolvedValue({});
 
@@ -140,7 +165,7 @@ describe('/trading-post', () => {
         await callback({}, interaction);
 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', expect.objectContaining({
-            potatoes: startingUser.potatoes - potion.pricePotatoes,
+            potatoes: startingUser.potatoes - price,
         }));
         expect(dynamoHandler.findUser).toHaveBeenCalledTimes(2);
         const finalCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
@@ -153,8 +178,8 @@ describe('/trading-post', () => {
     });
 
     test('a rejected purchase (e.g. a different potion already active) leaves the shop open with fresh state, not closed', async () => {
-        const potion = Potions.CATALOG[0];
-        const activePotion = Potions.CATALOG.find(p => p.effectType !== potion.effectType) || Potions.CATALOG[1];
+        const potion = rotation[0];
+        const activePotion = rotation.find(p => p.effectType !== potion.effectType) || rotation[1];
         const startingUser = baseUser({
             guildId: 'g1',
             activePotion: { potionId: activePotion.id, effectType: activePotion.effectType, value: activePotion.value, expiresAt: Date.now() + 60_000 },

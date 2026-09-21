@@ -421,18 +421,94 @@ button and embed note for an already-bought potion while a DIFFERENT potion's fi
 normal. Full suite: **111 suites / 2030 tests, all passing** (up from 111/2018 — net 0 new suites,
 +12 tests).
 
-## Future scope, flagged not built (2026-09-21, product-owner note)
+## Shipped: 9-entry tiered catalog, daily seeded rotation, live per-player pricing (2026-09-21)
 
-- **More potion types/tiers, with a daily-rotating stock of only 3 available at a time** (out of a
-  larger catalog), weighted so better potions (bigger effect magnitude, longer duration, or both)
-  are rarer pulls — explicitly the CURRENT catalog's own 3-effect-type/1-tier-each shape evolving
-  into something closer to `companionShop.js`'s seeded-deterministic daily rotation, but with
-  potion QUALITY varying by roll, not just which slot is offered. Needs real design work before a
-  developer touches it: how many tiers, how the rarity weighting works, whether existing
-  `Potions.CATALOG` entries become one tier among several or get replaced outright, and how a
-  daily reroll interacts with the daily purchase limit shipped just above (does a reroll reset
-  what's already been bought, or run alongside it independently?). Not scoped, not started — a
-  future architect/product-owner pass, not a developer task yet.
+What was previously flagged below as unscoped ("more potion types/tiers, with a daily-rotating
+stock of only 3 available at a time... weighted so better potions are rarer pulls") is now built.
+Design confirmed with the project owner before implementation: expand potion variety/tiers, keep
+each tier's own effect magnitude modest and mostly duration-driven (not a huge magnitude jump per
+tier), and scale COST to the player's own live stats rather than a flat price, so a potion stays a
+genuine value proposition at both low and high progression. Full derivation of the price formula
+(including the badly-overpriced first draft it replaced) lives in roadmap.md's dated entry for
+this change — summarized here as the shipped shape.
+
+**Catalog (`constants.js`, `Potions.CATALOG`, 3 -> 9 entries)**: 3 effect types (`workMulti`/
+`workTimer`/`passiveAmount`) x 3 tiers each. The original 3 ids (`workDraught`/`quickstepTonic`/
+`hoardersBrew`) were kept EXACTLY as-is and simply became Tier I of their own line, rather than
+being renumbered — a player may already be holding one of these as an `activePotion` or in
+`tradingPostDailyPurchases` history right now, and reusing the id means zero migration/backfill
+is needed for any in-flight data. Tiers II/III got new ids (`workDraughtII`/`workDraughtIII`,
+`quickstepTonicII`/`quickstepTonicIII`, `hoardersBrewII`/`hoardersBrewIII`). Each entry gained a
+`tier` field (1/2/3) and traded the old flat `pricePotatoes` for `priceStat` (which live user stat
+the price scales off — `workMultiplierAmount` or `passiveAmount`), `priceFloor`, and either
+`pricePerPoint` (workMulti/workTimer lines) or `pricePct` (the passiveAmount line).
+
+**Price formula (`tradingPostFactory.computePotionPrice`)**: `cost = Math.floor(priceFloor +
+(pricePerPoint ?? pricePct) * userDetails[priceStat])`. `quickstepTonic`'s whole line prices off
+`workMultiplierAmount` despite its OWN `effectType` being `workTimer` — deliberate, not a
+copy-paste mistake: the potion's price is calibrated against the VALUE OF AN EXTRA `/work` CALL
+(a cooldown skip effectively grants one), which scales with `workMultiplierAmount`, even though
+the buff itself is a skip-CHANCE, not a work-multiplier increase. `priceStat` is kept as its own
+explicit field rather than derived from `effectType` specifically so this decoupling is
+data-driven, not implicit — a future line could price off a totally different stat than the one
+its own effect touches without any code change, just a data edit.
+
+**Daily rotation (`tradingPostFactory.getDailyRotation`)**: one seeded slot per
+`TradingPostRotation.SLOT_EFFECT_TYPES` entry (`workMulti`/`workTimer`/`passiveAmount`, in that
+fixed order) — a player never has zero options for a whole mechanic on a given day, unlike a
+fully random pool draw which could duplicate effect types and omit one entirely. Each slot rolls
+a tier via `TradingPostRotation.TIER_ODDS_CUMULATIVE` (`[0.65, 0.95, 1.0]` — Tier I 65%, Tier II
+30%, Tier III 5%), then looks up the catalog entry matching `(effectType, tier)`. Seeded via
+`xmur3` hash + `mulberry32` PRNG off `userId:dailyTag:slotIndex` — a byte-for-byte mirror of
+`companionShopFactory.js`'s own `createSeededRandom` (duplicated, not imported, per this
+codebase's established "mirrored, not shared" convention for these tiny pure random/date
+helpers — see that file's own comment on why `getDailyTag` itself is likewise duplicated rather
+than imported here). Nothing about a day's rotation is ever persisted — it's re-derived fresh on
+every read from `(userId, dailyTag, slotIndex)` alone, same "nothing about a slot needs to be
+pre-rolled or stored" design Companion Shop's own daily/weekly rotation already established.
+
+**`attemptPurchasePotion` rewired**: now computes the day's rotation first and rejects a
+`potionId` that isn't one of today's 3 offered potions (a client trying to buy an off-rotation
+tier — a stale embed from an earlier trading day, or a hand-crafted customId) before even
+checking price. Affordability, the potato deduction, and the confirmation message all now use
+`computePotionPrice(potion, userDetails)` instead of the old flat `pricePotatoes`. The existing
+same-`effectType`-extends / different-`effectType`-rejects purchase rule and the existing
+`hasBoughtToday`/`tradingPostDailyPurchases` daily-limit mechanism are UNCHANGED — the daily limit
+already tracked by exact `potionId`, which still works correctly now that only one specific
+tiered id is ever offered per effect type per day (a Tier II id bought today is never conflated
+with its Tier I or Tier III sibling).
+
+**`tradingPost.js`/`embedFactory.createTradingPostEmbed`**: both now show only TODAY's 3 rotated
+potions (via `getDailyRotation`), not all 9 catalog entries — each with its live computed price
+and a `(Tier I/II/III)` label in the embed field name. `lore.md` has no existing potion-rarity
+convention to reuse, so tier flavor stayed a plain "Tier I/II/III" label rather than inventing a
+modern "Common/Rare/Legendary" loot-tier framing that voice doesn't support. Buy button
+labels/disabled-state use the same computed price. The "Already bought today" per-potion note and
+the `/profile` "Active Potion:" field needed no structural change — both resolve by `potionId`
+lookup against the full `Potions.CATALOG` (`findPotionById`), which still works identically
+against the expanded 9-entry table.
+
+**Consumption points unchanged, confirmed not just assumed**: `workFactory.getPotionWorkMulti`,
+`dynamoHandler.getWorkCooldownSkipSources`, and `passivePotatoHandler`'s `potionPassivePercent`
+term all read `findPotionById(activePotion.potionId).value`/`.effectType` only — neither cares
+about `tier`, so all three already worked correctly against the expanded catalog with zero code
+changes.
+
+**Balance**: values chosen so each tier nets roughly an 80% profit margin against `/work`'s real
+payout formula even if the potion is only used for a fraction of its own duration — see
+roadmap.md's dated entry for the full derivation, including why the first scaled-cost draft
+(before this one) was rejected as badly overpriced.
+
+**Tests**: `tradingPostFactory.test.js` gained a `computePotionPrice` describe block (sample
+values per tier for both a `pricePerPoint` and a `pricePct` line, `quickstepTonic`'s
+`workMultiplierAmount`-despite-`workTimer` case, and a missing/NaN-stat guard), a
+`getDailyRotation` describe block (always one potion per effect type, determinism for the same
+`userId`+`dailyTag`, independence across users/days), and new `attemptPurchasePotion` coverage
+for the off-rotation rejection and a tiered id being tracked by its own exact id under the daily
+limit. `tradingPost.test.js`'s existing cases were re-based off each test's own caller's actual
+`getDailyRotation` result (rather than the old flat `Potions.CATALOG`/`pricePotatoes`), plus a new
+case confirming buy-button labels show the live computed price. Full suite (`npx jest`) confirmed
+green at 111 suites / 2047 tests after this change.
 
 ## Shipped: "Active Potion:" status field on /profile (2026-09-21, direct instruction — "Have potion/potion status somewhere on the UI and embeds somewhere in bot maybe on profile or something")
 

@@ -2449,19 +2449,37 @@ const Raid = {
     REGULAR_STAT_RAID_DIFFICULTY: 100
 }
 
-// Trading Post (systems/trading-post.md) — a static, always-available NPC potion
-// storefront, scoped per Guild / the whole Merc Faction (see tradingPostFactory.js's
-// resolveTradingPostScope). No stock tracking, no rotation, no crafting, no P2P — every
-// player in scope can buy any of these at any time; only a player's OWN activePotion state
-// (getDefaultUserFields) is ever personal, never shared/contested with guildmates or fellow
-// mercenaries. One catalog entry per effectType (v1's confirmed 3-effect list — workMulti/
-// workTimer/passiveAmount, NOT a starchBuff — see the design doc's own "superseding the
-// original architect pass" note), read identically by both scopes; only the embed's flavor
-// text differs between them (tradingPostFactory/embedFactory branch on scope, never on
-// this catalog). Values are an illustrative first pass only — sized to sit comfortably
-// below Guild Buff/Mercenary Buff's own 15-25%-at-max-rank PERMANENT bonuses, since this is
-// an anyone-can-buy, no-progression-gate, short-lived bonus by comparison — a real balance
-// pass is still owed before these numbers are load-bearing.
+// Trading Post (systems/trading-post.md) — a Guild-scoped and Merc-Faction-scoped NPC
+// potion vendor (see tradingPostFactory.js's resolveTradingPostScope). No stock tracking,
+// no crafting, no P2P — only a player's OWN activePotion/tradingPostDailyPurchases state
+// (getDefaultUserFields) is ever personal, never shared/contested with guildmates or
+// fellow mercenaries. Only the embed's flavor text differs by scope
+// (tradingPostFactory/embedFactory branch on scope, never on this catalog).
+//
+// Expanded 2026-09-21 (direct instruction, "add more potion types/tiers with a daily-
+// rotating stock") from the original flat 3-entry/1-tier catalog to 3 effect types
+// (workMulti/workTimer/passiveAmount) x 3 tiers each = 9 entries. The original 3 ids
+// (workDraught/quickstepTonic/hoardersBrew) were kept EXACTLY as-is and simply became
+// Tier I of their own line, rather than being renumbered — players may already be holding
+// one of these as an activePotion or in tradingPostDailyPurchases history, and reusing the
+// id means no migration/backfill is needed for any in-flight data. Tiers II/III got new
+// ids (e.g. workDraughtII/workDraughtIII).
+//
+// Pricing (priceStat/priceFloor/pricePerPoint/pricePct, replacing the old flat
+// pricePotatoes) scales cost off the player's OWN live stat — see
+// tradingPostFactory.computePotionPrice for the formula — so a potion stays a genuine
+// value proposition at both low and high progression instead of the old flat 150,000
+// price, which was already trivial for a mid/late player. Calibrated against the real
+// /work payout formula so each tier nets roughly an 80% profit margin even used for only a
+// fraction of its own duration (see roadmap.md's dated entry for the full derivation,
+// including the badly-overpriced first draft this replaced).
+//
+// quickstepTonic's line prices off `workMultiplierAmount` despite its OWN effectType being
+// `workTimer` — deliberate, not a copy-paste mistake: the potion's price is calibrated
+// against the VALUE OF AN EXTRA /work CALL (a cooldown skip effectively grants one), which
+// scales with workMultiplierAmount, even though the buff itself is a skip-chance, not a
+// work-multiplier increase. `priceStat` is its own explicit field (not derived from
+// effectType) specifically so this decoupling is data-driven, not implicit.
 const Potions = {
     CATALOG: [
         {
@@ -2471,9 +2489,34 @@ const Potions = {
                                             // getGuildWorkMulti/getMercenaryWorkMulti/
                                             // getWorldBuffWorkMulti already feed — see
                                             // workFactory.getPotionWorkMulti
-            value: 0.08,                   // +8%, illustrative
+            tier: 1,
+            value: 0.08,
             durationSeconds: 7200,         // 2h
-            pricePotatoes: 150000
+            priceStat: "workMultiplierAmount",
+            priceFloor: 5000,
+            pricePerPoint: 250
+        },
+        {
+            id: "workDraughtII",
+            name: "Warden's Draught",
+            effectType: "workMulti",
+            tier: 2,
+            value: 0.10,
+            durationSeconds: 14400,        // 4h
+            priceStat: "workMultiplierAmount",
+            priceFloor: 10000,
+            pricePerPoint: 650
+        },
+        {
+            id: "workDraughtIII",
+            name: "Baron's Draught",
+            effectType: "workMulti",
+            tier: 3,
+            value: 0.12,
+            durationSeconds: 28800,        // 8h
+            priceStat: "workMultiplierAmount",
+            priceFloor: 15000,
+            pricePerPoint: 1500
         },
         {
             id: "quickstepTonic",
@@ -2482,9 +2525,34 @@ const Potions = {
                                             // dynamoHandler.getWorkCooldownSkipSources,
                                             // feeding the existing
                                             // cooldownFactory.combineSkipChance roll
-            value: 0.10,                   // +10% skip chance, illustrative
+            tier: 1,
+            value: 0.10,
             durationSeconds: 7200,
-            pricePotatoes: 150000
+            priceStat: "workMultiplierAmount",   // see this block's own top comment for why
+            priceFloor: 3000,
+            pricePerPoint: 450
+        },
+        {
+            id: "quickstepTonicII",
+            name: "Fleetfoot Tonic",
+            effectType: "workTimer",
+            tier: 2,
+            value: 0.12,
+            durationSeconds: 14400,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 6000,
+            pricePerPoint: 1100
+        },
+        {
+            id: "quickstepTonicIII",
+            name: "Windrunner's Tonic",
+            effectType: "workTimer",
+            tier: 3,
+            value: 0.14,
+            durationSeconds: 28800,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 10000,
+            pricePerPoint: 2650
         },
         {
             id: "hoardersBrew",
@@ -2494,14 +2562,52 @@ const Potions = {
                                             // rebirthPercent/worldBuffPassivePercent/
                                             // spudKeepPassivePercent convention already
                                             // folded together in
-                                            // dynamoHandler.passivePotatoHandler, confirmed
-                                            // percentage-based (not flat) by checking those
-                                            // existing siblings before locking this shape
-            value: 0.08,                   // +8%, illustrative
+                                            // dynamoHandler.passivePotatoHandler
+            tier: 1,
+            value: 0.08,
             durationSeconds: 7200,
-            pricePotatoes: 150000
+            priceStat: "passiveAmount",
+            priceFloor: 1000,
+            pricePct: 0.0012
+        },
+        {
+            id: "hoardersBrewII",
+            name: "Miser's Brew",
+            effectType: "passiveAmount",
+            tier: 2,
+            value: 0.10,
+            durationSeconds: 14400,
+            priceStat: "passiveAmount",
+            priceFloor: 2000,
+            pricePct: 0.0030
+        },
+        {
+            id: "hoardersBrewIII",
+            name: "Vault-Keeper's Brew",
+            effectType: "passiveAmount",
+            tier: 3,
+            value: 0.12,
+            durationSeconds: 28800,
+            priceStat: "passiveAmount",
+            priceFloor: 3000,
+            pricePct: 0.0065
         }
     ]
+}
+
+// Daily Trading Post rotation (systems/trading-post.md) — one seeded, deterministic slot
+// per effect type per player per trading day, same seeded-PRNG mechanism as
+// companionShopFactory.js's own daily/weekly slots (xmur3 hash + mulberry32, mirrored, not
+// imported, per this file's established "tiny pure random/date helpers get duplicated, not
+// shared" convention — see companionShopFactory.js's own comment on this).
+const TradingPostRotation = {
+    // Fixed slot order — one daily slot per effect type, so a player never has zero
+    // options for a whole mechanic on a given day (as opposed to a fully random pool
+    // draw, which could duplicate effect types and omit one entirely).
+    SLOT_EFFECT_TYPES: ["workMulti", "workTimer", "passiveAmount"],
+    // Cumulative tier-roll thresholds, same cumulative-walk shape as CompanionShop.RARITY_ODDS
+    // in this same file — roll < 0.65 => tier 1, < 0.95 => tier 2, else tier 3.
+    TIER_ODDS_CUMULATIVE: [0.65, 0.95, 1.0]
 }
 
 // Spud Keep — daily server-wide contested-territory event (guilds + Merc Faction). See
@@ -4924,6 +5030,7 @@ module.exports = {
     FestivalTemplates,
     FestivalShop,
     Potions,
+    TradingPostRotation,
     MercenaryRank,
     Bounty,
     BountyScenarios,

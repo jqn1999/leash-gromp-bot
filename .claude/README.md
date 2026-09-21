@@ -50,10 +50,11 @@ those AWS services.
   the Merc Faction, the N-way weighted lottery, the bundle buff, the accruing tax-redirect pot, and
   the Attacker's Bonus.
 - [systems/trading-post.md](systems/trading-post.md) — **shipped** — a Guild-scoped and a
-  Merc-Faction-scoped NPC potion vendor: a static, no-scarcity 3-potion catalog (temporary Work
-  Multiplier/Cooldown-Skip Chance/Passive Income boosts), gated the same `scopeKey` way as Guild
-  Chat Sync/Merc Faction Hall. No companion marketplace involved — that idea was dropped from
-  this feature during scoping.
+  Merc-Faction-scoped NPC potion vendor: a static 9-entry catalog (temporary Work
+  Multiplier/Cooldown-Skip Chance/Passive Income boosts, 3 tiers each) with a daily seeded
+  per-player rotation (one tier offered per effect type) and live per-player stat-scaled
+  pricing, gated the same `scopeKey` way as Guild Chat Sync/Merc Faction Hall. No companion
+  marketplace involved — that idea was dropped from this feature during scoping.
 - [systems/seasonal-festivals.md](systems/seasonal-festivals.md) — **shipped** — time-boxed festivals:
   an admin-started/DB-persisted window (Spud Keep's persisted-`expiresAt` pattern, not Quests'
   derived-tag one), a festival-only quest-shaped objective pool reusing Quests' delta/snapshot
