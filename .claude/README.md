@@ -24,10 +24,10 @@ those AWS services.
   bank/tax, personal shops, regrade gacha system, catch-up bonus.
 - [systems/achievements.md](systems/achievements.md) — achievement definitions, unlock checking,
   the lazy-backfill design for pre-existing accounts.
-- [systems/titles.md](systems/titles.md) — **design only, not implemented** — a selectable
-  cosmetic title layer on top of Achievements/Rebirth/Mercenary Rank/Guild Level/Tower milestones,
-  computed live (never stored as a grant) and shown on `/profile`, switched via a new `/set-title`
-  command.
+- [systems/titles.md](systems/titles.md) — **shipped** — a selectable cosmetic title layer on top
+  of Achievements/Rebirth/Mercenary Rank/Guild Level/Tower milestones, computed live for 12 of 13
+  titles (never stored as a grant) with one narrow `permanentTitles` persistence exception for the
+  Guild Level title, shown on `/profile`, browsed via `/titles`, switched via `/set-title`.
 - [systems/daily-streak.md](systems/daily-streak.md) — auto-triggered login streak reward,
   day-boundary/race-safety logic, no dedicated command.
 - [systems/quests.md](systems/quests.md) — daily/weekly quest pool, rotation, and the

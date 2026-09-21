@@ -253,6 +253,41 @@ const Achievements = [
     { id: "warband_breaker", name: "Convoy's Guard", description: "Repel 15 Ashclove Company warbands", statPath: "warbandRepelledCount", threshold: 15 }
 ]
 
+// Titles (systems/titles.md) — a selectable cosmetic epithet layer on top of
+// Achievements/Rebirth/Mercenary Rank/Guild Level/Tower milestones, worn via /set-title and
+// shown on /profile. Never grants any stat/power (see titleFactory.js). Each entry's
+// `condition` is either:
+//   { type: "stat", statPath, threshold }  — resolved live via achievementFactory's
+//                                             getStatValue, same dot-path convention
+//                                             Achievements above already uses
+//   { type: "guildLevel", minLevel }       — the one condition needing a live guild fetch
+//                                             (Guild Level isn't a field on userDetails at
+//                                             all) AND titleFactory's permanentTitles grant,
+//                                             since it's the one source that can regress
+//                                             (leaving the guild that earned it) — see
+//                                             systems/titles.md section 2/3.
+// Where a Title's milestone matches an existing Achievement 1:1, it reuses that
+// achievement's exact statPath/threshold rather than inventing a new number.
+const Titles = [
+    { id: "reborn_spud", label: "the Reborn", description: "Shed one life's harvest to plant the next.", condition: { type: "stat", statPath: "rebirthCount", threshold: 1 } },
+    { id: "cycle_of_harvest", label: "of the Ever-Turning Season", description: "Five harvests sown, five harvests reaped, and still hungry for a sixth.", condition: { type: "stat", statPath: "rebirthCount", threshold: 5 } },
+    { id: "seasoned_raider", label: "the Seasoned Raider", description: "Has led enough charges to stop flinching at the war horn.", condition: { type: "stat", statPath: "guildRaidWinCount", threshold: 25 } },
+    { id: "kingdoms_champion", label: "Kingdom's Champion", description: "Ten monstrous harvests felled in the Kingdom's name.", condition: { type: "stat", statPath: "worldBossWinCount", threshold: 10 } },
+    { id: "potato_immortal", label: "the Potato Immortal", description: "Ten thousand days in the dirt, and the dirt gave up first.", condition: { type: "stat", statPath: "workCount", threshold: 10000 } },
+    { id: "spud_midas", label: "Spud Midas", description: "Every furrow this one turns seems to strike gold.", condition: { type: "stat", statPath: "workScenarioCounts.golden", threshold: 25 } },
+    { id: "spade_perfect", label: "the Spade Perfected", description: "The spade was reforged so many times it forgot how to dull.", condition: { type: "stat", statPath: "regrades.workMulti.regradeAmount", threshold: 500 } },
+    { id: "potato_deity", label: "the Potato Deity", description: "Ten billion potatoes have passed through hands that no longer bother counting.", condition: { type: "stat", statPath: "totalEarnings", threshold: 10000000000 } },
+    { id: "fort_spudnox", label: "Fort Spudnox", description: "A root cellar so fortified even the Kingdom's tax collectors ask permission.", condition: { type: "stat", statPath: "regrades.bankCapacity.regradeAmount", threshold: 103000000000 } },
+    { id: "tower_titan", label: "the Tower Titan", description: "Climbed the Tater Tower and stood alone at the top when the dust settled.", condition: { type: "stat", statPath: "towerChampionCount", threshold: 1 } },
+    { id: "seasoned_mercenary", label: "the Seasoned Mercenary", description: "Enough bounty posters torn down to paper a tavern wall.", condition: { type: "stat", statPath: "mercenaryBountyWinCount", threshold: 25 } },
+    { id: "iron_tuber", label: "The Iron Tuber", description: "The name whispered by every other bounty hunter in the Kingdom, usually with some envy.", condition: { type: "stat", statPath: "mercenaryBountyWinCount", threshold: 525 } },
+    // Guild Level 10 (RaidLevel.THRESHOLDS' own max, raidCount >= 3000) — the one condition
+    // needing a live guild fetch AND titleFactory's permanentTitles mechanism, since Guild
+    // Level (unlike every other source above) isn't a lifetime counter and can regress if a
+    // player leaves the guild that earned it.
+    { id: "warlord_of_the_realm", label: "Warlord of the Realm", description: "Command of a guild that has answered every muster the Kingdom has ever called — a claim time cannot take back.", condition: { type: "guildLevel", minLevel: 10 } }
+]
+
 const CatchUp = {
     // Max bonus factor applied to a fully-eligible player's effective work multiplier
     // once the economy is mature (e.g. 1.5 => up to 2.5x their own multiplier).
@@ -4642,6 +4677,7 @@ module.exports = {
     ChatMessages,
     Work,
     Achievements,
+    Titles,
     CatchUp,
     DailyStreak,
     TowerLeaderboard,

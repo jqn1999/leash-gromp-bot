@@ -15,7 +15,9 @@ const safehouseFactory = require("../utils/safehouseFactory");
 const shopFactory = require("../utils/shopFactory");
 const guildShopFactory = require("../utils/guildShopFactory");
 const tradingPostFactory = require("../utils/tradingPostFactory");
+const { TitleFactory } = require("../utils/titleFactory");
 const eventFactory = new EventFactory();
+const titleFactory = new TitleFactory();
 
 // Trading Post (systems/trading-post.md) — plain-English label per effectType, shared by
 // createTradingPostEmbed below. Kept local (not exported from tradingPostFactory) since
@@ -623,6 +625,21 @@ class EmbedFactory {
             fields.push({
                 name: "Active Companion:",
                 value: activeCompanion ? `${activeCompanion.name} (${formatCompanionPerks(activeCompanion, activeCompanionLevel, activeInstanceForDisplay?.ascensionStars || 0)})` : "None equipped",
+                inline: false,
+            });
+
+            // Titles (systems/titles.md, section 8) — a dedicated field rather than folded
+            // into this title-line's existing conditional badges (🌱Rebirth/🏆Menagerie
+            // Complete/(GuildName) above), since a Title's flavor text is meant to read as a
+            // deliberate profile highlight, not a fourth short emoji tag risking the 256-char
+            // embed-title cap. No unlock re-check needed here — an equipped title was already
+            // validated by /set-title, and per the product owner's permanence instruction it
+            // stays displayed forever once equipped, even if its underlying condition (e.g.
+            // Guild Level) later regresses.
+            const equippedTitleLabel = userDetails.equippedTitle ? titleFactory.getEquippedTitleLabel(userDetails.equippedTitle) : null;
+            fields.push({
+                name: "Title:",
+                value: equippedTitleLabel || "None equipped — run /titles to see what you've earned, or /set-title to pick one.",
                 inline: false,
             });
 
@@ -4914,6 +4931,34 @@ class EmbedFactory {
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Achievements`)
             .setDescription(`${unlockedCount} / ${totalCount} unlocked\nPage ${pageIndex + 1} / ${totalPages}`)
+            .setColor("Gold")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields)
+        return embed;
+    }
+
+    // Titles (systems/titles.md, section 7) — a single-embed browse-all view, same ✅/🔒 +
+    // progress shape as createAchievementsPageEmbed above, but unpaginated: all 13 v1 titles
+    // fit comfortably under Discord's 25-field cap, unlike Achievements' 59-entry list.
+    createTitlesPageEmbed(userDisplayName, progressList) {
+        const unlockedCount = progressList.filter(entry => entry.isUnlocked).length;
+        const fields = progressList.map(({ title, isUnlocked, currentValue }) => {
+            const status = isUnlocked ? '✅' : '🔒';
+            const threshold = title.condition.type === "stat" ? title.condition.threshold : title.condition.minLevel;
+            const value = isUnlocked
+                ? title.description
+                : `${title.description}\n(${Math.min(currentValue, threshold).toLocaleString()} / ${threshold.toLocaleString()})`;
+            return {
+                name: `${status} ${title.label}`,
+                value: value,
+                inline: false,
+            };
+        });
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s Titles`)
+            .setDescription(`${unlockedCount} / ${progressList.length} unlocked`)
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
