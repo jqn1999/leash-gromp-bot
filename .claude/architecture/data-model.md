@@ -305,7 +305,7 @@ whatever fields that subsystem needs. Known docs in use:
   channel id to its chat scope, written to at provisioning/teardown time, read once per message
   that passes the cheap category pre-filter. Same doc.
 - `merc_faction_chat_channel` — `{ channelId, roleId, webhookId, webhookUrl }`, the Merc Faction
-  Hall's own provisioning doc (provisioned by `/set-merc-chat-channel`), analogous to
+  Hall's own provisioning doc (provisioned by `/admin set-merc-chat-channel`), analogous to
   `server_activity_channel`/`server_big_events_channel`'s shape.
 
 There's no schema registry for this table; if you add a new background/global counter, follow this

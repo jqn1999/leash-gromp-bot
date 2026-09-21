@@ -15875,3 +15875,80 @@ that piece ships at all.
 Not yet implemented — nothing in `src/` touched by this pass, and nothing in `financial-project`
 either (read-only access only, per this pass's scope). Awaiting product owner sign-off on the six
 flagged items above before a developer builds any of it.
+
+## Fix: Discord 100-command cap hit on startup — consolidated 8 admin commands into `/admin` (2026-09-20, live production incident)
+
+Production incident: the bot crashed on startup with `DiscordAPIError[30032]: Maximum number of
+application commands reached (100)` while `01registerCommands.js` tried to `applicationCommands.create`
+a brand-new command, `set-merc-chat-channel` (shipped the same day per the Guild Chat Sync / Merc
+Faction Hall entry above). Root cause, confirmed directly against `getLocalCommands()`: it returned
+101 non-deleted commands — one over Discord's hard per-guild cap — with only 1 of 102 total command
+files marked `deleted: true`. The cap had been silently approached for a while; this was the first
+new command to actually tip it over.
+
+**Blast radius was worse than "one command fails to register"**: `01registerCommands.js`'s
+`allGuilds.forEach(async function (guild) {...})` ran its entire per-guild command sync inside an
+async callback passed to `.forEach`, whose returned promise is never awaited by anything. The `for
+(const localCommand of localCommands)` loop inside had no per-command try/catch, so the FIRST
+command whose `create`/`edit`/`delete` call threw (here, the 101st command hitting the cap) produced
+a fully unhandled promise rejection that aborted the whole `for` loop — every command later in
+`localCommands`' iteration order than the failing one silently never got its own
+create/edit/delete attempt, and the surrounding function's own outer `try/catch` never saw the
+error at all (it's not inside the async arrow function's own call stack from `try/catch`'s
+perspective). A single bad/over-the-cap command could therefore have been starving registration for
+an arbitrary number of legitimate commands after it, not just the one that hit the cap.
+
+**Fix, two parts:**
+
+1. **Consolidated 8 existing `devOnly` moderation commands into one new `/admin` command**
+   (`src/commands/moderation/admin.js`) using genuine Discord.js Subcommands
+   (`ApplicationCommandOptionType.Subcommand`), the same one-file-one-command-object mechanism
+   `/guild-chat` (`guildChat.js`) already established for exactly this reason —
+   `getLocalCommands.js` pushes one command object per required file with no array-flattening, so a
+   single file can only ever register one top-level command name. The 8 merged: `admin-give` →
+   `/admin give`, `admin-reset-tower` → `/admin reset-tower`, `admin-stats` → `/admin stats`,
+   `admin-trigger-event` → `/admin trigger-event`, `admin-work` → `/admin work`, `admin-world-boss`
+   → `/admin trigger-world-boss`, `set-activity-channel` → `/admin set-activity-channel`,
+   `set-merc-chat-channel` → `/admin set-merc-chat-channel`. Each subcommand's own option list
+   (names/types/required/choices) and callback logic were carried over verbatim — no formula, DB
+   call, embed, or error message changed. `set-command-channels` was deliberately left as its own
+   top-level command (it's `devOnly: false`, gated by a different mechanism, not part of this
+   devOnly admin cluster). The 8 original files were deleted outright (not marked `deleted: true` —
+   there's no longer a live Discord command by any of those 8 names to clean up; they were renamed
+   into subcommands of a new command, not removed from the game). Net effect: `getLocalCommands()`
+   now returns 94 non-deleted commands (101 − 7, since the new `/admin` itself still counts as 1),
+   comfortably under the cap with headroom for Titles and Seasonal Festivals (both scoped, on hold,
+   each expected to add at least one new top-level command when built).
+   Notable design point: `permissionsRequired: [PermissionFlagsBits.Administrator]` was applied
+   uniformly across the merged command even though 3 of the 8 originals (`admin-trigger-event`,
+   `admin-work`, `admin-world-boss`) never had it — checked directly against
+   `handleCommands.js`'s dispatch order that this changes nothing observable: `permissionsRequired`
+   is only ever checked for a member who already passed the `devOnly` gate, and that same
+   `permissionsRequired` check unconditionally lets any dev bypass it regardless of the permission
+   itself, so for a `devOnly: true` command the check is already a no-op for every caller who can
+   reach it.
+2. **`01registerCommands.js`'s per-guild registration loop now wraps each individual command's
+   create/edit/delete in its own try/catch**, logging the error and `continue`-ing to the next
+   command on failure, so one bad/rejected command (a future cap hit, a malformed description, a
+   transient Discord API error) can never again cascade into every command after it silently never
+   registering. Deliberately scoped as a pure resilience fix, not a redesign — the `.forEach` +
+   unawaited-async-callback shape itself was left alone since restructuring it wasn't asked for and
+   isn't required for this fix to close the actual blast-radius gap.
+
+**Tests**: the 3 existing per-command test files that imported `{ callback }` directly from the now-
+deleted `adminResetTower.js`/`setActivityChannel.js`/`setMercChatChannel.js` were consolidated into
+one `src/commands/moderation/__tests__/admin.test.js`, importing each subcommand's exported run
+function (`resetTowerCallback`/`setActivityChannelCallback`/`setMercChatChannelCallback`) directly —
+same 23 assertions/test cases as before (4 + 15 + 4), reorganized rather than reduced, matching
+`guildChat.js`'s own precedent of exporting inner run functions alongside the dispatcher for direct
+testing. New `src/utils/__tests__/getLocalCommands.test.js` is the actual regression guard this
+incident calls for: asserts the real (unmocked) `getLocalCommands()` non-deleted count stays under
+100, plus a second test asserting the 8 old command names are gone and `/admin` carries all 8
+expected subcommand names — so a future PR that silently pushes the count back to 100 fails CI
+immediately instead of surfacing as a production startup crash. Full suite before this change:
+216 suites / 3862 tests. After: **215 suites / 3864 tests** — net −1 suite (3 old per-command test
+files collapsed into 1 `admin.test.js`, offset by 1 new `getLocalCommands.test.js`) and net +2
+tests (the 23 original per-command assertions carried over 1:1, plus the 2 new regression-guard
+tests in `getLocalCommands.test.js`). All passing.
+Docs: this entry; `reference/commands.md`'s moderation table now lists `/admin <subcommand>` instead
+of the 8 old rows.

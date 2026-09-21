@@ -127,6 +127,8 @@ appropriate `editReply` error — same "return null after already replying" cont
 
 ## Admin
 
-[moderation/adminGive.js](../../src/commands/moderation/adminGive.js) (`admin-give`) — `devOnly` +
-requires the `Administrator` Discord permission; spawns potatoes directly into a target user's
-balance with an ephemeral reply. Use for manual balance corrections/testing only.
+[moderation/admin.js](../../src/commands/moderation/admin.js)'s `give` subcommand (`/admin give`,
+merged 2026-09-20 from the former standalone `admin-give` command — see `roadmap.md`'s dated
+incident entry) — `devOnly` + requires the `Administrator` Discord permission; spawns potatoes
+directly into a target user's balance with an ephemeral reply. Use for manual balance
+corrections/testing only.

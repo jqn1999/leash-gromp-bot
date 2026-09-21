@@ -54,3 +54,43 @@ describe('/leaderboard mercenary-leaderboard option', () => {
         expect(embedFactoryInstance.createMercenaryLeaderboardEmbed).toHaveBeenCalledWith(sortedMercs, 1);
     });
 });
+
+// Tower Leaderboard (2026-09-20, command-cap headroom pass) — folded in from the deleted
+// src/commands/tower/tower-leaderboard.js top-level command file. Same "sort floor
+// descending, hand to embedFactory" behavior, just reached via the 'tower-leaderboard'
+// option instead of its own command.
+describe('/leaderboard tower-leaderboard option', () => {
+    test('sorts entries by floor descending and builds the tower leaderboard embed', async () => {
+        const entries = [
+            { userId: 'a', displayName: 'A', floor: 3 },
+            { userId: 'b', displayName: 'B', floor: 10 },
+            { userId: 'c', displayName: 'C', floor: 7 },
+        ];
+        dynamoHandler.getTowerLeaderboard.mockResolvedValue(entries);
+        const interaction = fakeInteraction('tower-leaderboard');
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.getTowerLeaderboard).toHaveBeenCalled();
+        expect(embedFactoryInstance.createTowerLeaderboardEmbed).toHaveBeenCalledWith([
+            { userId: 'b', displayName: 'B', floor: 10 },
+            { userId: 'c', displayName: 'C', floor: 7 },
+            { userId: 'a', displayName: 'A', floor: 3 },
+        ]);
+        expect(interaction.editReply).toHaveBeenCalledWith({ embeds: [embedFactoryInstance.createTowerLeaderboardEmbed.mock.results[0].value] });
+    });
+
+    test('does not mutate the array returned by getTowerLeaderboard', async () => {
+        const entries = [
+            { userId: 'a', displayName: 'A', floor: 3 },
+            { userId: 'b', displayName: 'B', floor: 10 },
+        ];
+        dynamoHandler.getTowerLeaderboard.mockResolvedValue(entries);
+        const interaction = fakeInteraction('tower-leaderboard');
+
+        await callback({}, interaction);
+
+        expect(entries[0].floor).toBe(3);
+        expect(entries[1].floor).toBe(10);
+    });
+});

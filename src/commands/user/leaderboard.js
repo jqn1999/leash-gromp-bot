@@ -16,6 +16,19 @@ function findUserIndex(allUsers, userId) {
     return index
 }
 
+// tower-leaderboard folded in here (2026-09-20, command-cap headroom pass — see
+// roadmap.md) from its own top-level src/commands/tower/tower-leaderboard.js file, which
+// is now deleted. Behavior/output is unchanged — this is the same
+// "several read-only report views under one command" shape user-leaderboard/
+// guild-leaderboard/starch-leaderboard/mercenary-leaderboard already used, just with a 5th
+// choice added, not a new consolidation mechanism.
+async function runTowerLeaderboard(interaction) {
+    const entries = await dynamoHandler.getTowerLeaderboard();
+    const sorted = [...entries].sort((a, b) => b.floor - a.floor);
+    const embed = embedFactory.createTowerLeaderboardEmbed(sorted);
+    interaction.editReply({ embeds: [embed] });
+}
+
 module.exports = {
     name: "leaderboard",
     description: "Displays the leaderboard for your given choice",
@@ -42,6 +55,10 @@ module.exports = {
                 {
                     name: 'mercenary-leaderboard',
                     value: 'mercenary-leaderboard'
+                },
+                {
+                    name: 'tower-leaderboard',
+                    value: 'tower-leaderboard'
                 }
             ]
         }
@@ -82,6 +99,13 @@ module.exports = {
                 embed = embedFactory.createMercenaryLeaderboardEmbed(sortedMercs, mercIndex);
                 interaction.editReply({ embeds: [embed] });
                 break;
+            case 'tower-leaderboard':
+                await runTowerLeaderboard(interaction);
+                break;
         }
-    }
+    },
+    // Exported for direct unit testing, same precedent /admin's own subcommand functions
+    // just set (giveCallback, resetTowerCallback, etc.) for exporting inner logic alongside
+    // the dispatcher.
+    towerLeaderboardCallback: runTowerLeaderboard,
 }

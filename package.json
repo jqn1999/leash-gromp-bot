@@ -20,6 +20,10 @@
     "jest": "^29.7.0"
   },
   "jest": {
-    "silent": true
+    "silent": true,
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/.claude/worktrees/"
+    ]
   }
 }

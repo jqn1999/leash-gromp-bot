@@ -2684,9 +2684,13 @@ existing guarded writes succeed. `becomeMercenary.js`/`retireMercenary.js` — t
 own 2 hooks from section 11 — add/remove its shared role by reading
 `getStatDatabase('merc_faction_chat_channel')`.
 
-**`/set-merc-chat-channel`** (`src/commands/moderation/setMercChatChannel.js`) shipped per section 11
-— mirrors `setActivityChannel.js`'s exact shape (`devOnly`, `Administrator`-gated, a `disable`
-option), reuses `guildChat.js`'s own `ensureGuildChatCategory`/`addChatChannelIndexEntry`/
+**`/set-merc-chat-channel`** (originally `src/commands/moderation/setMercChatChannel.js`; merged
+2026-09-20 into `/admin set-merc-chat-channel` — `admin.js`'s `setMercChatChannelCallback` — as part
+of consolidating 8 devOnly moderation commands into one `/admin` command to relieve Discord's
+100-command-per-guild cap, see `roadmap.md`'s dated incident entry; same logic, same behavior)
+shipped per section 11 — mirrors `set-activity-channel`'s exact shape (`devOnly`,
+`Administrator`-gated, a `disable` option), reuses `guildChat.js`'s own
+`ensureGuildChatCategory`/`addChatChannelIndexEntry`/
 `removeChatChannelIndexEntry` (exported for this exact cross-file reuse, same precedent
 `skipChances.js`'s existing cross-command require of `startRaid.js` already set) rather than
 duplicating category-creation logic, and retroactively grants the Hall's role to every current

@@ -15,13 +15,13 @@ Reuses the stats table's existing "single doc per `trackingId`" shape (`spud_kee
 Channel/Big Events, which assume a single server), so the trackingId itself carries the guild ID.
 
 **Empty/unset allowlist = unrestricted** (commands work in any channel) — the same "off by
-default" convention `/set-activity-channel` already established, rather than blocking every
+default" convention `/admin set-activity-channel` already established, rather than blocking every
 channel on a fresh server until an admin configures it.
 
 ## `/set-command-channels` (admin-only, NOT devOnly)
 
 `devOnly: false` + `PermissionFlagsBits.Administrator` only — deliberately different from
-`/set-activity-channel`'s `devOnly: true` double-gate. This feature exists specifically so ANY
+`/admin set-activity-channel`'s `devOnly: true` double-gate. This feature exists specifically so ANY
 server's own admins can manage their own channel restriction without needing the bot owner
 involved — gating it to `devs` would defeat that purpose entirely.
 

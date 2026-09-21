@@ -18,8 +18,11 @@ token/process involvement needed at request time. This is simpler and more relia
 the web Lambda write an "event" row somewhere and the bot poll for it (extra latency, extra cron
 load, and it breaks if the bot's ever offline while the site isn't).
 
-1. `/set-activity-channel` (admin-only — `devOnly: true` + `PermissionFlagsBits.Administrator`,
-   same double-gate every other `src/commands/moderation/` admin command already uses) creates a
+1. `/admin set-activity-channel` (admin-only — `devOnly: true` + `PermissionFlagsBits.Administrator`,
+   same double-gate every other `/admin` subcommand already uses; merged into the shared `/admin`
+   command 2026-09-20 to relieve Discord's 100-command-per-guild cap, see `roadmap.md`'s dated
+   incident entry — was its own top-level `/set-activity-channel` command before that, same logic)
+   creates a
    Discord webhook in the chosen channel (`channel.createWebhook(...)`) and stores its URL in the
    bot's own stats table — `dynamoHandler.updateStatFields(trackingId, { channelId, webhookId,
    webhookUrl })` — the exact same "single global doc, keyed by `trackingId`" shape
@@ -32,7 +35,7 @@ load, and it breaks if the bot's ever offline while the site isn't).
    outbound `fetch` to Discord's API works with zero new AWS infrastructure.
 3. Nothing needs to change bot-side to *receive* these posts — Discord treats a webhook message
    in that channel exactly like any bot message.
-4. Re-running `/set-activity-channel` (a new channel, or `disable: true`, for either `type`)
+4. Re-running `/admin set-activity-channel` (a new channel, or `disable: true`, for either `type`)
    deletes that channel's previously-created webhook first (`client.fetchWebhook(existing.
    webhookId)` then `.delete()`) rather than leaving it orphaned in its old channel.
 
@@ -41,7 +44,7 @@ load, and it breaks if the bot's ever offline while the site isn't).
 Added same day, direct instruction: "I also want to add a more fun version of this which is
 another channel for bigger events like golden potatoes, metal kills, ancient potatoes, things
 like < 30% chances to win raid/bounties/rob npc and such that succeeded with a more colorful
-obvious embed color and message." One command (`/set-activity-channel`), two independently
+obvious embed color and message." One command (`/admin set-activity-channel`), two independently
 configurable channels/webhooks, selected via the `type` option rather than a second near-duplicate
 command file:
 
@@ -50,7 +53,8 @@ command file:
 | `normal` (default) | `server_activity_channel` | Gromp Server Activity | Greyple `0x99AAB5` (neutral) |
 | `big` | `server_big_events_channel` | Gromp Big Events | Gold `0xFFD700` (loud, obvious) |
 
-Both channels share the exact same webhook-create/delete/disable flow in `setActivityChannel.js`
+Both channels share the exact same webhook-create/delete/disable flow in `admin.js`'s
+`setActivityChannelCallback`
 (`TRACKING_IDS`/`WEBHOOK_NAMES` maps keyed by `type`) — configuring one never touches the other's
 stored config.
 
@@ -387,7 +391,7 @@ outage must never fail or slow down the actual game action being reported on.
 "Make same channel optional change for the activity channel command" — the same fix
 `/set-command-channels` got the same day (see systems/command-channels.md): Discord's own Channel
 option picker doesn't reliably surface every channel client-side on a large/busy server, so
-`channel` on `/set-activity-channel` is now optional and defaults to `interaction.channel.id`
+`channel` on `/admin set-activity-channel` is now optional and defaults to `interaction.channel.id`
 (wherever the command was actually run) whenever it's omitted — for either `type`, unless
 `disable: true` is also passed (which never reads `channelId` at all). This retired the old
 "pass `channel` to set the channel, or `disable: true`" rejection entirely, since there's no
@@ -395,7 +399,9 @@ longer a case where neither is available.
 
 ## Testing
 
-`src/commands/moderation/__tests__/setActivityChannel.test.js` covers the bot-side command for
+`src/commands/moderation/__tests__/admin.test.js` (the `/admin set-activity-channel` describe block,
+merged in 2026-09-20 from the former standalone `setActivityChannel.test.js`) covers the bot-side
+command for
 both `type: 'normal'` (default) and `type: 'big'`: defaulting to the invoking channel when
 `channel` is omitted, setting an explicit channel (webhook created under that type's own
 trackingId/webhook name, config stored), replacing an existing webhook (old one deleted first), a

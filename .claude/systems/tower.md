@@ -186,9 +186,10 @@ from inside the cron (there's no `interaction` object in a background job to not
 resolves the next time that account's stats get checked (e.g. their next `/work` call), same as any
 other non-`/work`-triggered achievement.
 
-**`/tower-leaderboard`** shows the current day's in-progress standings (top 5, survived entries
-only, sorted by floor) at any time — separate from the payout announcement, which only fires once,
-at the reset.
+**`/leaderboard tower-leaderboard`** (folded into `/leaderboard` 2026-09-20, previously its own
+top-level `/tower-leaderboard` command — see roadmap.md's command-cap headroom entry) shows the
+current day's in-progress standings (top 5, survived entries only, sorted by floor) at any time —
+separate from the payout announcement, which only fires once, at the reset.
 
 ---
 
@@ -1580,7 +1581,7 @@ change, since it's still a flat `TOWER_RUN_CAPS` entry). Added a new dedicated
 Full suite (1726/1726 across 94 suites) passed. `node -c` clean on both `towerConstants.js` and
 `towerFactory.js`.
 
-### `/admin-reset-tower`
+### `/admin reset-tower`
 
 `enter-tower.js`'s callback flips `userDetails.canEnterTower` to `false` (`updateUserDatabase`)
 BEFORE `towerFactory.startRun()` is ever called — the entire run itself (every floor, every reward,
@@ -1593,7 +1594,9 @@ exception anywhere in `towerFactory.js` — `handleCommands.js`'s top-level catc
 day, with no in-progress state to roll back (there isn't any) and no way for the player to retry
 until the next 8pm ET reset.
 
-`/admin-reset-tower player:<mention>` (`adminResetTower.js`, `devOnly` + Administrator) is the fix:
+`/admin reset-tower player:<mention>` (`admin.js`'s `resetTowerCallback`, `devOnly` + Administrator
+— merged into the shared `/admin` command 2026-09-20 to relieve Discord's 100-command cap, see
+roadmap.md's dated incident entry; same logic, same behavior, new subcommand name) is the fix:
 force-sets that one player's `canEnterTower` back to `true`, unconditionally and idempotently — safe
 to run even if nothing was actually stuck (the reply says so distinctly rather than implying a fix
 happened). Since the run's own progress is never persisted mid-flight, restoring this one field is
@@ -1618,12 +1621,12 @@ until the actual throw site is found.
 Two changes, both in response to that:
 
 1. **`enter-tower.js` now wraps `tF.startRun()` in its own try/catch.** On any exception, it
-   restores `canEnterTower` to `true` immediately (the exact write `/admin-reset-tower` was doing by
+   restores `canEnterTower` to `true` immediately (the exact write `/admin reset-tower` was doing by
    hand), then edits the reply with an honest explanation naming the floor the crash happened at
    (`tF.floor`, read straight off the same instance rather than needing the run to have returned
    normally) — "your run hit an unexpected error... nothing was banked... you can run /enter-tower
    again right away." A crash now costs the player that one run's progress, not their whole day, and
-   `/admin-reset-tower` becomes a backstop for the case this doesn't cover (e.g. the crash happening
+   `/admin reset-tower` becomes a backstop for the case this doesn't cover (e.g. the crash happening
    somewhere `enter-tower.js` itself can't reach) rather than the only recovery path.
 2. **The actual bug this was hiding: `handleCommands.js`'s (and every other catch block in that
    file's) error logging interpolated the Error object into a template string — `` `...${e}` `` —

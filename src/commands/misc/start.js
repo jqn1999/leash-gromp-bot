@@ -158,7 +158,7 @@ const ONBOARDING_PAGES = [
         fields: [
             {
                 name: "/enter-tower",
-                value: "One roguelike climb per day, resetting at 8pm EST/EDT. Survive and rank on `/tower-leaderboard` for bonus rewards — dying forfeits leaderboard eligibility, so know when to walk away.",
+                value: "One roguelike climb per day, resetting at 8pm EST/EDT. Survive and rank on `/leaderboard tower-leaderboard` for bonus rewards — dying forfeits leaderboard eligibility, so know when to walk away.",
                 inline: false,
             },
             {

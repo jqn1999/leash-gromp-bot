@@ -11,7 +11,7 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | `bank.js` | `/bank` | Deposit (taxed) or withdraw potatoes to/from protected storage |
 | `give.js` | `/give` | Transfer potatoes (30% tax) or starches (10% tax) to another user, supports `all`/`half`/exact |
 | `rob.js` | `/rob recipient [skip-confirm]` | Attempt to steal potatoes from another user, 1hr cooldown, risk of penalty — shows a confirm/cancel preview embed by default; `skip-confirm:true` (2026-09-10, direct instruction) bypasses it and resolves immediately off the same odds/logic |
-| `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch / mercenary bounty-win leaderboard, highlights requester's rank (mercenary option shows a fallback line instead when the requester has 0 wins) |
+| `leaderboard.js` | `/leaderboard` | Shows user potato / guild / starch / mercenary bounty-win leaderboard (highlights requester's rank; mercenary option shows a fallback line instead when the requester has 0 wins), or today's in-progress Tater Tower standings via its `tower-leaderboard` option (survived runs only) — see [systems/tower.md](../systems/tower.md#daily-leaderboard) |
 | `profile.js` | `/profile` | Full profile embed (stats, buffs, guild) for self or a mentioned user |
 | `stats.js` | `/user-stats` | Base+buff+regrade breakdown plus live effective totals (guild buff/companion/rebirth folded in, same modifiers `/profile` uses) for self or a target user |
 | `achievements.js` | `/achievements` | Full achievement list (unlocked + locked-with-progress) for self or a target user — see [systems/achievements.md](../systems/achievements.md) |
@@ -93,7 +93,6 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 | File | Command | Summary |
 |---|---|---|
 | `enter-tower.js` | `/enter-tower` | Starts the daily floor-by-floor roguelike run |
-| `tower-leaderboard.js` | `/tower-leaderboard` | Shows today's in-progress Tater Tower standings (survived runs only) — see [systems/tower.md](../systems/tower.md#daily-leaderboard) |
 | `tower-settings.js` | `/tower-settings` | Toggle auto-continuing past non-Elite floors — see [systems/tower.md](../systems/tower.md#tower-revamp-technical-design-2026-08-31) |
 
 ## `betting/` — [systems/betting-and-games.md](../systems/betting-and-games.md)
@@ -130,10 +129,21 @@ mechanics behind these, see the linked docs in [systems/](../systems/).
 
 ## `moderation/`
 
+One shared `devOnly` + Administrator command, `/admin <subcommand>` (`admin.js`), consolidates 8
+formerly-separate top-level commands as Discord Subcommands — done 2026-09-20 specifically to claw
+back command slots after `getLocalCommands()` hit Discord's 100-command-per-guild cap on startup
+(see `roadmap.md`'s dated incident entry). Each subcommand's own logic is exported from `admin.js`
+individually (`giveCallback`, `resetTowerCallback`, etc.) for direct unit testing, mirroring
+`guildChat.js`'s own run-function-export precedent.
+
 | File | Command | Summary |
 |---|---|---|
-| `adminGive.js` | `/admin-give` | `devOnly` + Administrator — spawns potatoes into a target user's balance |
-| `adminWork.js` | `/admin-work` | `devOnly` — forces a specific `/work` scenario (and optionally an exact companion) on the caller, reusing the real scenario action/embed; skips the workTimer cooldown and doesn't touch the shared `work` stats doc |
-| `adminStats.js` | `/admin-stats` | `devOnly` + Administrator — ephemeral dashboard of cached economy/starch/world/quest state, so admins don't need to check DynamoDB directly |
-| `adminResetTower.js` | `/admin-reset-tower player:<mention>` | `devOnly` + Administrator — restores a target player's `canEnterTower` to `true`, unsticking them from a crashed/stuck Tower run without waiting for the next day's 8pm ET reset — see [systems/tower.md](../systems/tower.md#admin-reset-tower) |
-| `setMercChatChannel.js` | `/set-merc-chat-channel` | `devOnly` + Administrator — provisions (or tears down) the Merc Faction Hall, a shared chat channel gated to `isMercenary` players — see [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20) |
+| `admin.js` | `/admin give recipient:<mention> amount:<n>` | Spawns potatoes into a target user's balance |
+| `admin.js` | `/admin reset-tower player:<mention>` | Restores a target player's `canEnterTower` to `true`, unsticking them from a crashed/stuck Tower run without waiting for the next day's 8pm ET reset — see [systems/tower.md](../systems/tower.md#admin-reset-tower) |
+| `admin.js` | `/admin stats` | Ephemeral dashboard of cached economy/starch/world/quest state, so admins don't need to check DynamoDB directly |
+| `admin.js` | `/admin trigger-event event:<choice> announce:<bool>` | Forces a specific hourly `/work` special event (or clears the current one), mirroring `backgroundEvents.js`'s own natural roll and mirroring the result to `financial-project` via the shared `active_work_event` doc |
+| `admin.js` | `/admin work scenario:<choice> companion:<choice>` | Forces a specific `/work` scenario (and optionally an exact companion) on the caller, reusing the real scenario action/embed; skips the workTimer cooldown and doesn't touch the shared `work` stats doc |
+| `admin.js` | `/admin trigger-world-boss boss:<choice>` | Spawns a specific world boss, posting the announcement to the world-event channel |
+| `admin.js` | `/admin set-activity-channel type:<choice> channel:<channel> disable:<bool>` | Sets (or clears) a webhook-delivered channel for website activity — either the normal feed or the colorized Big Events feed — see [systems/server-activity-channel.md](../systems/server-activity-channel.md) |
+| `admin.js` | `/admin set-merc-chat-channel disable:<bool>` | Provisions (or tears down) the Merc Faction Hall, a shared chat channel gated to `isMercenary` players — see [systems/guilds.md](../systems/guilds.md#guild-chat-sync-discord--web--a-merc-faction-hall-shipped-2026-09-20) |
+| `setCommandChannels.js` | `/set-command-channels` | **Not** `devOnly` (Administrator-gated separately) — per-guild allowlist of channels commands may run in; exempt from its own restriction so an admin can never lock themselves out — see [systems/command-channels.md](../systems/command-channels.md) |

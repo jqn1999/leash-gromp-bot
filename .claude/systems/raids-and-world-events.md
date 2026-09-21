@@ -1175,7 +1175,7 @@ naming already uses (e.g. `POISONX5 → {scenario: 'poison', multiplier: 5}`). `
 builds the record written to the stats table (`aws_stats_table_name`, `trackingId:
 "active_work_event"`) — expiry is always the next top-of-hour tick, matching what players are
 already told ("holds until the next hourly event roll"). This is the ONE place both the natural
-hourly cron above AND `/admin-trigger-event`'s manual trigger/clear go through, so the two paths
+hourly cron above AND `/admin trigger-event`'s manual trigger/clear go through, so the two paths
 can't drift out of sync with each other. Every write is wrapped in `.catch()` — a Dynamo hiccup
 here must never affect the bot's own in-memory event or its Discord announcement. The bot remains
 the sole decision-maker; the website only ever reads this record, never rolls its own event (see
