@@ -16496,3 +16496,23 @@ potion's field/button stay normal. Full suite: **111 suites / 2030 tests, all pa
 raised idea of more potion tiers with a daily-rotating 3-of-many stock (weighted toward rarer,
 stronger potions) — real design work needed (tier count, rarity weighting, how a reroll interacts
 with THIS pass's own daily limit) before a developer touches it; not scoped, not started.
+
+## Fix: /companion-favorite quick-equip no longer toggles off an already-active favorite (2026-09-21, direct instruction — "let fav say 'already equipped' instead when a favorite companion is selected from the fav command that's already equipped")
+
+`/companion-favorite`'s quick-equip path (no `companion` option — re-equips whatever's saved in a
+slot) delegated straight to `companion.js`'s shared `attemptEquip`, which TOGGLES OFF the active
+companion when asked to equip it again. That's intentional for `/companion`'s own equip buttons
+(re-clicking the active one is a deliberate unequip gesture there), but wrong for a quick-equip:
+the player wants their favorite active, not to accidentally unequip it by running the same command
+twice.
+
+`companionFavorite.js`'s quick-equip branch now checks `userDetails.companions?.active ===
+savedInstanceId` BEFORE calling `attemptEquip` at all — on a match, replies `"<name> is already
+equipped."` with no write at all (no `updateUserFields` call), short-circuiting before
+`attemptEquip`'s shared toggle-off logic ever runs. `attemptEquip` itself, and `/companion`'s own
+equip-button behavior, are unchanged — this is scoped purely to the favorite-quick-equip call site.
+
+**Tests**: `companionFavorite.test.js`'s existing "toggles off if already active" case (which was
+asserting the OLD, now-wrong-for-this-path behavior) was replaced with one asserting the new
+"already equipped" message and confirming `updateUserFields` is never called. Full suite:
+**111 suites / 2030 tests, all passing** (unchanged count — one test replaced, not added).

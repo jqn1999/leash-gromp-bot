@@ -974,9 +974,16 @@ optional `companion` option is given:
   Scavenging state is deliberately NOT checked at save time (a transient state shouldn't block
   bookmarking something you plan to equip later, once it's back).
 - **Without `companion`**: quick-equips whatever's already saved in that slot — delegates
-  straight to `companion.js`'s own exported `attemptEquip` (already-active-toggles-off,
-  ownership/scavenging checks, Max-Level flavor) rather than reimplementing any of that here, so
-  favorites behave identically to clicking an equip button on `/companion`'s own list.
+  straight to `companion.js`'s own exported `attemptEquip` (ownership/scavenging checks, Max-Level
+  flavor) rather than reimplementing any of that here. **One deliberate difference from
+  `/companion`'s own equip buttons (2026-09-21, direct instruction):** `attemptEquip`'s own
+  already-active-TOGGLES-OFF behavior is intentional for those buttons (re-clicking the active
+  companion's button is a deliberate unequip gesture there) but wrong for a quick-equip — a player
+  favoriting a companion that's already active wants confirmation it's active, not to accidentally
+  unequip it. `companionFavorite.js` now checks `userDetails.companions?.active === savedInstanceId`
+  BEFORE calling `attemptEquip` at all, replying `"<name> is already equipped."` with no state
+  change (no `updateUserFields` call) when it matches, short-circuiting before the shared
+  toggle-off logic ever runs.
 
 No embed (direct instruction) — plain text replies only, matching `companionScavenge.js`'s own
 "utility command, not a moment" precedent. Replies ephemeral (`deferReply({ ephemeral: true })`,

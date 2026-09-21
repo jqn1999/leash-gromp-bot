@@ -105,14 +105,21 @@ describe('/companion-favorite — quick-equip', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/don't own/i));
     });
 
-    test('toggles off if the favorite is already the active companion (delegates to attemptEquip)', async () => {
+    // 2026-09-21, direct instruction — quick-equipping an already-active favorite used to
+    // delegate straight to attemptEquip, which TOGGLES OFF the active companion when asked
+    // to equip it again (intentional for /companion's own equip buttons, where re-clicking
+    // the active one is a deliberate unequip gesture). That's the wrong intent here: a
+    // player quick-equipping their favorite wants it active, not toggled off, so this now
+    // short-circuits before attemptEquip's shared toggle logic ever runs.
+    test('reports "already equipped" instead of toggling off, when the favorite is already the active companion', async () => {
         const user = userWith([{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], ['sprout-a', null, null, null, null], 'sprout-a');
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ slot: 1 });
 
         await callback({}, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/no longer your active companion/i));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/sprout is already equipped/i));
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 });
 

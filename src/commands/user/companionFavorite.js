@@ -95,6 +95,19 @@ module.exports = {
             return;
         }
 
+        // attemptEquip's own toggle-off (re-equipping the already-active instance unequips
+        // it) is intentional for /companion's own equip buttons — clicking the active
+        // companion's button again is a deliberate "click to unequip" gesture there. Quick-
+        // equipping a favorite is a different intent: the player wants THIS companion active,
+        // not to toggle it off, so short-circuit before attemptEquip's shared toggle logic
+        // ever runs (direct instruction, 2026-09-21).
+        if (userDetails.companions?.active === savedInstanceId) {
+            const ownedEntry = companionFactory.getOwnedEntry(userDetails, savedInstanceId);
+            const companion = ownedEntry ? companionFactory.getCompanionById(ownedEntry.id) : null;
+            interaction.editReply(`${userDisplayName}, ${companion ? companion.name : 'that companion'} is already equipped.`);
+            return;
+        }
+
         const result = await companionModule.attemptEquip(userId, username, savedInstanceId);
         interaction.editReply(`${userDisplayName}, ${result.message}`);
     }
