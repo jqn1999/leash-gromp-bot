@@ -58,8 +58,10 @@ tag.** Both were checked directly (`systems/spud-keep.md`, `systems/guild-contra
 }
 ```
 
-**Start is admin-triggered, not calendar-scheduled** — a new `/admin-start-festival <festivalId>
-<durationDays>` command, structurally identical to `/admin-trigger-event`'s manual-override shape
+**Start is admin-triggered, not calendar-scheduled** — a new `/admin start-festival festivalId:<id>
+durationDays:<n>` subcommand (following the `/admin <subcommand>` consolidation shipped 2026-09-20,
+see `roadmap.md`'s dated incident entry — this would be a new subcommand on the existing shared
+`/admin` command, not a new top-level command), structurally identical to `/admin trigger-event`'s manual-override shape
 (same moderation-gated pattern, same "write a shared doc, everyone picks it up on next read" model).
 This is a deliberate, smaller-scope call for a first festival: building an actual content calendar
 (which weeks get which festival, recurring annually, etc.) is a real second feature on top of this
@@ -470,7 +472,7 @@ description naming the exact thresholds and rewards up front).
   genuinely new piece, see "The odds-boost piece" above.
 - **New commands**: `/festival` (read-only status + objective progress, mirrors `/quests`/
   `/current-spud-keep`'s shape), `/festival-shop` (browse/buy, mirrors `/companion-shop`),
-  `/admin-start-festival` (moderation-gated, mirrors `/admin-trigger-event`).
+  `/admin start-festival` (moderation-gated, mirrors `/admin trigger-event`).
 - **`src/events/ready/backgroundEvents.js`**: one new check in the existing 8pm ET cron block —
   end-of-festival announcement + doc reset, alongside the existing Quest/Tower/Spud Keep resets.
 - **`src/utils/embedFactory.js`**: `createFestivalStatusEmbed`, `createFestivalShopEmbed`,

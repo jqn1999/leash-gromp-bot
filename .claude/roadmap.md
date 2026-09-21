@@ -15946,9 +15946,13 @@ incident calls for: asserts the real (unmocked) `getLocalCommands()` non-deleted
 100, plus a second test asserting the 8 old command names are gone and `/admin` carries all 8
 expected subcommand names — so a future PR that silently pushes the count back to 100 fails CI
 immediately instead of surfacing as a production startup crash. Full suite before this change:
-216 suites / 3862 tests. After: **215 suites / 3864 tests** — net −1 suite (3 old per-command test
+108 suites / 1933 tests. After: **107 suites / 1935 tests** — net −1 suite (3 old per-command test
 files collapsed into 1 `admin.test.js`, offset by 1 new `getLocalCommands.test.js`) and net +2
 tests (the 23 original per-command assertions carried over 1:1, plus the 2 new regression-guard
-tests in `getLocalCommands.test.js`). All passing.
+tests in `getLocalCommands.test.js`). All passing. (Note: an early verification run of this suite
+transiently reported ~215 suites / ~3864 tests — traced to `npx jest` also picking up other
+concurrent agent sessions' repo checkouts under the untracked `.claude/worktrees/` directory,
+which isn't part of this project's own source; the 107/1935 figures above are this repo's real
+count, confirmed stable across repeated runs.)
 Docs: this entry; `reference/commands.md`'s moderation table now lists `/admin <subcommand>` instead
 of the 8 old rows.
