@@ -9,6 +9,7 @@ const companionFactory = require("../../utils/companionFactory");
 const cooldownFactory = require("../../utils/cooldownFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { QuestFactory } = require("../../utils/questFactory");
+const festivalFactory = require("../../utils/festivalFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
@@ -272,6 +273,13 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         if (questResult.completedQuests.length > 0) {
             const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
             interaction.followUp({ embeds: [questEmbed] });
+        }
+
+        // Seasonal Festivals' own objective track — mirrors take-bounty.js's own check.
+        const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(updatedUserDetails, userDetails);
+        if (festivalQuestResult.completedObjectives.length > 0) {
+            const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
+            interaction.followUp({ embeds: [festivalQuestEmbed] });
         }
     }
 

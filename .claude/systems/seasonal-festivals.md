@@ -1,3 +1,11 @@
+# Seasonal Festivals — Implemented
+
+**Status: shipped 2026-09-21.** See "Shipped (2026-09-21)" at the bottom of this doc for what was
+actually built, including two deliberate deviations from this design's own original assumptions
+(Titles-wiring deferred, and a real fix to a design-doc inaccuracy about `handleSweetPotato`/
+`handleMetalPotato`'s own side effects). Everything below this point is the original architect
+pass, kept intact as the source design record.
+
 # Seasonal Festivals — Technical Design (scoping only, not implemented)
 
 Architect pass, 2026-09-20, on `.claude/systems/feature-ideas.md`'s idea **A1**, the first real
@@ -525,3 +533,62 @@ same discipline this session's other architect passes already applied.
 6. **Cross-repo odds-override mirroring** — confirmed necessary if the odds-boost piece ships at all
    (see "Cross-repo" above); not optional, needs a `financial-project` port pass in the same session
    it ships in this repo, per this repo's own `CLAUDE.md` rule.
+
+## Shipped (2026-09-21)
+
+Built to this design's own confirmed shape ([roadmap.md](../roadmap.md)'s matching "Shipped" entry
+has the full file-by-file rundown) — this section only calls out where the actual build diverged
+from what's written above, and why.
+
+- **Titles-wiring deferred, exactly per this doc's own fallback plan.** Titles was being built in
+  parallel by a different agent in an isolated worktree at build time, so `titleFactory.js` did not
+  exist in this build's copy of the repo. `festivalCosmetics: []` shipped as the standalone owned-
+  items array this doc's own "if Titles is deferred" contingency describes, with no display beyond
+  `/festival-shop` itself showing "already purchased." The `{ type: "festivalCosmetic", cosmeticId }`
+  Title condition is a follow-up integration item for once both branches merge — the underlying
+  persisted field doesn't change either way, so nothing here is provisional in a way that would need
+  reworking later.
+- **Encounter Vouchers, CONFIRMED by product owner** (see the "Rewards" section above) — shipped with
+  the recommended resolution to the section's own open question: a voucher redemption is a pure bonus
+  payout, touching NEITHER `workCount`, the cooldown timer, NOR `workScenarioCounts` (and therefore
+  never Quest/Achievement progress either, since those key directly off the latter two). Only Harvest
+  Festival catalogs one for v1 (Sweet Potato Charm), matching this doc's own "Sweet Potato Bounty"
+  objective theme; the mechanism (`festivalFactory.redeemVoucher`, a `VOUCHER_SCENARIOS` lookup table)
+  is generic, so cataloging more scenarios later is a data-only addition.
+- **A real correction to this doc's own stated assumption, found during implementation, not
+  guessed around.** The "Rewards" section above states `handleSweetPotato`/`handleMetalPotato` are
+  "already its OWN standalone function... separate from `performWork`'s own cooldown-check/
+  roll-dispatch/workCount-increment wrapper logic" — checked directly against `workFactory.js` and
+  found this only half true: `performWork` itself never touches workCount/the cooldown timer at all
+  for these two scenarios. Both pieces of state (plus the `workScenarioCounts` increment Quests/
+  Achievements key off) are written INSIDE `handleSweetPotato`/`handleMetalPotato` themselves, via
+  a `{ workCount: 1 }` ADD attribute and a `workTimer` field baked directly into each handler's own
+  `updateUserFields` call. Calling either handler directly (as the voucher mechanism does) would
+  therefore have violated the product owner's own confirmed "does NOT touch workCount/cooldown/Quest
+  progress" requirement by construction, not as an edge case. Fixed by giving both handlers a
+  `{ trackProgress = true }` option (default `true`, so every real `/work` call — the only other
+  caller of either function — is completely unaffected byte-for-byte) that skips exactly those three
+  writes when `false`; the voucher path is the only caller that ever passes `trackProgress: false`.
+  Regression-tested directly in `festivalFactory.test.js` (a voucher redemption's writes are asserted
+  free of all three fields, paired with a control test proving a normal `handleSweetPotato` call
+  still sets all three).
+- **Odds-override composition, built exactly as this doc's own "genuinely new architecture" section
+  specifies** — `festivalFactory.applyFestivalOddsOverride`, called from `work.js`'s `performWork`
+  AFTER `getEffectiveScenarioChances` (Prospector's own widening, which itself already reflects
+  whatever `EventFactory`'s live hourly roll currently has active) and BEFORE the scenario dispatch
+  roll — never merged into `EventFactory`, read fresh from `active_festival` on every `/work` call.
+  Verified this genuinely stacks rather than replaces: `festivalFactory.test.js`'s own composition
+  test starts from a scenario width already reflecting a live hourly event (e.g. Sweet Potato at 2x
+  its base width from a `SWEETX2` roll) and confirms the festival's own 1.5x multiplier widens that
+  ALREADY-doubled width further (base × hourly × festival all compounding), not off the scenario's
+  unmodified base width.
+- **`/admin-start-festival` shipped as its own standalone top-level command**, not folded into a
+  consolidated `/admin` command — `src/commands/moderation/admin.js` did not exist in this build's
+  worktree at implementation time (a separate, unrelated session was reportedly consolidating several
+  `admin-*` commands into one at the same time). If that consolidation lands later, this command's
+  logic should be folded into it as a new subcommand in a follow-up pass, per the build brief's own
+  contingency instruction.
+- **Not ported to `financial-project` this pass.** The odds-override piece remains a confirmed,
+  not-optional port item per this doc's own "Cross-repo" section — flagged again here rather than
+  left to silently drift, needs its own audit + numbered `## Bot caught up #N` entry in that repo's
+  `NOTES_GROMP_WEB_INTEGRATION.md` before `/gromp` and the bot can disagree on festival-boosted odds.

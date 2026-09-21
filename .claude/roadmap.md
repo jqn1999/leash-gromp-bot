@@ -15875,3 +15875,119 @@ that piece ships at all.
 Not yet implemented — nothing in `src/` touched by this pass, and nothing in `financial-project`
 either (read-only access only, per this pass's scope). Awaiting product owner sign-off on the six
 flagged items above before a developer builds any of it.
+
+## Shipped: Seasonal Festivals (2026-09-21, follows through on the scoping pass above, product owner
+confirmed cosmetic rewards + admin-triggered start on 2026-09-20, plus a follow-up confirmation the
+same day adding a second reward type — Encounter Vouchers)
+
+Built to the design doc's own confirmed shape, with two deliberate scope resolutions made as
+developer judgment calls rather than new product decisions:
+
+**Titles-wiring for cosmetics deferred, per the doc's own explicit fallback plan.** Titles is being
+built in parallel by a different agent in an isolated worktree, so `titleFactory.js` does not exist
+in this build's copy of the repo — exactly the situation `seasonal-festivals.md`'s own "Rewards"
+section flagged and pre-answered ("if Titles is deferred, festival cosmetics can still ship
+standalone... with the Title-condition wiring added as a pure follow-up once Titles lands"). Shipped
+`festivalCosmetics: []` as a standalone owned-items array with no display beyond `/festival-shop`'s
+own "already purchased" state; the `{ type: "festivalCosmetic", cosmeticId }` Title condition is a
+follow-up integration item once both branches merge.
+
+**Encounter Vouchers required correcting the design's own stated assumption, not just implementing
+it.** The doc described `handleSweetPotato`/`handleMetalPotato` as already fully decoupled from
+`performWork`'s cooldown/roll/workCount wrapper — checked directly and found this only half true:
+the workCount ADD, the cooldown-timer write, and the `workScenarioCounts` increment Quests/
+Achievements key off are all baked INSIDE these handlers themselves, not in work.js's wrapper. Since
+the product owner's own confirmed requirement is that a voucher redemption must NOT touch any of
+those three, both handlers gained a `{ trackProgress = true }` option (default true, so every real
+`/work` call is completely unaffected) that skips exactly those three writes while still applying
+the real potato/stat payout — the voucher mechanism (`festivalFactory.redeemVoucher`) calls with
+`trackProgress: false`. Flagging this here since it's a real architecture correction, not a
+pre-existing seam the design doc got right.
+
+**`constants.js`**: new `Festival` (duration clamp 1-14 days, per-festival `NAME`/`TOKEN_LABEL`
+display strings, `ODDS_OVERRIDE` — Harvest→sweet, Frost Fair→poison, Spring Planting→taro, all 1.5x),
+`FestivalTemplates` (the doc's own 9 example objectives verbatim, 3 fixed per festival, `category:
+"festival"` added for parity with the Quest shape), `FestivalShop` (Harvest Festival: 4 cosmetics +
+1 voucher — Sweet Potato Charm, matching that festival's own "Sweet Potato Bounty" objective theme;
+Frost Fair/Spring Planting: 4 cosmetics each, no voucher cataloged for v1 per the doc's own "you
+don't need all 3 festivals fully catalogued" scope note).
+
+**`dynamoHandler.js`**: `getDefaultUserFields` gained `festivalTokens: 0`,
+`festivalTokensFestivalId: null`, `festivalQuests: {}`, `festivalShop: null`, `festivalCosmetics:
+[]` — healed via the existing generic top-level diff-and-heal loop in `findUser`, no migration
+script. New `getActiveFestival`/`setActiveFestival`, mirroring `getActiveWorldBuff`/
+`setActiveWorldBuff`'s exact "global pointer in the stats table" shape, reading/writing the new
+`active_festival` stats-table doc (`festivalId`/`startsAt`/`endsAt`/`objectiveIds`/`oddsOverride`).
+
+**New `src/utils/festivalFactory.js`**: `isFestivalLive` (the one shared freshness check every
+consumer uses — a festival past its own `endsAt` reads identically to none at all, never actively
+cleared, same idiom `isWorldBuffLive`/`isPotionLive` already establish); `startFestival`/
+`endFestival` (the admin-command and 8pm-ET-cron entry points, the latter a single idempotent
+null-out so a late or duplicate cron tick just no-ops); `checkAndClaimFestivalQuests` (near-verbatim
+port of `questFactory.checkAndClaimQuests`'s delta-since-baseline pattern, keyed on `festivalId`
+instead of `rotationDate` for staleness, checking the FULL fixed 3-objective set every call rather
+than a rotated subset); `getFestivalProgress` (read-only mirror of `getProgress`, backs `/festival`);
+`getSpendableFestivalTokens` (the lazy tag-mismatch expiry check — a stale `festivalTokensFestivalId`
+reads the balance as 0 without any write); `buildFestivalShopView`/`attemptPurchaseFestivalSlot`
+(the 3-gate purchase validation exactly as designed: is any festival live, is the player's own
+stored shop reference the current festival, does their balance (post-lazy-expiry) cover the cost);
+`redeemVoucher` (the Encounter Voucher dispatch, currently wired for `handleSweetPotato` only —
+adding another scenario later is a new `VOUCHER_SCENARIOS` entry plus a matching `FestivalShop`
+catalog item, no new mechanism); `applyFestivalOddsOverride` (the new odds-composition function,
+see below).
+
+**The odds-override piece, composed exactly as the design doc's own corrected recommendation
+specifies** — a second, independent read in `work.js`'s `performWork`, applied AFTER
+`getEffectiveScenarioChances` (Prospector's own widening) and BEFORE the roll, using the identical
+"widen one slice, shrink Regular's donated width" math keyed by scenario name instead of a fixed
+perk-scenario list. Verified this genuinely compounds rather than replaces: a scenario whose raw
+width already reflects an EventFactory hourly event (e.g. a live `SWEETX2`) gets widened AGAIN by
+the festival's own multiplier on top of that already-doubled width, not off the scenario's original
+base width — covered directly in `festivalFactory.test.js`.
+
+**`work.js`/`takeBounty.js`/`robNpc.js`**: one new `festivalFactory.checkAndClaimFestivalQuests`
+call at each of the 4 sites `questFactory.checkAndClaimQuests` already runs from (work.js; both of
+take-bounty.js's Bounty/Stat-Bounty branches; rob-npc.js's Heist branch), same post-resolution
+placement and same `(updatedUserDetails, userDetails)` re-fetch/pre-action-baseline pairing.
+
+**`embedFactory.js`**: `createFestivalQuestCompleteEmbed` (near-identical to
+`createQuestCompleteEmbed`, themed with the per-festival token label), `createFestivalStatusEmbed`
+(`/festival`'s read-only view), `createFestivalShopEmbed` (`/festival-shop`'s browse view),
+`createFestivalEndEmbed` (the cron's own end-of-festival announcement).
+
+**New commands**: `/festival` (read-only status + objective progress, `src/commands/user/festival.js`,
+mirrors `/quests`'/`/current-spud-keep`'s shape), `/festival-shop` (browse/buy,
+`src/commands/user/festivalShop.js`, mirrors `/companion-shop`'s button-driven confirm loop
+including the voucher redemption's own follow-up result embed), `/admin-start-festival`
+(`src/commands/moderation/adminStartFestival.js`, `devOnly: true` +
+`permissionsRequired: [PermissionFlagsBits.Administrator]`, mirrors `/admin-trigger-event`'s and
+`/admin-reset-tower`'s shape exactly). **Built as a standalone top-level command, not folded into a
+consolidated `/admin` command** — `src/commands/moderation/admin.js` did not exist in this build's
+worktree at implementation time; if that consolidation lands from a separate parallel session, this
+command's logic should be folded into it as a new subcommand in a follow-up pass.
+
+**`src/events/ready/backgroundEvents.js`**: one new check in the existing 8pm ET cron block, after
+the Spud Keep resolution step, each independently try/caught per that block's own established
+per-step isolation discipline — ends the current festival once `Date.now() >= endsAt` and posts the
+end announcement, or no-ops silently if nothing's live/expired.
+
+**Tests**: full suite run before and after — before this session's changes: 108 suites / 1931 tests.
+After: 109 suites / 1952 tests, all green. New `festivalFactory.test.js` (21 tests) covers: the
+fixed complete 3-objective structure (not a rotated subset) including a fresh-baseline-uses-
+pre-action-value case; the lazy currency-expiry-by-tag-mismatch logic on both the earning side
+(a stale balance is overwritten, not added to) and the spend-gate side; all 3 shop-purchase
+validation gates with their own explicit rejection case each, plus a successful cosmetic purchase
+and a reject-already-purchased case; an explicit regression test that a voucher redemption never
+sets `workTimer`/`workScenarioCounts`/`workCount` in any write it produces, paired with a control
+test proving a real (non-voucher) `handleSweetPotato` call still sets all three, so the exclusion is
+provably the voucher path's own behavior and not a change to normal `/work` play; and the
+odds-override composing test showing a festival multiplier stacking on top of an already
+hourly-event-doubled scenario width rather than replacing it.
+
+**Cross-repo**: not ported this pass. The odds-override piece is confirmed necessary to mirror to
+`financial-project`'s `gromp-economy` Lambda per the design doc's own "Cross-repo" section (not
+optional if this feature is live) — flagged here rather than silently left to drift, needs its own
+audit + port pass with a new numbered `## Bot caught up #N` entry in that repo's
+`NOTES_GROMP_WEB_INTEGRATION.md` before `/gromp` and the bot can disagree on festival-boosted work
+odds. The objective/currency/shop plumbing itself remains unconfirmed rather than assumed
+symmetric, same as the design doc left it.
