@@ -454,6 +454,44 @@ describe('createUserEmbed Title field', () => {
         const companionIndex = names.indexOf('Active Companion:');
         expect(names[companionIndex + 1]).toBe('Title:');
     });
+
+    // Trading Post (systems/trading-post.md, 2026-09-21 direct instruction) — createUserEmbed's
+    // new "Active Potion:" field, directly below "Title:". Before this, a potion's effect was
+    // only ever visible as a folded-in number on the Work Multiplier/Passive Income lines —
+    // no way to see AT A GLANCE whether one was even active without running /trading-post.
+    describe('Active Potion field', () => {
+        test('shows a hint to run /trading-post when no potion is active', async () => {
+            const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture(), 0);
+            const field = embed.data.fields.find(f => f.name === 'Active Potion:');
+            expect(field).toBeDefined();
+            expect(field.value).toContain('/trading-post');
+        });
+
+        test('shows the active potion\'s name and expiry when one is live', async () => {
+            const expiresAt = Date.now() + 3600 * 1000;
+            const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture({
+                activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.08, expiresAt },
+            }), 0);
+            const field = embed.data.fields.find(f => f.name === 'Active Potion:');
+            expect(field.value).toContain('Steadfast Draught');
+            expect(field.value).toContain(`<t:${Math.floor(expiresAt / 1000)}:R>`);
+        });
+
+        test('an EXPIRED potion reads identically to no potion at all', async () => {
+            const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture({
+                activePotion: { potionId: 'workDraught', effectType: 'workMulti', value: 0.08, expiresAt: Date.now() - 1000 },
+            }), 0);
+            const field = embed.data.fields.find(f => f.name === 'Active Potion:');
+            expect(field.value).toContain('/trading-post');
+        });
+
+        test('the Active Potion field sits directly under Title', async () => {
+            const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', userDetailsFixture(), 0);
+            const names = embed.data.fields.map(f => f.name);
+            const titleIndex = names.indexOf('Title:');
+            expect(names[titleIndex + 1]).toBe('Active Potion:');
+        });
+    });
 });
 
 // createWorldResultEmbed's server-wide buff announcement (systems/raids-and-world-events.md#server-wide-buff).

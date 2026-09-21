@@ -433,3 +433,29 @@ normal. Full suite: **111 suites / 2030 tests, all passing** (up from 111/2018 �
   daily reroll interacts with the daily purchase limit shipped just above (does a reroll reset
   what's already been bought, or run alongside it independently?). Not scoped, not started — a
   future architect/product-owner pass, not a developer task yet.
+
+## Shipped: "Active Potion:" status field on /profile (2026-09-21, direct instruction — "Have potion/potion status somewhere on the UI and embeds somewhere in bot maybe on profile or something")
+
+Before this, a potion's effect was ONLY ever visible as a folded-in number on `/profile`'s "Current
+Work Multiplier"/"Current Passive Income" lines — no way to see AT A GLANCE whether one was even
+active without running `/trading-post` itself.
+
+`createUserEmbed` (`embedFactory.js`) gained an "Active Potion:" field directly below the existing
+"Title:" field — same "a discrete equipped/active thing gets its own field" precedent Active
+Companion/Title already set, rather than leaving it as a silent number. Reuses
+`createTradingPostEmbed`'s own status-line wording verbatim (`🧪 **<name>** is active until
+<t:...:R>`) so the phrasing reads identically everywhere a player sees it; `tradingPostFactory.
+hasAnyLivePotion` is the freshness check (not `isPotionLive`, which also requires a specific
+effectType match — this field needs to know about ANY live potion, matching `createTradingPostEmbed`'s
+own reasoning for using the same function). `createUserStatsEmbed` (`/user-stats`) was deliberately
+left alone — it doesn't show Active Companion or Title either, so adding potion there would be
+inconsistent with that embed's own existing scope (a pure base+bonus+regrade numeric breakdown).
+
+**Web side**: same instruction, ported to `financial-project` in the same pass — see that repo's
+`NOTES_GROMP_WEB_INTEGRATION.md` `## Bot caught up #65`.
+
+**Tests**: `embedFactory.test.js` gained an "Active Potion field" describe block (4 tests: a hint
+to run `/trading-post` when nothing's active, the potion's name + expiry timestamp when one is
+live, an EXPIRED potion reading identically to none at all, and the field's position directly under
+"Title:"). Full suite: **111 suites / 2034 tests, all passing** (up from 111/2030 — net 0 new
+suites, +4 tests).

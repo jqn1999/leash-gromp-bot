@@ -643,6 +643,21 @@ class EmbedFactory {
                 inline: false,
             });
 
+            // Trading Post (systems/trading-post.md, 2026-09-21 direct instruction) — a
+            // dedicated status line, same "discrete equipped/active thing gets its own field"
+            // precedent Active Companion/Title above already set, rather than leaving the
+            // potion's effect only visible as a folded-in number on the Work Multiplier/
+            // Passive Income lines above (the only place it showed before this). Reuses
+            // createTradingPostEmbed's own statusLine wording exactly, so the phrasing reads
+            // identically wherever a player sees it.
+            fields.push({
+                name: "Active Potion:",
+                value: tradingPostFactory.hasAnyLivePotion(userDetails.activePotion)
+                    ? `🧪 **${(tradingPostFactory.findPotionById(userDetails.activePotion.potionId)?.name) || "A potion"}** is active until <t:${Math.floor(userDetails.activePotion.expiresAt / 1000)}:R>.`
+                    : "None active — run /trading-post to browse what's for sale.",
+                inline: false,
+            });
+
             // Mercenary Bounties — mutually exclusive with guild membership, so this only
             // ever shows for a non-guilded mercenary. Rank is computed live off
             // mercenaryBountyWinCount, same "never stored" precedent Guild Level already

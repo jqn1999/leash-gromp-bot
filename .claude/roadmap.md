@@ -16516,3 +16516,40 @@ equip-button behavior, are unchanged — this is scoped purely to the favorite-q
 asserting the OLD, now-wrong-for-this-path behavior) was replaced with one asserting the new
 "already equipped" message and confirming `updateUserFields` is never called. Full suite:
 **111 suites / 2030 tests, all passing** (unchanged count — one test replaced, not added).
+
+## Trading Post: "Active Potion:" status field on /profile (2026-09-21, direct instruction — "Have potion/potion status somewhere on the UI and embeds somewhere in bot maybe on profile or something")
+
+Before this, a potion's effect was only ever a folded-in number on `/profile`'s "Current Work
+Multiplier"/"Current Passive Income" lines — no way to see at a glance whether one was even active
+without running `/trading-post` itself. `createUserEmbed` gained an "Active Potion:" field
+directly below the existing "Title:" field, same "a discrete active/equipped thing gets its own
+field" precedent Active Companion/Title already established. Reuses `createTradingPostEmbed`'s
+own status-line wording verbatim so the phrasing matches everywhere a player sees it. `/user-stats`
+was deliberately left untouched — it doesn't show Active Companion or Title either, so adding
+potion there would depart from that embed's own existing scope (a pure numeric breakdown, not a
+"what's equipped" view). Also ported to `financial-project`'s `/gromp` profile display in the same
+pass — see that repo's `NOTES_GROMP_WEB_INTEGRATION.md` `## Bot caught up #65`.
+
+**Tests**: `embedFactory.test.js` gained a 4-test "Active Potion field" describe block (a hint to
+run `/trading-post` when nothing's active, name + expiry when live, an EXPIRED potion reading
+identically to none, and the field's position directly under "Title:"). Full suite: **111 suites /
+2034 tests, all passing** (up from 111/2030 — net 0 new suites, +4 tests).
+
+## Where do Titles/potions currently show, cross-repo? (2026-09-21, status check)
+
+Player question, answered directly rather than guessed — current surfaces as of this session:
+
+**Titles**: bot-only. `/titles` (browse all 16, unlocked + locked-with-progress) and `/set-title`
+(equip/un-equip, autocomplete limited to unlocked titles) are the two dedicated commands;
+`/profile`'s own "Title:" field (added when Titles shipped) shows whichever one is currently
+equipped. **Zero web presence** — confirmed via a grep across the whole `financial-project` repo
+for any Titles-related field/endpoint before answering; `/gromp` has never shown a Title anywhere,
+and nothing in this session's Trading Post/Festival web passes touched it. Porting Titles to the
+web is a separate, not-yet-scoped follow-up.
+
+**Potions** (Trading Post): `/trading-post` itself (browse/buy, shows the currently-active potion's
+own status line), and as of the entry directly above, `/profile`'s new "Active Potion:" field —
+both bot-side. Web-side: as of `#65` in `financial-project`'s own notes, the `/gromp` profile
+display now shows active-potion name + time remaining too (this session's own pass) — but there is
+still no way to BUY a potion from the website at all; that remains unscoped (see this doc's earlier
+"Future scope" entry and `financial-project`'s own `#63`/`#64` "not ported" notes).
