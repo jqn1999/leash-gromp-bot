@@ -239,7 +239,7 @@ async function attemptPurchasePotion(userId, username, potionId) {
             const activeName = activePotionEntry ? activePotionEntry.name : "another potion";
             return {
                 ok: false,
-                message: `you already have ${activeName} active until <t:${Math.floor(active.expiresAt / 1000)}:R> — it has to run out before you can switch to a different potion (no partial refund).`
+                message: `you already have ${activeName} active and it will end <t:${Math.floor(active.expiresAt / 1000)}:R> — it has to run out before you can switch to a different potion (no partial refund).`
             };
         }
     } else {
@@ -265,7 +265,7 @@ async function attemptPurchasePotion(userId, username, potionId) {
 
     return {
         ok: true,
-        message: `bought ${potion.name} for ${price.toLocaleString()} potatoes! It's active until <t:${Math.floor(newActivePotion.expiresAt / 1000)}:R>. You have ${newPotatoes.toLocaleString()} potatoes left.`,
+        message: `bought ${potion.name} for ${price.toLocaleString()} potatoes! It's active and will end <t:${Math.floor(newActivePotion.expiresAt / 1000)}:R>. You have ${newPotatoes.toLocaleString()} potatoes left.`,
         potion,
         activePotion: newActivePotion
     };

@@ -662,7 +662,7 @@ class EmbedFactory {
             fields.push({
                 name: "Active Potion:",
                 value: tradingPostFactory.hasAnyLivePotion(userDetails.activePotion)
-                    ? `🧪 **${(tradingPostFactory.findPotionById(userDetails.activePotion.potionId)?.name) || "A potion"}** is active until <t:${Math.floor(userDetails.activePotion.expiresAt / 1000)}:R>.`
+                    ? `🧪 **${(tradingPostFactory.findPotionById(userDetails.activePotion.potionId)?.name) || "A potion"}** is active and will end <t:${Math.floor(userDetails.activePotion.expiresAt / 1000)}:R>.`
                     : "None active — run /trading-post to browse what's for sale.",
                 inline: false,
             });
@@ -4043,7 +4043,7 @@ class EmbedFactory {
         if (tradingPostFactory.hasAnyLivePotion(activePotion)) {
             const activeEntry = tradingPostFactory.findPotionById(activePotion.potionId);
             const activeName = activeEntry ? activeEntry.name : "A potion";
-            statusLine = `🧪 **${activeName}** is active until <t:${Math.floor(activePotion.expiresAt / 1000)}:R>.`;
+            statusLine = `🧪 **${activeName}** is active and will end <t:${Math.floor(activePotion.expiresAt / 1000)}:R>.`;
         } else {
             statusLine = `No potion currently active — buy one below.`;
         }
