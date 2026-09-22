@@ -2494,8 +2494,14 @@ class EmbedFactory {
         }];
 
         if (regradedStatName) {
+            // "Free Regrade" (2026-09-22, restored to a full tier step written straight
+            // into regrades[track].regradeAmount — see workFactory.js's handleAncientPotato
+            // for the nerf/restore history) — this now IS a completed regrade, same as a
+            // paid /regrade success, so it gets that field name instead of the old
+            // "Permanent Bonus" wording from when this was a separate sweetPotatoBuffs-style
+            // bonus that deliberately wasn't real regrade progress.
             fields.push({
-                name: `Permanent Bonus:`,
+                name: `Free Regrade:`,
                 value: `+${regradeIncrease.toLocaleString()} ${regradedStatName}`,
                 inline: true,
             });

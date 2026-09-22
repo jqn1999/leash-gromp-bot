@@ -151,9 +151,25 @@ Picks one of seven weekly patterns using a **Markov chain** (`PROBABILITY_MATRIX
 `LARGE_SPIKE(1)`, `DECREASING(2)`, `SMALL_SPIKE(3)`, `STEADY_CLIMB(4)`, `NARROW_PEAK(5)`,
 `CHOPPY(6)`.
 
-Example: after a `FLUCTUATING` week — 20% stay fluctuating, next 30% (cumulative to .50) large
-spike, next 15% (to .65) decreasing, next 17.5% (to .825) small spike, next 10.5% (to .93) steady
-climb, next 3.5% (to .965) narrow peak, remaining 3.5% choppy.
+Example: after a `FLUCTUATING` week — 12% stay fluctuating, next 31.33% (cumulative to .4333) large
+spike, next 16.33% (to .5966) decreasing, next 18.83% (to .7849) small spike, next 11.83% (to
+.9032) steady climb, next 4.83% (to .9515) narrow peak, remaining 4.83% choppy.
+
+**Rebalanced 2026-09-22** (player-reported: "the same up down up down pattern for the past 4
+weeks" for the Monday→Thursday cycle) — `FLUCTUATING` is the one pattern that produces a literal
+alternating zigzag every single time it's drawn, and the OLD matrix gave it the single highest
+per-row transition probability in every row (as steep as 50% coming from `LARGE_SPIKE`, 45% from
+`SMALL_SPIKE`). Computing the chain's actual long-run (stationary) distribution — not just
+eyeballing each row in isolation, which is how the old numbers were tuned — showed `FLUCTUATING`
+landing ~31.6% of all weeks, more than double a flat 1/7 share, while `NARROW_PEAK`/`CHOPPY` were
+starved down to ~3.1% each despite their own "semi difficult" carve-out below intending a bigger
+real share. Each row's `FLUCTUATING` slice was cut 40% (`× 0.6`) and the freed probability split
+**evenly** across the other 6 patterns in that same row — an even split was chosen over a
+proportional one specifically because proportional redistribution just handed most of the freed
+probability to `LARGE_SPIKE` (each row's other biggest share), recreating a one-pattern-dominates
+problem under a different name. New long-run distribution: `FLUCTUATING` ~19.5%, `LARGE_SPIKE`
+~26.3%, `DECREASING` ~16.8%, `SMALL_SPIKE` ~15.4%, `STEADY_CLIMB` ~11.4%, `NARROW_PEAK`/`CHOPPY`
+~5.3% each.
 
 **The pattern-selection loop reads `MATRIX[lastPat][i]` for `i = 0..6` in strict ascending numeric
 order** and stops at the first index whose cumulative value exceeds the roll — so every row's
@@ -190,9 +206,11 @@ extreme:
   guaranteeing a win, and the upside on any individual hit is capped modest (15%) rather than a big
   payoff.
 
-Both patterns' slices in each row were carved out of what used to be `STEADY_CLIMB`'s catch-all
-remainder (60/20/20 split — `STEADY_CLIMB` keeps 60% of its old share, `NARROW_PEAK`/`CHOPPY` split
-the rest), so every pattern below `SMALL_SPIKE` keeps its exact prior odds unchanged.
+Both patterns' slices in each row were originally carved out of what used to be `STEADY_CLIMB`'s
+catch-all remainder (60/20/20 split — `STEADY_CLIMB` kept 60% of its old share, `NARROW_PEAK`/
+`CHOPPY` split the rest); that carve-out predates and is independent of the 2026-09-22 rebalance
+above, which touches every pattern's odds (not just the ones below `SMALL_SPIKE`) — see that
+section for the current numbers.
 
 ## Commands
 

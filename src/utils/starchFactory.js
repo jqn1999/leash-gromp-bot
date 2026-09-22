@@ -375,72 +375,88 @@ const PATTERN = {
 // higher cumulative value than a later one — get that backwards and every higher-numbered
 // pattern becomes permanently unreachable, since an earlier catch-all always matches
 // first (hit exactly this bug once already adding STEADY_CLIMB, see starch-trading.md).
-// NARROW_PEAK(5)/CHOPPY(6) are carved out of what used to be each row's STEADY_CLIMB
-// catch-all-to-1 (60/20/20 split: STEADY_CLIMB keeps 60% of its old remainder, the two
-// new "semi difficult" patterns split the rest) — every pattern below SMALL_SPIKE keeps
-// its exact prior odds.
+//
+// Rebalanced 2026-09-22 (player-reported: "the same up down up down pattern for the past
+// 4 weeks" — a real skew, not a run of bad luck). FLUCTUATING is the one pattern that
+// produces a literal alternating zigzag every time it's drawn, and it held the single
+// highest per-row transition probability in EVERY row of the old matrix (as steep as 50%
+// coming from LARGE_SPIKE, 45% from SMALL_SPIKE) — computing this chain's actual long-run
+// (stationary) distribution showed FLUCTUATING landing ~31.6% of all weeks, more than
+// double a flat 1/7 share, with NARROW_PEAK/CHOPPY starved down to ~3.1% each despite the
+// "20% of the remainder" carve-out their own comment below describes. Each row's old
+// FLUCTUATING share is cut by 40% (`* 0.6`) and the freed probability split evenly across
+// the other 6 patterns in that row (not proportionally — proportional redistribution was
+// tried first and just handed most of it to LARGE_SPIKE, the row's other biggest share,
+// recreating the same one-pattern-dominates problem under a different name). New long-run
+// distribution: FLUCTUATING ~19.5%, LARGE_SPIKE ~26.3%, DECREASING ~16.8%, SMALL_SPIKE
+// ~15.4%, STEADY_CLIMB ~11.4%, NARROW_PEAK/CHOPPY ~5.3% each — no pattern dominates the
+// way FLUCTUATING did, and the two "semi difficult" patterns roughly doubled their real
+// odds of showing up. NARROW_PEAK(5)/CHOPPY(6) are still carved out of what used to be
+// each row's STEADY_CLIMB catch-all-to-1 (60/20/20 split: STEADY_CLIMB keeps 60% of its
+// old remainder, the two new "semi difficult" patterns split the rest) — that carve-out
+// predates and is independent of this rebalance, just folded into the same numbers below.
 const PROBABILITY_MATRIX = {
     [PATTERN.FLUCTUATING]: {
-        [PATTERN.FLUCTUATING]: 0.20,
-        [PATTERN.LARGE_SPIKE]: 0.50,
-        [PATTERN.DECREASING]: 0.65,
-        [PATTERN.SMALL_SPIKE]: 0.825,
-        [PATTERN.STEADY_CLIMB]: 0.93,
-        [PATTERN.NARROW_PEAK]: 0.965,
+        [PATTERN.FLUCTUATING]: 0.12,
+        [PATTERN.LARGE_SPIKE]: 0.4333,
+        [PATTERN.DECREASING]: 0.5966,
+        [PATTERN.SMALL_SPIKE]: 0.7849,
+        [PATTERN.STEADY_CLIMB]: 0.9032,
+        [PATTERN.NARROW_PEAK]: 0.9515,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.LARGE_SPIKE]: {
-        [PATTERN.FLUCTUATING]: 0.50,
-        [PATTERN.LARGE_SPIKE]: 0.55,
-        [PATTERN.DECREASING]: 0.75,
-        [PATTERN.SMALL_SPIKE]: 0.875,
-        [PATTERN.STEADY_CLIMB]: 0.95,
-        [PATTERN.NARROW_PEAK]: 0.975,
+        [PATTERN.FLUCTUATING]: 0.30,
+        [PATTERN.LARGE_SPIKE]: 0.3833,
+        [PATTERN.DECREASING]: 0.6166,
+        [PATTERN.SMALL_SPIKE]: 0.7749,
+        [PATTERN.STEADY_CLIMB]: 0.8832,
+        [PATTERN.NARROW_PEAK]: 0.9415,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.DECREASING]: {
-        [PATTERN.FLUCTUATING]: 0.25,
-        [PATTERN.LARGE_SPIKE]: 0.70,
-        [PATTERN.DECREASING]: 0.75,
-        [PATTERN.SMALL_SPIKE]: 0.875,
-        [PATTERN.STEADY_CLIMB]: 0.95,
-        [PATTERN.NARROW_PEAK]: 0.975,
+        [PATTERN.FLUCTUATING]: 0.15,
+        [PATTERN.LARGE_SPIKE]: 0.6167,
+        [PATTERN.DECREASING]: 0.6834,
+        [PATTERN.SMALL_SPIKE]: 0.8251,
+        [PATTERN.STEADY_CLIMB]: 0.9168,
+        [PATTERN.NARROW_PEAK]: 0.9585,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.SMALL_SPIKE]: {
-        [PATTERN.FLUCTUATING]: 0.45,
-        [PATTERN.LARGE_SPIKE]: 0.70,
-        [PATTERN.DECREASING]: 0.85,
-        [PATTERN.SMALL_SPIKE]: 0.925,
-        [PATTERN.STEADY_CLIMB]: 0.97,
-        [PATTERN.NARROW_PEAK]: 0.985,
+        [PATTERN.FLUCTUATING]: 0.27,
+        [PATTERN.LARGE_SPIKE]: 0.55,
+        [PATTERN.DECREASING]: 0.73,
+        [PATTERN.SMALL_SPIKE]: 0.835,
+        [PATTERN.STEADY_CLIMB]: 0.91,
+        [PATTERN.NARROW_PEAK]: 0.955,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.STEADY_CLIMB]: {
-        [PATTERN.FLUCTUATING]: 0.20,
-        [PATTERN.LARGE_SPIKE]: 0.45,
-        [PATTERN.DECREASING]: 0.60,
-        [PATTERN.SMALL_SPIKE]: 0.75,
-        [PATTERN.STEADY_CLIMB]: 0.90,
-        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.FLUCTUATING]: 0.12,
+        [PATTERN.LARGE_SPIKE]: 0.3833,
+        [PATTERN.DECREASING]: 0.5466,
+        [PATTERN.SMALL_SPIKE]: 0.7099,
+        [PATTERN.STEADY_CLIMB]: 0.8732,
+        [PATTERN.NARROW_PEAK]: 0.9365,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.NARROW_PEAK]: {
-        [PATTERN.FLUCTUATING]: 0.20,
-        [PATTERN.LARGE_SPIKE]: 0.45,
-        [PATTERN.DECREASING]: 0.60,
-        [PATTERN.SMALL_SPIKE]: 0.75,
-        [PATTERN.STEADY_CLIMB]: 0.90,
-        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.FLUCTUATING]: 0.12,
+        [PATTERN.LARGE_SPIKE]: 0.3833,
+        [PATTERN.DECREASING]: 0.5466,
+        [PATTERN.SMALL_SPIKE]: 0.7099,
+        [PATTERN.STEADY_CLIMB]: 0.8732,
+        [PATTERN.NARROW_PEAK]: 0.9365,
         [PATTERN.CHOPPY]: 1,
     },
     [PATTERN.CHOPPY]: {
-        [PATTERN.FLUCTUATING]: 0.20,
-        [PATTERN.LARGE_SPIKE]: 0.45,
-        [PATTERN.DECREASING]: 0.60,
-        [PATTERN.SMALL_SPIKE]: 0.75,
-        [PATTERN.STEADY_CLIMB]: 0.90,
-        [PATTERN.NARROW_PEAK]: 0.95,
+        [PATTERN.FLUCTUATING]: 0.12,
+        [PATTERN.LARGE_SPIKE]: 0.3833,
+        [PATTERN.DECREASING]: 0.5466,
+        [PATTERN.SMALL_SPIKE]: 0.7099,
+        [PATTERN.STEADY_CLIMB]: 0.8732,
+        [PATTERN.NARROW_PEAK]: 0.9365,
         [PATTERN.CHOPPY]: 1,
     },
 };

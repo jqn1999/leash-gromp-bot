@@ -16869,3 +16869,165 @@ per this repo's own cross-repo mirroring rule, that repo needs the equivalent
 `towerPendingPotatoes` field, a combined collect endpoint, and UI changes (a collection
 preview/collect-or-leave control) to stay in sync. Flagged, not built this session — pick up
 `financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` for the port when picked up.
+
+## Starch pattern rebalance: FLUCTUATING lowered, freed probability spread evenly across the rest (2026-09-22, player-reported: "the same up down up down pattern for the past 4 weeks for the monday-thursday period")
+
+**Investigation.** `starchFactory.js`'s `makeStarchPrices` picks one of 7 weekly patterns via a
+Markov chain (`PROBABILITY_MATRIX`, keyed by last week's pattern → cumulative odds of each next
+pattern) — not a bug in the `Math.random()` calls or in how `starch_last`/`starch_values` get
+persisted (traced the full write path in `starchEvents.js`'s cron jobs and `dynamoHandler.js`'s
+`getStatDatabase`/`updateStatDatabase`, both clean). The real issue was in the matrix's own
+numbers: `FLUCTUATING` is the one pattern that produces a literal alternating decay/spike zigzag
+every time it's drawn (a coin flip only picks which direction starts), and it held the single
+highest per-row transition probability in EVERY row of the old matrix — as steep as 50% coming
+from `LARGE_SPIKE`, 45% from `SMALL_SPIKE`. Computing the chain's actual long-run (stationary)
+distribution via power iteration (rather than eyeballing each row, which is how the old numbers
+were originally tuned, per the matrix's own comment about carving `NARROW_PEAK`/`CHOPPY` out of
+`STEADY_CLIMB`'s remainder in isolation) showed `FLUCTUATING` landing ~31.6% of all weeks — more
+than double a flat 1/7 share — while `NARROW_PEAK`/`CHOPPY` were starved down to ~3.1% each
+despite their own comment describing a "20% of the remainder" carve-out. Since Monday and
+Thursday buying windows share one chain, the real Monday-to-next-Monday `FLUCTUATING`
+self-transition (accounting for the intervening Thursday draw) came out to 34%, making the
+player's specific observation — 4 straight Monday-cycle weeks all `FLUCTUATING` — land at ~1.25%
+on its own: rare, but corroborating a real structural skew rather than refuting one.
+
+**What shipped, direct instruction ("just lower fluctuating a bit and give some to the rest").**
+Each row's `FLUCTUATING` slice cut 40% (`× 0.6`), with the freed probability split **evenly**
+across the other 6 patterns in that row. An even split was chosen over the initially-tried
+proportional split — proportional redistribution mostly reinforced `LARGE_SPIKE` (each row's
+other biggest share), recreating a one-pattern-dominates problem under a different name; an even
+split actually lifts every other pattern, including the two starved "semi difficult" ones. New
+long-run distribution: `FLUCTUATING` ~19.5%, `LARGE_SPIKE` ~26.3%, `DECREASING` ~16.8%,
+`SMALL_SPIKE` ~15.4%, `STEADY_CLIMB` ~11.4%, `NARROW_PEAK`/`CHOPPY` ~5.3% each (up from ~3.1%).
+All 7 rows of `PROBABILITY_MATRIX` in `starchFactory.js` updated with the new cumulative
+thresholds; the ascending-order-by-pattern-index constraint the matrix's own comment already
+documents was preserved exactly.
+
+**Tests.** No test changes needed — verified by hand before touching the matrix that every
+existing pinned `Math.random()` roll in `starchFactory.test.js` (0.1/0.3/0.55/0.7/0.9/0.94-0.95/
+0.98/0.999, used across the reachability, priceCount-honoring, and NARROW_PEAK/CHOPPY profit-odds
+tests) still lands in the same pattern bucket under the new boundaries — the new thresholds moved
+but kept enough margin at every one of those specific roll values. Ran the full suite after the
+change to confirm rather than trusting the by-hand check alone: **111 suites / 2052 tests, all
+passing** (net 0 new/changed tests — a pure constants-table edit).
+
+**Docs.** `systems/starch-trading.md`'s pattern-generation section: the `FLUCTUATING`-row example
+percentages updated to the new numbers, a new "Rebalanced 2026-09-22" paragraph added explaining
+the stationary-distribution finding and the even-vs-proportional redistribution choice, and the
+now-inaccurate "every pattern below SMALL_SPIKE keeps its exact prior odds unchanged" line
+corrected (the rebalance touches every pattern, not just `NARROW_PEAK`/`CHOPPY`'s own carve-out).
+
+**Cross-repo note.** `financial-project` doesn't run its own starch price generation — the web
+`/gromp` page only ever reads whatever `starch_buy`/`starch_sell`/`starch_values` the bot's own
+cron already wrote to the shared stats table (confirmed via `NOTES_GROMP_WEB_INTEGRATION.md`'s
+starch-trading entry), so this change needs no web-side port.
+
+## Companion Hunt rejoins Big Events, Mythic+ only (2026-09-22, direct instruction: "have mythic companions from companion hunt show up in the big events channel")
+
+**Context.** Companion Hunt and Companion Shop were both wired into Big Events once already, then
+explicitly reverted same-day back on 2026-09-16 (direct instruction: "Big events channel doesn't
+need companion shop purchases or companion hunt results" — see `systems/server-activity-channel.md`'s
+dated entry). This reopens that decision for Companion Hunt specifically — the player named only
+Companion Hunt this time, so Companion Shop's exclusion is left exactly as it was.
+
+**What shipped.** `companionHunt.js`'s `runCollect` now checks `bigEventsChannel.
+isBigEventCompanion(result.companion)` right after sending the hunt-result embed (same
+`result.found` guard the achievement-unlock check already uses) and posts a `'🎉 Rare Companion!'`
+Big Event on a hit — same field shape/color as `work.js`'s own Wandering Companion post
+(`playerField`/`companionField`/`RARE_COMPANION_COLOR`), with `sourceField('Found on a Companion
+Hunt')` swapping in for `work.js`'s `'Found while Working'`. Companion Hunt rolls through the
+exact same `companionFactory.rollCompanion` table `/work`'s encounter uses, so it's equally
+capable of a Mythic/Heirloom pull — `isBigEventCompanion`'s existing rarity check (no dropSource
+condition needed; Companion Hunt has no activity-exclusive companion of its own) required no
+changes.
+
+**Tests.** New `companionHuntBigEvents.test.js` (3 cases): a Mythic+ pull posts once with the
+right title/source-field/color; a Common pull posts nothing; a miss posts nothing. Forced the
+specific outcome by stubbing `Math.random`'s 3 sequential draws Companion Hunt's collect path
+makes (found-roll, rarity-roll, pool-pick-roll) rather than mocking `companionFactory` directly,
+so the test exercises the real `resolveHuntOutcome` → `rollCompanion` → `isBigEventCompanion`
+chain end to end. Full suite: **112 suites / 2055 tests, all passing** (net +3 new tests, 0
+broken — the existing `companionHunt.test.js` "a hit" test already used a `Math.random` roll of 0,
+which lands Common under the real rarity table, so it was never going to trip the new Big Events
+path and needed no changes).
+
+**Docs.** `systems/server-activity-channel.md` updated in 3 spots: the Big Events triggers list
+(Companion Hunt added alongside `/work`/Bounty/Tower/Guild Raid, Companion Shop's exclusion note
+kept and clarified as still-live), the companion-pull call site list (`companionHunt.js` added),
+and the "Deliberately NOT wired" / 2026-09-16 revert paragraph split into three parts: what's
+still excluded (Companion Shop, trades), what the original revert covered, and this pass's
+reversal for Companion Hunt only.
+
+**Cross-repo port, same session.** Companion Hunt **is** ported to `financial-project`
+(`gromp-companions/handler.ts`'s `doCompanionHuntCollect`), unlike Tower (never ported) — so this
+was a live, reachable web-side gap, not just a note. Ported a full Big Events block (`postBigEvent`,
+`MYTHIC_PLUS_RARITIES`, `RARITY_LABEL`, `companionField`, `sourceField`, `RARE_COMPANION_COLOR`)
+into that Lambda — it had zero Big Events wiring of any kind before this, since its own copy was
+deleted outright in the 2026-09-16 revert and never rebuilt. `doCompanionHuntCollect` now exposes
+`companionRarity` on its result so the dispatch block can gate the post on
+`MYTHIC_PLUS_RARITIES.has(result.companionRarity)`. Verified via `npx tsc --noEmit` — same 22
+pre-existing `TS4111` + 14 `$amplify/env` baseline, zero new errors. See that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md`, "Bot caught up #75," for the full port writeup.
+
+## Ancient Potato's free-regrade branch restored to the full tier step (reversing the 2026-08-22 nerf), embed wording fixed (2026-09-22, direct instruction: "fix it to just simply give the regrade and actually go under the regrade stat at 100% value")
+
+**Context.** Follows directly from this same session's earlier investigation (previous roadmap
+entry isn't this one — see the player-report investigation that led to the "Permanent Bonus"
+wording fix on `financial-project`'s side): that pass concluded the 10%-of-tier grant and its
+non-regrade-track write were both WORKING AS DESIGNED, just mislabeled on the web. This entry is a
+genuine reversal of that design, not a bug fix — the player/user decided, after seeing how small
+the nerfed grant actually was in practice, that they wanted the original full-tier behavior back
+after all.
+
+**What shipped.** `workFactory.js`'s `handleAncientPotato`: the regrade branch now grants
+`currentTier.increase` in full (was `Math.round(currentTier.increase *
+Work.ANCIENT_REGRADE_GRANT_PERCENT)`, the 10% nerf), written straight into
+`regrades[track.regradeKey].regradeAmount` (was `sweetPotatoBuffs[track.statField]`) — the exact
+same write shape a real, paid `/regrade` success uses (`regrade.js`: `regradeAmount +=
+currentTier.increase`). `regrades[track.regradeKey].failStack` also resets to 0 on this grant, same
+as what a genuine success does — this restore makes the free branch behave IDENTICALLY to a
+completed paid regrade in every way except cost/risk, not just in magnitude. `Work.
+ANCIENT_REGRADE_GRANT_PERCENT` removed from `constants.js` entirely (no longer referenced anywhere).
+`embedFactory.js`'s `createAncientPotatoEmbed`: the field relabeled `"Permanent Bonus:"` →
+`"Free Regrade:"`, reverting the 2026-08-22 rename now that the mechanic it describes is a real
+regrade again. The `/help topic:economy-and-work` text's "a partial free regrade/shop-tier grant"
+corrected to "a full free regrade step/shop-tier grant."
+
+**Docs.** `systems/economy-and-work.md`'s Ancient Potato section rewritten to describe current
+behavior as the full-tier/real-regrade-track branch it now is, with the nerf/restore history kept
+as an explicit sub-section (both the 97x-475x-a-Golden-Potato original valuation AND the "accepted
+as the intended payoff after all" restore reasoning) rather than deleted — future readers should
+still be able to see why this number moved twice. `constants.js`'s own comment cross-references
+updated (the `BountyStatReward` comment that used to point at `ANCIENT_REGRADE_GRANT_PERCENT`'s own
+reasoning now explains its own checkpoint-mismatch case directly, since that constant no longer
+exists to point at).
+
+**Tests.** `workFactory.test.js`'s "grants a percent-of-tier bonus" test rewritten to "grants the
+full tier step directly into regrades... and resets failStack" — asserts `regradeIncrease` equals
+the tier's raw `increase` (not a rounded 10% slice), `setFields.regrades.workMulti` now shows the
+ADVANCED `regradeAmount` (was asserted UNCHANGED before) with `failStack` reset to 0 from a nonzero
+starting value (added specifically to prove the reset, which the old test had no reason to check),
+and `setFields.sweetPotatoBuffs.workMultiplierAmount` now asserts 0 (was asserting the grant amount
+before — this is real regrade progress now, not a `sweetPotatoBuffs` bonus). Every other
+`handleAncientPotato` test (shop-branch, potato-payout branch, guild-cooldown-reset, float-drift
+regression, `workScenarioCounts`) needed no changes — none of them exercised the regrade branch's
+own amount/destination. Full suite: **112 suites / 2055 tests, all passing** (net 0 new/changed
+test count — one test's assertions rewritten in place, same as the Bounty-starch-rebalance entry's
+own precedent for a formula-behavior reversal).
+
+**Cross-repo port, same session.** Ported the identical restore to `financial-project`'s
+`gromp-economy/handler.ts` 'ancient' branch (full `currentTier.increase` into `regrades[track].
+regradeAmount` + `failStack` reset, `ANCIENT_REGRADE_GRANT_PERCENT` removed from that file's own
+mirrored `Work` constant) and re-flipped the frontend wording a second time in the same session
+(`gromp.component.ts`: "Permanent Bonus" → "Free Regrade," undoing the earlier same-session fix now
+that the mechanic matches the label again). **Also built the web's own equivalent of `/user-stats`'s
+Base+Bonus+Regrade breakdown**, direct instruction ("have an equivalent on the web by being able to
+either hover or click on things like the work multi in web and see the breakdown of base/sweet/
+regrade and maybe buff or potion impacts too") — a new click-to-expand panel on Work Multiplier/
+Passive/Banked stat tiles (native `title` covers the hover case), Base/Sweet/Regrade computed
+client-side off data `toProfile()` already sends, and a new `computeLiveStatBonuses`/`'statBreakdown'`
+action added to `gromp-economy` for the live guild/mercenary/companion/rebirth/world-buff/potion
+bonus breakdown (fetched once on first expand, cached client-side, kept OUT of `toProfile()` itself
+since that function is echoed from ~15 different mutation responses and this needs its own async
+guild-doc/world-buff fetch that only the dedicated stat view actually needs). See that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` for the full port writeup.
