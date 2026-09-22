@@ -16968,3 +16968,66 @@ deleted outright in the 2026-09-16 revert and never rebuilt. `doCompanionHuntCol
 `MYTHIC_PLUS_RARITIES.has(result.companionRarity)`. Verified via `npx tsc --noEmit` — same 22
 pre-existing `TS4111` + 14 `$amplify/env` baseline, zero new errors. See that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md`, "Bot caught up #75," for the full port writeup.
+
+## Ancient Potato's free-regrade branch restored to the full tier step (reversing the 2026-08-22 nerf), embed wording fixed (2026-09-22, direct instruction: "fix it to just simply give the regrade and actually go under the regrade stat at 100% value")
+
+**Context.** Follows directly from this same session's earlier investigation (previous roadmap
+entry isn't this one — see the player-report investigation that led to the "Permanent Bonus"
+wording fix on `financial-project`'s side): that pass concluded the 10%-of-tier grant and its
+non-regrade-track write were both WORKING AS DESIGNED, just mislabeled on the web. This entry is a
+genuine reversal of that design, not a bug fix — the player/user decided, after seeing how small
+the nerfed grant actually was in practice, that they wanted the original full-tier behavior back
+after all.
+
+**What shipped.** `workFactory.js`'s `handleAncientPotato`: the regrade branch now grants
+`currentTier.increase` in full (was `Math.round(currentTier.increase *
+Work.ANCIENT_REGRADE_GRANT_PERCENT)`, the 10% nerf), written straight into
+`regrades[track.regradeKey].regradeAmount` (was `sweetPotatoBuffs[track.statField]`) — the exact
+same write shape a real, paid `/regrade` success uses (`regrade.js`: `regradeAmount +=
+currentTier.increase`). `regrades[track.regradeKey].failStack` also resets to 0 on this grant, same
+as what a genuine success does — this restore makes the free branch behave IDENTICALLY to a
+completed paid regrade in every way except cost/risk, not just in magnitude. `Work.
+ANCIENT_REGRADE_GRANT_PERCENT` removed from `constants.js` entirely (no longer referenced anywhere).
+`embedFactory.js`'s `createAncientPotatoEmbed`: the field relabeled `"Permanent Bonus:"` →
+`"Free Regrade:"`, reverting the 2026-08-22 rename now that the mechanic it describes is a real
+regrade again. The `/help topic:economy-and-work` text's "a partial free regrade/shop-tier grant"
+corrected to "a full free regrade step/shop-tier grant."
+
+**Docs.** `systems/economy-and-work.md`'s Ancient Potato section rewritten to describe current
+behavior as the full-tier/real-regrade-track branch it now is, with the nerf/restore history kept
+as an explicit sub-section (both the 97x-475x-a-Golden-Potato original valuation AND the "accepted
+as the intended payoff after all" restore reasoning) rather than deleted — future readers should
+still be able to see why this number moved twice. `constants.js`'s own comment cross-references
+updated (the `BountyStatReward` comment that used to point at `ANCIENT_REGRADE_GRANT_PERCENT`'s own
+reasoning now explains its own checkpoint-mismatch case directly, since that constant no longer
+exists to point at).
+
+**Tests.** `workFactory.test.js`'s "grants a percent-of-tier bonus" test rewritten to "grants the
+full tier step directly into regrades... and resets failStack" — asserts `regradeIncrease` equals
+the tier's raw `increase` (not a rounded 10% slice), `setFields.regrades.workMulti` now shows the
+ADVANCED `regradeAmount` (was asserted UNCHANGED before) with `failStack` reset to 0 from a nonzero
+starting value (added specifically to prove the reset, which the old test had no reason to check),
+and `setFields.sweetPotatoBuffs.workMultiplierAmount` now asserts 0 (was asserting the grant amount
+before — this is real regrade progress now, not a `sweetPotatoBuffs` bonus). Every other
+`handleAncientPotato` test (shop-branch, potato-payout branch, guild-cooldown-reset, float-drift
+regression, `workScenarioCounts`) needed no changes — none of them exercised the regrade branch's
+own amount/destination. Full suite: **112 suites / 2055 tests, all passing** (net 0 new/changed
+test count — one test's assertions rewritten in place, same as the Bounty-starch-rebalance entry's
+own precedent for a formula-behavior reversal).
+
+**Cross-repo port, same session.** Ported the identical restore to `financial-project`'s
+`gromp-economy/handler.ts` 'ancient' branch (full `currentTier.increase` into `regrades[track].
+regradeAmount` + `failStack` reset, `ANCIENT_REGRADE_GRANT_PERCENT` removed from that file's own
+mirrored `Work` constant) and re-flipped the frontend wording a second time in the same session
+(`gromp.component.ts`: "Permanent Bonus" → "Free Regrade," undoing the earlier same-session fix now
+that the mechanic matches the label again). **Also built the web's own equivalent of `/user-stats`'s
+Base+Bonus+Regrade breakdown**, direct instruction ("have an equivalent on the web by being able to
+either hover or click on things like the work multi in web and see the breakdown of base/sweet/
+regrade and maybe buff or potion impacts too") — a new click-to-expand panel on Work Multiplier/
+Passive/Banked stat tiles (native `title` covers the hover case), Base/Sweet/Regrade computed
+client-side off data `toProfile()` already sends, and a new `computeLiveStatBonuses`/`'statBreakdown'`
+action added to `gromp-economy` for the live guild/mercenary/companion/rebirth/world-buff/potion
+bonus breakdown (fetched once on first expand, cached client-side, kept OUT of `toProfile()` itself
+since that function is echoed from ~15 different mutation responses and this needs its own async
+guild-doc/world-buff fetch that only the dedicated stat view actually needs). See that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` for the full port writeup.

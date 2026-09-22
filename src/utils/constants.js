@@ -30,14 +30,6 @@ const Work = {
     // rather than compounding forever, the same weekly ceiling everyone else's own
     // mitigation caps at.
     GUINEA_PIG_ESCALATION_PER_HIT: 0.15,
-    // Ancient Potato's free-regrade branch (workFactory.js's handleAncientPotato) grants
-    // this fraction of a regrade tier's own `increase` instead of the full tier — see
-    // that function's own comment for why. balance-audit.md's 2026-08-22 entry found the
-    // full-tier version worth 97x-475x a same-roll Golden Potato once converted to real
-    // /regrade potato-equivalent cost, since it bypassed both the cost and the risk
-    // entirely. Nerfed at direct instruction, deliberately leaving Ancient's own roll
-    // odds (eventFactory.js) untouched.
-    ANCIENT_REGRADE_GRANT_PERCENT: 0.10,
     // Even when a player is still eligible for one of Ancient Potato's two stat-bump
     // branches (free regrade slice / free shop tier, above), this is the flat chance the
     // roll grants a straight potato payout instead — the same formula/branch a fully-
@@ -1904,7 +1896,7 @@ const HelpTopics = [
         id: "work",
         label: "Work",
         description: "The core /work loop and its bonus encounters, with real odds",
-        content: "`/work` runs on a 5-minute cooldown that some companion perks, guild buffs, and Mercenary Buffs give a *chance* to skip entirely (never a guaranteed shortening — a hit resets it to ready-now and auto-chains another `/work` for free). Every call rolls one encounter from this table:\n\n**Golden Potato** — 0.10% — pure potato payout, capped 500,000 (pre-multiplier).\n**Poison Potato** — 1.00% — a loss (same formula x10, capped 10,000) plus a 30-minute lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting Sunday — see `/help topic:poison-mimic`.\n**Large Potato** — 4.00% — formula x10, capped 10,000.\n**Metal Potato** — 1.00% roll, then its own separate 10% success check (≈0.10% overall hit rate). Success: formula x20 capped 100,000, plus a permanent +0.6 work multiplier and scaled passive/bank boosts. A miss pays nothing and just resets the timer.\n**Sweet Potato** — 2.00% — no potatoes, one of three permanent stat buffs instead (+0.2 work multi, or a scaled passive/bank boost).\n**Wandering Companion** — 1.50% — a chance at a new companion.\n**Taro Trader** — 2.00% — starches instead of potatoes.\n**Ancient Potato** — 0.05% (the rarest roll in the game) — always fully refreshes your guild's raid cooldown, then either a 25% shot at a straight potato payout (formula x60, capped 300,000) or a partial free regrade/shop-tier grant on whichever track still has room.\n**Mimic Potato** — 1.00% — steals 1.5% of your BANKED potatoes (capped 2,500,000), mitigated the same way as Poison — but also carries a flat 5% chance to kill it instead of losing anything; see `/help topic:poison-mimic`.\n**Golden Yam** — 0.10% — Taro's rare starch jackpot, priced to match Golden Potato's payout around a 13,000-potato starch price.\n**Regular** — the remaining ≈87.25% — a plain payout capped 1,000 (pre-multiplier), scaled by your full effective multiplier.\n\nSee `/help topic:companions` for which companions change these odds or outcomes."
+        content: "`/work` runs on a 5-minute cooldown that some companion perks, guild buffs, and Mercenary Buffs give a *chance* to skip entirely (never a guaranteed shortening — a hit resets it to ready-now and auto-chains another `/work` for free). Every call rolls one encounter from this table:\n\n**Golden Potato** — 0.10% — pure potato payout, capped 500,000 (pre-multiplier).\n**Poison Potato** — 1.00% — a loss (same formula x10, capped 10,000) plus a 30-minute lockout (vs. the usual 5 min). Both shrink the more times it's hit you THIS WEEK, resetting Sunday — see `/help topic:poison-mimic`.\n**Large Potato** — 4.00% — formula x10, capped 10,000.\n**Metal Potato** — 1.00% roll, then its own separate 10% success check (≈0.10% overall hit rate). Success: formula x20 capped 100,000, plus a permanent +0.6 work multiplier and scaled passive/bank boosts. A miss pays nothing and just resets the timer.\n**Sweet Potato** — 2.00% — no potatoes, one of three permanent stat buffs instead (+0.2 work multi, or a scaled passive/bank boost).\n**Wandering Companion** — 1.50% — a chance at a new companion.\n**Taro Trader** — 2.00% — starches instead of potatoes.\n**Ancient Potato** — 0.05% (the rarest roll in the game) — always fully refreshes your guild's raid cooldown, then either a 25% shot at a straight potato payout (formula x60, capped 300,000) or a full free regrade step/shop-tier grant on whichever track still has room.\n**Mimic Potato** — 1.00% — steals 1.5% of your BANKED potatoes (capped 2,500,000), mitigated the same way as Poison — but also carries a flat 5% chance to kill it instead of losing anything; see `/help topic:poison-mimic`.\n**Golden Yam** — 0.10% — Taro's rare starch jackpot, priced to match Golden Potato's payout around a 13,000-potato starch price.\n**Regular** — the remaining ≈87.25% — a plain payout capped 1,000 (pre-multiplier), scaled by your full effective multiplier.\n\nSee `/help topic:companions` for which companions change these odds or outcomes."
     },
     {
         id: "companions",
@@ -3314,8 +3306,10 @@ const BountyScenarios = {
 // roll. Tier II's numbers are a straight linear midpoint between Tier I's (Sweet's) and
 // Tier III's (Metal's) values on each axis. All grants apply the same rounding/minimum-
 // gain rules Sweet/Metal Potato's own handlers use and write into sweetPotatoBuffs (never
-// regrades.*/failStack — see Work.ANCIENT_REGRADE_GRANT_PERCENT's own comment for why a
-// partial amount can't land on a regrade tier's exact checkpoint).
+// regrades.*/failStack — unlike Ancient Potato's free-regrade branch (workFactory.js's
+// handleAncientPotato), this grant's amount is a fixed flat number independent of any
+// particular regrade tier's own `increase`, so it could never reliably land on that
+// track's exact currentRegradeAmount checkpoint the way regrade.js's tier lookup requires).
 const BountyStatReward = {
     ROLL_CHANCE: { I: 0.0075, II: 0.02, III: 0.04 },   // 0.75% / 2% / 4% — midpoints of the
                                                         // originally-proposed ranges

@@ -322,24 +322,31 @@ uniformly and falls through to branch 3's potato payout instead, so a stat bump 
 guaranteed outcome of every eligible Ancient roll anymore. Never rolled once every track is already
 maxed (branch 3 always applies there regardless). One roll, checked once before either stat-bump
 branch is picked, rather than a separate check duplicated in each:
-1. **Permanent bonus** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. **Nerfed
-   2026-08-22** (`balance-audit.md`'s same-day entry, direct instruction): used to grant that
-   track's current tier's real `increase` in full, for free — mirroring exactly what a successful
-   `/regrade` purchase at that tier would do. Once converted to potato-equivalent terms (what that
-   tier actually costs to buy, pity-adjusted), that was worth **97x-475x** a same-roll Golden
-   Potato, since Ancient bypassed `/regrade`'s cost and fail chance entirely while still rolling 3x
-   more often than Golden. Now grants only `Work.ANCIENT_REGRADE_GRANT_PERCENT` (10%) of that
-   tier's `increase`, credited as a flat `sweetPotatoBuffs`-style bonus — deliberately **not**
-   written into `regrades.X.regradeAmount`/`failStack` at all, since a partial amount can't land on
-   a tier's exact `currentRegradeAmount` checkpoint the way `regrade.js`'s own tier lookup (an exact
-   match) requires; writing one in would silently break every later `/regrade` attempt on that
-   track. The player's real regrade progress is completely untouched by this roll — it's a bonus
-   alongside it, not progress toward it. A track only qualifies here if its base (shop-purchased)
-   value already equals that shop's max — matching `regrade.js`'s own `hasRequiredBaseAmount` gate
-   exactly, since `/regrade` itself refuses to touch a track that isn't shop-maxed yet regardless of
-   `REGRADE_CAPS`. Ancient's own roll odds were deliberately left untouched by the 2026-08-22 pass —
-   see the audit entry for why a flat odds cut can't fix a curve this steep on its own. **Halved
-   2026-08-23** anyway, by separate direct instruction, unrelated to that curve-steepness reasoning:
+1. **Free regrade step** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants
+   that track's current tier's real `increase` **in full**, for free, written straight into
+   `regrades.X.regradeAmount` (and resets `regrades.X.failStack` to 0) — the exact same write shape
+   a successful `/regrade` purchase at that tier uses, just without the cost or the roll. A track
+   only qualifies here if its base (shop-purchased) value already equals that shop's max —
+   matching `regrade.js`'s own `hasRequiredBaseAmount` gate exactly, since `/regrade` itself refuses
+   to touch a track that isn't shop-maxed yet regardless of `REGRADE_CAPS`.
+
+   **Nerf/restore history.** **Nerfed 2026-08-22** (`balance-audit.md`'s same-day entry, direct
+   instruction) after being quantified at **97x-475x** a same-roll Golden Potato in
+   potato-equivalent terms (what that tier actually costs to buy, pity-adjusted) — Ancient bypassed
+   `/regrade`'s cost and fail chance entirely while still rolling 3x more often than Golden. The
+   nerf cut this to only `Work.ANCIENT_REGRADE_GRANT_PERCENT` (10%) of the tier's `increase`,
+   credited as a flat `sweetPotatoBuffs`-style bonus rather than real regrade progress — deliberately
+   **not** written into `regrades.X.regradeAmount`/`failStack` at all, since a partial amount can't
+   land on a tier's exact `currentRegradeAmount` checkpoint the way `regrade.js`'s own tier lookup
+   (an exact match) requires. **Restored to the full amount 2026-09-22** (direct instruction: "fix
+   it to just simply give the regrade and actually go under the regrade stat at 100% value") — the
+   original 97x-475x-a-Golden-Potato valuation was accepted as the intended payoff for this branch
+   after all, given how much rarer Ancient is than Golden. The embed field wording moved with it:
+   "Permanent Bonus:" (the nerf-era label, since it genuinely wasn't a regrade) is now
+   "Free Regrade:" again, matching what the mechanic actually does. Ancient's own roll odds were
+   deliberately left untouched by either the 2026-08-22 nerf or this restore — see the audit entry
+   for the original reasoning. **Halved 2026-08-23** anyway, by separate direct instruction,
+   unrelated to that curve-steepness reasoning:
    0.3% → 0.15% (`eventFactory.js`'s `workProbability[WORK_SCENARIO_INDICES.ANCIENT]`, `.003` →
    `.0015`). This number is duplicated in four places that all had to move together —
    `eventFactory.js`'s constructor (`workProbability` and the cumulative `workChances`),

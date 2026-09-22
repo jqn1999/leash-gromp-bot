@@ -487,17 +487,16 @@ class WorkFactory {
     // Rare guild-facing encounter: resets the guild's raid cooldown to ready-now (a
     // no-op if solo, or if no cooldown is currently pending — the personal reward below
     // still lands either way), then rewards the player personally with a guaranteed,
-    // no-cost bonus toward one of the three regrade tracks — a flat
-    // Work.ANCIENT_REGRADE_GRANT_PERCENT slice of their real CURRENT tier's own
-    // `increase` (see that constant's own comment for why this is a slice and not the
-    // full tier: it used to be, and was nerfed for being worth 97x-475x a same-roll
-    // Golden Potato). Unlike a real /regrade success, this does NOT advance
-    // regrades[track].regradeAmount itself — it's a separate sweetPotatoBuffs-style
-    // bonus layered on top, since a partial amount can't land on a tier's exact
-    // currentRegradeAmount checkpoint the way regrade.js's own tier lookup requires. One
-    // of the three regrade tracks is picked at random among whichever aren't already at
-    // REGRADE_CAPS. A player already fully regraded on all three has nothing left to
-    // grant, so they get a big (but sub-Golden) potato payout instead.
+    // no-cost, full regrade tier step on one of the three regrade tracks — the exact
+    // same `regrades[track].regradeAmount += currentTier.increase` write a real, paid
+    // /regrade success uses (regrade.js), just free. This WAS nerfed to a 10% sweetPotatoBuffs-
+    // style bonus (2026-08-22, balance-audit.md quantified the full-tier version as worth
+    // 97x-475x a same-roll Golden Potato) and restored to the full amount 2026-09-22,
+    // direct instruction ("fix it to just simply give the regrade and actually go under
+    // the regrade stat at 100% value") — see roadmap.md's dated entry for that reversal's
+    // own reasoning. One of the three regrade tracks is picked at random among whichever
+    // aren't already at REGRADE_CAPS. A player already fully regraded on all three has
+    // nothing left to grant, so they get a big (but sub-Golden) potato payout instead.
     async handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
@@ -548,25 +547,17 @@ class WorkFactory {
         if (regradeEligibleTracks.length > 0 && !rollsPotatoInstead) {
             const track = regradeEligibleTracks[Math.floor(Math.random() * regradeEligibleTracks.length)];
             const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
-            // Nerfed 2026-08-22: previously granted the FULL tier step directly into
-            // regrades[track].regradeAmount — matching a real, completed /regrade
-            // success exactly, but for free and risk-free. balance-audit.md quantified
-            // that as worth 97x-475x a same-roll Golden Potato once converted to what
-            // that regrade tier actually costs to buy normally — direct instruction to
-            // nerf this specific branch, keeping Ancient's own roll odds untouched.
-            // Grants a flat Work.ANCIENT_REGRADE_GRANT_PERCENT slice of the tier's
-            // increase instead, as a permanent sweetPotatoBuffs-style bonus — same shape
-            // handleSweetPotato below already uses. Deliberately NOT written into
-            // regrades[track].regradeAmount: that field must land exactly on a defined
-            // tier's own currentRegradeAmount checkpoint (regrade.js's tier lookup is an
-            // exact match), and a partial amount would silently break that lookup for
-            // every later /regrade attempt on this track. The player's real regrade
-            // progress and failStack are untouched — this is a bonus alongside it, not
-            // progress toward it.
-            regradeIncrease = Math.max(1, Math.round(currentTier.increase * Work.ANCIENT_REGRADE_GRANT_PERCENT));
+            // Restored 2026-09-22 (direct instruction) to a full tier step, written
+            // straight into regrades[track].regradeAmount — the exact same write shape a
+            // real, paid /regrade success uses (regrade.js), just free. failStack also
+            // resets to 0, matching what a real success does — this IS a completed
+            // regrade step, not a separate bonus category alongside it. See this
+            // function's own top comment for the nerf/restore history.
+            regradeIncrease = currentTier.increase;
             regradedStatName = track.label;
 
-            sweetPotatoBuffs[track.statField] += regradeIncrease;
+            regrades[track.regradeKey].regradeAmount += regradeIncrease;
+            regrades[track.regradeKey].failStack = 0;
             updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
         } else if (shopEligibleTracks.length > 0 && !rollsPotatoInstead) {
             // Not shop-maxed on anything yet — grant the next shop tier for free instead
