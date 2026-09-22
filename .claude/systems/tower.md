@@ -179,6 +179,22 @@ never be negative even if a run's net total for some stat ended up negative from
 floors. Stat bonuses fold into `sweetPotatoBuffs`, matching how the run's own base stat rewards
 already get recorded there via `processRewardPayouts`.
 
+**Potato bonus is a pending balance, not a direct credit** (2026-09-22, direct instruction —
+folded into the same model Spud Keep's own pot payout already uses, see
+[systems/spud-keep.md](spud-keep.md)). The leaderboard resolves on a fixed daily schedule, so
+crediting the potato bonus straight to a winner's liquid balance the instant the reset fires would
+make that moment a guaranteed rob target. `payoutWinners` credits it to a `towerPendingPotatoes`
+user field via an atomic ADD (`updateUserFields`'s `addAttributes`) instead of `potatoes`/
+`totalEarnings` directly, kept as its own field rather than merged into
+`spudKeepPendingPotatoes` (no migration risk for a player already sitting on a pre-existing Spud
+Keep balance, each source stays independently auditable). Players move it into liquid potatoes
+whenever they choose via `/collect-potatoes` (`src/commands/user/collectPotatoes.js`,
+`dynamoHandler.collectPendingPotatoes`), which collects both sources in one atomic write and shows
+a preview embed (per-source breakdown) with Collect/Leave-it buttons rather than collecting on the
+spot. **The three stat bonuses (work multiplier/passive income/bank capacity) stay immediate** —
+they aren't robbable, and there's no "pending stat" precedent anywhere else in this codebase — so
+`sweetPotatoBuffs` and the stat fields below still get set the same run this embed announces.
+
 **Tater Tower Titan achievement.** The #1 finisher's `towerChampionCount` is incremented (via
 `updateUserFields`'s `addAttributes`, atomic ADD) each time they place first. This field backs the
 `tower_champion` achievement (see [systems/achievements.md](achievements.md)) — checked lazily, not

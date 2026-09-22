@@ -173,7 +173,7 @@ function selectTopNMercenaries(mercUserDetailsList, n) {
 // credited to spudKeepPendingPotatoes via its own atomic ADD (dynamoHandler.addUserDatabase)
 // — never straight to potatoes (direct instruction: a lump sum landing in every winner's
 // liquid balance the instant the cycle resolves would make each daily reset a guaranteed
-// rob target) — collected later, whenever the player chooses, via /spud-keep-collect.
+// rob target) — collected later, whenever the player chooses, via /collect-potatoes.
 // Returns the per-player shares (id/username/amount) so the result embed can show exactly
 // who got what.
 async function splitPotByWorkMulti(roster, potPotatoesPaid) {

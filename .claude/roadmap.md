@@ -16772,3 +16772,100 @@ updated to drop the `STARCH_TIER_MULTIPLIER` reference and add `starchReward`.
 (its own `STARCH_TIER_MULTIPLIER`-based formula had the identical shape) — same
 `starchReward` values, same shared-formula collapse, same dead-code removal. See that repo's
 own `NOTES_GROMP_WEB_INTEGRATION.md` for the port's own entry.
+
+## Tater Tower's daily leaderboard payout folded into a general `/collect-potatoes` command, same pending-balance model Spud Keep already uses (2026-09-22, direct instruction — "can we make it so that the daily reset tower leaderboard payout wires into the spudkeep payout command and rework the command name a bit and such to just be a general potato collection thing")
+
+**What was found.** Spud Keep's own pot payout deliberately never credits potatoes straight to a
+winner's liquid balance at resolution — a lump sum landing the instant a daily reset resolves
+would make that moment a guaranteed rob target (2026-08-30 entry). It accrues into
+`spudKeepPendingPotatoes` instead, moved to spendable potatoes only when the player themselves
+runs `/spud-keep-collect`. Tater Tower's own daily leaderboard payout
+(`towerLeaderboardFactory.payoutWinners()`, run from the same 4am-reset cron in
+`backgroundEvents.js`) never got that same treatment — it credited `potatoes`/`totalEarnings`
+directly and immediately, the exact "predictable-time lump sum" shape Spud Keep's design was
+built to avoid. Tower's payout ALSO grants permanent stat bonuses (work multiplier/passive
+income/bank capacity via `sweetPotatoBuffs`) using the same tier percentages — these have no
+"pending stat" precedent anywhere in the codebase and aren't robbable, so they were kept
+immediate rather than folded into this change.
+
+**Design decisions, flagged before implementing.** Two forks were surfaced: (1) whether Tower's
+stat bonuses should also become pending (no — they're not robbable, and inventing a "pending
+stat" concept with no other precedent was out of scope for what was asked), and (2) whether the
+two pending sources should share one field or stay separate. Kept separate
+(`spudKeepPendingPotatoes` untouched, new `towerPendingPotatoes` added) rather than merging into
+one field — avoids any migration risk for a player already sitting on a nonzero Spud Keep
+balance, and keeps each source independently auditable/extensible for a future third source.
+
+**What shipped.**
+- `dynamoHandler.js`: new default field `towerPendingPotatoes: 0` (self-heals onto existing
+  accounts via `findUser`'s existing missing-field backfill, same as every other schema
+  addition). `collectSpudKeepReward` replaced with `collectPendingPotatoes(userId,
+  spudKeepAmount, towerAmount)` — one atomic conditional update collecting BOTH sources at
+  once (`ADD potatoes/totalEarnings :total, spudKeepPendingPotatoes :negSpud,
+  towerPendingPotatoes :negTower`, gated on `spudKeepPendingPotatoes >= :spudAmount AND
+  towerPendingPotatoes >= :towerAmount`) rather than two sequential per-source collector calls.
+- `towerLeaderboardFactory.js`: `payoutWinners()`'s potato bonus now credits
+  `towerPendingPotatoes` via `updateUserFields`'s atomic `addAttributes` (mirroring
+  `spudKeepFactory`'s own `addUserDatabase` pattern) instead of a direct `potatoes`/
+  `totalEarnings` SET. Stat bonuses (`workMultiplierAmount`/`passiveAmount`/`bankCapacity`,
+  `sweetPotatoBuffs`) and `towerChampionCount` are untouched.
+- `embedFactory.js`: `createTowerLeaderboardResultsEmbed`'s potato line now reads "(pending)"
+  and the embed description tells winners to run `/collect-potatoes` to claim it — this is the
+  only place a winner learns their run earned anything, so the wording had to say plainly that
+  it isn't already in their balance. `createSpudKeepCollectEmbed` replaced with two functions:
+  `createPotatoCollectionPreviewEmbed` (per-source breakdown + total, shown before collecting)
+  and `createPotatoCollectionCollectedEmbed` (generalized confirmation, same wording weight as
+  the old Spud-Keep-only version).
+- `src/commands/user/spudKeepCollect.js` renamed/reworked to `collectPotatoes.js` — same
+  command-name slot rather than adding a new parallel command (Discord's 100-command cap, see
+  the two entries above from 2026-09-20/21). `/collect-potatoes` now shows a preview embed with
+  each source's own pending amount (also handled per the same-day follow-up request below) and
+  no longer collects on the spot.
+- Every other user-facing reference to `/spud-keep-collect` updated to `/collect-potatoes`
+  (Spud Keep's help text in `constants.js`, the pot-payout result embed, `spudKeepFactory.js`'s
+  own comment).
+
+**Same-day follow-up, direct instruction: "make the collect potatoes create an embed that lets
+the user see how much is pending and buttons to collect or leave it (and close the embed)."**
+`/collect-potatoes` no longer collects immediately — it shows `createPotatoCollectionPreviewEmbed`
+(both sources' pending amounts + total) with Collect/Leave-it buttons (same
+`awaitMessageComponent`/timeout-clears-buttons pattern `/bank` and `/safehouse` already use for
+their own confirm flows). Leave-it just clears the buttons and leaves both balances untouched —
+no write happens. Collect re-fetches the user fresh right before writing (balances could have
+grown across the up-to-60-second wait for a click) and calls `collectPendingPotatoes` with the
+freshly-read amounts, then shows `createPotatoCollectionCollectedEmbed` with the combined total.
+
+**Second same-day follow-up, direct instruction: "change the tower leaderboard daily reset msg
+to say itll be in the pending collection and what command to use."** Covered above —
+`createTowerLeaderboardResultsEmbed`'s potato bonus line and description were the two spots
+needing this; no other Tower-facing text mentions the payout.
+
+**Tests.** `dynamoHandler.test.js`: `collectSpudKeepReward`'s describe block replaced with
+`collectPendingPotatoes` — combined-write shape, single-source-only case, and the existing
+concurrent-collect-loses race test carried over. `towerLeaderboardFactory.test.js`: the
+`towerChampionCount` test's `addFields` expectations updated to include the now-present
+`towerPendingPotatoes` key; two new tests added confirming the potato bonus lands in
+`addFields.towerPendingPotatoes` (never `setFields.potatoes`/`totalEarnings`) and that a
+zero-potato run never adds the key at all. `embedFactory.test.js`: `createSpudKeepCollectEmbed`'s
+describe block replaced with `createPotatoCollectionPreviewEmbed` (breakdown/total assertions,
+plus a source-omitted-when-zero case) and `createPotatoCollectionCollectedEmbed` (carried over
+from the old test). No test file existed for the command itself
+(`spudKeepCollect.js`/`collectPotatoes.js`) before or after this change. Full suite (`npx jest`):
+**111 suites / 2052 tests, all passing** (net +5 tests vs. the 2047 baseline from the
+Bounty-starch-rebalance entry above — `collectPendingPotatoes` gained one more case than
+`collectSpudKeepReward` had, `payoutWinners` gained two new pending-credit tests, and the
+embed split added one net test over the old single `createSpudKeepCollectEmbed` case).
+
+**Docs.** `systems/spud-keep.md` updated throughout (file references, the "Pending balance, not
+a direct credit" section, the resolution-flow step, the command-reference bullet) to point at
+`/collect-potatoes`/`collectPendingPotatoes` and note Tower's payout now shares this model.
+`systems/tower.md` gained a new "Potato bonus is a pending balance, not a direct credit" section
+ahead of the Tater Tower Titan achievement paragraph, mirroring Spud Keep's own reasoning.
+`reference/commands.md`'s `spudKeepCollect.js` row replaced with `collectPotatoes.js`.
+
+**Cross-repo note, not yet ported.** `financial-project`'s `/gromp` page reimplements this same
+Spud Keep pending-balance model server-side and has its own Tower leaderboard payout logic;
+per this repo's own cross-repo mirroring rule, that repo needs the equivalent
+`towerPendingPotatoes` field, a combined collect endpoint, and UI changes (a collection
+preview/collect-or-leave control) to stay in sync. Flagged, not built this session — pick up
+`financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` for the port when picked up.

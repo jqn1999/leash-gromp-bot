@@ -280,30 +280,39 @@ const resolveCompanionHunt = async function (userId, returnsAt, setAttributes = 
         });
 }
 
-// Spud Keep pot payout collection (systems/spud-keep.md) — the accruing pot no longer
-// credits potatoes directly at resolution (2026-08-30, direct instruction: a lump sum
-// landing straight in every winner's liquid balance the instant the cycle resolves would
-// make each daily reset a guaranteed rob target). resolveCycle instead credits each
-// participant's own SHARE into spudKeepPendingPotatoes via an atomic ADD
-// (addUserDatabase); /spud-keep-collect calls this function to move a player's own
-// pending balance into their liquid potatoes whenever THEY choose to, never automatically.
-// One atomic conditional update, ADD-only (same discipline as every other Spud Keep
-// money-moving write in this file) — the ConditionExpression guards against two
-// concurrent /spud-keep-collect calls both reading the same pre-collect balance and
-// double-crediting it: the second one's condition fails once the first has already
-// landed, and (same shape as resolveScavenge's own double-collect guard above) it's told
-// to just try again rather than silently double-paying.
-const collectSpudKeepReward = async function (userId, amount) {
+// General potato-collection pending-balance model (systems/spud-keep.md,
+// systems/tower.md) — sources that would otherwise hand a player a lump sum the
+// instant a scheduled event resolves (Spud Keep's daily pot, Tater Tower's daily
+// leaderboard payout) instead credit that player's own SHARE into a
+// source-specific pending field via an atomic ADD (addUserDatabase / this file's own
+// updateUserFields addFields), never straight to potatoes — a payout landing on a
+// predictable schedule would make that moment a guaranteed rob target. /collect-potatoes
+// calls this function to move a player's own pending balances into their liquid
+// potatoes whenever THEY choose to, never automatically. Kept as separate per-source
+// pending fields (spudKeepPendingPotatoes, towerPendingPotatoes) rather than one merged
+// field — no migration risk for a player already sitting on a pre-existing balance, and
+// each source stays independently auditable. One atomic conditional update collecting
+// both sources at once (rather than two sequential per-source calls) — the
+// ConditionExpression guards against two concurrent /collect-potatoes calls both reading
+// the same pre-collect balances and double-crediting them: the second one's condition
+// fails once the first has already landed, and (same shape as resolveScavenge's own
+// double-collect guard above) it's told to just try again rather than silently
+// double-paying.
+const collectPendingPotatoes = async function (userId, spudKeepAmount, towerAmount) {
+    const totalAmount = spudKeepAmount + towerAmount;
     const params = {
         TableName: awsConfigurations.aws_table_name,
         Key: {
             userId: userId,
         },
-        UpdateExpression: "add potatoes :amount, totalEarnings :amount, spudKeepPendingPotatoes :negAmount",
-        ConditionExpression: "spudKeepPendingPotatoes >= :amount",
+        UpdateExpression: "add potatoes :total, totalEarnings :total, spudKeepPendingPotatoes :negSpud, towerPendingPotatoes :negTower",
+        ConditionExpression: "spudKeepPendingPotatoes >= :spudAmount AND towerPendingPotatoes >= :towerAmount",
         ExpressionAttributeValues: {
-            ":amount": amount,
-            ":negAmount": -amount,
+            ":total": totalAmount,
+            ":negSpud": -spudKeepAmount,
+            ":negTower": -towerAmount,
+            ":spudAmount": spudKeepAmount,
+            ":towerAmount": towerAmount,
         },
         ReturnValues: "ALL_NEW",
     };
@@ -312,7 +321,7 @@ const collectSpudKeepReward = async function (userId, amount) {
         .then(() => true)
         .catch(function (err) {
             if (err.code !== "ConditionalCheckFailedException") {
-                console.debug(`collectSpudKeepReward error: ${JSON.stringify(err)}`)
+                console.debug(`collectPendingPotatoes error: ${JSON.stringify(err)}`)
             }
             return false;
         });
@@ -698,9 +707,21 @@ function getDefaultUserFields(userId, username) {
         // credits a player's SHARE of the outgoing pot here via an atomic ADD
         // (addUserDatabase), never straight to potatoes, so a daily reset doesn't hand
         // every winner a lump sum the instant before the next rob window opens. Collected
-        // into liquid potatoes whenever the player chooses via /spud-keep-collect (see
-        // dynamoHandler.collectSpudKeepReward).
+        // into liquid potatoes whenever the player chooses via /collect-potatoes (see
+        // dynamoHandler.collectPendingPotatoes).
         spudKeepPendingPotatoes: 0,
+        // Tater Tower's daily leaderboard potato bonus, same holding-pen treatment as
+        // spudKeepPendingPotatoes above (2026-09-22, direct instruction) — the leaderboard
+        // resolves on a fixed daily schedule, so crediting the potato bonus straight to a
+        // winner's liquid balance would make that moment a guaranteed rob target, same
+        // reasoning Spud Keep's own pot payout already settled. Kept as its own field
+        // rather than merged into spudKeepPendingPotatoes — no migration risk for players
+        // already sitting on a pre-existing Spud Keep balance, and each source stays
+        // independently auditable. towerLeaderboardFactory.payoutWinners's other
+        // grants (work multiplier/passive income/bank capacity) stay immediate — they
+        // aren't robbable and there's no "pending stat" precedent anywhere else in this
+        // codebase.
+        towerPendingPotatoes: 0,
         // Trading Post (systems/trading-post.md) — { potionId, effectType, value,
         // expiresAt } | null, mirroring world_buff's exact shape (see isWorldBuffLive
         // above) just keyed per-player instead of server-wide. An expired potion reads
@@ -1574,7 +1595,7 @@ const updateGuildDatabase = async function (guildId, attributeName, attributeVal
 // guild can both read the same expired raidTimer and both pass, since the real cooldown
 // isn't written back until AFTER the (multi-step, multi-await) roll/reward resolution
 // finishes. Same ConditionExpression-on-the-write shape as resolveScavenge/
-// collectSpudKeepReward above — conditions the claim on raidTimer still being exactly what
+// collectPendingPotatoes above — conditions the claim on raidTimer still being exactly what
 // was just read, so whichever caller writes first wins and the loser's write is rejected
 // instead of both proceeding. Returns true if this call won the claim, false if it lost the
 // race (or hit any other error).
@@ -2226,7 +2247,7 @@ module.exports = {
     updateIfNewRecord,
     resolveScavenge,
     resolveCompanionHunt,
-    collectSpudKeepReward,
+    collectPendingPotatoes,
     addUser,
     findUser,
     getUsers,
