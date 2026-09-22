@@ -38,12 +38,19 @@ class TowerLeaderboardFactory {
             const userDetails = await dynamoHandler.findUser(entry.userId, entry.username);
             if (!userDetails) continue;
 
-            const setFields = {
-                potatoes: userDetails.potatoes + bonus.potatoes,
-                totalEarnings: userDetails.totalEarnings + bonus.potatoes
-            };
+            const setFields = {};
+            const addFields = index === 0 ? { towerChampionCount: 1 } : {};
             const sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             let earnedAnyStatBonus = false;
+
+            // Potato bonus goes into the same pending-balance holding pen Spud Keep's
+            // own pot payout uses (2026-09-22, direct instruction), collected only via
+            // /collect-potatoes — see dynamoHandler.collectPendingPotatoes and
+            // towerPendingPotatoes's own comment in getDefaultUserFields. Stat bonuses
+            // below stay immediate.
+            if (bonus.potatoes > 0) {
+                addFields.towerPendingPotatoes = bonus.potatoes;
+            }
 
             if (bonus.workMultiplier > 0) {
                 setFields.workMultiplierAmount = userDetails.workMultiplierAmount + bonus.workMultiplier;
@@ -64,7 +71,6 @@ class TowerLeaderboardFactory {
                 setFields.sweetPotatoBuffs = sweetPotatoBuffs;
             }
 
-            const addFields = index === 0 ? { towerChampionCount: 1 } : {};
             await dynamoHandler.updateUserFields(entry.userId, setFields, addFields);
 
             results.push({

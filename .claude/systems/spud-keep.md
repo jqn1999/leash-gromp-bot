@@ -4,7 +4,9 @@
 [src/commands/guilds/joinSpudKeep.js](../../src/commands/guilds/joinSpudKeep.js) +
 [src/commands/user/spudKeepSignup.js](../../src/commands/user/spudKeepSignup.js) +
 [src/commands/misc/currentSpudKeep.js](../../src/commands/misc/currentSpudKeep.js) +
-[src/commands/user/spudKeepCollect.js](../../src/commands/user/spudKeepCollect.js). Scheduling:
+[src/commands/user/collectPotatoes.js](../../src/commands/user/collectPotatoes.js) (general
+potato-collection command, also covers Tater Tower's pending payout — see systems/tower.md).
+Scheduling:
 [src/events/ready/backgroundEvents.js](../../src/events/ready/backgroundEvents.js) (same 8pm ET,
 America/New_York, DST-safe cron Tower/Quest/Guild Contract rotation already uses). Constants:
 [constants.js](../../src/utils/constants.js) `SpudKeep`. Full design derivation:
@@ -187,11 +189,16 @@ every winner's liquid balance the instant the cycle resolves would make each dai
 guaranteed rob target) — each share is credited to a new `spudKeepPendingPotatoes` user field via
 its own atomic ADD (`dynamoHandler.addUserDatabase`), never straight to `potatoes`. Players move
 their own pending balance into spendable/robbable potatoes whenever THEY choose, via
-`/spud-keep-collect` (`dynamoHandler.collectSpudKeepReward`) — a single atomic conditional update
-(`ADD potatoes/totalEarnings :amount, spudKeepPendingPotatoes -:amount` gated on
-`spudKeepPendingPotatoes >= :amount`) so two concurrent collect calls can't double-credit the same
+`/collect-potatoes` (`dynamoHandler.collectPendingPotatoes`) — a single atomic conditional update
+that collects Spud Keep's `spudKeepPendingPotatoes` AND Tater Tower's `towerPendingPotatoes` in
+one write (`ADD potatoes/totalEarnings :total, spudKeepPendingPotatoes -:spudAmount,
+towerPendingPotatoes -:towerAmount` gated on both `spudKeepPendingPotatoes >= :spudAmount AND
+towerPendingPotatoes >= :towerAmount`) so two concurrent collect calls can't double-credit either
 balance; the loser of that race is simply told to try again, mirroring `resolveScavenge`'s own
-double-collect guard.
+double-collect guard. `/collect-potatoes` (2026-09-22, renamed and reworked from the old
+Spud-Keep-only `/spud-keep-collect`) shows a preview embed with the per-source breakdown and a
+Collect/Leave-it button choice rather than collecting on the spot — see systems/tower.md for why
+Tower's payout joined this same pending model.
 
 `/current-spud-keep` shows the live, growing pot total — zero extra reads, off the same doc
 `buildEntrantPreview` already reads `potPotatoes` from. The daily resolution announcement
@@ -327,7 +334,7 @@ never routed through `getMemberRaidPower` in the first place.
    in step 1 (never re-read) — split by each participant's live `workMultiplierAmount` ratio
    (`splitPotByWorkMulti`) and credited to `spudKeepPendingPotatoes` (an atomic ADD per person), not
    directly to `potatoes`. Players collect their own share into liquid potatoes whenever they choose
-   via `/spud-keep-collect`.
+   via `/collect-potatoes`.
 6. Set `lastResolvedAt` and `addStatFields` a subtraction of exactly what was paid/forfeited from
    `potPotatoes` — never a blind reset. Nothing else to clear on either side (2026-09-14 fix) — both
    the Merc Faction roster and the guild entrant list are read live off each mercenary's/guild's own
@@ -410,9 +417,12 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   and rendered via a new `embedFactory.createSpudKeepRosterEmbed`. Total page count is
   `entrantPages.length + rosterPages.length`, dispatched through the exact same
   `buildPaginationRow`/`runPaginatedReply` Previous/Next mechanism — no new interaction pattern.
-- `/spud-keep-collect` (user) — moves a player's own `spudKeepPendingPotatoes` balance into liquid
-  `potatoes`/`totalEarnings` (see "Pending balance, not a direct credit" above). No-op reply if
-  nothing is pending; the underlying write is an atomic conditional update so a double-submit can't
+- `/collect-potatoes` (user, `src/commands/user/collectPotatoes.js`) — the general potato-collection
+  command: shows a preview embed with every pending source's own amount (Spud Keep's
+  `spudKeepPendingPotatoes` here, Tater Tower's `towerPendingPotatoes` — see systems/tower.md) plus
+  Collect/Leave-it buttons, then moves them into liquid `potatoes`/`totalEarnings` in one write on
+  Collect (see "Pending balance, not a direct credit" above). No-op reply if nothing is pending from
+  either source; the underlying write is an atomic conditional update so a double-submit can't
   double-credit.
 
 ## Cross-cutting notes

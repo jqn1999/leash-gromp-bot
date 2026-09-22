@@ -4631,7 +4631,7 @@ class EmbedFactory {
         const medals = ['🥇', '🥈', '🥉'];
         const fields = winners.map((winner, index) => {
             const bonusParts = [];
-            if (winner.bonus.potatoes > 0) bonusParts.push(`+${winner.bonus.potatoes.toLocaleString()} potatoes`);
+            if (winner.bonus.potatoes > 0) bonusParts.push(`+${winner.bonus.potatoes.toLocaleString()} potatoes (pending)`);
             if (winner.bonus.workMultiplier > 0) bonusParts.push(`+${winner.bonus.workMultiplier.toFixed(1)}x work multiplier`);
             if (winner.bonus.passiveIncome > 0) bonusParts.push(`+${winner.bonus.passiveIncome.toLocaleString()} passive income`);
             if (winner.bonus.bankCapacity > 0) bonusParts.push(`+${winner.bonus.bankCapacity.toLocaleString()} bank capacity`);
@@ -4642,9 +4642,12 @@ class EmbedFactory {
             };
         });
 
+        // Potato bonuses land in towerPendingPotatoes, not a winner's liquid balance
+        // (see dynamoHandler.collectPendingPotatoes) — spelled out here since this embed
+        // is the only place a winner finds out their run earned anything at all.
         const embed = new EmbedBuilder()
             .setTitle("🗼 Tater Tower Daily Results!")
-            .setDescription("Today's top survivors of the Tater Tower have claimed their rewards!")
+            .setDescription("Today's top survivors of the Tater Tower have earned their rewards! Potato bonuses are added to your pending collection — run `/collect-potatoes` to claim them.")
             .setColor("Gold")
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
@@ -5222,7 +5225,7 @@ class EmbedFactory {
         } else if (potPotatoesPaid > 0) {
             fields.push({
                 name: '🥔 Pot Payout:',
-                value: `${potPotatoesPaid.toLocaleString()} potatoes split among ${outgoingHolderName}'s roster from this cycle's reign, weighted by each player's own work multiplier — credited to each player's pending balance, collect it anytime with \`/spud-keep-collect\`.`,
+                value: `${potPotatoesPaid.toLocaleString()} potatoes split among ${outgoingHolderName}'s roster from this cycle's reign, weighted by each player's own work multiplier — credited to each player's pending balance, collect it anytime with \`/collect-potatoes\`.`,
                 inline: false,
             });
             if (payoutShares && payoutShares.length > 0) {
@@ -5240,14 +5243,35 @@ class EmbedFactory {
         return embed;
     }
 
-    // /spud-keep-collect's confirmation — the manual claim half of the pending-balance
-    // payout model (systems/spud-keep.md), same "small confirmation embed" weight as
-    // createScavengeReturnEmbed rather than a plain text reply, for consistency with every
-    // other currency-granting command in this codebase.
-    createSpudKeepCollectEmbed(userDisplayName, amountCollected) {
+    // /collect-potatoes's landing screen (systems/spud-keep.md, systems/tower.md) — shows
+    // every pending-balance source's own amount plus the total before anything is actually
+    // collected, since the command pairs this with Collect/Leave buttons rather than
+    // collecting on the spot (2026-09-22, direct instruction) — a player should be able to
+    // see what's waiting before choosing to bring it into their (robbable) liquid balance.
+    createPotatoCollectionPreviewEmbed(userDisplayName, spudKeepPending, towerPending) {
+        const totalPending = spudKeepPending + towerPending;
+        const sourceLines = [];
+        if (spudKeepPending > 0) sourceLines.push(`🥔🏰 Spud Keep pot: **${spudKeepPending.toLocaleString()}** potatoes`);
+        if (towerPending > 0) sourceLines.push(`🗼 Tater Tower leaderboard: **${towerPending.toLocaleString()}** potatoes`);
+
         const embed = new EmbedBuilder()
-            .setTitle('🥔🏰 Spud Keep Payout Collected!')
-            .setDescription(`${userDisplayName} collected **${amountCollected.toLocaleString()} potatoes** from the Spud Keep pot.`)
+            .setTitle('🥔 Pending Potato Collection')
+            .setDescription(`${userDisplayName}, you have **${totalPending.toLocaleString()} potatoes** waiting to be collected:\n\n${sourceLines.join('\n')}\n\nCollecting moves this into your liquid (robbable) balance. You can also leave it here for now.`)
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+        return embed;
+    }
+
+    // The manual claim's confirmation — the same "small confirmation embed" weight as
+    // createScavengeReturnEmbed rather than a plain text reply, for consistency with every
+    // other currency-granting command in this codebase. Generalized from the old
+    // Spud-Keep-only createSpudKeepCollectEmbed now that /collect-potatoes collects both
+    // Spud Keep's and Tater Tower's pending balances in one shot.
+    createPotatoCollectionCollectedEmbed(userDisplayName, amountCollected) {
+        const embed = new EmbedBuilder()
+            .setTitle('🥔 Potatoes Collected!')
+            .setDescription(`${userDisplayName} collected **${amountCollected.toLocaleString()} potatoes** from their pending balance.`)
             .setColor('Gold')
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

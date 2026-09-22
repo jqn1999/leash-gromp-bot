@@ -67,8 +67,36 @@ test('only #1 gets towerChampionCount incremented', async () => {
 
     const firstCall = dynamoHandler.updateUserFields.mock.calls.find(([userId]) => userId === 'first');
     const secondCall = dynamoHandler.updateUserFields.mock.calls.find(([userId]) => userId === 'second');
-    expect(firstCall[2]).toEqual({ towerChampionCount: 1 });
-    expect(secondCall[2]).toEqual({});
+    expect(firstCall[2]).toEqual({ towerChampionCount: 1, towerPendingPotatoes: 500 });
+    expect(secondCall[2]).toEqual({ towerPendingPotatoes: 250 });
+});
+
+// Pending-balance payout model (2026-09-22, direct instruction) — matches Spud Keep's own
+// pot-payout design: a potato bonus landing on a fixed daily schedule straight in a
+// winner's liquid balance would make that moment a guaranteed rob target, so it's credited
+// to towerPendingPotatoes via an atomic ADD instead, collected only via /collect-potatoes
+// (dynamoHandler.collectPendingPotatoes). Stat bonuses stay immediate — see the
+// TIER_PERCENTAGES tests above.
+test('credits the potato bonus into towerPendingPotatoes via an atomic ADD, never straight to potatoes/totalEarnings', async () => {
+    dynamoHandler.getTowerLeaderboard.mockResolvedValue([entry({ potatoes: 1000 })]);
+    dynamoHandler.findUser.mockResolvedValue(user({ potatoes: 100, totalEarnings: 100 }));
+
+    await factory.payoutWinners();
+
+    const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+    expect(addFields.towerPendingPotatoes).toBe(500);
+    expect(setFields.potatoes).toBeUndefined();
+    expect(setFields.totalEarnings).toBeUndefined();
+});
+
+test('a run earning no potatoes never adds a towerPendingPotatoes key', async () => {
+    dynamoHandler.getTowerLeaderboard.mockResolvedValue([entry({ potatoes: 0 })]);
+    dynamoHandler.findUser.mockResolvedValue(user());
+
+    await factory.payoutWinners();
+
+    const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+    expect(addFields.towerPendingPotatoes).toBeUndefined();
 });
 
 test('a winner findUser can\'t resolve is skipped rather than throwing', async () => {

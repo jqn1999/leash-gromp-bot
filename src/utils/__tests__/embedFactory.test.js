@@ -1044,9 +1044,23 @@ describe('createSpudKeepResultEmbed payout breakdown', () => {
     });
 });
 
-describe('createSpudKeepCollectEmbed', () => {
+describe('createPotatoCollectionPreviewEmbed', () => {
+    test('shows the per-source breakdown and total', () => {
+        const embed = embedFactory.createPotatoCollectionPreviewEmbed('User', 500, 250);
+        expect(embed.data.description).toContain('750');
+        expect(embed.data.description).toContain('500');
+        expect(embed.data.description).toContain('250');
+    });
+
+    test('omits a source line when that source has nothing pending', () => {
+        const embed = embedFactory.createPotatoCollectionPreviewEmbed('User', 500, 0);
+        expect(embed.data.description).not.toContain('Tater Tower');
+    });
+});
+
+describe('createPotatoCollectionCollectedEmbed', () => {
     test('shows the collected amount', () => {
-        const embed = embedFactory.createSpudKeepCollectEmbed('User', 12345);
+        const embed = embedFactory.createPotatoCollectionCollectedEmbed('User', 12345);
         expect(embed.data.description).toContain('12,345');
     });
 });
