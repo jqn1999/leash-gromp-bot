@@ -16869,3 +16869,55 @@ per this repo's own cross-repo mirroring rule, that repo needs the equivalent
 `towerPendingPotatoes` field, a combined collect endpoint, and UI changes (a collection
 preview/collect-or-leave control) to stay in sync. Flagged, not built this session — pick up
 `financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` for the port when picked up.
+
+## Starch pattern rebalance: FLUCTUATING lowered, freed probability spread evenly across the rest (2026-09-22, player-reported: "the same up down up down pattern for the past 4 weeks for the monday-thursday period")
+
+**Investigation.** `starchFactory.js`'s `makeStarchPrices` picks one of 7 weekly patterns via a
+Markov chain (`PROBABILITY_MATRIX`, keyed by last week's pattern → cumulative odds of each next
+pattern) — not a bug in the `Math.random()` calls or in how `starch_last`/`starch_values` get
+persisted (traced the full write path in `starchEvents.js`'s cron jobs and `dynamoHandler.js`'s
+`getStatDatabase`/`updateStatDatabase`, both clean). The real issue was in the matrix's own
+numbers: `FLUCTUATING` is the one pattern that produces a literal alternating decay/spike zigzag
+every time it's drawn (a coin flip only picks which direction starts), and it held the single
+highest per-row transition probability in EVERY row of the old matrix — as steep as 50% coming
+from `LARGE_SPIKE`, 45% from `SMALL_SPIKE`. Computing the chain's actual long-run (stationary)
+distribution via power iteration (rather than eyeballing each row, which is how the old numbers
+were originally tuned, per the matrix's own comment about carving `NARROW_PEAK`/`CHOPPY` out of
+`STEADY_CLIMB`'s remainder in isolation) showed `FLUCTUATING` landing ~31.6% of all weeks — more
+than double a flat 1/7 share — while `NARROW_PEAK`/`CHOPPY` were starved down to ~3.1% each
+despite their own comment describing a "20% of the remainder" carve-out. Since Monday and
+Thursday buying windows share one chain, the real Monday-to-next-Monday `FLUCTUATING`
+self-transition (accounting for the intervening Thursday draw) came out to 34%, making the
+player's specific observation — 4 straight Monday-cycle weeks all `FLUCTUATING` — land at ~1.25%
+on its own: rare, but corroborating a real structural skew rather than refuting one.
+
+**What shipped, direct instruction ("just lower fluctuating a bit and give some to the rest").**
+Each row's `FLUCTUATING` slice cut 40% (`× 0.6`), with the freed probability split **evenly**
+across the other 6 patterns in that row. An even split was chosen over the initially-tried
+proportional split — proportional redistribution mostly reinforced `LARGE_SPIKE` (each row's
+other biggest share), recreating a one-pattern-dominates problem under a different name; an even
+split actually lifts every other pattern, including the two starved "semi difficult" ones. New
+long-run distribution: `FLUCTUATING` ~19.5%, `LARGE_SPIKE` ~26.3%, `DECREASING` ~16.8%,
+`SMALL_SPIKE` ~15.4%, `STEADY_CLIMB` ~11.4%, `NARROW_PEAK`/`CHOPPY` ~5.3% each (up from ~3.1%).
+All 7 rows of `PROBABILITY_MATRIX` in `starchFactory.js` updated with the new cumulative
+thresholds; the ascending-order-by-pattern-index constraint the matrix's own comment already
+documents was preserved exactly.
+
+**Tests.** No test changes needed — verified by hand before touching the matrix that every
+existing pinned `Math.random()` roll in `starchFactory.test.js` (0.1/0.3/0.55/0.7/0.9/0.94-0.95/
+0.98/0.999, used across the reachability, priceCount-honoring, and NARROW_PEAK/CHOPPY profit-odds
+tests) still lands in the same pattern bucket under the new boundaries — the new thresholds moved
+but kept enough margin at every one of those specific roll values. Ran the full suite after the
+change to confirm rather than trusting the by-hand check alone: **111 suites / 2052 tests, all
+passing** (net 0 new/changed tests — a pure constants-table edit).
+
+**Docs.** `systems/starch-trading.md`'s pattern-generation section: the `FLUCTUATING`-row example
+percentages updated to the new numbers, a new "Rebalanced 2026-09-22" paragraph added explaining
+the stationary-distribution finding and the even-vs-proportional redistribution choice, and the
+now-inaccurate "every pattern below SMALL_SPIKE keeps its exact prior odds unchanged" line
+corrected (the rebalance touches every pattern, not just `NARROW_PEAK`/`CHOPPY`'s own carve-out).
+
+**Cross-repo note.** `financial-project` doesn't run its own starch price generation — the web
+`/gromp` page only ever reads whatever `starch_buy`/`starch_sell`/`starch_values` the bot's own
+cron already wrote to the shared stats table (confirmed via `NOTES_GROMP_WEB_INTEGRATION.md`'s
+starch-trading entry), so this change needs no web-side port.
