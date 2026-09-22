@@ -81,10 +81,13 @@ Events trigger fires from BOTH sides" below for the bot-side half):
 - A companion pull that is **Mythic or Heirloom rarity** (the two tiers above Legendary), or that
   is one of the three **activity-exclusive companions** — Yukon (`dropSource: "bounty"`),
   Cinderroot (`"guildRaid"`), Bastion (`"tower"`) — regardless of their own (Legendary) rarity.
-  Scoped to `/work`, Bounty, Tower, and Guild Raid pulls only — **Companion Shop purchases and
-  Companion Hunt results are deliberately excluded** (removed 2026-09-16, same-day, direct
-  instruction: "Big events channel doesn't need companion shop purchases or companion hunt
-  results" — see "Every Big Events trigger fires from BOTH sides" below for what that reverted).
+  Scoped to `/work`, Bounty, Tower, Guild Raid, and **Companion Hunt** pulls — **Companion Shop
+  purchases stay deliberately excluded** (removed 2026-09-16, same-day, direct instruction: "Big
+  events channel doesn't need companion shop purchases or companion hunt results" — see "Every
+  Big Events trigger fires from BOTH sides" below for what that reverted). Companion Hunt's own
+  exclusion was reversed 2026-09-22 (direct instruction: "have mythic companions from companion
+  hunt show up in the big events channel") — Companion Shop's stayed untouched; the player only
+  named Companion Hunt this time.
 
 One single Gold color covers every Big Events subtype (not a color per subtype) — the request was
 "a more colorful **obvious embed color**" (singular), so which kind of big event happened is
@@ -118,18 +121,32 @@ Companion-pull call sites (a genuine "pull," not a trade):
 - `takeBounty.js` — a Yukon hit (`mercenaryFactory.resolveYukonAward`).
 - `enter-tower.js` — a Bastion drop (`companionFactory.resolveTowerCompanionAward`).
 - `startRaid.js` — a Cinderroot find (`guildCompanionFactory.resolveCinderrootAward`).
+- `companionHunt.js`'s `runCollect` — a Companion Hunt pull (`companionHuntFactory.
+  resolveHuntOutcome`'s `result.companion`), re-added 2026-09-22 (see below).
 
 **Deliberately NOT wired**: `companionBuy.js`/`companionMarket.js` (`applyCompanionAward` there
 moves an already-known, already-leveled instance between two players — a trade, not a lucky roll,
-nothing to celebrate as a "pull"). **Companion Shop (`companionShop.js`) and Companion Hunt
-(`companionHuntCollect.js`) were wired in initially, then explicitly removed same-day** (direct
-instruction: "Big events channel doesn't need companion shop purchases or companion hunt
-results") — reverted entirely on both sides: `companionShop.js`/`companionHuntCollect.js` lost
-their `bigEventsChannel` calls, `companionShopFactory.attemptPurchaseSlot`'s added `companion`
-return field was removed (nothing else consumed it), and `gromp-companions/handler.ts`
-(financial-project) had its `postBigEvent`/`isBigEventCompanion`/`describeCompanion` block and
-both call sites deleted outright — that file is back to having ZERO Server Activity Channel/Big
-Events wiring, same as before this whole feature touched it.
+nothing to celebrate as a "pull"), and `companionShop.js` (see next paragraph — this one's
+exclusion is still live, unlike Companion Hunt's).
+
+**Companion Shop (`companionShop.js`) and Companion Hunt (`companionHuntCollect.js`) were wired
+in initially, then explicitly removed same-day, 2026-09-16** (direct instruction: "Big events
+channel doesn't need companion shop purchases or companion hunt results") — reverted entirely on
+both sides at the time: `companionShop.js`/`companionHuntCollect.js` lost their `bigEventsChannel`
+calls, `companionShopFactory.attemptPurchaseSlot`'s added `companion` return field was removed
+(nothing else consumed it), and `gromp-companions/handler.ts` (financial-project) had its
+`postBigEvent`/`isBigEventCompanion`/`describeCompanion` block and both call sites deleted
+outright.
+
+**Companion Hunt rejoined Big Events 2026-09-22** (direct instruction: "have mythic companions
+from companion hunt show up in the big events channel" — Companion Shop wasn't named, and stays
+excluded). `companionHunt.js`'s `runCollect` (the former standalone `companionHuntCollect.js`,
+folded into `/companion-hunt action:collect` 2026-09-21 — see roadmap.md's command-cap headroom
+entry) now checks `isBigEventCompanion(result.companion)` right after sending the hunt-result
+embed, same shape/field layout as `work.js`'s Wandering Companion post
+(`sourceField('Found on a Companion Hunt')` in place of `'Found while Working'`). Companion Hunt
+**is** ported to `financial-project` (`gromp-companions/handler.ts`'s `doCompanionHuntCollect`) —
+see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` for whether/when this got ported there too.
 
 Work-encounter-type / long-shot-win call sites (the second follow-up):
 - `work.js` — all 4 relevant scenario closures (`GOLDEN`, the success branch of `METAL`,

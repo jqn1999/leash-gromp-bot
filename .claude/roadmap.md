@@ -16921,3 +16921,50 @@ corrected (the rebalance touches every pattern, not just `NARROW_PEAK`/`CHOPPY`'
 `/gromp` page only ever reads whatever `starch_buy`/`starch_sell`/`starch_values` the bot's own
 cron already wrote to the shared stats table (confirmed via `NOTES_GROMP_WEB_INTEGRATION.md`'s
 starch-trading entry), so this change needs no web-side port.
+
+## Companion Hunt rejoins Big Events, Mythic+ only (2026-09-22, direct instruction: "have mythic companions from companion hunt show up in the big events channel")
+
+**Context.** Companion Hunt and Companion Shop were both wired into Big Events once already, then
+explicitly reverted same-day back on 2026-09-16 (direct instruction: "Big events channel doesn't
+need companion shop purchases or companion hunt results" — see `systems/server-activity-channel.md`'s
+dated entry). This reopens that decision for Companion Hunt specifically — the player named only
+Companion Hunt this time, so Companion Shop's exclusion is left exactly as it was.
+
+**What shipped.** `companionHunt.js`'s `runCollect` now checks `bigEventsChannel.
+isBigEventCompanion(result.companion)` right after sending the hunt-result embed (same
+`result.found` guard the achievement-unlock check already uses) and posts a `'🎉 Rare Companion!'`
+Big Event on a hit — same field shape/color as `work.js`'s own Wandering Companion post
+(`playerField`/`companionField`/`RARE_COMPANION_COLOR`), with `sourceField('Found on a Companion
+Hunt')` swapping in for `work.js`'s `'Found while Working'`. Companion Hunt rolls through the
+exact same `companionFactory.rollCompanion` table `/work`'s encounter uses, so it's equally
+capable of a Mythic/Heirloom pull — `isBigEventCompanion`'s existing rarity check (no dropSource
+condition needed; Companion Hunt has no activity-exclusive companion of its own) required no
+changes.
+
+**Tests.** New `companionHuntBigEvents.test.js` (3 cases): a Mythic+ pull posts once with the
+right title/source-field/color; a Common pull posts nothing; a miss posts nothing. Forced the
+specific outcome by stubbing `Math.random`'s 3 sequential draws Companion Hunt's collect path
+makes (found-roll, rarity-roll, pool-pick-roll) rather than mocking `companionFactory` directly,
+so the test exercises the real `resolveHuntOutcome` → `rollCompanion` → `isBigEventCompanion`
+chain end to end. Full suite: **112 suites / 2055 tests, all passing** (net +3 new tests, 0
+broken — the existing `companionHunt.test.js` "a hit" test already used a `Math.random` roll of 0,
+which lands Common under the real rarity table, so it was never going to trip the new Big Events
+path and needed no changes).
+
+**Docs.** `systems/server-activity-channel.md` updated in 3 spots: the Big Events triggers list
+(Companion Hunt added alongside `/work`/Bounty/Tower/Guild Raid, Companion Shop's exclusion note
+kept and clarified as still-live), the companion-pull call site list (`companionHunt.js` added),
+and the "Deliberately NOT wired" / 2026-09-16 revert paragraph split into three parts: what's
+still excluded (Companion Shop, trades), what the original revert covered, and this pass's
+reversal for Companion Hunt only.
+
+**Cross-repo port, same session.** Companion Hunt **is** ported to `financial-project`
+(`gromp-companions/handler.ts`'s `doCompanionHuntCollect`), unlike Tower (never ported) — so this
+was a live, reachable web-side gap, not just a note. Ported a full Big Events block (`postBigEvent`,
+`MYTHIC_PLUS_RARITIES`, `RARITY_LABEL`, `companionField`, `sourceField`, `RARE_COMPANION_COLOR`)
+into that Lambda — it had zero Big Events wiring of any kind before this, since its own copy was
+deleted outright in the 2026-09-16 revert and never rebuilt. `doCompanionHuntCollect` now exposes
+`companionRarity` on its result so the dispatch block can gate the post on
+`MYTHIC_PLUS_RARITIES.has(result.companionRarity)`. Verified via `npx tsc --noEmit` — same 22
+pre-existing `TS4111` + 14 `$amplify/env` baseline, zero new errors. See that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md`, "Bot caught up #75," for the full port writeup.

@@ -5,6 +5,7 @@ const companionHuntFactory = require("../../utils/companionHuntFactory");
 const { CompanionHunt } = require("../../utils/constants");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
 
@@ -131,6 +132,23 @@ async function runCollect(interaction) {
     interaction.editReply({ embeds: [embed] });
 
     if (result.found) {
+        // Same Big Events condition/shape as /work's own Wandering Companion encounter
+        // (work.js) — a Companion Hunt pull rolls through the exact same
+        // companionFactory.rollCompanion table, so it's just as capable of landing a
+        // Mythic+ companion and deserves the same server-wide callout.
+        if (bigEventsChannel.isBigEventCompanion(result.companion)) {
+            await bigEventsChannel.postBigEvent({
+                title: '🎉 Rare Companion!',
+                description: `**${userDisplayName}** found a rare companion out on an expedition!`,
+                fields: [
+                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.companionField(result.companion),
+                    bigEventsChannel.sourceField('Found on a Companion Hunt'),
+                ],
+                color: bigEventsChannel.RARE_COMPANION_COLOR,
+            });
+        }
+
         const newlyUnlocked = await achievementFactory.checkAndUnlock({
             userId,
             achievements: userDetails.achievements,
