@@ -47,6 +47,11 @@ beforeEach(() => {
     towerFactory.mockImplementation(() => ({
         startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 1, false]),
     }));
+    // Defaults to a truthy (successful) write — dynamoHandler.updateUserFields resolves to
+    // undefined on a real DynamoDB failure (see enter-tower.js's own comment on this), and
+    // jest's automock would otherwise return undefined unconfigured, making every test look
+    // like a failed write. Individual tests override this to simulate an actual failure.
+    dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
 });
 
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone is barred', () => {
@@ -138,4 +143,112 @@ test('a survived run records elitesKilled on the leaderboard entry, sourced from
         elitesKilled: 3,
         potatoes: 5000,
     }));
+});
+
+// Root-caused from a player's base stats (raw minus sweetPotatoBuffs minus regradeAmount)
+// silently drifting off a valid shop tier over repeated Tower runs, breaking /buy's and
+// /regrade's exact-match tier lookups (2026-09-23). processRewardPayouts used to fire FOUR
+// separate, sequential, unconditional single-field updateUserDatabase calls (whose errors
+// are swallowed by a bare .catch, never surfaced to this caller) instead of one atomic
+// updateUserFields call — any one of those four failing after an earlier one landed would
+// permanently desync the raw stat from sweetPotatoBuffs. These tests confirm the batched
+// fix: exactly one updateUserFields call carries every granted stat, and the old
+// updateUserDatabase path is never used for any of them.
+describe('processRewardPayouts stat crediting (batched write)', () => {
+    test('a run granting all three permanent stats plus potatoes writes them all in ONE updateUserFields call, never via updateUserDatabase', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            workMultiplierAmount: tC.ENTRY_GATE_MULTI,
+            passiveAmount: 1000000,
+            bankCapacity: 5000000,
+            sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 100, bankCapacity: 200 },
+        }));
+        towerFactory.mockImplementation(() => ({
+            // [potatoes, workMultiplier, passiveIncome, bankCapacity] per towerConstants.js's PAYOUT indices.
+            startRun: jest.fn().mockResolvedValue([[5000, 0.2, 300000, 2000000], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [calledUserId, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledUserId).toBe('user-1');
+        expect(setFields).toEqual({
+            workMultiplierAmount: tC.ENTRY_GATE_MULTI + 0.2,
+            passiveAmount: 1300000,
+            bankCapacity: 7000000,
+            sweetPotatoBuffs: { workMultiplierAmount: 1.2, passiveAmount: 300100, bankCapacity: 2000200 },
+        });
+        expect(addFields).toEqual({ potatoes: 5000, totalEarnings: 5000 });
+
+        // The fragile per-field path this replaced must never fire for these stat writes.
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'workMultiplierAmount', expect.anything());
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'passiveAmount', expect.anything());
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'bankCapacity', expect.anything());
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'sweetPotatoBuffs', expect.anything());
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+    });
+
+    test('a run granting only potatoes never touches the stat fields, and a run granting nothing makes no write at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields).toEqual({});
+        expect(addFields).toEqual({ potatoes: 5000, totalEarnings: 5000 });
+    });
+
+    test('a run granting nothing at all (a pure Encounter miss) makes no updateUserFields call', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    // Direct instruction (2026-09-23, same-day follow-up to the batching fix above): "can
+    // you make it include a msg to the player if it fails so they can notify an admin" —
+    // batching into one call closes the partial-desync window, but a single DynamoDB write
+    // can still fail outright (throttle, timeout, etc.), and updateUserFields swallows that
+    // failure internally (resolves to undefined rather than throwing). Without this check
+    // the player would see the run's results embed and have no idea the reward never saved.
+    test('a failed updateUserFields write tells the player to notify an admin, with the exact reward numbers, and skips companion rewards', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI }));
+        dynamoHandler.updateUserFields.mockResolvedValue(undefined);
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0.2, 0, 0], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        const failureCall = interaction.followUp.mock.calls.find(([opts]) => opts.content?.includes('database error'));
+        expect(failureCall).toBeTruthy();
+        const [{ content, ephemeral }] = failureCall;
+        expect(content).toContain('User');
+        expect(content).toContain('admin');
+        expect(ephemeral).toBe(true);
+        const reportMatch = content.match(/```json\n([\s\S]+?)\n```/);
+        expect(reportMatch).toBeTruthy();
+        const report = JSON.parse(reportMatch[1]);
+        expect(report).toEqual(expect.objectContaining({
+            userId: 'user-1',
+            floor: 10,
+            died: false,
+            rewards: { potatoes: 5000, workMultiplier: 0.2, passiveIncome: 0, bankCapacity: 0 },
+        }));
+
+        // The stat credit didn't land — no point also touching companion leveling/drops.
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'companions', expect.anything());
+    });
 });

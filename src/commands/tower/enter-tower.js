@@ -38,6 +38,32 @@ async function processTowerCompanionRewards(userId, userDetails, floor, elitesSu
     return bastionAward;
 }
 
+// Shared by both reward-crediting failure paths below (the initial userDetails read
+// coming back empty, and the batched stat/potato updateUserFields write itself failing) —
+// same recovery UX either way, since in both cases the run's reward wasn't actually saved
+// and there's no reliable server-side record for an admin to look up on their own. Hands
+// the player a copy-pasteable JSON block with the exact numbers so nothing has to be
+// reconstructed from memory.
+async function sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards) {
+    const failureReport = {
+        userId,
+        username,
+        floor,
+        died,
+        rewards: {
+            potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
+            workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
+            passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
+            bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+        },
+        timestamp: new Date().toISOString()
+    };
+    await interaction.followUp({
+        content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
+        ephemeral: true
+    });
+}
+
 async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
@@ -45,55 +71,62 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
         // followUp below in the callback) — this is a genuine DB error on crediting
         // the reward, not a "no reward earned" case, so the player needs to know their
         // run's reward didn't actually get saved rather than assuming it silently did.
-        // Since nothing was written, an admin has nothing to look up either — hand the
-        // player the exact numbers as a copy-pasteable block so they can be credited
-        // manually instead of the run just being lost.
-        const failureReport = {
-            userId,
-            username,
-            floor,
-            died,
-            rewards: {
-                potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
-                workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
-                passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
-                bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
-            },
-            timestamp: new Date().toISOString()
-        };
-        await interaction.followUp({
-            content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
-            ephemeral: true
-        });
+        await sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards);
         return;
     }
-    let userMultiplier = userDetails.workMultiplierAmount;
-    let userPassiveAmount = userDetails.passiveAmount;
-    let userBankCapacity = userDetails.bankCapacity;
+    // Batched into ONE updateUserFields call (2026-09-23, root-caused from a player's
+    // base stats — raw minus sweetPotatoBuffs minus regradeAmount — silently drifting off
+    // a valid shop tier, breaking /buy's and /regrade's exact-match tier lookups). This
+    // used to be four SEPARATE, sequential, unconditional single-field updateUserDatabase
+    // calls (workMultiplierAmount, passiveAmount, bankCapacity, then sweetPotatoBuffs) plus
+    // two addUserDatabase calls for potatoes/totalEarnings — updateUserDatabase swallows
+    // any DynamoDB error via a bare .catch (just console.debug, never thrown, never
+    // checked by this caller), so if any ONE of those six calls failed transiently after
+    // an earlier one had already landed, the raw stat total and sweetPotatoBuffs
+    // permanently desynced — exactly the invariant every other reward handler in this
+    // codebase protects by batching SET+ADD into a single UpdateItem call (see
+    // handleMetalPotato/handleSweetPotato in workFactory.js, raidFactory.handleStatSplit,
+    // questFactory's weekly reward write). One atomic call removes the partial-failure
+    // window entirely — either the whole run's reward lands together, or none of it does.
     let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+    const setFields = {};
+    const addFields = {};
 
     if (rewards[tC.PAYOUT.POTATOES]) {
-        await dynamoHandler.addUserDatabase(userId, "potatoes", rewards[tC.PAYOUT.POTATOES]);
-        await dynamoHandler.addUserDatabase(userId, "totalEarnings", rewards[tC.PAYOUT.POTATOES])
+        addFields.potatoes = rewards[tC.PAYOUT.POTATOES];
+        addFields.totalEarnings = rewards[tC.PAYOUT.POTATOES];
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
-        userMultiplier += rewards[tC.PAYOUT.WORK_MULTIPLIER]
+        setFields.workMultiplierAmount = userDetails.workMultiplierAmount + rewards[tC.PAYOUT.WORK_MULTIPLIER];
         sweetPotatoBuffs.workMultiplierAmount += rewards[tC.PAYOUT.WORK_MULTIPLIER];
-        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
     }
     if (rewards[tC.PAYOUT.PASSIVE_INCOME]) {
-        userPassiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME]
+        setFields.passiveAmount = userDetails.passiveAmount + rewards[tC.PAYOUT.PASSIVE_INCOME];
         sweetPotatoBuffs.passiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME];
-        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
     }
     if (rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        userBankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY]
+        setFields.bankCapacity = userDetails.bankCapacity + rewards[tC.PAYOUT.BANK_CAPACITY];
         sweetPotatoBuffs.bankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY];
-        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] || rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+        setFields.sweetPotatoBuffs = sweetPotatoBuffs;
     }
+
+    if (Object.keys(setFields).length > 0 || Object.keys(addFields).length > 0) {
+        // dynamoHandler.updateUserFields swallows any DynamoDB error internally (a bare
+        // .catch that only console.debugs it) and resolves to undefined on failure — this
+        // is the ONE check that actually surfaces that failure to the player, so a run's
+        // reward silently failing to save doesn't look identical to it succeeding. Skips
+        // processTowerCompanionRewards below on failure too, same as the userDetails-missing
+        // branch above — no point rolling companion leveling/drops against a stat credit
+        // that didn't land.
+        const writeResult = await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        if (!writeResult) {
+            await sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards);
+            return;
+        }
+    }
+
     return processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed);
 }
 

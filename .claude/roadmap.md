@@ -17217,3 +17217,103 @@ its `gromp-economy/handler.ts` has real reimplementations of both `computePoison
 `/work` handler's poison/mimic branches. Ported the identical `hasProspector` parameter and both
 call sites into it on the same `claude/nerf-prospector-widened-scenarios` branch, pushed to
 `origin`, and logged as "Bot caught up #79" in `NOTES_GROMP_WEB_INTEGRATION.md`.
+
+## Tower reward payout batched into one atomic write (root-caused player bug report, 2026-09-23)
+
+**What was asked.** Investigate why a specific player's base stats (work multiplier, passive
+income, bank capacity) kept drifting off a valid shop tier, breaking `/buy`'s and `/regrade`'s
+exact-match tier lookups (`/user-stats` showed "N/A" on all three tracks). Direct instruction after
+the first hypothesis was corrected twice mid-investigation: "the player was given rebirths at the
+beginning of the server for previous history, they've never actually run the rebirth command," then
+"I just want you to see how we can prevent this in the future, I've had to fix her once before
+already."
+
+**What was found (root cause, not just symptom — two wrong hypotheses ruled out first).**
+1. First hypothesis: a race in `/rebirth`'s unconditional full-state overwrite
+   (`rebirthFactory.computeRebirthState` + `dynamoHandler.updateUserFields`, no
+   `ConditionExpression` guard, unlike `updateGuildFieldsWithLock`/`updateStatFieldsWithLock`
+   elsewhere in `dynamoHandler.js`). Ruled out directly by the user: this player has never run
+   `/rebirth` — her `rebirthCount` came from an out-of-band historical-credit grant at server
+   launch (no admin command in this codebase sets `rebirthCount` at all, and no migration/seed
+   script exists in the repo — confirmed by grep), so that code path was never executed for her.
+2. Second hypothesis (implicit): a one-time data-seeding artifact from that same historical grant.
+   Ruled out by the "I've had to fix her once before already" detail — a one-off manual edit
+   doesn't recur on its own; the drift had to be coming from something in live gameplay.
+3. **Actual root cause**: `enter-tower.js`'s `processRewardPayouts` credited a survived Tower run's
+   reward via FOUR separate, sequential, unconditional single-field `updateUserDatabase` calls
+   (`workMultiplierAmount`, `passiveAmount`, `bankCapacity`, then a separate `sweetPotatoBuffs`
+   call) plus two `addUserDatabase` calls for `potatoes`/`totalEarnings` — six round trips for one
+   logical credit. Both `updateUserDatabase`/`addUserDatabase` swallow DynamoDB errors via a bare
+   `.catch` (`console.debug` only, never thrown), and the caller never checked their return values.
+   Any ONE of those six calls failing transiently after an earlier one had already landed would
+   permanently desync the raw stat from `sweetPotatoBuffs` for that track — reproducible on every
+   single survived run granting a stat, explaining recurrence for a Tower Champion 9x player (one
+   of the heaviest Tower users on the server) specifically, rather than a one-time thing. Her exact
+   +0.2 work-multi drift matches Traveling Turnip's/an Elite-kill choice's own flat, unscaled
+   `PAYOUT.WORK_MULTIPLIER` reward (0.2) — consistent with one Tower encounter's raw-stat write
+   landing while its paired `sweetPotatoBuffs` write silently failed.
+
+**What changed.** `enter-tower.js`'s `processRewardPayouts` now batches every granted reward into
+ONE `dynamoHandler.updateUserFields(userId, setFields, addFields)` call — the same pattern every
+other reward handler in this codebase already follows (`handleMetalPotato`/`handleSweetPotato`,
+`raidFactory.handleStatSplit`, `questFactory`'s weekly reward write,
+`TowerLeaderboardFactory.payoutWinners`). `setFields` stays sparse (only the stat types actually
+granted); `addFields` carries `potatoes`/`totalEarnings` as atomic ADDs, identical semantics to the
+`addUserDatabase` calls it replaces. One call now either lands the whole run's reward together, or
+none of it — the partial-failure window is closed entirely, not just narrowed.
+
+**Tests.** `enter-tower.test.js` gained a `processRewardPayouts stat crediting (batched write)`
+describe block (3 new tests): a run granting all three stats plus potatoes writes everything in
+exactly one `updateUserFields` call with the correct `setFields`/`addFields`, and confirms
+`updateUserDatabase`/`addUserDatabase` are never called for these fields anymore; a
+potatoes-only run leaves `setFields` empty; a run granting nothing makes no `updateUserFields` call
+at all. This was a genuine, previously-uncovered test gap — none of the 5 pre-existing tests in this
+file exercised the reward-crediting branches (every mocked `startRun` return used all-zero
+rewards). Full suite: **112 suites / 2073 tests, all passing** (net +3 new tests, 0 broken).
+
+**Docs.** `systems/tower.md` gained a "Root cause found: processRewardPayouts's reward credit
+desyncing a player's base stats over repeated runs" section (matching this doc's own established
+"Root cause found: ... (date, live bug report)" precedent style) documenting the full investigation,
+both ruled-out hypotheses, and the fix.
+
+**Not fixed by this pass, deliberately out of scope.** The specific player's account still needs a
+manual one-off correction — realigning her base to the nearest clean shop tier per track and
+folding the small residue into `sweetPotatoBuffs` so she keeps the value, just correctly
+categorized. Being handled directly (not through a bot code change), since it's a one-time data fix
+for one account, not a repeatable mechanism worth building tooling around.
+
+**Cross-repo note.** `financial-project` has no Tower gameplay port at all (no `/enter-tower`
+equivalent, no `towerFactory`, no reward-crediting logic — same finding as this session's earlier
+Tower leaderboard entry). Nothing to port.
+
+## Tower reward failure now tells the player to notify an admin (same-day follow-up, direct instruction: "can you make it include a msg to the player if it fails so they can notify an admin")
+
+**What was asked.** Same-day follow-up to the batched-write fix above — if the reward write still
+fails outright (rather than partially desyncing, which the batching fix already closed), the player
+should be told so they can flag it to an admin, instead of seeing a normal results embed with no
+idea their reward silently didn't save.
+
+**What changed.** `processRewardPayouts` now captures `dynamoHandler.updateUserFields`'s return
+value — it resolves to `undefined` on a real DynamoDB failure (same swallow-the-error shape
+`updateUserDatabase` always had, per the root-cause entry above) rather than throwing. On a falsy
+result, the player gets the same admin-notification message the pre-existing "userDetails came back
+empty" branch already sent (a copy-pasteable JSON block: userId, username, floor, died, and the
+exact reward amounts) — both call sites now share one `sendRewardFailureNotice` helper instead of
+duplicating that message. A failed write also skips `processTowerCompanionRewards` (companion
+leveling/Bastion drop) — no reason to credit companion progress against a stat credit that never
+landed.
+
+**Tests.** `enter-tower.test.js` gained a 4th test in the batched-write describe block: a mocked
+`updateUserFields` failure (`mockResolvedValue(undefined)`) produces a `followUp` with a
+"database error"/admin-notification message, a parseable JSON block matching the run's exact
+numbers, and confirms `processTowerCompanionRewards`'s `companions` write never fires. Writing this
+test surfaced a real gap the batching fix's own tests had accidentally introduced: jest's automock
+resolves `updateUserFields` to `undefined` unconfigured, which — now that a falsy return means
+"failed" — made every OTHER test in both `enter-tower.test.js` and `enterTowerBastion.test.js` look
+like a failed write and short-circuit before reaching the code being tested. Fixed by adding a
+default-success `dynamoHandler.updateUserFields.mockResolvedValue(...)` to both files' `beforeEach`
+blocks. Full suite: **112 suites / 2074 tests, all passing** (net +1 new test — the two `beforeEach`
+additions are setup fixes for tests that already existed, not new coverage).
+
+**Docs.** `systems/tower.md`'s root-cause section gained a "Same-day follow-up" subsection covering
+this addition and the shared-helper refactor.
